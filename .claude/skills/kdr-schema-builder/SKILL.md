@@ -300,14 +300,16 @@ boot-checked (dynamic) — an unresolvable one renders **as written** with a `[k
 `%{@t}` pull actually resolves is checked at delivery for now (an unresolvable one degrades to the copy as
 written with a `[schema]` warning); a boot-time resolution check is tracked in #620.
 
-**Delivery (issue #585).** Both friendly surfaces carry a `layouts` map beside their `$defs` — the endpoint
-catalog under `EI.layouts`, the workflow view under `WVF.layouts` — built by one call,
+**Delivery (issues #585, #835).** Both friendly surfaces carry a `fieldLayouts` map beside their `$defs` —
+the endpoint catalog under `EI.fieldLayouts`, the workflow view under `WVF.fieldLayouts` — built by one call,
 `KdrSchemaStore.layoutsFor(closure)`: `{ typeName → g-layout block }` for exactly the types the served
 closure carries that declare one (a type with none has **no entry**), each re-serialized from the store's model
 (`SchLayout.toJsonMap()`), so a narrowed client's page receives the pruned form. The frontend reads it with the
-kernel's `parseDeliveredLayouts` (the same strict parser the boot ran) into `Catalog.layouts` and
-`WorkflowCreation.layouts`, joined to a type by its qualified name; a workflow trait carries its own under
-`WfTraitView.layout`. Delivered but not yet consumed: `SchemaForm` reads the layout from Stage 3 (#586) on.
+kernel's `parseDeliveredLayouts` (the same strict parser the boot ran) into `Catalog.fieldLayouts` and
+`WorkflowView.fieldLayouts`, joined to a type by its qualified name; a workflow trait carries its own under
+`WfTraitView.fieldLayout`, and a form takes the map as `FormOpts.fieldLayouts` / `SchemaFormProps.fieldLayouts`.
+Outside the schema package the delivered form is always named `fieldLayout(s)`, so a search finds exactly it —
+not the task layout (`WfTask.layout`), a page layout, or prose.
 
 ## Validation & coercion
 

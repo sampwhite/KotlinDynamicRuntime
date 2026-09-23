@@ -276,7 +276,7 @@ val EditFormPage = FC<Props> {
                     cfacts = cat.cfacts
                     // The per-type layouts (issue #586), joined by type name inside the form -- the same copy the
                     // create form shows, since both render the same trait data types.
-                    layouts = cat.layouts
+                    fieldLayouts = cat.fieldLayouts
                     // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
                     omit = listOf(GDF.gedraId)
                     // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
@@ -363,7 +363,7 @@ val EditFormPage = FC<Props> {
                 // and are overridable through the edited type's layout.
                 failures?.let { fs ->
                     formFailureSummary(
-                        fs, appConfig().envAuthDebug, formTraitLayouts(targetType, cat.layouts),
+                        fs, appConfig().envAuthDebug, formTraitLayouts(targetType, cat.fieldLayouts),
                         defaultSummary = "Please fix these before saving",
                         defaultHint = "Fix highlighted errors in entered data before saving.",
                     )

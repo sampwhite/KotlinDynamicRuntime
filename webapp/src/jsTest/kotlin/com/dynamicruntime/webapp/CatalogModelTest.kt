@@ -34,7 +34,7 @@ class CatalogModelTest {
         EI.filtersAvailable to false,
         EI.cfacts to mapOf("hasAdminLevel" to false),
         // The layouts closure (issue #585): only the type that declares one has an entry.
-        EI.layouts to mapOf(
+        EI.fieldLayouts to mapOf(
             questionnaire to mapOf(
                 SL.fragmentFileId to "acme",
                 SL.schemaFields to listOf(
@@ -53,12 +53,12 @@ class CatalogModelTest {
         assertEquals(false, catalog.cfacts["hasAdminLevel"])
         // The layout is joined to the type by the same key `$defs` and `defTypes` use.
         assertTrue(catalog.defTypes.containsKey(questionnaire))
-        val layout = catalog.layouts[questionnaire]!!
+        val layout = catalog.fieldLayouts[questionnaire]!!
         assertEquals("acme", layout.fragmentFileId)
         assertEquals(listOf("topic", "notes"), layout.fieldNames)
         assertEquals("Anything else?", layout.fields[1].label)
         // A type with no layout has no entry -- absent, not empty.
-        assertNull(catalog.layouts["sampleconfig.Plain"])
+        assertNull(catalog.fieldLayouts["sampleconfig.Plain"])
         // The served schema carries no layout keyword: the closure is the only place a layout travels.
         assertTrue(!(catalog.defs[questionnaire] as Map<*, *>).containsKey(SCH.layout))
     }
@@ -66,8 +66,8 @@ class CatalogModelTest {
     @Test
     fun aResponseWithNoLayoutsKeyParsesToNoLayouts() {
         // An older node, or a catalog of types that declare none: the schema renders alone, nothing faults.
-        val catalog = parseCatalog(results() - EI.layouts)
-        assertTrue(catalog.layouts.isEmpty())
+        val catalog = parseCatalog(results() - EI.fieldLayouts)
+        assertTrue(catalog.fieldLayouts.isEmpty())
         assertTrue(catalog.defTypes.containsKey(questionnaire))
     }
 }

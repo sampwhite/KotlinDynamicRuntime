@@ -111,13 +111,13 @@ object EI {
     const val cfacts = "cfacts"
 
     /**
-     * The per-type layouts carried on the catalog response (issue #585): `{ typeName -> g-layout block }` for
+     * The per-type field layouts carried on the catalog response (issue #585): `{ typeName -> g-layout block }` for
      * the types in the response's `$defs` that declare one, delivered **out-of-band** so the served schema
      * stays documentation-grade (`g-layout` is stripped from `$defs`). A type with no layout has no entry. The
      * catalog is what the friendly forms off-workflow fetch, so this is how they get a type's layout; the
-     * workflow view carries the same shape under `WVF.layouts`.
+     * workflow view carries the same shape under `WVF.fieldLayouts`.
      */
-    const val layouts = "layouts"
+    const val fieldLayouts = "fieldLayouts"
 }
 
 /**

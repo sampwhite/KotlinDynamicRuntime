@@ -193,7 +193,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // client through a task trait's layout `strings` (LAYSTR.prefillSummary), else the frontend's own copy;
     // both template over `${'$'}{count}`. Fail-safe: a broken override renders as written rather than blanking.
     fun prefillSummaryText(task: WfTaskView, count: Int): String {
-        val override = task.traits.firstNotNullOfOrNull { it.layout?.strings?.get(LAYSTR.prefillSummary) }
+        val override = task.traits.firstNotNullOfOrNull { it.fieldLayout?.strings?.get(LAYSTR.prefillSummary) }
         if (override != null) {
             return try { override.evalTemplate(mapOf("count" to count)) } catch (_: Throwable) { override }
         }
@@ -312,7 +312,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             task.traits.forEach { trait ->
                 div {
                     className = ClassName("wf-trait")
-                    trait.layout?.label?.let { Markdown { source = it; inlineUi = true } } ?: h2 { +traitHeading(trait) }
+                    trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true } }
+                        ?: h2 { +traitHeading(trait) }
                     if (trait.traitId in unmetTraits) {
                         p {
                             className = ClassName("error-text")
@@ -331,7 +332,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         showDerivedValues = true
                         derivedRootIsTraitData = true
                         this.cfacts = wf.cfacts
-                        this.layouts = wf.layouts
+                        this.fieldLayouts = wf.fieldLayouts
                         this.failures = shownFailures(
                             failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
                             trait.traitId in wholeChecked,

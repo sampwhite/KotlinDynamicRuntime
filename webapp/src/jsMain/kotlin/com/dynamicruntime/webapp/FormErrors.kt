@@ -20,26 +20,26 @@ import web.cssom.ClassName
  * array-of-union property is the entries/edits list, each branch a trait entry/edit whose [GE.data] is the trait
  * data type the layout is keyed by. Empty when the type is not shaped this way or no trait carries a layout.
  */
-fun formTraitLayouts(rootType: SchType?, layouts: Map<String, SchLayout>): List<SchLayout> {
+fun formTraitLayouts(rootType: SchType?, fieldLayouts: Map<String, SchLayout>): List<SchLayout> {
     val union = rootType?.properties?.values
         ?.firstNotNullOfOrNull { p -> p.valueType.itemType?.takeIf { it.variants != null } }
         ?: return emptyList()
     return union.variants?.branches.orEmpty().mapNotNull { branch ->
-        branch.properties[GE.data]?.valueType?.name?.let { layouts[it] }
+        branch.properties[GE.data]?.valueType?.name?.let { fieldLayouts[it] }
     }
 }
 
 /**
  * The two form-level error strings a consumer-facing form-doc form shows (issue #641): the
  * [LAYSTR.formErrorSummary] heading over the internal failure list and the [LAYSTR.formErrorHint] one-liner
- * shown in its place off debug. Each is the first override any of the form's [layouts] sets (see
+ * shown in its place off debug. Each is the first override any of the form's [fieldLayouts] sets (see
  * [formTraitLayouts]), else the surface's own default -- so a client alters the wording by setting it in one of
  * their traits' `g-layout`, the only layout a form's rendered types actually carry. Pure, so a jsNodeTest can
  * pin the override-vs-default rule and the reach through the type tree that the render below rests on.
  */
-fun formErrorStrings(layouts: List<SchLayout>, defaultSummary: String, defaultHint: String): Pair<String, String> {
-    val summary = layouts.firstNotNullOfOrNull { it.strings[LAYSTR.formErrorSummary] } ?: defaultSummary
-    val hint = layouts.firstNotNullOfOrNull { it.strings[LAYSTR.formErrorHint] } ?: defaultHint
+fun formErrorStrings(fieldLayouts: List<SchLayout>, defaultSummary: String, defaultHint: String): Pair<String, String> {
+    val summary = fieldLayouts.firstNotNullOfOrNull { it.strings[LAYSTR.formErrorSummary] } ?: defaultSummary
+    val hint = fieldLayouts.firstNotNullOfOrNull { it.strings[LAYSTR.formErrorHint] } ?: defaultHint
     return summary to hint
 }
 
@@ -50,18 +50,18 @@ fun formErrorStrings(layouts: List<SchLayout>, defaultSummary: String, defaultHi
  * failure (empty path) names no field and is marked nowhere, so its own message is always shown, in or out of
  * debug -- otherwise a cross-field or schema-level failure would leave the consumer stuck with nothing to fix.
  * In debug the full internal list (each failure's path and message) is shown, as before. Both strings come from
- * the form's rendered trait [layouts] when one overrides them, else the [defaultSummary] / [defaultHint] the
+ * the form's rendered trait [fieldLayouts] when one overrides them, else the [defaultSummary] / [defaultHint] the
  * page passes. A no-op when there are no failures, so a caller may hand it the raw list.
  */
 fun ChildrenBuilder.formFailureSummary(
     failures: List<SchFailure>,
     debug: Boolean,
-    layouts: List<SchLayout>,
+    fieldLayouts: List<SchLayout>,
     defaultSummary: String,
     defaultHint: String,
 ) {
     if (failures.isEmpty()) return
-    val (summary, hint) = formErrorStrings(layouts, defaultSummary, defaultHint)
+    val (summary, hint) = formErrorStrings(fieldLayouts, defaultSummary, defaultHint)
     if (!debug) {
         val (wholeForm, fieldLevel) = failures.partition { it.path.isEmpty() }
         // A field-level failure is already flagged inline; the consumer needs the nudge, not the validator's

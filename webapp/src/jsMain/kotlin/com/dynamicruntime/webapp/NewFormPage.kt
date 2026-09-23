@@ -135,7 +135,7 @@ val NewFormPage = FC<Props> {
                     cfacts = cat.cfacts
                     // The per-type layouts (issue #586): a field's label/description come from the layout for
                     // its type, cascading over the schema's title/description. Joined by type name inside the form.
-                    layouts = cat.layouts
+                    fieldLayouts = cat.fieldLayouts
                     // The fields the page answers itself, not the form (issues #727, #762): the one list both
                     // create pages use; each defaults absent.
                     omit = formCreateOmittedFields
@@ -214,7 +214,7 @@ val NewFormPage = FC<Props> {
                 // and are overridable through the created type's layout.
                 failures?.let { fs ->
                     formFailureSummary(
-                        fs, appConfig().envAuthDebug, formTraitLayouts(inputType, cat.layouts),
+                        fs, appConfig().envAuthDebug, formTraitLayouts(inputType, cat.fieldLayouts),
                         defaultSummary = "Please fix these before creating the form",
                         defaultHint = "Fix highlighted errors in entered data before creating the form.",
                     )

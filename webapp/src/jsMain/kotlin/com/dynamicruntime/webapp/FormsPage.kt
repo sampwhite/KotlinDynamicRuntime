@@ -548,7 +548,7 @@ val FormsPage = FC<Props> {
                     }
                     else -> {
                         deleteError?.let { errorText("Couldn't delete the form.", it) }
-                        renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType, cat.layouts)
+                        renderForm(viewRow!!, entriesUnionOf(payloadType), payloadType, cat.fieldLayouts)
                     }
                 }
             }
@@ -884,7 +884,7 @@ private fun ChildrenBuilder.renderForm(
     row: Map<String, Any?>,
     union: SchType?,
     payloadType: SchType?,
-    layouts: Map<String, SchLayout>,
+    fieldLayouts: Map<String, SchLayout>,
 ) {
     val summary = summarizeForm(row, union)
     summary.title?.let { h2 { +it } }
@@ -933,7 +933,7 @@ private fun ChildrenBuilder.renderForm(
             traitDataField = GE.data
             // The per-type layouts (issue #586): the read-only view shows the same layout copy the edit form
             // does, cascading over the schema's title/description.
-            this.layouts = layouts
+            this.fieldLayouts = fieldLayouts
         }
     }
 }

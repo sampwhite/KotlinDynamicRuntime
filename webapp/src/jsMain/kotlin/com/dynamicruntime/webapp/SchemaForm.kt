@@ -80,11 +80,11 @@ class FormOpts(
      */
     val gateAllows: (expression: String) -> Boolean = { true },
     /**
-     * The per-type layouts (issue #586), keyed by qualified type name. Consulted only in [friendly] mode, and
+     * The per-type field layouts (issue #586), keyed by qualified type name. Consulted only in [friendly] mode, and
      * only for the copy overrides (label / description); empty means every field keeps its schema `title` /
      * `description`, which is what the catalog and every read-only-of-the-wire caller wants.
      */
-    val layouts: Map<String, SchLayout> = emptyMap(),
+    val fieldLayouts: Map<String, SchLayout> = emptyMap(),
     /**
      * Promote a keyed object property's primary-key fields to the object's own level (issue #642); see
      * [SchemaFormProps.promoteKeys]. Off by default, so only the form that opts in reshapes.
@@ -213,7 +213,7 @@ private fun resolveLayoutTemplate(text: String, data: Map<String, Any?>): String
  */
 internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, opts: FormOpts): LayoutCopy? {
     if (!opts.friendly) return null
-    val field = type.name?.let { opts.layouts[it] }?.fieldFor(name) ?: return null
+    val field = type.name?.let { opts.fieldLayouts[it] }?.fieldFor(name) ?: return null
     // The bounds context is built only when there is a hint to resolve against it -- a field overriding just
     // its label/description (the common case) pays nothing for it.
     fun boundsData(): Map<String, Any?> = type.properties[name]?.let { boundsContextData(it.valueType) } ?: emptyMap()
@@ -340,13 +340,13 @@ external interface SchemaFormProps : Props {
      */
     var cfacts: Map<String, Boolean>?
     /**
-     * The per-type layouts (issue #586), keyed by qualified type name, from the surface's delivery
-     * ([Catalog.layouts] / [WorkflowView.layouts]). In **friendly** mode a field's `label` / `description`
+     * The per-type field layouts (issue #586), keyed by qualified type name, from the surface's delivery
+     * ([Catalog.fieldLayouts] / [WorkflowView.fieldLayouts]). In **friendly** mode a field's `label` / `description`
      * come from the layout for its enclosing type when it addresses the field, cascading over the schema's
      * `title` / `description`; absent (or in wire-documenting mode) the form is unchanged. A `${'$'}{…}` in the
      * copy is resolved against the object's own values through [evalTemplate].
      */
-    var layouts: Map<String, SchLayout>?
+    var fieldLayouts: Map<String, SchLayout>?
     /**
      * Validation failures to show against the fields that caused them. Their paths are the ones the kernel
      * validator reported, and the form rebuilds the same paths as it walks — see [FieldErrors].
@@ -530,7 +530,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         friendly = props.friendly == true,
         omit = props.omit?.toSet() ?: emptySet(),
         gateAllows = buildCfactGate(props.cfacts),
-        layouts = props.layouts ?: emptyMap(),
+        fieldLayouts = props.fieldLayouts ?: emptyMap(),
         promoteKeys = props.promoteKeys == true,
         prefill = props.prefill ?: emptyMap(),
         openTraitEntry = props.openTraitEntry == true,
@@ -680,7 +680,7 @@ private fun ChildrenBuilder.renderProperties(
     // The field order and candidate set come from the kernel seam (issue #777): schema order under an overlay
     // layout (the default), the layout's order/membership under `reorder`/`authoritative`. The per-field gates
     // below still run on top, so the layout narrows and orders but never widens past what the schema shows.
-    orderedFieldNames(type, type.name?.let { opts.layouts[it] }).forEach { name ->
+    orderedFieldNames(type, type.name?.let { opts.fieldLayouts[it] }).forEach { name ->
         val prop = type.properties[name] ?: return@forEach
         if (name == skip || name in hideFields) {
             return@forEach
