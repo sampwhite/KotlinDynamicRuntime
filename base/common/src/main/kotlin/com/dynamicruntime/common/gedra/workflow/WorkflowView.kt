@@ -91,21 +91,20 @@ fun resolveWorkflowView(
         )
     }
 
-    // The task's status for the task rail (issue #700): presence from the same engine `taskFacts` uses, content
-    // from the survey's one validity rule (`surveyContentFailures`), so the rail agrees with the stored survey
-    // state and the forms list's status column. Each problem is the kernel's own failure wire map plus its
-    // trait, so the page reads it by the same rule it reads any reported failure (the author's wording first).
-    fun taskStatus(task: WfTask, entries: List<Map<String, Any?>>): Map<String, Any?> {
-        val missing = WfEngine.missingTraits(task.requiredTraitIds, entries)
-        val failures = surveyContentFailures(cxt, client, task.traits.map { it.traitId }.toSet(), entries)
-        val problems = failures.flatMap { (traitId, fs) -> fs.map { f -> f.toWireMap() + (GE.traitId to traitId) } }
-        return linkedMapOf(
-            SVY.complete to missing.isEmpty(),
-            SVY.valid to failures.isEmpty(),
-            SVY.missingTraits to missing,
-            SVY.invalidTraits to failures.keys.toList(),
-            WVF.problems to problems,
-        )
+    // Each task's status (issues #700, #785), from the one computation the stored CTA also uses
+    // (`WorkflowTaskStatus`), so the rail, `focusTask`, the `wfIsCta` fact and the forms list cannot disagree.
+    val statuses = declared.def.tasks.map { it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList()) }
+    val statusById = statuses.associate { (task, status) -> task.id to status }
+    // The CTA (issue #785): the earliest task not both complete and valid. The rail opens on it when the URL names
+    // no task (`focusTask`, issue #700), and its task carries the `wfIsCta` fact a layout selects on.
+    val ctaTaskId = WorkflowTaskStatus.cta(statuses)?.first?.id
+
+    // The task's status for the task rail: complete/valid in the survey's words, plus each problem as the
+    // kernel's own failure wire map with its trait, so the page reads it by the same rule it reads any reported
+    // failure (the author's wording first).
+    fun taskStatus(status: WfTaskStatus): Map<String, Any?> {
+        val problems = status.failures.flatMap { (traitId, fs) -> fs.map { f -> f.toWireMap() + (GE.traitId to traitId) } }
+        return status.toStateMap() + (WVF.problems to problems)
     }
 
     fun taskView(task: WfTask): Map<String, Any?> {
@@ -114,14 +113,14 @@ fun resolveWorkflowView(
         // trait it left out follows in declaration order (`WfTask.displayOrder`).
         val byId = task.traits.associateBy { it.traitId }
         val orderedTraits = task.displayOrder.mapNotNull { byId[it] }.map { traitView(it) }
-        val taskFacts = WfTaskFacts.of(task, entries)
+        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId)
         val raw = linkedMapOf<String, Any?>(
             WFD.id to task.id,
             WFD.label to label(task.label),
             WFD.traits to orderedTraits,
             WFD.saves to task.saves.map { linkedMapOf(WFD.id to it.id, WFD.label to label(it.label), WFD.kind to it.kind.name) },
             WVF.facts to taskFacts.toList(),
-            WVF.status to taskStatus(task, entries),
+            WVF.status to taskStatus(statusById.getValue(task.id)),
         )
         task.layout?.let { raw[WFD.layout] = linkedMapOf(WFD.order to it.order, WFD.edit to it.edit.name) }
         // The entries the page seeds each field from: the task's stored ones (a survey edit; a creation view has
@@ -145,12 +144,8 @@ fun resolveWorkflowView(
     val taskViews = declared.def.tasks.map { taskView(it) }
     // The self-contained schema: exactly the types the trait refs reach, and their dependencies.
     val defs = collectDefClosure(seedRefs, clientStore.servedDefs)
-    // The earliest task still needing action (issue #700): the first, in task order, whose status is incomplete
-    // or invalid. The rail opens on it when the URL names no task; absent when every task is done.
-    val focusTask = taskViews.firstOrNull { tv ->
-        val s = tv[WVF.status].toJsonMapOrEmpty()
-        s[SVY.complete] == false || s[SVY.valid] == false
-    }?.get(WFD.id)
+    // The earliest task still needing action -- the CTA, computed once above. Absent when every task is done.
+    val focusTask = ctaTaskId
     val view = linkedMapOf<String, Any?>(
         WVF.found to true,
         WFD.workflowId to declared.def.workflowId,

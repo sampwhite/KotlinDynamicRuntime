@@ -34,4 +34,11 @@ fun addWorkflowCFacts(collector: SchemaCollector) {
                 "placeholder holding the shape until availability rules (dates, prior tasks) exist.",
         ),
     )
+    collector.addCFact(
+        CFactDef(
+            WFC.isCta, WFGRP.workflow,
+            "True, about the task being rendered, when it is the workflow's call to action: the earliest task, in " +
+                "list order, that is not both complete and valid (issue #785).",
+        ),
+    )
 }

@@ -113,6 +113,8 @@ object SW {
      * one workflow's singleton can be seen gating another.
      */
     const val siteFollowUp = "siteFollowUp"
+    const val confirmContact = "confirmContact"
+    const val saveContact = "saveContact"
     const val recordFollowUp = "recordFollowUp"
     const val saveFollowUp = "saveFollowUp"
 }
@@ -430,6 +432,12 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         workflow(SW.siteFollowUp, WfEntry.normal) {
             label = "Site follow-up"
             eligibility(SW.noOpenReview, "~${WSC.needsReview}", "Wait for the pending review of this form to finish.")
+            // Two tasks, in the order the work is done, so the CTA (issue #785) -- the earliest task not both
+            // complete and valid -- can be seen moving from the first to the second.
+            task(SW.confirmContact, "Confirm who to contact on site") {
+                trait(SC.userInfo)
+                save(SW.saveContact, "Save the contact", WfSaveKind.edit)
+            }
             task(SW.recordFollowUp, "Record the follow-up") {
                 trait(SC.siteAudit)
                 save(SW.saveFollowUp, "Save the follow-up", WfSaveKind.edit)
