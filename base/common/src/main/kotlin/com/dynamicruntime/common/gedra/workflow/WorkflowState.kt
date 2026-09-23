@@ -59,6 +59,23 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
         additionalProperties = true
     }
 
+    // Named like the failure type: a structure inside the entry that the listing (#791) reads.
+    type(WFS.workflowCtaStatus) {
+        type = SCT.kObject
+        description = "The general status of a workflow's CTA task: complete, valid, and the traits behind each."
+        property(SVY.complete, "Every trait the task requires has an entry present.", required = true) { type = SCT.boolean }
+        property(SVY.valid, "The present entries of the task's traits pass their schema.", required = true) { type = SCT.boolean }
+        property(SVY.missingTraits, "Required traits of the task with no entry present.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(SVY.invalidTraits, "Traits of the task whose present entries fail their schema.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        additionalProperties = true
+    }
+
     stateTrait(
         WFS.workflowStateEntry, WFS.workflowState, setOf(GedraDataType.formDoc),
         StateTraitClass.derived,
@@ -76,6 +93,9 @@ fun workflowStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, WFS.stateBu
             type = SCT.array
             items { type = SCT.string }
         }
+        property(WFS.ctaTask, "The workflow's call-to-action task: the earliest not both complete and valid. Engaged workflows only; absent when every task is done.")
+        property(WFS.ctaStatus, "The CTA task's general status.") { ref(WFS.workflowCtaStatus) }
+        property(WFS.tasksDone, "Every task is complete and valid, so there is no CTA. Engaged workflows only.") { type = SCT.boolean }
         property(WFS.eligible, "Whether the form meets every eligibility test of the workflow.") { type = SCT.boolean }
         property(WFS.eligibilityFailures, "The eligibility tests the form fails, in the workflow's order; empty when eligible.") {
             type = SCT.array
@@ -168,6 +188,11 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  *     not make it ineligible for itself once engaged, which would read as "ineligible" where "finished" is
  *     meant (issue #784 review). No cycle either way: a singleton never reads eligibility.
  *
+ * An **engaged** workflow's entry also carries its **CTA** (issue #785): [WFS.ctaTask], the earliest task not
+ * both complete and valid, with its [WFS.ctaStatus] -- or [WFS.tasksDone] when there is none. Engaged only: the
+ * CTA is where an engaged workflow's link points, and a workflow the form has not entered has no work under way
+ * (its view computes the same answer live, from the same [WorkflowTaskStatus]).
+ *
  * See [WorkflowEligibility] for why only the form's own cfacts, never the caller's. A retired-but-engaged
  * workflow's bare entry has none of these, having no definition left to compute against. The CTA task and its
  * status (#785) and the time windows (#790) add their own fields to the open entry.
@@ -205,6 +230,14 @@ object WorkflowStateDeriver : GedraStateDeriver {
                 data[WFS.computedAgainstRef] = it.ref.text
                 data[WFS.cfacts] = own.getValue(workflowId).sorted()
                 data[WFS.singletonCfacts] = singletons.getValue(workflowId)
+                if (workflowId in engaged) {
+                    val cta = WorkflowTaskStatus.ctaOf(cxt, state.row.client, it.def, state.row.entries)
+                    data[WFS.tasksDone] = cta == null
+                    cta?.let { (task, status) ->
+                        data[WFS.ctaTask] = task.id
+                        data[WFS.ctaStatus] = status.toStateMap()
+                    }
+                }
                 val failures = WorkflowEligibility.failures(registry, it.def, eligibilityFacts(workflowId))
                 data[WFS.eligible] = failures.isEmpty()
                 data[WFS.eligibilityFailures] = WorkflowEligibility.failureEntries(failures)

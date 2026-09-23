@@ -8,9 +8,11 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.mergeCfactContributions
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSC
+import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
@@ -22,6 +24,7 @@ import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
@@ -281,6 +284,68 @@ class WorkflowStateFoundationTest : StringSpec({
         auditState(states)[WFS.singletonCfacts].toJsonListOrEmpty().shouldBeEmpty()
         entriesOf(states, GT.cfacts).single()[GT.facts].toJsonListOrEmpty().map { it.toOptStr() } shouldNotContain
             WSC.needsReview
+    }
+
+    // --- the CTA task (issue #785) -------------------------------------------------------------------------
+
+    "an engaged workflow stores its CTA: the earliest task not both complete and valid" {
+        val user = TestUser.create(cxt, "wfs-cta@acme.test", userClient = SC.acme)
+        val contact = mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "Site Lead"))
+        fun form(vararg entries: Map<String, Any?>): String =
+            user.postItem(create, mapOf(GDF.entries to entries.toList()))[GDF.gedraId].toOptStr()!!
+        fun engagedFollowUp(gid: String) = entriesOf(
+            statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.siteFollowUp))),
+            WFS.workflowState,
+        ).single { it[WFD.workflowId].toOptStr() == SW.siteFollowUp }
+
+        // Only the audit present: that completes the *second* task, yet the CTA is the first -- the earliest task
+        // not done, not whichever one has something missing -- with the status that says why.
+        val firstOpen = engagedFollowUp(form(auditEntries().single()))
+        firstOpen[WFS.ctaTask] shouldBe SW.confirmContact
+        firstOpen[WFS.tasksDone] shouldBe false
+        val status = firstOpen[WFS.ctaStatus].toJsonMapOrEmpty()
+        status[SVY.complete] shouldBe false
+        status[SVY.valid] shouldBe true
+        status[SVY.missingTraits] shouldBe listOf(SC.userInfo)
+
+        // The first task done: the CTA moves on to the second.
+        engagedFollowUp(form(contact))[WFS.ctaTask] shouldBe SW.recordFollowUp
+
+        // Both done: no CTA, and that is said outright rather than left to an absent key.
+        val done = engagedFollowUp(form(contact, auditEntries().single()))
+        done[WFS.tasksDone] shouldBe true
+        done[WFS.ctaTask].shouldBeNull()
+    }
+
+    "a workflow the form has not entered carries no CTA" {
+        val user = TestUser.create(cxt, "wfs-nocta@acme.test", userClient = SC.acme)
+        val states = statesOf(user.postData(recompute, mapOf(GDF.gedraId to newForm(user))))
+        val followUp = entriesOf(states, WFS.workflowState).single { it[WFD.workflowId].toOptStr() == SW.siteFollowUp }
+        followUp[WFS.ctaTask].shouldBeNull()
+        followUp[WFS.tasksDone].shouldBeNull()
+    }
+
+    "the workflow view agrees with the stored CTA: its focus task, and the wfIsCta fact on that task alone" {
+        val user = TestUser.create(cxt, "wfs-ctaview@acme.test", userClient = SC.acme)
+        val gid = user.postItem(
+            create,
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "Site Lead")))),
+        )[GDF.gedraId].toOptStr()!!
+        val stored = entriesOf(
+            statesOf(user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.siteFollowUp))),
+            WFS.workflowState,
+        ).single { it[WFD.workflowId].toOptStr() == SW.siteFollowUp }
+
+        val view = user.getData(
+            clientPath(GEP.workflowView, SC.acme),
+            mapOf(GDF.workflowId to SW.siteFollowUp, GDF.gedraId to gid),
+        )
+        view[WVF.focusTask] shouldBe stored[WFS.ctaTask]
+        val factsByTask = view[WFD.tasks].toJsonListOfMaps().associate {
+            it[WFD.id].toOptStr() to it[WVF.facts].toJsonListOrEmpty().map { f -> f.toOptStr() }
+        }
+        factsByTask.getValue(SW.recordFollowUp) shouldContain WFC.isCta
+        factsByTask.getValue(SW.confirmContact) shouldNotContain WFC.isCta
     }
 
     "cfacts contributions merge into one entry, in first-seen order, leaving other entries alone" {

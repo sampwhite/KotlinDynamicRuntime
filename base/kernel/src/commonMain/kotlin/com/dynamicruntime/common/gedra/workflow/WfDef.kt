@@ -212,6 +212,13 @@ object WFC {
 
     /** The task may be worked on now. **Always present today** -- availability rules are a later step. */
     const val taskAvailable = "wfTaskAvailable"
+
+    /**
+     * The task is the workflow's **CTA** (call to action, issue #785): the earliest task in the list that is not
+     * both complete and valid -- where a person's next piece of work is. What a layout tests to draw a task as
+     * current, or a later one as waiting on it.
+     */
+    const val isCta = "wfIsCta"
 }
 
 /**
@@ -919,14 +926,19 @@ object WfEngine {
  * beside the request's own facts, so a task's layout can select on them.
  *
  * [WFC.taskAvailable] is **always present**: a placeholder that keeps the shape visible until availability
- * rules (dates, prior tasks) exist. Said here so nobody reads it as computed.
+ * rules (dates, prior tasks) exist. Said here so nobody reads it as computed. [WFC.isCta] is the caller's to
+ * say (issue #785): which task is the CTA is a judgment over the whole task list, and content validity, which
+ * needs the client's schema -- neither is this one task's to decide.
  */
 object WfTaskFacts {
-    fun of(task: WfTask, entries: List<Map<String, Any?>>): Set<String> {
+    fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false): Set<String> {
         val facts = LinkedHashSet<String>()
         facts.add(WFC.taskAvailable)
         if (WfEngine.taskComplete(task, entries)) {
             facts.add(WFC.taskComplete)
+        }
+        if (isCta) {
+            facts.add(WFC.isCta)
         }
         return facts
     }

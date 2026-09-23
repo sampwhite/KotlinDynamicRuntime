@@ -160,6 +160,8 @@ class WfDefTest {
         val t = task("income", "income")
         assertEquals(setOf(WFC.taskAvailable), WfTaskFacts.of(t, emptyList()))
         assertEquals(setOf(WFC.taskAvailable, WFC.taskComplete), WfTaskFacts.of(t, listOf(entry("income"))))
+        // Whether the task is the CTA is the caller's judgment over the whole list (issue #785); said, it is a fact.
+        assertEquals(setOf(WFC.taskAvailable, WFC.isCta), WfTaskFacts.of(t, emptyList(), isCta = true))
     }
 
     @Test

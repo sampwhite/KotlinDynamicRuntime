@@ -70,6 +70,25 @@ object WFS {
      */
     const val singletonCfacts = "singletonCfacts"
 
+    /**
+     * The workflow's **CTA** task id (issue #785): the earliest task, in list order, that is not both complete and
+     * valid -- where the listing's link for an engaged workflow points. Absent when [tasksDone].
+     */
+    const val ctaTask = "ctaTask"
+
+    /** The [ctaTask]'s general status: complete, valid, and the traits behind each ([workflowCtaStatus]). */
+    const val ctaStatus = "ctaStatus"
+
+    /** The named type of [ctaStatus]. */
+    const val workflowCtaStatus = "WorkflowCtaStatus"
+
+    /**
+     * Every task is complete and valid, so there is no [ctaTask] (issue #785). Explicit rather than read from an
+     * absent [ctaTask], which would be ambiguous with "not computed" -- the CTA is computed for engaged workflows
+     * only, so a non-engaged entry carries neither.
+     */
+    const val tasksDone = "tasksDone"
+
     /** The named type of one [eligibilityFailures] element. */
     const val workflowEligibilityFailure = "WorkflowEligibilityFailure"
 
