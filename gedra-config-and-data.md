@@ -251,6 +251,17 @@ running:
 
 `KDR_GEDRA_CONFIG_CHECK=strict|warn|off` overrides either way.
 
+**Stored configuration is judged differently** (issue #839). A problem in a client's configuration read back
+from the database is **forgiven everywhere except unit tests**: logged, the offending definition dropped, and
+the rest served, whether the node is local, staging or production. A node refused over stored data leaves no
+tool to repair it but hand-written SQL or a temporary code change. `KDR_STORED_CONFIG_CHECK=strict|warn|off`
+governs it (default `warn`, `strict` in `unit`), independently of `KDR_GEDRA_CONFIG_CHECK`.
+
+Which rule applies follows **the definition holding the reference**, not whichever side changed last: a stored
+workflow naming a function a code change unregistered is a stored problem, and forgiven; a dangling reference
+inside source code still refuses the boot outside production. Each reported problem names its client, the
+stored config holding it (when stored), and the definition at fault.
+
 The production path is only survivable because of the default branch above: entries carrying a dropped trait
 fall through as unrecognized rather than failing validation. The two decisions hold each other up, which is
 worth knowing before changing either.

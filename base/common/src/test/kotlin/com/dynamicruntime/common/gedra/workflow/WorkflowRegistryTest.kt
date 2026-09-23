@@ -90,9 +90,21 @@ class WorkflowRegistryTest : StringSpec({
         }
     }
 
-    fun build(cxt: KdrCxt, configs: List<GedraConfig>, mode: BootCheckMode = BootCheckMode.strict): Pair<WorkflowRegistries, List<GedraConfigIssue>> {
+    // The check mode is read off the context (issue #839 made it per-origin), so a test asking for one checks
+    // under a fresh context of the same environment with the source-config override set.
+    fun build(
+        cxt: KdrCxt,
+        configs: List<GedraConfig>,
+        mode: BootCheckMode? = null,
+    ): Pair<WorkflowRegistries, List<GedraConfigIssue>> {
+        val checkCxt = mode?.let { m ->
+            val env = cxt.instanceConfig.env
+            KdrCxt("wf", KdrInstanceConfig("wf-$env-$m", env, ENV.liveSource)).also {
+                it.instanceConfig.put(GCFG.checkEnvVar.name, m.name)
+            }
+        } ?: cxt
         val collector = GedraConfigCollector()
-        configs.forEach { collector.add(cxt, it) }
+        configs.forEach { collector.add(checkCxt, it) }
         val clients = collector.configs.mapNotNull { it.client }.associate { it.clientId to it as ClientDef? }
         val issues = mutableListOf<GedraConfigIssue>()
         // The cfact vocabulary eligibility tests parse against: global gets one name, a client adds its own.
@@ -100,7 +112,7 @@ class WorkflowRegistryTest : StringSpec({
             if (scope == null) setOf("surveyComplete") else setOf("surveyComplete", "${scope}Only")
         }
         val regs = buildWorkflowRegistries(
-            cxt, collector, clients, { emptySet() }, fragments, cfactNames = cfactNames, mode = mode, issues = issues,
+            checkCxt, collector, clients, { emptySet() }, fragments, cfactNames = cfactNames, issues = issues,
         )
         return regs to issues
     }

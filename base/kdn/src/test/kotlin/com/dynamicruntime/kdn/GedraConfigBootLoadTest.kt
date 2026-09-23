@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
@@ -8,12 +9,17 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
-import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
@@ -21,6 +27,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * The boot-time load of stored client configurations (issue #614): a node that restarts picks up config a peer
@@ -89,6 +96,81 @@ class GedraConfigBootLoadTest : StringSpec({
         // than degrading), and an unloadable stored config is that same kind of problem.
         val ex = shouldThrow<KdrException> { Startup.mkTestBootCxt("cfgLoad2b", "cfgBootLoad2b", db) }
         (ex.message ?: "").contains("template") shouldBe true
+        // Judged as stored config (issue #839): the refusal names the stored config and the variable that forgives it.
+        ex.message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
+        ex.message.shouldNotBeNull() shouldContain "extcfg"
+    }
+
+    // Issue #839: outside unit tests stored config is forgiven by default; a unit test opts into that with
+    // KDR_STORED_CONFIG_CHECK=warn. The same bad stored config then costs only itself -- the node boots, the config
+    // is dropped, and the issue says which stored config it was -- while source config stays strict.
+    "with the stored-config check at warn, a bad stored config is dropped and the node boots" {
+        val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_forgive", "KDR_LOAD_STORED_CONFIG" to "true")
+        val client = "forgiveclient"
+
+        val cxt1 = Startup.mkTestBootCxt("cfgLoad1d", "cfgBootLoad1d", db)
+        val config = gedraConfig(cxt1, "forgivecfg", "forgiveclientconfig", client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Forgiven Client",
+                    usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    extendsFromClientId = CL.hub,
+                ),
+            )
+        }
+        GedraConfigService.get(cxt1).writeConfig(writer(cxt1, client), config)
+
+        val cxt2 = Startup.mkTestBootCxt(
+            "cfgLoad2d", "cfgBootLoad2d", db + mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
+        )
+        ClientService.get(cxt2).known(client) shouldBe null
+        val issue = GedraConfigLoadService.get(cxt2).issues.single()
+        issue.message shouldContain "template"
+        issue.origin shouldBe GedraConfigOrigin.stored
+        issue.storedConfigId.shouldNotBeNull() shouldContain "forgivecfg"
+        issue.client shouldBe client
+        issue.elementKind shouldBe GCEL.config
+        // Reported under its own check, naming the variable that governs it.
+        val report = BootCheckRegistry.get(cxt2).results().first { it.name == BCHK.storedConfig }
+        report.envVar shouldBe GCFG.storedCheckEnvVar.name
+        report.mode shouldBe BootCheckMode.warn
+        report.findings.single() shouldContain "forgivecfg"
+    }
+
+    // A problem belongs to whoever holds the reference (issue #839). Here a stored client includes a trait no
+    // component declares -- what a code change removing that trait would leave behind -- so it is the stored
+    // client's problem, forgiven under warn: the client is dropped, and its issue names the stored config.
+    "a stored client naming a trait that does not exist is the stored config's problem" {
+        val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_holder", "KDR_LOAD_STORED_CONFIG" to "true")
+        val client = "holderclient"
+
+        val cxt1 = Startup.mkTestBootCxt("cfgLoad1e", "cfgBootLoad1e", db)
+        val config = gedraConfig(cxt1, "holdercfg", "holderclientconfig", client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = "Holder Client",
+                    usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    includedTraits = listOf("noSuchTrait839"),
+                ),
+            )
+        }
+        GedraConfigService.get(cxt1).writeConfig(writer(cxt1, client), config)
+
+        // Strict by default in unit: the restart is refused, naming the stored-config variable.
+        shouldThrow<KdrException> { Startup.mkTestBootCxt("cfgLoad2e", "cfgBootLoad2e", db) }
+            .message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
+
+        val cxt3 = Startup.mkTestBootCxt(
+            "cfgLoad3e", "cfgBootLoad3e", db + mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
+        )
+        ClientService.get(cxt3).known(client) shouldBe null
+        val issue = ClientService.get(cxt3).issues.single { it.client == client }
+        issue.message shouldContain "noSuchTrait839"
+        issue.storedConfigId.shouldNotBeNull() shouldContain "holdercfg"
+        issue.elementKind shouldBe GCEL.client
+        issue.elementId shouldBe client
     }
 
     "a stored config's fragment overlay is served after a restart, and a re-load does not double it" {

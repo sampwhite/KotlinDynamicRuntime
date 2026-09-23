@@ -22,14 +22,14 @@ class ClientCheckResult(
  * that happens to a failure. Contribution order is preserved, so "first declaration wins" still falls out of
  * arrival order rather than being imposed.
  *
- * What a problem does is [gedraConfigCheckMode]'s answer -- strict everywhere, degrading in production -- the
- * paradigm #296 established and #299 applied to configs. **The degradation is dropping the client, not the
+ * What a problem does is the declaring config's mode ([configCheckMode] of its origin, issue #839): for source
+ * config strict everywhere, degrading in production -- the paradigm #296 established and #299 applied to configs;
+ * for stored config forgiving everywhere but unit tests. **The degradation is dropping the client, not the
  * config**, which is more proportionate than it first looks and is not a new rule: a client that is not there
  * is a state the design already defines, and everything scoped by it then behaves as though it were absent.
  * The bundle's traits stay declared; nothing can reach them, because reaching them goes through the client.
  */
 fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResult {
-    val mode = gedraConfigCheckMode(cxt)
     val declared = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
 
     // The one place `testFeatures` is confined to a test instance (issue #696): the *present* definition a
@@ -40,32 +40,37 @@ fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResu
     fun effective(def: ClientDef): ClientDef =
         if (stripTestFeatures && def.testFeatures.isNotEmpty()) def.copy(testFeatures = emptySet()) else def
 
-    if (mode == BootCheckMode.off) {
-        return ClientCheckResult(declared.associate { (_, def) -> def.clientId to effective(def) }, emptyList())
-    }
     // On a test instance effective() is the identity, so there is nothing to rebuild -- only a non-test node
     // (which strips testFeatures) needs the map rebuilt below.
     val issues = mutableListOf<GedraConfigIssue>()
     val kept = LinkedHashMap<String, ClientDef>()
+    // Which config declared each kept client: its origin decides the mode a problem with it is judged under
+    // (issue #839), and it is the holder an issue names. `off` for that origin admits the definition unchecked.
+    val holders = HashMap<String, GedraConfig>()
+    fun unchecked(config: GedraConfig) = config.checkMode(cxt) == BootCheckMode.off
 
     // Pass one: what a definition can be judged on by itself, plus whether one client is declared twice.
     for ((config, def) in declared) {
-        val problem = ownProblem(config, def, kept)
+        val problem = if (unchecked(config)) null else ownProblem(config, def, kept)
         if (problem == null) {
             kept[def.clientId] = def
+            holders[def.clientId] = config
         } else {
-            reportConfigProblem(cxt, mode, problem, issues)
+            reportConfigProblem(cxt, problem.heldBy(config, GCEL.client, def.clientId), issues)
         }
     }
 
     // Pass two: what needs every other client, and every trait, to be present. Checked against the survivors
     // of pass one, so a client extending one that was just dropped is itself dropped rather than left holding
-    // a reference to nothing.
+    // a reference to nothing. The problem is the client's own -- it holds the reference that failed -- whoever
+    // changed last (issue #839).
     for (def in kept.values.toList()) {
+        val holder = holders.getValue(def.clientId)
+        if (unchecked(holder)) continue
         val problem = relatedProblem(def, kept, configs)
         if (problem != null) {
             kept.remove(def.clientId)
-            reportConfigProblem(cxt, mode, problem, issues)
+            reportConfigProblem(cxt, problem.heldBy(holder, GCEL.client, def.clientId), issues)
         }
     }
     val clients = if (stripTestFeatures) kept.mapValuesTo(LinkedHashMap()) { effective(it.value) } else kept

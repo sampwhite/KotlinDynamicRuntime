@@ -7,7 +7,6 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GedraConfigIssue
-import com.dynamicruntime.common.gedra.gedraConfigCheckMode
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -73,12 +72,12 @@ class WorkflowService : ServiceInitializer {
                 }
             },
             cfactNames = { SchemaService.get(cxt).cfactsFor(it).names },
-            mode = gedraConfigCheckMode(cxt), issues = found,
+            issues = found,
         )
         // The second pass (issue #677): now that every component has registered its function kinds, resolve each
         // definition's function usages into runnable functions, in place. A function that will not resolve is a
         // config problem reported into `found`, exactly as an unusable trait is above.
-        resolveWorkflowFunctions(cxt, collector.gedraConfigs, collector.workflowFunctions, gedraConfigCheckMode(cxt), found)
+        resolveWorkflowFunctions(cxt, collector.gedraConfigs, collector.workflowFunctions, found)
         return registries
     }
 

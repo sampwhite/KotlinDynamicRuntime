@@ -3,10 +3,12 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraConfigIssue
+import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaService
 
 /**
@@ -23,7 +25,6 @@ fun resolveWorkflowFunctions(
     cxt: KdrCxt,
     configs: GedraConfigCollector,
     creations: List<WfFunctionCreation>,
-    mode: BootCheckMode,
     issues: MutableList<GedraConfigIssue>,
 ) {
     val byFn: Map<String, WfFunctionCreation> = creations.associateBy { it.fn }
@@ -35,7 +36,7 @@ fun resolveWorkflowFunctions(
         // The labels the client suggests (issue #786), or null for a bundle with no client definition present
         // here -- a global workflow has no one client's list to be held to, so its labels are not checked.
         val suggestedLabels = ClientService.get(cxt).present(client)?.userLabels?.toSet()
-        val bundleScope = ResolutionScope(cxt, client, byFn, declaredCfacts, suggestedLabels, mode, issues)
+        val bundleScope = ResolutionScope(cxt, bundle, byFn, declaredCfacts, suggestedLabels, issues)
         for (def in bundle.workflows.values) {
             def.resolvedFunctions = bundleScope.resolveList(
                 def.workflowId, "the workflow", def.functionUsages, WfEventScope.global, collectedTraits = null,
@@ -58,13 +59,15 @@ fun resolveWorkflowFunctions(
  */
 private class ResolutionScope(
     val cxt: KdrCxt,
-    val client: String,
+    /** The bundle whose workflows are resolved -- the holder every issue names (issue #839). */
+    val bundle: GedraConfig,
     val byFn: Map<String, WfFunctionCreation>,
     val declaredCfacts: Set<String>,
     val suggestedLabels: Set<String>?,
-    val mode: BootCheckMode,
     val issues: MutableList<GedraConfigIssue>,
-)
+) {
+    val client: String get() = bundle.gedraId.client
+}
 
 /**
  * An approval task (issue #787) is approved only by a caller the task's `viewerCfacts` functions call a
@@ -81,11 +84,12 @@ private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask) {
     }
     if (!grantsReview) {
         reportConfigProblem(
-            cxt, mode,
-            GedraConfigIssue(
+            cxt,
+            bundle.issue(
                 "Workflow '${def.workflowId}' in client '$client' has an approval task '${task.id}' with no " +
                     "viewerCfacts function emitting '${WFC.reviewer}' (a userHasLabel, say), so nobody could approve it.",
                 "Keeping the task; it cannot be approved until one is added.",
+                GCEL.workflow, def.workflowId,
             ),
             issues,
         )
@@ -110,10 +114,11 @@ private fun ResolutionScope.resolveList(
     val out = mutableListOf<WfFunction>()
     for (usage in usages) {
         fun drop(why: String) = reportConfigProblem(
-            cxt, mode,
-            GedraConfigIssue(
+            cxt,
+            bundle.issue(
                 "Workflow '$workflowId' in client '$client' declares function '${usage.fn}' on $where, which $why.",
                 "Dropping that function.",
+                GCEL.function, "$workflowId/${usage.fn}",
             ),
             issues,
         )
