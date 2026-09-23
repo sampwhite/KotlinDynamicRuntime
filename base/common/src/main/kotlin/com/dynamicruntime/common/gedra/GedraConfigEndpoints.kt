@@ -401,7 +401,7 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
                 ClientSyncService.get(c).announceAndMark(c, client, result.marker)
                 reloaded.add(client)
                 // A reload can *drop* a config it just wrote -- a namespace or trait-id clash the write-time check
-                // (which sees only loaded owners) could not catch, e.g. two imported clients claiming one new
+                // (which sees only loaded owners) could not catch, e.g., two imported clients claiming one new
                 // namespace. That is reported by the reload, not thrown, so surface it as a failure rather than
                 // letting the client read as cleanly reloaded (issue #733 review).
                 for (issue in result.issues) {

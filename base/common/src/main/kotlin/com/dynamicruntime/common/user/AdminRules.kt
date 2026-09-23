@@ -169,7 +169,7 @@ object AdminRules {
 
     /**
      * Refuses a caller who administers only their own users ([AdminScope.ownIdentity], issue #805) from an
-     * action that belongs to a **client** -- its configuration: writing, publishing, reverting or reloading it.
+     * action that belongs to a **client** -- its configuration: writing, publishing, reverting, or reloading it.
      * The `clientAdmin` section admits any [ROLE.admin], which is right for the user pages a `public`
      * administrator uses on their own users, and wrong for the `public` client's own configuration, which every
      * `public` user shares. A 403 rather than a 404: the client is not a secret, the authority is what is missing.
