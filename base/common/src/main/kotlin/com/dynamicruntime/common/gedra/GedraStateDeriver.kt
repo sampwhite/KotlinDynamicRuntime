@@ -34,7 +34,8 @@ import com.dynamicruntime.common.util.toOptStr
  * its entry even when nothing else would emit one, and engagement is an asserted entry this deriver cannot
  * otherwise see. Note what it is not: the previous value of a deriver's *own* derived entries is not a licence
  * to carry state forward -- derived state is recomputed from the data, and a deriver that read its own last
- * answer would be storing rather than deriving.
+ * answer would be storing rather than deriving. The one exception is deliberate and named: a workflow past its
+ * relevancy window (issue #790) is by design not calculated, so its engaged forms keep their last entry.
  */
 class GedraStateContext(
     /** The gedra whose data the state is derived from. */

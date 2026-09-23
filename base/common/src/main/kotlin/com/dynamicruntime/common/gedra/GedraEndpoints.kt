@@ -31,6 +31,8 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
+import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
@@ -652,7 +654,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // named -- a form means "edit its survey", none means "create". Both singletons resolve by kind, so a
         // caller never needs to know the id up front (issue #658).
         val declared = when {
-            requested != null -> registry.workflow(requested)
+            requested != null -> WorkflowPhases.live(c, registry, requested)
                 ?: throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
             gedraId != null -> registry.survey
             else -> registry.creation
@@ -662,6 +664,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         } else {
             // A named form seeds each task from its current entries -- which also makes completeness real.
             val row = if (gedraId == null) null else surveyFormRow(c, gedraId)
+            // A normal workflow is shown only while it exists, and -- outside its engagement window -- only to a form
+            // already engaged with it (issue #790). Refused as an unknown one is, since that is what it is meant to be.
+            if (declared.def.entry == WfEntry.normal) {
+                val engaged = row != null && declared.def.workflowId in
+                    engagedWorkflowIds(GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)))
+                if (!WorkflowPhases.of(c, declared.def).isShown(engaged)) {
+                    throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
+                }
+            }
             val entriesByTask = row?.let { entriesByTaskOf(declared, it) } ?: emptyMap()
             // The owner a prefillData function defaults from: the form's user for a survey, the caller for a
             // creation view. Read only when the workflow actually declares a prefill (issue #679).
@@ -712,7 +723,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // definition has since gone (configuration changed underneath a form); it does not invite one. So
         // *engaging* needs a declared normal workflow, while *disengaging* also accepts one the form already has
         // an engagement with -- otherwise a retired workflow's entry could never be taken back out.
-        val declared = WorkflowService.get(c).forClient(row.client).workflow(workflowId)
+        // Outside its lifetime (issue #790) a workflow is as good as not configured, so it is not offered either.
+        val declared = WorkflowPhases.live(c, WorkflowService.get(c).forClient(row.client), workflowId)
         val isNormal = declared != null && declared.def.entry == WfEntry.normal
         val canDisengage = !engaged &&
             WorkflowEngagement.hasEngagement(GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)), workflowId)
@@ -722,6 +734,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                     "workflows it is offered, not with an arbitrary id.",
             )
         }
+        // Engaging needs the engagement window open (issue #790) and, below, the eligibility tests (issue #783);
+        // disengaging needs neither.
+        if (engaged && declared != null) WorkflowPhases.requireEngageable(c, declared.def)
         // Engaging a declared workflow is gated on its eligibility tests (issue #783); disengaging is not.
         val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged, declared?.def?.takeIf { isNormal })
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
@@ -748,9 +763,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val row = stateTargetRow(c, request)
-        val declared = WorkflowService.get(c).forClient(row.client).workflow(workflowId)
+        val declared = WorkflowPhases.live(c, WorkflowService.get(c).forClient(row.client), workflowId)
             ?.takeIf { it.def.entry == WfEntry.normal }
             ?: throw KdrException.mkInput("'$workflowId' is not a normal workflow of client '${row.client}'.")
+        // A frozen workflow (past its relevancy, issue #790) takes no approvals: nothing would recalculate after it.
+        WorkflowPhases.requireCalculated(c, declared.def, "approved")
         val task = declared.def.task(taskId)?.takeIf { it.approval != null }
             ?: throw KdrException.mkInput("'$taskId' is not an approval task of workflow '$workflowId'.")
         // The second-person rule (issue #787): whoever owns the form cannot approve it, however they came to be a
@@ -796,7 +813,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 type = SCT.kObject
                 property(WFD.workflowId, "The workflow.", required = true)
                 property(WFD.label, "Its name, resolved; its id when it has none.", required = true)
-                property(WFS.ctaTask, "Its current task, when it has one.")
+                property(WFS.ctaTask, "Its current task, when it has one that can be acted on (not while the workflow is frozen).")
                 property(SWF.actionText, "What its current task asks of this caller, in words.")
                 property(SWF.isReviewer, "Whether this caller is a reviewer of its current task.") { type = SCT.boolean }
             }
@@ -897,8 +914,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     ) { c, request ->
         val workflowId = request[GDF.workflowId].toOptStr()
             ?: throw KdrException.mkInput("A ${GDF.workflowId} is required.")
-        val declared = WorkflowService.get(c).forClient(c.client).workflow(workflowId)
+        val declared = WorkflowPhases.live(c, WorkflowService.get(c).forClient(c.client), workflowId)
             ?: throw KdrException("No workflow '$workflowId' for this caller.", code = EXC.notFound)
+        // A normal workflow saves only while it is calculated (issue #790): frozen past its relevancy, its state
+        // would no longer follow the data a save changes.
+        if (declared.def.entry == WfEntry.normal) {
+            WorkflowPhases.requireCalculated(c, declared.def, "saved")
+        }
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
         val gedraId = request[GDF.gedraId].toOptStr()

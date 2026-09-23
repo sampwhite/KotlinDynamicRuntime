@@ -209,6 +209,7 @@ fun resolveWorkflowView(
         WVF.fieldLayouts to resolveDeliveredLayouts(cxt, clientStore.layoutsFor(defs)),
     )
     focusTask?.let { view[WVF.focusTask] = it }
+    if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, declared.def).name
     return view
 }
 
