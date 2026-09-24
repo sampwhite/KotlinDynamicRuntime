@@ -256,6 +256,15 @@ object HACT {
 @Suppress("ConstPropertyName")
 object HFRAG {
     const val home = "home"
+
+    /** The home file's namespace for the forms listing's copy (issue #791). */
+    const val formsNs = "forms"
+
+    /**
+     * What a forms-listing row with no workflows shows in the workflow column (issue #791), in [formsNs]: Markdown,
+     * so a client may say "Coming Soon…", link to the workflow pages, or say "No workflows available."
+     */
+    const val noWorkflows = "noWorkflows"
 }
 
 /**

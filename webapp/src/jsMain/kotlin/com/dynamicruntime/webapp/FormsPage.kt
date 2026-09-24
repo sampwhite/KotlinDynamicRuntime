@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
@@ -94,6 +95,10 @@ val FormsPage = FC<Props> {
     var rows by useState<List<Map<String, Any?>>>(emptyList())
     // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
     var numAvailable by useState(0)
+    // The workflow column's summary (issue #791), delivered with each page: empty means no column.
+    var listingWorkflows by useState<List<WorkflowSummaryEntry>>(emptyList())
+    // What a row with no workflows shows (issue #791): the client's copy, Markdown; null draws a dash.
+    var emptyWorkflowsCopy by useState<String?>(null)
     // The first index of the page on screen; paging moves it by [formsPageSize].
     var offset by useState(0)
     // The forms-list search (issue #538): `draft` is what the boxes hold, `applied` is what the list is
@@ -185,7 +190,11 @@ val FormsPage = FC<Props> {
                 mapOf(GDF.withStates to true),
         )
         val fetched = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-        return FormsListPage(fetched, (resp[EP.numAvailable] as? Number)?.toInt() ?: fetched.size)
+        return FormsListPage(
+            fetched,
+            (resp[EP.numAvailable] as? Number)?.toInt() ?: fetched.size,
+            parseWorkflowSummary(resp[EP.summary]),
+        )
     }
 
     /**
@@ -222,6 +231,7 @@ val FormsPage = FC<Props> {
                 val page = fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers)
                 rows = page.rows
                 numAvailable = page.numAvailable
+                listingWorkflows = page.workflowSummary
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -293,6 +303,7 @@ val FormsPage = FC<Props> {
                 if (page != null) {
                     rows = page.rows
                     numAvailable = page.numAvailable
+                    listingWorkflows = page.workflowSummary
                 }
                 error = null
                 searchError = null
@@ -339,6 +350,14 @@ val FormsPage = FC<Props> {
             val seeAllClients = homeConfig?.canSeeAllClients == true
             canSeeAllClients = seeAllClients
             hasSurvey = homeConfig?.hasSurvey == true
+            // The workflow column's empty-cell copy (issue #791), from the home fragment file a client overlays.
+            // Copy only decorates the column, so a failure to fetch it leaves the dash rather than failing the list.
+            emptyWorkflowsCopy = homeConfig?.let { cfg ->
+                runCatching {
+                    fetchCopyWithRetry(cfg.fragment) { runCatching { HomeApi.fetchConfig().fragment }.getOrNull() }
+                        .opt(HFRAG.formsNs, HFRAG.noWorkflows)
+                }.getOrNull()
+            }?.ifBlank { null }
             // The clients to offer in the filter, for a cross-client caller (issue #668) -- with each one's
             // `hasSurvey` (issue #695), so the survey-status filter can follow the chosen client.
             if (seeAllClients) {
@@ -843,6 +862,15 @@ val FormsPage = FC<Props> {
                     // new tab.
                     surveyEditHref = { id ->
                         hashHref(listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id, HP.edit to "1") + listingContext)
+                    }
+                    // The workflow column (issue #791): its summary, the client's copy for an empty cell, and where
+                    // a workflow link goes -- the survey page opened on that workflow, carrying the listing's context
+                    // home like every other hop. An engaged workflow opens on its current task, ready to edit.
+                    workflowSummary = listingWorkflows
+                    noWorkflowsCopy = emptyWorkflowsCopy
+                    workflowHref = { id, wf, task ->
+                        val taskArgs = task?.let { listOf(HP.task to it, HP.edit to "1") }.orEmpty()
+                        hashHref(listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id, HP.workflow to wf) + taskArgs + listingContext)
                     }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId

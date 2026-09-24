@@ -31,6 +31,9 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.FormWorkflowSummary
+import com.dynamicruntime.common.gedra.workflow.WCOL
+import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
@@ -301,6 +304,29 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
     }
 
+    // The workflow column's summary (issue #791): the workflows to offer, with what each row needs to draw them.
+    type(WCOL.summaryWorkflowType) {
+        type = SCT.kObject
+        description = "One workflow the forms listing's workflow column may show."
+        property(WCOL.client, "The client whose workflow it is.", required = true)
+        property(WFD.workflowId, "The workflow.", required = true)
+        property(WFD.label, "Its name, resolved; its id when it has none.", required = true)
+        property(WCOL.phase, "Where it stands in its time windows.", required = true) { options(WfPhase.entries) }
+        property(WCOL.explanations, "Each eligibility test's id and its explanation, resolved.", required = true) {
+            type = SCT.kObject
+            additionalProperties = true
+        }
+        property(WCOL.lastTask, "The workflow's last task, where a finished workflow's link lands.", required = true)
+    }
+    type(WCOL.summaryType) {
+        type = SCT.kObject
+        description = "The workflows the forms listing's workflow column may show, over every form the caller may see."
+        property(WCOL.workflows, "The workflows, by client then declaration order; empty means no column.", required = true) {
+            type = SCT.array
+            items { ref(WCOL.summaryWorkflowType) }
+        }
+    }
+
     listEndpoint(
         GEP.formDocs,
         "Lists the form documents the caller may see, most recently written first, a page at a time.",
@@ -312,6 +338,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         inputRef = GEP.formDocsQuery,
         publicApi = true,
         needsClientConfig = true,
+        // The workflow column's summary (issue #791), beside the items when states are asked for.
+        summaryRef = WCOL.summaryType,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
@@ -366,6 +394,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             },
             page.numAvailable,
             hasMore = offset + page.rows.size < page.numAvailable,
+            // The workflows the column should offer (issue #791), over everything the caller may see -- the
+            // caller's own scope, not the search, the user filter or the page -- so the column does not come and
+            // go as a search narrows. Only with states, which the rows are drawn from against it.
+            summary = if (withStates) FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)) else null,
         )
     }
 
@@ -666,12 +698,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val row = if (gedraId == null) null else surveyFormRow(c, gedraId)
             // A normal workflow is shown only while it exists, and -- outside its engagement window -- only to a form
             // already engaged with it (issue #790). Refused as an unknown one is, since that is what it is meant to be.
-            if (declared.def.entry == WfEntry.normal) {
-                val engaged = row != null && declared.def.workflowId in
+            val engaged = if (declared.def.entry == WfEntry.normal && row != null) {
+                declared.def.workflowId in
                     engagedWorkflowIds(GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)))
-                if (!WorkflowPhases.of(c, declared.def).isShown(engaged)) {
-                    throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
-                }
+            } else {
+                null
+            }
+            if (declared.def.entry == WfEntry.normal && !WorkflowPhases.of(c, declared.def).isShown(engaged == true)) {
+                throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
             }
             val entriesByTask = row?.let { entriesByTaskOf(declared, it) } ?: emptyMap()
             // The owner a prefillData function defaults from: the form's user for a survey, the caller for a
@@ -679,7 +713,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val ownerAttributes = prefillOwnerAttributes(c, declared, row?.userId ?: c.userId)
             // A form's approvals (issue #787) -- only read when the workflow has an approval task.
             val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
-            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals)
+            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, engaged)
         }
     }
 
@@ -940,7 +974,15 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val entriesByTask = entriesByTaskOf(declared, item[GDF.entries].toJsonListOfMaps())
             val owner = prefillOwnerAttributes(c, declared, item[GDF.userId].toOptLong() ?: c.userId)
             val approvals = WorkflowApprovals.forView(c, declared.def, gedraId)
-            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals))
+            // A normal workflow's refreshed view says whether the form is engaged, as the view endpoint's does.
+            val engaged = if (declared.def.entry == WfEntry.normal) {
+                declared.def.workflowId in engagedWorkflowIds(
+                    GedraDataService.get(c).readState(c, GedraId.parse(gedraId), ReadScopeRules.forCaller(c)),
+                )
+            } else {
+                null
+            }
+            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals, engaged))
         } else {
             result
         }

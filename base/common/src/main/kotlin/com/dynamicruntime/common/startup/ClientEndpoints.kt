@@ -109,5 +109,7 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         // listing declares those fields but never fills them, failing validation (or silently dropping paging).
         hasMore = endpoint.hasMore,
         hasNumAvailable = endpoint.hasNumAvailable,
+        // And the summary (issue #791), for the same reason: the shared output schema declares it.
+        summaryRef = endpoint.summaryRef,
     )
 }

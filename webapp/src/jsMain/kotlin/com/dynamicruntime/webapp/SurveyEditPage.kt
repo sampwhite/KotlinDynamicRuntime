@@ -32,11 +32,21 @@ private val surveyEditScope = MainScope()
  * (issue #694, the forms-list status chip) already in edit mode. Its read-only view offers the **raw** editor
  * -- every trait, including ones set by API or by other workflows -- when the caller's surface carries the
  * patch endpoint. When the client has no survey (`found=false`) it says so rather than showing an empty form.
+ *
+ * With `wf=<workflowId>` (issue #791) it opens that **normal workflow** against the form instead -- where the forms
+ * list's workflow column links. The same form component draws it; the view says whether the form is engaged and
+ * where the workflow stands in its windows, so a form not yet in it is offered Engage, and a closed one is shown
+ * read-only.
  */
 val SurveyEditPage = FC<Props> {
     var gedraId by useState(hashParams()[HP.gedra].orEmpty())
     // The task the URL names (issue #700), or null to open on the earliest task needing action.
     var requestedTask by useState(hashParams()[HP.task])
+    // The normal workflow the URL names (issue #791), or null for the form's survey.
+    var workflowId by useState(hashParams()[HP.workflow])
+    // Bumped to reload the view in place -- after engaging, which changes what the view says.
+    var reloads by useState(0)
+    var engageError by useState<DisplayError?>(null)
     var view by useState<WorkflowView?>(null)
     var noSurvey by useState(false)
     var loading by useState(true)
@@ -58,7 +68,8 @@ val SurveyEditPage = FC<Props> {
             // "Still here" is this page AND this form: a task switch stays; another form's survey -- the same
             // page, but a keyed remount that would drop the edits -- is a leave.
             val form = gedraId
-            LeaveGuard.arm({ h -> h[HP.page] == pageSurveyEdit && h[HP.gedra] == form }) {
+            val wf = workflowId
+            LeaveGuard.arm({ h -> h[HP.page] == pageSurveyEdit && h[HP.gedra] == form && h[HP.workflow] == wf }) {
                 LeaveGuard.confirmLeave("You have unsaved changes on this form. Leave the page and lose them?")
             }
         } else {
@@ -77,6 +88,7 @@ val SurveyEditPage = FC<Props> {
             // moment before the router puts the address back, and reading `g=` off it here would blank the form.
             if (h[HP.page] != pageSurveyEdit) return@onHashChange
             gedraId = h[HP.gedra].orEmpty()
+            workflowId = h[HP.workflow]
             // Back/forward between tasks (issue #700): the rail's own pushes fire no hashchange, so this only
             // runs for history moves and hand-typed URLs, and the state simply follows the hash.
             requestedTask = h[HP.task]
@@ -85,13 +97,15 @@ val SurveyEditPage = FC<Props> {
 
     // Resolve the survey against the named form, re-running whenever the id changes; drop the previous load's
     // result first so none of it bleeds across.
-    useEffect(gedraId) {
+    useEffect(gedraId, workflowId, reloads) {
         view = null
+        engageError = null
         noSurvey = false
         loadError = null
         workflowClient = null
         loading = true
         val id = gedraId
+        val wfId = workflowId
         surveyEditScope.launch {
             try {
                 // The form's own client (from its id, issue #714): the survey view, its save and the raw-edit
@@ -117,7 +131,11 @@ val SurveyEditPage = FC<Props> {
                 val viewPath = if (id.isBlank()) null else
                     fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
                 val surfaceClient = clientOfResolvedPath(viewPath, GEP.workflowView, formClient)
-                val v = if (id.isBlank()) null else WorkflowApi.fetchSurveyView(id, surfaceClient)
+                val v = when {
+                    id.isBlank() -> null
+                    wfId != null -> WorkflowApi.fetchWorkflowView(wfId, id, surfaceClient)
+                    else -> WorkflowApi.fetchSurveyView(id, surfaceClient)
+                }
                 rawEditAvailable = patchFetch.await()
                 workflowClient = surfaceClient
                 if (v == null) noSurvey = true else view = v
@@ -140,7 +158,7 @@ val SurveyEditPage = FC<Props> {
             h1 { +"Edit form" }
             p {
                 className = ClassName("subtitle")
-                +"There is no survey for this form."
+                +(if (workflowId != null) "There is no such workflow for this form." else "There is no survey for this form.")
             }
             // The shared way back (issue #714 review): carries the listing's chosen client, filter and sort home,
             // as the survey's own header and the raw editor do -- a bare `page=forms` dropped them all.
@@ -159,10 +177,11 @@ val SurveyEditPage = FC<Props> {
             // listing's search and sort. Needs only the get the listing surface already has, so it is always
             // offered where the raw editor may not be.
             val rawView: () -> Unit = { navigateHash(formsRawViewHash(hashParams(), gedraId)) }
+            engageError?.let { errorText("Couldn't put the form into this workflow.", it) }
             WorkflowForm {
-                // Keyed on the form, so a hash move to another form remounts with fresh edit state and honours
-                // that URL's own edit flag, rather than carrying the previous form's mode across.
-                key = gedraId.unsafeCast<Key>()
+                // Keyed on the form (and the workflow), so a hash move to another form remounts with fresh edit
+                // state and honours that URL's own edit flag, rather than carrying the previous form's mode across.
+                key = "$gedraId|${workflowId.orEmpty()}|$reloads".unsafeCast<Key>()
                 this.view = view!!
                 this.gedraId = gedraId
                 // The client whose copy of the save to post to -- where the view came from (issue #714).
@@ -180,6 +199,21 @@ val SurveyEditPage = FC<Props> {
                     pushHash(hashParams().filterKeys { it != HP.task }.toList() + (HP.task to id))
                 }
                 onDirtyChange = { dirty = it }
+                // Engage (issue #791): put the form into the workflow, then reload the view, which now says it is
+                // engaged and opens the tasks. A refusal -- not eligible after all -- is shown with its reasons.
+                val engageClient = workflowClient
+                onEngage = workflowId?.let { wfId ->
+                    {
+                        surveyEditScope.launch {
+                            try {
+                                WorkflowApi.engage(gedraId, wfId, engageClient)
+                                reloads += 1
+                            } catch (e: Throwable) {
+                                engageError = userFacingError(e)
+                            }
+                        }
+                    }
+                }
             }
         }
     }

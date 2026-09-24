@@ -731,6 +731,21 @@ button.op-status:focus-visible { outline: 2px solid var(--accent-bright); outlin
 .chip-workflows { margin: 0; padding-left: 18px; max-width: 360px; }
 .chip-workflows li { margin: 2px 0; }
 
+/* The forms list's workflow column (issue #791): one workflow per line, its name as a link and its category dim
+   beside it; an ineligible one's name is a button opening its reasons, styled as the same link. */
+.wf-cell-item { line-height: 1.35; margin: 1px 0; }
+.wf-cell-link, button.wf-cell-link, button.wf-cell-more {
+    background: none; border: none; padding: 0; font: inherit; cursor: pointer;
+    color: var(--accent-bright); text-decoration: none;
+}
+.wf-cell-link:hover, button.wf-cell-more:hover { color: var(--accent-brighter); text-decoration: underline; }
+.wf-cell-link:focus-visible, button.wf-cell-more:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
+.wf-cell-cat { color: var(--text-dim); font-size: .8rem; }
+button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
+.wf-cell-all { max-width: 320px; }
+.wf-reasons { margin: 0; padding-left: 18px; }
+.wf-reasons li { margin: 4px 0; }
+
 /* presentation:table -- an array rendered as rows/columns. */
 .op-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .op-table th, .op-table td {

@@ -51,6 +51,8 @@ fun resolveWorkflowView(
     ownerAttributes: Map<String, Any?> = emptyMap(),
     /** The form's approvals of this workflow's approval tasks (issue #787), task id to entry data; see WorkflowApprovals.forView. */
     approvals: Map<String, Map<String, Any?>> = emptyMap(),
+    /** For a normal workflow viewed against a form: whether the form is engaged with it (issue #791); see [WVF.engaged]. */
+    engaged: Boolean? = null,
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -210,6 +212,7 @@ fun resolveWorkflowView(
     )
     focusTask?.let { view[WVF.focusTask] = it }
     if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, declared.def).name
+    engaged?.let { view[WVF.engaged] = it }
     return view
 }
 

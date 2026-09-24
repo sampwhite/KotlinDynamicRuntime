@@ -13,6 +13,11 @@ serves: the layout below comes from a UI-config endpoint, and this copy comes fr
 
 Open **Documents** from the menu to read more.
 
+# @forms
+/- What a forms-listing row with no workflows shows in the workflow column (issue #791). A client overlays it:
+   "Coming Soon...", a link to the workflow pages, "No workflows available." -/
+# +noWorkflows —
+
 # @nav
 # +title Documents
 # +homeLabel Home

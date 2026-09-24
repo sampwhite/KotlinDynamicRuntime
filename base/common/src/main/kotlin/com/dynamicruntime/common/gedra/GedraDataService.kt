@@ -1582,6 +1582,50 @@ class GedraDataService : ServiceInitializer {
     class GedraListPage(val rows: List<GedraDataRow>, val numAvailable: Int)
 
     /**
+     * The state entries of **every live gedra** of [kind] that [scope] admits (issue #791), keyed by gedra id --
+     * what a listing's summary is computed over, which is everything the caller may see rather than one page.
+     *
+     * Only the ids come from the data rows: a deleted gedra keeps its state row (a delete disables the data row
+     * alone), so the live set is read from the data side and the states are then read for exactly those ids,
+     * each scope-checked again as [readStates] always does. A client-carrying scope is served from the data
+     * cache's client+kind index, as [listGedras] is; any other scope asks SQL for the ids alone, under the same
+     * [SqlScopeUtil] conditions -- a narrow query, since an ordinary user's scope is their own forms, and the
+     * all-clients scope is an administrator's.
+     */
+    fun statesInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): Map<GedraId, List<Map<String, Any?>>> {
+        val ids = liveIdsInScope(cxt, kind, scope).map { GedraId.parse(it) }
+        return readStates(cxt, ids, scope).mapKeys { (fullId, _) -> GedraId.parse(fullId) }
+    }
+
+    /** The full ids of the live gedras of [kind] that [scope] admits, from the cache when it can key on the scope. */
+    private fun liveIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> {
+        val cache = dataCache
+        val client = scope.client
+        if (cache != null && client != null && !cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
+            cache.checkRefresh(cxt)
+            return GedraDataCache.rowsForClientKind(cache, client, kind.name)
+                .map { it.value }
+                .filter { admitsRow(scope, it) }
+                .mapNotNull { it[GD.gedraId].toOptStr() }
+        }
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
+        val table = gedraDataTable(cxt)
+        val data = mutableMapOf<String, Any?>(GD.gedraKind to kind.name)
+        val conditions = mutableListOf("c:${GD.gedraKind} = :${GD.gedraKind}")
+        conditions.addAll(SqlScopeUtil.scopeConditions(scope, table, data))
+        conditions.add("c:${PF.enabled} = true")
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qGedraIds${GU.gedraName(kind)}${scope.shapeKey}", table.columns,
+            "select c:${GD.gedraId} from t:${GDT.gedraData} where ${conditions.joinToString(" and ")}",
+        )
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) {
+            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
+        }
+        return rows.mapNotNull { it[GD.gedraId].toOptStr() }
+    }
+
+    /**
      * Reports, under `_meta`, which scope the listing actually ran with -- the fact the response cannot show,
      * since a correctly and an incorrectly scoped listing differ only in rows the caller never sees.
      *

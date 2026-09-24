@@ -715,7 +715,20 @@ class RequestService : ServiceInitializer {
                 if (endpoint.hasMore) {
                     env[EP.hasMore] = page?.hasMore ?: trimmed
                 }
-                limited
+                // A summary (issue #791) is sent when the handler supplies one -- it may cost a pass over everything
+                // the caller can see, so a handler computes it only when asked. One the output never declared is a
+                // fault in the handler, not something to send off-contract.
+                val summary = page?.summary
+                if (summary != null && endpoint.summaryRef == null) {
+                    throw KdrException("List endpoint '${endpoint.path}' returned a summary its output does not declare.")
+                }
+                if (summary != null) {
+                    env[EP.summary] = summary
+                    // Hashed with the items: a summary can change while the page does not.
+                    listOf(limited, summary)
+                } else {
+                    limited
+                }
             }
         }
         // The content hash of the payload alone (issue #114): a CRC32 of its compact JSON, so an unchanged

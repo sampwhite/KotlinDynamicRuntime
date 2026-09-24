@@ -9,6 +9,8 @@ import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailCode
@@ -117,7 +119,20 @@ class WorkflowView(
      * invalid -- or null when every task is done. What the rail opens on when the URL names no task.
      */
     val focusTask: String? = null,
-)
+    /** A normal workflow's [WfPhase] name (issue #790); null for creation and survey. */
+    val phase: String? = null,
+    /** For a normal workflow viewed against a form: whether the form is engaged with it (issue #791). */
+    val engaged: Boolean? = null,
+) {
+    /** A normal workflow (issue #791): one a form is put into, rather than the creation or the survey. */
+    val isNormal: Boolean get() = entry == WfEntry.normal.name
+
+    /** Whether this normal workflow's tasks may be worked on now: engaged, and still calculated (not frozen). */
+    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name))
+
+    /** Whether the form may be put into this normal workflow from here: not yet engaged, and engagement is open. */
+    val canEngage: Boolean get() = isNormal && engaged == false && phase == WfPhase.engageable.name
+}
 
 /** A task's [WVF.status] map as a [WfTaskStatus], or null when the task carried none. */
 private fun parseTaskStatus(raw: Any?): WfTaskStatus? {
@@ -181,6 +196,8 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         cfacts = cfacts,
         fieldLayouts = fieldLayouts,
         focusTask = results[WVF.focusTask].toOptStr(),
+        phase = results[WVF.phase].toOptStr(),
+        engaged = results[WVF.engaged] as? Boolean,
     )
 }
 

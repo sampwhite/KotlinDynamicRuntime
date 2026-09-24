@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import react.ChildrenBuilder
 import react.FC
 import react.Key
 import react.Props
@@ -18,6 +19,7 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
+import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.schema.PSTAT
 
 /**
@@ -71,6 +73,21 @@ external interface FormsTableProps : Props {
     /** The `href` of the survey's **edit-mode** page for a form (issue #694) -- what the Needs Info / Invalid
      *  status chip links to, landing straight on the fields and bypassing the read-only view. */
     var surveyEditHref: (String) -> String
+
+    /**
+     * The workflow column's summary (issue #791): what it may show, over every form the caller may see. Empty
+     * means no column at all, even for rows that would show nothing.
+     */
+    var workflowSummary: List<WorkflowSummaryEntry>
+
+    /** What a row with no workflows shows (issue #791): the client's Markdown copy, or null for a dash. */
+    var noWorkflowsCopy: String?
+
+    /**
+     * The `href` that opens normal workflow `workflowId` against form `gedraId` (issue #791), on `task` when given
+     * (the current task of an engaged workflow, the last of a finished one).
+     */
+    var workflowHref: (gedraId: String, workflowId: String, task: String?) -> String
 
     /** The form whose Delete is armed (showing the inline confirm), or null when none is. */
     var confirmingDeleteId: String?
@@ -150,6 +167,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             // The global survey-status column (issue #694): a fixed, non-sortable column (its sort/filter is
             // deferred to #695), rendering a status chip and a CTA on the unfinished rows.
             if (anySurveyStatus) add(statusColumn(props))
+            // The workflow column (issue #791): drawn when the summary names any workflow -- decided over every form
+            // the caller may see, not this page, so it does not come and go as a search narrows.
+            if (props.workflowSummary.isNotEmpty()) add(workflowColumn(props))
             add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
             add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
             // View Info (survey clients) and Delete (where its endpoint is on the surface). With "View All" gone
@@ -180,6 +200,8 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.ownerEmail = summary.ownerEmail
             // The Client column reads this under its `GSORT.client` dataIndex (issue #668).
             row[GSORT.client] = summary.client.ifBlank { "—" }
+            // The workflow cell's items (issue #791), joined to the summary here so the cell only draws.
+            row.wfItems = workflowCellOf(summary.states, summary.client, props.workflowSummary)
             // The survey status for the fixed Status column (issue #694): its chip label + colour class, and
             // whether it warrants the CTA (anything but Valid). Absent on a row with no survey state.
             summary.surveyStatus?.let {
@@ -555,3 +577,129 @@ private val SingletonChipBody = FC<SingletonChipBodyProps> { props ->
 }
 
 private val chipScope = MainScope()
+
+/**
+ * The workflow column (issue #791): each row's workflows in cell order -- in progress, available, finished, not
+ * available -- the first two as links and the rest behind a count. Like [statusColumn], `onCell` stops a click in
+ * the cell from also opening the row.
+ */
+private fun workflowColumn(props: FormsTableProps): dynamic {
+    val c = column("Workflows", "workflows", 230)
+    c.onCell = {
+        val cellProps: dynamic = js("({})")
+        cellProps.onClick = { event: dynamic -> event.stopPropagation() }
+        cellProps
+    }
+    c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic {
+        return WorkflowCell.create {
+            gedraId = record.key as String
+            items = record.wfItems.unsafeCast<List<WorkflowCellItem>>()
+            noWorkflowsCopy = props.noWorkflowsCopy
+            workflowHref = props.workflowHref
+        }
+    }
+    return c
+}
+
+private external interface WorkflowCellProps : Props {
+    var gedraId: String
+    var items: List<WorkflowCellItem>
+    var noWorkflowsCopy: String?
+    var workflowHref: (String, String, String?) -> String
+}
+
+/** How many workflows a cell shows before the rest go behind its count (issue #791). */
+private const val workflowCellShown = 2
+
+/**
+ * One row's workflow cell (issue #791). An ineligible workflow's link opens a dialog with the reasons, since there
+ * is nowhere to go; every other link opens the workflow on the form. A row with nothing to show draws the client's
+ * copy for that.
+ */
+private val WorkflowCell = FC<WorkflowCellProps> { props ->
+    var reasonsFor by useState<WorkflowCellItem?>(null)
+    var allOpen by useState(false)
+    val items = props.items
+
+    fun ChildrenBuilder.item(it: WorkflowCellItem) {
+        div {
+            className = ClassName("wf-cell-item")
+            if (it.workflow.category == WfColumnCategory.ineligible) {
+                button {
+                    className = ClassName("wf-cell-link")
+                    asDynamic()["type"] = "button"
+                    onClick = { _ -> allOpen = false; reasonsFor = it }
+                    +it.entry.label
+                }
+            } else {
+                a {
+                    className = ClassName("wf-cell-link")
+                    href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask)
+                    +it.entry.label
+                }
+            }
+            span {
+                className = ClassName("wf-cell-cat wf-cat-" + it.workflow.category.name)
+                +(" " + workflowCategoryText(it.workflow.category))
+            }
+        }
+    }
+
+    if (items.isEmpty()) {
+        val copy = props.noWorkflowsCopy
+        if (copy == null) span { +"\u2014" } else MarkdownInline { source = copy }
+        return@FC
+    }
+    items.take(workflowCellShown).forEach { item(it) }
+    if (items.size > workflowCellShown) {
+        Popover {
+            open = allOpen
+            trigger = "click"
+            placement = "bottomLeft"
+            title = "All workflows"
+            onOpenChange = { allOpen = it }
+            content = WorkflowCellAll.create {
+                this.items = items
+                renderItem = { builder, it -> with(builder) { item(it) } }
+            }
+            button {
+                className = ClassName("wf-cell-more")
+                asDynamic()["type"] = "button"
+                +(workflowCellCounts(items).ifBlank { "${items.size - workflowCellShown} more" } + " \u2026")
+            }
+        }
+    }
+    Modal {
+        open = reasonsFor != null
+        title = reasonsFor?.let { "Why ${it.entry.label} is not available" }
+        onCancel = { reasonsFor = null }
+        footer = null
+        val reasons = reasonsFor?.reasons.orEmpty()
+        if (reasons.isEmpty()) {
+            p { +"This form does not meet the workflow's conditions." }
+        } else {
+            ul {
+                className = ClassName("wf-reasons")
+                reasons.forEachIndexed { i, r ->
+                    li {
+                        key = i.toString().unsafeCast<Key>()
+                        MarkdownInline { source = r }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private external interface WorkflowCellAllProps : Props {
+    var items: List<WorkflowCellItem>
+    var renderItem: (ChildrenBuilder, WorkflowCellItem) -> Unit
+}
+
+/** The full list behind a crowded cell's count (issue #791), in cell order. */
+private val WorkflowCellAll = FC<WorkflowCellAllProps> { props ->
+    div {
+        className = ClassName("wf-cell-all")
+        props.items.forEach { props.renderItem(this, it) }
+    }
+}
