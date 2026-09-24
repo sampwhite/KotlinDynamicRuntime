@@ -57,6 +57,7 @@ class WorkflowService : ServiceInitializer {
         clientService: ClientService,
         fragmentService: MarkdownFragmentService,
         found: MutableList<GedraConfigIssue>,
+        onlyClient: String? = null,
     ): WorkflowRegistries {
         val clients: Map<String, ClientDef?> = clientService.presentClients.associateBy { it.clientId }
         val registries = buildWorkflowRegistries(
@@ -73,32 +74,34 @@ class WorkflowService : ServiceInitializer {
             },
             cfactNames = { SchemaService.get(cxt).cfactsFor(it).names },
             issues = found,
+            onlyClient = onlyClient,
+            runningGlobal = if (onlyClient != null) this.registries.global else null,
         )
         // The second pass (issue #677): now that every component has registered its function kinds, resolve each
         // definition's function usages into runnable functions, in place. A function that will not resolve is a
         // config problem reported into `found`, exactly as an unusable trait is above.
-        resolveWorkflowFunctions(cxt, collector.gedraConfigs, collector.workflowFunctions, found)
+        resolveWorkflowFunctions(cxt, collector.gedraConfigs, collector.workflowFunctions, found, onlyClient)
         return registries
     }
 
     /**
-     * Rebuilds [client]'s workflow registry off the current collector and swaps it in (issue #616). The whole
-     * build runs -- it is the one place every check lives, and a client's registry is global plus its own, so
-     * the global half comes out identical -- and only this client's entry is taken from it, published by
-     * copy-on-write over the registries the other clients keep. A problem that would have refused the boot
-     * throws here before anything is published, leaving the running registries as they were.
+     * Rebuilds [client]'s workflow registry off the current collector and swaps it in (issue #616). Only this
+     * client's scope is built and checked (issue #842) -- its registry is global plus its own, and global is the
+     * running one, carried across rather than re-judged -- and only its function usages are resolved, so no other
+     * client's problems are reported again or can refuse this reload. The result is published by copy-on-write
+     * over the registries the other clients keep. A problem that would have refused the boot throws here before
+     * anything is published, leaving the running registries as they were.
      */
     fun reloadClient(cxt: KdrCxt, client: String) {
         val collector = SchemaCollector.get(cxt)
             ?: throw KdrException("$serviceName.reloadClient ran with no schema collector.")
         val found = mutableListOf<GedraConfigIssue>()
-        val rebuilt = build(cxt, collector, ClientService.get(cxt), MarkdownFragmentService.get(cxt), found)
+        val rebuilt = build(cxt, collector, ClientService.get(cxt), MarkdownFragmentService.get(cxt), found, client)
         val current = registries
         val byClient = (current.byClient - client) + (rebuilt.byClient[client]?.let { mapOf(client to it) } ?: emptyMap())
         registries = WorkflowRegistries(current.global, byClient)
-        // The build is the whole node's, so `found` is the whole node's current problem set: it replaces the
-        // last one rather than being appended to it, or every reload would re-add every scope's issues.
-        issues = found.toList()
+        // Only this client's scope was judged (issue #842), so only its issues are replaced; the rest stand.
+        issues = issues.filter { it.client != client } + found
     }
 
     /** The registry [client] sees; see [WorkflowRegistries.forClient]. */

@@ -316,12 +316,17 @@ class SchemaService : ServiceInitializer {
      *   leaving that trait's search comparing against the wrong value. A trait presents once; two columns from
      *   one trait would need a per-usage key.
      */
-    private fun checkUsageRules(cxt: KdrCxt, collected: SchemaCollector) {
+    private fun checkUsageRules(
+        cxt: KdrCxt,
+        collected: SchemaCollector,
+        /** Check only this scope (issue #842, a reload); null checks every scope, as the boot does. */
+        onlyScope: String? = null,
+    ) {
         val issues = mutableListOf<GedraConfigIssue>()
         val usageScopes = (
             listOf(GID.globalClient) +
                 collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }.map { it.gedraId.client }
-            ).distinct()
+            ).distinct().filter { onlyScope == null || it == onlyScope }
         for (scope in usageScopes) {
             val usages = collected.gedraConfigs.usagesFor(scope)
             // The rules' holder (issue #839): the scope's own usage-declaring configs, or global's when it inherits
@@ -414,7 +419,10 @@ class SchemaService : ServiceInitializer {
      * leniency the parser applies everywhere, so a client-cfact gate is not rejected here.
      */
     @KdrPrivate
-    fun checkVisibleWhen() {
+    fun checkVisibleWhen(
+        /** Check only this client's variant (issue #842, a reload); null checks everything, as the boot does. */
+        onlyClient: String? = null,
+    ) {
         val registry = cfactsFor(null)
         val problems = LinkedHashSet<String>()
         fun check(where: String, node: Any?) {
@@ -446,11 +454,19 @@ class SchemaService : ServiceInitializer {
             // checked below.
             problems.addAll(requiredVisibleWhenProblems(where, node))
         }
-        for ((name, body) in schemaStore.defs) check("Type '$name'", body)
-        for ((client, store) in clientStores) {
-            for ((name, body) in store.defs) check("Type '$name' (client '$client')", body)
+        if (onlyClient != null) {
+            // A reload changes one client's variant; the global document and the endpoints stand as the boot
+            // checked them.
+            clientStores[onlyClient]?.let { store ->
+                for ((name, body) in store.defs) check("Type '$name' (client '$onlyClient')", body)
+            }
+        } else {
+            for ((name, body) in schemaStore.defs) check("Type '$name'", body)
+            for ((client, store) in clientStores) {
+                for ((name, body) in store.defs) check("Type '$name' (client '$client')", body)
+            }
         }
-        for (endpoint in schemaStore.endpoints.values) {
+        for (endpoint in schemaStore.endpoints.values.takeIf { onlyClient == null }.orEmpty()) {
             endpoint.inputFields?.forEach { field ->
                 check("Endpoint '${endpoint.collationKey}' field '${field.name}'", field.schema)
                 // The field's gate lives on its schema, its required-ness on the field, so the walk above cannot
@@ -493,12 +509,19 @@ class SchemaService : ServiceInitializer {
      * overrides keys (never removes), and a backend file stays backend, so a pull that resolves globally
      * resolves for every client. Checking global once therefore covers the inherited case for both checks.
      */
-    private fun forEachLayoutToCheck(action: (where: String, client: String?, layout: SchLayout, type: SchType?) -> Unit) {
+    private fun forEachLayoutToCheck(
+        /** Only this client's own layouts (issue #842, a reload); null walks every layout, as the boot does. */
+        onlyClient: String? = null,
+        action: (where: String, client: String?, layout: SchLayout, type: SchType?) -> Unit,
+    ) {
         fun rawLayout(defs: Map<String, Any?>, name: String): Any? = (defs[name] as? Map<*, *>)?.get(SCH.layout)
-        for ((name, layout) in collectLayouts(schemaStore.defs)) {
-            action("Type '$name'", null, layout, schemaStore.types[name])
+        if (onlyClient == null) {
+            for ((name, layout) in collectLayouts(schemaStore.defs)) {
+                action("Type '$name'", null, layout, schemaStore.types[name])
+            }
         }
         for ((client, store) in clientStores) {
+            if (onlyClient != null && client != onlyClient) continue
             // A client sharing the global document has nothing of its own to check.
             if (store.defs === schemaStore.defs) continue
             for ((name, layout) in collectLayouts(store.defs)) {
@@ -509,9 +532,12 @@ class SchemaService : ServiceInitializer {
     }
 
     @KdrPrivate
-    fun checkLayouts() {
+    fun checkLayouts(
+        /** Check only this client's own layouts (issue #842, a reload); null checks every layout, as the boot does. */
+        onlyClient: String? = null,
+    ) {
         val problems = LinkedHashSet<String>()
-        forEachLayoutToCheck { where, _, layout, type ->
+        forEachLayoutToCheck(onlyClient) { where, _, layout, type ->
             problems.addAll(layoutFieldProblems(where, layout, type))
             problems.addAll(layoutTemplateProblems(where, layout, type))
             problems.addAll(layoutBackendBlockProblems(where, layout))
@@ -729,10 +755,12 @@ class SchemaService : ServiceInitializer {
         // published snapshot, so they run after the swap; a failure restores the prior snapshot and rethrows,
         // which refuses the reload exactly as the boot would have refused the configuration, with the running
         // set as it was (the review of #616 caught these being skipped, so a bad config faulted per request).
+        // Over this client's variant alone (issue #842): nothing else changed, and re-judging the rest could only
+        // refuse this reload over another client's problem.
         try {
-            checkVisibleWhen()
-            checkUsageRules(cxt, collected)
-            checkLayouts()
+            checkVisibleWhen(onlyClient = client)
+            checkUsageRules(cxt, collected, onlyScope = client)
+            checkLayouts(onlyClient = client)
         } catch (e: Exception) {
             publish(cxt, current)
             throw e

@@ -29,7 +29,17 @@ class ClientCheckResult(
  * is a state the design already defines, and everything scoped by it then behaves as though it were absent.
  * The bundle's traits stay declared; nothing can reach them, because reaching them goes through the client.
  */
-fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResult {
+fun checkClientDefs(
+    cxt: KdrCxt,
+    configs: GedraConfigCollector,
+    /**
+     * Check only these clients (issue #842) -- a reload's own -- taking every other client from [current] as it
+     * stands, unchecked and unreported. Null checks them all, as the boot does.
+     */
+    only: Set<String>? = null,
+    /** The clients the node runs now: what an unchecked client keeps when [only] is given. */
+    current: Map<String, ClientDef> = emptyMap(),
+): ClientCheckResult {
     val declared = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
 
     // The one place `testFeatures` is confined to a test instance (issue #696): the *present* definition a
@@ -51,6 +61,16 @@ fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResu
 
     // Pass one: what a definition can be judged on by itself, plus whether one client is declared twice.
     for ((config, def) in declared) {
+        if (only != null && def.clientId !in only) {
+            // Not this pass's to judge (issue #842): it stays exactly as the node runs it -- kept if it was kept,
+            // absent if an earlier pass dropped it -- and nothing about it is reported again.
+            val running = current[def.clientId]
+            if (running != null && def.clientId !in kept) {
+                kept[def.clientId] = running
+                holders[def.clientId] = config
+            }
+            continue
+        }
         val problem = if (unchecked(config)) null else ownProblem(config, def, kept)
         if (problem == null) {
             kept[def.clientId] = def
@@ -65,9 +85,10 @@ fun checkClientDefs(cxt: KdrCxt, configs: GedraConfigCollector): ClientCheckResu
     // a reference to nothing. The problem is the client's own -- it holds the reference that failed -- whoever
     // changed last (issue #839).
     for (def in kept.values.toList()) {
+        if (only != null && def.clientId !in only) continue
         val holder = holders.getValue(def.clientId)
         if (unchecked(holder)) continue
-        val problem = relatedProblem(def, kept, configs)
+        val problem = relatedProblem(def, kept, holders, configs)
         if (problem != null) {
             kept.remove(def.clientId)
             reportConfigProblem(cxt, problem.heldBy(holder, GCEL.client, def.clientId), issues)
@@ -161,6 +182,8 @@ private fun envProblem(config: GedraConfig, def: ClientDef): GedraConfigIssue? {
 private fun relatedProblem(
     def: ClientDef,
     kept: Map<String, ClientDef>,
+    /** The config that declared each kept client -- whose origin says whether a base is source-defined. */
+    holders: Map<String, GedraConfig>,
     configs: GedraConfigCollector,
 ): GedraConfigIssue? {
     def.extendsFromClientId?.let { parentId ->
@@ -169,6 +192,19 @@ private fun relatedProblem(
                 "Client '${def.clientId}' extends '$parentId', which this deployment does not define.",
                 "Dropping the client '${def.clientId}'.",
             )
+        // Only a source-code definition is ever pulled in (see `ClientDef.extendsFromClientId`), so a base must be
+        // one. Enforced here for every client, source ones included -- the stored-config load holds a stored
+        // client to it too, but a source client naming a client that exists only in the database used to pass.
+        // It is also what lets a reload judge only its own client (issue #842): a base's definition never
+        // changes on a reload, so no client extending it needs judging again.
+        if (holders[parentId]?.isStored == true) {
+            return GedraConfigIssue(
+                "Client '${def.clientId}' extends '$parentId', which is defined only in stored configuration. " +
+                    "A client may extend only a source-code definition, so that what it is built on changes " +
+                    "with a deployment rather than with a database write.",
+                "Dropping the client '${def.clientId}'.",
+            )
+        }
         parent.extendsFromClientId?.let { grandparentId ->
             return GedraConfigIssue(
                 "Client '${def.clientId}' extends '$parentId', which itself extends '$grandparentId'. " +
