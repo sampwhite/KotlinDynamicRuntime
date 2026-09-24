@@ -14,8 +14,10 @@ import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
@@ -151,6 +153,35 @@ class StoredSchemaRepairTest : StringSpec({
         val store = SchemaService.get(cxt).storeFor(client)
         store.defs.containsKey("${client}config.Broken") shouldBe false
         store.types.containsKey("${client}config.Fine") shouldBe true
+    }
+
+    // A trait whose own type will not compile goes with it (part 3 of #841): the unions and every supported-traits
+    // reader leave it out, so a workflow collecting it is dropped by the check that already exists -- rather than
+    // the unions referencing a missing type and taking every one of the client's changes down with them.
+    "a trait whose type will not compile is dropped with it, and its sibling trait stands" {
+        val client = "rep841trait"
+        val result = storeAndReload(cxt, client) {
+            trait("BadEntry", "${client}Bad", setOf(GedraDataType.formDoc), "A trait pointing at nothing.") {
+                property("link", "Points at nothing.") { ref("noSuchType841b") }
+            }
+            trait("GoodEntry", "${client}Good", setOf(GedraDataType.formDoc), "A sound trait.") {
+                property("text", "Some text.")
+            }
+            workflow("collectBad", WfEntry.creation) {
+                task("only", "Only") {
+                    trait("${client}Bad")
+                    save("create", "Create")
+                }
+            }
+        }
+        val badEntry = result.issues.single { it.elementId == "${client}config.BadEntry" }
+        badEntry.message shouldContain "does not compile"
+        result.issues.any { it.elementKind == GCEL.workflow && it.elementId == "collectBad" } shouldBe true
+        val supported = SchemaService.get(cxt).supportedGedraTraitsFor(client, ClientService.get(cxt).present(client))
+            .map { it.traitId }
+        supported.contains("${client}Good") shouldBe true
+        supported.contains("${client}Bad") shouldBe false
+        SchemaService.get(cxt).storeFor(client).types.containsKey("${client}config.GoodEntry") shouldBe true
     }
 
     "a client cfact redeclaring a global one is dropped, and the client stands" {

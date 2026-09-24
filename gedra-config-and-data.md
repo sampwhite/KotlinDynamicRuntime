@@ -273,8 +273,13 @@ a bad `g-errors` message or client-written `g-layout` is dropped, a type that wi
 cfact that redeclares a global one is left out. Beyond schema: an `includedTraits` entry naming nothing is dropped
 rather than the client; a UiBlock or fragment overlay at fault is dropped (a reload now checks them too); a stored
 config that will not reassemble, or breaks the extends rule, is skipped rather than refusing the reload; and an
-unresolvable layout pull is reported, since delivery already renders it as written. Anything that breaks because of
-a drop is left to the reference checks that already exist.
+unresolvable layout pull is reported, since delivery already renders it as written. A trait whose own type will not
+compile leaves the client's supported set with it, so a workflow collecting it is dropped by the existing check.
+Anything that breaks because of a drop is left to the reference checks that already exist.
+
+A **component's** schema fault follows the source rule: it refuses the boot outside production, and in production
+the faulty keyword, message or layout is dropped and the node serves. A global document that will not compile still
+refuses everywhere.
 
 The production path is only survivable because of the default branch above: entries carrying a dropped trait
 fall through as unrecognized rather than failing validation. The two decisions hold each other up, which is

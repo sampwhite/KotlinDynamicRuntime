@@ -135,6 +135,8 @@ fun buildWorkflowRegistries(
     onlyClient: String? = null,
     /** The global registry the node runs now; with [onlyClient], what the client inherits from. */
     runningGlobal: WorkflowRegistry? = null,
+    /** The types a client declared that its variant dropped (issue #841): their traits are not supported. */
+    droppedTypes: (client: String) -> Set<String> = { emptySet() },
 ): WorkflowRegistries {
     // The entry kinds that are implemented; a workflow declaring any other is dropped rather than run
     // half-built. `normal` landed with issue #794.
@@ -347,7 +349,8 @@ fun buildWorkflowRegistries(
         if (onlyClient != null && client != onlyClient) continue
         val own = declaredIn(client)
         // A client sees global's traits through `supportedTraits`, which also admits what it customized.
-        val usable = supportedTraits(configs, client, def, overlaidTypes(client)).map { it.traitId }.toSet()
+        val usable = supportedTraits(configs, client, def, overlaidTypes(client), droppedTypes(client))
+            .map { it.traitId }.toSet()
         // The inherited global workflows are re-checked against *this* client's usable set: a global creation
         // workflow collecting `name` is fine for a client that includes `name` and not for one that omits it.
         // Global workflows are source-declared, so the source mode says whether they are checked at all.

@@ -325,7 +325,9 @@ not the task layout (`WfTask.layout`), a page layout, or prose.
 
 ## A client's own definitions: dropped, not refused (issue #841)
 
-The boot checks above refuse the boot for a fault in a **component's** schema. A fault in a **client's** own
+The boot checks above refuse the boot for a fault in a **component's** schema -- outside production; in production
+the same repair runs on the global document and the fault is dropped, as every source-config check degrades there
+(`KDR_GEDRA_CONFIG_CHECK`). A document that will not *compile* still refuses everywhere. A fault in a **client's** own
 definitions — the types its config declares or alters, which may be stored in the database — costs only itself:
 as the client's variant is built (at boot and on a reload alike), the smallest faulty piece is dropped, logged,
 and recorded on the client (`ClientConfigIssues`). Whether that forgives or refuses is the holding config's check
@@ -338,7 +340,7 @@ mode: stored config is forgiven everywhere but `unit` (`KDR_STORED_CONFIG_CHECK`
 | bad `g-visibleWhen`, or one on a required property | the keyword (the field shows for everyone) |
 | a `g-errors` message that cannot render, or an unknown code | that message |
 | a client-written `g-layout` that fails the layout check | that layout |
-| a type that will not compile (an unresolvable `$ref`) | that type change |
+| a type that will not compile (an unresolvable `$ref`) | that type change -- and a trait whose type it was, which then leaves the client's supported set |
 | a client cfact redeclaring a global one, or declared twice | that declaration |
 
 The repair runs on the **raw** definitions (`repairTypeDef`, `ClientSchemaRepair.kt`) with the boot checks' own

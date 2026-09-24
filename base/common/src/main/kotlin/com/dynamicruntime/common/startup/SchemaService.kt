@@ -195,7 +195,22 @@ class SchemaService : ServiceInitializer {
             collected.defs[queryName] = withSearchProperties(queryBase, collected.gedraConfigs.usagesFor(GID.globalClient))
         }
 
-        val types = parseSchemaTypes(collected.defs)
+        // The cfact registries come first (issue #841): the global document and each client's variant are repaired
+        // against the global registry -- a `g-visibleWhen` naming what does not parse is dropped as the document is
+        // compiled -- so it must exist before either does. Built from the declarations alone, so nothing here
+        // waits on the store. This is the first moment every contributor has been heard, and a client's
+        // declarations can only be held to "add, never redefine" against a complete global set. Once built, it
+        // never changes -- which is what makes a registry something an expression can be parsed against once and
+        // evaluated many times.
+        val cfacts = cfactRegistriesOf(cxt, collected, collected.clientCFacts)
+        // The global document gets the repair a client's variant gets (issue #841), judged as **source** config:
+        // outside production the first fault refuses the boot, as these checks always have; in production the
+        // faulty keyword, message or layout is dropped and the node serves, as every other source-config check
+        // does there. A document that will not *compile* still refuses everywhere -- the node cannot do its job
+        // without one.
+        repairGlobalDefs(cxt, collected, repairContext(collected, cfacts.global))
+        var types = parseSchemaTypes(collected.defs)
+        if (dropFaultyGlobalLayouts(cxt, collected, types)) types = parseSchemaTypes(collected.defs)
         val endpoints = availableEndpoints.associateBy { it.collationKey }
         val tables = collected.tables.associateBy { it.tableName }
         // The raw defs ride along so the /schema/endpoints catalog can serve types with their `$ref`s intact.
@@ -217,17 +232,14 @@ class SchemaService : ServiceInitializer {
         // the later service tier -- see the note there on why it cannot live here.)
 
         sharedEndpoints = endpoints
-        // The cfact registries come first (issue #841): a client's variant is repaired against the global one --
-        // a `g-visibleWhen` naming what does not parse is dropped as the variant is built -- so it must exist
-        // before any variant does. Built here for the reason the variants are: this is the first moment every
-        // contributor has been heard, and a client's declarations can only be held to "add, never redefine"
-        // against a complete global set. Once built, it never changes -- which is what makes a registry
-        // something an expression can be parsed against once and evaluated many times.
-        val cfacts = cfactRegistriesOf(cxt, collected, collected.clientCFacts)
         publish(cxt, SchemaSnapshot(store, emptyMap(), cfacts))
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
-        val variants = buildClientVariants(cxt, collected, store, queryBase, repair = repairContext(collected))
+        val dropped = HashMap<String, Set<String>>()
+        val variants = buildClientVariants(
+            cxt, collected, store, queryBase, repair = repairContext(collected), droppedTypes = dropped,
+        )
+        droppedTypes = dropped
         // Each client that varies something gets its own copy of the client-shaped endpoints (issue #387).
         // After the variants, because a client varying nothing needs none -- its endpoints would be the
         // global ones under a longer name.
@@ -420,8 +432,7 @@ class SchemaService : ServiceInitializer {
      * where the gate is evaluated (issue #564). The second would hide the field from everyone, silently. Shared by
      * [checkVisibleWhen] and the repair of a client's own definitions (issue #841).
      */
-    private fun visibleWhenExpressionProblem(expression: String): String? {
-        val registry = cfactsFor(null)
+    private fun visibleWhenExpressionProblem(expression: String, registry: CFactRegistry = cfactsFor(null)): String? {
         val predicate = try {
             registry.parse(expression)
         } catch (e: KdrException) {
@@ -436,9 +447,72 @@ class SchemaService : ServiceInitializer {
         }
     }
 
-    /** What a client's own definitions are repaired against as its variant is built (issue #841). */
-    private fun repairContext(collected: SchemaCollector): DefRepairContext =
-        DefRepairContext(collected.optionsProviders.keys.toSet(), ::visibleWhenExpressionProblem)
+    /**
+     * What a definition is repaired against as it is compiled (issue #841): the registered options providers, and
+     * the `g-visibleWhen` check against [registry] (the published global one, unless the caller has it in hand
+     * before anything is published).
+     */
+    private fun repairContext(collected: SchemaCollector, registry: CFactRegistry? = null): DefRepairContext =
+        DefRepairContext(collected.optionsProviders.keys.toSet()) { expression ->
+            visibleWhenExpressionProblem(expression, registry ?: cfactsFor(null))
+        }
+
+    /**
+     * Repairs every **global** type as a client's own are repaired ([repairTypeDef], issue #841), in place, each
+     * fault reported as source config -- held by the global Gedra config that declared the type, or else by the
+     * component's schema -- so outside production the first refuses the boot and in production it is dropped.
+     */
+    private fun repairGlobalDefs(cxt: KdrCxt, collected: SchemaCollector, repair: DefRepairContext) {
+        val issues = mutableListOf<GedraConfigIssue>()
+        for ((name, body) in collected.defs.toList()) {
+            if (body !is Map<*, *>) continue
+            val (repaired, repairs) = repairTypeDef("Type '$name'", body.toJsonMap(), repair)
+            if (repairs.isEmpty()) continue
+            for (r in repairs) {
+                reportConfigProblem(cxt, globalTypeIssue(collected, name, r.message, r.degradedTo), issues)
+            }
+            collected.defs[name] = repaired
+        }
+    }
+
+    /**
+     * Drops each global `g-layout` that fails the layout check or will not parse (issue #841), in place, reported as
+     * source config -- refused outside production, dropped in it (the type then renders without a layout). Returns
+     * whether anything was dropped, so the caller re-parses.
+     */
+    private fun dropFaultyGlobalLayouts(cxt: KdrCxt, collected: SchemaCollector, types: Map<String, SchType>): Boolean {
+        val issues = mutableListOf<GedraConfigIssue>()
+        var dropped = false
+        for ((name, body) in collected.defs.toList()) {
+            if (body !is Map<*, *> || body[SCH.layout] == null) continue
+            val where = "Type '$name'"
+            val problems = try {
+                val layout = collectLayouts(mapOf(name to body)).getValue(name)
+                layoutFieldProblems(where, layout, types[name]) + layoutTemplateProblems(where, layout, types[name]) +
+                    layoutBackendBlockProblems(where, layout)
+            } catch (e: KdrException) {
+                listOf(e.message.orEmpty())
+            }
+            if (problems.isEmpty()) continue
+            reportConfigProblem(
+                cxt,
+                globalTypeIssue(
+                    collected, name, problems.joinToString(" "),
+                    "Dropping the '${SCH.layout}' on '$name'; the type renders without a layout.",
+                ),
+                issues,
+            )
+            collected.defs[name] = body.toJsonMap() - SCH.layout
+            dropped = true
+        }
+        return dropped
+    }
+
+    private fun globalTypeIssue(collected: SchemaCollector, name: String, message: String, degradedTo: String) =
+        collected.gedraConfigs.contributorOf(GID.globalClient, name)?.issue(message, degradedTo, GCEL.type, name)
+            ?: GedraConfigIssue(
+                message, degradedTo, client = GID.globalClient, elementKind = GCEL.type, elementId = name,
+            )
 
     /**
      * The cfact registries for [perClient], a problem with a client's declaration dropping **that declaration**
@@ -646,8 +720,19 @@ class SchemaService : ServiceInitializer {
      * which case a client supports what it sees. The same `supportedTraits` the workflow and variant builds use.
      */
     fun supportedGedraTraitsFor(client: String, def: ClientDef?): List<GedraTrait> =
-        collector?.let { supportedTraits(it.gedraConfigs, client, def, it.clientOverlays[client]?.keys ?: emptySet()) }
-            ?: emptyList()
+        collector?.let {
+            val overlaid = it.clientOverlays[client]?.keys ?: emptySet()
+            supportedTraits(it.gedraConfigs, client, def, overlaid, droppedTypesFor(client))
+        } ?: emptyList()
+
+    /**
+     * The types [client] declared that its variant dropped because they would not compile (issue #841) -- what
+     * `supportedTraits` leaves out wherever it is asked, so a trait whose type is gone is supported nowhere.
+     */
+    fun droppedTypesFor(client: String): Set<String> = droppedTypes[client].orEmpty()
+
+    @Volatile
+    private var droppedTypes: Map<String, Set<String>> = emptyMap()
 
     /** Who owns a gedra-config [namespace] (issue #627), or null when no kept config has claimed it. */
     fun gedraNamespaceOwner(namespace: String): String? = collector?.gedraConfigs?.namespaceOwner(namespace)
@@ -734,10 +819,13 @@ class SchemaService : ServiceInitializer {
         val global = current.store
         val before = global.endpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
 
+        val dropped = HashMap<String, Set<String>>()
         val variant =
             buildClientVariants(
                 cxt, collected, global, queryBase, onlyClient = client, repair = repairContext(collected),
+                droppedTypes = dropped,
             )[client]
+        droppedTypes = (droppedTypes - client) + dropped
         val variants = (current.clientStores - client) + (variant?.let { mapOf(client to it) } ?: emptyMap())
         val varyingClients = variants.keys + collected.clientCFacts.keys
         val clientEndpoints = buildClientEndpoints(cxt, sharedEndpoints.values, varyingClients)
