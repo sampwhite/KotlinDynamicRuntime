@@ -76,6 +76,7 @@ class SourceFaultComponent : ComponentDefinition {
         },
     )
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val namespace = "sourcefault"
     }
