@@ -145,6 +145,24 @@ class TraitLockTest : StringSpec({
             .toJsonListOfMaps().single()[WFD.traitId] shouldBe SC.siteAudit
     }
 
+    "acme's follow-up is the site lead's by every path, as the audit is the reviewers'" {
+        val siteLead = TestUser.create(cxt, "lock-sitelead@acme.test", userClient = SC.acme, level = ROLE.admin)
+        labeller.postData(UADEP.userSetLabels, mapOf(ADF.userId to siteLead.userId, ADF.labels to listOf(SC.siteLeadLabel)))
+        val gid = owner.postItem(
+            create,
+            mapOf(
+                GDF.entries to listOf(
+                    mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2026)),
+                    mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")),
+                ),
+            ),
+        )[GDF.gedraId].toOptStr()!!
+        owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.siteFollowUp))
+        val followUp = mapOf(SC.followUpBy to "A Person", SC.followUpOutcome to "All fine")
+        refused(owner, patchBody(gid, SC.siteFollowUpTrait, followUp)) shouldContain "(locked by Site follow-up)"
+        siteLead.postItems(patch, patchBody(gid, SC.siteFollowUpTrait, followUp))
+    }
+
     "disengaging lifts the lock -- nothing about it was stored" {
         val gid = engagedForm()
         owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.auditReview, WFS.engaged to false))

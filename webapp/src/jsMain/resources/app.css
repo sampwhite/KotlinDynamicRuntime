@@ -964,4 +964,8 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
    control beneath it for someone a lock allows. Set apart so it reads before the form it constrains. */
 .lock-notice { border-left: 3px solid var(--accent-bright); padding: 6px 10px; margin: 8px 0 12px; }
 .lock-notice p { margin: 0 0 6px; }
-.lock-notice .ant-input { max-width: 480px; margin-top: 6px; display: block; }
+/* The override control, by Save (issue #857 UI pass), where the refusal it answers is drawn. */
+.lock-override { margin-top: 12px; }
+.lock-override .ant-input { max-width: 480px; margin-top: 6px; display: block; }
+/* A note beside a list element's header -- "Locked by Audit review" on a raw-editor section the caller cannot change. */
+.element-note { color: var(--accent-bright); font-size: 0.9em; margin-left: 10px; }

@@ -519,6 +519,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 saveWhen(WFC.reviewer)
                 save(SW.saveFollowUp, "Save the follow-up", WfSaveKind.edit)
             }
+            // The follow-up is the site lead's by every path, as the audit is the reviewers' (issue #857): the rule
+            // above only governs this task's save, and the raw editor would otherwise let the owner write it.
+            lock(SC.siteFollowUpTrait, writableVia = SW.recordFollowUp, overrideWhen = CFACTS.hasAdminLevel)
         }
 
         // --- a trait of its own -------------------------------------------------------------------------

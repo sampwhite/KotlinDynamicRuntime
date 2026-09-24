@@ -3,12 +3,14 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -280,27 +282,16 @@ val EditFormPage = FC<Props> {
                 }
 
                 // The traits locked for this caller (issue #857): named, with the workflow locking each, so a refused
-                // save is never a surprise -- and, for someone a lock allows, an explicit override with a reason.
+                // save is never a surprise. Each locked section is marked too, and the override -- for someone a
+                // lock allows -- sits by Save, where the refusal it answers appears.
+                val overridable = locks.any { it.canOverride }
                 if (locks.isNotEmpty()) {
                     div {
                         className = ClassName("lock-notice")
                         p {
                             +("Locked for you: " + locks.joinToString("; ") { "${humanizeFieldName(it.traitId)} (by ${it.label})" } +
-                                ". Changes to ${if (locks.size == 1) "it" else "them"} can't be saved.")
-                        }
-                        if (locks.any { it.canOverride }) {
-                            Checkbox {
-                                checked = overriding
-                                onChange = { e -> overriding = e.target.checked; lockError = null }
-                                +"Override the lock"
-                            }
-                            if (overriding) {
-                                Input {
-                                    placeholder = "Why? Recorded with the change."
-                                    value = overrideReason
-                                    onChange = { event -> overrideReason = event.target.value as? String ?: ""; lockError = null }
-                                }
-                            }
+                                ". Changes to ${if (locks.size == 1) "it" else "them"} can't be saved" +
+                                if (overridable) " unless you override the lock, by Save." else ".")
                         }
                     }
                 }
@@ -320,6 +311,8 @@ val EditFormPage = FC<Props> {
                     fieldLayouts = cat.fieldLayouts
                     // The gedra id is the form being edited, not something to retype; it is seeded and hidden.
                     omit = listOf(GDF.gedraId)
+                    // A locked section says so on itself (issue #857), where the person editing it is looking.
+                    elementNote = { _, element -> lockNoteFor(locks, element[GE.traitId].toOptStr()) }
                     // Let the trait be typed, not only chosen, when this is the cross-client admin surface (#667).
                     this.openTraitEntry = openTraitEntry
                     this.failures = failures
@@ -442,6 +435,25 @@ val EditFormPage = FC<Props> {
                     )
                 }
 
+                // The override (issue #857), by Save: the refusal it answers is drawn right here, so the two are
+                // never a long form apart.
+                if (overridable) {
+                    div {
+                        className = ClassName("lock-override")
+                        Checkbox {
+                            checked = overriding
+                            onChange = { e -> overriding = e.target.checked; lockError = null }
+                            +"Override the lock"
+                        }
+                        if (overriding) {
+                            Input {
+                                placeholder = "Why? Recorded with the change."
+                                value = overrideReason
+                                onChange = { event -> overrideReason = event.target.value as? String ?: ""; lockError = null }
+                            }
+                        }
+                    }
+                }
                 lockError?.let {
                     p {
                         className = ClassName("error-text")

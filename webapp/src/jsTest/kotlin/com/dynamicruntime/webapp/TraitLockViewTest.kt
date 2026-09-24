@@ -5,6 +5,9 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfPhase
+import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.gedra.workflow.WVF
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,6 +39,46 @@ class TraitLockViewTest {
         val lock = { wf: String -> mapOf(WFD.traitId to "audit", WFD.workflowId to wf, WFD.label to wf, WVF.canOverride to false) }
         val view = parseWorkflowView(mapOf(WVF.found to true, WVF.lockedTraits to listOf(lock("review"), lock("followUp"))))!!
         assertEquals(listOf("review", "followUp"), view.lockedTraits["audit"]?.map { it.workflowId })
+    }
+
+    @Test
+    fun aSectionIsNotedOnlyWhenItsTraitIsLocked() {
+        val locks = parseTraitLocks(
+            listOf(
+                mapOf(WFD.traitId to "audit", WFD.workflowId to "review", WFD.label to "Audit review"),
+                mapOf(WFD.traitId to "audit", WFD.workflowId to "followUp", WFD.label to "Site follow-up"),
+            ),
+        )
+        assertEquals("Locked by Audit review and Site follow-up", lockNoteFor(locks, "audit"))
+        assertNull(lockNoteFor(locks, "notes"))
+        assertNull(lockNoteFor(locks, null))
+        assertNull(lockNoteFor(emptyList(), "audit"))
+    }
+
+    @Test
+    fun editIsOfferedOnlyOverAStepTheCallerCanEdit() {
+        val type = parseSchemaTypes(mapOf("t.Note" to mapOf("type" to "object"))).getValue("t.Note")
+        fun task(id: String, traitId: String, canSave: Boolean) = WfTaskView(
+            id, id, traits = listOf(WfTraitView(traitId, false, type, "t.Note", null)),
+            saves = listOf(WfSaveView("s", "Save", "edit")), canSave = canSave,
+        )
+        val contact = task("contact", "userInfo", canSave = true)
+        val followUp = task("followUp", "siteFollowUp", canSave = false)
+        val audit = task("audit", "siteAudit", canSave = true)
+        val view = WorkflowView(
+            workflowId = "siteFollowUp", entry = WfEntry.normal.name, showTaskList = true,
+            tasks = listOf(contact, followUp, audit), cfacts = emptyMap(),
+            phase = WfPhase.engageable.name, engaged = true,
+            lockedTraits = mapOf("siteAudit" to listOf(TraitLock("siteAudit", "review", "Audit review", false))),
+        )
+        // Workable, since the contact step is theirs...
+        assertTrue(view.canWork)
+        assertTrue(view.offersEdit(contact))
+        // ...but not over someone else's step, nor one whose only trait is locked for them.
+        assertFalse(view.offersEdit(followUp))
+        assertFalse(view.offersEdit(audit))
+        // Every task on the page at once: Edit whenever any of them is workable.
+        assertTrue(view.offersEdit(null))
     }
 
     private fun edit(traitId: String, value: String) =

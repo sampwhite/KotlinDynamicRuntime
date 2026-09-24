@@ -483,6 +483,17 @@ fun formDocPatchBody(target: Map<String, Any?>, allowAdditionalTraits: Boolean =
         overrideReason?.let { put(GPF.overrideReason, it) }
     }
 
+/**
+ * The note a raw-editor section carries when its trait is locked for the caller (issue #857) -- "Locked by Audit
+ * review", naming every workflow locking it -- or null for a section of an unlocked trait, or one naming no trait
+ * yet. Pure, and covered under `jsNodeTest`.
+ */
+fun lockNoteFor(locks: List<TraitLock>, traitId: String?): String? {
+    if (traitId == null) return null
+    val on = locks.filter { it.traitId == traitId }
+    return if (on.isEmpty()) null else "Locked by ${on.joinToString(" and ") { it.label }}"
+}
+
 /** What [splitLockedEdits] makes of a patch target: the [target] to send, and the locked traits the user changed. */
 class LockedEditSplit(val target: Map<String, Any?>, val changedLocked: List<String>)
 

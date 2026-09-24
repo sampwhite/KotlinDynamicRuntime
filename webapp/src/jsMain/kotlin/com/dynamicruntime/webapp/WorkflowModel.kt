@@ -141,8 +141,25 @@ class WorkflowView(
     /** A normal workflow (issue #791): one a form is put into, rather than the creation or the survey. */
     val isNormal: Boolean get() = entry == WfEntry.normal.name
 
-    /** Whether this normal workflow's tasks may be worked on now: engaged, and still calculated (not frozen). */
-    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { it.canSave && it.saves.isNotEmpty() })
+    /**
+     * Whether this normal workflow's tasks may be worked on now: engaged, still calculated (not frozen), and with at
+     * least one task this caller can edit ([isEditable]).
+     */
+    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { isEditable(it) })
+
+    /**
+     * Whether [task] is one this caller can edit here: it offers a save, they may make it (issue #856), and not every
+     * trait it collects is locked for them (issue #857) -- what decides both its Save and the page's Edit.
+     */
+    fun isEditable(task: WfTaskView): Boolean =
+        task.canSave && task.saves.isNotEmpty() && (task.traits.isEmpty() || task.traits.any { it.traitId !in lockedTraits })
+
+    /**
+     * Whether the page offers Edit (issue #857 UI pass): the workflow can be worked on, and -- when one task is shown
+     * at a time ([shown]) -- that task is editable, so Edit never leads to a step that is still read-only. Null
+     * [shown] means every task is on the page.
+     */
+    fun offersEdit(shown: WfTaskView?): Boolean = canWork && (shown == null || isEditable(shown))
 
     /** Whether the form may be put into this normal workflow from here: not yet engaged, and engagement is open. */
     val canEngage: Boolean get() = isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name
