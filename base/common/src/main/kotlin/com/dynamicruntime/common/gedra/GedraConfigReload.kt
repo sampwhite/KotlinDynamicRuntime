@@ -17,7 +17,10 @@ class ConfigReloadResult(
     val loaded: Int,
     /** Path-keyed compiled-type cache entries dropped, so the next request re-parses against the new store. */
     val evictedTypes: Int,
-    /** Problems the collector reported while taking the configs (a degraded production node). */
+    /**
+     * Every issue the client's configuration now has, from every phase of the reload (issue #840) -- what the
+     * client's own list holds afterward, not just what the collector reported while taking the configs.
+     */
     val issues: List<GedraConfigIssue>,
     /** The newest configuration date the client now runs at (issue #618): what the sync tracking announces. */
     val marker: kotlin.time.Instant?,
@@ -53,6 +56,19 @@ object GedraConfigReload {
     private val lock = Any()
 
     fun reloadClient(cxt: KdrCxt, client: String): ConfigReloadResult = synchronized(lock) {
+        // The client's issue list is replaced by what this reload finds (issue #840): cleared first, so every
+        // phase records afresh, and restored if the reload throws, so a refused reload leaves it as it was.
+        val issueRegistry = ClientConfigIssues.get(cxt)
+        val priorIssues = issueRegistry.replace(client, emptyList())
+        try {
+            reloadLocked(cxt, client)
+        } catch (e: Exception) {
+            issueRegistry.replace(client, priorIssues)
+            throw e
+        }
+    }
+
+    private fun reloadLocked(cxt: KdrCxt, client: String): ConfigReloadResult {
         val collector = SchemaCollector.get(cxt) ?: throw KdrException("No schema collector to reload into.")
         val loader = GedraConfigLoadService.get(cxt)
         val configService = GedraConfigService.get(cxt)
@@ -78,7 +94,6 @@ object GedraConfigReload {
 
         // --- phase one: swap the collectors, reversibly ---
         val previous = loader.loadedFor(client)
-        val issuesBefore = collector.gedraConfigs.issues.size
         val taken = mutableListOf<GedraConfig>()
         try {
             previous.forEach { collector.removeGedraConfig(it) }
@@ -92,7 +107,6 @@ object GedraConfigReload {
         }
         // Recorded now, so a failure below is repaired by running the reload again over the right prior set.
         loader.recordLoaded(client, taken)
-        val issues = collector.gedraConfigs.issues.drop(issuesBefore)
 
         // --- phase two: rebuild and publish, in order ---
         // The schema swap and the eviction of its path-keyed types go together, back to back: a request between
@@ -110,6 +124,7 @@ object GedraConfigReload {
         WorkflowService.get(cxt).reloadClient(cxt, client)
 
         LogStartup.info(cxt) { "Reloaded client '$client': ${taken.size} stored configuration(s), ${typeKeys.size} type-cache entries dropped." }
-        ConfigReloadResult(client, taken.size, typeKeys.size, issues, marker)
+        val issues = ClientConfigIssues.get(cxt).issuesFor(client)
+        return ConfigReloadResult(client, taken.size, typeKeys.size, issues, marker)
     }
 }

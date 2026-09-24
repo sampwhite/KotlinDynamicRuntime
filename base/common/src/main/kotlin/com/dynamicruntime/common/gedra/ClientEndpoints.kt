@@ -91,10 +91,37 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         usageRuleFields(includeDisplay = false)
     }
 
+    // One configuration issue a check forgave (issue #840). Here, in the module every node loads, so the config
+    // endpoints (app-only) reference it by its qualified name.
+    type(CLD.configIssueTypeName) {
+        type = SCT.kObject
+        description = "A problem found in a client's configuration and forgiven: what was wrong, what was dropped, " +
+            "and where the offending definition came from."
+        property(GCI.message, "What is wrong.", required = true)
+        property(GCI.degradedTo, "What was dropped, and what kept, so the node could carry on.", required = true)
+        property(GCI.client, "The client holding the offending definition (`global` for a component's own).")
+        property(GCI.storedConfigId, "The stored configuration holding it, when it came from the database.")
+        property(GCI.elementKind, "What kind of definition is at fault: config, client, workflow, function, type or usage.")
+        property(GCI.elementId, "Which one: its id within its kind.")
+        property(GCI.origin, "Where the offending definition came from: source code, or stored configuration.", required = true) {
+            options(GedraConfigOrigin.entries)
+        }
+    }
+
     type(CLD.definitionTypeName) {
         type = SCT.kObject
         description = "One client's definition: its attributes, supported traits, usage rules and workflow ids."
         property(CLD.client, "The client's attributes.", required = true) { ref(CLD.infoTypeName) }
+        property(
+            CLD.present,
+            "Whether this node carries the client. False for one whose definition a check dropped -- returned " +
+                "anyway, with its issues, so the reason is visible; its traits, usages and workflows are then empty.",
+            required = true,
+        ) { type = SCT.boolean }
+        property(CLD.issues, "Problems found in the client's configuration and forgiven (issue #840).", required = true) {
+            type = SCT.array
+            items { ref(CLD.configIssueTypeName) }
+        }
         property(CLD.traits, "The traits this client supports (metadata; read the schema from the endpoint catalog).", required = true) {
             type = SCT.array
             items { ref(CLD.traitInfoTypeName) }
@@ -131,6 +158,10 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         property(CLD.hasSurvey, "Whether the client declares a survey workflow (issue #695): a forms surface working in this client then offers its survey-status filter.", required = true) {
             type = SCT.boolean
         }
+        property(CLD.issues, "Problems found in the client's configuration and forgiven (issue #840).", required = true) {
+            type = SCT.array
+            items { ref(CLD.configIssueTypeName) }
+        }
     }
 
     itemEndpoint(
@@ -144,11 +175,12 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         needsClientConfig = true,
     ) { c, request ->
         val clientId = request[CLD.client].toOptStr().orEmpty()
-        // A client not present in this environment is a 404, the house contract for a retrieve of a missing
-        // resource (see GedraEndpoints' formDoc get) -- not a null item, which would fail output validation.
         val def = ClientService.get(c).present(clientId)
-            ?: throw KdrException("No present client '$clientId'.", code = EXC.notFound)
-        clientDefinitionOf(c, def)
+        if (def != null) {
+            clientDefinitionOf(c, def)
+        } else {
+            droppedClientDefinitionOf(c, clientId)
+        }
     }
 
     listEndpoint(
@@ -180,9 +212,40 @@ private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
     val usages = schema.traitUsagesFor(def.clientId).map { it.toRuleMap(includeDisplay = false) }
     return mapOf(
         CLD.client to def.toInfo(),
+        CLD.present to true,
+        CLD.issues to ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() },
         CLD.traits to traits,
         CLD.usages to usages,
         CLD.workflows to workflowIdsFor(cxt, def.clientId),
+    )
+}
+
+/**
+ * The definition of a client this node does **not** carry because a check dropped it (issue #840): its declared
+ * attributes, nothing it supports, and the issues that say why. Anything else absent -- a client nobody declared,
+ * or one declared but not enabled here -- is a 404, the house contract for a retrieve of a missing resource (see
+ * GedraEndpoints' formDoc get) rather than a null item, which would fail output validation. A client whose whole
+ * configuration was refused has no declared definition to show; its 404 carries the issues in its message.
+ */
+private fun droppedClientDefinitionOf(cxt: KdrCxt, clientId: String): Map<String, Any?> {
+    val issues = ClientConfigIssues.get(cxt).issuesFor(clientId)
+    // Known but not enabled here is an ordinary absence, not a dropped definition.
+    if (issues.isEmpty() || ClientService.get(cxt).known(clientId) != null) {
+        throw KdrException("No present client '$clientId'.", code = EXC.notFound)
+    }
+    val declared = ClientService.get(cxt).declared(clientId)
+        ?: throw KdrException(
+            "No present client '$clientId': its configuration was not loaded. " +
+                issues.joinToString(" ") { "${it.message} ${it.degradedTo}" },
+            code = EXC.notFound,
+        )
+    return mapOf(
+        CLD.client to declared.toInfo(),
+        CLD.present to false,
+        CLD.issues to issues.map { it.toWireMap() },
+        CLD.traits to emptyList<Any?>(),
+        CLD.usages to emptyList<Any?>(),
+        CLD.workflows to emptyList<Any?>(),
     )
 }
 
@@ -196,6 +259,7 @@ private fun clientSummaryOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
         CLD.traitIds to schema.supportedGedraTraitsFor(def.clientId, def).map { it.traitId },
         CLD.usageLabels to schema.traitUsagesFor(def.clientId).map { it.label },
         CLD.hasSurvey to (WorkflowService.get(cxt).forClient(def.clientId).survey != null),
+        CLD.issues to ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() },
     )
 }
 
