@@ -252,6 +252,19 @@ fun buildWorkflowRegistries(
             // A task's display (issue #788): every condition in it parses against this scope's cfacts, each branch
             // names a mode there is, and a text branch's copy rides the label check below -- a display that fails
             // any of these would mis-render for somebody, and a page is the worst place to find out.
+            // Who may save the task (issue #856): its rule parses against this scope's cfacts, like a display's
+            // conditions -- a rule that failed to parse would refuse every save, found by the first person refused.
+            task.saveWhen?.let { rule ->
+                try {
+                    parseCFactOrAlways(rule, cfactNames(scope))
+                } catch (ex: KdrException) {
+                    reportConfigProblem(
+                        cxt, problem(scope, w, "has a rule for who may save task '${task.id}' that does not parse: ${ex.message}"),
+                        issues,
+                    )
+                    return false
+                }
+            }
             task.display?.let { display ->
                 displayProblem(display, cfactNames(scope))?.let {
                     reportConfigProblem(cxt, problem(scope, w, "has a display on task '${task.id}' that $it"), issues)

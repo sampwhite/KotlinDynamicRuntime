@@ -85,6 +85,11 @@ class WfTaskView(
     val entries: List<Map<String, Any?>> = emptyList(),
     /** The task's status for the rail (issue #700), as the view computed it; null when it carried none. */
     val status: WfTaskStatus? = null,
+    /**
+     * Whether this caller may save the task (issue #856), by its rule for who may -- the rule the save endpoint
+     * enforces. True when the view says nothing (creation, survey, or a task with no rule).
+     */
+    val canSave: Boolean = true,
 )
 
 /**
@@ -132,7 +137,7 @@ class WorkflowView(
     val isNormal: Boolean get() = entry == WfEntry.normal.name
 
     /** Whether this normal workflow's tasks may be worked on now: engaged, and still calculated (not frozen). */
-    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name))
+    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { it.canSave && it.saves.isNotEmpty() })
 
     /** Whether the form may be put into this normal workflow from here: not yet engaged, and engagement is open. */
     val canEngage: Boolean get() = isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name
@@ -188,6 +193,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
             // Present only for a survey view resolved against a form (issue #659) -- the seed for each field.
             entries = t[WVF.entries].toJsonListOfMaps(),
             status = parseTaskStatus(t[WVF.status]),
+            canSave = t[WVF.canSave] != false,
         )
     }
     val cfacts = results[WVF.cfacts].toJsonMapOrEmpty().mapValues { it.value == true }

@@ -453,6 +453,11 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             task(SW.recordAudit, "Record the audit") {
                 trait(SC.siteAudit)
                 save(SW.saveAudit, "Save the audit", WfSaveKind.edit)
+                // Recorded by a reviewer, not by the form's owner (issue #856): the same label that makes the approval
+                // step theirs, granted on this task too, and the rule the save endpoint enforces. The owner sees the
+                // step read-only.
+                function(userHasLabel { label = SC.reviewerLabel })
+                saveWhen(WFC.reviewer)
             }
             // The approval step (issue #787): once the audit is recorded, a reviewer approves it. Approving records
             // who and when, and gives the workflow the `acmeAuditApproved` cfact...

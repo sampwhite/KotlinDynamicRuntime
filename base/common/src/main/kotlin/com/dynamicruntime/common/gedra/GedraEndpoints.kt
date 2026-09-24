@@ -31,6 +31,8 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.WorkflowTaskJudge
+import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.gedra.workflow.WorkflowAggregate
@@ -1014,6 +1016,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val taskId = request[GDF.taskId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.taskId} is required.")
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
         val gedraId = request[GDF.gedraId].toOptStr()
+        // A normal workflow's task (issue #856): saved only on a form engaged with the workflow, and only by a caller
+        // its rule for who may save admits -- judged on the same facts the view shows, so a Save the page offered
+        // is one this accepts.
+        if (declared.def.entry == WfEntry.normal) requireNormalTaskSave(c, declared, taskId, gedraId)
         // A `create` save (no gedraId) may be for another user (issue #727); an `edit` acts on the named form as
         // the caller, so `user` does not apply there and the caller's own context is used.
         val saveCxt = if (gedraId == null) createForUserCxt(c, request) else c
@@ -1161,6 +1167,30 @@ private fun stateTargetRow(cxt: KdrCxt, request: Map<String, Any?>): GedraDataRo
 /** The form's current entries split per task (issue #658): each task's are the entries whose trait it collects. */
 private fun entriesByTaskOf(declared: WfDeclared, row: GedraDataRow): Map<String, List<Map<String, Any?>>> =
     entriesByTaskOf(declared, row.entries)
+
+/**
+ * Refuses a save of normal workflow [declared]'s task [taskId] on form [gedraId] that the workflow does not allow
+ * (issue #856): the form has to be engaged with the workflow (a 400 -- engage it first), and the caller has to pass
+ * the task's rule for who may save it (a 403). A task the workflow does not have is left to the save's own refusal.
+ */
+private fun requireNormalTaskSave(c: KdrCxt, declared: WfDeclared, taskId: String, gedraId: String?) {
+    val workflowId = declared.def.workflowId
+    val formId = gedraId ?: throw KdrException.mkInput("A save in workflow '$workflowId' needs the form it edits (${GDF.gedraId}).")
+    val row = surveyFormRow(c, formId)
+    val states = GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c))
+    if (workflowId !in engagedWorkflowIds(states)) {
+        throw KdrException.mkInput("This form is not in workflow '$workflowId'. Put it into the workflow before working on its tasks.")
+    }
+    val task = declared.def.task(taskId) ?: return
+    val judge = WorkflowTaskJudge(
+        c, row.client, declared, entriesByTaskOf(declared, row),
+        WorkflowApprovals.forView(c, declared.def, row.gedraId.fullId),
+        SchemaService.get(c).cfactsFor(row.client).assemble(c),
+    )
+    if (!judge.maySave(task)) {
+        throw KdrException("You may not save task '$taskId' of workflow '$workflowId'.", code = EXC.notAuthorized)
+    }
+}
 
 /** The same split over entries already in hand as wire maps -- a save's returned item (issue #700). */
 private fun entriesByTaskOf(declared: WfDeclared, entries: List<Map<String, Any?>>): Map<String, List<Map<String, Any?>>> =
