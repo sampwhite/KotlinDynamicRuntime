@@ -38,6 +38,11 @@ object ADEP {
     /** (Re)sends the invitation for a user nobody has claimed yet (issue #751). */
     const val userInvite = "/${SECT.admin}/user/invite"
     /**
+     * The person behind a user (issue #770): their identity's facts and the other users of that identity the
+     * caller may administer -- what the Users page's editor shows above the editable data.
+     */
+    const val userIdentity = "/${SECT.admin}/user/identity"
+    /**
      * The verb says what happens; the path names the resource (issue #335). Its input rides in the query
      * string, since a DELETE carries no body -- see [com.dynamicruntime.common.endpoint.HttpMethod.DELETE].
      */
@@ -104,6 +109,8 @@ object UADEP {
     const val userLabelSuggestions = "/${SECT.clientAdmin}/user/labelSuggestions"
     /** The scoped counterpart to [ADEP.userInvite]. */
     const val userInvite = "/${SECT.clientAdmin}/user/invite"
+    /** The scoped counterpart to [ADEP.userIdentity]: the siblings listed are the ones in the caller's scope. */
+    const val userIdentity = "/${SECT.clientAdmin}/user/identity"
     /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
     const val userDelete = "/${SECT.clientAdmin}/user"
 }
@@ -168,6 +175,14 @@ object ADF {
 
     /** Case-insensitive substring filter applied to `primaryId`, `username` and `name` by the list endpoint. */
     const val search = "search"
+
+    // The person behind a user (issue #770), on [ADTY.adminIdentity].
+    /** When the identity's address was proven by a code or a link, or absent while unproven. */
+    const val verifiedAt = "verifiedAt"
+    /** The user an unnamed login at the address lands on, when it is one the caller may administer. */
+    const val signsInAsUserId = "signsInAsUserId"
+    /** The identity's users the caller may administer, the user asked about included, lowest id first. */
+    const val users = "users"
 }
 
 /**
@@ -287,6 +302,9 @@ object ULIM {
 @Suppress("ConstPropertyName")
 object ADTY {
     const val adminUser = "AdminUser"
+
+    /** The person behind a user (issue #770): identity facts and the users of it in the caller's scope. */
+    const val adminIdentity = "AdminIdentity"
 
     /** What the label-suggestions read returns: a client and the labels it suggests (issue #786). */
     const val labelSuggestions = "UserLabelSuggestions"

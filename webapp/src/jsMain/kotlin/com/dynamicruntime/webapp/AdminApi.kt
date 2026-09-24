@@ -263,6 +263,21 @@ object AdminApi {
             if (org != null) put(ADF.org, org)
         }).results().toAdminUser()
 
+    /**
+     * The person behind [userId] (issue #770): the identity's facts and the users of it the caller administers --
+     * what the editor shows above the editable data. Scoped like every call here, so a client administrator
+     * sees only that person's users in their own client.
+     */
+    suspend fun userIdentity(userId: Long): AdminIdentity {
+        val results = Http.getApi(UADEP.userIdentity + queryString(mapOf(ADF.userId to userId.toString()))).results()
+        return AdminIdentity(
+            verifiedAt = results[ADF.verifiedAt] as? String,
+            hasPassword = results[ADF.hasPassword] == true,
+            signsInAsUserId = results[ADF.signsInAsUserId].toOptLong(),
+            users = results[ADF.users].toJsonListOfMaps().map { it.toAdminUser() },
+        )
+    }
+
     /** (Re)sends the invitation for a user nobody has claimed yet (issue #751); refused for a claimed or disabled one. */
     suspend fun inviteUser(userId: Long): AdminUser =
         Http.sendApi("POST", UADEP.userInvite, mapOf(ADF.userId to userId)).results().toAdminUser()

@@ -83,6 +83,9 @@ val Users = FC<Props> {
     // The user being edited, or null in the list view. `creating` opens the same editor with an empty draft.
     var editing by useState<AdminUser?>(null)
     var creating by useState(false)
+    // The person behind the user being edited (issue #770): their identity's facts and the users of it this
+    // administrator may see. Loaded when the editor opens on a user, and dropped when it closes.
+    var identity by useState<AdminIdentity?>(null)
     // A create for the caller's own address (issue #797): the address is theirs and locked, and the user is
     // registered on creation with no invitation -- the backend's own-address rule, which this only names.
     var creatingForSelf by useState(false)
@@ -342,7 +345,26 @@ val Users = FC<Props> {
 
     /** The rows the listener can resolve against, read through a ref (it is registered once). */
     val usersRef = useRef<List<AdminUser>>(emptyList())
-    usersRef.current = users
+    // The open person's users as well (issue #770): choosing one of them edits a user the search may not hold,
+    // and Back and Forward must still find it.
+    usersRef.current = users + (identity?.users ?: emptyList())
+
+    // Which user's person is wanted now, read through a ref: a slow load for a user the editor has since left
+    // must not overwrite the one for the user it is on.
+    val identityFor = useRef<Long>(null)
+    useEffect(editing?.userId) {
+        val open = editing
+        identity = null
+        identityFor.current = open?.userId
+        if (open != null && !open.deleted) {
+            usersScope.launch {
+                val loaded = runCatching { AdminApi.userIdentity(open.userId) }
+                    .onFailure { console.error("$errorLogPrefix could not load the person behind user ${open.userId}: ${it.message}") }
+                    .getOrNull()
+                if (identityFor.current == open.userId) identity = loaded
+            }
+        }
+    }
 
     /** Opens the editor on what the hash names, or closes it. Used by the hashchange listener below. */
     fun applyEditorHash() {
@@ -406,7 +428,8 @@ val Users = FC<Props> {
         // do not hold is a URL to correct in place -- otherwise Back onto it would push again and never move.
         val current = hashParams()[HP.user]
         val reachable = current == null || current == HP.newRecord || current == HP.selfRecord ||
-            users.any { it.userId.toString() == current }
+            users.any { it.userId.toString() == current } ||
+            identity?.users?.any { it.userId.toString() == current } == true
         applyHashWrite(params, userIdentity, reachable)
     }
 
@@ -529,6 +552,13 @@ val Users = FC<Props> {
             h1 { +editorTitle(creating, creatingForSelf) }
 
             error?.let { errorText(it) }
+
+            // The person behind the user (issue #770), above the editable data: their other users, and a summary.
+            val open = editing
+            val person = identity
+            if (open != null && person != null && !open.deleted) {
+                identityPanel(person, open, disabled = busy) { startEdit(it) }
+            }
 
             if (editing?.deleted == true) {
                 // A permanently-deleted tombstone: nothing to edit, and re-enabling it is precisely the bug
@@ -1022,7 +1052,7 @@ val Users = FC<Props> {
 }
 
 /** A label plus a static value, for the identity fields the backend does not let an administrator change. */
-private fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
+internal fun react.ChildrenBuilder.readOnlyField(label: String, value: String) {
     div {
         className = ClassName("row")
         span {
