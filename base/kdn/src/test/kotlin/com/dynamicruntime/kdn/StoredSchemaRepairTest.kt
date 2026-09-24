@@ -31,7 +31,7 @@ import io.kotest.matchers.string.shouldContain
 
 /**
  * A fault in a client's stored schema costs only itself (issue #841): the offending keyword, message, layout, type
- * change or cfact is dropped as the client's variant is built -- at boot and on a reload alike -- rather than the
+ * change, or cfact is dropped as the client's variant is built -- at boot and on a reload alike -- rather than the
  * reload or the next boot being refused. Before, several of these were checked only at boot, and threw there
  * whatever the check mode: a config could pass its write and its reload and then stop the next restart (B3).
  *
