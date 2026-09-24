@@ -30,7 +30,7 @@ fun GedraConfigIssue.toWireMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
 /**
  * Each client's **configuration issues** (issue #840): the problems a check forgave in the client's definitions,
  * kept on the client so an administrator asking "why is this not working?" is answered by the client itself --
- * its definition, its summary, its stored configs and a reload all return them -- rather than by a log line
+ * its definition, its summary, its stored configs, and a reload all return them -- rather than by a log line
  * nobody was watching.
  *
  * Filled by [reportConfigProblem], the one place a forgiven problem is turned into a consequence, so no check can
