@@ -239,34 +239,8 @@ fun errorMessageProblems(
         for ((codeKey, message) in t.errorMessages) {
             // A valid key is a SchFailCode name or `default` (code == null), which may match any failure.
             val code = SchFailCode.entries.firstOrNull { it.name == codeKey }
-            val analysis = message.analyzeTemplate()
-            for (issue in analysis.issues) {
-                problems.add("$w: the '${SCH.errors}' message for '$codeKey' is a malformed template: ${issue.message}")
-            }
-            if (analysis.refs.isNotEmpty()) {
-                problems.add(
-                    $$"$$w: the '$${SCH.errors}' message for '$$codeKey' uses a fragment pull ('${@t}'); " +
-                        "a g-errors message supports only parameter substitution (see #589).",
-                )
-            }
-            if (backendPrefix != null && backendPrefix in message &&
-                message.analyzeTemplate(backendPrefix).blockCount > 0
-            ) {
-                problems.add(
-                    "$w: the '${SCH.errors}' message for '$codeKey' uses a backend block ('$backendPrefix{…}'); " +
-                        "a g-errors message supports only frontend parameter substitution (see #589).",
-                )
-            }
             val allowed = errorContextNames(code, t)
-            for (p in analysis.paths.required + analysis.paths.optional) {
-                val name = p.substringBefore('.')
-                if (name !in allowed) {
-                    problems.add(
-                        $$"$$w: the '$${SCH.errors}' message for '$$codeKey' references '${$$p}', but a " +
-                            $$"'$$codeKey' failure provides $${allowed.sorted().joinToString(", ")}.",
-                    )
-                }
-            }
+            problems.addAll(errorMessageTemplateProblems(w, codeKey, message, allowed, backendPrefix))
         }
         for ((name, prop) in t.properties) walk("$w field '$name'", prop.valueType)
         t.itemType?.let { walk("$w item", it) }
@@ -276,6 +250,50 @@ fun errorMessageProblems(
         }
     }
     walk(where, type)
+    return problems
+}
+
+/**
+ * The problems with **one** `g-errors` message (issue #589): a malformed `${'$'}{…}`, a fragment pull, a backend
+ * block (when [backendPrefix] is given), and a `${'$'}{…}` naming something outside [allowed] -- the names a
+ * [codeKey] failure provides ([errorContextNames]). Shared by [errorMessageProblems], which walks compiled types,
+ * and the stored-config repair pass, which walks a client's raw definitions to drop a bad message before it
+ * compiles (issue #841). [w] names the location.
+ */
+@KdrPrivate
+fun errorMessageTemplateProblems(
+    w: String,
+    codeKey: String,
+    message: String,
+    allowed: Set<String>,
+    backendPrefix: Char? = null,
+): List<String> {
+    val problems = mutableListOf<String>()
+    val analysis = message.analyzeTemplate()
+    for (issue in analysis.issues) {
+        problems.add("$w: the '${SCH.errors}' message for '$codeKey' is a malformed template: ${issue.message}")
+    }
+    if (analysis.refs.isNotEmpty()) {
+        problems.add(
+            $$"$$w: the '$${SCH.errors}' message for '$$codeKey' uses a fragment pull ('${@t}'); " +
+                "a g-errors message supports only parameter substitution (see #589).",
+        )
+    }
+    if (backendPrefix != null && backendPrefix in message && message.analyzeTemplate(backendPrefix).blockCount > 0) {
+        problems.add(
+            "$w: the '${SCH.errors}' message for '$codeKey' uses a backend block ('$backendPrefix{…}'); " +
+                "a g-errors message supports only frontend parameter substitution (see #589).",
+        )
+    }
+    for (p in analysis.paths.required + analysis.paths.optional) {
+        val name = p.substringBefore('.')
+        if (name !in allowed) {
+            problems.add(
+                $$"$$w: the '$${SCH.errors}' message for '$$codeKey' references '${$$p}', but a " +
+                    $$"'$$codeKey' failure provides $${allowed.sorted().joinToString(", ")}.",
+            )
+        }
+    }
     return problems
 }
 

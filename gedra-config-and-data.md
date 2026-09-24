@@ -267,6 +267,12 @@ stored config holding it (when stored), and the definition at fault.
 carry an `issues` list, replaced each time the client is loaded. A client whose definition a check dropped still
 answers its definition read -- `present: false`, with the issues that say why -- rather than a bare 404.
 
+**A fault costs only itself** (issue #841). In a client's own schema, the smallest faulty piece is dropped rather
+than the boot or the reload refused: an unregistered `g-optionsSource` or a bad `g-visibleWhen` loses the keyword,
+a bad `g-errors` message or client-written `g-layout` is dropped, a type that will not compile reverts, and a client
+cfact that redeclares a global one is left out. Anything that breaks because of a drop is left to the reference
+checks that already exist.
+
 The production path is only survivable because of the default branch above: entries carrying a dropped trait
 fall through as unrecognized rather than failing validation. The two decisions hold each other up, which is
 worth knowing before changing either.
