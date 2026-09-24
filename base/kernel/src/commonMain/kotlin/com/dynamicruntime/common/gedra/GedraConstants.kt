@@ -69,6 +69,9 @@ object GEP {
     /** A reviewer approves a workflow's approval task for a form (issue #787). */
     const val workflowApprove = "/gedra/workflow/approve"
 
+    /** The workflow pages' aggregate (issue #792): per workflow, how many visible forms are eligible, engaged, finished. */
+    const val workflowAggregate = "/gedra/workflow/aggregate"
+
     /**
      * What stands behind a form's Needs Review or Finished chip (issue #789): the engaged workflows emitting that
      * singleton cfact, each with its name and its current action as the caller would see it.

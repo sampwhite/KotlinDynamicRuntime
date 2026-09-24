@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.SearchRole
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.decodeSearchParam
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import react.FC
@@ -26,6 +27,9 @@ import web.cssom.ClassName
 private val reservedQueryFields = setOf(
     EP.offset, EP.limit, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir, GDF.withStates,
     SVY.surveyStatus,
+    // The workflow column's summary request (issue #791) and the workflow pages' drill-down (issue #792): flags and
+    // a filter with their own presentation, never trait search boxes.
+    GDF.withWorkflowSummary, WAGG.workflowId, WAGG.workflowState,
 )
 
 /**
@@ -313,13 +317,17 @@ external interface FormsSearchProps : Props {
      * and then the text boxes stay plain inputs. A failure calls back empty, leaving the box usable as text.
      */
     var fetchValues: ((String, String, (List<String>) -> Unit) -> Unit)?
+
+    /** Further chips for filters the page applies itself -- the workflow drill-down (issue #792). */
+    var extraChips: List<String>?
 }
 
 val FormsSearch = FC<FormsSearchProps> { props ->
     val groups = props.groups
     // The free-text term searches the text fields, so the box is offered only where there is one to search.
     val hasText = groups.any { it.kind == UsageKind.string }
-    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(surveyStatusChip(props.applied))
+    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(surveyStatusChip(props.applied)) +
+        props.extraChips.orEmpty()
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
         className = ClassName("row forms-toolbar")

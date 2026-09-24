@@ -10,6 +10,8 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.user.AFRAG
@@ -346,6 +348,9 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         uiBlockOverlay(HMENU.block) {
             items(HFLD.menu) {
                 menuItem(HMENU.cfactReference, cfactExpression = CFACT.neverName)
+                // ...and turns one on (issue #792): the workflow pages are off in the base menu, and acme, whose users
+                // work in its audit review and site follow-up, offers them to anyone signed in to the app.
+                menuItem(HMENU.workflows, cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
             }
         }
 

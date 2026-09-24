@@ -151,6 +151,12 @@ object HMENU {
     // No `newForm` item id: creating a form is reached from the "My forms" list, not a menu entry (issue #417).
     // The `pageNewForm` route below still exists -- the list's "New form" button navigates to it.
     const val forms = "forms"
+
+    /**
+     * The workflow pages (issue #792). **Off by default** -- in the base menu under the never-true condition -- and
+     * turned on by a client whose users work in normal workflows, with an overlay that gives it a real condition.
+     */
+    const val workflows = "workflows"
     /** Account group parent (issue #540): identity/session items nest under it. */
     const val account = "account"
     const val profile = "profile"
@@ -181,6 +187,7 @@ object HMENU {
     const val pageCfacts = "cfacts"
     const val pageNewForm = "newForm"
     const val pageForms = "forms"
+    const val pageWorkflows = "workflows"
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"

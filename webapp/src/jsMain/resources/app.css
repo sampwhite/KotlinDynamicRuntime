@@ -955,3 +955,7 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     to { background-color: transparent; }
 }
 .forms-row-highlight > td { animation: forms-row-flash 2s ease-out; }
+
+/* The workflow pages (issue #792): counts right-aligned under their headings, so the columns read as numbers. */
+.wf-aggregate .wf-count { text-align: right; width: 90px; }
+.wf-aggregate th.wf-count { text-align: right; }

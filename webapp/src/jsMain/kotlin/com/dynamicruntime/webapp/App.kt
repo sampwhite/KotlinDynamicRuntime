@@ -212,6 +212,7 @@ val App = FC<Props> {
                             pageCfacts -> CFactReferencePage {}
                             pageNewForm -> CreationPage {}
                             pageForms -> FormsPage {}
+                            pageWorkflows -> WorkflowsPage {}
                             pageEditForm -> EditFormPage {}
                             pageSurveyEdit -> SurveyEditPage {}
                             pageCreateForUser -> CreateForUserPage {}
@@ -282,6 +283,10 @@ private const val pageNewForm = HMENU.pageNewForm
 
 // The list/view page for the caller's form documents (issue #408); same login gating and route policy.
 private const val pageForms = HMENU.pageForms
+
+// The workflow pages (issue #792): the menu, built server-side, decides whether they are offered (a client turns
+// the item on); the route exists unconditionally, like the others.
+private const val pageWorkflows = HMENU.pageWorkflows
 // The edit-a-form page (issue #417); its id (`pageEditForm`) lives with the page in EditFormPage.kt, since the
 // view's Edit button names the same route. Reached from the view rather than the top nav; the section gates it.
 
@@ -314,6 +319,7 @@ private fun currentPage(): String {
         params[HP.page] == pageCfacts -> pageCfacts
         params[HP.page] == pageNewForm -> pageNewForm
         params[HP.page] == pageForms -> pageForms
+        params[HP.page] == pageWorkflows -> pageWorkflows
         params[HP.page] == pageEditForm -> pageEditForm
         params[HP.page] == pageSurveyEdit -> pageSurveyEdit
         params[HP.page] == pageCreateForUser -> pageCreateForUser
