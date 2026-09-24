@@ -27,7 +27,16 @@ fun supportedTraits(
     def: ClientDef?,
     /** Qualified type names this client overlaid; a trait whose entry type is among them was customized. */
     overlaidTypes: Set<String>,
+    /**
+     * Types the client declared that its variant **dropped** because they would not compile (issue #841): a trait
+     * whose entry type is among them is not supported -- its type is not there -- so neither the unions nor a
+     * workflow reach it, and a workflow collecting it is dropped by the check that already exists.
+     */
+    withoutTypes: Set<String> = emptySet(),
 ): List<GedraTrait> {
+    if (withoutTypes.isNotEmpty()) {
+        return supportedTraits(configs, client, def, overlaidTypes).filter { it.typeName !in withoutTypes }
+    }
     val visible = configs.traitsFor(client)
     // No definition means nothing has said what this client supports, so it is treated as supporting what it
     // can see. Only reachable for a client whose definition was dropped in a degraded production boot -- and

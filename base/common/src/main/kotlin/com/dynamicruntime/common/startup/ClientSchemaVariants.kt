@@ -61,6 +61,11 @@ fun buildClientVariants(
      * change -- and reported under the holding config's check mode, rather than refusing the boot or the reload.
      */
     repair: DefRepairContext,
+    /**
+     * Receives, per client, the types it declared that its variant dropped as not compiling (issue #841) -- what
+     * `supportedTraits` must then leave out, since a trait whose type is gone cannot be supported.
+     */
+    droppedTypes: MutableMap<String, Set<String>>? = null,
 ): Map<String, KdrSchemaStore> {
     val defsByClient = collected.gedraConfigs.configs.mapNotNull { it.client }.associateBy { it.clientId }
     // A client that only declares usage rules (issue #538) varies its listing's search fields without
@@ -102,8 +107,12 @@ fun buildClientVariants(
         // identity result (a client varying nothing shares the global store rather than paying for a parse).
         // A function of the authored set, because the unions follow what the client overlaid and a repair below
         // can drop an alteration.
+        val declaredNames = authored.keys.toSet()
         fun compose(from: Map<String, Any?>): Map<String, Any?> {
-            val unions = changedUnions(cxt, collected, global, client, defsByClient[client], from.keys)
+            // A type the client declared and this build left out (it would not compile) takes its trait out of
+            // the unions with it, or the unions would reference a type that is not there.
+            val gone = (declaredNames - from.keys).filterTo(HashSet()) { it !in global.defs }
+            val unions = changedUnions(cxt, collected, global, client, defsByClient[client], from.keys, gone)
             var composed: Map<String, Any?> = overlayDefs(global.defs, from)
             if (unions.isNotEmpty()) composed = composed + unions
             if (queryOverlay.isNotEmpty()) composed = composed + queryOverlay
@@ -122,6 +131,8 @@ fun buildClientVariants(
         authored = parsed.first
         var types = parsed.second
         defs = compose(authored)
+        val gone = (declaredNames - authored.keys).filterTo(HashSet()) { it !in global.defs }
+        if (gone.isNotEmpty()) droppedTypes?.set(client, gone)
         val layoutFree = dropFaultyLayouts(cxt, collected, client, global.defs, authored, defs, types, issues)
         if (layoutFree !== authored) {
             authored = layoutFree
@@ -172,8 +183,9 @@ private fun changedUnions(
     client: String,
     def: ClientDef?,
     overlaidTypes: Set<String>,
+    withoutTypes: Set<String> = emptySet(),
 ): Map<String, Any?> {
-    val traits = supportedTraits(collected.gedraConfigs, client, def, overlaidTypes)
+    val traits = supportedTraits(collected.gedraConfigs, client, def, overlaidTypes, withoutTypes)
     val built = LinkedHashMap<String, Any?>()
     for (kind in GU.entryKinds) {
         built.putAll(entryUnionDefs(cxt, GCFG.globalNamespace, kind, traits))
@@ -271,11 +283,12 @@ private fun repairKeywords(
  * #841): an unresolvable `$ref`, a malformed keyword the parser refuses. Returns the alterations kept and the parsed
  * types. The common case -- everything compiles -- costs the one parse it always did.
  *
- * On a failure, each alteration is judged the way it would be alone: with the client's other alterations minus it.
- * One whose removal lets the rest compile is the culprit; failing that (two bad ones, each hiding the other), one
- * that will not compile over the global document by itself is. Whatever is still refused after both is a
- * combination nothing narrower explains, and the client's alterations are dropped together -- its variant then
- * the global document plus what it generates -- so the node still starts.
+ * On a failure the variant is **grown**: starting from none of the client's changes, each is added if the set so
+ * far still compiles with it, and the ones that did not are retried until a pass adds nothing -- so a type that
+ * references another of the client's types is taken once that one is in, whatever the declaration order. What
+ * never fits is dropped. A trait's type leaving takes the trait out of the unions with it (see [compose]'s caller),
+ * which is why a sound trait beside a broken one survives. Changes that only compile together (two types each
+ * referencing the other) are tried together before being given up on.
  */
 private fun parseDroppingFaults(
     cxt: KdrCxt,
@@ -285,24 +298,33 @@ private fun parseDroppingFaults(
     compose: (Map<String, Any?>) -> Map<String, Any?>,
     issues: MutableList<GedraConfigIssue>,
 ): Pair<Map<String, Any?>, Map<String, SchType>> {
-    fun tryParse(from: Map<String, Any?>): Map<String, SchType>? =
+    fun failure(from: Map<String, Any?>): String? =
         try {
             parseSchemaTypes(compose(from))
-        } catch (_: KdrException) {
             null
-        }
-    fun failure(from: Map<String, Any?>): String =
-        try {
-            parseSchemaTypes(compose(from))
-            ""
         } catch (e: KdrException) {
             e.message.orEmpty()
         }
 
-    tryParse(authored)?.let { return authored to it }
-    fun drop(kept: MutableMap<String, Any?>, name: String) {
-        val why = failure(mapOf(name to authored[name])).ifEmpty { failure(kept) }
-        kept.remove(name)
+    try {
+        return authored to parseSchemaTypes(compose(authored))
+    } catch (_: KdrException) {
+        // Fall through to the grow below.
+    }
+    val kept = LinkedHashMap<String, Any?>()
+    var pending = authored.keys.toList()
+    while (pending.isNotEmpty()) {
+        val next = pending.filter { name -> failure(kept + (name to authored[name])) != null }
+        pending.filterNot { it in next }.forEach { kept[it] = authored[it] }
+        if (next.size == pending.size) {
+            // Nothing more fits one at a time; the rest may only compile together.
+            if (failure(kept + next.associateWith { authored[it] }) == null) next.forEach { kept[it] = authored[it] }
+            break
+        }
+        pending = next
+    }
+    for (name in authored.keys - kept.keys) {
+        val why = failure(kept + (name to authored[name])).orEmpty()
         reportConfigProblem(
             cxt,
             alterationIssue(
@@ -313,30 +335,7 @@ private fun parseDroppingFaults(
             issues,
         )
     }
-    val kept = LinkedHashMap(authored)
-    authored.keys.firstOrNull { name -> tryParse(kept - name) != null }?.let { culprit ->
-        drop(kept, culprit)
-        return kept to tryParse(kept)!!
-    }
-    for (name in authored.keys) {
-        if (tryParse(mapOf(name to authored[name])) == null) {
-            drop(kept, name)
-        }
-    }
-    tryParse(kept)?.let { return kept to it }
-    val why = failure(kept)
-    for (name in kept.keys.toList()) {
-        reportConfigProblem(
-            cxt,
-            alterationIssue(
-                collected, client, name,
-                "Client '$client''s schema changes do not compile together: $why",
-                "Dropping all of the client's schema changes; its variant is the global document.",
-            ),
-            issues,
-        )
-    }
-    return emptyMap<String, Any?>() to parseSchemaTypes(compose(emptyMap()))
+    return kept to parseSchemaTypes(compose(kept))
 }
 
 /**

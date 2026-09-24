@@ -63,6 +63,7 @@ class WorkflowService : ServiceInitializer {
         val registries = buildWorkflowRegistries(
             cxt, collector.gedraConfigs, clients,
             overlaidTypes = { collector.clientOverlays[it]?.keys ?: emptySet() },
+            droppedTypes = { SchemaService.get(cxt).droppedTypesFor(it) },
             fragments = { client, fileId, namespace, key ->
                 fragmentService.effectiveFragmentsFor(cxt, fileId, client)?.let {
                     WfFragmentHit(
