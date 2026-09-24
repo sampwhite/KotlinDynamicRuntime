@@ -55,6 +55,7 @@ fun resolveWorkflowFunctions(
                 bundleScope.checkApprovalAuthority(def, task)
                 bundleScope.checkSaveRuleViewerFacts(def, task)
             }
+            bundleScope.checkSaveRuleLocks(def)
         }
     }
 }
@@ -128,6 +129,31 @@ private fun ResolutionScope.checkSaveRuleViewerFacts(def: WfDef, task: WfTask) {
                 "Workflow '${def.workflowId}' in client '$client' has task '${task.id}' whose rule for who may save it " +
                     "names '${WFC.reviewer}', but no viewerCfacts function on the task emits it (a userHasLabel, say).",
                 "Keeping the task; its rule reads as though nobody is a reviewer until one is added.",
+                GCEL.workflow, def.workflowId,
+            ),
+            issues,
+        )
+    }
+}
+
+/**
+ * A task whose rule for who may save it (issue #856) protects a trait no lock covers (issue #857) is a config problem:
+ * the rule governs only the task's own save, so the raw editor and the patch endpoint would still let anyone the rule
+ * refuses change the trait -- acme's follow-up shipped that way. Reported like every other definition mistake, so it is
+ * caught **before it is live**: it refuses the boot (or a client reload) wherever config is checked strictly -- a
+ * developer's instance and the tests -- and in production, where a node must start, it is logged and recorded on the
+ * client's config issues and the operator report. The workflow is kept either way; only the lock is missing.
+ */
+private fun ResolutionScope.checkSaveRuleLocks(def: WfDef) {
+    for ((taskId, traits) in def.unlockedSaveRuleTraits()) {
+        reportConfigProblem(
+            cxt,
+            bundle.issue(
+                "Workflow '${def.workflowId}' in client '$client' restricts who may save task '$taskId', but no lock " +
+                    "covers its trait(s) ${traits.joinToString(", ") { "'$it'" }}, so anyone the rule refuses can " +
+                    "still change them through the raw editor or the patch endpoint. Add a lock on each, writable " +
+                    "via '$taskId'.",
+                "Keeping the workflow; the trait(s) stay editable outside the task until a lock is added.",
                 GCEL.workflow, def.workflowId,
             ),
             issues,

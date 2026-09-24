@@ -1127,6 +1127,21 @@ class WfLock(val traitId: String, val whenExpr: String, val writableVia: String,
     }
 }
 
+/**
+ * The traits each task restricts with a save rule ([WfTask.saveWhen], issue #856) that no lock of this workflow covers
+ * (issue #857), keyed by task id in task order -- empty when every such trait is locked. A save rule governs only the
+ * task's own save, so a trait it leaves unlocked can still be changed through the raw editor and the patch endpoint by
+ * someone the rule refuses -- almost never what the rule's author meant, so the backend reports each as a config
+ * problem, refusing the boot wherever config is checked strictly.
+ */
+fun WfDef.unlockedSaveRuleTraits(): Map<String, List<String>> {
+    if (entry != WfEntry.normal) return emptyMap()
+    val locked = locks.map { it.traitId }.toSet()
+    return tasks.filter { it.saveWhen != null }
+        .associate { task -> task.id to task.traits.map { it.traitId }.filter { it !in locked } }
+        .filterValues { it.isNotEmpty() }
+}
+
 /** The entry of [entries] whose name is [value]; the schema's closed option list has already admitted it. */
 private fun <E : Enum<E>> enumNamed(entries: List<E>, value: Any?): E {
     val name = value.toOptStr()

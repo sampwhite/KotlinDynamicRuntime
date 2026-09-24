@@ -39,6 +39,16 @@ class WfLockDefTest {
     }
 
     @Test
+    fun aSaveRuleWithoutALockIsFoundForTheStartupWarning() {
+        // The record task says who may save it, and nothing locks its trait: the raw editor is still open.
+        assertEquals(mapOf("record" to listOf("audit")), parseWfDef(cxt, def {}).unlockedSaveRuleTraits())
+        // Locked: nothing to warn about.
+        assertEquals(emptyMap(), parseWfDef(cxt, def { lock("audit", writableVia = "record") }).unlockedSaveRuleTraits())
+        // No save rule: anyone may save the task, so an unlocked trait is as intended.
+        assertEquals(emptyMap(), parseWfDef(cxt, def(saveRule = null) {}).unlockedSaveRuleTraits())
+    }
+
+    @Test
     fun aLockMustBeOwnedByATaskThatSaysWhoMaySave() {
         // The named task does not collect the trait.
         assertFailsWith<KdrException> { parseWfDef(cxt, def { lock("audit", writableVia = "other") }) }

@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -17,14 +18,17 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * A task's rule for who may save it over the **task's own** facts (issue #856), not only the viewer's: a draft that
@@ -54,12 +58,44 @@ class WorkflowSaveRuleTest : StringSpec({
                 // Only while the draft is not yet written: a fact about the task, judged from the form's entries.
                 saveWhen("~${WFC.taskComplete}")
             }
+            // A save rule needs its lock (issue #857), or the raw editor would write the note the rule refuses.
+            lock("note", writableVia = "draft")
         }
     }
     GedraConfigService.get(cxt).writeConfig(asClient(client), config)
     GedraConfigReload.reloadClient(cxt, client)
 
     val user = TestUser.create(cxt, "u@$client.test", userClient = client)
+
+    "a save rule with no lock on its trait is refused before it goes live (issue #857)" {
+        val unlocked = "wfsave857"
+        val bad = gedraConfig(cxt, "${unlocked}cfg", "${unlocked}config", unlocked) {
+            defineClient(
+                ClientDef(
+                    clientId = unlocked, name = unlocked, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            trait("DraftEntry", "draftNote", setOf(GedraDataType.formDoc), "A draft note.") {
+                property("text", "What it says.") { type = SCT.string }
+            }
+            workflow("notes", WfEntry.normal) {
+                task("draft", "Draft it") {
+                    trait("draftNote")
+                    save("saveDraft", "Save", WfSaveKind.edit)
+                    saveWhen("~${WFC.taskComplete}")
+                }
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(asClient(unlocked), bad)
+        // A unit instance checks stored config strictly, as a developer's does source config: the reload is refused,
+        // naming the task and the unlocked trait, and nothing of the client goes live.
+        shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, unlocked) }.message.orEmpty().let {
+            it shouldContain "restricts who may save task 'draft'"
+            it shouldContain "no lock covers its trait(s) 'draftNote'"
+        }
+        WorkflowService.get(cxt).forClient(unlocked).workflows.containsKey("notes") shouldBe false
+    }
 
     "a rule over the task's own facts is judged on the form as it stands at each save" {
         val gid = user.postItem(GEP.formDocCreate, mapOf(GDF.entries to emptyList<Any?>()))[GDF.gedraId].toOptStr()!!

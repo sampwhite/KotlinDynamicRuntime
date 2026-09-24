@@ -72,6 +72,8 @@ class WfFunctionResolutionTest : StringSpec({
         reported("approveNothing", "nobody could approve it") shouldBe true
         // A rule for who may save that names the reviewer fact, on a task nothing makes a reviewer (issue #856).
         reported("saveNobody", "names '${WFC.reviewer}'") shouldBe true
+        // ...and a rule about who may save a task, with no lock on its trait, leaves the raw editor open (issue #857).
+        reported("saveNobody", "restricts who may save task 'record'", "no lock covers its trait(s) '${GT.name}'") shouldBe true
     }
 
     "a global workflow's literal label is not held to any client's suggestions" {
