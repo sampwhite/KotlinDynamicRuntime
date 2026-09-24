@@ -585,7 +585,8 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * Recomputes a gedra's **derived** state from [row]'s current data, **inside an open write transaction**
-     * ([sqlCxt] holds the `GedraDataTran` lock), preserving its **asserted** state (issue #675). This is the body
+     * ([sqlCxt] holds the `GedraDataTran` lock), preserving its **asserted** state (issue #675). [row] must be the
+     * data as read or written **under this lock**, never a copy from before it (issue #862). This is the body
      * of the built-in [DerivedStateWriteHook], so it runs on every create / patch / import -- state follows the
      * data on every path, and commits with it.
      *
@@ -627,20 +628,37 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * Recomputes a gedra's derived state **outside any open write transaction** (issue #675) -- for a standalone
-     * caller such as a future batch job or a test, where the write paths' in-transaction [DerivedStateWriteHook]
-     * is not in play. It reads the current data through the cache (fine when nothing is concurrently editing it),
-     * then opens a transaction so the asserted-preserving recompute holds the lock across its read and write.
+     * caller such as a batch job or a test, where the write paths' in-transaction [DerivedStateWriteHook] is not
+     * in play. [scope] is checked by reading the gedra through the cache; the recompute itself is the
+     * row-taking overload's, which derives from the data as it stands under the lock.
      */
     fun recomputeDerivedState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope) {
         val kind = gedraId.dataType ?: return
         val row = queryGedra(cxt, gedraId.fullId, kind, scope) ?: return
+        recomputeDerivedState(cxt, row)
+    }
+
+    /**
+     * Recomputes the derived state of the gedra [row] names, for a caller that has already read it and checked
+     * its scope -- a batch job walking rows from the cache, say, which can decide cheaply from its copy whether
+     * anything needs doing before it asks for this.
+     *
+     * [row] only names the gedra. The derivation reads the data **again under the lock** (issue #862): [row] was
+     * read outside it, and an edit committing in between has already stored state derived from its new data,
+     * which a recompute from the older copy would overwrite until the gedra's next write. A gedra deleted in
+     * between is skipped -- there is nothing left to derive for.
+     */
+    fun recomputeDerivedState(cxt: KdrCxt, row: GedraDataRow) {
         // A transaction-scoped context created before the transaction (issue #687): it owns the session and the
         // recompute rebinds its owner to the gedra's, so a standalone recompute owns state the same way the write
         // hook does.
         val txCxt = cxt.mkTransactionSubContext(tranRecompute)
         val sqlCxt = SqlTopicService.mkSqlCxt(txCxt, gedraDataTopic)
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranRecompute, null, mapOf(GD.gedraId to gedraId.fullId)) {
-            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranRecompute, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
+            val current = readDataRowUnderLock(txCxt, sqlCxt, gedraDataTable(txCxt), row.gedraId)
+            if (current != null) {
+                recomputeDerivedStateUnderLock(txCxt, sqlCxt, current)
+            }
         }
     }
 
@@ -664,8 +682,11 @@ class GedraDataService : ServiceInitializer {
      *
      * The context is bound to the gedra's owner first, as the recompute binds it, so a state row this write
      * *creates* belongs to the form's owner rather than to whoever acted; the actor stays in the audit fields.
-     * [row] is read by the caller (scope-checked there); its data feeds the recompute, as it does for
-     * [recomputeDerivedState]. Returns the state entries as they stand afterwards.
+     * [row] is read by the caller (scope-checked there) and only names the form: the recomputes derive from the
+     * data **read again under the lock** (issue #862), since an edit committing after the caller's read would
+     * otherwise have its fresh state overwritten by state derived from the older copy -- and [change] would
+     * decide against it. A form deleted in between refuses the act. Returns the state entries as they stand
+     * afterwards.
      */
     fun changeState(
         cxt: KdrCxt,
@@ -680,10 +701,12 @@ class GedraDataService : ServiceInitializer {
                 .toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
         var result: List<Map<String, Any?>> = emptyList()
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranStateChange, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
-            txCxt.bindTransactionOwner(row.userId, row.client, row.org)
-            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
+            val current = readDataRowUnderLock(txCxt, sqlCxt, gedraDataTable(txCxt), row.gedraId)
+                ?: throw KdrException("The gedra '${row.gedraId}' is no longer there.", code = EXC.notFound)
+            txCxt.bindTransactionOwner(current.userId, current.client, current.org)
+            recomputeDerivedStateUnderLock(txCxt, sqlCxt, current)
             writeState(txCxt, row.gedraId, change(entriesUnderLock()))
-            recomputeDerivedStateUnderLock(txCxt, sqlCxt, row)
+            recomputeDerivedStateUnderLock(txCxt, sqlCxt, current)
             result = entriesUnderLock()
         }
         return result
@@ -1244,12 +1267,17 @@ class GedraDataService : ServiceInitializer {
         sqlCxt: SqlCxt,
         table: KdrTable,
         gedraId: GedraId,
-    ): GedraDataRow {
-        val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
-        val raw = sqlCxt.sqlDb.queryOneEnabled(cxt, stmt, mapOf(GD.gedraId to gedraId.fullId))
+    ): GedraDataRow =
+        readDataRowUnderLock(cxt, sqlCxt, table, gedraId)
             ?: throw KdrException("No gedra '$gedraId'.", code = EXC.notFound)
-        return GedraDataRow.extract(gedraService, raw)
-    }
+
+    /**
+     * The data row as it stands inside the transaction, or null if it is gone (deleted, or never there). What a
+     * derivation under the lock must work from, rather than a copy read before the lock was taken (issue #862).
+     */
+    private fun readDataRowUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, gedraId: GedraId): GedraDataRow? =
+        sqlCxt.sqlDb.queryOneEnabled(cxt, SqlTopicUtil.mkTableSelectStmt(sqlCxt, table), mapOf(GD.gedraId to gedraId.fullId))
+            ?.let { GedraDataRow.extract(gedraService, it) }
 
     /**
      * Applies one edit to the entries held by trait, returning whether anything changed.

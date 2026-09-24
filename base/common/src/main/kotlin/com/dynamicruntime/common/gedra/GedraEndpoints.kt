@@ -1007,7 +1007,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val row = stateTargetRow(c, request)
         val scope = ReadScopeRules.forCaller(c)
         val svc = GedraDataService.get(c)
-        svc.recomputeDerivedState(c, row.gedraId, scope)
+        svc.recomputeDerivedState(c, row)
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to svc.readState(c, row.gedraId, scope))
     }
 

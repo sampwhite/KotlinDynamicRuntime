@@ -2,16 +2,24 @@ package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraEdit
+import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.GedraPatchTarget
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -40,6 +48,24 @@ class GedraStateDerivationTest : StringSpec({
     fun expense(year: Int): Map<String, Any?> = mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to year))
 
     fun traitIds(entries: List<Map<String, Any?>>): List<String?> = entries.map { it[GE.traitId].toOptStr() }
+
+    /** The years the `traitPresenceByYear` derivation recorded, which follow the expenseReport's `year`. */
+    fun derivedYears(entries: List<Map<String, Any?>>): List<Long?> =
+        entries.filter { it[GE.traitId].toOptStr() == ST.traitPresenceByYear }.map { it[GE.data].toJsonMapOrEmpty()[ST.year].toOptLong() }
+
+    /**
+     * A form of [acme] created for 2024, the copy of it a caller would hold from reading it, and then an edit
+     * moving it to 2025 -- which commits, with its own recompute, *after* that read. The copy is what a batch job
+     * or a workflow act would still be holding when it takes the lock (issue #862).
+     */
+    fun staleAfterEdit(acme: KdrCxt, scope: ReadScope): Pair<GedraId, GedraDataRow> {
+        val gid = service().createGedra(acme, GedraDataType.formDoc, listOf(expense(2024))).gedraId
+        val stale = checkNotNull(service().queryGedra(acme, gid.fullId, GedraDataType.formDoc, scope))
+        val edit = GedraEdit(GedraEditAction.addOrReplace, ST.expenseReport, data = mapOf(ST.year to 2025))
+        service().patchGedras(acme, mapOf(GedraDataType.formDoc to listOf(GedraPatchTarget(gid, listOf(edit)))), scope)
+        derivedYears(service().readState(acme, gid, scope)) shouldContainExactly listOf(2025L)
+        return gid to stale
+    }
 
     "initial derived state is computed on create for an opted-in client" {
         val acme = asUser(SC.acme, 90501L)
@@ -113,4 +139,38 @@ class GedraStateDerivationTest : StringSpec({
         ids shouldContain SVY.surveyCompletion   // derived: recomputed
     }
 
+    "a recompute handed an older copy derives from the data under the lock (issue #862)" {
+        val acme = asUser(SC.acme, 90505L)
+        val scope = ReadScope.ofClient(SC.acme)
+        val (gid, stale) = staleAfterEdit(acme, scope)
+
+        // Deriving from the copy would put 2024 back over the edit's 2025 until the form's next write.
+        service().recomputeDerivedState(acme, stale)
+        derivedYears(service().readState(acme, gid, scope)) shouldContainExactly listOf(2025L)
+    }
+
+    "a state change handed an older copy derives from the data under the lock (issue #862)" {
+        val acme = asUser(SC.acme, 90506L)
+        val scope = ReadScope.ofClient(SC.acme)
+        val (gid, stale) = staleAfterEdit(acme, scope)
+
+        // A change that alters nothing: what comes back, and what is stored, is only the recompute's work -- both
+        // recomputes, before and after the change, are the ones that would read the copy.
+        val entries = service().changeState(acme, stale) { it }
+        derivedYears(entries) shouldContainExactly listOf(2025L)
+        derivedYears(service().readState(acme, gid, scope)) shouldContainExactly listOf(2025L)
+    }
+
+    "a form deleted after the caller's read is skipped by a recompute and refused by a state change" {
+        val acme = asUser(SC.acme, 90507L)
+        val scope = ReadScope.ofClient(SC.acme)
+        val gid = service().createGedra(acme, GedraDataType.formDoc, listOf(expense(2024))).gedraId
+        val stale = checkNotNull(service().queryGedra(acme, gid.fullId, GedraDataType.formDoc, scope))
+        service().deleteGedra(acme, gid.fullId, GedraDataType.formDoc, scope) shouldBe true
+
+        // Nothing is left to derive for, so the recompute does nothing rather than failing ...
+        service().recomputeDerivedState(acme, stale)
+        // ... while an act on the form cannot be carried out on a form that is gone.
+        shouldThrow<KdrException> { service().changeState(acme, stale) { it } }.code shouldBe EXC.notFound
+    }
 })
