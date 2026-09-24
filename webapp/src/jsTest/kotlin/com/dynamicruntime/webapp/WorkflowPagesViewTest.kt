@@ -67,7 +67,8 @@ class WorkflowPagesViewTest {
         )
         val applied = mapOf(WAGG.workflowId to "audit", WAGG.workflowState to "engaged")
         assertEquals("audit" to WfColumnCategory.engaged, workflowDrillOf(applied))
-        assertEquals("Workflow: Audit review (in progress)", workflowDrillChip(applied, summary))
+        // Named with the word the count's heading used, so the click and the listing agree.
+        assertEquals("Workflow: Audit review (engaged)", workflowDrillChip(applied, summary))
         // Without a summary naming it, the id stands in; without a state, any.
         assertEquals("Workflow: other", workflowDrillChip(mapOf(WAGG.workflowId to "other"), summary))
         assertNull(workflowDrillChip(emptyMap(), summary))

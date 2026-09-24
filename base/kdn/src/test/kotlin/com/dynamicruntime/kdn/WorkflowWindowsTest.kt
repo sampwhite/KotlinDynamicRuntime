@@ -17,6 +17,8 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.workflow.WAGG
+import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.SWF
 import com.dynamicruntime.common.gedra.workflow.WFS
@@ -118,6 +120,9 @@ class WorkflowWindowsTest : StringSpec({
     fun entry(states: List<Map<String, Any?>>, workflowId: String = "inspection"): Map<String, Any?>? = states
         .firstOrNull { it[GE.traitId].toOptStr() == WFS.workflowState && it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == workflowId }
         ?.get(GE.data)?.toJsonMapOrEmpty()
+    // What the workflow pages say about the windowed workflow (issue #792): its phase and counts, or null when unlisted.
+    fun aggregate(): Map<String, Any?>? = user.getItems(GEP.workflowAggregate).firstOrNull { it[WFD.workflowId] == "inspection" }
+    fun countsOf(entry: Map<String, Any?>?) = listOf(entry?.get(WAGG.eligible), entry?.get(WAGG.engaged), entry?.get(WAGG.finished))
     // What the Finished chip's popover lists for the form (issue #789), as this caller sees it.
     fun behindFinished(gid: String) = user.getData(GEP.formDocSingletonWorkflows, mapOf(GDF.gedraId to gid, WFD.cfact to WSC.finished))[
         SWF.workflows].toJsonListOfMaps()
@@ -162,6 +167,8 @@ class WorkflowWindowsTest : StringSpec({
         entry(recompute(engagedForm)).shouldBeNull()
         viewFails(engagedForm)
         engageFails(engagedForm) shouldContain "is not a normal workflow"
+        // Nor on the workflow pages (issue #792).
+        aggregate().shouldBeNull()
     }
 
     "in its lifetime but before relevancy, nothing is calculated and nothing may engage" {
@@ -169,11 +176,16 @@ class WorkflowWindowsTest : StringSpec({
         entry(recompute(engagedForm)).shouldBeNull()
         viewFails(engagedForm)
         engageFails(engagedForm) shouldContain "engagement opens at ${at(30)}"
+        // Neither being calculated nor on any form: not on the workflow pages.
+        aggregate().shouldBeNull()
     }
 
     "relevant: calculated, eligibility and all, but engagement has not opened" {
         moveTo(25)
         entry(recompute(engagedForm)).shouldNotBeNull()[WFS.eligible] shouldBe true
+        // Being calculated, so listed -- but nothing counts as eligible while no form may engage.
+        aggregate().shouldNotBeNull()[WCOL.phase] shouldBe WfPhase.relevant.name
+        countsOf(aggregate()) shouldBe listOf(0L, 0L, 0L)
         viewFails(engagedForm)
         engageFails(engagedForm) shouldContain "engagement opens at ${at(30)}"
     }
@@ -188,6 +200,8 @@ class WorkflowWindowsTest : StringSpec({
         formFacts(states) shouldContain WSC.finished
         // Live: the popover names the current task and what it asks.
         behindFinished(engagedForm).single()[WFS.ctaTask] shouldBe "approve"
+        // Finished by its rule, and counted so on the workflow pages.
+        countsOf(aggregate()) shouldBe listOf(0L, 0L, 1L)
     }
 
     "once engagement closes, only the engaged form still sees the workflow" {
@@ -219,6 +233,9 @@ class WorkflowWindowsTest : StringSpec({
         frozenRow[SWF.actionText].shouldBeNull()
         entry(recompute(otherForm)).shouldBeNull()
         view(engagedForm)[WVF.phase] shouldBe WfPhase.lifetimeOnly.name
+        // Past relevancy it is no longer calculated, but it still stands behind its engaged form, so it stays listed.
+        aggregate().shouldNotBeNull()[WCOL.phase] shouldBe WfPhase.lifetimeOnly.name
+        countsOf(aggregate()) shouldBe listOf(0L, 0L, 1L)
         user.expectError(EXC.conflict, GEP.workflowSave, saveBody(engagedForm))["errorMessage"].toOptStr()
             .orEmpty() shouldContain "closed at ${at(80)}"
         user.expectError(
@@ -237,6 +254,7 @@ class WorkflowWindowsTest : StringSpec({
         entry(states, "followUp").shouldNotBeNull()[WFS.eligible] shouldBe true
         states.any { it[GE.traitId].toOptStr() == WFS.workflowEngagement } shouldBe true
         viewFails(engagedForm)
+        aggregate().shouldBeNull()
         engage(engagedForm, engaged = false)
     }
 

@@ -2,9 +2,11 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
@@ -45,8 +47,11 @@ val WorkflowsPage = FC<Props> {
     useEffectOnce {
         workflowsScope.launch {
             try {
-                acrossClients = runCatching { HomeApi.fetchConfig().canSeeAllClients }.getOrDefault(false)
-                entries = parseWorkflowAggregate(Http.getApi(GEP.workflowAggregate)[EP.items].toJsonListOfMaps())
+                // Independent, so fetched together: the aggregate -- a pass over every visible form -- need not wait.
+                val across = async { runCatching { HomeApi.fetchConfig().canSeeAllClients }.getOrDefault(false) }
+                val aggregate = parseWorkflowAggregate(Http.getApi(GEP.workflowAggregate)[EP.items].toJsonListOfMaps())
+                acrossClients = across.await()
+                entries = aggregate
             } catch (e: Throwable) {
                 loadError = userFacingError(e)
             }
@@ -97,9 +102,9 @@ val WorkflowsPage = FC<Props> {
                     tr {
                         th { +"Workflow" }
                         if (acrossClients) th { +"Client" }
-                        th { className = ClassName("wf-count"); +"Eligible" }
-                        th { className = ClassName("wf-count"); +"Engaged" }
-                        th { className = ClassName("wf-count"); +"Finished" }
+                        WAGG.drillStates.forEach { state ->
+                            th { className = ClassName("wf-count"); +workflowStateHeading(state).replaceFirstChar { it.uppercase() } }
+                        }
                     }
                 }
                 tbody {

@@ -1417,7 +1417,7 @@ class GedraDataService : ServiceInitializer {
         offset: Int,
         rowFilter: ((GedraDataRow) -> Boolean)?,
         sort: GedraSort?,
-        stateFilter: ((List<Map<String, Any?>>) -> Boolean)?,
+        stateFilter: GedraStateFilter?,
     ): GedraListPage? {
         val cache = dataCache ?: return null
         val client = scope.client ?: return null
@@ -1470,7 +1470,7 @@ class GedraDataService : ServiceInitializer {
         offset: Int = 0,
         rowFilter: ((GedraDataRow) -> Boolean)? = null,
         sort: GedraSort? = null,
-        stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = null,
+        stateFilter: GedraStateFilter? = null,
     ): GedraListPage {
         // `_debug=dataFromSql` bypasses the cache for diagnosis, the same tag `queryGedra` honors; the SQL below
         // is then taken for every scope, not only the no-client shapes the cache cannot key on.
@@ -1538,13 +1538,13 @@ class GedraDataService : ServiceInitializer {
         cxt: KdrCxt,
         rows: List<Map<String, Any?>>,
         scope: ReadScope,
-        stateFilter: ((List<Map<String, Any?>>) -> Boolean)?,
+        stateFilter: GedraStateFilter?,
     ): List<Map<String, Any?>> {
         val test = stateFilter ?: return rows
         if (rows.isEmpty()) return rows
         val ids = rows.map { gedraService.readId(it[GD.gedraId].toOptStr() ?: "") }
         val states = readStates(cxt, ids, scope)
-        return rows.filterIndexed { i, _ -> test(states[ids[i].fullId].orEmpty()) }
+        return rows.filterIndexed { i, _ -> test(ids[i], states[ids[i].fullId].orEmpty()) }
     }
 
     /**
@@ -1705,3 +1705,9 @@ class GedraImportResult(val imported: List<GedraImportedDoc>, val discarded: Lis
         GIF.discarded to discarded.map { it.toJsonMap() },
     )
 }
+
+/**
+ * A listing's filter over each row's **state** (issues #695, #792): given the row's id -- whose client says which
+ * client's configuration its state is read against -- and its state entries, whether the row stays.
+ */
+typealias GedraStateFilter = (gedraId: GedraId, states: List<Map<String, Any?>>) -> Boolean

@@ -87,6 +87,16 @@ class WorkflowPagesTest : StringSpec({
         drill(user, "noSuchWorkflow") shouldBe emptyList()
     }
 
+    "a cross-client administrator's drill-down resolves the workflow in each form's own client" {
+        val owner = TestUser.create(cxt, "pages-cross@acme.test", userClient = SC.acme)
+        val engaged = newForm(owner, surveyDone = true)
+        owner.postData(engage, mapOf(GDF.gedraId to engaged, GDF.workflowId to SW.auditReview))
+        // No client named: the workflow is acme's, not the administrator's own client's, and the row still matches.
+        val admin = TestUser.createFullAdmin(cxt, "pages-cross-admin@acme.test")
+        admin.getItems(GEP.formDocs, mapOf(WAGG.workflowId to SW.auditReview, WAGG.workflowState to WfColumnCategory.engaged.name))
+            .map { it[GDF.gedraId] } shouldContain engaged
+    }
+
     "the drill-down composes with the status filter" {
         val user = TestUser.create(cxt, "pages-compose@acme.test", userClient = SC.acme)
         newForm(user, surveyDone = true)

@@ -789,7 +789,7 @@ fun workflowDrillChip(applied: Map<String, Any?>, summary: List<WorkflowSummaryE
     val (id, state) = workflowDrillOf(applied) ?: return null
     val client = applied[EI.client]?.toString()
     val label = summary.firstOrNull { it.workflowId == id && (client == null || it.client == client) }?.label ?: id
-    return "Workflow: $label" + (state?.let { " (${workflowCategoryText(it)})" } ?: "")
+    return "Workflow: $label" + (state?.let { " (${workflowStateHeading(it)})" } ?: "")
 }
 
 /**
@@ -827,6 +827,17 @@ fun parseWorkflowAggregate(items: List<Map<String, Any?>>): List<WorkflowAggrega
 fun workflowDrillHash(workflowId: String, state: WfColumnCategory, client: String?): List<Pair<String, String>> =
     listOf(HP.page to HMENU.pageForms, WAGG.workflowId to workflowId, WAGG.workflowState to state.name) +
         listOfNotNull(client?.let { EI.client to it })
+
+/**
+ * A drill-down state as the workflow pages head its count -- Eligible, Engaged, Finished (issue #792) -- in lower
+ * case for a chip, so the count clicked and the listing it opens name the state with one word.
+ */
+fun workflowStateHeading(state: WfColumnCategory): String = when (state) {
+    WfColumnCategory.eligible -> "eligible"
+    WfColumnCategory.engaged -> "engaged"
+    WfColumnCategory.finished -> "finished"
+    WfColumnCategory.ineligible -> "not eligible"
+}
 
 /** A phase as the workflow pages say it beside a workflow's name (issue #792); empty for one open to new forms. */
 fun workflowPhaseText(phase: WfPhase?): String = when (phase) {

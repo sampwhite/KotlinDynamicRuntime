@@ -383,10 +383,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
         val statusWanted = request[SVY.surveyStatus] as? String
-        val statusFilter: ((List<Map<String, Any?>>) -> Boolean)? = statusWanted?.let { wanted -> { states -> formStatusOf(states) == wanted } }
-        val workflowFilter = workflowDrillFilter(c, request, clientFilter ?: c.client)
-        val stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = when {
-            statusFilter != null && workflowFilter != null -> { states -> statusFilter(states) && workflowFilter(states) }
+        val statusFilter: GedraStateFilter? = statusWanted?.let { wanted -> { _, states -> formStatusOf(states) == wanted } }
+        val workflowFilter = workflowDrillFilter(c, request)
+        val stateFilter: GedraStateFilter? = when {
+            statusFilter != null && workflowFilter != null -> { id, states -> statusFilter(id, states) && workflowFilter(id, states) }
             else -> statusFilter ?: workflowFilter
         }
         val svc = GedraDataService.get(c)
@@ -1045,19 +1045,26 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
 
 /**
  * The forms listing's workflow drill-down (issue #792), or null when the request names no workflow: a predicate over
- * a form's state entries that holds when its workflow cell -- by the kernel's [formWorkflowsOf], against [client]'s
- * workflows and their current phases -- shows the named workflow, in the named state when one is given. A workflow
- * [client] does not have (or has outside its lifetime) matches nothing, as an unknown search value does.
+ * a form's state entries that holds when its workflow cell -- by the kernel's [formWorkflowsOf], against the
+ * **form's own client's** workflow and its current phase -- shows the named workflow, in the named state when one is
+ * given. Resolved per row, so a cross-client listing drills into every client that has the workflow, and a form
+ * whose client does not have it (or has it outside its lifetime) simply does not match, as an unknown value does.
+ * Each client's phase is taken once, at one moment, for the whole listing.
  */
-private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>, client: String): ((List<Map<String, Any?>>) -> Boolean)? {
+private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>): GedraStateFilter? {
     val workflowId = request[WAGG.workflowId].toOptStr() ?: return null
     val wanted = request[WAGG.workflowState].toOptStr()?.let { name -> WfColumnCategory.entries.firstOrNull { it.name == name } }
-    val registry = WorkflowService.get(c).forClient(client)
-    val phase = WorkflowPhases.live(c, registry, workflowId)?.takeIf { it.def.entry == WfEntry.normal }
-        ?.let { WorkflowPhases.of(c, it.def) }
-        ?: return { false }
-    val phaseOf = { id: String -> if (id == workflowId) phase else null }
-    return { states -> formWorkflowsOf(states, phaseOf).any { wanted == null || it.category == wanted } }
+    val now = c.instanceNow()
+    val phases = HashMap<String, WfPhase?>()
+    fun phaseIn(client: String): WfPhase? = phases.getOrPut(client) {
+        WorkflowService.get(c).forClient(client).workflow(workflowId)?.def
+            ?.takeIf { it.entry == WfEntry.normal }?.phaseAt(now)?.takeIf { it.exists }
+    }
+    return { gedraId, states ->
+        val phase = phaseIn(gedraId.client)
+        phase != null && formWorkflowsOf(states) { id -> if (id == workflowId) phase else null }
+            .any { wanted == null || it.category == wanted }
+    }
 }
 
 /**

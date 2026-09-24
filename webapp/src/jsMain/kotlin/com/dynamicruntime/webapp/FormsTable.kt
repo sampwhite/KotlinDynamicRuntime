@@ -13,9 +13,11 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.strong
 import react.dom.html.ReactHTML.ul
+import react.useEffectOnce
 import react.useRef
 import react.useState
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
@@ -149,6 +151,16 @@ val FormsTable = FC<FormsTableProps> { props ->
     // A pending single-click open (issue #792): in a drilled listing a double-click opens the workflow, so the row's
     // own click waits out a double-click's window rather than navigating away underneath it.
     val clickTimer = useRef<Int>(null)
+    // A click still waiting when the table goes away must not navigate afterwards -- the user has already left. An
+    // effect is a coroutine React cancels on unmount, which is this wrappers version's cleanup (see DebugChoicePage).
+    useEffectOnce {
+        try {
+            awaitCancellation()
+        } finally {
+            clickTimer.current?.let { clearFormsTimer(it) }
+            clickTimer.current = null
+        }
+    }
     Table {
         size = "small"
         // Declared widths mean what they say (see `TableProps.tableLayout`): under the default auto layout the
