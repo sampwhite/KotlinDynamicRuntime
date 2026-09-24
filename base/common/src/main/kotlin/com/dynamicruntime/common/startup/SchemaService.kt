@@ -516,6 +516,23 @@ class SchemaService : ServiceInitializer {
             )
 
     /**
+     * Evaluates [client]'s schema over a trial's [scratch] collector (issue #843) -- its cfact registry, its variant
+     * (built and repaired, never published) and its usage rules -- with every problem going to the trial's capture.
+     * Returns what the rest of the trial reads: the client's cfact names and the types its variant dropped.
+     */
+    fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String): SchemaTrial {
+        val own = scratch.clientCFacts[client].orEmpty()
+        val registry = cfactRegistriesOf(cxt, scratch, mapOf(client to own)).byClient[client] ?: cfactsFor(null)
+        val dropped = HashMap<String, Set<String>>()
+        buildClientVariants(
+            cxt, scratch, snapshot.store, queryBase, onlyClient = client, repair = repairContext(scratch),
+            droppedTypes = dropped,
+        )
+        checkUsageRules(cxt, scratch, onlyScope = client)
+        return SchemaTrial(registry.names, dropped[client].orEmpty())
+    }
+
+    /**
      * The cfact registries for [perClient], a problem with a client's declaration dropping **that declaration**
      * (issue #841) and reported under the declaring config's check mode -- refused for source config outside
      * production, forgiven for stored config outside unit tests -- rather than refusing the boot outright.
@@ -1759,3 +1776,6 @@ object CX {
     const val email = "email"
     const val phone = "phone"
 }
+
+/** What [SchemaService.trialClient] found that the rest of a trial reads (issue #843). */
+class SchemaTrial(val cfactNames: Set<String>, val droppedTypes: Set<String>)

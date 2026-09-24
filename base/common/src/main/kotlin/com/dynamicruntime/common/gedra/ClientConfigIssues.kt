@@ -72,9 +72,6 @@ class ClientConfigIssues {
         return prior
     }
 
-    private fun GedraConfigIssue.sameAs(other: GedraConfigIssue): Boolean =
-        message == other.message && storedConfigId == other.storedConfigId &&
-            elementKind == other.elementKind && elementId == other.elementId
 
     @Suppress("ConstPropertyName")
     companion object {
@@ -97,3 +94,8 @@ class ClientConfigIssues {
         }
     }
 }
+
+/** Whether two issues report the same finding: one registry holds it once, and a trial (#843) compares by it. */
+fun GedraConfigIssue.sameAs(other: GedraConfigIssue): Boolean =
+    message == other.message && storedConfigId == other.storedConfigId &&
+        elementKind == other.elementKind && elementId == other.elementId

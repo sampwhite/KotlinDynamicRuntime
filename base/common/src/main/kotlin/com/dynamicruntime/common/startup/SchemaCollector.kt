@@ -253,6 +253,25 @@ class SchemaCollector(
      * are collected outside this class, and folding in the overlays of a config whose checks just failed
      * would let a rejected bundle change what people read.
      */
+    /**
+     * A **scratch copy** for a trial (issue #843): the same collected state, in collections of its own, so a
+     * trial can withdraw and add one client's configs and run the load's checks over the result without touching
+     * what the node serves. Registries of code (providers, functions, derivers, hooks) are shared, not copied --
+     * a trial never changes them.
+     */
+    fun trialCopy(): SchemaCollector = SchemaCollector(node).also { c ->
+        c.defs.putAll(defs)
+        c.endpoints.addAll(endpoints)
+        c.tables.addAll(tables)
+        c.gedraConfigs.absorbAll(gedraConfigs)
+        c.optionsProviders.putAll(optionsProviders)
+        c.cfacts.putAll(cfacts)
+        c.cfactSources.putAll(cfactSources)
+        c.workflowFunctions.addAll(workflowFunctions)
+        for ((client, list) in clientCFacts) c.clientCFacts[client] = list.toMutableList()
+        for ((client, overlay) in clientOverlays) c.clientOverlays[client] = LinkedHashMap(overlay)
+    }
+
     fun addGedraConfig(cxt: KdrCxt, config: GedraConfig): Boolean {
         if (!gedraConfigs.add(cxt, config)) {
             return false

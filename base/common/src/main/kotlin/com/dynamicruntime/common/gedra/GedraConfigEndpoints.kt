@@ -321,7 +321,8 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
     val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
-    return bundleOf(c, GedraConfigService.get(c).writeConfig(c, config, impliedDelete))
+    // Strict at write (issue #843): refused when a trial reload of the client with it in place finds a new problem.
+    return bundleOf(c, GedraConfigService.get(c).writeConfig(c, config, impliedDelete, trial = true))
 }
 
 private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -339,7 +340,10 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // #732). `patchConfig` reads the raw slots, so an untouched `testFeatures` round-trips on a test instance
     // and, off one, the write is refused rather than silently dropping it (the #685 explicit-write rule). The
     // 404 for a missing config is `patchConfig`'s.
-    return bundleOf(c, svc.patchConfig(c, configId(c, name)) { current -> applyConfigSlotEdits(current, edits, pk) })
+    val edited = svc.patchConfig(c, configId(c, name), trial = true) { current ->
+        applyConfigSlotEdits(current, edits, pk)
+    }
+    return bundleOf(c, edited)
 }
 
 /**

@@ -277,6 +277,14 @@ unresolvable layout pull is reported, since delivery already renders it as writt
 compile leaves the client's supported set with it, so a workflow collecting it is dropped by the existing check.
 Anything that breaks because of a drop is left to the reference checks that already exist.
 
+**Strict at write** (issue #843). The config write and patch endpoints run a **trial reload** of the client with
+the written revision in place -- the load's own checks over a scratch copy, nothing published -- and refuse the
+write with a 400 listing anything it finds that the client's configuration did not already have. A problem the
+client already has does not block an unrelated write (or fixing one of two broken configs would be refused over the
+other). `GedraConfigService.writeConfig` itself does not trial unless asked (`trial = true`), so a test can still
+store a flawed config on purpose to exercise the forgiving load; a bulk import does not trial either, since its
+bundles are written one at a time and may only be sound together.
+
 A **component's** schema fault follows the source rule: it refuses the boot outside production, and in production
 the faulty keyword, message or layout is dropped and the node serves. A global document that will not compile still
 refuses everywhere.

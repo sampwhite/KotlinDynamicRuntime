@@ -40,6 +40,13 @@ object GCFG {
             "everywhere except `unit`, which is strict. Source-code config is governed by KDR_GEDRA_CONFIG_CHECK.",
     )
 
+    /**
+     * `KdrCxt.locals` key of a **trial**'s capture list (issue #843): while a context carries one,
+     * [reportConfigProblem] adds each problem to it and returns -- no refusal, no log, no record -- so a trial
+     * reload can evaluate a candidate configuration with the load's own checks and see everything they find.
+     */
+    const val trialCaptureKey = "gedraConfigTrialCapture"
+
     // The mode words live on `BootCheckMode` (issue #303), shared with every other boot check rather than
     // spelled out a third time here.
 }
@@ -195,6 +202,13 @@ fun reportConfigProblem(
     problem: GedraConfigIssue,
     issues: MutableList<GedraConfigIssue>,
 ) {
+    // A trial (issue #843) only wants to know: captured, and treated as forgiven so the evaluation goes on.
+    @Suppress("UNCHECKED_CAST")
+    (cxt.locals[GCFG.trialCaptureKey] as? MutableList<GedraConfigIssue>)?.let { capture ->
+        capture.add(problem)
+        issues.add(problem)
+        return
+    }
     val stored = problem.origin == GedraConfigOrigin.stored
     val mode = configCheckMode(cxt, problem.origin)
     if (mode == BootCheckMode.strict) {
@@ -353,6 +367,14 @@ class GedraConfigCollector {
         }
         reportConfigProblem(cxt, problem, issues)
         return false
+    }
+
+    /**
+     * Takes every config [other] holds, unchecked and in its order -- a scratch copy for a trial (issue #843),
+     * whose configs were all judged when [other] took them.
+     */
+    fun absorbAll(other: GedraConfigCollector) {
+        other.configs.forEach { keep(it) }
     }
 
     /**

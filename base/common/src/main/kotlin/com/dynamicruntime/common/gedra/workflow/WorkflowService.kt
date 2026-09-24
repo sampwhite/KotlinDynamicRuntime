@@ -1,7 +1,9 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.content.FragmentAudience
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.content.mergeFragmentLayers
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
@@ -103,6 +105,50 @@ class WorkflowService : ServiceInitializer {
         registries = WorkflowRegistries(current.global, byClient)
         // Only this client's scope was judged (issue #842), so only its issues are replaced; the rest stand.
         issues = issues.filter { it.client != client } + found
+    }
+
+    /**
+     * A trial of [client]'s candidate workflows (issue #843) over a trial's [scratch] collector: its scope built and
+     * checked against the candidate definition [def], cfact names and layers, inheriting from the running global
+     * registry, and its function usages resolved -- every problem going to the trial's capture, nothing published.
+     */
+    fun trialClient(
+        cxt: KdrCxt,
+        scratch: SchemaCollector,
+        client: String,
+        def: ClientDef?,
+        fragmentSources: List<FragmentSource>,
+        cfactNames: Set<String>,
+        droppedTypes: Set<String>,
+    ) {
+        val found = mutableListOf<GedraConfigIssue>()
+        val clients: Map<String, ClientDef?> =
+            if (def != null && def.isEnabledIn(cxt.instanceConfig.env)) mapOf(client to def) else emptyMap()
+        buildWorkflowRegistries(
+            cxt, scratch.gedraConfigs, clients,
+            overlaidTypes = { scratch.clientOverlays[it]?.keys ?: emptySet() },
+            fragments = { c, fileId, namespace, key ->
+                mergeFragmentLayers(fileId, fragmentSources.filter { it.fileId == fileId }, c).let {
+                    WfFragmentHit(
+                        found = it.found,
+                        backend = it.audience == FragmentAudience.backend,
+                        present = it.content[namespace]?.get(key) != null,
+                    )
+                }
+            },
+            cfactNames = { scope ->
+                if (scope == client) cfactNames else SchemaService.get(cxt).cfactsFor(scope).names
+            },
+            issues = found,
+            onlyClient = client,
+            runningGlobal = registries.global,
+            droppedTypes = { if (it == client) droppedTypes else emptySet() },
+        )
+        resolveWorkflowFunctions(
+            cxt, scratch.gedraConfigs, scratch.workflowFunctions, found, client,
+            clientDefOf = { if (it == client) def else ClientService.get(cxt).present(it) },
+            cfactNamesOf = { if (it == client) cfactNames else SchemaService.get(cxt).cfactsFor(it).names },
+        )
     }
 
     /** The registry [client] sees; see [WorkflowRegistries.forClient]. */

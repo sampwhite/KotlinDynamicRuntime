@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -31,17 +32,20 @@ fun resolveWorkflowFunctions(
      * every other bundle already holds what the boot (or its own reload) resolved. Null resolves them all.
      */
     onlyClient: String? = null,
+    /** The client definition a bundle is held to -- the node's, unless a trial (issue #843) supplies a candidate. */
+    clientDefOf: (String) -> ClientDef? = { ClientService.get(cxt).present(it) },
+    /** The cfact names a client declares -- the node's, unless a trial supplies the candidate's. */
+    cfactNamesOf: (String) -> Set<String> = { SchemaService.get(cxt).cfactsFor(it).names },
 ) {
     val byFn: Map<String, WfFunctionCreation> = creations.associateBy { it.fn }
-    val schemaService = SchemaService.get(cxt)
 
     for (bundle in configs.configs) {
         val client = bundle.gedraId.client
         if (onlyClient != null && client != onlyClient) continue
-        val declaredCfacts = schemaService.cfactsFor(client).names
+        val declaredCfacts = cfactNamesOf(client)
         // The labels the client suggests (issue #786), or null for a bundle with no client definition present
         // here -- a global workflow has no one client's list to be held to, so its labels are not checked.
-        val suggestedLabels = ClientService.get(cxt).present(client)?.userLabels?.toSet()
+        val suggestedLabels = clientDefOf(client)?.userLabels?.toSet()
         val bundleScope = ResolutionScope(cxt, bundle, byFn, declaredCfacts, suggestedLabels, issues)
         for (def in bundle.workflows.values) {
             def.resolvedFunctions = bundleScope.resolveList(
