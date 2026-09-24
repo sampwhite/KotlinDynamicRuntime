@@ -448,7 +448,7 @@ private fun selectorShapeProblem(node: Map<String, Any?>, depth: Int): String? {
         return null
     }
     val raw = node[UIB.select] as? List<*>
-    if (raw == null || raw.isEmpty() || raw.any { it !is Map<*, *> }) {
+    if (raw.isNullOrEmpty() || raw.any { it !is Map<*, *> }) {
         return "has a '${UIB.select}' that is not a non-empty list of branches."
     }
     return raw.firstNotNullOfOrNull { selectorShapeProblem((it as Map<*, *>).toJsonMapOrEmpty(), depth + 1) }
