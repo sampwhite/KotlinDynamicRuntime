@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.annotation.KdrPrivate
+import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.cfact.CFactRegistries
 import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.cfact.buildCFactRegistries
@@ -217,10 +218,17 @@ class SchemaService : ServiceInitializer {
         // the later service tier -- see the note there on why it cannot live here.)
 
         sharedEndpoints = endpoints
-        publish(cxt, SchemaSnapshot(store, emptyMap(), CFactRegistries.empty))
+        // The cfact registries come first (issue #841): a client's variant is repaired against the global one --
+        // a `g-visibleWhen` naming what does not parse is dropped as the variant is built -- so it must exist
+        // before any variant does. Built here for the reason the variants are: this is the first moment every
+        // contributor has been heard, and a client's declarations can only be held to "add, never redefine"
+        // against a complete global set. Once built, it never changes -- which is what makes a registry
+        // something an expression can be parsed against once and evaluated many times.
+        val cfacts = cfactRegistriesOf(cxt, collected, collected.clientCFacts)
+        publish(cxt, SchemaSnapshot(store, emptyMap(), cfacts))
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
-        val variants = buildClientVariants(cxt, collected, store, queryBase)
+        val variants = buildClientVariants(cxt, collected, store, queryBase, repair = repairContext(collected))
         // Each client that varies something gets its own copy of the client-shaped endpoints (issue #387).
         // After the variants, because a client varying nothing needs none -- its endpoints would be the
         // global ones under a longer name.
@@ -233,7 +241,7 @@ class SchemaService : ServiceInitializer {
         val varyingClients = variants.keys + collected.clientCFacts.keys
         val clientEndpoints = buildClientEndpoints(cxt, availableEndpoints, varyingClients)
         if (clientEndpoints.isEmpty()) {
-            publish(cxt, SchemaSnapshot(store, variants, CFactRegistries.empty))
+            publish(cxt, SchemaSnapshot(store, variants, cfacts))
         } else {
             // Every store carries the **same** endpoint map, the final one. A variant built before the copies
             // existed would hold the map from before them, so anything resolving an endpoint through a
@@ -241,15 +249,10 @@ class SchemaService : ServiceInitializer {
             // parsed -- only the endpoint map changes -- so this costs a map merge and no re-parsing.
             val allEndpoints = endpoints + clientEndpoints.associateBy { it.collationKey }
             val withClients = KdrSchemaStore(types, allEndpoints, tables, collected.defs)
-            publish(cxt, SchemaSnapshot(withClients, wrapVariants(variants, varyingClients, withClients, allEndpoints), CFactRegistries.empty))
+            publish(cxt, SchemaSnapshot(withClients, wrapVariants(variants, varyingClients, withClients, allEndpoints), cfacts))
         }
         optionsProviders = collected.optionsProviders.toMap()
         checkOptionsSources(optionsProviders)
-        // Built here for the reason the client variants are: this is the first moment every contributor has
-        // been heard, and a client's declarations can only be held to "add, never redefine" against a
-        // complete global set. Once built, it never changes -- which is what makes a registry something an
-        // expression can be parsed against once and evaluated many times.
-        publish(cxt, snapshot.withCfacts(buildCFactRegistries(collected.cfacts, collected.cfactSources, collected.clientCFacts)))
         // After the registry exists (issue #545): a `g-visibleWhen` expression that does not parse would otherwise
         // fault the catalog at request time -- for one caller, on one surface -- rather than at boot.
         checkVisibleWhen()
@@ -412,6 +415,58 @@ class SchemaService : ServiceInitializer {
     }
 
     /**
+     * What is wrong with one `g-visibleWhen` expression, or null when it is sound -- judged against the global
+     * registry, which validates *syntax* (an unknown fact name evaluates absent). Two ways it can be wrong: it does
+     * not parse (a typo or an undeclared name), or it names a real cfact that is not delivered to the frontend --
+     * where the gate is evaluated (issue #564). The second would hide the field from everyone, silently. Shared by
+     * [checkVisibleWhen] and the repair of a client's own definitions (issue #841).
+     */
+    private fun visibleWhenExpressionProblem(expression: String): String? {
+        val registry = cfactsFor(null)
+        val predicate = try {
+            registry.parse(expression)
+        } catch (e: KdrException) {
+            return "does not parse: ${e.message}"
+        }
+        val notDelivered = predicate.referencedNames().filterNot { registry.defs[it]?.toFrontend == true }.sorted()
+        return if (notDelivered.isEmpty()) {
+            null
+        } else {
+            "names cfact(s) $notDelivered that are not delivered to the frontend -- set 'toFrontend' on their " +
+                "CFactDef, or the gate hides the field from every caller"
+        }
+    }
+
+    /** What a client's own definitions are repaired against as its variant is built (issue #841). */
+    private fun repairContext(collected: SchemaCollector): DefRepairContext =
+        DefRepairContext(collected.optionsProviders.keys.toSet(), ::visibleWhenExpressionProblem)
+
+    /**
+     * The cfact registries for [perClient], a problem with a client's declaration dropping **that declaration**
+     * (issue #841) and reported under the declaring config's check mode -- refused for source config outside
+     * production, forgiven for stored config outside unit tests -- rather than refusing the boot outright.
+     */
+    private fun cfactRegistriesOf(
+        cxt: KdrCxt,
+        collected: SchemaCollector,
+        perClient: Map<String, List<CFactDef>>,
+    ): CFactRegistries {
+        val issues = mutableListOf<GedraConfigIssue>()
+        return buildCFactRegistries(collected.cfacts, collected.cfactSources, perClient) { client, def, message ->
+            val degradedTo = "Dropping that declaration of '${def.name}'."
+            val holder = collected.gedraConfigs.configs.lastOrNull { it.gedraId.client == client && def in it.cfacts }
+            reportConfigProblem(
+                cxt,
+                holder?.issue(message, degradedTo, GCEL.cfact, def.name)
+                    ?: GedraConfigIssue(
+                        message, degradedTo, client = client, elementKind = GCEL.cfact, elementId = def.name,
+                    ),
+                issues,
+            )
+        }
+    }
+
+    /**
      * Refuses the boot when a `g-visibleWhen` expression does not parse (issue #545). The same reasoning as
      * [checkOptionsSources]: this is the one moment holding the whole compiled document, and a bad expression
      * left for request time would fault the catalog for one caller on one surface. Parsed against the global
@@ -423,31 +478,9 @@ class SchemaService : ServiceInitializer {
         /** Check only this client's variant (issue #842, a reload); null checks everything, as the boot does. */
         onlyClient: String? = null,
     ) {
-        val registry = cfactsFor(null)
         val problems = LinkedHashSet<String>()
         fun check(where: String, node: Any?) {
-            problems.addAll(
-                visibleWhenProblems(where, node) { expression ->
-                    // Two ways an expression can be wrong: it does not parse (a typo or an undeclared name), or
-                    // it names a real cfact that is not delivered to the frontend -- where the gate is now
-                    // evaluated (issue #564). The second would hide the field from everyone, silently, so it is
-                    // refused here rather than discovered as a field that never appears.
-                    val predicate = try {
-                        registry.parse(expression)
-                    } catch (e: KdrException) {
-                        return@visibleWhenProblems "does not parse: ${e.message}"
-                    }
-                    val notDelivered = predicate.referencedNames()
-                        .filterNot { registry.defs[it]?.toFrontend == true }
-                        .sorted()
-                    if (notDelivered.isEmpty()) {
-                        null
-                    } else {
-                        "names cfact(s) $notDelivered that are not delivered to the frontend -- set " +
-                            "'toFrontend' on their CFactDef, or the gate hides the field from every caller"
-                    }
-                },
-            )
+            problems.addAll(visibleWhenProblems(where, node, ::visibleWhenExpressionProblem))
             // A gate on a *required* property is refused too: it hides the field while the schema still requires
             // it, so a caller it hides could never submit (issue #564). This shape is a `properties` child named
             // in the sibling `required`; an endpoint field, whose required-ness sits on the field itself, is
@@ -548,48 +581,6 @@ class SchemaService : ServiceInitializer {
                     problems.joinToString("\n"),
             )
         }
-    }
-
-    /**
-     * Malformed **backend** `%{...}` blocks in a layout's copy (issue #605) -- the registry-free half of the
-     * fragment-pull check. A layout `label` / `description` / `hint` may carry a `%{@t("…")}` pull resolved at
-     * delivery; an unterminated or empty `%{...}` block would otherwise fail per request, so it is caught here
-     * at boot. Whether a well-formed pull actually *resolves* (its target file and key exist) is a cross-service
-     * check that needs the fragment registry, which is not available to this startup-phase service: it runs in
-     * the regular phase, in `LayoutCheckService` via [checkLayoutPulls] (issue #620). So a literal pull that
-     * misses is now refused at boot; only a *computed* or guarded pull can miss at delivery, where it degrades
-     * gracefully ([resolveDeliveredLayouts]).
-     */
-    private fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<String> {
-        val problems = mutableListOf<String>()
-        fun checkBackendBlocks(what: String, text: String?) {
-            if (text == null || MarkdownFragmentService.backendPassPrefix !in text) {
-                return
-            }
-            for (issue in text.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).issues) {
-                problems.add("$where: the '${SCH.layout}' $what has a malformed backend block: ${issue.message}")
-            }
-        }
-        checkBackendBlocks("heading", layout.label)
-        for (field in layout.fields) {
-            checkBackendBlocks("${field.field}'s label", field.label)
-            checkBackendBlocks("${field.field}'s description", field.description)
-            checkBackendBlocks("${field.field}'s hint", field.hint)
-            // An error override (issue #588) is frontend `${'$'}{…}`-only; delivery does not run the backend pass
-            // over it, so a `%{…}` block there would ship raw. Refuse any -- not merely a malformed one --
-            // rather than let it render as literal text.
-            for ((codeKey, message) in field.errors) {
-                if (MarkdownFragmentService.backendPassPrefix in message &&
-                    message.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).blockCount > 0
-                ) {
-                    problems.add(
-                        "$where: the '${SCH.layout}' error '$codeKey' for '${field.field}' uses a backend block " +
-                            "('%{…}'); a layout error message supports only frontend parameter substitution (see #588).",
-                    )
-                }
-            }
-        }
-        return problems
     }
 
     /**
@@ -736,7 +727,10 @@ class SchemaService : ServiceInitializer {
         val global = current.store
         val before = global.endpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
 
-        val variant = buildClientVariants(cxt, collected, global, queryBase, onlyClient = client)[client]
+        val variant =
+            buildClientVariants(
+                cxt, collected, global, queryBase, onlyClient = client, repair = repairContext(collected),
+            )[client]
         val variants = (current.clientStores - client) + (variant?.let { mapOf(client to it) } ?: emptyMap())
         val varyingClients = variants.keys + collected.clientCFacts.keys
         val clientEndpoints = buildClientEndpoints(cxt, sharedEndpoints.values, varyingClients)
@@ -745,7 +739,7 @@ class SchemaService : ServiceInitializer {
         // Only this client's cfact registry is rebuilt (through the same additive-only check the boot runs); the
         // rest are carried across by reference, since a client's registry is global plus its own.
         val own = collected.clientCFacts[client].orEmpty()
-        val rebuilt = buildCFactRegistries(collected.cfacts, collected.cfactSources, mapOf(client to own)).byClient[client]
+        val rebuilt = cfactRegistriesOf(cxt, collected, mapOf(client to own)).byClient[client]
         val byClient = (current.cfactRegistries.byClient - client) + (rebuilt?.let { mapOf(client to it) } ?: emptyMap())
         val cfacts = CFactRegistries(current.cfactRegistries.global, byClient)
 

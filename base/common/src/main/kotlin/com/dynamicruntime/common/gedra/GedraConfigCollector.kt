@@ -57,6 +57,9 @@ object GCEL {
     const val type = "type"
     /** A trait-usage rule. */
     const val usage = "usage"
+
+    /** A cfact a client declared. */
+    const val cfact = "cfact"
 }
 
 /**

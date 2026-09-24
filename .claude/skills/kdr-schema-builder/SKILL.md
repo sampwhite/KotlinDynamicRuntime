@@ -139,7 +139,8 @@ Two things follow, and both are deliberate:
 
 Declaring both an `option` and an `optionsSource` fails the boot, as does an id no component registered. Both
 checks run in `SchemaService.checkInit`, which is the one moment holding the compiled document and the full
-registry together. Register the callback with `optionsProvider(id) { … }` — see `kdr-endpoint-builder`.
+registry together. In a **client's own** definitions (its config's types) the fault is dropped instead of
+refused, under that config's check mode — see *A client's own definitions* below. Register the callback with `optionsProvider(id) { … }` — see `kdr-endpoint-builder`.
 
 **Open lists.** `openOptions()` beside the choices says they are *suggestions rather than a bound*: the
 validator stops reporting `invalidOption`, and a data-entry surface draws a combobox instead of a closed
@@ -178,7 +179,8 @@ condition itself — it is the advertise half of an advertise-and-enforce pair, 
 **Optional fields only.** The boot fails on a `visibleWhen` that: is a malformed expression; names a cfact whose
 `CFactDef` is not marked `toFrontend` (that fact never reaches the client, so the gate would hide the field from
 everyone); or sits on a **required** property (the field is hidden client-side but the schema still requires it,
-so a caller it hides could never submit).
+so a caller it hides could never submit). In a client's own definitions the keyword is dropped instead — see
+*A client's own definitions* below.
 
 ## Presentation hints (read-only display)
 
@@ -285,7 +287,9 @@ is equivalent):
 - **Boot check** (`checkLayouts`): a layout naming a field its type does not declare, or sitting on a union or
   array type, refuses the boot. A client that narrows a type inherits the base layout by reference and has it
   **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
-- A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key.
+- A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key. A layout
+  a client writes that would fail the boot check is dropped instead (the type falls back to global's layout, or
+  none) — see *A client's own definitions* below.
 
 **Substitution — two passes, by prefix (issues #586, #587, #605).** Layout copy (`label` / `description` /
 `hint`) carries two kinds of template block, resolved in different passes:
@@ -318,6 +322,27 @@ kernel's `parseDeliveredLayouts` (the same strict parser the boot ran) into `Cat
 `WfTraitView.fieldLayout`, and a form takes the map as `FormOpts.fieldLayouts` / `SchemaFormProps.fieldLayouts`.
 Outside the schema package the delivered form is always named `fieldLayout(s)`, so a search finds exactly it —
 not the task layout (`WfTask.layout`), a page layout, or prose.
+
+## A client's own definitions: dropped, not refused (issue #841)
+
+The boot checks above refuse the boot for a fault in a **component's** schema. A fault in a **client's** own
+definitions — the types its config declares or alters, which may be stored in the database — costs only itself:
+as the client's variant is built (at boot and on a reload alike), the smallest faulty piece is dropped, logged,
+and recorded on the client (`ClientConfigIssues`). Whether that forgives or refuses is the holding config's check
+mode: stored config is forgiven everywhere but `unit` (`KDR_STORED_CONFIG_CHECK`), source config refuses outside
+`prod` (`KDR_GEDRA_CONFIG_CHECK`).
+
+| fault | what is dropped |
+|---|---|
+| unregistered `g-optionsSource`, or one beside `options` | the keyword (the field takes free input, or keeps its options) |
+| bad `g-visibleWhen`, or one on a required property | the keyword (the field shows for everyone) |
+| a `g-errors` message that cannot render, or an unknown code | that message |
+| a client-written `g-layout` that fails the layout check | that layout |
+| a type that will not compile (an unresolvable `$ref`) | that type change |
+| a client cfact redeclaring a global one, or declared twice | that declaration |
+
+The repair runs on the **raw** definitions (`repairTypeDef`, `ClientSchemaRepair.kt`) with the boot checks' own
+helpers, so the later whole-document checks find nothing left in the client's variant.
 
 ## Validation & coercion
 

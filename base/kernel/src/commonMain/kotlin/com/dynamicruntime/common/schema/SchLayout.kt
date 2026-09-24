@@ -626,15 +626,22 @@ object LayoutErrCtx {
  * mistyped key. [code] is null for the `default` key, which may match any failure and so is allowed only the
  * one param present for every one of them ([LayoutErrCtx.field]).
  */
-fun errorContextNames(code: SchFailCode?, type: SchType): Set<String> = buildSet {
+fun errorContextNames(code: SchFailCode?, type: SchType): Set<String> =
+    errorContextNames(code, hasMin = type.minBound != null, hasMax = type.maxBound != null)
+
+/**
+ * [errorContextNames] from whether the field declares a lower and an upper bound -- the only facts about the type
+ * it reads -- so a pass over **raw** definitions (the stored-config repair, issue #841) can ask it too.
+ */
+fun errorContextNames(code: SchFailCode?, hasMin: Boolean, hasMax: Boolean): Set<String> = buildSet {
     add(LayoutErrCtx.field)
     if (code == null) return@buildSet
     // A value exists for every failure except a property that is missing or one that is not a field at all.
     if (code != SchFailCode.missingRequired && code != SchFailCode.additionalProperty) add(LayoutErrCtx.value)
     when (code) {
         SchFailCode.invalidOption -> add(LayoutErrCtx.options)
-        SchFailCode.belowMinimum -> if (type.minBound != null) add(LayoutCtx.min)
-        SchFailCode.aboveMaximum -> if (type.maxBound != null) add(LayoutCtx.max)
+        SchFailCode.belowMinimum -> if (hasMin) add(LayoutCtx.min)
+        SchFailCode.aboveMaximum -> if (hasMax) add(LayoutCtx.max)
         else -> {}
     }
 }

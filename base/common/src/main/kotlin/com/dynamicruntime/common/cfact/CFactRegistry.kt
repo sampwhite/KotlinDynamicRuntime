@@ -130,6 +130,12 @@ fun buildCFactRegistries(
     global: Map<String, CFactDef>,
     sources: Map<String, CFactSource>,
     perClient: Map<String, List<CFactDef>>,
+    /**
+     * Handed each problem instead of collecting it (issue #841): the offending declaration is then **left out** of
+     * the client's registry -- the smallest drop -- and the caller decides, under the declaring config's check
+     * mode, whether that refuses or is forgiven. Null collects them all and refuses, as before.
+     */
+    onProblem: ((client: String, def: CFactDef, message: String) -> Unit)? = null,
 ): CFactRegistries {
     val globalDefs = global.toMap()
     val globalSources = sources.toMap()
@@ -144,19 +150,20 @@ fun buildCFactRegistries(
                 // Additive-only, and this is the failure it prevents: an expression in component-owned data
                 // naming this cfact would mean one thing everywhere and another here -- or stop parsing at
                 // this client alone, discovered by that client.
-                problems.add(
-                    "Client '$client' redeclares the cfact '${def.name}', which is already declared globally " +
-                        "(group '${existing.group}'). A client may add cfacts, never redefine one.",
-                )
+                val message = "Client '$client' redeclares the cfact '${def.name}', which is already declared " +
+                    "globally (group '${existing.group}'). A client may add cfacts, never redefine one."
+                if (onProblem != null) onProblem(client, def, message) else problems.add(message)
                 continue
             }
-            val twice = own.put(def.name, def)
+            val twice = own[def.name]
             if (twice != null) {
-                problems.add(
-                    "Client '$client' declares the cfact '${def.name}' twice, in groups '${twice.group}' and " +
-                        "'${def.group}'. A name identifies one fact.",
-                )
+                val message = "Client '$client' declares the cfact '${def.name}' twice, in groups '${twice.group}' " +
+                    "and '${def.group}'. A name identifies one fact."
+                // The first declaration stands; the second is the one dropped.
+                if (onProblem != null) onProblem(client, def, message) else problems.add(message)
+                continue
             }
+            own[def.name] = def
         }
         if (own.isNotEmpty()) {
             // The client's own names on top of the global ones: what makes every shared expression still
