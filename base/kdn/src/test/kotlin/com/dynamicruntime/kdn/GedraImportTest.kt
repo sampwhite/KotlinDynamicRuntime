@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
@@ -33,8 +34,8 @@ import io.kotest.matchers.shouldNotBe
 class GedraImportTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("gedraImport", "gedraImportTest")
 
-    val alice = TestUser.create(cxt, "alice@import.test")
-    val bob = TestUser.create(cxt, "bob@import.test")
+    val alice = TestUser.create(cxt, "alice@import.test", userClient = CL.hub)
+    val bob = TestUser.create(cxt, "bob@import.test", userClient = CL.hub)
     val ada = TestUser.create(cxt, "ada@import.test", level = ROLE.admin)
 
     fun nameEntry(name: String): Map<String, Any?> = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))

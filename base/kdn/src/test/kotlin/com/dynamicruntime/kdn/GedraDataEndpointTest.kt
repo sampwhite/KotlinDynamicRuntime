@@ -46,8 +46,8 @@ import io.kotest.matchers.string.shouldStartWith
 class GedraDataEndpointTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("gedraData", "gedraDataTest")
 
-    val alice = TestUser.create(cxt, "alice@gedra.test")
-    val bob = TestUser.create(cxt, "bob@gedra.test")
+    val alice = TestUser.create(cxt, "alice@gedra.test", userClient = CL.hub)
+    val bob = TestUser.create(cxt, "bob@gedra.test", userClient = CL.hub)
     // A *scoped* administrator -- ROLE.admin without `allClients` -- which is the width #310 asked for: their
     // whole client and no further.
     val ada = TestUser.create(cxt, "ada@gedra.test", level = ROLE.admin)
@@ -72,12 +72,12 @@ class GedraDataEndpointTest : StringSpec({
             GedraDataType.formDoc.idAbbrev,
             // A provisioned user's own client, taken off the context rather than chosen by the endpoint --
             // which is the point of the segment: what a caller creates belongs to the client they are in.
-            CL.public,
+            CL.hub,
             GedraIdContext.ui.letter,
         ).joinToString(GID.partSep.toString())
         doc[GDF.gedraKind] shouldBe GedraDataType.formDoc.name
         doc[GDF.userId] shouldBe alice.userId
-        doc[GDF.client] shouldBe CL.public
+        doc[GDF.client] shouldBe CL.hub
 
         // The envelope the caller did not send. Response-schema validation is on in a test boot, so a document
         // or an entry missing any required part of it would have failed before reaching this assertion.
@@ -226,7 +226,7 @@ class GedraDataEndpointTest : StringSpec({
         // "U" is the own-user shape; the administrator's would be "C". The shape is what picks the statement,
         // so this is the assertion that the right one ran.
         explained[GDBG.shapeKey] shouldBe "U"
-        explained[GDBG.scope].toString() shouldBe "ReadScope(client=null, org=null, userId=${alice.userId})"
+        explained[GDBG.scope].toString() shouldBe "ReadScope(client=null, org=null, userId=${alice.userId}, identityId=null)"
     }
 
     // Delete, and what it means: the document stops being readable and stops being listed. This used to reach

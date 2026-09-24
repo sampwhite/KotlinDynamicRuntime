@@ -576,7 +576,16 @@ registration default it never widens what is readable, which stays `ReadScopeRul
 
 Every user in `public` is effectively their own client, able to create form entries for themselves alone (a
 later capability). **No normal user holds admin privilege over `public`**, so there is no client-scoped
-administrator there and `ReadScope.ofUser` is the only width that ever applies.
+administrator there and `ReadScope.ofUser` is the only width that ever applies to content.
+
+How that is enforced (issue #805): in `public` there is no difference between an administrator and an ordinary
+user, so every self-registered `public` user *is* given `admin` -- and an administrator in `public` without
+`allClients` has the `ownIdentity` admin scope. Their user administration reaches their own identity's users
+(`ReadScope.ofIdentity`, a width only the user table answers), so they can create and manage variants of
+themselves at their own address; their content reads stay `ofUser`; and the client's configuration endpoints
+refuse them (`AdminRules.requireClientAdministrator`). The rule is keyed on the client, not on how the role
+arrived, so no route to `admin` in `public` reaches further. An administrator provisioned with no client named
+lands in `hub` instead (`AddressRules.defaultClient`).
 
 That is what settles the tension in giving `public` a usage type. The worry was that typing it `demo` would put
 demo conveniences — relaxed security, bulk delete — within reach of the client that holds every registered

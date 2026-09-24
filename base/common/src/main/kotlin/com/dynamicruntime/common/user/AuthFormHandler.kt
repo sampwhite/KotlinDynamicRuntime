@@ -217,29 +217,35 @@ class AuthFormHandler(
         if (placing) {
             // Placed by an allClients caller: the one provisioning path creates it under the named key, or
             // recovers a recoverably deleted user there, or refuses an enabled one as the duplicate it is.
+            val placedIn = namedClientOrRefuse(cxt, client, initialRoles)
             return userService.provisionUser(
-                cxt, address, namedClientOrRefuse(cxt, client, initialRoles), initialRoles, createdAt = now,
-                persona = persona, personaSuffix = personaSuffix, verifiedAt = now, registered = true,
+                cxt, address, placedIn, AdminRules.rolesInClient(placedIn, initialRoles), createdAt = now,
+                persona = persona ?: PERSONA.defaultFor(initialRoles), personaSuffix = personaSuffix,
+                verifiedAt = now, registered = true,
             )
         }
         // A self-registration lands in the default client for its roles -- `hub` for an allClients user (the
         // auto-admin domain's first admin, issue #799), else the placeholder `public` -- with the default persona;
         // the `+client%persona` tag that could once say otherwise is retired (issue #750).
+        // In `public` every user administers their own users (issue #805), so the role is added once the client
+        // is known -- after, so it never moves a registrant out of `public`. The persona stays the one asked for:
+        // `member`, since in `public` the admin role marks no different kind of user.
         return if (existing != null) {
             // A lingering row (started-but-unfinished, or recoverably deleted) is re-provisioned in place; its
             // identity is marked verified now, as a fresh one would be.
             userService.getOrCreateIdentity(cxt, address, verifiedAt = now)
             existing.username = AuthUserRow.usernameTmpPrefix + address
-            existing.roles = initialRoles
+            existing.roles = AdminRules.rolesInClient(existing.client, initialRoles)
             existing.authUserData = mutableMapOf()
             existing.enabled = true
             existing.registeredAt = now
             userService.updateUser(cxt, existing)
             existing.userId
         } else {
+            val landsIn = AddressRules.defaultClient(cxt, initialRoles)
             userService.provisionUser(
-                cxt, address, AddressRules.defaultClient(cxt, initialRoles), initialRoles,
-                createdAt = now, verifiedAt = now, registered = true,
+                cxt, address, landsIn, AdminRules.rolesInClient(landsIn, initialRoles),
+                createdAt = now, verifiedAt = now, registered = true, persona = PERSONA.defaultFor(initialRoles),
             )
         }
     }
@@ -413,9 +419,12 @@ class AuthFormHandler(
         userService.registeredDefaultOf(cxt, identity)?.let { return it }
         val address = identity.primaryId
         val roles = AdminRules.initialRoles(cxt, address)
+        val client = AddressRules.defaultClient(cxt, roles)
+        // The persona from the roles as the rules chose them; `public`'s admin role (issue #805) is added after,
+        // and marks no different kind of user, so it does not make the person an `admin` persona.
         return userService.claimUser(
-            cxt, identity, AddressRules.defaultClient(cxt, roles), PERSONA.defaultFor(roles), personaSuffix = "",
-            roles = roles,
+            cxt, identity, client, PERSONA.defaultFor(roles), personaSuffix = "",
+            roles = AdminRules.rolesInClient(client, roles),
         )
     }
 

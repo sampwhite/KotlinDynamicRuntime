@@ -424,7 +424,7 @@ class UserService : ServiceInitializer {
         val row = queryByUserId(cxt, userId) ?: return null
         // The one per-row admission predicate, shared with the brute-force search (issue #411), so a by-id
         // read and a listing cannot disagree about what a scope admits.
-        return if (scope.admitsUserRow(row.client, row.org, row.userId)) row else null
+        return if (scope.admitsUserRow(row.client, row.org, row.userId, row.identityId)) row else null
     }
 
     /**
@@ -456,7 +456,7 @@ class UserService : ServiceInitializer {
                 }
             }
         }
-        return found.filterValues { scope.admitsUserRow(it.client, it.org, it.userId) }
+        return found.filterValues { scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) }
     }
 
     /**
@@ -479,7 +479,7 @@ class UserService : ServiceInitializer {
         }
         val row = trimmed.toLongOrNull()?.let { queryByUserId(cxt, it) } ?: queryByPrimaryId(cxt, trimmed)
         row ?: return null
-        return if (scope.admitsUserRow(row.client, row.org, row.userId)) row else null
+        return if (scope.admitsUserRow(row.client, row.org, row.userId, row.identityId)) row else null
     }
 
     /** Selects a single `AuthUsers` row by an indexed [field], or null. Returns the row even if disabled. */
@@ -597,7 +597,7 @@ class UserService : ServiceInitializer {
      * not quietly search every client.
      */
     fun searchUsers(cxt: KdrCxt, criteria: UserSearchCriteria, scope: ReadScope): UserSearchPage {
-        val visible = visibleEnabledUsers(cxt, scope).filter { scope.admitsUserRow(it.client, it.org, it.userId) }
+        val visible = visibleEnabledUsers(cxt, scope).filter { scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) }
         return searchUserRows(visible, criteria)
     }
 
@@ -619,11 +619,18 @@ class UserService : ServiceInitializer {
     private fun visibleEnabledUsers(cxt: KdrCxt, scope: ReadScope): List<AuthUserRow> {
         // Captured to a local: `scope.client` is a kernel property, so the compiler will not smart-cast it.
         val scopeClient = scope.client
+        val scopeIdentity = scope.identityId
         val cache = userCache
         if (cache != null) {
             cache.checkRefresh(cxt)
             val snapshot = cache.snapshot
-            val rows = if (scopeClient != null) snapshot.allByIndex(PF.client, scopeClient) else snapshot.byId.values
+            // Narrowest index first: one person's users (issue #805) are a handful, where their client -- `public`,
+            // every self-registered person -- may be most of the table.
+            val rows = when {
+                scopeIdentity != null -> snapshot.allByIndex(AU.identityId, scopeIdentity)
+                scopeClient != null -> snapshot.allByIndex(PF.client, scopeClient)
+                else -> snapshot.byId.values
+            }
             return rows.map { AuthUserRow.extract(it.value, identityOf(cxt)) }
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
@@ -634,8 +641,12 @@ class UserService : ServiceInitializer {
             where += " and c:${PF.client} = :${PF.client}"
             data[PF.client] = scopeClient
         }
-        // The name carries the query's shape: with or without the client predicate, so the two do not collide.
-        val stmtName = "qAuthUsersEnabled" + if (scopeClient != null) "ByClient" else ""
+        if (scopeIdentity != null) {
+            where += " and c:${AU.identityId} = :${AU.identityId}"
+            data[AU.identityId] = scopeIdentity
+        }
+        // The name carries the query's shape: with or without each predicate, so no two shapes collide.
+        val stmtName = "qAuthUsersEnabled" + (if (scopeClient != null) "ByClient" else "") + (if (scopeIdentity != null) "ByIdentity" else "")
         val stmt = SqlStmtUtil.prepareSql(sqlCxt, stmtName, table.columns, "select * from t:${UT.authUsers} $where")
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) {

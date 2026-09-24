@@ -61,6 +61,13 @@ object SqlScopeUtil {
             conditions.add("c:${PF.userId} = :${PF.userId}")
             data[PF.userId] = scope.userId
         }
+        // One person's users (issue #805): only the user table carries an identity, so any other table under
+        // this scope throws here rather than answering for everyone.
+        val identityColumn = ReadScope.identityIdColumn
+        if (scope.identityId != null && table.demandsScopeColumn(identityColumn, filteredAfterQuery)) {
+            conditions.add("c:$identityColumn = :$identityColumn")
+            data[identityColumn] = scope.identityId
+        }
         return conditions
     }
 

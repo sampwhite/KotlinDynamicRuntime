@@ -1,10 +1,13 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 
 /**
@@ -19,6 +22,14 @@ enum class AdminScope {
 
     /** Administers only users in their own client -- the default for [ROLE.admin]. */
     ownClient,
+
+    /**
+     * Administers only their **own** users -- the users of their own identity (issue #805). The reach of an
+     * [ROLE.admin] without [ROLE.allClients] in the `public` placeholder client, where every self-registered
+     * user is an administrator of themselves and nobody else: in `public` there is no difference between an
+     * administrator and an ordinary user.
+     */
+    ownIdentity,
 
     /** Administers every client, via the [ROLE.allClients] capability. */
     allClients,
@@ -125,6 +136,10 @@ object AdminRules {
         return when {
             !roles.contains(ROLE.admin) -> AdminScope.none
             roles.contains(ROLE.allClients) -> AdminScope.allClients
+            // The placeholder client has no client administrators (issue #805): an administrator there reaches
+            // their own users only, whatever their roles say. Keyed on the client rather than on how the role
+            // arrived, so no path to `admin` in `public` -- a grant, a fixture, a legacy row -- reaches further.
+            cxt.userProfile.client == CL.public -> AdminScope.ownIdentity
             else -> AdminScope.ownClient
         }
     }
@@ -151,6 +166,32 @@ object AdminRules {
      * `ReadScopeRules.forCaller` (which returns `unrestricted` only here) still decide what is actually served.
      */
     fun canSeeAllClients(cxt: KdrCxt): Boolean = adminScope(cxt) == AdminScope.allClients
+
+    /**
+     * Refuses a caller who administers only their own users ([AdminScope.ownIdentity], issue #805) from an
+     * action that belongs to a **client** -- its configuration: writing, publishing, reverting, or reloading it.
+     * The `clientAdmin` section admits any [ROLE.admin], which is right for the user pages a `public`
+     * administrator uses on their own users, and wrong for the `public` client's own configuration, which every
+     * `public` user shares. A 403 rather than a 404: the client is not a secret, the authority is what is missing.
+     */
+    fun requireClientAdministrator(cxt: KdrCxt) {
+        if (adminScope(cxt) == AdminScope.ownIdentity) {
+            throw KdrException(
+                "Administering the '${cxt.userProfile.client}' client itself takes an administrator of a real " +
+                    "client; in '${CL.public}' you administer only your own users.",
+                code = EXC.notAuthorized,
+            )
+        }
+    }
+
+    /**
+     * The roles a new user is provisioned with once its [client] is known (issue #805): in the `public`
+     * placeholder client, [ROLE.admin] is added, since every `public` user administers their own users (the
+     * reach [AdminScope.ownIdentity] confines). Elsewhere [roles] are returned as they are. Applied after the
+     * client is chosen, so it never decides the client -- a `public` registrant stays in `public`.
+     */
+    fun rolesInClient(client: String, roles: List<String>): List<String> =
+        if (client == CL.public && ROLE.admin !in roles) roles + ROLE.admin else roles
 
     // The read scope moved to `ReadScopeRules.forCaller` (issue #225). It answers the same question for an
     // administrator and now also for everybody else, and a scope resolver named for administrators is one an

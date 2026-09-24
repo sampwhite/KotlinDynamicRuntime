@@ -1,18 +1,18 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
-import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GED
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
-import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.user.TestUser
@@ -39,8 +39,8 @@ class GedraSearchByUserTest : StringSpec({
 
     val aliceEmail = "alice@search.test"
     val bobEmail = "bob@search.test"
-    val alice = TestUser.create(cxt, aliceEmail)
-    val bob = TestUser.create(cxt, bobEmail)
+    val alice = TestUser.create(cxt, aliceEmail, userClient = CL.hub)
+    val bob = TestUser.create(cxt, bobEmail, userClient = CL.hub)
     // A scoped administrator -- ROLE.admin without allClients -- who reaches their whole client, which is where
     // the `user` filter earns its keep.
     val ada = TestUser.create(cxt, "ada@search.test", level = ROLE.admin)

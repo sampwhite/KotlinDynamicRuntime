@@ -65,8 +65,12 @@ class AddressRulesTest : StringSpec({
 
     "a self-registered user lands in the placeholder client" {
         AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user)) shouldBe CL.public
-        // Admin alone is not the trigger -- a client-scoped admin is still a guest's-client default.
-        AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.admin)) shouldBe CL.public
+    }
+
+    // `public` has no client administrators (issue #805): an administrator there reaches only their own users, so
+    // one provisioned as an administrator with no client named is meant for a real client, and lands in the hub.
+    "a user provisioned as an administrator lands in the hub too" {
+        AddressRules.defaultClient(cxtIn(ENV.local), listOf(ROLE.user, ROLE.admin)) shouldBe CL.hub
     }
 
     "a user granted allClients lands in the hub, the deployment's own client (issue #799)" {
