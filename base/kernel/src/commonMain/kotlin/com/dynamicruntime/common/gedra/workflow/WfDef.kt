@@ -125,6 +125,13 @@ object WFD {
     /** On a time window: the instant it closes, exclusive. */
     const val end = "end"
 
+    /**
+     * On a normal workflow's task (issue #856): who may save it -- a cfact expression over the same facts the task's
+     * display chooses on (the request's, the task's own, and the viewer's from its `viewerCfacts` functions).
+     * Enforced by the save endpoint; absent means anyone who can see the form.
+     */
+    const val saveWhen = "saveWhen"
+
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
 }
@@ -154,6 +161,12 @@ object WVF {
      * offers to engage an eligible form, and draws the tasks as work under way once it is. Absent otherwise.
      */
     const val engaged = "engaged"
+
+    /**
+     * On each task of a normal workflow's view (issue #856): whether this caller may save it, by the task's rule for
+     * who may ([WFD.saveWhen]) -- the rule the save endpoint enforces, so the page offers Save only where it works.
+     */
+    const val canSave = "canSave"
 
     /**
      * For a normal workflow viewed against a form it is not engaged with (issue #791): whether the form passes its
@@ -431,6 +444,11 @@ class WfTask(
      * Kept as data -- the resolver chooses per caller, and a boot check holds its conditions and copy to account.
      */
     val display: Map<String, Any?>? = null,
+    /**
+     * Who may save the task (issue #856): a cfact expression over its facts and the viewer's, or null for anyone who
+     * can see the form. Only a normal workflow's task may declare one, and only one that offers a save.
+     */
+    val saveWhen: String? = null,
 ) {
     /** The task-scoped function **usages** this task declares (e.g. `prefillData`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -657,6 +675,28 @@ class WfDef(
                 )
             }
         }
+        for (task in tasks) {
+            val rule = task.saveWhen ?: continue
+            // Survey and creation saves keep their own ownership rules (issue #856); a rule there would be ignored,
+            // so it is refused rather than left looking as though it protects something.
+            if (entry != WfEntry.normal) {
+                throw KdrException.mkConv(
+                    "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' task '${task.id}' says who " +
+                        "may save it; only a normal workflow's tasks do.",
+                )
+            }
+            if (rule.isBlank()) {
+                throw KdrException.mkConv(
+                    "Task '${task.id}' of workflow '$workflowId' has a blank rule for who may save it. Leave it out " +
+                        "for anyone who can see the form.",
+                )
+            }
+            if (task.saves.isEmpty()) {
+                throw KdrException.mkConv(
+                    "Task '${task.id}' of workflow '$workflowId' says who may save it, but offers no save.",
+                )
+            }
+        }
         if (singletons.isNotEmpty() && entry != WfEntry.normal) {
             throw KdrException.mkConv(
                 "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' declares singleton " +
@@ -818,6 +858,7 @@ object WfDefSchema {
                 type = SCT.kObject
                 additionalProperties = true
             }
+            property(WFD.saveWhen, "A normal workflow task's rule for who may save it: a cfact expression over the caller's task and viewer facts. Absent means anyone who can see the form.")
         }
         type(WFD.defType) {
             type = SCT.kObject
@@ -897,6 +938,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
                     put(WFD.approval, linkedMapOf(WFD.cfact to it.cfact, WFD.prompt to it.prompt, WFD.button to it.button))
                 }
                 task.display?.let { put(WFD.display, it) }
+                task.saveWhen?.let { put(WFD.saveWhen, it) }
             }
         },
     )
@@ -963,6 +1005,9 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                     WfApproval(am[WFD.cfact].toOptStr() ?: "", am[WFD.prompt].toOptStr() ?: "", am[WFD.button].toOptStr() ?: "")
                 },
                 display = (t[WFD.display] as? Map<*, *>)?.toJsonMapOrEmpty(),
+                // A blank rule arrives absent -- the schema layer reads a blank optional string that way -- which is
+                // "anyone who can see the form", the same as leaving it out.
+                saveWhen = t[WFD.saveWhen].toOptStr(),
             )
         },
         functionUsages = usagesOf(m[WFD.functions]),
@@ -1083,6 +1128,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     private val functions = mutableListOf<Map<String, Any?>>()
     private var approval: Map<String, Any?>? = null
     private var display: Map<String, Any?>? = null
+    private var saveWhen: String? = null
 
     /**
      * Declares a task-scoped function usage (a `prefillData`, e.g.) -- the `{fn, ...}` initialization data a
@@ -1112,6 +1158,16 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     }
 
     /**
+     * Who may save the task (issue #856): [cfacts], a cfact expression over the caller's task facts and viewer facts
+     * -- `wfReviewer` from a `userHasLabel` function on this task, say. The save endpoint refuses anyone it does not
+     * admit, and the view tells the page whether the caller may, so the page offers Save only where it can succeed.
+     * A normal workflow's task only.
+     */
+    fun saveWhen(cfacts: String) {
+        saveWhen = cfacts
+    }
+
+    /**
      * How the task is shown (issue #788): the branches [WfDisplayBuilder] collects, tried **in order** against the
      * caller's task facts -- the first whose condition holds is what the view delivers.
      */
@@ -1135,6 +1191,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
         if (functions.isNotEmpty()) out[WFD.functions] = functions.toList()
         approval?.let { out[WFD.approval] = it }
         display?.let { out[WFD.display] = it }
+        saveWhen?.let { out[WFD.saveWhen] = it }
         return out
     }
 }

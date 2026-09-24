@@ -74,9 +74,9 @@ fun resolveWorkflowView(
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
     // target facts are unioned onto them below (each cfact source can do real work -- e.g., a section check).
     val requestFacts = cfacts.assemble(cxt)
-    // What is about the *viewer* (issue #786), evaluated per task but looked up once per view -- the same reason
-    // the request facts above are hoisted.
-    val viewerCfacts = ViewerCfacts(cxt, client)
+    // Each task's status and facts for this caller and this form (issues #700, #785, #786, #856) -- the one
+    // computation the save endpoint judges a save by too, so the page's Save and the endpoint's refusal agree.
+    val judge = WorkflowTaskJudge(cxt, client, declared, entriesByTask, approvals, requestFacts)
 
     fun label(text: String): String = fragments.backendPass(cxt, text)
 
@@ -103,13 +103,10 @@ fun resolveWorkflowView(
 
     // Each task's status (issues #700, #785), from the one computation the stored CTA also uses
     // (`WorkflowTaskStatus`), so the rail, `focusTask`, the `wfIsCta` fact and the forms list cannot disagree.
-    val statuses = declared.def.tasks.map {
-        it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals)
-    }
-    val statusById = statuses.associate { (task, status) -> task.id to status }
+    val statusById = judge.statusById
     // The CTA (issue #785): the earliest task not both complete and valid. The rail opens on it when the URL names
     // no task (`focusTask`, issue #700), and its task carries the `wfIsCta` fact a selector can choose on.
-    val ctaTaskId = WorkflowTaskStatus.cta(statuses)?.first?.id
+    val ctaTaskId = judge.ctaTaskId
 
     // The task's status for the task rail: complete/valid in the survey's words, plus each problem as the
     // kernel's own failure wire map with its trait, so the page reads it by the same rule it reads any reported
@@ -148,8 +145,7 @@ fun resolveWorkflowView(
         val orderedTraits = task.displayOrder.mapNotNull { byId[it] }.map { traitView(it) }
         // The task's own facts, plus what its viewerCfacts functions conclude about the person looking at it
         // (issue #786) -- a reviewer, say. Temporary by nature: they are about this viewer, so never stored.
-        val taskFacts = WfTaskFacts.of(task, entries, isCta = task.id == ctaTaskId, approved = task.id in approvals) +
-            viewerCfacts.forTask(task)
+        val taskFacts = judge.taskFacts(task)
         val raw = linkedMapOf<String, Any?>(
             WFD.id to task.id,
             WFD.label to label(task.label),
@@ -158,6 +154,9 @@ fun resolveWorkflowView(
             WVF.facts to taskFacts.toList(),
             WVF.status to taskStatus(statusById.getValue(task.id)),
         )
+        // Whether this caller may save the task (issue #856), by the rule the save endpoint enforces -- so the page
+        // offers Save only where it can succeed. A normal workflow's tasks only; the others have no such rule.
+        if (declared.def.entry == WfEntry.normal) raw[WVF.canSave] = judge.maySave(task, taskFacts)
         task.approval?.let { raw[WVF.approval] = approvalView(it, approvals[task.id]) }
         // How the task is shown (issue #788): usually a selector, which the filter below resolves against this
         // caller's task facts -- so what arrives is the one branch that applies, never the others or their tests.
@@ -250,4 +249,41 @@ class WorkflowFormFacts(val engaged: Boolean, val eligible: Boolean, val reasons
             return WorkflowFormFacts(engaged, eligible, reasons)
         }
     }
+}
+
+/**
+ * What each task of [declared] is judged on for one caller and one form (issues #700, #785, #786, #856): the tasks'
+ * statuses and the CTA among them, each task's facts -- its own, and what its `viewerCfacts` functions conclude about
+ * the caller -- and whether the caller may save it. Shared by the view, which shows the answer, and the save endpoint,
+ * which enforces it, so the two cannot disagree. [entriesByTask] is the form's entries each task collects;
+ * [approvals] its approvals by task id.
+ */
+class WorkflowTaskJudge(
+    cxt: KdrCxt,
+    client: String,
+    val declared: WfDeclared,
+    private val entriesByTask: Map<String, List<Map<String, Any?>>>,
+    private val approvals: Map<String, Map<String, Any?>>,
+    /** The request's cfacts, assembled once by whoever already holds them. */
+    private val requestFacts: Set<String>,
+) {
+    private val cfacts = SchemaService.get(cxt).cfactsFor(client)
+    private val viewer = ViewerCfacts(cxt, client)
+
+    val statuses: List<Pair<WfTask, WfTaskStatus>> = declared.def.tasks.map {
+        it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals)
+    }
+    val statusById: Map<String, WfTaskStatus> = statuses.associate { (task, status) -> task.id to status }
+
+    /** The CTA: the earliest task not both complete and valid, or null when every task is done. */
+    val ctaTaskId: String? = WorkflowTaskStatus.cta(statuses)?.first?.id
+
+    /** [task]'s own facts and the caller's viewer facts for it. */
+    fun taskFacts(task: WfTask): Set<String> =
+        WfTaskFacts.of(task, entriesByTask[task.id] ?: emptyList(), isCta = task.id == ctaTaskId, approved = task.id in approvals) +
+            viewer.forTask(task)
+
+    /** Whether the caller may save [task] (issue #856): its rule, over the request's facts and [facts]; no rule admits anyone. */
+    fun maySave(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean =
+        task.saveWhen?.let { cfacts.parse(it).matches(requestFacts + facts) } ?: true
 }

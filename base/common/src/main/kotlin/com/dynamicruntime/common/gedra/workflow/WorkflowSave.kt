@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -40,6 +41,8 @@ fun saveWorkflow(
     saveId: String,
     entries: List<Map<String, Any?>>,
     gedraId: String? = null,
+    /** An edit save's check on the form, run under its lock before the write (issue #856); see [GedraPatchTarget.underLock]. */
+    underLock: ((GedraDataRow, List<Map<String, Any?>>) -> Unit)? = null,
 ): Map<String, Any?> {
     val task = declared.def.task(taskId)
         ?: throw KdrException.mkInput("Workflow '${declared.ref}' has no task '$taskId'.")
@@ -64,7 +67,7 @@ fun saveWorkflow(
                 .createGedra(cxt, GedraDataType.formDoc, entries, creationWorkflowId = declared.ref)
             linkedMapOf<String, Any?>(WSF.saved to true, WSF.item to row.toJsonMap())
         }
-        WfSaveKind.edit -> editForm(cxt, declared, gedraId, entries)
+        WfSaveKind.edit -> editForm(cxt, declared, gedraId, entries, underLock)
     }
 }
 
@@ -83,6 +86,7 @@ private fun editForm(
     declared: WfDeclared,
     gedraId: String?,
     entries: List<Map<String, Any?>>,
+    underLock: ((GedraDataRow, List<Map<String, Any?>>) -> Unit)?,
 ): Map<String, Any?> {
     val fullId = gedraId
         ?: throw KdrException.mkInput("A '${declared.ref}' edit save needs a ${GDF.gedraId}: the form it updates.")
@@ -94,7 +98,7 @@ private fun editForm(
             ?: throw KdrException.mkInput("A survey edit entry has no ${GE.traitId}.")
         GedraEdit(GedraEditAction.addOrReplace, traitId, data = entry[GE.data].toJsonMapOrEmpty())
     }
-    svc.patchGedras(cxt, mapOf(GedraDataType.formDoc to listOf(GedraPatchTarget(id, edits))), scope)
+    svc.patchGedras(cxt, mapOf(GedraDataType.formDoc to listOf(GedraPatchTarget(id, edits, underLock))), scope)
     val updated = svc.queryGedra(cxt, fullId, GedraDataType.formDoc, scope)
         ?: throw KdrException("The form '$fullId' could not be read back after its survey edit.", code = EXC.notFound)
     return linkedMapOf<String, Any?>(WSF.saved to true, WSF.item to updated.toJsonMap())

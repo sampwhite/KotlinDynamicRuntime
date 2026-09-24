@@ -95,6 +95,23 @@ class WorkflowColumnViewTest {
         assertTrue(workflowNote(view(WfPhase.lifetimeOnly, true)).orEmpty().contains("closed"))
         assertTrue(view(WfPhase.engageable, false, eligible = true).canEngage)
         assertTrue(!view(WfPhase.lifetimeOnly, true).canWork)
+        // Engaged and open, but every step with something to save is someone else's (issue #856): no Edit, and no
+        // workflow-wide note -- each step says so itself.
+        val othersStep = WfTaskView(
+            "record", "Record", traits = emptyList(), saves = listOf(WfSaveView("s", "Save", "edit")), canSave = false,
+        )
+        val othersOnly = WorkflowView(
+            workflowId = "audit", entry = WfEntry.normal.name, showTaskList = true, tasks = listOf(othersStep),
+            cfacts = emptyMap(), phase = WfPhase.engageable.name, engaged = true,
+        )
+        assertTrue(!othersOnly.canWork)
+        assertNull(workflowNote(othersOnly))
+        assertTrue(WorkflowView(
+            workflowId = "audit", entry = WfEntry.normal.name, showTaskList = true, tasks = listOf(othersStep.let {
+                WfTaskView(it.id, it.label, it.traits, it.saves, canSave = true)
+            }),
+            cfacts = emptyMap(), phase = WfPhase.engageable.name, engaged = true,
+        ).canWork)
         // Not eligible: no Engage that could only be refused, and the note leads into the reasons.
         val ineligible = view(WfPhase.engageable, false, eligible = false)
         assertTrue(!ineligible.canEngage)

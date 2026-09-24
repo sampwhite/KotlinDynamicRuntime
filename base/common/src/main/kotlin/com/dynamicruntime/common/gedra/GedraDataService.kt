@@ -1033,7 +1033,7 @@ class GedraDataService : ServiceInitializer {
                 GedraEdit(edit.action, edit.traitId, edit.entryId, prepForSaveData(cxt, kind, edit.traitId, data, cxt.client))
             }
         }
-        return GedraPatchTarget(target.gedraId, edits)
+        return GedraPatchTarget(target.gedraId, edits, target.underLock)
     }
 
     /**
@@ -1166,6 +1166,13 @@ class GedraDataService : ServiceInitializer {
         ) {
             // Read under the lock: the admit-phase read was for permission, and a merge needs current data.
             val row = readForPatch(txCxt, sqlCxt, table, target.gedraId)
+            // The caller's own check on the form as it stands now (issue #856), on the same lock an engagement change
+            // takes -- so nothing can move the form's state between the check and the write.
+            target.underLock?.let { check ->
+                val states = readStateRowUnderLock(txCxt, sqlCxt, gedraStatesTable(txCxt), target.gedraId)
+                    ?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+                check(row, states)
+            }
             // Keyed by trait -- plus its primary-key value when the trait declares one (issue #487) -- because
             // that is how an edit names an entry, and the address is unique. Order is preserved so an unrelated
             // entry does not move when its neighbor changes.

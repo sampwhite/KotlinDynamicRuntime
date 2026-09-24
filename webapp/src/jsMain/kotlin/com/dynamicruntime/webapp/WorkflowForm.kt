@@ -321,6 +321,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             if (showLabel && wf.showTaskList && task.label.isNotBlank()) {
                 Markdown { source = task.label; inlineUi = true }
             }
+            // A step with fields this caller may not change (issue #856): say so, rather than leave a read-only
+            // panel among editable ones looking broken.
+            if (!task.canSave && task.traits.isNotEmpty()) {
+                p {
+                    className = ClassName("subtitle")
+                    +"Someone else completes this step; you can see it here."
+                }
+            }
             // A step that collects nothing -- an approval, say -- has no fields to draw; its own rendering comes
             // with #832, so for now the panel says so rather than showing an empty card.
             if (task.traits.isEmpty()) {
@@ -343,7 +351,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     SchemaForm {
                         type = trait.type
                         this.values = valuesOf(trait.traitId)
-                        editable = editing
+                        // A step this caller may not save (issue #856) stays read-only while the rest is edited.
+                        editable = editing && task.canSave
                         friendly = true
                         // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
                         // an expense report's total, computed on read -- rather than hiding them; the flag is
@@ -382,7 +391,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // validation failures keeps its Save, so clicking it shows the errors rather than a dead button.
             // A task that offers no save -- a normal workflow's approval step (issues #787, #791) -- draws none:
             // there is nothing here to save, and asking for its save would find none.
-            if (editing && task.saves.isNotEmpty()) {
+            if (editing && task.saves.isNotEmpty() && task.canSave) {
                 // When defaults are the only thing left to do, say so above the Save (issue #710): the count is
                 // the task's still-pending defaults, and it disappears as they are accepted, edited, or saved.
                 val pendingDefaults =
@@ -585,6 +594,8 @@ fun workflowNote(wf: WorkflowView): String? = when {
     wf.canEngage -> "This form is not in this workflow yet. Engage it to start."
     wf.engaged == false && wf.eligible == false -> "This form cannot be put into this workflow yet:"
     wf.phase == WfPhase.lifetimeOnly.name -> "This workflow has closed. What it recorded stands, and it can no longer be changed."
+    // Engaged and open, but no step here is this caller's to save (issue #856): each step says so for itself.
+    wf.engaged == true -> null
     else -> "This form is not in this workflow, and it is not taking new forms."
 }
 

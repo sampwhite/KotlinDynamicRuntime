@@ -46,7 +46,17 @@ class GedraEdit(
 }
 
 /** One gedra a patch touches, and everything it asks of that gedra. */
-class GedraPatchTarget(val gedraId: GedraId, val edits: List<GedraEdit>) {
+class GedraPatchTarget(
+    val gedraId: GedraId,
+    val edits: List<GedraEdit>,
+    /**
+     * A check run **under the gedra's lock**, before any edit is applied (issue #856): handed the row and its state
+     * entries as they stand inside the transaction, it throws to refuse the patch. What lets a caller's condition on
+     * the form's state -- a workflow the form must be engaged with -- hold at the moment of the write, rather than
+     * at an earlier read another request could have overtaken. Null for none.
+     */
+    val underLock: ((row: GedraDataRow, states: List<Map<String, Any?>>) -> Unit)? = null,
+) {
     companion object {
         /** Reads a target off the validated request map, resolving its id through [gedraService]. */
         fun extract(gedraService: GedraService, raw: Map<String, Any?>): GedraPatchTarget {

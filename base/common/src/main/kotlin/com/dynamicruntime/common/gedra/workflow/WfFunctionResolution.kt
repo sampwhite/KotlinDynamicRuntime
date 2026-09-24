@@ -53,6 +53,7 @@ fun resolveWorkflowFunctions(
                     collectedTraits = task.traits.map { it.traitId }.toSet(),
                 )
                 bundleScope.checkApprovalAuthority(def, task)
+                bundleScope.checkSaveRuleViewerFacts(def, task)
             }
         }
     }
@@ -83,18 +84,50 @@ private class ResolutionScope(
  */
 private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask) {
     task.approval ?: return
-    val resolved = task.resolvedFunctions.map { it.fn }.toSet()
-    val grantsReview = task.functionUsages.any { usage ->
-        val creation = byFn[usage.fn]
-        usage.fn in resolved && creation?.event == WfEventType.viewerCfacts && WFC.reviewer in creation.emittedCfacts(usage)
-    }
-    if (!grantsReview) {
+    if (!grantsReviewer(task)) {
         reportConfigProblem(
             cxt,
             bundle.issue(
                 "Workflow '${def.workflowId}' in client '$client' has an approval task '${task.id}' with no " +
                     "viewerCfacts function emitting '${WFC.reviewer}' (a userHasLabel, say), so nobody could approve it.",
                 "Keeping the task; it cannot be approved until one is added.",
+                GCEL.workflow, def.workflowId,
+            ),
+            issues,
+        )
+    }
+}
+
+/**
+ * Whether one of [task]'s own **resolved** `viewerCfacts` functions can emit [WFC.reviewer] (issues #787, #856) -- the
+ * only source of that fact. Shared by the two checks that need it, so what grants review is decided in one place.
+ */
+private fun ResolutionScope.grantsReviewer(task: WfTask): Boolean {
+    val resolved = task.resolvedFunctions.map { it.fn }.toSet()
+    return task.functionUsages.any { usage ->
+        val creation = byFn[usage.fn]
+        usage.fn in resolved && creation?.event == WfEventType.viewerCfacts && WFC.reviewer in creation.emittedCfacts(usage)
+    }
+}
+
+/**
+ * A task's rule for who may save it (issue #856) that names [WFC.reviewer] -- the viewer fact a task's `viewerCfacts`
+ * functions grant -- needs one of the task's own resolved functions to emit it: nothing else puts it in the facts the
+ * rule is judged on. Without one the rule is judged as though nobody is a reviewer, whichever way it reads, which is a
+ * configuration mistake rather than an intent -- so it is reported, the way [checkApprovalAuthority] reports an
+ * approval nobody could give.
+ */
+private fun ResolutionScope.checkSaveRuleViewerFacts(def: WfDef, task: WfTask) {
+    val rule = task.saveWhen ?: return
+    val named = Regex("[A-Za-z_][A-Za-z0-9_]*").findAll(rule).map { it.value }.toSet()
+    if (WFC.reviewer !in named) return
+    if (!grantsReviewer(task)) {
+        reportConfigProblem(
+            cxt,
+            bundle.issue(
+                "Workflow '${def.workflowId}' in client '$client' has task '${task.id}' whose rule for who may save it " +
+                    "names '${WFC.reviewer}', but no viewerCfacts function on the task emits it (a userHasLabel, say).",
+                "Keeping the task; its rule reads as though nobody is a reviewer until one is added.",
                 GCEL.workflow, def.workflowId,
             ),
             issues,

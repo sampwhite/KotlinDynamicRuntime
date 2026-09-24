@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
@@ -69,6 +70,8 @@ class WfFunctionResolutionTest : StringSpec({
         reported("userHasLabel", "does not suggest") shouldBe true
         // An approval task nobody could approve (issue #787): no function on it can emit the reviewer cfact.
         reported("approveNothing", "nobody could approve it") shouldBe true
+        // A rule for who may save that names the reviewer fact, on a task nothing makes a reviewer (issue #856).
+        reported("saveNobody", "names '${WFC.reviewer}'") shouldBe true
     }
 
     "a global workflow's literal label is not held to any client's suggestions" {
@@ -176,6 +179,14 @@ private class WfFnFixture : ComponentDefinition {
             // An approval task with no viewerCfacts function emitting the reviewer cfact (issue #787).
             workflow("approveNothing", WfEntry.normal) {
                 task("approve", "Approve") { approval(WSC.finished, "Approve it.", "Approve") }
+            }
+            // A task only a reviewer may save, with nothing on it to make anyone one (issue #856).
+            workflow("saveNobody", WfEntry.normal) {
+                task("record", "Record") {
+                    trait(GT.name)
+                    save("saveRecord", "Save", WfSaveKind.edit)
+                    saveWhen(WFC.reviewer)
+                }
             }
         }
 

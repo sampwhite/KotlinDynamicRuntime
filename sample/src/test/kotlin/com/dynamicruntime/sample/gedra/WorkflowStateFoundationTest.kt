@@ -291,6 +291,8 @@ class WorkflowStateFoundationTest : StringSpec({
     "an engaged workflow stores its CTA: the earliest task not both complete and valid" {
         val user = TestUser.create(cxt, "wfs-cta@acme.test", userClient = SC.acme)
         val contact = mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "Site Lead"))
+        // The follow-up's own record (issue #856): what completes its second task.
+        val followUpRecord = mapOf(GE.traitId to SC.siteFollowUpTrait, GE.data to mapOf(SC.followUpBy to "Site Lead"))
         fun form(vararg entries: Map<String, Any?>): String =
             user.postItem(create, mapOf(GDF.entries to entries.toList()))[GDF.gedraId].toOptStr()!!
         fun engagedFollowUp(gid: String) = entriesOf(
@@ -298,9 +300,9 @@ class WorkflowStateFoundationTest : StringSpec({
             WFS.workflowState,
         ).single { it[WFD.workflowId].toOptStr() == SW.siteFollowUp }
 
-        // Only the audit present: that completes the *second* task, yet the CTA is the first -- the earliest task
-        // not done, not whichever one has something missing -- with the status that says why.
-        val firstOpen = engagedFollowUp(form(auditEntries().single()))
+        // Only the follow-up record present: that completes the *second* task, yet the CTA is the first -- the
+        // earliest task not done, not whichever one has something missing -- with the status that says why.
+        val firstOpen = engagedFollowUp(form(followUpRecord))
         firstOpen[WFS.ctaTask] shouldBe SW.confirmContact
         firstOpen[WFS.tasksDone] shouldBe false
         val status = firstOpen[WFS.ctaStatus].toJsonMapOrEmpty()
@@ -312,7 +314,7 @@ class WorkflowStateFoundationTest : StringSpec({
         engagedFollowUp(form(contact))[WFS.ctaTask] shouldBe SW.recordFollowUp
 
         // Both done: no CTA, and that is said outright rather than left to an absent key.
-        val done = engagedFollowUp(form(contact, auditEntries().single()))
+        val done = engagedFollowUp(form(contact, followUpRecord))
         done[WFS.tasksDone] shouldBe true
         done[WFS.ctaTask].shouldBeNull()
     }
