@@ -157,18 +157,9 @@ class GedraConfigLoadService : ServiceInitializer {
                 // (issue #839) -- forgiven everywhere but unit tests, since it is data nobody can fix from a
                 // node that will not start.
                 val rowId = row[GC.gedraId].toOptStr() ?: "?"
-                reportConfigProblem(
-                    cxt,
-                    GedraConfigIssue(
-                        "Stored config '$rowId' could not be loaded: ${e.message}",
-                        "Dropping the stored config '$rowId'.",
-                        client = try { GedraId.parse(rowId).client } catch (_: KdrException) { null },
-                        storedConfigId = rowId,
-                        elementKind = GCEL.config,
-                        elementId = rowId,
-                    ),
-                    issues,
-                )
+                val parsedId = try { GedraId.parse(rowId) } catch (_: KdrException) { null }
+                val configId = parsedId?.revisionClass()?.fullId ?: rowId
+                reportConfigProblem(cxt, unloadableIssue(configId, parsedId?.client, e), issues)
                 continue
             }
             val extendsProblem = extendsProblem(config, sourceClients)
@@ -281,6 +272,21 @@ class GedraConfigLoadService : ServiceInitializer {
         }
         return null
     }
+
+    /**
+     * The issue for a stored config that cannot be turned back into a config (issue #841): judged as stored
+     * config, so it is forgiven everywhere but unit tests -- it is data nobody can fix from a node that will not
+     * start -- and costs only that config. Keyed by the config's revision class, the id its other issues carry.
+     * Shared by the boot load and a reload.
+     */
+    fun unloadableIssue(configId: String, client: String?, e: KdrException): GedraConfigIssue = GedraConfigIssue(
+        "Stored config '$configId' could not be loaded: ${e.message}",
+        "Dropping the stored config '$configId'.",
+        client = client,
+        storedConfigId = configId,
+        elementKind = GCEL.config,
+        elementId = configId,
+    )
 
     /**
      * Folds a taken config's fragment and UiBlock overlays into the registries the content services read

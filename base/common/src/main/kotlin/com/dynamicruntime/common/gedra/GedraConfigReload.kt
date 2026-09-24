@@ -83,13 +83,28 @@ object GedraConfigReload {
         // marker with a monotonic-max announce would never carry a toggle to the other nodes.
         val contentMarker = currentRows.mapNotNull { it.updatedAt }.maxOrNull()
         val marker = listOfNotNull(contentMarker, configService.tierMarker(bound, client)).maxOrNull()
-        val fresh = currentRows.map { loader.toConfig(cxt, it) }
         // The extends rule a data config is held to, against the source-code clients alone.
         val loadedIds = loader.allLoadedIds()
         val sourceClients = collector.gedraConfigs.configs
             .filter { it.gedraId.fullId !in loadedIds }.mapNotNull { it.client }.associateBy { it.clientId }
-        fresh.firstNotNullOfOrNull { loader.extendsProblem(it, sourceClients) }?.let {
-            throw KdrException.mkInput(it.message)
+        // A row that will not reassemble, or a config breaking the extends rule, costs only that config (issue
+        // #841) -- judged as stored config, as the boot load judges it -- rather than refusing the whole reload.
+        // Reported before phase one, so a strict refusal changes nothing.
+        val reloadIssues = mutableListOf<GedraConfigIssue>()
+        val fresh = currentRows.mapNotNull { row ->
+            val config = try {
+                loader.toConfig(cxt, row)
+            } catch (e: KdrException) {
+                reportConfigProblem(cxt, loader.unloadableIssue(row.configId.fullId, row.client, e), reloadIssues)
+                return@mapNotNull null
+            }
+            val extendsProblem = loader.extendsProblem(config, sourceClients)
+            if (extendsProblem != null) {
+                reportConfigProblem(cxt, extendsProblem, reloadIssues)
+                null
+            } else {
+                config
+            }
         }
 
         // --- phase one: swap the collectors, reversibly ---

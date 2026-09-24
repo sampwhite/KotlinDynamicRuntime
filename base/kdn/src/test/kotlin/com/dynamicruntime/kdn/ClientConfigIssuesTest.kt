@@ -50,9 +50,9 @@ class ClientConfigIssuesTest : StringSpec({
 
     fun writer(client: String): KdrCxt = cxt.mkSubContext("issuesWrite", client).also { it.userId = 8400L }
 
-    fun clientDef(client: String, includedTraits: List<String> = emptyList()) = ClientDef(
+    fun clientDef(client: String, extraEnv: String? = null) = ClientDef(
         clientId = client, name = "Client $client", usageType = ClientUsageType.dev, audience = ClientAudience.internal,
-        enabledEnvironments = setOf(ENV.unit, ENV.local), includedTraits = includedTraits,
+        enabledEnvironments = setOfNotNull(ENV.unit, ENV.local, extraEnv),
     )
 
     /**
@@ -61,9 +61,9 @@ class ClientConfigIssuesTest : StringSpec({
      * parameter that collides with the listing's own: the write accepts it, and the usage-rule check forgives it by
      * dropping the parameter while keeping the client -- a forgiven problem on a client that stays present.
      */
-    fun config(client: String, reservedTrait: String? = null, includedTraits: List<String> = emptyList()): GedraConfig =
+    fun config(client: String, reservedTrait: String? = null, extraEnv: String? = null): GedraConfig =
         gedraConfig(cxt, "${client}cfg", "${client}config", client) {
-            defineClient(clientDef(client, includedTraits))
+            defineClient(clientDef(client, extraEnv))
             trait("${client}Entry", "${client}Trait", setOf(GedraDataType.formDoc), "A trait of $client.") {
                 property("text", "A value.")
             }
@@ -124,15 +124,16 @@ class ClientConfigIssuesTest : StringSpec({
         admin.getItem(ADEP.clientDefinition, mapOf(CLD.client to client))[CLD.issues].toJsonListOfMaps().shouldBeEmpty()
     }
 
-    // The B4 warn case, now reported: the re-check dropped the client, and both the reload result and the
-    // client's definition read say so, rather than a clean reload of a client that is no longer there.
+    // A client the re-check drops whole -- here for naming an environment that does not exist -- is reported by
+    // both the reload result and the client's definition read, rather than a clean reload of a client that is no
+    // longer there (the B4 warn case).
     "a client a check dropped still answers its definition read, with the issue that says why" {
         val client = "iss840dropped"
-        val result = storeAndReload(config(client, includedTraits = listOf("noSuchTrait840")))
+        val result = storeAndReload(config(client, extraEnv = "noSuchEnv840"))
 
         ClientService.get(cxt).known(client) shouldBe null
         val issue = result.issues.single { it.elementKind == GCEL.client }
-        issue.message shouldContain "noSuchTrait840"
+        issue.message shouldContain "noSuchEnv840"
         issue.elementId shouldBe client
 
         val def = admin.getItem(ADEP.clientDefinition, mapOf(CLD.client to client))
@@ -140,7 +141,7 @@ class ClientConfigIssuesTest : StringSpec({
         def[CLD.client].toJsonMapOrEmpty()[CLD.clientId] shouldBe client
         def[CLD.traits].toJsonListOfMaps().shouldBeEmpty()
         val defIssue = def[CLD.issues].toJsonListOfMaps().single()
-        defIssue[GCI.message].toOptStr().shouldNotBeNull() shouldContain "noSuchTrait840"
+        defIssue[GCI.message].toOptStr().shouldNotBeNull() shouldContain "noSuchEnv840"
     }
 
     "a client nobody declared is still a 404" {

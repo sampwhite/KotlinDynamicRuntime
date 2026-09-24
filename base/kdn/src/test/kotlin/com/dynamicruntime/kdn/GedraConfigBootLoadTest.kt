@@ -24,6 +24,7 @@ import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -140,7 +141,8 @@ class GedraConfigBootLoadTest : StringSpec({
 
     // A problem belongs to whoever holds the reference (issue #839). Here a stored client includes a trait no
     // component declares -- what a code change removing that trait would leave behind -- so it is the stored
-    // client's problem, forgiven under warn: the client is dropped, and its issue names the stored config.
+    // client's problem, forgiven under warn. Since issue #841 only the entry is dropped: the client stands, and its
+    // issue names the stored config.
     "a stored client naming a trait that does not exist is the stored config's problem" {
         val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_holder", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "holderclient"
@@ -165,7 +167,7 @@ class GedraConfigBootLoadTest : StringSpec({
         val cxt3 = Startup.mkTestBootCxt(
             "cfgLoad3e", "cfgBootLoad3e", db + mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
         )
-        ClientService.get(cxt3).known(client) shouldBe null
+        ClientService.get(cxt3).present(client).shouldNotBeNull().includedTraits.shouldBeEmpty()
         val issue = ClientService.get(cxt3).issues.single { it.client == client }
         issue.message shouldContain "noSuchTrait839"
         issue.storedConfigId.shouldNotBeNull() shouldContain "holdercfg"

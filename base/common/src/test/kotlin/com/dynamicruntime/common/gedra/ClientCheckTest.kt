@@ -257,6 +257,21 @@ class ClientCheckTest : StringSpec({
         message shouldContain "is not a trait it can see"
     }
 
+    // Forgiven (production, for a source client), only the entry goes (issue #841): the client stands, keeping
+    // the entries that do name something.
+    "forgiven, an unknown included entry is dropped and the client stands" {
+        val prodCollector = GedraConfigCollector().apply {
+            add(prodCxt, traitConfig("name"))
+            add(prodCxt, clientConfig("acme", included = listOf("name", "nmae", "#everything")))
+        }
+        val result = checkClientDefs(prodCxt, prodCollector)
+        result.clients.getValue("acme").includedTraits shouldContainExactly listOf("name")
+        result.issues.map { it.message }.let { messages ->
+            messages.any { "'nmae'" in it } shouldBe true
+            messages.any { "'#everything'" in it } shouldBe true
+        }
+    }
+
     "a client including a trait it can see is taken" {
         val result = checkClientDefs(
             devCxt,

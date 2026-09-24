@@ -4,6 +4,12 @@ import com.dynamicruntime.common.cfact.CFactPredicate
 import com.dynamicruntime.common.cfact.parseCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.gedra.GedraConfigIssue
+import com.dynamicruntime.common.gedra.issue
+import com.dynamicruntime.common.gedra.reportConfigProblem
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toOptStr
@@ -37,8 +43,10 @@ class UiBlockService : ServiceInitializer {
     private val predicateCache = ConcurrentHashMap<String, CFactPredicate>()
 
     /**
-     * Refuses the boot when a UiBlock is malformed (issue #457) -- here rather than at first use, because a
-     * block is read while a page is being built, and a page is the worst place to discover a typo.
+     * Checks every UiBlock at boot (issue #457) -- here rather than at first use, because a block is read while a
+     * page is being built, and a page is the worst place to discover a typo. A fault costs only its layer (issue
+     * #841): an overlay at fault is dropped, under the check mode of the config holding it, and a component's own
+     * block refuses the boot outside production.
      *
      * Two things are checked, and they are the two that otherwise fail silently:
      *
@@ -53,12 +61,46 @@ class UiBlockService : ServiceInitializer {
         if (sources.isEmpty()) {
             return
         }
-        val problems = uiBlockProblems(sources) { client -> SchemaService.get(cxt).cfactsFor(client).names }
-        if (problems.isNotEmpty()) {
-            throw KdrException(
-                "Refusing to start: ${problems.size} problem(s) with UiBlocks.\n" + problems.joinToString("\n"),
-            )
+        val kept = dropFaultyOverlays(cxt, sources, sources)
+        if (kept.size != sources.size) cxt.instanceConfig.put(UIB.registryKey, kept)
+    }
+
+    /**
+     * Reports each fault in [sources] under the check mode of the config holding it (issue #841), and returns
+     * [sources] without the **overlays** at fault -- the smallest drop: the block then serves as it did before the
+     * overlay, where the overlay's own content was the problem. Only faults of [judged] layers are acted on (a
+     * reload judges the client's new overlays, not the rest again). A fault in a component's **base** block is a
+     * source problem: it refuses the boot outside production, and in production is reported and the block kept,
+     * since there is nothing narrower to drop.
+     */
+    private fun dropFaultyOverlays(
+        cxt: KdrCxt,
+        sources: List<UiBlockSource>,
+        judged: List<UiBlockSource>,
+    ): List<UiBlockSource> {
+        val faults = uiBlockFaults(sources) { client -> SchemaService.get(cxt).cfactsFor(client).names }
+        val configs = SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
+        val dropped = mutableListOf<UiBlockSource>()
+        val issues = mutableListOf<GedraConfigIssue>()
+        for (fault in faults) {
+            val layer = fault.layer
+            if (judged.none { it === layer } || dropped.any { it === layer }) continue
+            val overlay = layer.isOverlay
+            val degradedTo = if (overlay) {
+                "Dropping ${layer.origin}'s overlay of UiBlock '${layer.blockId}'; the block serves without it."
+            } else {
+                "Keeping UiBlock '${layer.blockId}' as it is."
+            }
+            val holder = configs.firstOrNull { cfg -> cfg.uiBlocks.any { it === layer } }
+            val issue = holder?.issue(fault.message, degradedTo, GCEL.uiBlock, layer.blockId)
+                ?: GedraConfigIssue(
+                    fault.message, degradedTo, client = layer.client ?: GID.globalClient,
+                    elementKind = GCEL.uiBlock, elementId = layer.blockId,
+                )
+            reportConfigProblem(cxt, issue, issues)
+            if (overlay) dropped.add(layer)
         }
+        return sources.filter { s -> dropped.none { it === s } }
     }
 
     /**
@@ -93,7 +135,9 @@ class UiBlockService : ServiceInitializer {
      */
     fun reloadClient(cxt: KdrCxt, client: String, removed: List<UiBlockSource>, added: List<UiBlockSource>) {
         val kept = registeredUiBlocks(cxt).filter { held -> removed.none { it === held } }
-        cxt.instanceConfig.put(UIB.registryKey, kept + added)
+        // The client's new overlays are judged as the boot judges them (issue #841) -- before, a reload took them
+        // unchecked -- and one at fault is dropped rather than served.
+        cxt.instanceConfig.put(UIB.registryKey, dropFaultyOverlays(cxt, kept + added, added))
         mergedCache.keys.removeIf { it.endsWith("|$client") }
         predicateCache.keys.removeIf { it.startsWith("$client|") }
     }
@@ -122,14 +166,31 @@ class UiBlockService : ServiceInitializer {
  *
  * Every problem is collected before any is reported, so somebody fixing a block sees all of them in one boot.
  */
-fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<String>): List<String> {
-    val problems = mutableListOf<String>()
+fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<String>): List<String> =
+    uiBlockFaults(sources, allowedFor).map { it.message }
+
+/**
+ * One problem [uiBlockFaults] found, and the **layer** it is attributed to (issue #841) -- the overlay that
+ * introduced it, or the base block when it is there without any overlay -- so the caller can drop that layer alone.
+ */
+class UiBlockFault(val layer: UiBlockSource, val message: String)
+
+/**
+ * [uiBlockProblems] with each problem attributed to the layer that holds it (issue #841). A problem found in a
+ * client's merged block that the shared merge does not have came from the client's overlay; one the shared merge
+ * has too is the base block's, and is reported once rather than again for every client.
+ */
+fun uiBlockFaults(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<String>): List<UiBlockFault> {
+    val problems = mutableListOf<UiBlockFault>()
     val declared = sources.filter { !it.isOverlay }.map { it.blockId }.toSet()
     for (overlay in sources.filter { it.isOverlay }) {
         if (overlay.blockId !in declared) {
             problems.add(
-                "The overlay of UiBlock '${overlay.blockId}' from ${overlay.origin} names a block nothing " +
-                    "registers. It would merge onto nothing and never be served.",
+                UiBlockFault(
+                    overlay,
+                    "The overlay of UiBlock '${overlay.blockId}' from ${overlay.origin} names a block nothing " +
+                        "registers. It would merge onto nothing and never be served.",
+                ),
             )
         }
     }
@@ -140,12 +201,18 @@ fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<S
             val declared = UiActions.forName(call.first)
             when {
                 declared == null -> problems.add(
-                    "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}', which no frontend " +
-                        "function declares. A name nothing implements is a click that does nothing.",
+                    UiBlockFault(
+                        source,
+                        "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}', which no frontend " +
+                            "function declares. A name nothing implements is a click that does nothing.",
+                    ),
                 )
                 declared.arity != call.second -> problems.add(
-                    "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}' with ${call.second} " +
-                        "parameter(s); it takes ${declared.arity}.",
+                    UiBlockFault(
+                        source,
+                        "UiBlock '${source.blockId}' (${source.origin}) calls '${call.first}' with ${call.second} " +
+                            "parameter(s); it takes ${declared.arity}.",
+                    ),
                 )
             }
         }
@@ -155,19 +222,34 @@ fun uiBlockProblems(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<S
     // nothing at one customer -- and that customer is who would find out.
     val clients = listOf<String?>(null) + sources.mapNotNull { it.client }.distinct()
     for (blockId in declared) {
+        val base = sources.first { !it.isOverlay && it.blockId == blockId }
+        // What the shared merge finds, with the client naming stripped: a client scope finding the same is the
+        // base block's problem, not the client's overlay's.
+        var shared = emptySet<String>()
         for (client in clients) {
             val merged = mergeUiBlock(blockId, sources, client)
             val allowed = allowedFor(client)
+            val found = mutableListOf<String>()
             collectExpressions(merged.content).forEach { expression ->
                 runCatching { parseCFactOrAlways(expression, allowed) }.exceptionOrNull()?.let {
                     val where = blockId + (client?.let { c -> " (client '$c')" } ?: "")
-                    problems.add("UiBlock '$where': ${it.message}")
+                    found.add("UiBlock '$where': ${it.message}")
                 }
             }
             // Parenting is a property of the merged structure, not the caller (cfacts have not been applied
             // yet, so every item is present) -- but a client overlay can add an item with a bad parent, so it
             // is checked per client like the expressions above.
-            problems.addAll(collectParentIssues(merged, client))
+            found.addAll(collectParentIssues(merged, client))
+            if (client == null) {
+                shared = found.toSet()
+                found.forEach { problems.add(UiBlockFault(base, it)) }
+                continue
+            }
+            val overlay = sources.firstOrNull { it.isOverlay && it.blockId == blockId && it.client == client }
+            for (message in found) {
+                val layer = if (message.replace(" (client '$client')", "") in shared) base else overlay ?: base
+                problems.add(UiBlockFault(layer, message))
+            }
         }
     }
     return problems
