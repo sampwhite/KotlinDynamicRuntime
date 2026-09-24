@@ -191,9 +191,16 @@ class SqlDatabase(
         } finally {
             session.inTran = false
             if (!committedIt) {
+                // Roll back **before** restoring auto-commit: under JDBC, switching auto-commit on while a
+                // transaction is open commits it -- so the old order (auto-commit first) committed the partial work
+                // of every transaction that threw, and nothing was ever rolled back (found by issue #843, whose
+                // refused writes stayed stored).
+                try {
+                    conn.rollback()
+                } catch (_: Exception) {
+                }
                 try {
                     conn.autoCommit = true
-                    conn.rollback()
                 } catch (_: Exception) {
                 }
             }
