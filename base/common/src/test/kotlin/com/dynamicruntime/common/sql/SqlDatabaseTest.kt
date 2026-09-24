@@ -72,6 +72,42 @@ class SqlDatabaseTest : StringSpec({
         }
     }
 
+    // Found by issue #843: the rollback path restored auto-commit before rolling back, and under JDBC turning
+    // auto-commit on during a transaction commits it -- so a transaction that threw kept its partial work.
+    "a transaction that throws is rolled back, not committed" {
+        val cxt = KdrCxt.mkSimpleCxt("test")
+        val db = SqlDatabase.mkInMemoryH2("test_sqldb_rollback")
+        val topic = TOPIC.instance
+        val table = tableModule(cxt, topic) {
+            table("RollbackProbe", "One row per attempt.") {
+                column("probeName", "The probe's name.")
+                primaryKey("probeName")
+            }
+        }.single()
+        val sqlCxt = SqlCxt(cxt, db, topic)
+        fun row(name: String) = linkedMapOf<String, Any?>(
+            "probeName" to name,
+            PF.createdBy to 0L, PF.updatedBy to 0L, PF.createdAt to cxt.now(), PF.updatedAt to cxt.now(),
+        )
+        db.withSession(cxt) {
+            SqlTableUtil.checkCreateTable(sqlCxt, table)
+            val insertSql = SqlStmtUtil.mkInsertQuery(table.tableName, table.columns, null)
+            val insert = SqlStmtUtil.prepareSql(sqlCxt, "iRollbackProbe", table.columns, insertSql)
+            val selectSql = SqlStmtUtil.mkSelectQuery(table.tableName, listOf("probeName"))
+            val select = SqlStmtUtil.prepareSql(sqlCxt, "qRollbackProbe", table.columns, selectSql)
+            runCatching {
+                db.withTran(cxt) {
+                    db.executeStatement(cxt, insert, row("thrown"))
+                    throw IllegalStateException("abandon the transaction")
+                }
+            }.isFailure shouldBe true
+            db.queryOneStatement(cxt, select, row("thrown")) shouldBe null
+
+            db.withTran(cxt) { db.executeStatement(cxt, insert, row("kept")) }
+            db.queryOneStatement(cxt, select, row("kept")).shouldNotBeNull()
+        }
+    }
+
     "a user-owned table gains userId and client columns" {
         val cxt = KdrCxt.mkSimpleCxt("test")
         val tables = tableModule(cxt, "app") {
