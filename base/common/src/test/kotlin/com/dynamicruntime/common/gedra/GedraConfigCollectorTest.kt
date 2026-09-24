@@ -147,6 +147,62 @@ class GedraConfigCollectorTest : StringSpec({
             .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
     }
 
+    // --- stored config (issue #839) --------------------------------------------
+
+    // The inverse default: stored data is forgiven everywhere a person could be locked out of repairing it, and
+    // strict only in unit tests, where a bad fixture should fail loudly.
+    "stored config warns everywhere but unit, and has its own override" {
+        fun storedIn(env: String, override: String? = null): KdrCxt {
+            val config = KdrInstanceConfig("stored-$env-$override", env, ENV.liveSource)
+            override?.let { config.put(GCFG.storedCheckEnvVar.name, it) }
+            return KdrCxt("collect", config)
+        }
+        storedConfigCheckMode(storedIn(ENV.unit)) shouldBe BootCheckMode.strict
+        for (env in listOf(ENV.local, ENV.dev, ENV.integration, ENV.prod)) {
+            storedConfigCheckMode(storedIn(env)) shouldBe BootCheckMode.warn
+        }
+        storedConfigCheckMode(storedIn(ENV.unit, BootCheckMode.warn.name)) shouldBe BootCheckMode.warn
+        storedConfigCheckMode(storedIn(ENV.prod, BootCheckMode.strict.name)) shouldBe BootCheckMode.strict
+        // The two variables are independent: the source one does not move the stored mode, nor the reverse.
+        storedConfigCheckMode(cxtIn(ENV.local, BootCheckMode.strict.name)) shouldBe BootCheckMode.warn
+        gedraConfigCheckMode(storedIn(ENV.local, BootCheckMode.warn.name)) shouldBe BootCheckMode.strict
+        configCheckMode(devCxt, GedraConfigOrigin.stored) shouldBe BootCheckMode.warn
+        configCheckMode(devCxt, GedraConfigOrigin.source) shouldBe BootCheckMode.strict
+    }
+
+    fun storedNameConfig(configName: String, namespace: String) =
+        gedraConfig(devCxt, configName, namespace, GID.globalClient, GedraConfigOrigin.stored) {
+            trait("NameEntry", "name", setOf(GedraDataType.formDoc)) { property("name", "Something.", required = true) }
+        }
+
+    // The arriving config is the one refused, so its origin decides: a stored config colliding with a source one
+    // is dropped with a warning on a local node, where the same collision between two source configs refuses.
+    "a problem is judged by the origin of the config that holds it" {
+        val collector = GedraConfigCollector()
+        collector.add(devCxt, nameConfig())
+        collector.add(devCxt, storedNameConfig("storedTraits", "storedns")) shouldBe false
+        val issue = collector.issues.single()
+        issue.origin shouldBe GedraConfigOrigin.stored
+        issue.storedConfigId.shouldNotBeNull() shouldContain "storedTraits"
+        issue.client shouldBe GID.globalClient
+        issue.elementKind shouldBe GCEL.config
+        // The source config keeps the trait; the stored one never displaced it.
+        collector.traits.getValue("name").typeName shouldBe "globalconfig.NameEntry"
+
+        shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "other")) }
+            .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
+    }
+
+    "a strict stored-config refusal names the stored config and its own variable" {
+        val unitCxt = KdrCxt("collect", KdrInstanceConfig("stored-unit", ENV.unit, ENV.liveSource))
+        val collector = GedraConfigCollector()
+        collector.add(unitCxt, nameConfig())
+        val message = shouldThrow<KdrException> { collector.add(unitCxt, storedNameConfig("storedTraits", "storedns")) }
+            .message.shouldNotBeNull()
+        message shouldContain GCFG.storedCheckEnvVar.name
+        message shouldContain "storedTraits"
+    }
+
     "off takes everything, checks nothing" {
         val offCxt = cxtIn(ENV.local, BootCheckMode.off.name)
         val collector = GedraConfigCollector()

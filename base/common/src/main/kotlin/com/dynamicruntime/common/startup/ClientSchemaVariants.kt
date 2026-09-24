@@ -11,7 +11,8 @@ import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.gedra.entryEditUnionDefs
 import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
-import com.dynamicruntime.common.gedra.gedraConfigCheckMode
+import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.schema.LogSchema
@@ -67,12 +68,11 @@ fun buildClientVariants(
         return emptyMap()
     }
     val queryName = formDocsQueryDefName()
-    val mode = gedraConfigCheckMode(cxt)
     val issues = mutableListOf<GedraConfigIssue>()
     val out = LinkedHashMap<String, KdrSchemaStore>()
     for (client in clients) {
         val declared = collected.clientOverlays[client] ?: emptyMap()
-        val authored = keepWhatNarrows(cxt, client, global.defs, declared, mode, issues)
+        val authored = keepWhatNarrows(cxt, collected, client, global.defs, declared, issues)
         val unions = changedUnions(cxt, collected, global, client, defsByClient[client], authored.keys)
         // The client's forms-listing search fields (issue #538): its usage rules' parameters merged onto the
         // pristine query base -- never onto the global-augmented type, or an overriding client would inherit
@@ -161,10 +161,10 @@ private fun changedUnions(
  */
 private fun keepWhatNarrows(
     cxt: KdrCxt,
+    collected: SchemaCollector,
     client: String,
     globalDefs: Map<String, Any?>,
     declared: Map<String, Any?>,
-    mode: BootCheckMode,
     issues: MutableList<GedraConfigIssue>,
 ): Map<String, Any?> {
     val kept = LinkedHashMap<String, Any?>(declared.size)
@@ -179,14 +179,14 @@ private fun keepWhatNarrows(
             kept[name] = body
             continue
         }
+        val message = "Client '$client' alters '$name' in a way that does not narrow it. " + problems.joinToString(" ")
+        val degradedTo = "Dropping the alteration; '$name' stays as the global document declares it."
+        // Held by the config that contributed the alteration (issue #839), so a stored overlay is judged as stored.
+        val holder = collected.gedraConfigs.contributorOf(client, name)
         reportConfigProblem(
             cxt,
-            mode,
-            GedraConfigIssue(
-                "Client '$client' alters '$name' in a way that does not narrow it. " +
-                    problems.joinToString(" "),
-                "Dropping the alteration; '$name' stays as the global document declares it.",
-            ),
+            holder?.issue(message, degradedTo, GCEL.type, name)
+                ?: GedraConfigIssue(message, degradedTo, client = client, elementKind = GCEL.type, elementId = name),
             issues,
         )
     }

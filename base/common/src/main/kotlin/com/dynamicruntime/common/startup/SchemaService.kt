@@ -33,7 +33,9 @@ import com.dynamicruntime.common.gedra.entryUnionDefs
 import com.dynamicruntime.common.gedra.stateEntryUnionDefs
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
-import com.dynamicruntime.common.gedra.gedraConfigCheckMode
+import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.checkMode
+import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.duplicateUsageTraitIds
 import com.dynamicruntime.common.gedra.reservedQueryFieldNames
@@ -297,11 +299,11 @@ class SchemaService : ServiceInitializer {
     }
 
     /**
-     * Refuses (or warns, per the client-config check mode) a client whose trait-usage rules would not present as
-     * declared. Two checks, over one pass of the usage set each scope's listing actually generates from -- its
-     * own if it declared any, else global's (`usagesFor`) -- across the same scopes: `global`, and every client
-     * that declared a usage. Both read that one set per scope, so they cannot come to disagree about which scopes
-     * or usages they judge.
+     * Refuses (or warns, per the check mode of the rules' holder, issue #839) a client whose trait-usage rules would
+     * not present as declared. Two checks, over one pass of the usage set each scope's listing actually generates from
+     * -- its own if it declared any, else global's (`usagesFor`) -- across the same scopes: `global`, and every client
+     * that declared a usage. Both read that one set per scope, so they cannot come to disagree about which scopes or
+     * usages they judge.
      *
      * - A **search parameter colliding with a reserved forms-listing field** (issue #538): a usage on a trait
      *   named `user`, say, mints an exact parameter `user` that would otherwise overwrite the listing's own user
@@ -315,10 +317,6 @@ class SchemaService : ServiceInitializer {
      *   one trait would need a per-usage key.
      */
     private fun checkUsageRules(cxt: KdrCxt, collected: SchemaCollector) {
-        val mode = gedraConfigCheckMode(cxt)
-        if (mode == BootCheckMode.off) {
-            return
-        }
         val issues = mutableListOf<GedraConfigIssue>()
         val usageScopes = (
             listOf(GID.globalClient) +
@@ -326,17 +324,26 @@ class SchemaService : ServiceInitializer {
             ).distinct()
         for (scope in usageScopes) {
             val usages = collected.gedraConfigs.usagesFor(scope)
+            // The rules' holder (issue #839): the scope's own usage-declaring configs, or global's when it inherits
+            // them -- a stored one first, since a stored rule joining a source one is what made the set collide.
+            val declaring = collected.gedraConfigs.configs.filter { it.usages.isNotEmpty() }
+            val holders = declaring.filter { it.gedraId.client == scope }
+                .ifEmpty { declaring.filter { it.gedraId.client == GID.globalClient } }
+            val holder = holders.firstOrNull { it.isStored } ?: holders.firstOrNull()
+            if (holder == null || holder.checkMode(cxt) == BootCheckMode.off) {
+                continue
+            }
             val collisions = searchParamCollisions(usages)
             if (collisions.isNotEmpty()) {
                 reportConfigProblem(
                     cxt,
-                    mode,
-                    GedraConfigIssue(
+                    holder.issue(
                         "Client '$scope' declares a trait usage whose search parameter(s) " +
                             "${collisions.joinToString(", ")} collide with a reserved forms-listing field " +
                             "(${reservedQueryFieldNames.joinToString(", ")}).",
                         "Dropping the colliding search parameter; the column still shows, but that trait cannot " +
                             "be searched. Rename the trait, or present it under a different one.",
+                        GCEL.usage, collisions.joinToString(","),
                     ),
                     issues,
                 )
@@ -345,12 +352,12 @@ class SchemaService : ServiceInitializer {
             if (duplicates.isNotEmpty()) {
                 reportConfigProblem(
                     cxt,
-                    mode,
-                    GedraConfigIssue(
+                    holder.issue(
                         "Client '$scope' declares more than one trait-usage rule for trait(s) " +
                             "${duplicates.joinToString(", ")}; a trait presents as a single column.",
                         "Keeping the rules as declared, but that trait's column, search and sort read only one " +
                             "of them and collide. Declare one usage per trait.",
+                        GCEL.usage, duplicates.joinToString(","),
                     ),
                     issues,
                 )

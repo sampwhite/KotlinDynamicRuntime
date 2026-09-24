@@ -68,6 +68,9 @@ object BCHK {
     /** Gedra config coherence: a duplicated trait id, a namespace claimed twice (issue #299). */
     const val gedraConfig = "gedraConfig"
 
+    /** Stored (database) client config, judged under its own forgiving mode (issue #839). */
+    const val storedConfig = "storedConfig"
+
     // Report field names, shared with the frontend so a console reads them from the same strings.
     const val name = "name"
     const val envVar = "envVar"

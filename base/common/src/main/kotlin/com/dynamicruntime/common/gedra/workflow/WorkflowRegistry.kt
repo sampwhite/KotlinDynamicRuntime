@@ -4,10 +4,14 @@ import com.dynamicruntime.common.cfact.parseCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraConfigIssue
+import com.dynamicruntime.common.gedra.checkMode
+import com.dynamicruntime.common.gedra.gedraConfigCheckMode
+import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.logging.LogStartup
@@ -102,10 +106,11 @@ fun interface WfFragmentLookup {
  * No cfact expressions are checked, because the model carries none yet (selectors are deferred); when it does,
  * they parse here against the scope's registry, as UiBlocks' do.
  *
- * A problem is handed to [reportConfigProblem], so what happens to it is `gedraConfigCheckMode`'s answer:
- * a refused boot everywhere but production, where the workflow is **dropped from that scope** and the node
- * carries on -- proportionate, because a workflow that is not there is a state the design already defines
- * (the client's people see no such workflow), where a half-checked one would run.
+ * A problem is handed to [reportConfigProblem], judged by the origin of the workflow's own bundle (issue #839):
+ * for source config a refused boot everywhere but production, for stored config only in unit tests. When
+ * forgiven, the workflow is **dropped from that scope** and the node carries on -- proportionate, because a
+ * workflow that is not there is a state the design already defines (the client's people see no such workflow),
+ * where a half-checked one would run.
  */
 fun buildWorkflowRegistries(
     cxt: KdrCxt,
@@ -121,7 +126,6 @@ fun buildWorkflowRegistries(
      * than being a test that silently never passes.
      */
     cfactNames: (scope: String?) -> Set<String>,
-    mode: BootCheckMode,
     issues: MutableList<GedraConfigIssue>,
 ): WorkflowRegistries {
     // The entry kinds that are implemented; a workflow declaring any other is dropped rather than run
@@ -135,21 +139,26 @@ fun buildWorkflowRegistries(
         .filter { it.gedraId.client == owner }
         .flatMap { bundle -> bundle.workflows.values.map { WfDeclared(bundle, it) } }
 
-    fun problem(scope: String?, w: WfDeclared, what: String) = GedraConfigIssue(
+    // Held by the workflow's own bundle (issue #839): a stored workflow naming something that is not there is
+    // forgiven as stored config, whichever side changed last.
+    fun problem(scope: String?, w: WfDeclared, what: String) = w.bundle.issue(
         "Workflow '${w.ref}' $what",
         "Dropping it from ${scope?.let { "client '$it'" } ?: "the global registry"}.",
+        GCEL.workflow, w.def.workflowId,
     )
+    // `off` for the bundle's origin admits the workflow unchecked.
+    fun unchecked(w: WfDeclared) = w.bundle.checkMode(cxt) == BootCheckMode.off
 
     // The checks that depend on nothing but the definition and the scope's own vocabulary. `off` admits
     // everything as declared -- the reading `GedraConfigCollector` gives the mode -- rather than checking and
     // then dropping: `reportConfigProblem` has no off branch, because its callers never reach it when off.
     fun admits(scope: String?, w: WfDeclared, usable: Set<String>): Boolean {
-        if (mode == BootCheckMode.off) {
+        if (unchecked(w)) {
             return true
         }
         if (w.def.entry !in builtEntries) {
             reportConfigProblem(
-                cxt, mode,
+                cxt,
                 problem(
                     scope, w,
                     "is entered by '${w.def.entry}', which is not built yet; only ${builtEntries.joinToString(" and ") { "'$it'" }} are.",
@@ -162,7 +171,7 @@ fun buildWorkflowRegistries(
         // would title the page with a broken template.
         if (w.def.label.isNotBlank()) {
             labelProblem(scope, w.def.label, fragments)?.let {
-                reportConfigProblem(cxt, mode, problem(scope, w, "has a label that $it"), issues)
+                reportConfigProblem(cxt, problem(scope, w, "has a label that $it"), issues)
                 return false
             }
         }
@@ -176,14 +185,14 @@ fun buildWorkflowRegistries(
                     parseCFactOrAlways(e.test, allowed)
                 } catch (ex: KdrException) {
                     reportConfigProblem(
-                        cxt, mode,
+                        cxt,
                         problem(scope, w, "has an eligibility test '${e.id}' whose cfact test does not parse: ${ex.message}"),
                         issues,
                     )
                     return false
                 }
                 labelProblem(scope, e.explanation, fragments)?.let {
-                    reportConfigProblem(cxt, mode, problem(scope, w, "has an explanation on eligibility test '${e.id}' that $it"), issues)
+                    reportConfigProblem(cxt, problem(scope, w, "has an explanation on eligibility test '${e.id}' that $it"), issues)
                     return false
                 }
             }
@@ -195,7 +204,7 @@ fun buildWorkflowRegistries(
                 parseCFactOrAlways(r.whenExpr, cfactNames(scope))
             } catch (ex: KdrException) {
                 reportConfigProblem(
-                    cxt, mode,
+                    cxt,
                     problem(scope, w, "has a '${r.cfact}' singleton rule whose condition does not parse: ${ex.message}"),
                     issues,
                 )
@@ -205,7 +214,7 @@ fun buildWorkflowRegistries(
         for (task in w.def.tasks) {
             task.traits.firstOrNull { it.traitId !in usable }?.let {
                 reportConfigProblem(
-                    cxt, mode,
+                    cxt,
                     problem(
                         scope, w,
                         "collects the trait '${it.traitId}' in task '${task.id}', which " +
@@ -221,7 +230,7 @@ fun buildWorkflowRegistries(
             task.approval?.let { approval ->
                 if (approval.cfact !in cfactNames(scope)) {
                     reportConfigProblem(
-                        cxt, mode,
+                        cxt,
                         problem(
                             scope, w,
                             "has an approval task '${task.id}' emitting the cfact '${approval.cfact}', which this " +
@@ -237,7 +246,7 @@ fun buildWorkflowRegistries(
             // any of these would mis-render for somebody, and a page is the worst place to find out.
             task.display?.let { display ->
                 displayProblem(display, cfactNames(scope))?.let {
-                    reportConfigProblem(cxt, mode, problem(scope, w, "has a display on task '${task.id}' that $it"), issues)
+                    reportConfigProblem(cxt, problem(scope, w, "has a display on task '${task.id}' that $it"), issues)
                     return false
                 }
             }
@@ -250,7 +259,7 @@ fun buildWorkflowRegistries(
                     ?: emptyList())
             for ((where, label) in labels) {
                 labelProblem(scope, label, fragments)?.let {
-                    reportConfigProblem(cxt, mode, problem(scope, w, "has a label on $where that $it"), issues)
+                    reportConfigProblem(cxt, problem(scope, w, "has a label on $where that $it"), issues)
                     return false
                 }
             }
@@ -277,7 +286,7 @@ fun buildWorkflowRegistries(
         for (w in admitted) {
             if (!ownIds.add(w.def.workflowId)) {
                 reportConfigProblem(
-                    cxt, mode,
+                    cxt,
                     problem(
                         scope, w,
                         "is declared a second time in this scope, beside '${out.getValue(w.def.workflowId).ref}'. A " +
@@ -291,21 +300,19 @@ fun buildWorkflowRegistries(
         }
         // After shadowing: what this scope actually sees may still hold two of a singleton kind, from two of
         // its own bundles.
-        if (mode != BootCheckMode.off) {
-            for (kind in singletonEntries) {
-                val ofKind = out.values.filter { it.def.entry == kind }
-                for (extra in ofKind.drop(1)) {
-                    reportConfigProblem(
-                        cxt, mode,
-                        problem(
-                            scope, extra,
-                            "is a second $kind workflow beside '${ofKind.first().ref}'. A scope has one $kind " +
-                                "workflow; keeping the first declared.",
-                        ),
-                        issues,
-                    )
-                    out.remove(extra.def.workflowId)
-                }
+        for (kind in singletonEntries) {
+            val ofKind = out.values.filter { it.def.entry == kind }
+            for (extra in ofKind.drop(1).filterNot { unchecked(it) }) {
+                reportConfigProblem(
+                    cxt,
+                    problem(
+                        scope, extra,
+                        "is a second $kind workflow beside '${ofKind.first().ref}'. A scope has one $kind " +
+                            "workflow; keeping the first declared.",
+                    ),
+                    issues,
+                )
+                out.remove(extra.def.workflowId)
             }
         }
         return WorkflowRegistry(scope, out)
@@ -320,7 +327,8 @@ fun buildWorkflowRegistries(
         val usable = supportedTraits(configs, client, def, overlaidTypes(client)).map { it.traitId }.toSet()
         // The inherited global workflows are re-checked against *this* client's usable set: a global creation
         // workflow collecting `name` is fine for a client that includes `name` and not for one that omits it.
-        val inheritable = if (mode == BootCheckMode.off) {
+        // Global workflows are source-declared, so the source mode says whether they are checked at all.
+        val inheritable = if (gedraConfigCheckMode(cxt) == BootCheckMode.off) {
             global.workflows
         } else {
             global.workflows.filterValues { w -> w.def.tasks.all { t -> t.traits.all { it.traitId in usable } } }

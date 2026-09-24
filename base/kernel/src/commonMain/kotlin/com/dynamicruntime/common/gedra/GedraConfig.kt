@@ -120,6 +120,20 @@ enum class StateTraitClass {
 }
 
 /**
+ * Where a [GedraConfig] came from (issue #839), which decides how a problem found in it is treated: a defect in
+ * [source] config refuses the boot outside production, while one in [stored] config is forgiven -- logged,
+ * dropped at the smallest grain, and recorded -- everywhere but unit tests.
+ */
+@Suppress("EnumEntryName")
+enum class GedraConfigOrigin {
+    /** Declared in source code by a component. */
+    source,
+
+    /** Read back from the database: a client's stored configuration. */
+    stored,
+}
+
+/**
  * A bundle of definitions — traits now, workflows later — carrying its own identity (issue #298), and
  * optionally the definition of the client it is filed under (issue #343).
  *
@@ -241,7 +255,16 @@ class GedraConfig(
      * A list rather than a map: a client may present two traits, and order is the column order.
      */
     val usages: List<ClientTraitUsage> = emptyList(),
+    /**
+     * Where this config came from (issue #839): declared in source code, or read back from the database. A
+     * problem found in a stored config is judged under its own, forgiving check mode, since a boot refused over
+     * stored data leaves nothing with which to repair it.
+     */
+    val origin: GedraConfigOrigin = GedraConfigOrigin.source,
 ) {
+    /** Whether this config was read back from the database rather than declared in source code. */
+    val isStored: Boolean get() = origin == GedraConfigOrigin.stored
+
     /**
      * The code-explicit name this config is addressed by, which is also its id's base.
      *
@@ -602,6 +625,7 @@ fun gedraConfig(
     name: String,
     namespace: String,
     client: String = GID.globalClient,
+    origin: GedraConfigOrigin = GedraConfigOrigin.source,
     build: GedraConfigBuilder.() -> Unit,
 ): GedraConfig {
     // A config is addressed by name in code and in scripts, so the name has to be a legal identifier. The
@@ -632,5 +656,6 @@ fun gedraConfig(
         uiBlocks = builder.uiBlocks.toList(),
         workflows = builder.workflows.toMap(),
         usages = builder.usages.toList(),
+        origin = origin,
     )
 }

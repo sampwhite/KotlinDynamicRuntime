@@ -32,8 +32,31 @@ object GCFG {
             "`off`. Unset means strict everywhere except `prod`, which warns.",
     )
 
+    /** Overrides what a problem in **stored** config does, at boot and on a reload; see [storedConfigCheckMode]. */
+    val storedCheckEnvVar = EnvVarDef(
+        "KDR_STORED_CONFIG_CHECK", group = ENVGRP.gedra, defaultDoc = "warn (`strict` in `unit`)",
+        description = "What a problem in a client's stored (database) configuration does when it is loaded: " +
+            "`strict` (refuse), `warn` (log, drop the offending piece, carry on) or `off`. Unset means warn " +
+            "everywhere except `unit`, which is strict. Source-code config is governed by KDR_GEDRA_CONFIG_CHECK.",
+    )
+
     // The mode words live on `BootCheckMode` (issue #303), shared with every other boot check rather than
     // spelled out a third time here.
+}
+
+/** What kind of definition a [GedraConfigIssue] names (issue #839), so a report can say which piece was dropped. */
+@Suppress("ConstPropertyName")
+object GCEL {
+    /** A whole config bundle -- one that could not be reassembled, or was refused on arrival. */
+    const val config = "config"
+    const val client = "client"
+    const val workflow = "workflow"
+    /** One function usage on a workflow or task. */
+    const val function = "function"
+    /** A schema type a client altered. */
+    const val type = "type"
+    /** A trait-usage rule. */
+    const val usage = "usage"
 }
 
 /**
@@ -62,16 +85,93 @@ object GCFG {
 fun gedraConfigCheckMode(cxt: KdrCxt): BootCheckMode =
     bootCheckMode(cxt, modeOverride(cxt, GCFG.checkEnvVar), prodMode = BootCheckMode.warn)
 
-/** A problem found while collecting configs, and what was done about it. */
+/**
+ * What a problem in **stored** config does (issue #839): an explicit [GCFG.storedCheckEnvVar] decides it, and
+ * otherwise it is [BootCheckMode.warn] everywhere except [ENV.unit], where it is [BootCheckMode.strict].
+ *
+ * The inverse of [gedraConfigCheckMode]'s default, and deliberately. A defect in source code is caught while its
+ * author is at the keyboard, so refusing the boot is the fastest way to it. A defect in stored data is not
+ * anybody's keyboard: a node refused over it -- local, staging, or production -- leaves no tool to repair it but
+ * hand-written SQL or a temporary code change to let the node start. So stored config is forgiven: logged, the
+ * offending piece dropped, and the rest served. Unit tests stay strict so a test's bad fixture fails loudly,
+ * and set this to `warn` to exercise the forgiving path itself.
+ */
+fun storedConfigCheckMode(cxt: KdrCxt): BootCheckMode =
+    modeOverride(cxt, GCFG.storedCheckEnvVar)
+        ?: if (cxt.instanceConfig.env == ENV.unit) BootCheckMode.strict else BootCheckMode.warn
+
+/** The mode a problem in a config of [origin] is judged under (issue #839). */
+fun configCheckMode(cxt: KdrCxt, origin: GedraConfigOrigin): BootCheckMode = when (origin) {
+    GedraConfigOrigin.source -> gedraConfigCheckMode(cxt)
+    GedraConfigOrigin.stored -> storedConfigCheckMode(cxt)
+}
+
+/** The mode a problem in this config is judged under: its [GedraConfig.origin]'s. */
+fun GedraConfig.checkMode(cxt: KdrCxt): BootCheckMode = configCheckMode(cxt, origin)
+
+/**
+ * A problem found in the configs, and what was done about it -- with **where it came from** (issue #839): the
+ * client, the stored config holding the offending definition when it is stored, and which definition that is.
+ *
+ * The provenance is what decides the consequence ([reportConfigProblem] judges a stored problem under
+ * [storedConfigCheckMode]), and it follows **whoever holds the reference**, not whoever changed last. A code
+ * change that unregisters a function a stored workflow still names has broken stored data, and the broken
+ * reference sits in that stored workflow -- so it is forgiven there. A dangling reference inside source code is
+ * a source problem, and still refuses the boot outside production.
+ *
+ * Build one with [GedraConfig.issue] where the holding config is known, so the provenance cannot be left out.
+ */
 class GedraConfigIssue(
     /** What is wrong, as a complete sentence naming both sides. */
     val message: String,
     /** What was kept, and what was dropped, when the instance carried on regardless. */
     val degradedTo: String,
+    /** The client whose definition this is (`global` for a component's own); null when no one config holds it. */
+    val client: String? = null,
+    /** The full id of the **stored** config holding the offending definition; null when it is source code. */
+    val storedConfigId: String? = null,
+    /** What kind of definition is at fault, a [GCEL] value; null when the issue is about no one definition. */
+    val elementKind: String? = null,
+    /** Which one: its id within [elementKind] (a workflow id, a type name, a function name). */
+    val elementId: String? = null,
+) {
+    /** Where the offending definition came from, which decides the mode it is judged under. */
+    val origin: GedraConfigOrigin
+        get() = if (storedConfigId != null) GedraConfigOrigin.stored else GedraConfigOrigin.source
+}
+
+/**
+ * An issue about a definition this config holds, carrying its provenance: the config's client, and its id when
+ * it is stored. [elementKind]/[elementId] name the definition when the issue is about one piece of the bundle.
+ */
+fun GedraConfig.issue(
+    message: String,
+    degradedTo: String,
+    elementKind: String? = null,
+    elementId: String? = null,
+): GedraConfigIssue = GedraConfigIssue(
+    message, degradedTo,
+    client = gedraId.client,
+    storedConfigId = gedraId.fullId.takeIf { isStored },
+    elementKind = elementKind,
+    elementId = elementId,
 )
 
 /**
- * Does to [problem] what [mode] says to do: refuse the boot, or log it, record it and carry on.
+ * This issue re-attributed to [config], the config holding the offending definition -- for a check whose finding
+ * is built without the config in hand (a rule judging a `ClientDef` alone), so the provenance is added where the
+ * config is known rather than threaded into every rule.
+ */
+fun GedraConfigIssue.heldBy(
+    config: GedraConfig,
+    elementKind: String? = this.elementKind,
+    elementId: String? = this.elementId,
+): GedraConfigIssue = config.issue(message, degradedTo, elementKind, elementId)
+
+/**
+ * Does to [problem] what its mode says to do: refuse the boot, or log it, record it and carry on. The mode is the
+ * problem's own ([configCheckMode] of its [GedraConfigIssue.origin], issue #839), so a stored problem is judged
+ * under [storedConfigCheckMode] and a source one under [gedraConfigCheckMode] -- a caller cannot pass the wrong one.
  *
  * The one place that turns a check's finding into a consequence, so the two sets of config checks -- the ones
  * over configs as they arrive, and `checkClientDefs` over the clients they declared -- cannot come to differ
@@ -83,23 +183,32 @@ class GedraConfigIssue(
  */
 fun reportConfigProblem(
     cxt: KdrCxt,
-    mode: BootCheckMode,
     problem: GedraConfigIssue,
     issues: MutableList<GedraConfigIssue>,
 ) {
+    val stored = problem.origin == GedraConfigOrigin.stored
+    val mode = configCheckMode(cxt, problem.origin)
     if (mode == BootCheckMode.strict) {
         throw KdrException(
-            "${problem.message} Fix it, or set ${GCFG.checkEnvVar}=${BootCheckMode.warn} to start anyway " +
-                "(which is the default in ${ENV.prod}).",
+            if (stored) {
+                "${problem.message} (in stored config '${problem.storedConfigId}') Fix it, or set " +
+                    "${GCFG.storedCheckEnvVar}=${BootCheckMode.warn} to load anyway (the default outside ${ENV.unit})."
+            } else {
+                "${problem.message} Fix it, or set ${GCFG.checkEnvVar}=${BootCheckMode.warn} to start anyway " +
+                    "(which is the default in ${ENV.prod})."
+            },
         )
     }
-    LogStartup.error(cxt, "${problem.message} ${problem.degradedTo}")
+    val where = if (stored) " (stored config '${problem.storedConfigId}')" else ""
+    LogStartup.error(cxt, "${problem.message}$where ${problem.degradedTo}")
     issues.add(problem)
     // Also recorded for the operator report (issue #303): what a production node dropped is precisely what
-    // somebody arriving later needs, and the error log said it once while nobody was watching.
-    BootCheckRegistry.get(cxt).record(
-        BCHK.gedraConfig, GCFG.checkEnvVar.name, mode, listOf("${problem.message} ${problem.degradedTo}"),
-    )
+    // somebody arriving later needs, and the error log said it once while nobody was watching. Stored and source
+    // problems are reported under separate checks, each naming the variable that governs it.
+    val (check, envVar) =
+        if (stored) BCHK.storedConfig to GCFG.storedCheckEnvVar else BCHK.gedraConfig to GCFG.checkEnvVar
+    val finding = "${problem.message}$where ${problem.degradedTo}"
+    BootCheckRegistry.get(cxt).record(check, envVar.name, mode, listOf(finding))
 }
 
 /**
@@ -111,8 +220,9 @@ fun reportConfigProblem(
  * wins" falls out of arrival order instead of being imposed, and it is stable across restarts because
  * component load order is (`loadPriority`, then registration).
  *
- * What happens to a problem depends on where this runs; see [gedraConfigCheckMode]. Outside production a
- * problem refuses the boot. In production, it is logged at error, the loser is dropped, and the instance
+ * What happens to a problem depends on where this runs and on the arriving config's origin; see
+ * [configCheckMode]. For source config, outside production a problem refuses the boot; for stored config, only
+ * in unit tests (issue #839). Otherwise it is logged at error, the loser is dropped, and the instance
  * carries on — which is only survivable because the manufactured union declares a default branch (#301), so
  * entries carrying a dropped trait fall through as unrecognized rather than failing validation. Removing that
  * default branch would quietly make this check unsafe.
@@ -213,9 +323,14 @@ class GedraConfigCollector {
      * clean one without reading [issues].
      */
     fun add(cxt: KdrCxt, config: GedraConfig): Boolean {
-        val mode = gedraConfigCheckMode(cxt)
+        // The arriving config is the one refused, so its origin decides the mode (issue #839).
+        val mode = config.checkMode(cxt)
         // Registered on the way past, findings or not, so the report can say the check ran (issue #303).
-        BootCheckRegistry.get(cxt).record(BCHK.gedraConfig, GCFG.checkEnvVar.name, mode)
+        if (config.isStored) {
+            BootCheckRegistry.get(cxt).record(BCHK.storedConfig, GCFG.storedCheckEnvVar.name, mode)
+        } else {
+            BootCheckRegistry.get(cxt).record(BCHK.gedraConfig, GCFG.checkEnvVar.name, mode)
+        }
         if (mode == BootCheckMode.off) {
             keep(config)
             return true
@@ -225,9 +340,17 @@ class GedraConfigCollector {
             keep(config)
             return true
         }
-        reportConfigProblem(cxt, mode, problem, issues)
+        reportConfigProblem(cxt, problem, issues)
         return false
     }
+
+    /**
+     * The config that contributed [client]'s definition of [typeName] -- the last of the client's kept configs
+     * declaring it, matching the order `SchemaCollector` folds them in -- or null. What an issue about a client's
+     * altered type names as its holder (issue #839).
+     */
+    fun contributorOf(client: String, typeName: String): GedraConfig? =
+        configsById.values.lastOrNull { it.gedraId.client == client && typeName in it.defs }
 
     /**
      * Un-registers [config] -- the exact reverse of [keep] -- so a client's stored configuration can be
@@ -291,18 +414,20 @@ class GedraConfigCollector {
         // Dropping a config drops all of its traits, data and state alike, so the count says both (issue #597).
         val traitCount = config.traits.size + config.stateTraits.size + config.configTraits.size
         configsById[config.gedraId.fullId]?.let {
-            return GedraConfigIssue(
+            return config.issue(
                 "Gedra config '${config.gedraId}' is contributed twice.",
                 "Keeping the first; the second is dropped, along with its $traitCount trait(s).",
+                GCEL.config, config.gedraId.fullId,
             )
         }
         val owner = namespaceOwners[config.namespace]
         if (owner != null && owner != config.gedraId.client) {
-            return GedraConfigIssue(
+            return config.issue(
                 "Gedra config '${config.gedraId}' declares its types in namespace '${config.namespace}', " +
                     "which belongs to '$owner'. A namespace has exactly one owner, and reaching into " +
                     "somebody else's is how one owner's definitions become visible to another.",
                 "Dropping '${config.gedraId}'; '$owner' keeps the namespace.",
+                GCEL.config, config.gedraId.fullId,
             )
         }
         // Data, state and config trait ids share one global id space, so a new config's traits of any kind are
@@ -310,11 +435,12 @@ class GedraConfigCollector {
         // any other pairing.
         for (traitId in config.traits.keys + config.stateTraits.keys + config.configTraits.keys) {
             val held = traitConfigs[traitId] ?: stateTraitConfigs[traitId] ?: configTraitConfigs[traitId] ?: continue
-            return GedraConfigIssue(
+            return config.issue(
                 "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}'. A trait id " +
                     "is unique across every namespace and every gedra kind, which is what lets stored data " +
                     "carry a bare trait id and nothing else.",
                 "Keeping '${held.gedraId}''s; dropping '${config.gedraId}' and its $traitCount trait(s).",
+                GCEL.config, config.gedraId.fullId,
             )
         }
         return null

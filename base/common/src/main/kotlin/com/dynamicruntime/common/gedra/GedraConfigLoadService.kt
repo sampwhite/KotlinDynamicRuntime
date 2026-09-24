@@ -11,6 +11,8 @@ import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.uiblock.UIB
@@ -48,7 +50,8 @@ import kotlin.time.Instant
  * - **Reserved namespace / trait collisions / degrade-vs-refuse**: all come free through
  *   [SchemaCollector.addGedraConfig] -> [GedraConfigCollector.add], which refuses a config in the `globalconfig`
  *   namespace (owned by `global`, not the client) and one colliding with a kept trait, and does so as
- *   [gedraConfigCheckMode] says -- refuse the boot in `unit`/`local`, degrade (log, skip) in production.
+ *   [storedConfigCheckMode] says (issue #839) -- refuse the boot only in `unit`, and elsewhere degrade (log,
+ *   skip), since stored data refusing a boot leaves nothing with which to repair it.
  * - **`extendsFromClientId` from data** ([extendsProblem]): a data config may extend only a client that is
  *   **defined in source** and is a **template** -- which enforces both halves of the rule `ClientDef`
  *   documents ("only a template may be named" and "only the source-code definition is pulled in"), since a
@@ -139,7 +142,8 @@ class GedraConfigLoadService : ServiceInitializer {
         // The source clients, snapshotted before any stored config is added, so the extends rule tests against
         // the source-code set alone (a stored config may not become the base another extends).
         val sourceClients = collector.gedraConfigs.configs.mapNotNull { it.client }.associateBy { it.clientId }
-        val mode = gedraConfigCheckMode(cxt)
+        // Recorded up front, findings or not, so the operator report says the stored-config check ran (issue #839).
+        BootCheckRegistry.get(cxt).record(BCHK.storedConfig, GCFG.storedCheckEnvVar.name, storedConfigCheckMode(cxt))
 
         var loaded = 0
         // The newest date this node actually took per client (issue #618), so the restart announce reflects what
@@ -149,13 +153,19 @@ class GedraConfigLoadService : ServiceInitializer {
             val config = try {
                 reassemble(cxt, row)
             } catch (e: KdrException) {
-                // A row that cannot be turned back into a config is the "bad row" case: refuse in unit/local,
-                // degrade in production, exactly as a malformed source config would.
+                // A row that cannot be turned back into a config is the "bad row" case: judged as stored config
+                // (issue #839) -- forgiven everywhere but unit tests, since it is data nobody can fix from a
+                // node that will not start.
+                val rowId = row[GC.gedraId].toOptStr() ?: "?"
                 reportConfigProblem(
-                    cxt, mode,
+                    cxt,
                     GedraConfigIssue(
-                        "Stored config '${row[GC.gedraId].toOptStr()}' could not be loaded: ${e.message}",
-                        "Dropping the stored config '${row[GC.gedraId].toOptStr()}'.",
+                        "Stored config '$rowId' could not be loaded: ${e.message}",
+                        "Dropping the stored config '$rowId'.",
+                        client = try { GedraId.parse(rowId).client } catch (_: KdrException) { null },
+                        storedConfigId = rowId,
+                        elementKind = GCEL.config,
+                        elementId = rowId,
                     ),
                     issues,
                 )
@@ -163,7 +173,7 @@ class GedraConfigLoadService : ServiceInitializer {
             }
             val extendsProblem = extendsProblem(config, sourceClients)
             if (extendsProblem != null) {
-                reportConfigProblem(cxt, mode, extendsProblem, issues)
+                reportConfigProblem(cxt, extendsProblem, issues)
                 continue
             }
             // Routes through the same checks and degrade behavior a source config gets; a taken config's
@@ -254,17 +264,19 @@ class GedraConfigLoadService : ServiceInitializer {
     fun extendsProblem(config: GedraConfig, sourceClients: Map<String, ClientDef>): GedraConfigIssue? {
         val parentId = config.client?.extendsFromClientId ?: return null
         val parent = sourceClients[parentId]
-            ?: return GedraConfigIssue(
+            ?: return config.issue(
                 "Stored config '${config.gedraId}' extends '$parentId', which is not defined in source. A " +
                     "configuration authored from data may extend only a source-code client, so that only the " +
                     "source definition is ever pulled in.",
                 "Dropping the stored config '${config.gedraId}'.",
+                GCEL.config, config.gedraId.fullId,
             )
         if (parent.usageType != ClientUsageType.template) {
-            return GedraConfigIssue(
+            return config.issue(
                 "Stored config '${config.gedraId}' extends '$parentId', which is not a template " +
                     "(${parent.usageType}). A configuration authored from data may extend only a template.",
                 "Dropping the stored config '${config.gedraId}'.",
+                GCEL.config, config.gedraId.fullId,
             )
         }
         return null

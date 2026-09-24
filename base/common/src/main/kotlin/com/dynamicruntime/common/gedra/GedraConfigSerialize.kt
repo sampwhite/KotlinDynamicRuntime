@@ -72,7 +72,7 @@ fun reassembleGedraConfig(
     namespace: String,
     client: String,
     entriesBySlot: Map<String, List<Map<String, Any?>>>,
-): GedraConfig = gedraConfig(cxt, name, namespace, client) {
+): GedraConfig = gedraConfig(cxt, name, namespace, client, GedraConfigOrigin.stored) {
     entriesBySlot[CCT.clientDef]?.firstOrNull()?.let { defineClient(ClientDef.fromInfo(it)) }
     // Directly-declared types first, so a trait's shared `$ref` has its target present when the config compiles.
     entriesBySlot[CCT.schemaDef]?.forEach { e ->
