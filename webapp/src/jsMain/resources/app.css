@@ -959,3 +959,9 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 /* The workflow pages (issue #792): counts right-aligned under their headings, so the columns read as numbers. */
 .wf-aggregate .wf-count { text-align: right; width: 90px; }
 .wf-aggregate th.wf-count { text-align: right; }
+
+/* The raw editor's trait-lock notice (issue #857): which traits are locked for you and by what, with the override
+   control beneath it for someone a lock allows. Set apart so it reads before the form it constrains. */
+.lock-notice { border-left: 3px solid var(--accent-bright); padding: 6px 10px; margin: 8px 0 12px; }
+.lock-notice p { margin: 0 0 6px; }
+.lock-notice .ant-input { max-width: 480px; margin-top: 6px; display: block; }

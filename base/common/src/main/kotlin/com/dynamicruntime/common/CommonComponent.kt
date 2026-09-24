@@ -1,5 +1,6 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -120,6 +121,9 @@ class CommonComponent : ComponentDefinition {
         // The built-in post-write hook (issue #675): recompute derived state after every gedra data write, inside
         // its transaction. This is what makes a raw patch (not only the survey save) keep survey state fresh.
         collector.addWriteHook(DerivedStateWriteHook)
+        // The trait-lock guard (issue #857): a normal workflow's locks refuse an edit of a locked trait on every
+        // path, under the form's lock -- or record the override a permitted writer asked for.
+        collector.addWriteGuard(TraitLockGuard)
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))

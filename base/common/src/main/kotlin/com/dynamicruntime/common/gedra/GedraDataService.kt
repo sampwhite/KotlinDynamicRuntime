@@ -1033,7 +1033,7 @@ class GedraDataService : ServiceInitializer {
                 GedraEdit(edit.action, edit.traitId, edit.entryId, prepForSaveData(cxt, kind, edit.traitId, data, cxt.client))
             }
         }
-        return GedraPatchTarget(target.gedraId, edits, target.underLock)
+        return GedraPatchTarget(target.gedraId, edits, target.underLock, target.overrideReason)
     }
 
     /**
@@ -1168,11 +1168,15 @@ class GedraDataService : ServiceInitializer {
             val row = readForPatch(txCxt, sqlCxt, table, target.gedraId)
             // The caller's own check on the form as it stands now (issue #856), on the same lock an engagement change
             // takes -- so nothing can move the form's state between the check and the write.
-            target.underLock?.let { check ->
-                val states = readStateRowUnderLock(txCxt, sqlCxt, gedraStatesTable(txCxt), target.gedraId)
+            val statesNow by lazy {
+                readStateRowUnderLock(txCxt, sqlCxt, gedraStatesTable(txCxt), target.gedraId)
                     ?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
-                check(row, states)
             }
+            target.underLock?.let { check -> check(row, statesNow) }
+            // The registered guards (issue #857) -- a trait lock, say -- on the same lock, before any edit. Each may
+            // refuse (a throw) or hand back state to record with the write (a permitted override's trail).
+            val guarded = GedraGuardedWrite(row, target.edits.map { it.traitId }.toSet(), target.overrideReason) { statesNow }
+            val stateChanges = SchemaService.get(txCxt).writeGuards().mapNotNull { it.check(txCxt, guarded) }
             // Keyed by trait -- plus its primary-key value when the trait declares one (issue #487) -- because
             // that is how an edit names an entry, and the address is unique. Order is preserved so an unrelated
             // entry does not move when its neighbor changes.
@@ -1203,6 +1207,12 @@ class GedraDataService : ServiceInitializer {
                     "The gedra '${target.gedraId}' could no longer be written when the patch reached it.",
                     code = EXC.notFound,
                 )
+            }
+            // What the guards asked to record with the write (issue #857), as the gedra's owner -- as every state write
+            // is -- before the hooks, whose recompute keeps it: it is asserted state.
+            if (stateChanges.isNotEmpty()) {
+                txCxt.bindTransactionOwner(row.userId, row.client, row.org)
+                writeState(txCxt, target.gedraId, stateChanges.fold(statesNow) { acc, change -> change(acc) })
             }
             // The post-write hooks (issue #675), on the same lock the patch holds: the built-in one recomputes
             // this form's derived state from the patched data, so state follows the edit on the raw patch path

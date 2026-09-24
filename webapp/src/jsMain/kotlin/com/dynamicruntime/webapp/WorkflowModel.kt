@@ -132,6 +132,8 @@ class WorkflowView(
     val eligible: Boolean? = null,
     /** When it does not: why, resolved -- what the page lists in place of an Engage that would fail. */
     val ineligibleReasons: List<String> = emptyList(),
+    /** The form's traits locked for this caller (issue #857), by trait id; drawn read-only and left out of a save. */
+    val lockedTraits: Map<String, TraitLock> = emptyMap(),
 ) {
     /** A normal workflow (issue #791): one a form is put into, rather than the creation or the survey. */
     val isNormal: Boolean get() = entry == WfEntry.normal.name
@@ -209,6 +211,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         phase = results[WVF.phase].toOptStr(),
         engaged = results[WVF.engaged] as? Boolean,
         eligible = results[WVF.eligible] as? Boolean,
+        lockedTraits = parseTraitLocks(results[WVF.lockedTraits]).associateBy { it.traitId },
         ineligibleReasons = results[WVF.ineligibleReasons].toJsonListOfStrings(),
     )
 }
@@ -508,3 +511,19 @@ fun parseSaveOutcome(results: Map<String, Any?>): WorkflowSaveOutcome = Workflow
     item = results[WSF.item].toJsonMapOrEmpty(),
     view = results[WSF.view]?.let { parseWorkflowView(it.toJsonMapOrEmpty()) },
 )
+
+/**
+ * A trait locked for this caller on a form (issue #857): which workflow locks it ([workflowId], [label]) and whether
+ * this caller may override the lock with a reason ([canOverride]).
+ */
+class TraitLock(val traitId: String, val workflowId: String, val label: String, val canOverride: Boolean)
+
+/** A view's or the locks endpoint's `lockedTraits` (issue #857). Pure, and covered under `jsNodeTest`. */
+fun parseTraitLocks(raw: Any?): List<TraitLock> = raw.toJsonListOfMaps().mapNotNull { l ->
+    TraitLock(
+        traitId = l[WFD.traitId].toOptStr() ?: return@mapNotNull null,
+        workflowId = l[WFD.workflowId].toOptStr().orEmpty(),
+        label = l[WFD.label].toOptStr().orEmpty(),
+        canOverride = l[WVF.canOverride] == true,
+    )
+}

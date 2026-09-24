@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
+import com.dynamicruntime.common.gedra.GedraWriteGuard
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.clientAttribute
@@ -681,6 +682,9 @@ class SchemaService : ServiceInitializer {
 
     /** The registered post-write hooks (issue #675), in registration order. */
     fun writeHooks(): List<GedraWriteHook> = collector?.writeHooks ?: emptyList()
+
+    /** The registered write guards (issue #857); see [GedraWriteGuard]. */
+    fun writeGuards(): List<GedraWriteGuard> = collector?.writeGuards ?: emptyList()
 
     /** The trait-usage rules [client] applies (issue #537) -- what a listing's columns are computed from. */
     fun traitUsagesFor(client: String): List<ClientTraitUsage> =

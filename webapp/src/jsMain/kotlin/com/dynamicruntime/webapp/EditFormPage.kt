@@ -84,6 +84,12 @@ val EditFormPage = FC<Props> {
     // The last seeded snapshot of the edits -- the load, or the re-read after a save -- so "unsaved" is the working
     // values differing from it (issue #726 review), the same measure the survey editor arms its leave guard on.
     var seeded by useState<Map<String, Any?>>(emptyMap())
+    // The form's traits locked for this caller (issue #857): drawn as a notice, and a changed section of one is sent
+    // only as an explicit override -- by someone the lock allows -- with a reason.
+    var locks by useState<List<TraitLock>>(emptyList())
+    var overriding by useState(false)
+    var overrideReason by useState("")
+    var lockError by useState<String?>(null)
     // Whether the user has typed since the current save was sent (issue #726 review). A ref rather than state:
     // it is read inside the save's coroutine after the round trip, where a state value would be the stale
     // closure's. If they have, the re-read must not overwrite their newer keystrokes, nor "Saved." stand beside
@@ -111,6 +117,10 @@ val EditFormPage = FC<Props> {
         saved = false
         seeded = emptyMap()
         hasSurvey = false
+        locks = emptyList()
+        overriding = false
+        overrideReason = ""
+        lockError = null
         loadingSchema = true
         val id = gedraId
         editScope.launch {
@@ -140,6 +150,11 @@ val EditFormPage = FC<Props> {
                 // (issue #726 review): it only decides whether a link is drawn, so neither its failure nor a
                 // stall may hold the editor on "Loading…". The link simply appears when the answer lands.
                 if (id != null) {
+                    // The locks (issue #857), likewise never awaited: they only decorate the editor, and the backend
+                    // refuses a locked change whatever is drawn.
+                    editScope.launch {
+                        locks = runCatching { WorkflowApi.fetchLocks(id) }.getOrDefault(emptyList())
+                    }
                     editScope.launch {
                         hasSurvey = runCatching {
                             val viewPath = fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
@@ -264,6 +279,32 @@ val EditFormPage = FC<Props> {
                         "Save sends only the sections you leave in place; Done returns to your forms.")
                 }
 
+                // The traits locked for this caller (issue #857): named, with the workflow locking each, so a refused
+                // save is never a surprise -- and, for someone a lock allows, an explicit override with a reason.
+                if (locks.isNotEmpty()) {
+                    div {
+                        className = ClassName("lock-notice")
+                        p {
+                            +("Locked for you: " + locks.joinToString("; ") { "${humanizeFieldName(it.traitId)} (by ${it.label})" } +
+                                ". Changes to ${if (locks.size == 1) "it" else "them"} can't be saved.")
+                        }
+                        if (locks.any { it.canOverride }) {
+                            Checkbox {
+                                checked = overriding
+                                onChange = { e -> overriding = e.target.checked; lockError = null }
+                                +"Override the lock"
+                            }
+                            if (overriding) {
+                                Input {
+                                    placeholder = "Why? Recorded with the change."
+                                    value = overrideReason
+                                    onChange = { event -> overrideReason = event.target.value as? String ?: ""; lockError = null }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 SchemaForm {
                     type = targetType
                     this.values = values
@@ -305,8 +346,28 @@ val EditFormPage = FC<Props> {
                             val allFailures = check.failures + completeness
                             failures = allFailures.ifEmpty { null }
                             revalidate = false
-                            val payload = if (completeness.isEmpty()) check.payload else null
-                            if (payload == null) {
+                            val checked = if (completeness.isEmpty()) check.payload else null
+                            // Locked sections (issue #857): an untouched one is left out, so it cannot trip its lock;
+                            // a changed one goes only as an override, by someone every such lock allows, with a reason.
+                            val split = checked?.let { splitLockedEdits(it, seeded, locks.map { l -> l.traitId }.toSet()) }
+                            val reason = overrideReason.trim().ifBlank { null }
+                            val changedLocks = locks.filter { it.traitId in split?.changedLocked.orEmpty() }
+                            // A local, not the state: a state set in this click still reads as its old value here.
+                            val lockProblem = when {
+                                changedLocks.isEmpty() -> null
+                                !overriding -> "${changedLocks.joinToString(", ") { humanizeFieldName(it.traitId) }} " +
+                                    "is locked; undo the change" + (if (changedLocks.all { it.canOverride }) ", or override the lock." else ".")
+                                reason == null -> "Give a reason for overriding the lock."
+                                !changedLocks.all { it.canOverride } -> "You may not override the lock on " +
+                                    changedLocks.filterNot { it.canOverride }.joinToString(", ") { humanizeFieldName(it.traitId) } + "."
+                                else -> null
+                            }
+                            lockError = lockProblem
+                            val payload = split?.target?.takeIf { lockProblem == null }
+                            val sendReason = reason?.takeIf { changedLocks.isNotEmpty() }
+                            if (lockProblem != null) {
+                                // Nothing to focus: the notice above the form says what to do.
+                            } else if (payload == null) {
                                 focusRequest += 1
                             } else {
                                 running = true
@@ -318,7 +379,12 @@ val EditFormPage = FC<Props> {
                                         // hatch, or the backend refuses it (issue #667); sent only when one was
                                         // entered on the cross-client admin surface.
                                         val allowAdditional = openTraitEntry && patchNamesUnknownTrait(targetType, payload)
-                                        SchemaCatalogApi.invoke(patchEp, formDocPatchBody(payload, allowAdditional))
+                                        SchemaCatalogApi.invoke(patchEp, formDocPatchBody(payload, allowAdditional, sendReason))
+                                        // An override is one write's: the next change asks again.
+                                        if (sendReason != null) {
+                                            overriding = false
+                                            overrideReason = ""
+                                        }
                                         // Save stays on the page (issue #726), as the survey editor's does, so
                                         // several saves in a row work without re-entering: re-read the form and
                                         // re-seed the edits from what is now stored -- the patch answers with
@@ -369,6 +435,12 @@ val EditFormPage = FC<Props> {
                     )
                 }
 
+                lockError?.let {
+                    p {
+                        className = ClassName("error-text")
+                        +it
+                    }
+                }
                 runError?.let { errorText("Couldn't save the form.", it) }
             }
         }

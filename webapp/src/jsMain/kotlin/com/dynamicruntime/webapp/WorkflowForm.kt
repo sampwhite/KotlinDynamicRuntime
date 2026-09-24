@@ -224,7 +224,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // Client-side schema check per trait first; a failure keeps the save from leaving. A Save checks the
         // task's traits as a whole, so every failure shows from here on (issue #718), and a clean check clears
         // what an earlier one left.
-        val checks = task.traits.associate { it.traitId to checkInput(it.type, valuesOf(it.traitId)) }
+        // A trait locked for this caller (issue #857) is not theirs to send: it stays as stored, and a save that
+        // named it would be refused whole.
+        val checks = task.traits.filterNot { it.traitId in wf.lockedTraits }
+            .associate { it.traitId to checkInput(it.type, valuesOf(it.traitId)) }
         failuresByTrait = failuresByTrait + checks.mapValues { it.value.failures }
         wholeChecked = wholeChecked + checks.keys
         if (checks.values.any { it.failures.isNotEmpty() }) return
@@ -342,6 +345,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     className = ClassName("wf-trait")
                     trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true } }
                         ?: h2 { +traitHeading(trait) }
+                    // Locked for this caller (issue #857): shown as stored, and said why.
+                    wf.lockedTraits[trait.traitId]?.let { lock ->
+                        p {
+                            className = ClassName("subtitle")
+                            +"Locked by ${lock.label}; it can't be changed here."
+                        }
+                    }
                     if (trait.traitId in unmetTraits) {
                         p {
                             className = ClassName("error-text")
@@ -351,8 +361,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     SchemaForm {
                         type = trait.type
                         this.values = valuesOf(trait.traitId)
-                        // A step this caller may not save (issue #856) stays read-only while the rest is edited.
-                        editable = editing && task.canSave
+                        // A step this caller may not save (issue #856), or a trait locked for them (issue #857), stays
+                        // read-only while the rest is edited.
+                        editable = editing && task.canSave && trait.traitId !in wf.lockedTraits
                         friendly = true
                         // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
                         // an expense report's total, computed on read -- rather than hiding them; the flag is
@@ -391,7 +402,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // validation failures keeps its Save, so clicking it shows the errors rather than a dead button.
             // A task that offers no save -- a normal workflow's approval step (issues #787, #791) -- draws none:
             // there is nothing here to save, and asking for its save would find none.
-            if (editing && task.saves.isNotEmpty() && task.canSave) {
+            if (editing && task.saves.isNotEmpty() && task.canSave && task.traits.any { it.traitId !in wf.lockedTraits }) {
                 // When defaults are the only thing left to do, say so above the Save (issue #710): the count is
                 // the task's still-pending defaults, and it disappears as they are accepted, edited, or saved.
                 val pendingDefaults =

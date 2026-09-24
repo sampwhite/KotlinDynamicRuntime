@@ -31,7 +31,9 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.TraitLocks
 import com.dynamicruntime.common.gedra.workflow.WorkflowTaskJudge
+import com.dynamicruntime.common.gedra.workflow.taskEntriesOf
 import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
 import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
@@ -656,18 +658,28 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
                 ref(GEP.patchTargets)
             }
             field(GDF.allowAdditionalTraits, GedraDataRow.additionalTraitsHint) { type = SCT.boolean }
+            field(
+                GPF.overrideReason,
+                "Override the workflow trait locks these edits touch, for this reason (recorded). Only for a caller " +
+                    "each lock allows to override; absent means no override is asked.",
+            )
         },
         publicApi = true,
         needsClientConfig = true,
     ) { c, request ->
         val gedraService = GedraService.get(c)
+        // An override (issue #857) is asked of every target in the patch: the lock guard applies it per gedra.
+        val overrideReason = request[GPF.overrideReason].toOptStr()
         val byKind = LinkedHashMap<GedraDataType, List<GedraPatchTarget>>()
         for ((kindName, raw) in request[GPF.targets].toJsonMapOrEmpty()) {
             // A property the schema does not declare cannot arrive, so an unknown name here would mean the
             // type and this loop had drifted -- worth a fault rather than a silent skip.
             val kind = GedraDataType.entries.firstOrNull { it.name == kindName }
                 ?: throw KdrException.mkInput("'$kindName' is not a kind of gedra a patch can target.")
-            byKind[kind] = raw.toJsonListOfMaps().map { GedraPatchTarget.extract(gedraService, it) }
+            byKind[kind] = raw.toJsonListOfMaps().map {
+                val target = GedraPatchTarget.extract(gedraService, it)
+                if (overrideReason == null) target else GedraPatchTarget(target.gedraId, target.edits, overrideReason = overrideReason)
+            }
         }
         if (byKind.values.all { it.isEmpty() }) {
             throw KdrException.mkInput("A patch has to name at least one gedra to change.")
@@ -729,10 +741,17 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val row = if (gedraId == null) null else surveyFormRow(c, gedraId)
             // A normal workflow is shown only while it exists, and -- outside its engagement window -- only to a form
             // already engaged with it (issue #790). Refused as an unknown one is, since that is what it is meant to be.
-            val formFacts = if (declared.def.entry == WfEntry.normal && row != null) {
-                WorkflowFormFacts.of(c, declared.def, GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)))
+            // The form's state, read once: where it stands with a normal workflow, and its locked traits (issue #857).
+            val states = row?.let { GedraDataService.get(c).readState(c, it.gedraId, ReadScopeRules.forCaller(c)) }
+            val formFacts = if (declared.def.entry == WfEntry.normal && states != null) {
+                WorkflowFormFacts.of(c, declared.def, states)
             } else {
                 null
+            }
+            val lockedTraits = if (row != null && states != null) {
+                TraitLocks.describe(c, row.client, TraitLocks.heldFor(c, row.client, row.entries, states))
+            } else {
+                emptyList()
             }
             if (declared.def.entry == WfEntry.normal && !WorkflowPhases.of(c, declared.def).isShown(formFacts?.engaged == true)) {
                 throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
@@ -743,7 +762,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val ownerAttributes = prefillOwnerAttributes(c, declared, row?.userId ?: c.userId)
             // A form's approvals (issue #787) -- only read when the workflow has an approval task.
             val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
-            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, formFacts)
+            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, formFacts, lockedTraits)
         }
     }
 
@@ -938,6 +957,43 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         )
     }
 
+    // The trait locks holding for the caller on one form (issue #857): what the raw editor draws read-only, and whether
+    // it may offer an override. Worked out from the form's stored state and the caller on each call -- nothing about a
+    // lock is stored -- by the rule the lock guard enforces on the write.
+    type(GEP.formDocLocksType) {
+        type = SCT.kObject
+        description = "The traits of a form locked for the caller, and whether the caller may override each lock."
+        property(GDF.gedraId, "The form.", required = true)
+        property(WVF.lockedTraits, "Each locked trait, with the workflow locking it and whether the caller may override.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(WFD.traitId, "The locked trait.", required = true)
+                property(WFD.workflowId, "The workflow locking it.", required = true)
+                property(WFD.label, "That workflow's name, resolved.", required = true)
+                property(WVF.canOverride, "Whether this caller may override the lock, with a reason.", required = true) { type = SCT.boolean }
+            }
+        }
+    }
+
+    generalEndpoint(
+        GEP.formDocLocks,
+        "Lists the traits of a form locked for the caller by the workflows it is engaged with, and whether the " +
+            "caller may override each lock.",
+        HttpMethod.GET,
+        outputRef = GEP.formDocLocksType,
+        inputFields = { field(GDF.gedraId, "The form.", required = true) },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val row = stateTargetRow(c, request)
+        val states = GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c))
+        mapOf(
+            GDF.gedraId to row.gedraId.fullId,
+            WVF.lockedTraits to TraitLocks.describe(c, row.client, TraitLocks.heldFor(c, row.client, row.entries, states)),
+        )
+    }
+
     // Recomputes one form's derived state on demand (issue #794). Batch jobs (issue #793) will do this in bulk;
     // this endpoint exists first, and is what a test uses to force a recompute even once they do.
     generalEndpoint(
@@ -1037,12 +1093,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val owner = prefillOwnerAttributes(c, declared, item[GDF.userId].toOptLong() ?: c.userId)
             val approvals = WorkflowApprovals.forView(c, declared.def, gedraId)
             // A normal workflow's refreshed view says whether the form is engaged, as the view endpoint's does.
-            val formFacts = if (declared.def.entry == WfEntry.normal) {
-                WorkflowFormFacts.of(c, declared.def, GedraDataService.get(c).readState(c, GedraId.parse(gedraId), ReadScopeRules.forCaller(c)))
-            } else {
-                null
-            }
-            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals, formFacts))
+            val states = GedraDataService.get(c).readState(c, GedraId.parse(gedraId), ReadScopeRules.forCaller(c))
+            val formFacts = if (declared.def.entry == WfEntry.normal) WorkflowFormFacts.of(c, declared.def, states) else null
+            val lockedTraits = TraitLocks.describe(
+                c, c.client, TraitLocks.heldFor(c, c.client, item[GDF.entries].toJsonListOfMaps(), states),
+            )
+            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals, formFacts, lockedTraits))
         } else {
             result
         }
@@ -1195,10 +1251,7 @@ private fun normalTaskSaveCheck(c: KdrCxt, declared: WfDeclared, taskId: String)
 
 /** The same split over entries already in hand as wire maps -- a save's returned item (issue #700). */
 private fun entriesByTaskOf(declared: WfDeclared, entries: List<Map<String, Any?>>): Map<String, List<Map<String, Any?>>> =
-    declared.def.tasks.associate { task ->
-        val traitIds = task.traits.map { it.traitId }.toSet()
-        task.id to entries.filter { it[GE.traitId].toOptStr() in traitIds }
-    }
+    taskEntriesOf(declared, entries)
 
 /**
  * The form owner's attributes a `prefillData` function may default a field from (issue #679) -- empty when the

@@ -56,6 +56,12 @@ class GedraPatchTarget(
      * at an earlier read another request could have overtaken. Null for none.
      */
     val underLock: ((row: GedraDataRow, states: List<Map<String, Any?>>) -> Unit)? = null,
+    /**
+     * The writer's reason for overriding a guard on this gedra (issue #857) -- a trait lock -- or null when they ask
+     * for no override. Asking is explicit: a write without it is refused by a lock even when the writer could
+     * override one.
+     */
+    val overrideReason: String? = null,
 ) {
     companion object {
         /** Reads a target off the validated request map, resolving its id through [gedraService]. */

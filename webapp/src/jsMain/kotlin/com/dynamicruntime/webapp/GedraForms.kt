@@ -473,13 +473,36 @@ fun seededEdits(form: Map<String, Any?>): List<Map<String, Any?>> =
  * body (issue #417) -- the inverse of [formDocPatchTargetType]. The edit page edits a single form, so this is
  * always one target under the form-document kind. Pure, and covered under `jsNodeTest`.
  */
-fun formDocPatchBody(target: Map<String, Any?>, allowAdditionalTraits: Boolean = false): Map<String, Any?> =
+fun formDocPatchBody(target: Map<String, Any?>, allowAdditionalTraits: Boolean = false, overrideReason: String? = null): Map<String, Any?> =
     buildMap {
         put(GPF.targets, mapOf(GedraDataType.formDoc.name to listOf(target)))
         // The escape hatch for a free-form trait the client's union does not know (issue #667): sent only when
         // one was entered, so an ordinary edit stays bound to the client's declared traits.
         if (allowAdditionalTraits) put(GDF.allowAdditionalTraits, true)
+        // An explicit override of the trait locks the edits touch (issue #857), with the writer's reason.
+        overrideReason?.let { put(GPF.overrideReason, it) }
     }
+
+/** What [splitLockedEdits] makes of a patch target: the [target] to send, and the locked traits the user changed. */
+class LockedEditSplit(val target: Map<String, Any?>, val changedLocked: List<String>)
+
+/**
+ * The raw editor's patch target with its **locked** sections sorted out (issue #857): [target] (the one-target
+ * `{gedraId, edits}` shape) without the edits of a trait in [locked] that are just as [seeded] -- the editor sends
+ * every section it loaded, and an untouched one must not trip a lock -- and the locked traits whose edits the user
+ * did change, which only an override may send. Pure, and covered under `jsNodeTest`.
+ */
+fun splitLockedEdits(target: Map<String, Any?>, seeded: Map<String, Any?>, locked: Set<String>): LockedEditSplit {
+    if (locked.isEmpty()) return LockedEditSplit(target, emptyList())
+    val seededEdits = seeded[GPF.edits].toJsonListOfMaps()
+    val changed = LinkedHashSet<String>()
+    val kept = target[GPF.edits].toJsonListOfMaps().filter { edit ->
+        val traitId = edit[GE.traitId].toOptStr() ?: return@filter true
+        if (traitId !in locked) return@filter true
+        if (edit in seededEdits) false else { changed.add(traitId); true }
+    }
+    return LockedEditSplit(target + (GPF.edits to kept), changed.toList())
+}
 
 /**
  * Whether an edited patch target ([values], the one-target `{gedraId, edits}` shape) names a trait the edit

@@ -219,6 +219,22 @@ fun buildWorkflowRegistries(
                 return false
             }
         }
+        // Trait locks (issue #857): each condition parses against the scope's cfacts -- a lock whose condition could not
+        // parse would refuse every write, or none, and the first person to find out would be the one locked out.
+        for (lock in w.def.locks) {
+            for ((what, expr) in listOfNotNull("condition" to lock.whenExpr, lock.overrideWhen?.let { "override rule" to it })) {
+                try {
+                    parseCFactOrAlways(expr, cfactNames(scope))
+                } catch (ex: KdrException) {
+                    reportConfigProblem(
+                        cxt,
+                        problem(scope, w, "has a lock on trait '${lock.traitId}' whose $what does not parse: ${ex.message}"),
+                        issues,
+                    )
+                    return false
+                }
+            }
+        }
         for (task in w.def.tasks) {
             task.traits.firstOrNull { it.traitId !in usable }?.let {
                 reportConfigProblem(

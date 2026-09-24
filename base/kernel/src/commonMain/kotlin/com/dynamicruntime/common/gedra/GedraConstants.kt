@@ -78,6 +78,12 @@ object GEP {
      */
     const val formDocSingletonWorkflows = "/gedra/formDoc/singletonWorkflows"
 
+    /** The trait locks holding for the caller on one form (issue #857): what the raw editor draws read-only. */
+    const val formDocLocks = "/gedra/formDoc/locks"
+
+    /** Response type of [formDocLocks]. */
+    const val formDocLocksType = "FormDocLocks"
+
     /** Response type of [formDocSingletonWorkflows]. */
     const val singletonWorkflowsType = "SingletonWorkflows"
 
@@ -298,6 +304,13 @@ object GPF {
 
     /** Within a target: the edits asked of that one gedra. */
     const val edits = "edits"
+
+    /**
+     * On a patch (issue #857): the writer's reason for overriding the trait locks its edits touch -- asking is
+     * explicit, so a patch without one is refused by a lock even from someone who may override it. Recorded on the
+     * locking workflow's trail.
+     */
+    const val overrideReason = "overrideReason"
 
     /** In the answer: what became of each edit, keyed by the trait it named. */
     const val outcomes = "outcomes"

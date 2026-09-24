@@ -491,6 +491,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             // An approved audit review is finished: the ordinary singleton rule turns the approval's cfact into the
             // form's Finished status -- no special case for approvals.
             singleton(WSC.finished, SC.auditApproved)
+            // The audit is the reviewers' while the form is in the review (issue #857): nobody else may change it by any
+            // path -- the raw editor and the patch endpoint included -- except a client administrator who overrides
+            // the lock with a reason, which the review's trail records.
+            lock(SC.siteAudit, writableVia = SW.recordAudit, overrideWhen = CFACTS.hasAdminLevel)
         }
 
         // A second normal workflow (issue #784): a follow-up visit, held off while any review is pending. What
