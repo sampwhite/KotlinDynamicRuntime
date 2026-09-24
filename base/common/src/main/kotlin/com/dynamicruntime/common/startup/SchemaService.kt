@@ -699,8 +699,6 @@ class SchemaService : ServiceInitializer {
         cxt.schemaStore = next.store
     }
 
-    private fun SchemaSnapshot.withCfacts(cfacts: CFactRegistries) = SchemaSnapshot(store, clientStores, cfacts)
-
     /**
      * Every varying client's store re-wrapped with the **same, final** endpoint map. A client that varies
      * nothing about *schema* gets the global document with the full map -- present rather than absent, because
