@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
+import com.dynamicruntime.common.gedra.GedraWriteGuard
 import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
 import com.dynamicruntime.common.gedra.GID
@@ -139,6 +140,14 @@ class SchemaCollector(
     /** Registers a post-write hook (issue #675); order is preserved and matters -- hooks run in registration order. */
     fun addWriteHook(hook: GedraWriteHook) {
         writeHooks.add(hook)
+    }
+
+    /** The write guards (issue #857), run under a patch's lock before its edits; any may refuse it. */
+    val writeGuards: MutableList<GedraWriteGuard> = mutableListOf()
+
+    /** Registers a write guard (issue #857); each runs, in registration order, on every patch of an existing gedra. */
+    fun addWriteGuard(guard: GedraWriteGuard) {
+        writeGuards.add(guard)
     }
 
     /**

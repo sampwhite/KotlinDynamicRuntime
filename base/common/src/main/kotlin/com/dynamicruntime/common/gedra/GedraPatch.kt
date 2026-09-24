@@ -56,10 +56,19 @@ class GedraPatchTarget(
      * at an earlier read another request could have overtaken. Null for none.
      */
     val underLock: ((row: GedraDataRow, states: List<Map<String, Any?>>) -> Unit)? = null,
+    /**
+     * The writer's reason for overriding a guard on this gedra (issue #857) -- a trait lock -- or null when they ask
+     * for no override. Asking is explicit: a write without it is refused by a lock even when the writer could
+     * override one.
+     */
+    val overrideReason: String? = null,
 ) {
     companion object {
-        /** Reads a target off the validated request map, resolving its id through [gedraService]. */
-        fun extract(gedraService: GedraService, raw: Map<String, Any?>): GedraPatchTarget {
+        /**
+         * Reads a target off the validated request map, resolving its id through [gedraService]. [overrideReason] is
+         * the patch's own (issue #857), asked of every target it names.
+         */
+        fun extract(gedraService: GedraService, raw: Map<String, Any?>, overrideReason: String? = null): GedraPatchTarget {
             val fullId = raw[GDF.gedraId].toOptStr()
                 ?: throw KdrException.mkInput("A patch target needs a ${GDF.gedraId}.")
             val edits = raw[GPF.edits].toJsonListOrEmpty().map { GedraEdit.extract(it.toJsonMapOrEmpty()) }
@@ -69,7 +78,7 @@ class GedraPatchTarget(
                         "so an empty list is a caller mistake rather than a way to say nothing.",
                 )
             }
-            return GedraPatchTarget(gedraService.readId(fullId), edits)
+            return GedraPatchTarget(gedraService.readId(fullId), edits, overrideReason = overrideReason)
         }
     }
 }

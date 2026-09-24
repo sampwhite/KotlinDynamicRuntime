@@ -39,6 +39,7 @@ object WFD {
     const val singletonType = "WfSingleton"
     const val approvalType = "WfApproval"
     const val windowType = "WfWindow"
+    const val lockType = "WfLock"
 
     const val workflowId = "workflowId"
     const val entry = "entry"
@@ -132,6 +133,19 @@ object WFD {
      */
     const val saveWhen = "saveWhen"
 
+    /**
+     * A normal workflow's trait locks (issue #857): each a [traitId] the form's data may not change -- by any path --
+     * while the form is engaged with the workflow and the lock's [kWhen] condition holds, except by whoever may save
+     * its [writableVia] task (issue #856's rule), or by a write that overrides it where [overrideWhen] allows.
+     */
+    const val locks = "locks"
+
+    /** On a lock: the task, in the same workflow and collecting the locked trait, whose savers the lock exempts. */
+    const val writableVia = "writableVia"
+
+    /** On a lock: who may override it -- a cfact expression over the writer's request facts; absent means nobody. */
+    const val overrideWhen = "overrideWhen"
+
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
 }
@@ -167,6 +181,14 @@ object WVF {
      * who may ([WFD.saveWhen]) -- the rule the save endpoint enforces, so the page offers Save only where it works.
      */
     const val canSave = "canSave"
+
+    /**
+     * On a view resolved against a form, and the locks endpoint's answer (issue #857): the traits locked for this
+     * caller, each with its `traitId`, the `workflowId` and `label` of the workflow locking it, and [canOverride] --
+     * so the page draws them read-only and offers an override only to whoever may make one.
+     */
+    const val lockedTraits = "lockedTraits"
+    const val canOverride = "canOverride"
 
     /**
      * For a normal workflow viewed against a form it is not engaged with (issue #791): whether the form passes its
@@ -542,7 +564,11 @@ class WfDef(
     singletons: List<WfSingleton> = emptyList(),
     /** The time windows (issue #790); only a [WfEntry.normal] workflow may declare any. */
     val windows: WfWindows = WfWindows.none,
+    locks: List<WfLock> = emptyList(),
 ) {
+    /** The trait locks (issue #857), in declaration order; only a [WfEntry.normal] workflow may declare any. */
+    val locks: List<WfLock> = locks.toList()
+
     /** The tasks, in the order they are presented. */
     val tasks: List<WfTask> = tasks.toList()
 
@@ -697,6 +723,43 @@ class WfDef(
                 )
             }
         }
+        if (locks.isNotEmpty() && entry != WfEntry.normal) {
+            throw KdrException.mkConv(
+                "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' locks traits; only a normal " +
+                    "workflow does, since a lock holds while a form is engaged with it.",
+            )
+        }
+        val lockedTraits = HashSet<String>()
+        for (lock in locks) {
+            if (!lockedTraits.add(lock.traitId)) {
+                throw KdrException.mkConv("Workflow '$workflowId' locks trait '${lock.traitId}' twice; write one lock.")
+            }
+            val via = tasksById[lock.writableVia]
+                ?: throw KdrException.mkConv(
+                    "The lock on trait '${lock.traitId}' in workflow '$workflowId' is writable via task " +
+                        "'${lock.writableVia}', which the workflow does not have.",
+                )
+            if (via.traits.none { it.traitId == lock.traitId }) {
+                throw KdrException.mkConv(
+                    "The lock on trait '${lock.traitId}' in workflow '$workflowId' is writable via task '${via.id}', " +
+                        "which does not collect it -- the task a lock names is the one that owns the trait.",
+                )
+            }
+            // A task anyone may save exempts everyone, so the lock would hold for nobody: a mistake, not an intent.
+            if (via.saveWhen == null) {
+                throw KdrException.mkConv(
+                    "The lock on trait '${lock.traitId}' in workflow '$workflowId' is writable via task '${via.id}', " +
+                        "which says nothing about who may save it -- so the lock would hold for nobody. Give the task " +
+                        "a saveWhen rule.",
+                )
+            }
+            if (lock.whenExpr.isBlank()) {
+                throw KdrException.mkConv(
+                    "The lock on trait '${lock.traitId}' in workflow '$workflowId' has no condition. Write '#always' " +
+                        "for one that holds whenever the form is engaged, so the intent is explicit.",
+                )
+            }
+        }
         if (singletons.isNotEmpty() && entry != WfEntry.normal) {
             throw KdrException.mkConv(
                 "${entry.name.replaceFirstChar { it.uppercase() }} workflow '$workflowId' declares singleton " +
@@ -828,6 +891,14 @@ object WfDefSchema {
             property(WFD.start, "When the window opens; absent, the enclosing window's start, or no limit.") { dateTime() }
             property(WFD.end, "When the window closes; absent, the enclosing window's end, or no limit.") { dateTime() }
         }
+        type(WFD.lockType) {
+            type = SCT.kObject
+            description = "A trait lock: while the form is engaged and the condition holds, only the named task's savers may change the trait, unless a write overrides it."
+            property(WFD.traitId, "The trait locked.", required = true)
+            property(WFD.kWhen, "When it holds, beyond the form being engaged: a cfact expression over the form's and the workflow's facts.", required = true)
+            property(WFD.writableVia, "The task, collecting the trait, whose savers the lock exempts.", required = true)
+            property(WFD.overrideWhen, "Who may override it: a cfact expression over the writer's request facts. Absent means nobody.")
+        }
         type(WFD.taskType) {
             type = SCT.kObject
             description = "One task of a workflow: the traits it collects and the saves it offers -- or, with an approval, none, completed by a reviewer."
@@ -895,6 +966,11 @@ object WfDefSchema {
             property(WFD.engagement, "Inside relevancy: when a form may engage with the workflow.") {
                 ref(WFD.windowType)
             }
+            property(WFD.locks, "A normal workflow's trait locks: what the form's data may not change while it is engaged, and who is exempt or may override.") {
+                type = SCT.array
+                allowCoerce = true
+                items { ref(WFD.lockType) }
+            }
         }
     }
 
@@ -956,6 +1032,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     if (!windows.lifetime.isEmpty) put(WFD.lifetime, windows.lifetime.toJsonMap())
     if (!windows.relevancy.isEmpty) put(WFD.relevancy, windows.relevancy.toJsonMap())
     if (!windows.engagement.isEmpty) put(WFD.engagement, windows.engagement.toJsonMap())
+    if (locks.isNotEmpty()) put(WFD.locks, locks.map { it.toJsonMap() })
 }
 
 /**
@@ -1026,7 +1103,43 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
             relevancy = WfWindow.fromJson(m[WFD.relevancy]),
             engagement = WfWindow.fromJson(m[WFD.engagement]),
         ),
+        locks = m[WFD.locks].toJsonListOfMaps().map { l ->
+            WfLock(
+                traitId = l[WFD.traitId].toOptStr() ?: "",
+                whenExpr = l[WFD.kWhen].toOptStr() ?: "",
+                writableVia = l[WFD.writableVia].toOptStr() ?: "",
+                overrideWhen = l[WFD.overrideWhen].toOptStr(),
+            )
+        },
     )
+}
+
+/**
+ * A trait lock of a normal workflow (issue #857); see [WFD.locks]. [whenExpr] is when it holds beyond the form being
+ * engaged; [writableVia] the task whose savers it exempts; [overrideWhen] who may override it, or null for nobody.
+ */
+class WfLock(val traitId: String, val whenExpr: String, val writableVia: String, val overrideWhen: String? = null) {
+    fun toJsonMap(): Map<String, Any?> = buildMap {
+        put(WFD.traitId, traitId)
+        put(WFD.kWhen, whenExpr)
+        put(WFD.writableVia, writableVia)
+        overrideWhen?.let { put(WFD.overrideWhen, it) }
+    }
+}
+
+/**
+ * The traits each task restricts with a save rule ([WfTask.saveWhen], issue #856) that no lock of this workflow covers
+ * (issue #857), keyed by task id in task order -- empty when every such trait is locked. A save rule governs only the
+ * task's own save, so a trait it leaves unlocked can still be changed through the raw editor and the patch endpoint by
+ * someone the rule refuses -- almost never what the rule's author meant, so the backend reports each as a config
+ * problem, refusing the boot wherever config is checked strictly.
+ */
+fun WfDef.unlockedSaveRuleTraits(): Map<String, List<String>> {
+    if (entry != WfEntry.normal) return emptyMap()
+    val locked = locks.map { it.traitId }.toSet()
+    return tasks.filter { it.saveWhen != null }
+        .associate { task -> task.id to task.traits.map { it.traitId }.filter { it !in locked } }
+        .filterValues { it.isNotEmpty() }
 }
 
 /** The entry of [entries] whose name is [value]; the schema's closed option list has already admitted it. */
@@ -1047,6 +1160,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val eligibility = mutableListOf<Map<String, Any?>>()
     private val singletons = mutableListOf<Map<String, Any?>>()
     private val windows = linkedMapOf<String, Map<String, Any?>>()
+    private val locks = mutableListOf<Map<String, Any?>>()
 
     /**
      * What the workflow is called (issue #719): a page's title over its form. A template like a task's label,
@@ -1100,6 +1214,16 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     /** When a form may engage with the workflow, inside its [relevancy] (issue #790); a missing bound falls back. */
     fun engagement(start: String? = null, end: String? = null) = window(WFD.engagement, start, end)
 
+    /**
+     * Locks [traitId] on a form engaged with this workflow (issue #857): while [whenCfacts] -- a cfact expression over
+     * the form's facts and the workflow's own -- holds, only whoever may save task [writableVia] (which collects the
+     * trait and says who may save it) may change it, by any path. [overrideWhen], over the writer's request facts,
+     * says who may override it with an explicit reason; null means nobody.
+     */
+    fun lock(traitId: String, writableVia: String, whenCfacts: String = "#always", overrideWhen: String? = null) {
+        locks.add(WfLock(traitId, whenCfacts, writableVia, overrideWhen).toJsonMap())
+    }
+
     private fun window(name: String, start: String?, end: String?) {
         windows[name] = buildMap {
             start?.let { put(WFD.start, it) }
@@ -1117,6 +1241,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         if (eligibility.isNotEmpty()) put(WFD.eligibility, eligibility.toList())
         if (singletons.isNotEmpty()) put(WFD.singletons, singletons.toList())
         putAll(windows)
+        if (locks.isNotEmpty()) put(WFD.locks, locks.toList())
     }
 }
 

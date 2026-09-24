@@ -135,6 +135,13 @@ class FormOpts(
      * or nothing opts in.
      */
     val traitDataField: String? = null,
+    /**
+     * A note to draw beside a list element's `[i]` header (issue #857): asked per element with its path and value,
+     * and drawn when it answers one -- the raw editor's "Locked by Audit review" on a section the caller cannot
+     * change -- so what the page knows about an element is said on the element, not only in a notice above the
+     * form. Purely presentational; nothing about the element's editing changes.
+     */
+    val elementNote: (path: String, element: Map<String, Any?>) -> String? = { _, _ -> null },
 ) {
     /**
      * Whether a derived field at [path] holding [value] should be shown read-only rather than hidden (issue
@@ -402,6 +409,8 @@ external interface SchemaFormProps : Props {
     var derivedRootIsTraitData: Boolean?
     /** The property name marking a trait's data payload within a document (issue #712); see [FormOpts.traitDataField]. */
     var traitDataField: String?
+    /** A note to draw beside a list element's header (issue #857); see [FormOpts.elementNote]. */
+    var elementNote: ((path: String, element: Map<String, Any?>) -> String?)?
 }
 
 /**
@@ -537,6 +546,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         showDerivedValues = props.showDerivedValues == true,
         derivedRootIsTraitData = props.derivedRootIsTraitData == true,
         traitDataField = props.traitDataField,
+        elementNote = props.elementNote ?: { _, _ -> null },
     )
     div {
         // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
@@ -1288,6 +1298,13 @@ private fun ChildrenBuilder.renderObjectList(
                 span {
                     className = ClassName("type-hint")
                     +header
+                }
+                // What the page knows about this element (issue #857) -- a locked section -- said on the element.
+                opts.elementNote(elementPath, element.toJsonMapOrEmpty())?.let { note ->
+                    span {
+                        className = ClassName("element-note")
+                        +note
+                    }
                 }
                 if (editable) {
                     removeControl("$name $header") {

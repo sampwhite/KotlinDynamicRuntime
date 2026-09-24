@@ -178,6 +178,12 @@ object WFS {
 
     /** [kind] of the event recording an approval (issue #787); its [note] names the approval task. */
     const val approvedEvent = "approved"
+
+    /**
+     * An event kind (issue #857): a write overrode one of the workflow's trait locks. Its [note] names the traits and
+     * the reason the writer gave -- the record an override leaves, since it is never silent.
+     */
+    const val lockOverriddenEvent = "lockOverridden"
 }
 
 /**

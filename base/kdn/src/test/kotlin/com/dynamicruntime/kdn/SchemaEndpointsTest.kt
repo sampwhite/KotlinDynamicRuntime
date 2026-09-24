@@ -147,8 +147,10 @@ class SchemaEndpointsTest : StringSpec({
         // Env-authed (issue #489): this test is about *access* filtering, so the caller must see the whole
         // catalog and the access gate must be the only thing narrowing it -- not the publicApi restriction.
         val cxt = Startup.mkTestBootCxt("schemaVisibility", "schemaVisibilityTest", mapOf(ACFG.assumeEnvAuth to true))
+        // The whole catalog, as the catalog page asks for it -- not the default first 100, which the admin's view
+        // outgrew once the endpoints (and their per-client copies) passed that many.
         fun pathsFor(client: TestHttpClient): List<Any?> =
-            catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints")).map { it[EI.path] }
+            catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 10_000))).map { it[EI.path] }
 
         // Anonymous and a logged-in user without the role, both see an admin-free catalog -- the second case
         // being the one a login does not fix. Neither loses the ordinary endpoints.

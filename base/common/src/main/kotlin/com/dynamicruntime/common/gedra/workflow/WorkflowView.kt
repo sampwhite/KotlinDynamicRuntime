@@ -55,6 +55,8 @@ fun resolveWorkflowView(
     approvals: Map<String, Map<String, Any?>> = emptyMap(),
     /** For a normal workflow viewed against a form: where the form stands with it (issue #791); see [WorkflowFormFacts]. */
     formFacts: WorkflowFormFacts? = null,
+    /** The form's traits locked for this caller (issue #857), as [TraitLocks.describe] gives them; empty for none. */
+    lockedTraits: List<Map<String, Any?>> = emptyList(),
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -212,6 +214,7 @@ fun resolveWorkflowView(
         WVF.fieldLayouts to resolveDeliveredLayouts(cxt, clientStore.layoutsFor(defs)),
     )
     focusTask?.let { view[WVF.focusTask] = it }
+    if (lockedTraits.isNotEmpty()) view[WVF.lockedTraits] = lockedTraits
     if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, declared.def).name
     formFacts?.let { f ->
         view[WVF.engaged] = f.engaged
@@ -287,3 +290,13 @@ class WorkflowTaskJudge(
     fun maySave(task: WfTask, facts: Set<String> = taskFacts(task)): Boolean =
         task.saveWhen?.let { cfacts.parse(it).matches(requestFacts + facts) } ?: true
 }
+
+/**
+ * A form's [entries] split by the task of [declared] that collects each one (issues #700, #857) -- what a task's
+ * completeness and facts are judged on. A trait two tasks collect is in both.
+ */
+fun taskEntriesOf(declared: WfDeclared, entries: List<Map<String, Any?>>): Map<String, List<Map<String, Any?>>> =
+    declared.def.tasks.associate { task ->
+        val traitIds = task.traits.map { it.traitId }.toSet()
+        task.id to entries.filter { it[GE.traitId].toOptStr() in traitIds }
+    }

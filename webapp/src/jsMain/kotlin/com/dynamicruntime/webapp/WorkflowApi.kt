@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.clientPath
@@ -71,6 +72,16 @@ object WorkflowApi {
             .endpoints.firstOrNull()?.path ?: GEP.formDocSingletonWorkflows
         val results = Http.getApi(path + queryString(mapOf(GDF.gedraId to gedraId, WFD.cfact to cfact)))[EP.results]
         return parseSingletonWorkflows(results.toJsonMapOrEmpty())
+    }
+
+    /**
+     * The traits of form [gedraId] locked for the caller (issue #857), from its own client's surface, resolved by the
+     * backend as the chip's lookup is -- what the raw editor draws read-only and may offer to override.
+     */
+    suspend fun fetchLocks(gedraId: String): List<TraitLock> {
+        val path = fetchFormEndpoint(HttpMethod.GET.name, GEP.formDocLocks, formClientOf(gedraId))
+            .endpoints.firstOrNull()?.path ?: GEP.formDocLocks
+        return parseTraitLocks(Http.getApi(path + queryString(mapOf(GDF.gedraId to gedraId)))[EP.results].toJsonMapOrEmpty()[WVF.lockedTraits])
     }
 
     /** The client's copy of a bare workflow path when a [client] is given, else the shared path. */
