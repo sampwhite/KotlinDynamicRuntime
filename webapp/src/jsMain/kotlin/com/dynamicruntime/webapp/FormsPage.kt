@@ -49,8 +49,8 @@ private const val formsPageSize = 25
 private const val formsHighlightMs = 2500
 
 /** The browser's `setTimeout`/`clearTimeout`, declared locally rather than reaching for a DOM wrapper. */
-private fun setFormsTimer(block: () -> Unit, delayMs: Int): Int = js("setTimeout(block, delayMs)") as Int
-private fun clearFormsTimer(id: Int) {
+fun setFormsTimer(block: () -> Unit, delayMs: Int): Int = js("setTimeout(block, delayMs)") as Int
+fun clearFormsTimer(id: Int) {
     js("clearTimeout(id)")
 }
 
@@ -787,6 +787,9 @@ val FormsPage = FC<Props> {
                         values = searchDraft
                         applied = appliedSearch
                         showSurveyStatus = surveyFilterOffered
+                        // The workflow drill-down (issue #792) names itself among the chips, so a listing opened from
+                        // a count on the workflow pages never looks like the whole list; Clear drops it with the rest.
+                        extraChips = listOfNotNull(workflowDrillChip(appliedSearch, listingWorkflows))
                         panelOpen = filtersOpen
                         onTogglePanel = { filtersOpen = !filtersOpen }
                         onChange = { name, value -> searchDraft = searchDraft + (name to value) }
@@ -876,6 +879,11 @@ val FormsPage = FC<Props> {
                     noWorkflowsCopy = emptyWorkflowsCopy
                     workflowHref = { id, wf, task, edit ->
                         hashHref(workflowPageHash(id, wf, task, edit) + listingContext)
+                    }
+                    // Drilled in from the workflow pages (issue #792): View Workflow and a row double-click open it.
+                    drillWorkflowId = workflowDrillOf(appliedSearch)?.first
+                    onOpenWorkflow = { id, wf, task, edit ->
+                        navigateHash(workflowPageHash(id, wf, task, edit) + listingContext)
                     }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId

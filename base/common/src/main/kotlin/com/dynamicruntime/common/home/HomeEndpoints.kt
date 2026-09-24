@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
+import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.ENVGRP
@@ -278,6 +279,9 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
         menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
+        // The workflow pages (issue #792): off by default -- a client with normal workflows turns it on by overlaying
+        // this item with a real condition (the sample's acme does), the way an overlay turns an item off.
+        menuItem(HMENU.workflows, "Workflows", UiRoute(HMENU.pageWorkflows), cfactExpression = CFACT.neverName)
 
         // Debug (issue #517), offered only in an env-authed session. Not in debug yet: one top-level call to
         // turn it on. In debug: a "Debug" parent whose children drill down under it via parentId -- the debug

@@ -43,14 +43,7 @@ object FormWorkflowSummary {
         // Clients in name order: the forms arrive in no order the summary should depend on (the id query is not
         // sorted), and an order that moved between identical calls would move the response's content hash too.
         val workflows = named.entries.sortedBy { it.key }.flatMap { (client, byId) ->
-            // The client's own copy: fragment overlays are per client.
-            val clientCxt = if (client == cxt.client) cxt else cxt.mkSubContext("workflowSummary", client)
-            val fragments = MarkdownFragmentService.get(clientCxt)
-            fun resolve(text: String): String = try {
-                fragments.backendPass(clientCxt, text)
-            } catch (_: KdrException) {
-                text
-            }
+            val resolve = copyResolver(cxt, client)
             // Registry order within a client, so the summary does not depend on which form happened to come first.
             val order = registries.getValue(client).workflows.keys.toList()
             byId.entries.sortedBy { order.indexOf(it.key) }.map { (id, pair) ->
@@ -58,7 +51,7 @@ object FormWorkflowSummary {
                 linkedMapOf<String, Any?>(
                     WCOL.client to client,
                     WFD.workflowId to id,
-                    WFD.label to (declared.def.label.takeIf { it.isNotBlank() }?.let(::resolve) ?: id),
+                    WFD.label to workflowLabel(declared.def, resolve),
                     WCOL.phase to phase.name,
                     WCOL.explanations to declared.def.eligibility.associate { it.id to resolve(it.explanation) },
                     WCOL.lastTask to declared.def.tasks.last().id,
@@ -68,3 +61,25 @@ object FormWorkflowSummary {
         return mapOf(WCOL.workflows to workflows)
     }
 }
+
+/**
+ * Resolves a workflow's copy -- a label, an explanation -- through the backend pass **in [client]'s own copy**
+ * (issues #791, #792): fragment overlays are per client, so a cross-client administrator reads each client's
+ * workflows as that client's users do. A pull that cannot resolve falls back to the raw text rather than failing
+ * the listing it decorates.
+ */
+fun copyResolver(cxt: KdrCxt, client: String): (String) -> String {
+    val clientCxt = if (client == cxt.client) cxt else cxt.mkSubContext("workflowCopy", client)
+    val fragments = MarkdownFragmentService.get(clientCxt)
+    return { text ->
+        try {
+            fragments.backendPass(clientCxt, text)
+        } catch (_: KdrException) {
+            text
+        }
+    }
+}
+
+/** A workflow's name for a listing: its label resolved by [resolve], or its id when it declares none. */
+fun workflowLabel(def: WfDef, resolve: (String) -> String): String =
+    def.label.takeIf { it.isNotBlank() }?.let(resolve) ?: def.workflowId

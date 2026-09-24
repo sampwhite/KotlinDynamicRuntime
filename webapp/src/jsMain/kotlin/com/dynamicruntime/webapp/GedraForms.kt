@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
@@ -768,6 +769,71 @@ fun workflowPageHash(gedraId: String, workflowId: String, task: String?, edit: B
 
 /** Whether a cell item's link opens its task ready to edit (issue #791): only an engaged workflow's current task. */
 val WorkflowCellItem.linkEdits: Boolean get() = workflow.category == WfColumnCategory.engaged
+
+/**
+ * The workflow drill-down a forms search carries (issue #792): the workflow id and, when given, the state -- or null
+ * when the listing is not drilled into a workflow. Read off the applied search, where the hash put it.
+ */
+fun workflowDrillOf(applied: Map<String, Any?>): Pair<String, WfColumnCategory?>? {
+    val id = applied[WAGG.workflowId]?.toString()?.ifBlank { null } ?: return null
+    val state = applied[WAGG.workflowState]?.toString()?.let { name -> WfColumnCategory.entries.firstOrNull { it.name == name } }
+    return id to state
+}
+
+/**
+ * The chip naming an applied workflow drill-down (issue #792), `Workflow: Audit review (in progress)`: the label from
+ * the listing's [summary] when it names the workflow, else its id. Null when none is applied. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun workflowDrillChip(applied: Map<String, Any?>, summary: List<WorkflowSummaryEntry>): String? {
+    val (id, state) = workflowDrillOf(applied) ?: return null
+    val client = applied[EI.client]?.toString()
+    val label = summary.firstOrNull { it.workflowId == id && (client == null || it.client == client) }?.label ?: id
+    return "Workflow: $label" + (state?.let { " (${workflowCategoryText(it)})" } ?: "")
+}
+
+/**
+ * One workflow on the workflow pages (issue #792), as the aggregate reports it: which it is, where it stands, and how
+ * many of the caller's forms are eligible for it, engaged with it and finished with it.
+ */
+class WorkflowAggregateEntry(
+    val client: String,
+    val workflowId: String,
+    val label: String,
+    val phase: WfPhase?,
+    val eligible: Int,
+    val engaged: Int,
+    val finished: Int,
+)
+
+/** The aggregate endpoint's items as entries (issue #792). Pure, and covered under `jsNodeTest`. */
+fun parseWorkflowAggregate(items: List<Map<String, Any?>>): List<WorkflowAggregateEntry> = items.mapNotNull { w ->
+    WorkflowAggregateEntry(
+        client = w[WCOL.client].toOptStr().orEmpty(),
+        workflowId = w[WFD.workflowId].toOptStr() ?: return@mapNotNull null,
+        label = w[WFD.label].toOptStr().orEmpty(),
+        phase = WfPhase.entries.firstOrNull { it.name == w[WCOL.phase] },
+        eligible = (w[WAGG.eligible] as? Number)?.toInt() ?: 0,
+        engaged = (w[WAGG.engaged] as? Number)?.toInt() ?: 0,
+        finished = (w[WAGG.finished] as? Number)?.toInt() ?: 0,
+    )
+}
+
+/**
+ * Where a count on the workflow pages leads (issue #792): the forms listing drilled into [workflowId] in [state] --
+ * the drill-down rides the hash as search parameters, like any other filter -- narrowed to [client] when the caller
+ * sees across clients, since the listing's client names whose workflow it is. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowDrillHash(workflowId: String, state: WfColumnCategory, client: String?): List<Pair<String, String>> =
+    listOf(HP.page to HMENU.pageForms, WAGG.workflowId to workflowId, WAGG.workflowState to state.name) +
+        listOfNotNull(client?.let { EI.client to it })
+
+/** A phase as the workflow pages say it beside a workflow's name (issue #792); empty for one open to new forms. */
+fun workflowPhaseText(phase: WfPhase?): String = when (phase) {
+    WfPhase.lifetimeOnly -> "closed"
+    WfPhase.relevant -> "not taking new forms"
+    else -> ""
+}
 
 /** How a workflow's category reads beside its name in a cell (issue #791). */
 fun workflowCategoryText(category: WfColumnCategory): String = when (category) {

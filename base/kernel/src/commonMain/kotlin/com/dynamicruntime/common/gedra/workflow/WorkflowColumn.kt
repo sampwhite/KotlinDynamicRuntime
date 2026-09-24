@@ -35,6 +35,38 @@ object WCOL {
 }
 
 /**
+ * The field names of the workflow pages' **aggregate** (issue #792) -- one entry per workflow, with its [WCOL.client],
+ * `workflowId`, `label` and [WCOL.phase], and a count of the forms in each of these states -- and of the forms
+ * listing's drill-down filter onto one of those counts.
+ */
+@Suppress("ConstPropertyName")
+object WAGG {
+    /** One aggregate entry's type name, under the gedra namespace. */
+    const val entryType = "WorkflowAggregateEntry"
+
+    /** How many forms the caller may see are eligible for the workflow and not in it. */
+    const val eligible = "eligible"
+
+    /** How many are engaged with it and not finished -- work under way. */
+    const val engaged = "engaged"
+
+    /** How many are engaged with it and finished. */
+    const val finished = "finished"
+
+    /**
+     * The forms listing's filter (issue #792): only forms whose cell has this workflow, in [workflowState] when
+     * given. Together with the listing's own client, the workflow a count on the workflow pages stands for.
+     */
+    const val workflowId = "workflowId"
+
+    /** With [workflowId]: the state the forms must be in -- [eligible], [engaged] or [finished]. */
+    const val workflowState = "workflowState"
+
+    /** The states a drill-down may ask for: the three the aggregate counts. */
+    val drillStates: List<WfColumnCategory> = listOf(WfColumnCategory.eligible, WfColumnCategory.engaged, WfColumnCategory.finished)
+}
+
+/**
  * Where a workflow sits in a form's workflow cell (issue #791), in the order the cell lists them: work under way
  * first, then what the form could start, then what is done, then what it cannot start.
  */

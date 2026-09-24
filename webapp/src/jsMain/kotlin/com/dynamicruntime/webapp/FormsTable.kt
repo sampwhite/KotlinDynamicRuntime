@@ -89,6 +89,15 @@ external interface FormsTableProps : Props {
      */
     var workflowHref: (gedraId: String, workflowId: String, task: String?, edit: Boolean) -> String
 
+    /**
+     * The workflow the listing is drilled into from the workflow pages (issue #792), or null. Then each row offers
+     * **View Workflow** beside View Info, and a double-click on the row opens the workflow on that form.
+     */
+    var drillWorkflowId: String?
+
+    /** Opens normal workflow `workflowId` on form `gedraId` (issue #792) -- on `task`, in edit mode when `edit`. */
+    var onOpenWorkflow: (gedraId: String, workflowId: String, task: String?, edit: Boolean) -> Unit
+
     /** The form whose Delete is armed (showing the inline confirm), or null when none is. */
     var confirmingDeleteId: String?
 
@@ -128,7 +137,18 @@ val FormsTable = FC<FormsTableProps> { props ->
     val anySurveyStatus = props.forms.any { it.second.surveyStatus != null }
     // Whether the Actions column has anything to carry (issue #726 review): View Info needs a survey, Delete needs
     // its endpoint; with neither there is no column, not an empty one.
-    val showActions = anySurveyStatus || props.canDelete
+    val drill = props.drillWorkflowId
+    val showActions = anySurveyStatus || props.canDelete || drill != null
+    // Opens the drilled workflow on a row (issue #792), on the task its cell link would -- the current task of an
+    // engaged form, ready to edit; the last of a finished one; the workflow itself for an eligible one.
+    fun openWorkflow(id: String, items: List<WorkflowCellItem>) {
+        val wf = drill ?: return
+        val item = items.firstOrNull { it.entry.workflowId == wf }
+        props.onOpenWorkflow(id, wf, item?.linkTask, item?.linkEdits == true)
+    }
+    // A pending single-click open (issue #792): in a drilled listing a double-click opens the workflow, so the row's
+    // own click waits out a double-click's window rather than navigating away underneath it.
+    val clickTimer = useRef<Int>(null)
     Table {
         size = "small"
         // Declared widths mean what they say (see `TableProps.tableLayout`): under the default auto layout the
@@ -176,7 +196,7 @@ val FormsTable = FC<FormsTableProps> { props ->
             // (issue #726) the column can have nothing to show -- a no-survey client whose caller cannot delete
             // -- and then it is not drawn at all: an empty column pinned right would be a blank sticky band
             // whose shadow overlays every scrolled row. The row click is the open there.
-            if (showActions) add(actionsColumn(props, showSurvey = anySurveyStatus))
+            if (showActions) add(actionsColumn(props, showSurvey = anySurveyStatus, onViewWorkflow = drill?.let { ::openWorkflow }))
         }
         // Pinned while the table scrolls sideways (issue #726 follow-up): the first column -- the client's first
         // display column, or `Contains` when it declares none, either way the row's identity -- stays on the
@@ -227,9 +247,22 @@ val FormsTable = FC<FormsTableProps> { props ->
             // raw read-only view. The same signal gates the Status column and the View Info action, so the three
             // can never disagree about whether a survey exists (it is a proxy read off the loaded rows; a
             // persistent store's pre-deriver rows fall back to the raw view until re-touched or batch-recomputed).
-            handlers.onClick = {
+            val open = {
                 val id = record.key as String
                 if (anySurveyStatus) props.onSurveyView(id) else props.onView(id)
+            }
+            if (drill == null) {
+                handlers.onClick = open
+            } else {
+                handlers.onClick = {
+                    clickTimer.current?.let { clearFormsTimer(it) }
+                    clickTimer.current = setFormsTimer({ clickTimer.current = null; open() }, rowDoubleClickMs)
+                }
+                handlers.onDoubleClick = {
+                    clickTimer.current?.let { clearFormsTimer(it) }
+                    clickTimer.current = null
+                    openWorkflow(record.key as String, record.wfItems.unsafeCast<List<WorkflowCellItem>>())
+                }
             }
             handlers.style = js("({ cursor: 'pointer' })")
             // The just-saved form flashes on arrival from the edit page (issue #592).
@@ -249,8 +282,13 @@ val FormsTable = FC<FormsTableProps> { props ->
  * own click handler, so using an action never also opens the view. The cell content is a component
  * ([FormRowActions]) rendered per row, since the render callback must return a React node.
  */
-private fun actionsColumn(props: FormsTableProps, showSurvey: Boolean): dynamic {
-    val c = column("Actions", "actions", 230)
+private fun actionsColumn(
+    props: FormsTableProps,
+    showSurvey: Boolean,
+    onViewWorkflow: ((String, List<WorkflowCellItem>) -> Unit)? = null,
+): dynamic {
+    // Wider in a drilled listing (issue #792), which adds View Workflow to each row.
+    val c = column("Actions", "actions", if (onViewWorkflow != null) 330 else 230)
     // Any click inside the actions cell is for an action, not for opening the row -- keep it from reaching the
     // row's onClick.
     c.onCell = {
@@ -260,8 +298,10 @@ private fun actionsColumn(props: FormsTableProps, showSurvey: Boolean): dynamic 
     }
     c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic {
         val id = record.key as String
+        val items = record.wfItems.unsafeCast<List<WorkflowCellItem>>()
         return FormRowActions.create {
             this.id = id
+            this.onViewWorkflow = onViewWorkflow?.let { open -> { open(id, items) } }
             this.showSurvey = showSurvey
             this.onSurveyView = props.onSurveyView
             this.canDelete = props.canDelete
@@ -384,6 +424,8 @@ private val FormOwnerCell = FC<FormOwnerCellProps> { props ->
 /** The one row's action buttons, resolved to this row's id -- see [actionsColumn]. */
 private external interface FormRowActionsProps : Props {
     var id: String
+    /** Opens the drilled workflow on this form (issue #792); null outside a drilled listing. */
+    var onViewWorkflow: (() -> Unit)?
     var showSurvey: Boolean
     var onSurveyView: (String) -> Unit
     var canDelete: Boolean
@@ -397,6 +439,15 @@ private external interface FormRowActionsProps : Props {
 private val FormRowActions = FC<FormRowActionsProps> { props ->
     span {
         className = ClassName("row-actions")
+        // The drilled workflow on this form (issue #792), first: it is what the listing was opened to reach.
+        props.onViewWorkflow?.let { view ->
+            Button {
+                type = "link"
+                size = "small"
+                onClick = { view() }
+                +"View Workflow"
+            }
+        }
         // The survey's read-only on-boarding view (issue #694) -- only where the client has a survey.
         if (props.showSurvey) {
             Button {
@@ -703,3 +754,6 @@ private val WorkflowCellAll = FC<WorkflowCellAllProps> { props ->
         props.items.forEach { props.renderItem(this, it) }
     }
 }
+
+/** How long a drilled listing's row waits for a second click before its single click opens the form (issue #792). */
+private const val rowDoubleClickMs = 250

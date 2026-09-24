@@ -380,7 +380,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // is in flight: `loading` blocks only the button being saved, and single-panel mode shows
             // every task's. Disabled means "nothing to do", never "you did it wrong": a task with known
             // validation failures keeps its Save, so clicking it shows the errors rather than a dead button.
-            if (editing) {
+            // A task that offers no save -- a normal workflow's approval step (issues #787, #791) -- draws none:
+            // there is nothing here to save, and asking for its save would find none.
+            if (editing && task.saves.isNotEmpty()) {
                 // When defaults are the only thing left to do, say so above the Save (issue #710): the count is
                 // the task's still-pending defaults, and it disappears as they are accepted, edited, or saved.
                 val pendingDefaults =

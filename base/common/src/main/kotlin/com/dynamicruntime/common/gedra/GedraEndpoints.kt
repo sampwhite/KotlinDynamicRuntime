@@ -31,6 +31,10 @@ import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WorkflowEngagement
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.WAGG
+import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
+import com.dynamicruntime.common.gedra.workflow.WorkflowAggregate
+import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
 import com.dynamicruntime.common.gedra.workflow.FormWorkflowSummary
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfPhase
@@ -288,6 +292,16 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             option(SVYS.needsReview, "Needs Review")
             option(SVYS.finished, "Finished")
         }
+        // The workflow pages' drill-down (issue #792): only forms whose workflow cell has this workflow -- of the
+        // listing's client (the chosen one, else the caller's) -- in the given state. The same kernel rule the
+        // aggregate counts by, so a count and the rows it opens cannot disagree.
+        property(WAGG.workflowId, "Only forms showing this normal workflow of the listing's client in their workflow column.") {
+            emptyIsAbsent = true
+        }
+        property(WAGG.workflowState, "With workflowId: only forms in this state for it. Absent means any shown.") {
+            emptyIsAbsent = true
+            WAGG.drillStates.forEach { option(it.name) }
+        }
         // The sort (issue #666): a column to order by -- a display trait id, or a fixed column -- and a
         // direction. Absent means the default (most recently written first). Not admin-gated: any caller may
         // order the rows they can already see (`${GSORT.owner}` and `${GSORT.client}` are admin/allClients-only,
@@ -369,7 +383,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // schema has already settled the value: a blank is absent (`emptyIsAbsent`), anything but the three
         // options was refused, so what arrives is one of them or nothing.
         val statusWanted = request[SVY.surveyStatus] as? String
-        val stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = statusWanted?.let { wanted -> { states -> formStatusOf(states) == wanted } }
+        val statusFilter: ((List<Map<String, Any?>>) -> Boolean)? = statusWanted?.let { wanted -> { states -> formStatusOf(states) == wanted } }
+        val workflowFilter = workflowDrillFilter(c, request, clientFilter ?: c.client)
+        val stateFilter: ((List<Map<String, Any?>>) -> Boolean)? = when {
+            statusFilter != null && workflowFilter != null -> { states -> statusFilter(states) && workflowFilter(states) }
+            else -> statusFilter ?: workflowFilter
+        }
         val svc = GedraDataService.get(c)
         val page = svc.listGedras(c, formDoc, scope, limit, offset, filter, sort, stateFilter)
         // Attach each form's state (issue #600) only when asked. One batch read over the page's ids -- cache-
@@ -726,6 +745,34 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
     }
 
+    // --- the workflow pages' aggregate (issue #792) --------------------------------------------------------
+
+    type(WAGG.entryType) {
+        type = SCT.kObject
+        description = "One workflow on the workflow pages, with how many of the caller's visible forms are in each state."
+        property(WCOL.client, "The client whose workflow it is.", required = true)
+        property(WFD.workflowId, "The workflow.", required = true)
+        property(WFD.label, "Its name, resolved; its id when it has none.", required = true)
+        property(WCOL.phase, "Where it stands in its time windows.", required = true) { options(WfPhase.entries) }
+        property(WAGG.eligible, "Forms eligible for it and not in it, while it takes new forms.", required = true) { type = SCT.integer }
+        property(WAGG.engaged, "Forms engaged with it, with work under way.", required = true) { type = SCT.integer }
+        property(WAGG.finished, "Forms engaged with it and finished.", required = true) { type = SCT.integer }
+    }
+
+    // Every normal workflow the caller should see on the workflow pages, over every form they may see -- the
+    // caller's own scope, as the listing's workflow summary is. Not paged: a client declares a handful of workflows.
+    listEndpoint(
+        GEP.workflowAggregate,
+        "Lists the normal workflows the caller may work with -- those being calculated, and any appearing on a form " +
+            "they may see -- each with how many of those forms are eligible, engaged and finished.",
+        outputRef = WAGG.entryType,
+        noLimit = true,
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, _ ->
+        WorkflowAggregate.of(c, GedraDataService.get(c).statesInScope(c, formDoc, ReadScopeRules.forCaller(c)))
+    }
+
     // --- per-workflow state: engage, and recompute (issue #794) -------------------------------------------
 
     type(GEP.workflowStatesType) {
@@ -994,6 +1041,23 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             result
         }
     }
+}
+
+/**
+ * The forms listing's workflow drill-down (issue #792), or null when the request names no workflow: a predicate over
+ * a form's state entries that holds when its workflow cell -- by the kernel's [formWorkflowsOf], against [client]'s
+ * workflows and their current phases -- shows the named workflow, in the named state when one is given. A workflow
+ * [client] does not have (or has outside its lifetime) matches nothing, as an unknown search value does.
+ */
+private fun workflowDrillFilter(c: KdrCxt, request: Map<String, Any?>, client: String): ((List<Map<String, Any?>>) -> Boolean)? {
+    val workflowId = request[WAGG.workflowId].toOptStr() ?: return null
+    val wanted = request[WAGG.workflowState].toOptStr()?.let { name -> WfColumnCategory.entries.firstOrNull { it.name == name } }
+    val registry = WorkflowService.get(c).forClient(client)
+    val phase = WorkflowPhases.live(c, registry, workflowId)?.takeIf { it.def.entry == WfEntry.normal }
+        ?.let { WorkflowPhases.of(c, it.def) }
+        ?: return { false }
+    val phaseOf = { id: String -> if (id == workflowId) phase else null }
+    return { states -> formWorkflowsOf(states, phaseOf).any { wanted == null || it.category == wanted } }
 }
 
 /**
