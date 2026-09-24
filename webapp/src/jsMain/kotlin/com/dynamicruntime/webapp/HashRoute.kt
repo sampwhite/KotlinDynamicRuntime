@@ -75,6 +75,12 @@ object HP {
     const val task = "task"
 
     /**
+     * Survey edit page: a **normal workflow** to open against the form instead of its survey (issue #791) -- where
+     * the forms list's workflow column links. Absent opens the survey, as before.
+     */
+    const val workflow = "wf"
+
+    /**
      * Forms page: the gedra id of a form to **highlight** briefly in the list (issue #592) -- how a save
      * hands the just-edited form back to the listing. Transient: read once on arrival and dropped from the
      * hash by the page's own hash-write, so a reload does not re-flash it and the URL stays clean to share.

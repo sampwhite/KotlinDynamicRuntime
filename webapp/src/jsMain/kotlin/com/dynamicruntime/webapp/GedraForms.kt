@@ -1,5 +1,10 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.WCOL
+import com.dynamicruntime.common.gedra.workflow.WfPhase
+import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
+import com.dynamicruntime.common.gedra.workflow.FormWorkflow
+import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.endpoint.EP
@@ -128,7 +133,16 @@ fun chosenClientNote(name: String): String =
         "choose $formsAllClientsLabel to create one."
 
 /** One fetched page of the forms listing: its rows and the total available, published together (#714 review). */
-class FormsListPage(val rows: List<Map<String, Any?>>, val numAvailable: Int)
+class FormsListPage(
+    val rows: List<Map<String, Any?>>,
+    val numAvailable: Int,
+    /**
+     * The workflow column's summary (issue #791): what it may show, over every form the caller may see. Null when
+     * the fetch did not ask for it -- a page turn, search or sort, none of which change it -- so the page keeps the
+     * one it has.
+     */
+    val workflowSummary: List<WorkflowSummaryEntry>? = null,
+)
 
 /**
  * The forms hash's navigation keys -- the page, the open form, the listing a child was opened from, the
@@ -136,7 +150,7 @@ class FormsListPage(val rows: List<Map<String, Any?>>, val numAvailable: Int)
  * other key on a forms hash is a search parameter (a trait filter, the scope-bar `user`, the free-text `q`),
  * because the forms search shares the endpoint's own arg names, the same arrangement the Users page uses.
  */
-private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.created, HP.edit, HP.task)
+private val formsNavKeys = setOf(HP.page, HP.gedra, HP.from, HP.highlight, HP.created, HP.edit, HP.task, HP.workflow)
 
 /**
  * The applied forms search read back out of a hash (issue #592): every param that is not a navigation key. So a
@@ -627,6 +641,8 @@ class FormSummary(
     val client: String = "",
     /** The form's global survey status (issue #694), or null when it has no survey state — see [surveyStatusFrom]. */
     val surveyStatus: SurveyStatus? = null,
+    /** The form's state entries as the row carried them (`withStates`) -- what its workflow cell is drawn from (issue #791). */
+    val states: List<Map<String, Any?>> = emptyList(),
 )
 
 /**
@@ -677,8 +693,100 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         // The global survey status (issue #694): present only when the row carried state (`withStates`), null
         // for a client with no survey, in which case the list draws no status for the row.
         surveyStatus = surveyStatusFrom(item[GDF.states].toJsonListOfMaps()),
+        states = item[GDF.states].toJsonListOfMaps(),
     )
 }
+
+/**
+ * One workflow the forms listing's workflow column may show (issue #791), as the listing's summary names it: its
+ * [client] and [workflowId] (together the key a row's entry is joined on), its resolved [label], its [phase], the
+ * resolved [explanations] of its eligibility tests by id, and its [lastTask].
+ */
+class WorkflowSummaryEntry(
+    val client: String,
+    val workflowId: String,
+    val label: String,
+    val phase: WfPhase,
+    val explanations: Map<String, String>,
+    val lastTask: String,
+)
+
+/** The listing envelope's `summary` (issue #791) as its entries; empty when there is none. Pure, and covered under `jsNodeTest`. */
+fun parseWorkflowSummary(summary: Any?): List<WorkflowSummaryEntry> =
+    summary.toJsonMapOrEmpty()[WCOL.workflows].toJsonListOfMaps().mapNotNull { w ->
+        val phase = WfPhase.entries.firstOrNull { it.name == w[WCOL.phase] } ?: return@mapNotNull null
+        WorkflowSummaryEntry(
+            client = w[WCOL.client].toOptStr().orEmpty(),
+            workflowId = w[WFD.workflowId].toOptStr() ?: return@mapNotNull null,
+            label = w[WFD.label].toOptStr().orEmpty(),
+            phase = phase,
+            explanations = w[WCOL.explanations].toJsonMapOrEmpty().mapValues { it.value.toOptStr().orEmpty() },
+            lastTask = w[WCOL.lastTask].toOptStr().orEmpty(),
+        )
+    }
+
+/** One workflow in a row's cell: the form's own [workflow] joined to the summary's [entry] for it. */
+class WorkflowCellItem(val entry: WorkflowSummaryEntry, val workflow: FormWorkflow) {
+    /**
+     * The task a link opens (issue #791): the current task of an engaged workflow, the last task of a finished
+     * one (having no current task), and none for an eligible one, which opens on the workflow to engage.
+     */
+    val linkTask: String? get() = when (workflow.category) {
+        WfColumnCategory.engaged -> workflow.ctaTask
+        WfColumnCategory.finished -> entry.lastTask.ifBlank { null }
+        else -> null
+    }
+
+    /** The reasons an ineligible workflow is not offered, in its tests' order; empty otherwise. */
+    val reasons: List<String> get() = workflow.failureIds.map { entry.explanations[it] ?: it }
+}
+
+/**
+ * The workflow cell of a form of [client] with [states] (issue #791): its workflows in cell order, each joined to
+ * [summary] -- through the kernel's [formWorkflowsOf], so the page and the backend's summary apply one rule about
+ * which workflows show. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowCellOf(states: List<Map<String, Any?>>, client: String, summary: List<WorkflowSummaryEntry>): List<WorkflowCellItem> {
+    val byId = summary.filter { it.client == client }.associateBy { it.workflowId }
+    return formWorkflowsOf(states) { byId[it]?.phase }.mapNotNull { wf -> byId[wf.workflowId]?.let { WorkflowCellItem(it, wf) } }
+}
+
+/**
+ * Where a workflow-column link goes (issue #791): the survey page opened on normal workflow [workflowId] against
+ * form [gedraId], on [task] when given, and in edit mode when [edit] -- the current task of an engaged workflow is
+ * work to do; a finished workflow's last task is there to be looked at. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowPageHash(gedraId: String, workflowId: String, task: String?, edit: Boolean): List<Pair<String, String>> =
+    buildList {
+        add(HP.page to pageSurveyEdit)
+        add(HP.from to HMENU.pageForms)
+        add(HP.gedra to gedraId)
+        add(HP.workflow to workflowId)
+        task?.let { add(HP.task to it) }
+        if (edit && task != null) add(HP.edit to "1")
+    }
+
+/** Whether a cell item's link opens its task ready to edit (issue #791): only an engaged workflow's current task. */
+val WorkflowCellItem.linkEdits: Boolean get() = workflow.category == WfColumnCategory.engaged
+
+/** How a workflow's category reads beside its name in a cell (issue #791). */
+fun workflowCategoryText(category: WfColumnCategory): String = when (category) {
+    WfColumnCategory.engaged -> "in progress"
+    WfColumnCategory.eligible -> "available"
+    WfColumnCategory.finished -> "finished"
+    WfColumnCategory.ineligible -> "not available"
+}
+
+/**
+ * The counts a crowded cell shows under its first two workflows (issue #791): each category holding more than one,
+ * in cell order -- `2 in progress · 3 available`. Empty when no category has more than one. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun workflowCellCounts(items: List<WorkflowCellItem>): String =
+    items.groupBy { it.workflow.category }.entries
+        .filter { it.value.size > 1 }
+        .sortedBy { it.key.ordinal }
+        .joinToString(" \u00b7 ") { "${it.value.size} ${workflowCategoryText(it.key)}" }
 
 /**
  * A wire timestamp shown to a person: `2026-08-21T19:49:51.568Z` -> `2026-08-21 19:49 UTC`. Minute precision,

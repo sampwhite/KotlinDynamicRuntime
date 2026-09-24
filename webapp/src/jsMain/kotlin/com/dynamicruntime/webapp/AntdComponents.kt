@@ -237,6 +237,19 @@ external interface PopoverProps : PropsWithChildren {
 
 external val Popover: ComponentType<PopoverProps>
 
+/**
+ * antd's dialog (issue #791): the forms list's workflow column explains an ineligible workflow in one. Controlled
+ * by [open]; [onCancel] is the close (the corner X, Escape, a click outside); [footer] a node, or `null` for none.
+ */
+external interface ModalProps : PropsWithChildren {
+    var open: Boolean?
+    var title: dynamic
+    var onCancel: (() -> Unit)?
+    var footer: dynamic
+}
+
+external val Modal: ComponentType<ModalProps>
+
 /** Layout helper that spaces its children; used to lay out the demo row. */
 external interface SpaceProps : PropsWithChildren
 

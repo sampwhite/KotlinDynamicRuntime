@@ -309,6 +309,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             namespace("home") {
                 key("brand", "ACME KDR")
             }
+            // What a form with no workflows shows in the forms list's workflow column (issue #791).
+            namespace(HFRAG.formsNs) {
+                key(HFRAG.noWorkflows, "No workflows available.")
+            }
         }
 
         // The mails too (issue #773): every mail about an acme user -- a code, an invitation, a claim answer

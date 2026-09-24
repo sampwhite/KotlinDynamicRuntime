@@ -37,6 +37,23 @@ object WorkflowApi {
         )
 
     /**
+     * A **normal workflow** [workflowId] resolved against the form [gedraId] (issue #791) -- what the forms list's
+     * workflow column opens. Null when the backend has no such workflow for this caller (`found=false`); a workflow
+     * the caller may not see is refused with a 404, which the page shows as its load error. [client] as for
+     * [fetchSurveyView].
+     */
+    suspend fun fetchWorkflowView(workflowId: String, gedraId: String, client: String? = null): WorkflowView? =
+        parseWorkflowView(
+            Http.getApi(pathFor(GEP.workflowView, client) + queryString(mapOf(WFD.workflowId to workflowId, GDF.gedraId to gedraId)))[EP.results]
+                .toJsonMapOrEmpty(),
+        )
+
+    /** Puts form [gedraId] into normal workflow [workflowId] (issue #791); refused with the reasons when it is not eligible. */
+    suspend fun engage(gedraId: String, workflowId: String, client: String? = null) {
+        Http.sendApi("POST", pathFor(GEP.workflowEngage, client), mapOf(GDF.gedraId to gedraId, WFD.workflowId to workflowId))
+    }
+
+    /**
      * Posts a task's collected entries; the outcome is either a refusal naming what is missing, or the form.
      * [client] as for [fetchSurveyView]: the form's client's copy of the save, so it runs under that client's rules.
      */

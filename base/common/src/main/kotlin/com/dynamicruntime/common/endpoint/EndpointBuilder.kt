@@ -38,7 +38,17 @@ typealias KdrEndpointHandler = (cxt: KdrCxt, request: Map<String, Any?>) -> Any?
  * the two paging fields from here. An endpoint returning this must declare both fields, and one returning a
  * plain list must declare neither -- the response validator holds it to exactly what its output type says.
  */
-class ListPage(val items: List<Any?>, val numAvailable: Int, val hasMore: Boolean)
+class ListPage(
+    val items: List<Any?>,
+    val numAvailable: Int,
+    val hasMore: Boolean,
+    /**
+     * Facts about the **whole scoped set** rather than about this page (issue #791), for an endpoint that declared
+     * a `summaryRef`: delivered under `summary`, beside `items`. Optional there, since a summary can cost a pass
+     * over the whole set and a handler computes it only when asked; refused on an endpoint that declared none.
+     */
+    val summary: Map<String, Any?>? = null,
+)
 
 /**
  * One declared input field of an endpoint -- the explicit-fields alternative to referencing a named input
@@ -156,6 +166,12 @@ class KdrEndpoint(
      */
     val hasMore: Boolean = false,
     val hasNumAvailable: Boolean = false,
+    /**
+     * (List endpoints only.) The type of the `summary` the output declares beside `items` (issue #791), or null for
+     * none. A summary describes the whole scoped set -- what a page needs to render its rows that no one row
+     * carries -- so the handler returns a [ListPage] with its [ListPage.summary] set.
+     */
+    val summaryRef: String? = null,
 ) {
     init {
         if (inputFields != null && inputTypeRef != null) {
@@ -367,16 +383,22 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         clientShaped: Boolean = false,
         /** Sync this node's client configuration before serving (issue #618); see [KdrEndpoint.needsClientConfig]. */
         needsClientConfig: Boolean = false,
+        /**
+         * A `summary` beside `items`, of this type (issue #791): facts about the whole scoped set, returned in a
+         * [ListPage]. See [KdrEndpoint.summaryRef].
+         */
+        summaryRef: String? = null,
         handler: KdrEndpointHandler,
     ) {
         // Default numAvailable on when there is a `limit` to trim by; a caller can still force it either way.
         val reportsNumAvailable = hasNumAvailable ?: !noLimit
-        val output = listOutput(outputRef, hasMore, reportsNumAvailable)
+        val output = listOutput(outputRef, hasMore, reportsNumAvailable, summaryRef)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped,
-                needsClientConfig = needsClientConfig, hasMore = hasMore, hasNumAvailable = reportsNumAvailable),
+                needsClientConfig = needsClientConfig, hasMore = hasMore, hasNumAvailable = reportsNumAvailable,
+                summaryRef = summaryRef),
         )
     }
 
@@ -509,9 +531,12 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         return b.data
     }
 
-    /** Output envelope for list endpoints: count, metadata, optional paging fields, then the `items` list. */
+    /**
+     * Output envelope for list endpoints: count, metadata, optional paging fields, an optional `summary` of the
+     * whole scoped set, then the `items` list.
+     */
     @KdrPrivate
-    fun listOutput(outputRef: String, hasMore: Boolean, hasNumAvailable: Boolean): Map<String, Any?> {
+    fun listOutput(outputRef: String, hasMore: Boolean, hasNumAvailable: Boolean, summaryRef: String? = null): Map<String, Any?> {
         val b = newObject()
         b.property(EP.numItems, "Number of items returned.", required = true) { type = SCT.integer }
         b.addProtocolMeta()
@@ -523,6 +548,11 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         if (hasNumAvailable) {
             b.property(EP.numAvailable, "The total number of items available to be returned.", required = true) {
                 type = SCT.integer
+            }
+        }
+        if (summaryRef != null) {
+            b.property(EP.summary, "Facts about everything the query could return, not only this page; sent when the handler computed one.") {
+                ref(summaryRef)
             }
         }
         b.property(EP.items, "Items returned by the endpoint.", required = true) {

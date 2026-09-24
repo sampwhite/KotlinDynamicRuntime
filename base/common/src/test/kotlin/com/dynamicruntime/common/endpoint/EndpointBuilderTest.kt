@@ -9,7 +9,10 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.schema.validate
+import com.dynamicruntime.common.http.request.listHashPayload
+import com.dynamicruntime.common.http.request.listSummaryOf
 import com.dynamicruntime.common.startup.buildClientEndpoints
+import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -17,6 +20,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 
 private fun props(schema: Map<String, Any?>): Map<String, Any?> = schema[SCH.properties]!!.toJsonMap()
@@ -109,6 +113,43 @@ class EndpointBuilderTest : StringSpec({
             listOf(EP.numItems, EP.requestUri, EP.duration, EP.contentHash, EP.webAppHash,EP.hasMore, EP.numAvailable, EP.items)
         field(ep.outputSchema, EP.items)[SCH.type] shouldBe SCT.array
         field(ep.outputSchema, EP.items)[SCH.items]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("FooOut", "api")
+    }
+
+    "a list endpoint declaring a summary carries it beside items, optional, and its copies keep it" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            type("Sum") { type = SCT.kObject; property("total", "t") { type = SCT.integer } }
+            listEndpoint("/sums/list", "Summarized list endpoint", outputRef = "Out", summaryRef = "Sum", clientShaped = true) { _, _ ->
+                ListPage(emptyList(), 0, false, summary = mapOf("total" to 0))
+            }
+        }
+        val ep = m.endpoints.single()
+        ep.summaryRef shouldBe "Sum"
+        field(ep.outputSchema, EP.summary)[SCH.dRef] shouldBe typeRefPath("Sum", "api")
+        // Optional: a handler computes a summary only when asked, so the envelope does not promise one.
+        ep.outputSchema[SCH.required].toJsonListOrEmpty() shouldNotContain EP.summary
+        // The per-client copy shares the output schema, so it must share the declaration the executor checks.
+        buildClientEndpoints(cxt, m.endpoints, listOf("acme")).single().summaryRef shouldBe "Sum"
+    }
+
+    "the executor sends a declared summary, refuses an undeclared one, and hashes it with the items" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            type("Sum") { type = SCT.kObject; property("total", "t") { type = SCT.integer } }
+            listEndpoint("/sums", "Summarized", outputRef = "Out", summaryRef = "Sum") { _, _ -> emptyList<Any?>() }
+            listEndpoint("/plain", "Plain", outputRef = "Out") { _, _ -> emptyList<Any?>() }
+        }
+        val declared = m.endpoints.single { it.path == "/sums" }
+        val plain = m.endpoints.single { it.path == "/plain" }
+        val summary = mapOf("total" to 3)
+        listSummaryOf(declared, ListPage(emptyList(), 0, false, summary)) shouldBe summary
+        listSummaryOf(declared, ListPage(emptyList(), 0, false)) shouldBe null
+        listSummaryOf(plain, null) shouldBe null
+        shouldThrow<KdrException> { listSummaryOf(plain, ListPage(emptyList(), 0, false, summary)) }
+        // Same items, different summary: the hashed payload differs, so the content hash moves.
+        val items = listOf(mapOf("n" to "a"))
+        (listHashPayload(items, mapOf("total" to 1)) == listHashPayload(items, mapOf("total" to 2))) shouldBe false
+        listHashPayload(items, null) shouldBe items
     }
 
     "a list endpoint omits limit and paging fields when not requested" {

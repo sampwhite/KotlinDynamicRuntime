@@ -149,6 +149,20 @@ object WVF {
      */
     const val phase = "phase"
 
+    /**
+     * For a normal workflow viewed against a form (issue #791): whether the form is engaged with it -- so the page
+     * offers to engage an eligible form, and draws the tasks as work under way once it is. Absent otherwise.
+     */
+    const val engaged = "engaged"
+
+    /**
+     * For a normal workflow viewed against a form it is not engaged with (issue #791): whether the form passes its
+     * eligibility tests -- so the page offers Engage only when engaging can succeed -- and, when it does not, the
+     * [ineligibleReasons], resolved.
+     */
+    const val eligible = "eligible"
+    const val ineligibleReasons = "ineligibleReasons"
+
     /** The workflow's stored reference, as [WfRef] text -- what a created gedra records under `creationWorkflowId`. */
     const val ref = "ref"
 

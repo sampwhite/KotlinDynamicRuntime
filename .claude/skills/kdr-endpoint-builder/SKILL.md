@@ -224,6 +224,26 @@ Two ways a handler supplies it, and **usually you write neither**:
   verbatim. Reach for this when materializing the whole set to count it is the wrong cost; otherwise prefer the
   plain list.
 
+## List summary: facts about the whole set (issue #791)
+
+Some pages need a fact about **everything** the query could return, not just the page on screen -- the forms
+listing's workflow column is drawn only when *some* visible form has a workflow, and every row needs labels its
+own data only names by id. A list endpoint declares such a fact with `summaryRef`, the type of an object
+delivered under **`summary`**, beside `items`:
+
+```kotlin
+listEndpoint(GEP.formDocs, "…", outputRef = docType, hasMore = true, summaryRef = WCOL.summaryType) { c, req ->
+    ListPage(items, numAvailable, hasMore, summary = if (wanted) computeSummary(c) else null)
+}
+```
+
+- The summary is **optional** in the envelope: it can cost a pass over the whole scoped set, so a handler
+  computes it only when the request asks (the forms listing: with `withStates`). A `null` summary is simply
+  not sent.
+- Returning a summary from an endpoint that declared none is a handler fault, not an off-contract extra.
+- The content hash covers the summary with the items, since it can change while the page does not.
+- A per-client copy of the endpoint keeps the declaration, as it keeps the paging flags.
+
 ## Source
 
 `base/common/.../endpoint/EndpointBuilder.kt`; kernel constants in

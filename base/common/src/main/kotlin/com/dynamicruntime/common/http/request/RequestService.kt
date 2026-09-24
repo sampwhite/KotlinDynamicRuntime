@@ -715,7 +715,12 @@ class RequestService : ServiceInitializer {
                 if (endpoint.hasMore) {
                     env[EP.hasMore] = page?.hasMore ?: trimmed
                 }
-                limited
+                // A summary (issue #791) is sent when the handler supplies one -- it may cost a pass over everything
+                // the caller can see, so a handler computes it only when asked. One the output never declared is a
+                // fault in the handler, not something to send off-contract.
+                val summary = listSummaryOf(endpoint, page)
+                summary?.let { env[EP.summary] = it }
+                listHashPayload(limited, summary)
             }
         }
         // The content hash of the payload alone (issue #114): a CRC32 of its compact JSON, so an unchanged
@@ -820,3 +825,21 @@ class RequestService : ServiceInitializer {
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }
+
+/**
+ * The summary a list response sends (issue #791): the handler's [ListPage.summary], or null when it computed none.
+ * One on an endpoint whose output never declared a summary is a fault in the handler, not an off-contract extra.
+ */
+fun listSummaryOf(endpoint: KdrEndpoint, page: ListPage?): Map<String, Any?>? {
+    val summary = page?.summary ?: return null
+    if (endpoint.summaryRef == null) {
+        throw KdrException("List endpoint '${endpoint.path}' returned a summary its output does not declare.")
+    }
+    return summary
+}
+
+/**
+ * What a list response's content hash covers (issue #791): its [items], and its [summary] beside them when it sends
+ * one -- a summary can change while the page does not, and a client acting on the hash must see that.
+ */
+fun listHashPayload(items: List<*>, summary: Map<String, Any?>?): Any = if (summary == null) items else listOf(items, summary)

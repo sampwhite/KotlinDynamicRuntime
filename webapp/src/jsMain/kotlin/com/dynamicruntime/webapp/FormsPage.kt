@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
@@ -94,6 +95,10 @@ val FormsPage = FC<Props> {
     var rows by useState<List<Map<String, Any?>>>(emptyList())
     // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
     var numAvailable by useState(0)
+    // The workflow column's summary (issue #791), delivered with each page: empty means no column.
+    var listingWorkflows by useState<List<WorkflowSummaryEntry>>(emptyList())
+    // What a row with no workflows shows (issue #791): the client's copy, Markdown; null draws a dash.
+    var emptyWorkflowsCopy by useState<String?>(null)
     // The first index of the page on screen; paging moves it by [formsPageSize].
     var offset by useState(0)
     // The forms-list search (issue #538): `draft` is what the boxes hold, `applied` is what the list is
@@ -177,15 +182,23 @@ val FormsPage = FC<Props> {
         sortCol: String?,
         sortDesc: Boolean,
         includeUsers: Boolean,
+        withSummary: Boolean = false,
     ): FormsListPage {
         val resp = SchemaCatalogApi.invoke(
             ep,
             mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
                 sortArgs(sortCol, sortDesc) + includeUsersArg(includeUsers) +
-                mapOf(GDF.withStates to true),
+                mapOf(GDF.withStates to true) +
+                // The workflow column's summary (issue #791) only when the forms may have changed: it spans every
+                // form the caller may see, which a page turn, search or sort does not change.
+                (if (withSummary) mapOf(GDF.withWorkflowSummary to true) else emptyMap()),
         )
         val fetched = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-        return FormsListPage(fetched, (resp[EP.numAvailable] as? Number)?.toInt() ?: fetched.size)
+        return FormsListPage(
+            fetched,
+            (resp[EP.numAvailable] as? Number)?.toInt() ?: fetched.size,
+            if (withSummary) parseWorkflowSummary(resp[EP.summary]) else null,
+        )
     }
 
     /**
@@ -215,13 +228,16 @@ val FormsPage = FC<Props> {
         search: Map<String, Any?>,
         sortCol: String? = sortColumn,
         sortDesc: Boolean = sortDescending,
+        /** Ask for the workflow column's summary again (issue #791) -- after a delete, which may change it. */
+        withSummary: Boolean = false,
     ) {
         beginListAction()
         formsScope.launch {
             try {
-                val page = fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers)
+                val page = fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers, withSummary)
                 rows = page.rows
                 numAvailable = page.numAvailable
+                page.workflowSummary?.let { listingWorkflows = it }
                 searchError = null
             } catch (e: Throwable) {
                 searchError = userFacingError(e)
@@ -274,7 +290,7 @@ val FormsPage = FC<Props> {
                 val cat = SchemaCatalogApi.fetchCatalog(client = client)
                 val ep = findFormsListEndpoint(cat.endpoints)
                 val applied = if (ep == null) emptyMap() else search.filterKeys { it in formsSearchKeys(ep.inputSchema) }
-                val page = if (ep == null) null else fetchListPage(ep, 0, applied, sortCol, sortDesc, includeUsers)
+                val page = if (ep == null) null else fetchListPage(ep, 0, applied, sortCol, sortDesc, includeUsers, withSummary = true)
                 // Everything has arrived: publish the surface and its page together.
                 catalog = cat
                 getEndpoint = findFormGetEndpoint(cat.endpoints)
@@ -293,6 +309,7 @@ val FormsPage = FC<Props> {
                 if (page != null) {
                     rows = page.rows
                     numAvailable = page.numAvailable
+                    page.workflowSummary?.let { listingWorkflows = it }
                 }
                 error = null
                 searchError = null
@@ -339,6 +356,14 @@ val FormsPage = FC<Props> {
             val seeAllClients = homeConfig?.canSeeAllClients == true
             canSeeAllClients = seeAllClients
             hasSurvey = homeConfig?.hasSurvey == true
+            // The workflow column's empty-cell copy (issue #791), from the home fragment file a client overlays.
+            // Copy only decorates the column, so a failure to fetch it leaves the dash rather than failing the list.
+            emptyWorkflowsCopy = homeConfig?.let { cfg ->
+                runCatching {
+                    fetchCopyWithRetry(cfg.fragment) { runCatching { HomeApi.fetchConfig().fragment }.getOrNull() }
+                        .opt(HFRAG.formsNs, HFRAG.noWorkflows)
+                }.getOrNull()
+            }?.ifBlank { null }
             // The clients to offer in the filter, for a cross-client caller (issue #668) -- with each one's
             // `hasSurvey` (issue #695), so the survey-status filter can follow the chosen client.
             if (seeAllClients) {
@@ -517,7 +542,7 @@ val FormsPage = FC<Props> {
                                                     confirmingDelete = false
                                                     viewingId = null
                                                     offset = 0
-                                                    loadPage(ep, 0, appliedSearch)
+                                                    loadPage(ep, 0, appliedSearch, withSummary = true)
                                                 } catch (e: Throwable) {
                                                     deleteError = userFacingError(e)
                                                 } finally {
@@ -844,6 +869,14 @@ val FormsPage = FC<Props> {
                     surveyEditHref = { id ->
                         hashHref(listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id, HP.edit to "1") + listingContext)
                     }
+                    // The workflow column (issue #791): its summary, the client's copy for an empty cell, and where
+                    // a workflow link goes -- the survey page opened on that workflow, carrying the listing's context
+                    // home like every other hop.
+                    workflowSummary = listingWorkflows
+                    noWorkflowsCopy = emptyWorkflowsCopy
+                    workflowHref = { id, wf, task, edit ->
+                        hashHref(workflowPageHash(id, wf, task, edit) + listingContext)
+                    }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId
                     onArmDelete = { id -> rowConfirmDeleteId = id; rowDeleteError = null }
@@ -864,7 +897,7 @@ val FormsPage = FC<Props> {
                                         if (rows.size == 1 && offset >= formsPageSize) offset - formsPageSize
                                         else offset
                                     offset = newOffset
-                                    loadPage(ep, newOffset, appliedSearch)
+                                    loadPage(ep, newOffset, appliedSearch, withSummary = true)
                                 } catch (e: Throwable) {
                                     rowDeleteError = userFacingError(e)
                                     rowDeletingId = null

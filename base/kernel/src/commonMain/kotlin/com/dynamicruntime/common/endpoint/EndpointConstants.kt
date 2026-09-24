@@ -198,6 +198,9 @@ object EP {
     const val numAvailable = "numAvailable"
     const val items = "items"
 
+    /** A list endpoint's facts about its whole scoped set, beside [items] (issue #791); only when declared. */
+    const val summary = "summary"
+
     // Output result wrappers, by endpoint kind.
     const val results = "results" // general endpoints: always a map object
     const val item = "item" // single-resource endpoints

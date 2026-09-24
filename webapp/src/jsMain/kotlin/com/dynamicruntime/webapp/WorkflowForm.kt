@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.LAYSTR
@@ -18,6 +19,9 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
+import react.Key
+import react.dom.html.ReactHTML.ul
+import react.dom.html.ReactHTML.li
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -84,6 +88,12 @@ external interface WorkflowFormProps : Props {
      * survey edit (that acts on an existing form). Absent/false hides the picker -- the ordinary self-create.
      */
     var allowCreateForUser: Boolean?
+
+    /**
+     * Puts the form into this **normal workflow** (issue #791), offered as Engage in place of Edit when the view
+     * says the form may engage ([WorkflowView.canEngage]). The page owns the call and the reload after it.
+     */
+    var onEngage: (() -> Unit)?
 }
 
 /**
@@ -116,7 +126,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     // A creation form is always editable; a survey edit starts read-only (the "View Info" view) unless the URL
     // asked for edit mode (issue #694, the forms-list chip's direct-to-edit link).
-    var editing by useState(if (isEdit) props.initialEditing == true else true)
+    // A normal workflow's tasks are worked on only once the form is engaged and while the workflow is still
+    // calculated (issue #791): before, the page offers Engage; after it closes (frozen), what it recorded stands.
+    var editing by useState(if (isEdit) props.initialEditing == true && wf.canWork else true)
     // The user a create is being made for (issue #727), when an admin picked one; null is the self-create.
     // Meaningful only on a creation form; a survey edit never reads it.
     var pickedUser by useState<AdminUser?>(null)
@@ -309,6 +321,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             if (showLabel && wf.showTaskList && task.label.isNotBlank()) {
                 Markdown { source = task.label; inlineUi = true }
             }
+            // A step that collects nothing -- an approval, say -- has no fields to draw; its own rendering comes
+            // with #832, so for now the panel says so rather than showing an empty card.
+            if (task.traits.isEmpty()) {
+                p {
+                    className = ClassName("subtitle")
+                    +"There is nothing to fill in for this step here."
+                }
+            }
             task.traits.forEach { trait ->
                 div {
                     className = ClassName("wf-trait")
@@ -451,10 +471,20 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         +"Done"
                     }
                 } else {
-                    Button {
-                        type = "primary"
-                        onClick = { editing = true }
-                        +"Edit"
+                    if (wf.canWork) {
+                        Button {
+                            type = "primary"
+                            onClick = { editing = true }
+                            +"Edit"
+                        }
+                    }
+                    // A normal workflow the form is not in yet (issue #791): Engage first, then its tasks open.
+                    props.onEngage?.takeIf { wf.canEngage }?.let { engage ->
+                        Button {
+                            type = "primary"
+                            onClick = { engage() }
+                            +"Engage"
+                        }
                     }
                     // The raw read-only view (issue #726): every trait, including the ones the survey does
                     // not show, without entering the editor -- the look-before-editing counterpart of the
@@ -480,6 +510,27 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     p {
                         className = ClassName("form-ok")
                         +"✓ Saved."
+                    }
+                }
+            }
+        }
+
+        // Why a normal workflow's tasks cannot be worked on here (issue #791), when they cannot.
+        workflowNote(wf)?.let { note ->
+            p {
+                className = ClassName("subtitle")
+                +note
+            }
+        }
+        // The reasons, when it is eligibility that stands in the way (issue #791) -- the same explanations the forms
+        // list's dialog shows, in place of an Engage that could only be refused.
+        if (wf.engaged == false && wf.eligible == false && wf.ineligibleReasons.isNotEmpty()) {
+            ul {
+                className = ClassName("wf-reasons")
+                wf.ineligibleReasons.forEachIndexed { i, r ->
+                    li {
+                        key = i.toString().unsafeCast<Key>()
+                        MarkdownInline { source = r }
                     }
                 }
             }
@@ -521,6 +572,18 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
         runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
     }
+}
+
+/**
+ * Why a normal workflow's tasks are read-only on this page (issue #791), or null when they are not (or the view is
+ * a creation or survey). Pure, and covered under `jsNodeTest`.
+ */
+fun workflowNote(wf: WorkflowView): String? = when {
+    !wf.isNormal || wf.canWork -> null
+    wf.canEngage -> "This form is not in this workflow yet. Engage it to start."
+    wf.engaged == false && wf.eligible == false -> "This form cannot be put into this workflow yet:"
+    wf.phase == WfPhase.lifetimeOnly.name -> "This workflow has closed. What it recorded stands, and it can no longer be changed."
+    else -> "This form is not in this workflow, and it is not taking new forms."
 }
 
 /** The heading for a trait section: its schema title if it has one, else a humanized trait id. */
