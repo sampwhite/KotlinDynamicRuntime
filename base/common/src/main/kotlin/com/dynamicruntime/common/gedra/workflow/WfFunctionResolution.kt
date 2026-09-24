@@ -26,12 +26,18 @@ fun resolveWorkflowFunctions(
     configs: GedraConfigCollector,
     creations: List<WfFunctionCreation>,
     issues: MutableList<GedraConfigIssue>,
+    /**
+     * Resolve only this client's bundles (issue #842): on a reload they are the freshly reassembled ones, while
+     * every other bundle already holds what the boot (or its own reload) resolved. Null resolves them all.
+     */
+    onlyClient: String? = null,
 ) {
     val byFn: Map<String, WfFunctionCreation> = creations.associateBy { it.fn }
     val schemaService = SchemaService.get(cxt)
 
     for (bundle in configs.configs) {
         val client = bundle.gedraId.client
+        if (onlyClient != null && client != onlyClient) continue
         val declaredCfacts = schemaService.cfactsFor(client).names
         // The labels the client suggests (issue #786), or null for a bundle with no client definition present
         // here -- a global workflow has no one client's list to be held to, so its labels are not checked.

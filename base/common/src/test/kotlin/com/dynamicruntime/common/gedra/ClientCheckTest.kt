@@ -46,7 +46,8 @@ class ClientCheckTest : StringSpec({
         extendsFrom: String? = null,
         included: List<String> = emptyList(),
         configName: String = "${clientId}Client",
-    ): GedraConfig = gedraConfig(devCxt, configName, "${clientId}config", clientId) {
+        origin: GedraConfigOrigin = GedraConfigOrigin.source,
+    ): GedraConfig = gedraConfig(devCxt, configName, "${clientId}config", clientId, origin) {
         defineClient(
             ClientDef(
                 clientId = declaredId,
@@ -221,6 +222,23 @@ class ClientCheckTest : StringSpec({
 
     "a client naming itself as its base is refused, being its own parent" {
         refusal(clientConfig("acme", extendsFrom = "acme")) shouldContain "'acme' extends 'acme'"
+    }
+
+    // A base must be a source-code definition, whoever extends it: only the source definition is ever pulled
+    // in, and it is what lets a reload judge only its own client (issue #842) -- a reload never changes a base.
+    "a client extending one defined only in stored configuration is refused" {
+        val storedBase = clientConfig("base", origin = GedraConfigOrigin.stored)
+        refusal(storedBase, clientConfig("leaf", extendsFrom = "base")) shouldContain
+            "'leaf' extends 'base', which is defined only in stored configuration"
+
+        // A stored client extending it is the stored config's problem: forgiven on a local node, the client
+        // dropped with its issue, while the base itself stands.
+        val result = checkClientDefs(
+            devCxt,
+            collectorOf(storedBase, clientConfig("leaf", extendsFrom = "base", origin = GedraConfigOrigin.stored)),
+        )
+        result.clients.keys shouldBe setOf("base")
+        result.issues.single().message shouldContain "defined only in stored configuration"
     }
 
     "one level of extension is fine" {

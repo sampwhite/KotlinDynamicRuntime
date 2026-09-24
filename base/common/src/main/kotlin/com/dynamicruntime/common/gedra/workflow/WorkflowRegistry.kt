@@ -127,6 +127,14 @@ fun buildWorkflowRegistries(
      */
     cfactNames: (scope: String?) -> Set<String>,
     issues: MutableList<GedraConfigIssue>,
+    /**
+     * Build only this client's registry (issue #842), inheriting from [runningGlobal] rather than re-checking the
+     * global scope: a reload changes one client's workflows, and re-judging the rest would report their problems
+     * again (or, on strict, refuse this reload over them). Null builds every scope, as the boot does.
+     */
+    onlyClient: String? = null,
+    /** The global registry the node runs now; with [onlyClient], what the client inherits from. */
+    runningGlobal: WorkflowRegistry? = null,
 ): WorkflowRegistries {
     // The entry kinds that are implemented; a workflow declaring any other is dropped rather than run
     // half-built. `normal` landed with issue #794.
@@ -319,9 +327,11 @@ fun buildWorkflowRegistries(
     }
 
     val globalUsable = configs.traitsFor(GID.globalClient).map { it.traitId }.toSet()
-    val global = assemble(null, emptyMap(), declaredIn(GID.globalClient), globalUsable)
+    val global = runningGlobal.takeIf { onlyClient != null }
+        ?: assemble(null, emptyMap(), declaredIn(GID.globalClient), globalUsable)
     val byClient = LinkedHashMap<String, WorkflowRegistry>()
     for ((client, def) in clients) {
+        if (onlyClient != null && client != onlyClient) continue
         val own = declaredIn(client)
         // A client sees global's traits through `supportedTraits`, which also admits what it customized.
         val usable = supportedTraits(configs, client, def, overlaidTypes(client)).map { it.traitId }.toSet()
@@ -438,7 +448,7 @@ private fun selectorShapeProblem(node: Map<String, Any?>, depth: Int): String? {
         return null
     }
     val raw = node[UIB.select] as? List<*>
-    if (raw == null || raw.isEmpty() || raw.any { it !is Map<*, *> }) {
+    if (raw.isNullOrEmpty() || raw.any { it !is Map<*, *> }) {
         return "has a '${UIB.select}' that is not a non-empty list of branches."
     }
     return raw.firstNotNullOfOrNull { selectorShapeProblem((it as Map<*, *>).toJsonMapOrEmpty(), depth + 1) }

@@ -114,7 +114,7 @@ object GedraConfigReload {
         // made one atomic step without versioning the cache, so the window is kept to the unavoidable minimum.
         val typeKeys = SchemaService.get(cxt).reloadClient(cxt, client)
         RequestService.get(cxt).evictTypes(typeKeys)
-        ClientService.get(cxt).recheck(cxt)
+        ClientService.get(cxt).recheck(cxt, client)
         // Overlays before workflows, as at boot: admitting a workflow validates its labels against the
         // fragments, so the fragments a revision adds must be in place before its workflows are judged.
         MarkdownFragmentService.get(cxt).reloadClient(
