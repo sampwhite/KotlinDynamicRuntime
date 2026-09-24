@@ -42,6 +42,9 @@ class WorkflowTaskSaveTest : StringSpec({
     val labeller = TestUser.create(cxt, "save-labeller@acme.test", userClient = SC.acme, level = ROLE.admin)
     val reviewer = TestUser.create(cxt, "save-reviewer@acme.test", userClient = SC.acme, level = ROLE.admin)
     labeller.postData(UADEP.userSetLabels, mapOf(ADF.userId to reviewer.userId, ADF.labels to listOf(SC.reviewerLabel)))
+    // Whoever makes follow-up visits: acme's `siteLead` label, which the follow-up's record is restricted to.
+    val siteLead = TestUser.create(cxt, "save-sitelead@acme.test", userClient = SC.acme, level = ROLE.admin)
+    labeller.postData(UADEP.userSetLabels, mapOf(ADF.userId to siteLead.userId, ADF.labels to listOf(SC.siteLeadLabel)))
 
     fun newForm(): String = owner.postItem(
         create,
@@ -80,23 +83,28 @@ class WorkflowTaskSaveTest : StringSpec({
         reviewer.postData(save, auditSave(gid, "open"))[WSF.saved] shouldBe true
     }
 
-    "a task that says nothing is anyone's who can see the form" {
+    "a task that says nothing is anyone's who can see the form -- the owner confirms the contact" {
         val gid = newForm()
         owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.siteFollowUp))
         canSave(owner, gid, SW.siteFollowUp, SW.confirmContact) shouldBe true
         owner.postData(save, contactSave(gid))[WSF.saved] shouldBe true
     }
 
-    "the follow-up records its own trait, and cannot rewrite the audit" {
+    "the follow-up is recorded by a site lead, on its own trait, and cannot rewrite the audit" {
         val gid = newForm()
         owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.siteFollowUp))
         fun followUpSave(traitId: String, data: Map<String, Any?>) = mapOf(
             WFD.workflowId to SW.siteFollowUp, GDF.taskId to SW.recordFollowUp, GDF.saveId to SW.saveFollowUp,
             GDF.gedraId to gid, GDF.entries to listOf(mapOf(GE.traitId to traitId, GE.data to data)),
         )
-        owner.postData(save, followUpSave(SC.siteFollowUpTrait, mapOf(SC.followUpBy to "Site Lead")))[WSF.saved] shouldBe true
-        // The audit is not the follow-up's to write: the task does not collect it.
-        owner.expectError(EXC.badInput, save, followUpSave(SC.siteAudit, mapOf(SC.auditor to "Someone", SC.findings to "open")))
+        val record = followUpSave(SC.siteFollowUpTrait, mapOf(SC.followUpBy to "Site Lead"))
+        // The owner confirms the contact, but the visit's record is the site lead's.
+        canSave(owner, gid, SW.siteFollowUp, SW.recordFollowUp) shouldBe false
+        canSave(siteLead, gid, SW.siteFollowUp, SW.recordFollowUp) shouldBe true
+        owner.expectError(EXC.notAuthorized, save, record)
+        siteLead.postData(save, record)[WSF.saved] shouldBe true
+        // The audit is not the follow-up's to write: the task does not collect it, whoever asks.
+        siteLead.expectError(EXC.badInput, save, followUpSave(SC.siteAudit, mapOf(SC.auditor to "Someone", SC.findings to "open")))
     }
 
     "a task is saved only on a form engaged with its workflow" {

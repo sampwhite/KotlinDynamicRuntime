@@ -508,6 +508,11 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             // the review had recorded and approved -- and could bring Needs Review back on a finished form.
             task(SW.recordFollowUp, "Record the follow-up") {
                 trait(SC.siteFollowUpTrait)
+                // Recorded by whoever makes the visit -- a site lead, by acme's `siteLead` label (issue #856) -- not by
+                // the form's owner, who only confirms the contact above. `userHasLabel` grants the framework's one
+                // viewer fact, named `wfReviewer` whatever the label, so "may save" reads "carries siteLead" here.
+                function(userHasLabel { label = SC.siteLeadLabel })
+                saveWhen(WFC.reviewer)
                 save(SW.saveFollowUp, "Save the follow-up", WfSaveKind.edit)
             }
         }
