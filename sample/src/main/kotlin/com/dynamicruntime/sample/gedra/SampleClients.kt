@@ -165,6 +165,15 @@ object SC {
     const val auditor = "auditor"
     const val findings = "findings"
 
+    /**
+     * The site follow-up's own trait (issue #856): what a follow-up visit recorded -- kept apart from the audit, so
+     * following up can never rewrite an audit a reviewer recorded and approved.
+     */
+    const val siteFollowUpTrait = "acmeSiteFollowUp"
+    const val siteFollowUpEntry = "SiteFollowUpEntry"
+    const val followUpBy = "followUpBy"
+    const val followUpOutcome = "outcome"
+
     /** The [findings] value that means the audit is still open (issue #784) -- what sets [underAudit]. */
     const val findingsOpen = "open"
 
@@ -495,8 +504,10 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 trait(SC.userInfo)
                 save(SW.saveContact, "Save the contact", WfSaveKind.edit)
             }
+            // Its own trait (issue #856), not the audit's: a follow-up that collected `acmeSiteAudit` rewrote the audit
+            // the review had recorded and approved -- and could bring Needs Review back on a finished form.
             task(SW.recordFollowUp, "Record the follow-up") {
-                trait(SC.siteAudit)
+                trait(SC.siteFollowUpTrait)
                 save(SW.saveFollowUp, "Save the follow-up", WfSaveKind.edit)
             }
         }
@@ -513,6 +524,17 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         ) {
             property(SC.auditor, "Who carried out the audit.", required = true)
             property(SC.findings, "What they found.")
+        }
+
+        // What a site follow-up visit records (issue #856) -- its own trait, so a follow-up never touches the audit.
+        trait(
+            SC.siteFollowUpEntry,
+            SC.siteFollowUpTrait,
+            setOf(GedraDataType.formDoc),
+            "A follow-up visit acme makes to one of its sites.",
+        ) {
+            property(SC.followUpBy, "Who made the follow-up visit.", required = true)
+            property(SC.followUpOutcome, "What the follow-up found.")
         }
 
         // The supplied-defaults demo trait (issue #711): the form owner's name and email, both prefilled by the

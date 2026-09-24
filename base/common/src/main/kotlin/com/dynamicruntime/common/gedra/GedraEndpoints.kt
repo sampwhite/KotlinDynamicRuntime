@@ -1017,13 +1017,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val saveId = request[GDF.saveId].toOptStr() ?: throw KdrException.mkInput("A ${GDF.saveId} is required.")
         val gedraId = request[GDF.gedraId].toOptStr()
         // A normal workflow's task (issue #856): saved only on a form engaged with the workflow, and only by a caller
-        // its rule for who may save admits -- judged on the same facts the view shows, so a Save the page offered
-        // is one this accepts.
-        if (declared.def.entry == WfEntry.normal) requireNormalTaskSave(c, declared, taskId, gedraId)
+        // its rule for who may save admits -- judged under the form's lock on the same facts the view shows, so a
+        // Save the page offered is one this accepts, and nothing can change the verdict before the write.
+        val underLock = if (declared.def.entry == WfEntry.normal) normalTaskSaveCheck(c, declared, taskId) else null
         // A `create` save (no gedraId) may be for another user (issue #727); an `edit` acts on the named form as
         // the caller, so `user` does not apply there and the caller's own context is used.
         val saveCxt = if (gedraId == null) createForUserCxt(c, request) else c
-        val result = saveWorkflow(saveCxt, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), gedraId)
+        val result = saveWorkflow(saveCxt, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), gedraId, underLock)
         // A survey edit answers with the refreshed view too (issue #700): re-resolved against the updated form,
         // so the task rail's per-task statuses and its earliest-actionable task follow the save without a second
         // call -- the save is the refresh. A create save has no form to resolve a survey against, so it answers as
@@ -1169,26 +1169,27 @@ private fun entriesByTaskOf(declared: WfDeclared, row: GedraDataRow): Map<String
     entriesByTaskOf(declared, row.entries)
 
 /**
- * Refuses a save of normal workflow [declared]'s task [taskId] on form [gedraId] that the workflow does not allow
- * (issue #856): the form has to be engaged with the workflow (a 400 -- engage it first), and the caller has to pass
- * the task's rule for who may save it (a 403). A task the workflow does not have is left to the save's own refusal.
+ * The check a save of normal workflow [declared]'s task [taskId] runs **under the form's lock** (issue #856): the
+ * form has to be engaged with the workflow (a 400 -- put it in first), and the caller has to pass the task's rule for
+ * who may save it (a 403), judged on the form's entries and approvals as they stand at the write. Run there rather
+ * than before the patch because an engagement change takes the same lock: a check made earlier could be overtaken.
+ * A task the workflow does not have is left to the save's own refusal.
  */
-private fun requireNormalTaskSave(c: KdrCxt, declared: WfDeclared, taskId: String, gedraId: String?) {
+private fun normalTaskSaveCheck(c: KdrCxt, declared: WfDeclared, taskId: String): (GedraDataRow, List<Map<String, Any?>>) -> Unit {
     val workflowId = declared.def.workflowId
-    val formId = gedraId ?: throw KdrException.mkInput("A save in workflow '$workflowId' needs the form it edits (${GDF.gedraId}).")
-    val row = surveyFormRow(c, formId)
-    val states = GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c))
-    if (workflowId !in engagedWorkflowIds(states)) {
-        throw KdrException.mkInput("This form is not in workflow '$workflowId'. Put it into the workflow before working on its tasks.")
-    }
-    val task = declared.def.task(taskId) ?: return
-    val judge = WorkflowTaskJudge(
-        c, row.client, declared, entriesByTaskOf(declared, row),
-        WorkflowApprovals.forView(c, declared.def, row.gedraId.fullId),
-        SchemaService.get(c).cfactsFor(row.client).assemble(c),
-    )
-    if (!judge.maySave(task)) {
-        throw KdrException("You may not save task '$taskId' of workflow '$workflowId'.", code = EXC.notAuthorized)
+    return { row, states ->
+        if (workflowId !in engagedWorkflowIds(states)) {
+            throw KdrException.mkInput("This form is not in workflow '$workflowId'. Put it into the workflow before working on its tasks.")
+        }
+        declared.def.task(taskId)?.let { task ->
+            val judge = WorkflowTaskJudge(
+                c, row.client, declared, entriesByTaskOf(declared, row), WorkflowApprovals.of(states, workflowId),
+                SchemaService.get(c).cfactsFor(row.client).assemble(c),
+            )
+            if (!judge.maySave(task)) {
+                throw KdrException("You may not save task '$taskId' of workflow '$workflowId'.", code = EXC.notAuthorized)
+            }
+        }
     }
 }
 

@@ -87,6 +87,18 @@ class WorkflowTaskSaveTest : StringSpec({
         owner.postData(save, contactSave(gid))[WSF.saved] shouldBe true
     }
 
+    "the follow-up records its own trait, and cannot rewrite the audit" {
+        val gid = newForm()
+        owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.siteFollowUp))
+        fun followUpSave(traitId: String, data: Map<String, Any?>) = mapOf(
+            WFD.workflowId to SW.siteFollowUp, GDF.taskId to SW.recordFollowUp, GDF.saveId to SW.saveFollowUp,
+            GDF.gedraId to gid, GDF.entries to listOf(mapOf(GE.traitId to traitId, GE.data to data)),
+        )
+        owner.postData(save, followUpSave(SC.siteFollowUpTrait, mapOf(SC.followUpBy to "Site Lead")))[WSF.saved] shouldBe true
+        // The audit is not the follow-up's to write: the task does not collect it.
+        owner.expectError(EXC.badInput, save, followUpSave(SC.siteAudit, mapOf(SC.auditor to "Someone", SC.findings to "open")))
+    }
+
     "a task is saved only on a form engaged with its workflow" {
         val gid = newForm()
         owner.expectError(EXC.badInput, save, contactSave(gid))["errorMessage"].toOptStr().orEmpty() shouldContain
