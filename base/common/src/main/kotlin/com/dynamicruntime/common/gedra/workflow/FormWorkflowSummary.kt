@@ -40,7 +40,9 @@ object FormWorkflowSummary {
                 named.getOrPut(client) { LinkedHashMap() }[id] = declared to phase
             }
         }
-        val workflows = named.flatMap { (client, byId) ->
+        // Clients in name order: the forms arrive in no order the summary should depend on (the id query is not
+        // sorted), and an order that moved between identical calls would move the response's content hash too.
+        val workflows = named.entries.sortedBy { it.key }.flatMap { (client, byId) ->
             // The client's own copy: fragment overlays are per client.
             val clientCxt = if (client == cxt.client) cxt else cxt.mkSubContext("workflowSummary", client)
             val fragments = MarkdownFragmentService.get(clientCxt)

@@ -85,16 +85,31 @@ class WorkflowColumnViewTest {
 
     @Test
     fun theWorkflowPageSaysWhyItsTasksAreReadOnly() {
-        fun view(phase: WfPhase?, engaged: Boolean?, entry: WfEntry = WfEntry.normal) = WorkflowView(
+        fun view(phase: WfPhase?, engaged: Boolean?, entry: WfEntry = WfEntry.normal, eligible: Boolean? = null) = WorkflowView(
             workflowId = "audit", entry = entry.name, showTaskList = true, tasks = emptyList(), cfacts = emptyMap(),
-            phase = phase?.name, engaged = engaged,
+            phase = phase?.name, engaged = engaged, eligible = eligible,
         )
         assertNull(workflowNote(view(null, null, WfEntry.survey)))
         assertNull(workflowNote(view(WfPhase.relevant, true)))
-        assertTrue(workflowNote(view(WfPhase.engageable, false)).orEmpty().contains("Engage"))
+        assertTrue(workflowNote(view(WfPhase.engageable, false, eligible = true)).orEmpty().contains("Engage"))
         assertTrue(workflowNote(view(WfPhase.lifetimeOnly, true)).orEmpty().contains("closed"))
-        assertTrue(view(WfPhase.engageable, false).canEngage)
+        assertTrue(view(WfPhase.engageable, false, eligible = true).canEngage)
         assertTrue(!view(WfPhase.lifetimeOnly, true).canWork)
+        // Not eligible: no Engage that could only be refused, and the note leads into the reasons.
+        val ineligible = view(WfPhase.engageable, false, eligible = false)
+        assertTrue(!ineligible.canEngage)
+        assertTrue(workflowNote(ineligible).orEmpty().contains("cannot be put into"))
+    }
+
+    @Test
+    fun onlyAnEngagedWorkflowsLinkOpensInEditMode() {
+        assertEquals(
+            listOf(HP.page to pageSurveyEdit, HP.from to "forms", HP.gedra to "g1", HP.workflow to "audit", HP.task to "record", HP.edit to "1"),
+            workflowPageHash("g1", "audit", "record", edit = true),
+        )
+        // A finished workflow's last task is there to be looked at; an eligible one opens on the workflow.
+        assertEquals(null, workflowPageHash("g1", "audit", "last", edit = false).toMap()[HP.edit])
+        assertEquals(null, workflowPageHash("g1", "audit", null, edit = true).toMap()[HP.task])
     }
 
     @Test

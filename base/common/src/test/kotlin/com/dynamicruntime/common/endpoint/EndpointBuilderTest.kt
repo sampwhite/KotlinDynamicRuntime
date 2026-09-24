@@ -9,6 +9,8 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.schema.validate
+import com.dynamicruntime.common.http.request.listHashPayload
+import com.dynamicruntime.common.http.request.listSummaryOf
 import com.dynamicruntime.common.startup.buildClientEndpoints
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMap
@@ -128,6 +130,26 @@ class EndpointBuilderTest : StringSpec({
         ep.outputSchema[SCH.required].toJsonListOrEmpty() shouldNotContain EP.summary
         // The per-client copy shares the output schema, so it must share the declaration the executor checks.
         buildClientEndpoints(cxt, m.endpoints, listOf("acme")).single().summaryRef shouldBe "Sum"
+    }
+
+    "the executor sends a declared summary, refuses an undeclared one, and hashes it with the items" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            type("Sum") { type = SCT.kObject; property("total", "t") { type = SCT.integer } }
+            listEndpoint("/sums", "Summarized", outputRef = "Out", summaryRef = "Sum") { _, _ -> emptyList<Any?>() }
+            listEndpoint("/plain", "Plain", outputRef = "Out") { _, _ -> emptyList<Any?>() }
+        }
+        val declared = m.endpoints.single { it.path == "/sums" }
+        val plain = m.endpoints.single { it.path == "/plain" }
+        val summary = mapOf("total" to 3)
+        listSummaryOf(declared, ListPage(emptyList(), 0, false, summary)) shouldBe summary
+        listSummaryOf(declared, ListPage(emptyList(), 0, false)) shouldBe null
+        listSummaryOf(plain, null) shouldBe null
+        shouldThrow<KdrException> { listSummaryOf(plain, ListPage(emptyList(), 0, false, summary)) }
+        // Same items, different summary: the hashed payload differs, so the content hash moves.
+        val items = listOf(mapOf("n" to "a"))
+        (listHashPayload(items, mapOf("total" to 1)) == listHashPayload(items, mapOf("total" to 2))) shouldBe false
+        listHashPayload(items, null) shouldBe items
     }
 
     "a list endpoint omits limit and paging fields when not requested" {

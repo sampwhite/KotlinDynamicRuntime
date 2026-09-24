@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -51,8 +53,8 @@ fun resolveWorkflowView(
     ownerAttributes: Map<String, Any?> = emptyMap(),
     /** The form's approvals of this workflow's approval tasks (issue #787), task id to entry data; see WorkflowApprovals.forView. */
     approvals: Map<String, Map<String, Any?>> = emptyMap(),
-    /** For a normal workflow viewed against a form: whether the form is engaged with it (issue #791); see [WVF.engaged]. */
-    engaged: Boolean? = null,
+    /** For a normal workflow viewed against a form: where the form stands with it (issue #791); see [WorkflowFormFacts]. */
+    formFacts: WorkflowFormFacts? = null,
 ): Map<String, Any?> {
     val client: String = cxt.client
     @Suppress("VariableInitializerIsRedundant2")
@@ -212,9 +214,40 @@ fun resolveWorkflowView(
     )
     focusTask?.let { view[WVF.focusTask] = it }
     if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, declared.def).name
-    engaged?.let { view[WVF.engaged] = it }
+    formFacts?.let { f ->
+        view[WVF.engaged] = f.engaged
+        if (!f.engaged) {
+            view[WVF.eligible] = f.eligible
+            if (f.reasons.isNotEmpty()) view[WVF.ineligibleReasons] = f.reasons
+        }
+    }
     return view
 }
 
 /** The "no workflow" answer -- what the view returns when a client has no such (or no creation) workflow. */
 fun noWorkflowView(): Map<String, Any?> = linkedMapOf(WVF.found to false)
+
+/**
+ * Where a form stands with a normal workflow its view is resolved against (issue #791): [engaged] with it, and when
+ * not, whether it is [eligible] and the resolved [reasons] it is not -- what lets the page offer Engage only when
+ * engaging can succeed, and say why not otherwise.
+ */
+class WorkflowFormFacts(val engaged: Boolean, val eligible: Boolean, val reasons: List<String>) {
+    companion object {
+        /**
+         * From the form's stored [states]: engagement off the asserted entry, eligibility off the workflow's derived
+         * entry -- the same entry the engage endpoint gates on, so the page and the refusal agree. A form with no
+         * entry for the workflow yet counts as not eligible, which is what the engage call would then find.
+         */
+        fun of(cxt: KdrCxt, def: WfDef, states: List<Map<String, Any?>>): WorkflowFormFacts {
+            val engaged = def.workflowId in engagedWorkflowIds(states)
+            val entry = states.firstOrNull {
+                it[GE.traitId].toOptStr() == WFS.workflowState && it[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() == def.workflowId
+            }?.get(GE.data)?.toJsonMapOrEmpty()
+            val eligible = entry?.get(WFS.eligible) == true
+            val failures = entry?.get(WFS.eligibilityFailures).toJsonListOfMaps().mapNotNull { it[WFD.id].toOptStr() }
+            val reasons = if (engaged || eligible) emptyList() else WorkflowEligibility.explain(cxt, def, failures)
+            return WorkflowFormFacts(engaged, eligible, reasons)
+        }
+    }
+}

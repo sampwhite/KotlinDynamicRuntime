@@ -87,7 +87,7 @@ external interface FormsTableProps : Props {
      * The `href` that opens normal workflow `workflowId` against form `gedraId` (issue #791), on `task` when given
      * (the current task of an engaged workflow, the last of a finished one).
      */
-    var workflowHref: (gedraId: String, workflowId: String, task: String?) -> String
+    var workflowHref: (gedraId: String, workflowId: String, task: String?, edit: Boolean) -> String
 
     /** The form whose Delete is armed (showing the inline confirm), or null when none is. */
     var confirmingDeleteId: String?
@@ -605,7 +605,7 @@ private external interface WorkflowCellProps : Props {
     var gedraId: String
     var items: List<WorkflowCellItem>
     var noWorkflowsCopy: String?
-    var workflowHref: (String, String, String?) -> String
+    var workflowHref: (String, String, String?, Boolean) -> String
 }
 
 /** How many workflows a cell shows before the rest go behind its count (issue #791). */
@@ -634,7 +634,7 @@ private val WorkflowCell = FC<WorkflowCellProps> { props ->
             } else {
                 a {
                     className = ClassName("wf-cell-link")
-                    href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask)
+                    href = props.workflowHref(props.gedraId, it.entry.workflowId, it.linkTask, it.linkEdits)
                     +it.entry.label
                 }
             }

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.formWorkflowsOf
@@ -54,7 +55,7 @@ class FormsWorkflowColumnTest : StringSpec({
 
     /** The whole listing envelope -- the summary sits beside `items`, where the TestUser helpers do not look. */
     fun listing(user: TestUser, args: Map<String, Any?> = emptyMap()) =
-        user.client.sendJsonGetRequest(list, mapOf(GDF.withStates to true) + args)
+        user.client.sendJsonGetRequest(list, mapOf(GDF.withStates to true, GDF.withWorkflowSummary to true) + args)
 
     fun summaryOf(env: Map<String, Any?>) = env[EP.summary].toJsonMapOrEmpty()[WCOL.workflows].toJsonListOfMaps()
 
@@ -86,10 +87,13 @@ class FormsWorkflowColumnTest : StringSpec({
         summaryOf(listing(user, mapOf(EI.q to "no such thing anywhere"))) shouldBe full
     }
 
-    "without states the listing carries no summary" {
+    "the summary is sent only when asked for, and only with states" {
         val user = TestUser.create(cxt, "col-nostates@acme.test", userClient = SC.acme)
         newForm(user, surveyDone = true)
         user.client.sendJsonGetRequest(list, emptyMap()).containsKey(EP.summary) shouldBe false
+        // A page turn, search or sort does not change it, so a page asks for it only on its first load.
+        user.client.sendJsonGetRequest(list, mapOf(GDF.withStates to true)).containsKey(EP.summary) shouldBe false
+        user.client.sendJsonGetRequest(list, mapOf(GDF.withWorkflowSummary to true)).containsKey(EP.summary) shouldBe false
     }
 
     "each row sorts its workflows by the shared rule: engaged, eligible, then ineligible" {
@@ -112,6 +116,29 @@ class FormsWorkflowColumnTest : StringSpec({
         )
         val row = env[EP.items].toJsonListOfMaps().first { it[GDF.gedraId] == ready }
         formWorkflowsOf(row[GDF.states].toJsonListOfMaps()) { WfPhase.engageable }.first().ctaTask.shouldNotBeNull()
+    }
+
+    "the workflow's view says whether the form may engage, and why not" {
+        val user = TestUser.create(cxt, "col-view@acme.test", userClient = SC.acme)
+        val ready = newForm(user, surveyDone = true)
+        val unready = newForm(user, surveyDone = false)
+        val view = clientPath(GEP.workflowView, SC.acme)
+        fun viewOf(gid: String) = user.getData(view, mapOf(WFD.workflowId to SW.auditReview, GDF.gedraId to gid))
+        viewOf(ready).let {
+            it[WVF.engaged] shouldBe false
+            it[WVF.eligible] shouldBe true
+            it.containsKey(WVF.ineligibleReasons) shouldBe false
+        }
+        viewOf(unready).let {
+            it[WVF.eligible] shouldBe false
+            // Resolved, as the engage refusal words them -- the page shows these instead of an Engage that would fail.
+            (it[WVF.ineligibleReasons] as List<*>).single().toOptStr().orEmpty() shouldNotContain "%{"
+        }
+        user.postData(engage, mapOf(GDF.gedraId to ready, GDF.workflowId to SW.auditReview))
+        viewOf(ready).let {
+            it[WVF.engaged] shouldBe true
+            it.containsKey(WVF.eligible) shouldBe false
+        }
     }
 
     "nothing visible means an empty summary, and a deleted form stops counting" {

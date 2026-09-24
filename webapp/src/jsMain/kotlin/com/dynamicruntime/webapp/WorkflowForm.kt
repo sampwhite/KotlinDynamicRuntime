@@ -19,6 +19,9 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
+import react.Key
+import react.dom.html.ReactHTML.ul
+import react.dom.html.ReactHTML.li
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -519,6 +522,19 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 +note
             }
         }
+        // The reasons, when it is eligibility that stands in the way (issue #791) -- the same explanations the forms
+        // list's dialog shows, in place of an Engage that could only be refused.
+        if (wf.engaged == false && wf.eligible == false && wf.ineligibleReasons.isNotEmpty()) {
+            ul {
+                className = ClassName("wf-reasons")
+                wf.ineligibleReasons.forEachIndexed { i, r ->
+                    li {
+                        key = i.toString().unsafeCast<Key>()
+                        MarkdownInline { source = r }
+                    }
+                }
+            }
+        }
 
         // Create for another user (issue #727), admin-only and creation-only: the picker chooses whose form
         // it is; the workflow's fields are still this client's. Blank creates it for the caller.
@@ -565,6 +581,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 fun workflowNote(wf: WorkflowView): String? = when {
     !wf.isNormal || wf.canWork -> null
     wf.canEngage -> "This form is not in this workflow yet. Engage it to start."
+    wf.engaged == false && wf.eligible == false -> "This form cannot be put into this workflow yet:"
     wf.phase == WfPhase.lifetimeOnly.name -> "This workflow has closed. What it recorded stands, and it can no longer be changed."
     else -> "This form is not in this workflow, and it is not taking new forms."
 }

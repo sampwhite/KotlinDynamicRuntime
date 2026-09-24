@@ -123,6 +123,10 @@ class WorkflowView(
     val phase: String? = null,
     /** For a normal workflow viewed against a form: whether the form is engaged with it (issue #791). */
     val engaged: Boolean? = null,
+    /** For a normal workflow the form is not engaged with: whether it passes the eligibility tests (issue #791). */
+    val eligible: Boolean? = null,
+    /** When it does not: why, resolved -- what the page lists in place of an Engage that would fail. */
+    val ineligibleReasons: List<String> = emptyList(),
 ) {
     /** A normal workflow (issue #791): one a form is put into, rather than the creation or the survey. */
     val isNormal: Boolean get() = entry == WfEntry.normal.name
@@ -131,7 +135,7 @@ class WorkflowView(
     val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name))
 
     /** Whether the form may be put into this normal workflow from here: not yet engaged, and engagement is open. */
-    val canEngage: Boolean get() = isNormal && engaged == false && phase == WfPhase.engageable.name
+    val canEngage: Boolean get() = isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name
 }
 
 /** A task's [WVF.status] map as a [WfTaskStatus], or null when the task carried none. */
@@ -198,6 +202,8 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         focusTask = results[WVF.focusTask].toOptStr(),
         phase = results[WVF.phase].toOptStr(),
         engaged = results[WVF.engaged] as? Boolean,
+        eligible = results[WVF.eligible] as? Boolean,
+        ineligibleReasons = results[WVF.ineligibleReasons].toJsonListOfStrings(),
     )
 }
 

@@ -136,8 +136,12 @@ fun chosenClientNote(name: String): String =
 class FormsListPage(
     val rows: List<Map<String, Any?>>,
     val numAvailable: Int,
-    /** The workflow column's summary (issue #791): what it may show, over every form the caller may see. */
-    val workflowSummary: List<WorkflowSummaryEntry> = emptyList(),
+    /**
+     * The workflow column's summary (issue #791): what it may show, over every form the caller may see. Null when
+     * the fetch did not ask for it -- a page turn, search or sort, none of which change it -- so the page keeps the
+     * one it has.
+     */
+    val workflowSummary: List<WorkflowSummaryEntry>? = null,
 )
 
 /**
@@ -746,6 +750,24 @@ fun workflowCellOf(states: List<Map<String, Any?>>, client: String, summary: Lis
     val byId = summary.filter { it.client == client }.associateBy { it.workflowId }
     return formWorkflowsOf(states) { byId[it]?.phase }.mapNotNull { wf -> byId[wf.workflowId]?.let { WorkflowCellItem(it, wf) } }
 }
+
+/**
+ * Where a workflow-column link goes (issue #791): the survey page opened on normal workflow [workflowId] against
+ * form [gedraId], on [task] when given, and in edit mode when [edit] -- the current task of an engaged workflow is
+ * work to do; a finished workflow's last task is there to be looked at. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowPageHash(gedraId: String, workflowId: String, task: String?, edit: Boolean): List<Pair<String, String>> =
+    buildList {
+        add(HP.page to pageSurveyEdit)
+        add(HP.from to HMENU.pageForms)
+        add(HP.gedra to gedraId)
+        add(HP.workflow to workflowId)
+        task?.let { add(HP.task to it) }
+        if (edit && task != null) add(HP.edit to "1")
+    }
+
+/** Whether a cell item's link opens its task ready to edit (issue #791): only an engaged workflow's current task. */
+val WorkflowCellItem.linkEdits: Boolean get() = workflow.category == WfColumnCategory.engaged
 
 /** How a workflow's category reads beside its name in a cell (issue #791). */
 fun workflowCategoryText(category: WfColumnCategory): String = when (category) {

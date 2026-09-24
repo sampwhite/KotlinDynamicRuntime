@@ -35,7 +35,7 @@ import com.dynamicruntime.common.gedra.workflow.FormWorkflowSummary
 import com.dynamicruntime.common.gedra.workflow.WCOL
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
-import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
+import com.dynamicruntime.common.gedra.workflow.WorkflowFormFacts
 import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
@@ -265,6 +265,11 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             emptyIsAbsent = true
             allowCoerce = true
         }
+        property(GDF.withWorkflowSummary, "With withStates, also answer the workflow column's summary over every form the caller may see (issue #791). Defaults to false.") {
+            type = SCT.boolean
+            emptyIsAbsent = true
+            allowCoerce = true
+        }
         // Filter by the form's status (issues #695, #789): a closed choice over the statuses the column's chip
         // shows, read by the same rule (`formStatusOf`) so the two cannot disagree -- "Valid" means what a Valid
         // chip means, nothing pending or finished. Not a trait search field -- it reads the form's state, not a
@@ -396,8 +401,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             hasMore = offset + page.rows.size < page.numAvailable,
             // The workflows the column should offer (issue #791), over everything the caller may see -- the
             // caller's own scope, not the search, the user filter or the page -- so the column does not come and
-            // go as a search narrows. Only with states, which the rows are drawn from against it.
-            summary = if (withStates) FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)) else null,
+            // go as a search narrows. Only with states, which the rows are drawn from against it, and only when asked:
+            // it is a pass over everything the caller may see, which a page turn, search or sort does not change.
+            summary = if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
+                FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope))
+            } else {
+                null
+            },
         )
     }
 
@@ -698,13 +708,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val row = if (gedraId == null) null else surveyFormRow(c, gedraId)
             // A normal workflow is shown only while it exists, and -- outside its engagement window -- only to a form
             // already engaged with it (issue #790). Refused as an unknown one is, since that is what it is meant to be.
-            val engaged = if (declared.def.entry == WfEntry.normal && row != null) {
-                declared.def.workflowId in
-                    engagedWorkflowIds(GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)))
+            val formFacts = if (declared.def.entry == WfEntry.normal && row != null) {
+                WorkflowFormFacts.of(c, declared.def, GedraDataService.get(c).readState(c, row.gedraId, ReadScopeRules.forCaller(c)))
             } else {
                 null
             }
-            if (declared.def.entry == WfEntry.normal && !WorkflowPhases.of(c, declared.def).isShown(engaged == true)) {
+            if (declared.def.entry == WfEntry.normal && !WorkflowPhases.of(c, declared.def).isShown(formFacts?.engaged == true)) {
                 throw KdrException("No workflow '$requested' for this caller.", code = EXC.notFound)
             }
             val entriesByTask = row?.let { entriesByTaskOf(declared, it) } ?: emptyMap()
@@ -713,7 +722,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val ownerAttributes = prefillOwnerAttributes(c, declared, row?.userId ?: c.userId)
             // A form's approvals (issue #787) -- only read when the workflow has an approval task.
             val approvals = WorkflowApprovals.forView(c, declared.def, row?.gedraId?.fullId)
-            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, engaged)
+            resolveWorkflowView(c, declared, entriesByTask, ownerAttributes, approvals, formFacts)
         }
     }
 
@@ -975,14 +984,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val owner = prefillOwnerAttributes(c, declared, item[GDF.userId].toOptLong() ?: c.userId)
             val approvals = WorkflowApprovals.forView(c, declared.def, gedraId)
             // A normal workflow's refreshed view says whether the form is engaged, as the view endpoint's does.
-            val engaged = if (declared.def.entry == WfEntry.normal) {
-                declared.def.workflowId in engagedWorkflowIds(
-                    GedraDataService.get(c).readState(c, GedraId.parse(gedraId), ReadScopeRules.forCaller(c)),
-                )
+            val formFacts = if (declared.def.entry == WfEntry.normal) {
+                WorkflowFormFacts.of(c, declared.def, GedraDataService.get(c).readState(c, GedraId.parse(gedraId), ReadScopeRules.forCaller(c)))
             } else {
                 null
             }
-            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals, engaged))
+            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals, formFacts))
         } else {
             result
         }

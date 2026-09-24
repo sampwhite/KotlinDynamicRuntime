@@ -1593,8 +1593,8 @@ class GedraDataService : ServiceInitializer {
      * all-clients scope is an administrator's.
      */
     fun statesInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): Map<GedraId, List<Map<String, Any?>>> {
-        val ids = liveIdsInScope(cxt, kind, scope).map { GedraId.parse(it) }
-        return readStates(cxt, ids, scope).mapKeys { (fullId, _) -> GedraId.parse(fullId) }
+        val ids = liveIdsInScope(cxt, kind, scope).associateWith { GedraId.parse(it) }
+        return readStates(cxt, ids.values.toList(), scope).mapKeys { (fullId, _) -> ids.getValue(fullId) }
     }
 
     /** The full ids of the live gedras of [kind] that [scope] admits, from the cache when it can key on the scope. */

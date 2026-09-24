@@ -233,6 +233,13 @@ object GDF {
     const val withStates = "withStates"
 
     /**
+     * List param (issue #791): with [withStates], also answer the workflow column's `summary` -- a pass over every
+     * form the caller may see, so a page asks for it when it first loads or its forms change, not on every page
+     * turn, search or sort (none of which change it).
+     */
+    const val withWorkflowSummary = "withWorkflowSummary"
+
+    /**
      * A gedra's **state entries** (issue #600): a list of `StateEntry`s, attached to a listed form when
      * `withStates` is asked for, and the payload of the admin state endpoints. Derived -- read from the states
      * cache, neither sent to create nor stored on the data row -- and absent, not empty, when not requested.
