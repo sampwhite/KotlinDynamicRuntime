@@ -55,6 +55,12 @@ class ConfigReloadResult(
 object GedraConfigReload {
     private val lock = Any()
 
+    /**
+     * Runs [block] under the reload lock -- for a trial (issue #843), which reads the collectors a reload swaps and
+     * so must not overlap one, or it could copy them half-swapped.
+     */
+    fun <T> underReloadLock(block: () -> T): T = synchronized(lock) { block() }
+
     fun reloadClient(cxt: KdrCxt, client: String): ConfigReloadResult = synchronized(lock) {
         // The client's issue list is replaced by what this reload finds (issue #840): cleared first, so every
         // phase records afresh, and restored if the reload throws, so a refused reload leaves it as it was.

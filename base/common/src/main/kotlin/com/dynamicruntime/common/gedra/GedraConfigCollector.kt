@@ -173,6 +173,9 @@ fun GedraConfig.issue(
     elementId = elementId,
 )
 
+/** Whether [cxt] is running a trial reload (issue #843): its config problems are captured, and nothing is recorded. */
+fun isTrial(cxt: KdrCxt): Boolean = cxt.locals[GCFG.trialCaptureKey] != null
+
 /**
  * This issue re-attributed to [config], the config holding the offending definition -- for a check whose finding
  * is built without the config in hand (a rule judging a `ClientDef` alone), so the provenance is added where the
@@ -350,11 +353,14 @@ class GedraConfigCollector {
     fun add(cxt: KdrCxt, config: GedraConfig): Boolean {
         // The arriving config is the one refused, so its origin decides the mode (issue #839).
         val mode = config.checkMode(cxt)
-        // Registered on the way past, findings or not, so the report can say the check ran (issue #303).
-        if (config.isStored) {
-            BootCheckRegistry.get(cxt).record(BCHK.storedConfig, GCFG.storedCheckEnvVar.name, mode)
-        } else {
-            BootCheckRegistry.get(cxt).record(BCHK.gedraConfig, GCFG.checkEnvVar.name, mode)
+        // Registered on the way past, findings or not, so the report can say the check ran (issue #303) -- but not
+        // by a trial (issue #843), which records nothing: it loaded nothing the operator report is about.
+        if (!isTrial(cxt)) {
+            if (config.isStored) {
+                BootCheckRegistry.get(cxt).record(BCHK.storedConfig, GCFG.storedCheckEnvVar.name, mode)
+            } else {
+                BootCheckRegistry.get(cxt).record(BCHK.gedraConfig, GCFG.checkEnvVar.name, mode)
+            }
         }
         if (mode == BootCheckMode.off) {
             keep(config)

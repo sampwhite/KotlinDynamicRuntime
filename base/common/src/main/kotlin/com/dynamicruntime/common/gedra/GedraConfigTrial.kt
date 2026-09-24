@@ -44,8 +44,16 @@ object GedraConfigTrial {
         )
     }
 
-    /** Every problem a reload of [candidate]'s client would find with [candidate] in place (see the class note). */
-    fun trial(cxt: KdrCxt, candidate: GedraConfig): List<GedraConfigIssue> {
+    /**
+     * Every problem a reload of [candidate]'s client would find with [candidate] in place (see the class note). Run
+     * under the reload lock, since it reads the collectors a reload swaps. A write calls this inside its transaction,
+     * so the order is always the config row's lock, then the reload lock; a reload never takes a row's write lock
+     * (it reads the configs), so the two cannot wait on each other.
+     */
+    fun trial(cxt: KdrCxt, candidate: GedraConfig): List<GedraConfigIssue> =
+        GedraConfigReload.underReloadLock { trialLocked(cxt, candidate) }
+
+    private fun trialLocked(cxt: KdrCxt, candidate: GedraConfig): List<GedraConfigIssue> {
         val client = candidate.gedraId.client
         val collector = SchemaCollector.get(cxt) ?: return emptyList()
         val capture = mutableListOf<GedraConfigIssue>()

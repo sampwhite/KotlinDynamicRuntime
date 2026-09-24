@@ -148,6 +148,7 @@ class WorkflowService : ServiceInitializer {
             cxt, scratch.gedraConfigs, scratch.workflowFunctions, found, client,
             clientDefOf = { if (it == client) def else ClientService.get(cxt).present(it) },
             cfactNamesOf = { if (it == client) cfactNames else SchemaService.get(cxt).cfactsFor(it).names },
+            assign = false,
         )
     }
 
