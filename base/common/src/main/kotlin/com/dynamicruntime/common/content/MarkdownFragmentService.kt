@@ -2,9 +2,14 @@ package com.dynamicruntime.common.content
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.GedraConfigIssue
+import com.dynamicruntime.common.gedra.issue
+import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.bootCheckMode
 import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.endpoint.SchModule
@@ -85,50 +90,27 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * Deliberately keyed on the environment rather than `isTestInstance`: that flag is inferred from
      * in-memory-ness and the unit environment, so an ordinary local run against a real database is *not* a
      * test instance and would have quietly got production behavior on a developer's own machine.
+     *
+     * That governs the files every client shares. A finding only a **client's** merge has is its own layers'
+     * (issue #841): they are dropped -- the client's copy reverting to the default -- under the check mode of
+     * the config holding them, so a stored overlay is forgiven outside unit tests rather than refusing the boot.
      */
     fun checkFragmentsAtStartup(cxt: KdrCxt) {
+        val all = checkFragments(cxt)
+        // A client's overlay is judged apart from the files every client shares (issue #841): a finding only its
+        // merge has came from its overlay, which is dropped -- the client's copy reverting to the default --
+        // under the check mode of the config holding it. Checked even with the fragment check off: the overlay is
+        // client configuration, and whether *that* is checked is its own mode's to say.
+        dropFaultyClientOverlays(cxt, all, judged = null)
         val mode = fragmentCheckMode(cxt)
         if (mode == BootCheckMode.off) return
-        val results = checkFragments(cxt)
-        fun where(r: FragmentCheckResult) = r.fileId + (r.client?.let { " (client '$it')" } ?: "")
+        val results = all.filter { it.client == null }
 
-        // Every finding category a broken result carries, all of them -- a file can be wrong in more than one
-        // way, and reporting only the first would hide the rest until the first was fixed.
-        val findings = results.flatMap { r ->
-            val at = where(r)
-            if (!r.found) {
-                // Absent: nothing else can have been checked, so the other lists are empty and this stands alone.
-                listOf("'$at' is declared but absent")
-            } else {
-                buildList {
-                    // Ahead of the rest: a file that has gone private explains whatever else looks wrong about
-                    // it, and its consequence lands somewhere else entirely -- every UI-config naming it now
-                    // fails, with nothing at that end saying why.
-                    if (r.audienceConflict) {
-                        add(
-                            "'$at' is declared both frontend and backend by different bases, so the whole file is " +
-                                "treated as backend and is no longer delivered to any frontend",
-                        )
-                    }
-                    // Audience violations (issue #514): a frontend file with a backend block, or a backend pull
-                    // naming a non-backend file. Findings like the rest -- a strict boot refuses on them.
-                    r.audienceIssues.forEach { add("'$at': $it") }
-                    if (r.issues.isNotEmpty()) {
-                        add("'$at': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" })
-                    }
-                    // An orphan is a finding rather than a note, and strict mode therefore refuses to boot on
-                    // one. It is a silent failure: the overlay stops winning a lookup that no longer happens,
-                    // nothing throws, and the customer's wording reverts to the default.
-                    if (r.orphans.isNotEmpty()) {
-                        add("'$at': overlay keys no base declares: " + r.orphans.joinToString(", "))
-                    }
-                }
-            }
-        }
+        val findings = results.flatMap { findingsOf(it) }
         // Notes are surfaced but never refuse a boot (issue #514): a backend file carrying a frontend pull is
         // not wrong, only resting on a human assertion. Logged so the fact is visible, and carried on the
         // operator report for a running node.
-        val notes = results.flatMap { r -> r.notes.map { "'${where(r)}': $it" } }
+        val notes = all.flatMap { r -> r.notes.map { "'${where(r)}': $it" } }
         if (notes.isNotEmpty()) {
             LogStartup.info(cxt, "Markdown fragment notes: " + notes.joinToString("; "))
         }
@@ -145,6 +127,98 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
             )
         }
         LogStartup.warn(cxt, "Markdown fragment files have problems: $detail")
+    }
+
+    private fun where(r: FragmentCheckResult) = r.fileId + (r.client?.let { " (client '$it')" } ?: "")
+
+    /**
+     * Every finding category a broken result carries, all of them -- a file can be wrong in more than one way, and
+     * reporting only the first would hide the rest until the first was fixed.
+     */
+    private fun findingsOf(r: FragmentCheckResult): List<String> {
+        val at = where(r)
+        if (!r.found) {
+            // Absent: nothing else can have been checked, so the other lists are empty and this stands alone.
+            return listOf("'$at' is declared but absent")
+        }
+        return buildList {
+            // Ahead of the rest: a file that has gone private explains whatever else looks wrong about it, and
+            // its consequence lands somewhere else entirely -- every UI-config naming it now fails, with nothing
+            // at that end saying why.
+            if (r.audienceConflict) {
+                add(
+                    "'$at' is declared both frontend and backend by different bases, so the whole file is " +
+                        "treated as backend and is no longer delivered to any frontend",
+                )
+            }
+            // Audience violations (issue #514): a frontend file with a backend block, or a backend pull naming a
+            // non-backend file. Findings like the rest -- a strict boot refuses on them.
+            r.audienceIssues.forEach { add("'$at': $it") }
+            if (r.issues.isNotEmpty()) {
+                add("'$at': " + r.issues.joinToString(", ") { "${it.message} (line ${it.line})" })
+            }
+            // An orphan is a finding rather than a note, and strict mode therefore refuses to boot on one. It is
+            // a silent failure: the overlay stops winning a lookup that no longer happens, nothing throws, and
+            // the customer's wording reverts to the default.
+            if (r.orphans.isNotEmpty()) {
+                add("'$at': overlay keys no base declares: " + r.orphans.joinToString(", "))
+            }
+        }
+    }
+
+    /**
+     * Drops each client's layers of a file whose merge has a finding the shared content does not (issue #841) --
+     * their own fault, since the shared content is what the client's merge adds them to -- reporting it under
+     * the check mode of the config holding it (stored config forgiven outside unit tests; source config refused
+     * outside production). The client's copy of that file then reverts to the shared default. [judged], when
+     * given, limits which overlay layers may be dropped: a reload judges the client's new ones, not the rest.
+     */
+    private fun dropFaultyClientOverlays(
+        cxt: KdrCxt,
+        results: List<FragmentCheckResult>,
+        judged: List<FragmentSource>?,
+    ) {
+        val shared = results.filter { it.client == null }.associate { it.fileId to findingsOf(it).toSet() }
+        val sources = registeredFragmentSources(cxt)
+        val configs = SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
+        val dropped = mutableListOf<FragmentSource>()
+        val issues = mutableListOf<GedraConfigIssue>()
+        for (r in results) {
+            val client = r.client ?: continue
+            val own = findingsOf(r).filterNot { it.replace(" (client '$client')", "") in shared[r.fileId].orEmpty() }
+            if (own.isEmpty()) continue
+            // Every layer scoped to this client -- an overlay, or a client-scoped base -- since the finding is in
+            // what they add to the shared content.
+            val layers = sources.filter { it.fileId == r.fileId && it.client == client }
+                .filter { layer -> judged == null || judged.any { it === layer } }
+            if (layers.isEmpty()) continue
+            val degradedTo = "Dropping client '$client''s layers of '${r.fileId}'; its copy reverts to the default."
+            for (layer in layers) {
+                val holder = configs.firstOrNull { cfg -> cfg.fragments.any { it === layer } }
+                for (finding in own) {
+                    reportConfigProblem(
+                        cxt,
+                        holder?.issue(finding, degradedTo, GCEL.fragment, r.fileId)
+                            ?: GedraConfigIssue(
+                                finding, degradedTo, client, elementKind = GCEL.fragment, elementId = r.fileId,
+                            ),
+                        issues,
+                    )
+                }
+                dropped.add(layer)
+            }
+        }
+        if (dropped.isNotEmpty()) {
+            cxt.instanceConfig.put(FRAG.registryKey, sources.filter { s -> dropped.none { it === s } })
+            val clients = dropped.mapNotNull { it.client }.toSet()
+            for ((key, merged) in effectiveCache.entries.toList()) {
+                val client = key.substringAfterLast('|')
+                if (client in clients) {
+                    effectiveCache.remove(key)
+                    byBuildId.remove("${key.substringBeforeLast('|')}|${merged.buildId}")
+                }
+            }
+        }
     }
 
     /**
@@ -549,6 +623,14 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
     fun reloadClient(cxt: KdrCxt, client: String, removed: List<FragmentSource>, added: List<FragmentSource>) {
         val kept = registeredFragmentSources(cxt).filter { held -> removed.none { it === held } }
         cxt.instanceConfig.put(FRAG.registryKey, kept + added)
+        // The client's new overlays are judged as the boot judges them (issue #841) -- before, a reload took them
+        // unchecked -- and one at fault is dropped rather than served.
+        if (added.isNotEmpty()) {
+            val files = added.map { it.fileId }.toSet()
+            val results = files.flatMap { checkFragments(cxt, only = it) }
+                .filter { it.client == null || it.client == client }
+            dropFaultyClientOverlays(cxt, results, judged = added)
+        }
         val suffix = "|$client"
         for ((key, merged) in effectiveCache.entries.toList()) {
             if (key.endsWith(suffix)) {

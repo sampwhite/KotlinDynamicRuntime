@@ -36,12 +36,12 @@ class GedraConfigReloadScopeTest : StringSpec({
 
     fun writer(cxt: KdrCxt, client: String): KdrCxt = cxt.mkSubContext("scopeWrite", client).also { it.userId = 8420L }
 
-    fun storeAndReload(cxt: KdrCxt, client: String, includedTraits: List<String> = emptyList()): ConfigReloadResult {
+    fun storeAndReload(cxt: KdrCxt, client: String, extraEnv: String? = null): ConfigReloadResult {
         val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
-                    enabledEnvironments = setOf(ENV.unit, ENV.local), includedTraits = includedTraits,
+                    enabledEnvironments = setOfNotNull(ENV.unit, ENV.local, extraEnv),
                 ),
             )
             trait("${client}Entry", "${client}Trait", setOf(GedraDataType.formDoc), "A trait of $client.") {
@@ -59,8 +59,8 @@ class GedraConfigReloadScopeTest : StringSpec({
         val bad = "scope842bad"
         val good = "scope842good"
 
-        shouldThrow<KdrException> { storeAndReload(cxt, bad, includedTraits = listOf("noSuchTrait842")) }
-            .message.shouldNotBeNull() shouldContain "noSuchTrait842"
+        shouldThrow<KdrException> { storeAndReload(cxt, bad, extraEnv = "noSuchEnv842") }
+            .message.shouldNotBeNull() shouldContain "noSuchEnv842"
 
         val result = storeAndReload(cxt, good)
         result.loaded shouldBe 1
@@ -76,7 +76,7 @@ class GedraConfigReloadScopeTest : StringSpec({
         val good = "scope842fine"
 
         // The bad client is dropped, with one issue on it.
-        storeAndReload(cxt, bad, includedTraits = listOf("noSuchTrait842")).issues.size shouldBe 1
+        storeAndReload(cxt, bad, extraEnv = "noSuchEnv842").issues.size shouldBe 1
         ClientService.get(cxt).known(bad) shouldBe null
 
         // Reloading another client reports nothing about it: no new finding in the operator report (a whole-node

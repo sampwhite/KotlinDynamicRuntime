@@ -60,6 +60,12 @@ object GCEL {
 
     /** A cfact a client declared. */
     const val cfact = "cfact"
+
+    /** A UiBlock layer: a component's block, or an overlay of one. */
+    const val uiBlock = "uiBlock"
+
+    /** A Markdown fragment overlay. */
+    const val fragment = "fragment"
 }
 
 /**

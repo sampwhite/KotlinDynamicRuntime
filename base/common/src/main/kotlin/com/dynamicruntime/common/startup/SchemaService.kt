@@ -544,12 +544,12 @@ class SchemaService : ServiceInitializer {
     private fun forEachLayoutToCheck(
         /** Only this client's own layouts (issue #842, a reload); null walks every layout, as the boot does. */
         onlyClient: String? = null,
-        action: (where: String, client: String?, layout: SchLayout, type: SchType?) -> Unit,
+        action: (where: String, name: String, client: String?, layout: SchLayout, type: SchType?) -> Unit,
     ) {
         fun rawLayout(defs: Map<String, Any?>, name: String): Any? = (defs[name] as? Map<*, *>)?.get(SCH.layout)
         if (onlyClient == null) {
             for ((name, layout) in collectLayouts(schemaStore.defs)) {
-                action("Type '$name'", null, layout, schemaStore.types[name])
+                action("Type '$name'", name, null, layout, schemaStore.types[name])
             }
         }
         for ((client, store) in clientStores) {
@@ -558,7 +558,7 @@ class SchemaService : ServiceInitializer {
             if (store.defs === schemaStore.defs) continue
             for ((name, layout) in collectLayouts(store.defs)) {
                 if (rawLayout(store.defs, name) === rawLayout(schemaStore.defs, name)) continue // inherited
-                action("Type '$name' (client '$client')", client, layout, store.types[name])
+                action("Type '$name' (client '$client')", name, client, layout, store.types[name])
             }
         }
     }
@@ -569,7 +569,7 @@ class SchemaService : ServiceInitializer {
         onlyClient: String? = null,
     ) {
         val problems = LinkedHashSet<String>()
-        forEachLayoutToCheck(onlyClient) { where, _, layout, type ->
+        forEachLayoutToCheck(onlyClient) { where, _, _, layout, type ->
             problems.addAll(layoutFieldProblems(where, layout, type))
             problems.addAll(layoutTemplateProblems(where, layout, type))
             problems.addAll(layoutBackendBlockProblems(where, layout))
@@ -591,12 +591,22 @@ class SchemaService : ServiceInitializer {
      * `(fileId, namespace.key)` resolves as a backend pull for the given client -- the one thing that needs the
      * registry, injected so this stays free of a dependency on the fragment service.
      */
-    fun checkLayoutPulls(resolve: (client: String?, fileId: String, nsKey: String) -> LayoutPullHit): List<String> {
-        val problems = mutableListOf<String>()
-        forEachLayoutToCheck { where, client, layout, _ ->
-            problems.addAll(layoutPullProblems(where, layout) { fileId, nsKey -> resolve(client, fileId, nsKey) })
+    fun checkLayoutPulls(resolve: (client: String?, fileId: String, nsKey: String) -> LayoutPullHit): List<String> =
+        layoutPullFaults(resolve).map { it.message }
+
+    /**
+     * [checkLayoutPulls] with each problem's type and client (issue #841), so `LayoutCheckService` can judge it under
+     * the check mode of the config that holds the layout rather than refusing outright.
+     */
+    fun layoutPullFaults(
+        resolve: (client: String?, fileId: String, nsKey: String) -> LayoutPullHit,
+    ): List<LayoutPullFault> {
+        val faults = mutableListOf<LayoutPullFault>()
+        forEachLayoutToCheck { where, name, client, layout, _ ->
+            layoutPullProblems(where, layout) { fileId, nsKey -> resolve(client, fileId, nsKey) }
+                .forEach { faults.add(LayoutPullFault(client, name, it)) }
         }
-        return problems
+        return faults
     }
 
     /**
@@ -688,8 +698,6 @@ class SchemaService : ServiceInitializer {
         cxt.instanceConfig.put(KdrSchemaStore.key, next.store)
         cxt.schemaStore = next.store
     }
-
-    private fun SchemaSnapshot.withCfacts(cfacts: CFactRegistries) = SchemaSnapshot(store, clientStores, cfacts)
 
     /**
      * Every varying client's store re-wrapped with the **same, final** endpoint map. A client that varies

@@ -92,6 +92,18 @@ fun checkClientDefs(
         if (problem != null) {
             kept.remove(def.clientId)
             reportConfigProblem(cxt, problem.heldBy(holder, GCEL.client, def.clientId), issues)
+            continue
+        }
+        // An `includedTraits` entry naming nothing costs only itself (issue #841): the entry is dropped and the
+        // client stands. It never widens anything to drop one -- it matched no trait -- and the list is a minimum,
+        // so an emptied one still supports what the client customized.
+        val bad = includedEntryFaults(def, configs)
+        if (bad.isNotEmpty()) {
+            for ((entry, message) in bad) {
+                val issue = GedraConfigIssue(message, "Dropping the entry '$entry'; the client stands without it.")
+                reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
+            }
+            kept[def.clientId] = def.copy(includedTraits = def.includedTraits - bad.keys)
         }
     }
     val clients = if (stripTestFeatures) kept.mapValuesTo(LinkedHashMap()) { effective(it.value) } else kept
@@ -214,26 +226,27 @@ private fun relatedProblem(
             )
         }
     }
-    val visible = configs.traitsFor(def.clientId).map { it.traitId }.toSet()
-    val unknown = def.includedTraitIds.filterNot { it in visible }
-    if (unknown.isNotEmpty()) {
-        return GedraConfigIssue(
-            "Client '${def.clientId}' includes ${unknown.joinToString(", ") { "'$it'" }}, which " +
-                "${if (unknown.size == 1) "is not a trait" else "are not traits"} it can see. A client sees " +
-                "its own traits and global's, and nobody else's -- so this is a typo, a trait that was " +
-                "never declared, or somebody else's.",
-            "Dropping the client '${def.clientId}'.",
-        )
-    }
-    val badGroups = def.includedGroups.filterNot { it == CLD.allGlobal }
-    if (badGroups.isNotEmpty()) {
-        return GedraConfigIssue(
-            "Client '${def.clientId}' includes the group(s) ${badGroups.joinToString(", ")}, which do not " +
-                "exist. The groups that exist are ${CLD.allGlobal}.",
-            "Dropping the client '${def.clientId}'.",
-        )
-    }
     return null
+}
+
+/**
+ * The `includedTraits` entries of [def] that name nothing it can see, each with why (issue #841): a trait id that is
+ * not its own or global's -- a typo, a trait never declared, somebody else's, or one a code change removed -- or a
+ * group that does not exist. Keyed by the entry, in declaration order.
+ */
+private fun includedEntryFaults(def: ClientDef, configs: GedraConfigCollector): Map<String, String> {
+    val out = LinkedHashMap<String, String>()
+    val visible = configs.traitsFor(def.clientId).map { it.traitId }.toSet()
+    for (id in def.includedTraitIds.filterNot { it in visible }) {
+        out[id] = "Client '${def.clientId}' includes '$id', which is not a trait it can see. A client sees its own " +
+            "traits and global's, and nobody else's -- so this is a typo, a trait that was never declared, or " +
+            "somebody else's."
+    }
+    for (group in def.includedGroups.filterNot { it == CLD.allGlobal }) {
+        out[group] = "Client '${def.clientId}' includes the group '$group', which does not exist. The groups that " +
+            "exist are ${CLD.allGlobal}."
+    }
+    return out
 }
 
 /**
