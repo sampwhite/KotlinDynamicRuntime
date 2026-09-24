@@ -958,6 +958,18 @@ class GedraDataService : ServiceInitializer {
             // falls back to now, which is harmless: the enabled-only update then matches nothing and the delete
             // reports nothing to do.
             val current = sqlCxt.sqlDb.queryOneEnabled(cxt, selectStmt, mapOf(GD.gedraId to row.gedraId.fullId))
+            // The write guards (issue #857), under the same lock: deleting a gedra removes every trait it holds, so a
+            // guard refusing a change to any of them -- a trait lock -- refuses the delete too. There is no override.
+            current?.let { raw ->
+                val held = GedraDataRow.extract(gedraService, raw)
+                val guarded = GedraGuardedWrite(
+                    held, held.entries.mapNotNull { it[GE.traitId].toOptStr() }.toSet(), null, deletesGedra = true,
+                ) {
+                    readStateRowUnderLock(cxt, sqlCxt, gedraStatesTable(cxt), held.gedraId)
+                        ?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
+                }
+                SchemaService.get(cxt).writeGuards().forEach { it.check(cxt, guarded) }
+            }
             SqlTopicUtil.prepForStdUpdate(cxt, table, data, current)
             changed = sqlCxt.sqlDb.executeStatement(cxt, stmt, data)
         }
@@ -1173,10 +1185,6 @@ class GedraDataService : ServiceInitializer {
                     ?.get(GD.data).toJsonMapOrEmpty()[GD.entries].toJsonListOfMaps()
             }
             target.underLock?.let { check -> check(row, statesNow) }
-            // The registered guards (issue #857) -- a trait lock, say -- on the same lock, before any edit. Each may
-            // refuse (a throw) or hand back state to record with the write (a permitted override's trail).
-            val guarded = GedraGuardedWrite(row, target.edits.map { it.traitId }.toSet(), target.overrideReason) { statesNow }
-            val stateChanges = SchemaService.get(txCxt).writeGuards().mapNotNull { it.check(txCxt, guarded) }
             // Keyed by trait -- plus its primary-key value when the trait declares one (issue #487) -- because
             // that is how an edit names an entry, and the address is unique. Order is preserved so an unrelated
             // entry does not move when its neighbor changes.
@@ -1194,6 +1202,13 @@ class GedraDataService : ServiceInitializer {
             for (edit in target.edits) {
                 outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(txCxt, edit, byKey, pkFieldsOf(edit.traitId), now)))
             }
+            // The registered guards (issue #857) -- a trait lock, say -- on the same lock, once the edits are folded in
+            // memory and before anything is written. They judge the traits the edits actually **change** (an edit
+            // that leaves its entry as stored is not applied), so re-sending a stored value never trips a lock. Each
+            // may refuse (a throw) or hand back state to record with the write (a permitted override's trail).
+            val changedTraits = outcomes.filter { it.applied }.map { it.traitId }.toSet()
+            val guarded = GedraGuardedWrite(row, changedTraits, target.overrideReason) { statesNow }
+            val stateChanges = SchemaService.get(txCxt).writeGuards().mapNotNull { it.check(txCxt, guarded) }
             val entries = byKey.values.toList()
             checkStoredEntries(txCxt, kind, entries)
             bind[GD.gedraId] = target.gedraId.fullId

@@ -676,10 +676,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // type and this loop had drifted -- worth a fault rather than a silent skip.
             val kind = GedraDataType.entries.firstOrNull { it.name == kindName }
                 ?: throw KdrException.mkInput("'$kindName' is not a kind of gedra a patch can target.")
-            byKind[kind] = raw.toJsonListOfMaps().map {
-                val target = GedraPatchTarget.extract(gedraService, it)
-                if (overrideReason == null) target else GedraPatchTarget(target.gedraId, target.edits, overrideReason = overrideReason)
-            }
+            byKind[kind] = raw.toJsonListOfMaps().map { GedraPatchTarget.extract(gedraService, it, overrideReason) }
         }
         if (byKind.values.all { it.isEmpty() }) {
             throw KdrException.mkInput("A patch has to name at least one gedra to change.")
@@ -1093,10 +1090,12 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             val owner = prefillOwnerAttributes(c, declared, item[GDF.userId].toOptLong() ?: c.userId)
             val approvals = WorkflowApprovals.forView(c, declared.def, gedraId)
             // A normal workflow's refreshed view says whether the form is engaged, as the view endpoint's does.
-            val states = GedraDataService.get(c).readState(c, GedraId.parse(gedraId), ReadScopeRules.forCaller(c))
+            val formId = GedraId.parse(gedraId)
+            val states = GedraDataService.get(c).readState(c, formId, ReadScopeRules.forCaller(c))
             val formFacts = if (declared.def.entry == WfEntry.normal) WorkflowFormFacts.of(c, declared.def, states) else null
+            // The locks by the form's own client, as the view endpoint reads them (issue #857 review).
             val lockedTraits = TraitLocks.describe(
-                c, c.client, TraitLocks.heldFor(c, c.client, item[GDF.entries].toJsonListOfMaps(), states),
+                c, formId.client, TraitLocks.heldFor(c, formId.client, item[GDF.entries].toJsonListOfMaps(), states),
             )
             result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals, formFacts, lockedTraits))
         } else {

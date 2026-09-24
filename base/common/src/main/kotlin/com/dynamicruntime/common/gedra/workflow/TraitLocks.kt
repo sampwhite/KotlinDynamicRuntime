@@ -91,25 +91,35 @@ object TraitLocks {
         }
     }
 
-    /** A workflow's name, for saying which workflow holds a lock. */
-    fun workflowLabel(cxt: KdrCxt, held: Held): String = workflowLabel(held.declared.def, copyResolver(cxt, cxt.client))
+    /** A workflow's name, in [client]'s wording, for saying which workflow holds a lock. */
+    fun workflowLabel(cxt: KdrCxt, client: String, held: Held): String =
+        workflowLabel(held.declared.def, copyResolver(cxt, client))
 }
 
 /**
- * The trait-lock guard (issue #857): refuses a patch that edits a trait locked for the writer, unless the writer
+ * The trait-lock guard (issue #857): refuses a patch that changes a trait locked for the writer, unless the writer
  * asked to override (a non-blank reason) and may override every lock the edit touches -- and then records the
  * override on each workflow's engagement trail, with the write. Registered as a [GedraWriteGuard], so it runs under
  * the form's lock on every edit path: the raw editor and patch endpoint, and the survey's and a workflow's saves.
+ * It also refuses deleting a form holding a trait locked for the deleter -- with no override, since a deletion leaves
+ * nothing for the trail to be read on.
  */
 object TraitLockGuard : GedraWriteGuard {
     override fun check(cxt: KdrCxt, write: GedraGuardedWrite): ((List<Map<String, Any?>>) -> List<Map<String, Any?>>)? {
         // Cheap first: most edits touch no trait any workflow of this client locks, and then there is nothing to read.
         val registry = WorkflowService.get(cxt).forClient(write.row.client)
-        val lockedSomewhere = registry.workflows.values.any { d -> d.def.locks.any { it.traitId in write.editedTraits } }
+        val lockedSomewhere = registry.workflows.values.any { d -> d.def.locks.any { it.traitId in write.changedTraits } }
         if (!lockedSomewhere) return null
-        val held = TraitLocks.heldFor(cxt, write.row.client, write.row.entries, write.states, write.editedTraits)
+        val client = write.row.client
+        val held = TraitLocks.heldFor(cxt, client, write.row.entries, write.states, write.changedTraits)
         if (held.isEmpty()) return null
-        fun named(h: TraitLocks.Held) = "'${h.lock.traitId}' (locked by ${TraitLocks.workflowLabel(cxt, h)})"
+        fun named(h: TraitLocks.Held) = "'${h.lock.traitId}' (locked by ${TraitLocks.workflowLabel(cxt, client, h)})"
+        if (write.deletesGedra) {
+            throw KdrException(
+                "This form cannot be deleted now: its ${held.joinToString(", ") { named(it) }} may not be changed.",
+                code = EXC.conflict,
+            )
+        }
         val reason = write.overrideReason
         if (reason == null) {
             val overridable = held.all { it.canOverride }

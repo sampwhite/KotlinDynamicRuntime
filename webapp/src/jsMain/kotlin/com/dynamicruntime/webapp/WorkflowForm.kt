@@ -346,10 +346,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true } }
                         ?: h2 { +traitHeading(trait) }
                     // Locked for this caller (issue #857): shown as stored, and said why.
-                    wf.lockedTraits[trait.traitId]?.let { lock ->
+                    wf.lockedTraits[trait.traitId]?.let { held ->
                         p {
                             className = ClassName("subtitle")
-                            +"Locked by ${lock.label}; it can't be changed here."
+                            +"Locked by ${held.joinToString(" and ") { it.label }}; it can't be changed here."
                         }
                     }
                     if (trait.traitId in unmetTraits) {

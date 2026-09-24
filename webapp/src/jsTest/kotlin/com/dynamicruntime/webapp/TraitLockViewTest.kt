@@ -31,6 +31,13 @@ class TraitLockViewTest {
         assertTrue(lock.canOverride)
     }
 
+    @Test
+    fun aTraitTwoWorkflowsLockKeepsBothLocksOnTheView() {
+        val lock = { wf: String -> mapOf(WFD.traitId to "audit", WFD.workflowId to wf, WFD.label to wf, WVF.canOverride to false) }
+        val view = parseWorkflowView(mapOf(WVF.found to true, WVF.lockedTraits to listOf(lock("review"), lock("followUp"))))!!
+        assertEquals(listOf("review", "followUp"), view.lockedTraits["audit"]?.map { it.workflowId })
+    }
+
     private fun edit(traitId: String, value: String) =
         mapOf(GED.action to "addOrReplace", GE.traitId to traitId, GE.data to mapOf("v" to value))
 

@@ -347,8 +347,9 @@ val EditFormPage = FC<Props> {
                             failures = allFailures.ifEmpty { null }
                             revalidate = false
                             val checked = if (completeness.isEmpty()) check.payload else null
-                            // Locked sections (issue #857): an untouched one is left out, so it cannot trip its lock;
-                            // a changed one goes only as an override, by someone every such lock allows, with a reason.
+                            // Locked sections (issue #857): an untouched one is left out -- the backend would pass it
+                            // unchanged anyway, but there is no reason to send it -- and a changed one goes only as an
+                            // override, by someone every such lock allows, with a reason, so a refusal is said here.
                             val split = checked?.let { splitLockedEdits(it, seeded, locks.map { l -> l.traitId }.toSet()) }
                             val reason = overrideReason.trim().ifBlank { null }
                             val changedLocks = locks.filter { it.traitId in split?.changedLocked.orEmpty() }
@@ -409,6 +410,12 @@ val EditFormPage = FC<Props> {
                                     } finally {
                                         // The page stays either way now, so the button re-enables here.
                                         running = false
+                                        // The locks may have moved with the save, or beside it -- a review finished,
+                                        // a form engaged (issue #857 review) -- so they are asked again, never awaited.
+                                        val before = locks
+                                        editScope.launch {
+                                            locks = id?.let { runCatching { WorkflowApi.fetchLocks(it) }.getOrNull() } ?: before
+                                        }
                                     }
                                 }
                             }

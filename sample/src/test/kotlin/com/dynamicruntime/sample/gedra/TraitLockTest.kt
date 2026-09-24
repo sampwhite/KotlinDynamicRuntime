@@ -1,6 +1,7 @@
 package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -44,6 +45,7 @@ class TraitLockTest : StringSpec({
     val locks = clientPath(GEP.formDocLocks, SC.acme)
     val view = clientPath(GEP.workflowView, SC.acme)
     val recompute = clientPath(GEP.formDocRecomputeState, SC.acme)
+    val formDoc = clientPath(GEP.formDoc, SC.acme)
 
     val owner = TestUser.create(cxt, "lock-owner@acme.test", userClient = SC.acme)
     val labeller = TestUser.create(cxt, "lock-labeller@acme.test", userClient = SC.acme, level = ROLE.admin)
@@ -88,6 +90,23 @@ class TraitLockTest : StringSpec({
         // A delete is an edit too.
         refused(owner, patchBody(gid, SC.siteAudit, null, action = GedraEditAction.deleteOrNoOp))
         owner.postItems(patch, patchBody(gid, ST.expenseReport, mapOf(ST.year to 2025)))
+    }
+
+    "re-sending the audit as stored changes nothing, so no lock is tripped (the review's finding)" {
+        val gid = engagedForm()
+        val outcome = owner.postItems(patch, patchBody(gid, SC.siteAudit, mapOf(SC.auditor to "A Person", SC.findings to "seen")))
+            .single()[GPF.outcomes].toJsonListOfMaps().single()
+        outcome[GPF.applied] shouldBe false
+    }
+
+    "nobody the lock holds for may delete the form -- it would remove the audit -- until the lock lifts" {
+        val gid = engagedForm()
+        owner.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[
+            "errorMessage"].toOptStr().orEmpty() shouldContain "cannot be deleted"
+        // Not even someone who may override an edit: a deletion leaves no form to read the override on.
+        admin.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)
+        owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.auditReview, WFS.engaged to false))
+        owner.deleteData(formDoc, mapOf(GDF.gedraId to gid))[GDF.gedraId] shouldBe gid
     }
 
     "a reviewer -- who may record the audit -- may change it" {

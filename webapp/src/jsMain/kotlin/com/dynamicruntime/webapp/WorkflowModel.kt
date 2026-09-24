@@ -132,8 +132,11 @@ class WorkflowView(
     val eligible: Boolean? = null,
     /** When it does not: why, resolved -- what the page lists in place of an Engage that would fail. */
     val ineligibleReasons: List<String> = emptyList(),
-    /** The form's traits locked for this caller (issue #857), by trait id; drawn read-only and left out of a save. */
-    val lockedTraits: Map<String, TraitLock> = emptyMap(),
+    /**
+     * The form's traits locked for this caller (issue #857), by trait id -- each with every lock on it, since two
+     * workflows may lock one trait; drawn read-only and left out of a save.
+     */
+    val lockedTraits: Map<String, List<TraitLock>> = emptyMap(),
 ) {
     /** A normal workflow (issue #791): one a form is put into, rather than the creation or the survey. */
     val isNormal: Boolean get() = entry == WfEntry.normal.name
@@ -211,7 +214,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         phase = results[WVF.phase].toOptStr(),
         engaged = results[WVF.engaged] as? Boolean,
         eligible = results[WVF.eligible] as? Boolean,
-        lockedTraits = parseTraitLocks(results[WVF.lockedTraits]).associateBy { it.traitId },
+        lockedTraits = parseTraitLocks(results[WVF.lockedTraits]).groupBy { it.traitId },
         ineligibleReasons = results[WVF.ineligibleReasons].toJsonListOfStrings(),
     )
 }

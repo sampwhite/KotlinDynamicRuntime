@@ -64,8 +64,11 @@ class GedraPatchTarget(
     val overrideReason: String? = null,
 ) {
     companion object {
-        /** Reads a target off the validated request map, resolving its id through [gedraService]. */
-        fun extract(gedraService: GedraService, raw: Map<String, Any?>): GedraPatchTarget {
+        /**
+         * Reads a target off the validated request map, resolving its id through [gedraService]. [overrideReason] is
+         * the patch's own (issue #857), asked of every target it names.
+         */
+        fun extract(gedraService: GedraService, raw: Map<String, Any?>, overrideReason: String? = null): GedraPatchTarget {
             val fullId = raw[GDF.gedraId].toOptStr()
                 ?: throw KdrException.mkInput("A patch target needs a ${GDF.gedraId}.")
             val edits = raw[GPF.edits].toJsonListOrEmpty().map { GedraEdit.extract(it.toJsonMapOrEmpty()) }
@@ -75,7 +78,7 @@ class GedraPatchTarget(
                         "so an empty list is a caller mistake rather than a way to say nothing.",
                 )
             }
-            return GedraPatchTarget(gedraService.readId(fullId), edits)
+            return GedraPatchTarget(gedraService.readId(fullId), edits, overrideReason = overrideReason)
         }
     }
 }
