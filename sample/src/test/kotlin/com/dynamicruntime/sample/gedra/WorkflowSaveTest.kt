@@ -76,6 +76,11 @@ class WorkflowSaveTest : StringSpec({
         val refused = globex.expectError(EXC.badInput, savePath, base(listOf(nameEntry("Second"))) + (GDF.gedraId to existing))
         refused["errorMessage"].toOptStr().orEmpty() shouldContain "creates a new form"
         count() shouldBe before
+        // Nor is the creation workflow opened against the form: the page would draw it under a "new form" heading.
+        globex.expectError(
+            EXC.badInput, clientPath(GEP.workflowView, SC.globex),
+            args = mapOf(GDF.workflowId to SW.createForm, GDF.gedraId to existing),
+        )["errorMessage"].toOptStr().orEmpty() shouldContain "cannot be opened against an existing one"
     }
 
     "an unknown task is a 400" {

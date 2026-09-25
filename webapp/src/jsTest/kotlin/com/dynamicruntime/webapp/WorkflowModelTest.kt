@@ -479,5 +479,10 @@ class WorkflowModelTest {
         val view = WorkflowView(workflowId = "createForm", entry = "creation", showTaskList = false, tasks = listOf(task(create)), cfacts = emptyMap())
         assertTrue(view.isEditable(view.tasks.single(), isEdit = false))
         assertFalse(view.isEditable(view.tasks.single(), isEdit = true))
+        // Nor is Edit offered over it, with its one task on the page -- the browser check that found it offered.
+        assertFalse(view.offersEdit(null))
+        // A survey, whose task has an edit save, is.
+        val survey = WorkflowView(workflowId = "review", entry = "survey", showTaskList = false, tasks = listOf(task(edit)), cfacts = emptyMap())
+        assertTrue(survey.offersEdit(null))
     }
 }

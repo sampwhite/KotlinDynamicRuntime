@@ -235,10 +235,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         return "$lead filled in from your account — review and save to keep them."
     }
 
-    // The save a task offers for the current mode: the edit save when editing an existing form, else the create
-    // save. Each task carries exactly one today; picking by kind keeps this honest if that ever grows.
-    // Only a save of the kind this page does -- an edit against a form, else a create -- or none (issue #817): falling
-    // back to another kind would post a create against an existing form, and a task with no save has nothing to post.
+    // The save a task offers for this page's mode -- its edit save against an existing form, else its create save --
+    // or none (issue #817): falling back to another kind would post a create against an existing form, and a task
+    // with no save of this kind (a normal workflow's approval step, say) has nothing to post.
     fun saveFor(task: WfTaskView): WfSaveView? = saveOfKind(task, isEdit)
 
     fun onSave(task: WfTaskView) {

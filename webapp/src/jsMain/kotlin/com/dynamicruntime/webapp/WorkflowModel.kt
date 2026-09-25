@@ -192,15 +192,16 @@ class WorkflowView(
      * Whether this normal workflow's tasks may be worked on now: engaged, still calculated (not frozen), and with at
      * least one task this caller can edit ([isEditable]).
      */
-    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { isEditable(it) })
+    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { isEditable(it, isEdit = true) })
 
     /**
      * Whether [task] is one this caller can edit here: it offers a save of the page's kind -- an `edit` against a form
-     * ([isEdit], the default: Edit is only ever offered there), else a `create` (issue #817) -- they may make it (issue
-     * #856), it is not shown disabled (issue #832), and not every trait it collects is locked for them (issue #857).
-     * What decides its fields, its Save and the page's Edit.
+     * ([isEdit]), else a `create` (issue #817) -- they may make it (issue #856), it is not shown disabled (issue #832),
+     * and not every trait it collects is locked for them (issue #857). What decides its fields, its Save and the page's
+     * Edit. [isEdit] has no default: a create page and a form page answer differently, and a forgotten argument must
+     * not quietly pick one.
      */
-    fun isEditable(task: WfTaskView, isEdit: Boolean = true): Boolean =
+    fun isEditable(task: WfTaskView, isEdit: Boolean): Boolean =
         task.canSave && !task.isDisabled && saveOfKind(task, isEdit) != null &&
             (task.traits.isEmpty() || task.traits.any { it.traitId !in lockedTraits })
 
@@ -210,7 +211,8 @@ class WorkflowView(
      * [shown] means every task is on the page, and then one of them has to be (issue #817: a creation workflow
      * opened against a form has none).
      */
-    fun offersEdit(shown: WfTaskView?): Boolean = canWork && (shown?.let { isEditable(it) } ?: tasks.any { isEditable(it) })
+    fun offersEdit(shown: WfTaskView?): Boolean =
+        canWork && (shown?.let { isEditable(it, isEdit = true) } ?: tasks.any { isEditable(it, isEdit = true) })
 
     /** Whether the form may be put into this normal workflow from here: not yet engaged, and engagement is open. */
     val canEngage: Boolean get() = isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name
