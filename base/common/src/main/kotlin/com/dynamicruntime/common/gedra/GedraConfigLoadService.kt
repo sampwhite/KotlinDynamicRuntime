@@ -142,6 +142,8 @@ class GedraConfigLoadService : ServiceInitializer {
         }
         val contentTable = configTables.firstOrNull { it.tableName == GCT.gedraConfig } ?: return
         sql.reconcileTopicFromTables(cxt, gedraConfigTopic, configTables)
+        // The read below skips history by the current flag (issue #875), so flag first any row that predates it.
+        ConfigCurrentRevisions.backfill(cxt, SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic), contentTable)
 
         val controlTable = configTables.firstOrNull { it.tableName == GCT.gedraConfigControl }
         val rows = readLatestConfigRows(cxt, contentTable, controlTable)
@@ -211,14 +213,15 @@ class GedraConfigLoadService : ServiceInitializer {
         recordRestartLoad(takenMarkers)
     }
 
-    /** The latest enabled revision of every stored config, across all clients. */
+    /** The latest enabled revision of every stored config, across all clients -- read from the current ones (#875). */
     private fun readLatestConfigRows(cxt: KdrCxt, contentTable: KdrTable, controlTable: KdrTable?): List<Map<String, Any?>> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         // Ordered class then version-desc, so the first enabled row of each class is its latest -- the same
         // reduction `GedraConfigService.listConfigs` does, but across every client rather than one.
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qGedraConfigAllLatest", contentTable.columns,
-            "select * from t:${GCT.gedraConfig} order by c:${GC.configId} asc, c:${GC.version} desc",
+            "select * from t:${GCT.gedraConfig} where c:${GC.isCurrent} = true " +
+                "order by c:${GC.configId} asc, c:${GC.version} desc",
         )
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) {

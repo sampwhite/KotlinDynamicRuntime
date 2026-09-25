@@ -245,10 +245,18 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         val startMs = System.currentTimeMillis()
 
         // The first pass takes the enabled rows only -- a table's soft-deleted history is not worth holding
-        // in memory. Later passes take everything changed since, disabled rows included, because a row that
-        // has *just been* disabled is exactly the change a cache must hear about.
+        // in memory -- and, where the table flags its history, only the current ones (initialLoadColumn). Later
+        // passes take everything changed since, disabled rows included, because a row that has *just been*
+        // disabled is exactly the change a cache must hear about.
         val stmt = if (isInitialLoad) allEnabledStmt(sqlCxt, table) else updatedSinceStmt(sqlCxt, table)
-        val bind = if (isInitialLoad) mapOf(PF.enabled to true) else mapOf(PF.updatedAt to from)
+        val bind = if (isInitialLoad) {
+            buildMap<String, Any?> {
+                put(PF.enabled, true)
+                params.initialLoadColumn?.let { put(it, true) }
+            }
+        } else {
+            mapOf(PF.updatedAt to from)
+        }
         val rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, bind)
 
         var changed = false
@@ -430,6 +438,7 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         allEnabledStmt ?: SqlStmtUtil.prepareSql(
             sqlCxt, "qCache${table.tableName}AllEnabled", table.columns,
             "select * from t:${table.tableName} where c:${PF.enabled} = :${PF.enabled} " +
+                (params.initialLoadColumn?.let { "and c:$it = :$it " } ?: "") +
                 "order by c:${PF.updatedAt} asc",
         ).also { allEnabledStmt = it }
 

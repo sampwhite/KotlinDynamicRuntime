@@ -48,4 +48,12 @@ class SqlCacheParams<T : Any>(
      * does not warn on every load and train the signal to be ignored.
      */
     val largeLoadWarning: Int = TCH.defaultLargeLoadWarning,
+    /**
+     * A boolean column the **first** load also requires to be true, or null for none (issue #875) -- for a table
+     * whose rows go historical, so the load leaves its history out of memory the way it already leaves out
+     * disabled rows. The incremental refresh is unchanged: it takes whatever changed. So a row that goes historical
+     * without its `updatedAt` moving stays cached until restart, and the cache's readers must tolerate a
+     * historical row -- as they must a disabled one they are not told about.
+     */
+    val initialLoadColumn: String? = null,
 )

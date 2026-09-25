@@ -85,6 +85,9 @@ class GedraConfigService : ServiceInitializer {
         gedraService = GedraService.get(cxt)
         // Registered during this pass so the cache service's own checkReady -- which runs after every service's
         // checkInit -- performs the initial load at startup rather than in a request.
+        // Flag any revision written before the current flag existed (issue #875) before anything reads by it -- the
+        // cache's first load included. A no-op once every row has one; the boot load has already run it if it read.
+        ConfigCurrentRevisions.backfill(cxt, SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic), configTable(cxt))
         configCache = GedraConfigCache.register(cxt)
         // The config-trait vocabulary is the source of truth for how each slot's entries are keyed, read once
         // here rather than rebuilt per write. A single-instance slot (the client) has an empty key.
@@ -303,6 +306,8 @@ class GedraConfigService : ServiceInitializer {
             val bind = mutableMapOf<String, Any?>(GC.gedraId to latest.gedraId.fullId, GC.publishedAt to now)
             SqlTopicUtil.prepForStdUpdate(wcxt, table, bind, latest.updatedAt)
             sqlCxt.sqlDb.executeStatement(wcxt, stmt, bind)
+            // The published head this supersedes becomes history (issue #875).
+            ConfigCurrentRevisions.refresh(wcxt, sqlCxt, table, configId.fullId)
             val stamped = readRowUnderLock(wcxt, sqlCxt, table, latest.gedraId)
             if (trial && publishedOnly(wcxt, configId.client)) {
                 GedraConfigTrial.requireClean(
@@ -397,7 +402,7 @@ class GedraConfigService : ServiceInitializer {
         val table = configTable(cxt)
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qGedraConfigsForClient", table.columns,
-            "select * from t:${GCT.gedraConfig} where c:${PF.client} = :${PF.client} " +
+            "select * from t:${GCT.gedraConfig} where c:${PF.client} = :${PF.client} and c:${GC.isCurrent} = true " +
                 "order by c:${GC.configId} asc, c:${GC.version} desc",
         )
         var rows: List<Map<String, Any?>> = emptyList()
@@ -471,7 +476,7 @@ class GedraConfigService : ServiceInitializer {
     private fun latestQuery(sqlCxt: SqlCxt, table: KdrTable) = SqlStmtUtil.prepareSql(
         sqlCxt, "qGedraConfigLatest", table.columns,
         "select * from t:${GCT.gedraConfig} where c:${GC.configId} = :${GC.configId} " +
-            "and c:${PF.client} = :${PF.client} order by c:${GC.version} desc",
+            "and c:${PF.client} = :${PF.client} and c:${GC.isCurrent} = true order by c:${GC.version} desc",
     )
 
     /** The [GCT.gedraConfigControl] table from the schema store, where a client's protection tier is stored (#617). */
@@ -572,7 +577,8 @@ class GedraConfigService : ServiceInitializer {
         val table = configTable(cxt)
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qGedraConfigRowsForClient", table.columns,
-            "select * from t:${GCT.gedraConfig} where c:${PF.client} = :${PF.client} and c:${PF.enabled} = true",
+            "select * from t:${GCT.gedraConfig} where c:${PF.client} = :${PF.client} and c:${PF.enabled} = true " +
+                "and c:${GC.isCurrent} = true",
         )
         var rows: List<Map<String, Any?>> = emptyList()
         sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to client)) }
@@ -623,8 +629,10 @@ class GedraConfigService : ServiceInitializer {
             // with its own id (see GC.configId).
             GC.configId to configId.fullId,
             GC.version to version,
-            // A newly written revision is the editable latest, so it has no publish time yet.
+            // A newly written revision is the editable latest, so it has no publish time yet -- and is current
+            // (issue #875); nothing older stops being so until a publish.
             GC.publishedAt to null,
+            GC.isCurrent to true,
         )
         // Stamp the row first, then stamp the entries with the very instant it took, so the row's `updatedAt`
         // column and the entries' own stamps cannot disagree -- the move the patch path makes.
