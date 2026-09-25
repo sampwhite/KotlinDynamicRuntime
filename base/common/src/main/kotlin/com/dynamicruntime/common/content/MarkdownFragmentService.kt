@@ -63,8 +63,13 @@ import java.util.concurrent.ConcurrentHashMap
  * and cached forever, so anybody holding a URL can fetch it and any shared cache in front of the deployment
  * will serve it to whoever asks -- enforcing at the origin would buy nothing behind a CDN. The URL is the
  * capability, and a build id is a hash of content nobody else has, so it is not *discoverable*; it is not a
- * secret either. **Do not put anything confidential in a fragment**, per client or otherwise. Copy that
- * genuinely must not leak between clients needs a different transport, not a rule added here.
+ * secret either. **Do not put anything confidential in a delivered fragment**, per client or otherwise: what
+ * reaches the frontend is public data.
+ *
+ * Copy that must be protected goes in a **backend** file ([FragmentAudience.backend]) instead. It is never
+ * served -- a request naming it gets the same 404 as a file that does not exist -- and is only pulled into other
+ * copy server-side by a `%{@t(...)}`, resolved per request, so only the finished text a caller is shown ever
+ * leaves the server (issue #873).
  */
 class MarkdownFragmentService : ServiceInitializer, ContentServer {
     override val serviceName: String = MarkdownFragmentService.serviceName

@@ -366,6 +366,11 @@ class GedraConfigCollector {
             keep(config)
             return true
         }
+        // A client's state traits cost only themselves (issue #873): the rest of the config is judged as usual,
+        // and `keep` never registers them.
+        for (traitId in config.stateTraits.keys - keptStateTraits(config).keys) {
+            reportConfigProblem(cxt, clientStateTraitIssue(config, traitId), issues)
+        }
         val problem = firstProblem(config)
         if (problem == null) {
             keep(config)
@@ -408,7 +413,7 @@ class GedraConfigCollector {
                 traitOwners.remove(traitId); traitConfigs.remove(traitId)
             }
         }
-        for (traitId in config.stateTraits.keys) {
+        for (traitId in keptStateTraits(config).keys) {
             if (stateTraitConfigs[traitId]?.gedraId == config.gedraId) {
                 stateTraitOwners.remove(traitId); stateTraitConfigs.remove(traitId)
             }
@@ -434,7 +439,7 @@ class GedraConfigCollector {
             traitOwners[traitId] = trait
             traitConfigs[traitId] = config
         }
-        for ((traitId, trait) in config.stateTraits) {
+        for ((traitId, trait) in keptStateTraits(config)) {
             stateTraitOwners[traitId] = trait
             stateTraitConfigs[traitId] = config
         }
@@ -445,13 +450,31 @@ class GedraConfigCollector {
     }
 
     /**
+     * The state traits [config] may contribute (issue #873): all of a `global` config's, and none of a client's.
+     * State is global -- one set, the same for every client, declared by components -- so a client's declaration
+     * would put its trait in every client's state and point the global state union at a type only that client
+     * has. [add] reports each one it leaves out; this is what keeps them out of the registries whatever the mode.
+     */
+    private fun keptStateTraits(config: GedraConfig): Map<String, GedraTrait> =
+        if (config.gedraId.client == GID.globalClient) config.stateTraits else emptyMap()
+
+    private fun clientStateTraitIssue(config: GedraConfig, traitId: String): GedraConfigIssue = config.issue(
+        "Gedra config '${config.gedraId}' declares the state trait '$traitId', but state is global -- declared by " +
+            "components, the same for every client -- so client '${config.gedraId.client}''s configuration " +
+            "cannot declare one.",
+        "Dropping the state trait; the rest of the config stands.",
+        GCEL.type, config.stateTraits.getValue(traitId).typeName,
+    )
+
+    /**
      * The first thing wrong with [config], or null. First rather than all, because a config is taken or left
      * whole: reporting the other four problems with something already being rejected buries the one that has
      * to be fixed first.
      */
     private fun firstProblem(config: GedraConfig): GedraConfigIssue? {
         // Dropping a config drops all of its traits, data and state alike, so the count says both (issue #597).
-        val traitCount = config.traits.size + config.stateTraits.size + config.configTraits.size
+        val stateTraits = keptStateTraits(config)
+        val traitCount = config.traits.size + stateTraits.size + config.configTraits.size
         configsById[config.gedraId.fullId]?.let {
             return config.issue(
                 "Gedra config '${config.gedraId}' is contributed twice.",
@@ -472,7 +495,7 @@ class GedraConfigCollector {
         // Data, state and config trait ids share one global id space, so a new config's traits of any kind are
         // checked against all three registries -- a state or config trait may not reuse a data trait's id, or
         // any other pairing.
-        for (traitId in config.traits.keys + config.stateTraits.keys + config.configTraits.keys) {
+        for (traitId in config.traits.keys + stateTraits.keys + config.configTraits.keys) {
             val held = traitConfigs[traitId] ?: stateTraitConfigs[traitId] ?: configTraitConfigs[traitId] ?: continue
             return config.issue(
                 "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}'. A trait id " +

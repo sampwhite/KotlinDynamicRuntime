@@ -52,6 +52,11 @@ import kotlin.time.Instant
  *   namespace (owned by `global`, not the client) and one colliding with a kept trait, and does so as
  *   [storedConfigCheckMode] says (issue #839) -- refuse the boot only in `unit`, and elsewhere degrade (log,
  *   skip), since stored data refusing a boot leaves nothing with which to repair it.
+ * - **Owned by a real client** ([storedOwnershipProblem], issue #873): a row owned by `global` is dropped, as the
+ *   write would have refused it -- otherwise a restore or a hand edit would fold it into the configuration every
+ *   client shares. (The reserved namespace is also caught by the collector, which holds it for `global`.)
+ * - **Only the slots this node reads** ([unknownSlotsIssue], issue #873): any other slot is ignored and reported,
+ *   and the rest of the config loads.
  * - **`extendsFromClientId` from data** ([extendsProblem]): a data config may extend only a client that is
  *   **defined in source** and is a **template** -- which enforces both halves of the rule `ClientDef`
  *   documents ("only a template may be named" and "only the source-code definition is pulled in"), since a
@@ -72,6 +77,9 @@ class GedraConfigLoadService : ServiceInitializer {
     private var schemaCollector: SchemaCollector? = null
     private var sqlTopicService: SqlTopicService? = null
     private var isInit: Boolean = false
+
+    /** The stored slots this node reads -- the config-trait ids -- for [unknownSlotsIssue]; set in `onCreate`. */
+    private var knownSlots: Set<String>? = null
 
     /** Config problems found while loading, in order -- empty unless a production node degraded (issue #303). */
     val issues: MutableList<GedraConfigIssue> = mutableListOf()
@@ -97,6 +105,7 @@ class GedraConfigLoadService : ServiceInitializer {
         schemaCollector = SchemaCollector.get(cxt)
             ?: throw KdrException("$serviceName ran with no schema collector.")
         sqlTopicService = SqlTopicService.get(cxt)
+        knownSlots = coreConfigTraits(cxt).configTraits.keys
     }
 
     override fun checkInit(cxt: KdrCxt) {
@@ -150,8 +159,11 @@ class GedraConfigLoadService : ServiceInitializer {
         // the node runs -- not a row it selected but then dropped as malformed or extends-invalid.
         val takenMarkers = HashMap<String, Instant>()
         for (row in rows) {
+            var stored: GedraConfigRow?
             val config = try {
-                reassemble(cxt, row)
+                // Parse the id rather than intern it: GedraService is a regular service and does not exist yet.
+                stored = GedraConfigRow.extract(row) { GedraId.parse(it) }
+                toConfig(cxt, stored)
             } catch (e: KdrException) {
                 // A row that cannot be turned back into a config is the "bad row" case: judged as stored config
                 // (issue #839) -- forgiven everywhere but unit tests, since it is data nobody can fix from a
@@ -162,11 +174,12 @@ class GedraConfigLoadService : ServiceInitializer {
                 reportConfigProblem(cxt, unloadableIssue(configId, parsedId?.client, e), issues)
                 continue
             }
-            val extendsProblem = extendsProblem(config, sourceClients)
-            if (extendsProblem != null) {
-                reportConfigProblem(cxt, extendsProblem, issues)
+            val problem = storedConfigProblem(config, sourceClients)
+            if (problem != null) {
+                reportConfigProblem(cxt, problem, issues)
                 continue
             }
+            unknownSlotsIssue(stored)?.let { reportConfigProblem(cxt, it, issues) }
             // Routes through the same checks and degrade behavior a source config gets; a taken config's
             // fragment/UiBlock overlays are then folded in, gated on the take exactly as the boot loop does.
             if (collector.addGedraConfig(cxt, config)) {
@@ -233,13 +246,40 @@ class GedraConfigLoadService : ServiceInitializer {
         ?: throw KdrException("$serviceName used its collector before onCreate.")
 
     /** Turns one stored row into a [GedraConfig] via [reassembleGedraConfig], recovering the namespace it needs. */
-    private fun reassemble(cxt: KdrCxt, rowMap: Map<String, Any?>): GedraConfig =
-        // Parse the id rather than intern it: GedraService is a regular service and does not exist yet.
-        toConfig(cxt, GedraConfigRow.extract(rowMap) { GedraId.parse(it) })
-
     /** A stored [row] as the [GedraConfig] it holds -- the one reassembly the boot load and a reload (#616) share. */
     fun toConfig(cxt: KdrCxt, row: GedraConfigRow): GedraConfig =
         reassembleGedraConfig(cxt, row.configId.baseId, row.resolvedNamespace(), row.client, row.entriesBySlot())
+
+    /**
+     * The issue for a stored [row] holding slots this node does not read, or null (issue #873). Reassembly reads
+     * only the slots it knows, so anything else -- a slot since retired (a state trait, which a client may no longer
+     * declare), one from a newer version, a hand edit -- is dropped, and this says so rather than letting it vanish.
+     * The rest of the config loads. Shared by the boot load, a reload, and a trial.
+     */
+    fun unknownSlotsIssue(row: GedraConfigRow): GedraConfigIssue? {
+        val known = knownSlots ?: throw KdrException("$serviceName used before onCreate.")
+        val unknown = row.entriesBySlot().keys - known
+        if (unknown.isEmpty()) return null
+        val configId = row.configId.fullId
+        return GedraConfigIssue(
+            "Stored config '$configId' holds slot(s) ${unknown.sorted()}, which this node does not read.",
+            "Ignoring those slots; the rest of the config loads.",
+            client = row.client, storedConfigId = configId, elementKind = GCEL.config, elementId = configId,
+        )
+    }
+
+    /**
+     * Why a stored [config] may not be taken at all, or null: its owner (see [storedOwnershipProblem]) or its
+     * `extendsFromClientId` ([extendsProblem]). What the boot load, a reload, and a trial each ask of a config once
+     * it has reassembled.
+     */
+    fun storedConfigProblem(config: GedraConfig, sourceClients: Map<String, ClientDef>): GedraConfigIssue? {
+        storedOwnershipProblem(config)?.let {
+            val id = config.gedraId.fullId
+            return config.issue(it, "Dropping the stored config '${config.gedraId}'.", GCEL.config, id)
+        }
+        return extendsProblem(config, sourceClients)
+    }
 
     /** The ids of every data-loaded config now in the collector, across clients. */
     fun allLoadedIds(): Set<String> = synchronized(loadedByClient) {
@@ -344,4 +384,21 @@ class GedraConfigLoadService : ServiceInitializer {
         fun get(cxt: KdrCxt): GedraConfigLoadService = cxt.instanceConfig.get(serviceName) as? GedraConfigLoadService
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
+}
+
+/**
+ * Why [config] may not be **stored** as it is owned, or null (issues #292, #873): not by the runtime's `global`
+ * client, and not in the reserved `globalconfig` namespace -- both belong to the runtime, and a stored config is
+ * always a real client's. The one rule, asked by the write (`GedraConfigService`), which refuses such a config,
+ * and by every load, which drops a row that got past it (a restore, a hand edit) rather than folding it into the
+ * configuration every client shares.
+ */
+fun storedOwnershipProblem(config: GedraConfig): String? = when {
+    config.namespace == GCFG.globalNamespace ->
+        "Config '${config.gedraId}' declares its types in the reserved '${GCFG.globalNamespace}' namespace, " +
+            "which belongs to the runtime. A client's config must use its own namespace."
+    config.gedraId.client == GID.globalClient ->
+        "Config '${config.gedraId}' is owned by the '${GID.globalClient}' client, which is the runtime's. A stored " +
+            "config belongs to a real client."
+    else -> null
 }

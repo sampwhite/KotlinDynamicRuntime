@@ -144,8 +144,9 @@ later schema rejects" test.
     shape, and `gedra-workflow.md` for the model. An optional `label = "…"` in the block titles the page over
     the form (issue #719); like a task's label it is a template, so `%{@t("file.ns.key")}` pulls it from a
     fragment file and the boot checks the pull resolves.
-  - **`stateTrait(...)`, `cfact(name, group, description, toFrontend)`** — workflow state traits and the cfacts
-    the client may name in expressions.
+  - **`cfact(name, group, description, toFrontend)`** — the cfacts the client may name in expressions.
+  - **Not `stateTrait(...)`.** State is global, declared by components (issue #873): a client's config declaring
+    one is refused at write, and a client-owned source config declaring one refuses the boot outside production.
   - A `schemaDef` slot exists for plain schema types too; most schema rides in via a trait's data shape.
 - **`GedraConfigService.get(cxt).writeConfig(clientCxt, config)`** persists the bundle. `clientCxt` must be
   bound to the client and carry a `userId` (attribution) — hence `asClient(...)`. Writing is revision-aware

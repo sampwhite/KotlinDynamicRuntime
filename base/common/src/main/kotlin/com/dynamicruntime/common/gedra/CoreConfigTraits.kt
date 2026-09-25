@@ -18,9 +18,6 @@ object CCT {
     /** One data-trait **declaration** this configuration contributes, keyed by trait id (issue #625). */
     const val traitDef = "traitDef"
 
-    /** One state-trait declaration, keyed by trait id (issue #625). */
-    const val stateTraitDef = "stateTraitDef"
-
     /** One trait-usage rule -- how a client presents a trait in a listing -- keyed by trait id (issue #625). */
     const val usageDef = "usageDef"
 
@@ -46,7 +43,6 @@ object CCT {
     const val appliesTo = "appliesTo"
     const val primaryKey = "primaryKey"
     const val dataSchema = "dataSchema"
-    const val stateClass = "stateClass"
     const val description = "description"
 
     const val label = "label"
@@ -81,11 +77,11 @@ object CCT {
  *
  * - **[CCT.clientDef]** -- the client definition, single-instance, by **reference** to the canonical
  *   `ClientInfo` ([CLD.infoTypeQualified]).
- * - **[CCT.traitDef]** / **[CCT.stateTraitDef]** -- a data / state trait's **declaration**, by trait id. The
- *   DSL inputs are stored (`traitId`, `typeName`, `appliesTo`, `primaryKey`, description, and the data shape as
- *   a `schemaDocument()`), **not** the `<Name>Entry`/`<Name>Data` types the declaration generates: a trait is a
- *   declaration re-run on load, not a schema (the trait-vs-schema line #316's review drew). A state trait adds
- *   its [StateTraitClass].
+ * - **[CCT.traitDef]** -- a data trait's **declaration**, by trait id. The DSL inputs are stored (`traitId`,
+ *   `typeName`, `appliesTo`, `primaryKey`, description, and the data shape as a `schemaDocument()`), **not** the
+ *   `<Name>Entry`/`<Name>Data` types the declaration generates: a trait is a declaration re-run on load, not a
+ *   schema (the trait-vs-schema line #316's review drew). There is no state-trait slot (issue #873): state is
+ *   global, declared by components, and a stored config is always a client's.
  * - **[CCT.usageDef]** -- a trait-usage rule ([ClientTraitUsage]), by trait id.
  * - **[CCT.workflowDef]** -- a workflow, by workflow id, by **reference** to the definition schema under
  *   [WFD.namespace]. Its tasks travel inside it: a task has no standalone type, so there is no task slot.
@@ -127,16 +123,6 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         primaryKey = listOf(CCT.traitId),
     ) {
         traitDeclarationFields()
-    }
-    configTrait(
-        "StateTraitDefEntry", CCT.stateTraitDef, setOf(GedraConfigType.configDoc),
-        "One state-trait declaration this configuration contributes, keyed by trait id.",
-        primaryKey = listOf(CCT.traitId),
-    ) {
-        traitDeclarationFields()
-        property(CCT.stateClass, "How the state behaves under recomputation, and who may write it.", required = true) {
-            options(StateTraitClass.entries)
-        }
     }
     configTrait(
         "UsageDefEntry", CCT.usageDef, setOf(GedraConfigType.configDoc),
@@ -205,7 +191,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
 }
 
 /**
- * The declaration fields shared by [CCT.traitDef] and [CCT.stateTraitDef] (issue #625): what a trait's DSL
+ * The declaration fields of a [CCT.traitDef] (issue #625): what a trait's DSL
  * `trait(...)` call takes, so re-running it on load re-manufactures the entry types rather than storing them.
  * `appliesTo` is a set of data-kind names (bounded to [GedraDataType]); `dataSchema` is the trait's own data
  * shape, validated by parsing it -- the same `schemaDocument()` a [CCT.schemaDef] uses.

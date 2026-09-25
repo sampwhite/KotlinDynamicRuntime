@@ -231,18 +231,7 @@ class GedraConfigService : ServiceInitializer {
      * patch, on the reassembled result.
      */
     private fun checkWritableConfig(cxt: KdrCxt, config: GedraConfig) {
-        if (config.namespace == GCFG.globalNamespace) {
-            throw KdrException.mkInput(
-                "Config '${config.gedraId}' declares its types in the reserved '${GCFG.globalNamespace}' " +
-                    "namespace, which belongs to the runtime. A client's config must use its own namespace.",
-            )
-        }
-        if (config.gedraId.client == GID.globalClient) {
-            throw KdrException.mkInput(
-                "Config '${config.gedraId}' is owned by the '${GID.globalClient}' client, which is the runtime's. " +
-                    "A stored config belongs to a real client.",
-            )
-        }
+        storedOwnershipProblem(config)?.let { throw KdrException.mkInput(it) }
         val nsOwner = SchemaService.get(cxt).gedraNamespaceOwner(config.namespace)
         if (nsOwner != null && nsOwner != config.gedraId.client) {
             throw KdrException.mkInput(
