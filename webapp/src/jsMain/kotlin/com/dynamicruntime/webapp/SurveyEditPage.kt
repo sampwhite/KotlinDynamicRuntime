@@ -47,6 +47,8 @@ val SurveyEditPage = FC<Props> {
     // Bumped to reload the view in place -- after engaging, which changes what the view says.
     var reloads by useState(0)
     var engageError by useState<DisplayError?>(null)
+    // The refusal the last approval came back with (issue #832), kept across the reload that followed it.
+    var approveRefusal by useState<ApproveRefusal?>(null)
     var view by useState<WorkflowView?>(null)
     var noSurvey by useState(false)
     var loading by useState(true)
@@ -194,11 +196,25 @@ val SurveyEditPage = FC<Props> {
                 // task needing action, else the first. Choosing a task is a move between destinations, so it
                 // pushes a history entry -- Back returns to the previous task -- without firing hashchange.
                 activeTask = initialTaskFor(view!!, requestedTask)
-                onSelectTask = { id ->
+                val selectTask: (String) -> Unit = { id ->
                     requestedTask = id
                     pushHash(hashParams().filterKeys { it != HP.task }.toList() + (HP.task to id))
                 }
+                onSelectTask = { id ->
+                    approveRefusal = null
+                    selectTask(id)
+                }
                 onDirtyChange = { dirty = it }
+                // An approval settled (issue #832): approved, or refused by the endpoint. Either way the form's state may
+                // have moved -- the step now reads approved, someone else approved it first -- so the view is read again,
+                // as after an engage, keeping the refusal to show by its step. It stays on that step: with every step
+                // done the view names no call to action, and the page would open on the first.
+                onApproveSettled = { taskId, refusal ->
+                    approveRefusal = refusal?.let { ApproveRefusal(taskId, it) }
+                    selectTask(taskId)
+                    reloads += 1
+                }
+                this.approveRefusal = approveRefusal
                 // Engage (issue #791): put the form into the workflow, then reload the view, which now says it is
                 // engaged and opens the tasks. A refusal -- not eligible after all -- is shown with its reasons.
                 val engageClient = workflowClient

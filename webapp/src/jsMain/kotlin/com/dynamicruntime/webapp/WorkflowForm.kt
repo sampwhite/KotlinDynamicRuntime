@@ -94,7 +94,22 @@ external interface WorkflowFormProps : Props {
      * says the form may engage ([WorkflowView.canEngage]). The page owns the call and the reload after it.
      */
     var onEngage: (() -> Unit)?
+
+    /**
+     * Told that an approval of task `taskId` has settled (issue #832) -- approved (`refusal` null), or refused by the
+     * endpoint (a 4xx: already approved, not the current step, not a reviewer). Either way the form's state may have
+     * moved, so the page reads the view again, staying on that step, and keeps any [approveRefusal] across the reload
+     * so it is still shown by the step it concerns. A failure that never reached a verdict (the network, a 5xx) is not
+     * reported here: the form shows it itself, since a reload would only fail too. Unset for a view with no approval.
+     */
+    var onApproveSettled: ((taskId: String, refusal: DisplayError?) -> Unit)?
+
+    /** The refusal the last approval came back with (issue #832), kept by the page across the reload that followed. */
+    var approveRefusal: ApproveRefusal?
 }
+
+/** An approval's refusal (issue #832) and the task it concerns -- shown by that task's button, and nowhere else. */
+class ApproveRefusal(val taskId: String, val error: DisplayError)
 
 /**
  * Renders a resolved workflow and saves it (issues #536, #659). Each trait a task collects is drawn from *its
@@ -154,6 +169,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // Each task's status for the rail (issue #700), refreshed from the view a survey edit save returns -- so
     // saving one task can move another's mark (completing one can flip the earliest-actionable pointer).
     var statuses by useState(wf.tasks.associate { it.id to it.status })
+    // An approval in flight (issue #832), by task, and a failure that never reached a verdict -- the network, a 5xx --
+    // shown by that task's button. A refusal instead goes to the page, which reloads (see `onApproveSettled`).
+    var approvingTask by useState<String?>(null)
+    var approveFailure by useState<ApproveRefusal?>(null)
     var failuresByTrait by useState<Map<String, List<SchFailure>>>(emptyMap())
     // Commit-time validation (issue #718): per trait, the fields the user has committed (blurred, or picked), and
     // the traits checked as a whole -- by a Save, or by leaving the task. `failuresByTrait` always holds a trait's
@@ -318,14 +337,107 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     fun statusFor(task: WfTaskView, unsaved: Boolean): WfTaskStatus? =
         if (unsaved) localTaskStatus(task, valuesByTrait) else statuses[task.id]
 
+    // An approval task drawn in its own way (issue #832): once approved, who approved it and when; before, the prompt
+    // and -- for a reviewer -- the button, which asks first, since an approval cannot be taken back. Anyone else is
+    // told the step waits on a reviewer rather than shown a button the endpoint could only refuse. Not tied to Edit:
+    // approving is its own act, not an edit of the form. The endpoint decides who may and when; this is presentation.
+    // The last approval's refusal or failure for [task] only -- another approval task's never shows here -- and not
+    // while a new attempt is in flight. Drawn under the approval, or under a text display standing in for it, so a
+    // refusal the reload turned into "already approved" still says the click did not take.
+    fun ChildrenBuilder.approvalNotice(task: WfTaskView) {
+        val shown = (approveFailure ?: props.approveRefusal)?.takeIf { it.taskId == task.id && approvingTask == null }
+        shown?.let { errorText("Couldn't approve the form.", it.error) }
+    }
+
+    fun ChildrenBuilder.approvalBlock(task: WfTaskView, approval: WfApprovalView) {
+        // Approving reloads the view, which starts every task's working copy afresh -- so while any task holds edits
+        // not yet saved, approving waits, rather than silently dropping them (and approving what they would change).
+        val anyUnsaved = wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) }
+        val busy = approvingTask != null
+        div {
+            className = ClassName("wf-approval")
+            when {
+                approval.approved -> p { +approvedLine(approval) }
+                else -> {
+                    if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt }
+                    val gid = gedraId
+                    if (!task.isReviewer || gid == null) {
+                        p {
+                            className = ClassName("subtitle")
+                            +"Waiting for a reviewer to approve this."
+                        }
+                    } else {
+                        val blocked = task.isDisabled || busy || anyUnsaved
+                        div {
+                            className = ClassName("row")
+                            Popconfirm {
+                                title = "Approve this form?"
+                                description = "An approval can't be taken back."
+                                okText = approval.button.ifBlank { "Approve" }
+                                cancelText = "Cancel"
+                                disabled = blocked
+                                onConfirm = {
+                                    approvingTask = task.id
+                                    approveFailure = null
+                                    wfFormScope.launch {
+                                        try {
+                                            WorkflowApi.approve(gid, wf.workflowId, task.id, props.client)
+                                            props.onApproveSettled?.invoke(task.id, null)
+                                        } catch (e: Throwable) {
+                                            val shown = userFacingError(e)
+                                            // A verdict (a 4xx) means the state may have moved -- approved by someone
+                                            // else, say -- so the page reloads to show it, keeping the refusal.
+                                            val status = (e as? ApiError)?.status
+                                            if (status != null && status in 400..499 && props.onApproveSettled != null) {
+                                                props.onApproveSettled?.invoke(task.id, shown)
+                                            } else {
+                                                approveFailure = ApproveRefusal(task.id, shown)
+                                            }
+                                        } finally {
+                                            approvingTask = null
+                                        }
+                                    }
+                                }
+                                Button {
+                                    type = "primary"
+                                    loading = approvingTask == task.id
+                                    disabled = blocked
+                                    +approval.button.ifBlank { "Approve" }
+                                }
+                            }
+                        }
+                        if (anyUnsaved) {
+                            p {
+                                className = ClassName("subtitle")
+                                +"Save or undo your changes before approving."
+                            }
+                        }
+                    }
+                }
+            }
+            approvalNotice(task)
+        }
+    }
+
     // One task's body -- the "TaskPanel" (issue #700): its label (when something else does not already name the
     // task, issue #719), each trait's form, and its Save while editing. In rail mode one of these shows at a
     // time; in single-panel mode each task's shows in turn.
     fun ChildrenBuilder.taskPanel(task: WfTaskView, showLabel: Boolean = true) {
         div {
-            className = ClassName("wf-task")
+            // A disabled display (issue #788) greys the whole step; nothing in it acts (see `isEditable`).
+            className = ClassName(if (task.isDisabled) "wf-task wf-task-disabled" else "wf-task")
             if (showLabel && wf.showTaskList && task.label.isNotBlank()) {
                 Markdown { source = task.label; inlineUi = true }
+            }
+            // A text display (issue #788) stands in for the task's whole rendering -- fields, saves, an approval's
+            // button -- with its placeholders filled from the task's own data.
+            displayTextOf(task)?.let { text ->
+                div {
+                    className = ClassName("wf-display-text")
+                    Markdown { source = text }
+                }
+                approvalNotice(task)
+                return@div
             }
             // A step with fields this caller may not change (issue #856): say so, rather than leave a read-only
             // panel among editable ones looking broken.
@@ -335,9 +447,11 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     +"Someone else completes this step; you can see it here."
                 }
             }
-            // A step that collects nothing -- an approval, say -- has no fields to draw; its own rendering comes
-            // with #832, so for now the panel says so rather than showing an empty card.
-            if (task.traits.isEmpty()) {
+            // An approval task's own rendering (issue #832): its prompt and, for a reviewer, the button.
+            task.approval?.let { approval -> approvalBlock(task, approval) }
+            // Any other step that collects nothing has no fields to draw; the panel says so rather than showing an
+            // empty card.
+            if (task.traits.isEmpty() && task.approval == null) {
                 p {
                     className = ClassName("subtitle")
                     +"There is nothing to fill in for this step here."
@@ -368,7 +482,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         this.values = valuesOf(trait.traitId)
                         // A step this caller may not save (issue #856), or a trait locked for them (issue #857), stays
                         // read-only while the rest is edited.
-                        editable = editing && task.canSave && trait.traitId !in wf.lockedTraits
+                        editable = editing && task.canSave && !task.isDisabled && trait.traitId !in wf.lockedTraits
                         friendly = true
                         // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
                         // an expense report's total, computed on read -- rather than hiding them; the flag is
@@ -445,12 +559,18 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             task.traits.firstOrNull { it.traitId == id }?.let(::traitHeading) ?: humanizeFieldName(id)
         }
         button {
-            className = ClassName(if (active) "wf-rail-item active" else "wf-rail-item")
+            className = ClassName(
+                listOfNotNull("wf-rail-item", "active".takeIf { active }, "disabled".takeIf { task.isDisabled }).joinToString(" "),
+            )
             title = explanation
             asDynamic()["aria-current"] = if (active) "true" else "false"
             asDynamic()["aria-label"] = "${task.label}: $explanation"
+            // A disabled display (issue #788): its rail entry is not a way in. `aria-disabled` rather than `disabled`,
+            // so it stays focusable and keeps its tooltip -- a disabled button gets no pointer events in some
+            // browsers -- and the click below does nothing. The open task stays shown, greyed.
+            if (task.isDisabled && !active) asDynamic()["aria-disabled"] = "true"
             onClick = {
-                if (!active) {
+                if (!active && !task.isDisabled) {
                     // The task being left gets its whole check before the switch (issue #718).
                     if (editing) wf.tasks.firstOrNull { it.id == props.activeTask }?.let { checkWholeTask(it) }
                     props.onSelectTask?.invoke(task.id)

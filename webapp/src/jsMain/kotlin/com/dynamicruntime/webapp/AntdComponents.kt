@@ -238,6 +238,22 @@ external interface PopoverProps : PropsWithChildren {
 external val Popover: ComponentType<PopoverProps>
 
 /**
+ * antd's confirm popover (issue #832): wraps a control, and asks before [onConfirm] runs -- an approval, which cannot
+ * be taken back. [title] is the question, [okText]/[cancelText] its answers; [disabled] lets the wrapped control act
+ * as though unwrapped (it never opens).
+ */
+external interface PopconfirmProps : PropsWithChildren {
+    var title: dynamic
+    var description: dynamic
+    var okText: String?
+    var cancelText: String?
+    var onConfirm: (() -> Unit)?
+    var disabled: Boolean?
+}
+
+external val Popconfirm: ComponentType<PopconfirmProps>
+
+/**
  * antd's dialog (issue #791): the forms list's workflow column explains an ineligible workflow in one. Controlled
  * by [open]; [onCancel] is the close (the corner X, Escape, a click outside); [footer] a node, or `null` for none.
  */
