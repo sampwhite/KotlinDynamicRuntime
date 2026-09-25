@@ -233,9 +233,10 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   #805: an administrator in `public` reaches only their own users, so a client admin belongs in a real client)
   — whose stored config accumulates across the spec's cases; prefer placing users in your own client. A scoped
   admin and the users it administers must share a client, so place both.
-- **Collisions are strict in `unit`/`local`, degraded in production:** two clients claiming one `traitId`, or a
-  namespace with two owners, fails the reload in a test (which is what `GedraConfigReloadTest`'s rollback case
-  checks) but is tolerated live.
+- **Collisions are strict in `unit`/`local`, degraded in production:** a client reusing a **global** trait's id, a
+  client declaring one `traitId` twice, or a namespace with two owners, fails the reload in a test (which is what
+  `GedraConfigReloadTest`'s rollback case checks) but is tolerated live. Two **different** clients may each
+  declare the same `traitId` (issue #807) -- each gets its own -- so scenario clients need no prefixed ids.
 - **`writeConfig` needs a client-bound context with a `userId`** — an unattributed or wrong-client context is
   refused, and it refuses the reserved `global` client / `globalconfig` namespace outright.
 

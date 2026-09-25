@@ -61,7 +61,7 @@ class UserLabelsTest : StringSpec({
                 enabledEnvironments = setOf(ENV.unit, ENV.local), userLabels = listOf("reviewer", "siteLead"),
             ),
         )
-        // Named per client: a trait id is unique across every client, and the misspelling case below needs a second.
+        // Named per client, and the misspelling case below needs a second.
         trait("${id.replaceFirstChar { it.uppercase() }}NoteEntry", "${id}Note", setOf(GedraDataType.formDoc), "Something to review.") {
             property("text", "A value.")
         }

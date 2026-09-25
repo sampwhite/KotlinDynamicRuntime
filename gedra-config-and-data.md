@@ -164,25 +164,31 @@ Reserving `globalconfig` is the first instance of that rule rather than a specia
 and nobody else may write into it. Stating it as ownership is what makes the rule survive the arrival of a
 second owner; stating it as one reserved name would not.
 
-Visibility is also *why* two clients may define the same trait id harmlessly — neither can see the other's.
-That collision is reported to us as a configuration warning, never to the client, and it does not stop
-anything working. It does have to be cleared before that config can be promoted into source code, which is
-what keeps "we would prefer uniqueness" from being merely aspirational.
+Visibility is also *why* two clients may define the same trait id harmlessly — neither can see the other's
+(issue #807). Each gets its own trait, and it stops nothing working. It does have to be resolved before either
+config can be promoted into source code as a global one, since a global id is one no client may use.
 
 ## Two uniqueness rules that only look contradictory
 
-- **`traitId` is global** — one trait name across every namespace and every gedra kind. This is what lets
-  stored data carry a bare trait id and nothing else, and what lets an entry be understood when it is met
-  outside the gedra that held it: in a log line, an export, a queue message.
+- **`traitId` is unique within a client's view** (issue #807) — a client's own traits and the global ones it sees
+  never share an id. A **global** trait's id is unique across every client and every gedra kind, and no client
+  may reuse one; a client's **own** trait's id is unique within that client, and another client may declare
+  the same id and get its own. This is what lets stored data carry a bare trait id and nothing else: the gedra
+  holding an entry names its client, so the id resolves among that client's own traits and the global ones,
+  with never two answers. An entry met *outside* its gedra -- in a log line, an export, a queue message -- is
+  unambiguous only beside the gedra's id (or its client), so anything carrying entries out carries that too.
 - **Type names are namespaced** — so two config bundles may each generate a `NameEntry` without colliding.
 
 The namespace is not scoping traits. It is scoping the *types* that traits create. Anybody who "fixes" the
 inconsistency by namespacing trait ids breaks every stored entry, because the stored form has no namespace to
-resolve against.
+resolve against — the client is what scopes a trait id, and a stored entry already has one.
 
-Global uniqueness would force ugly names — a `name` trait and a `wfDataName` trait meaning the same thing —
-except that **a trait declares the set of kinds it applies to**. `name` means the same thing on a form
-document and on workflow data, so it is one trait bound to both. Where two traits genuinely are different
+Code bound to a trait by bare id (a data deriver, a save-time function) must name a **global** trait, which the
+boot checks: a client's trait id may be another client's too, and the binding would run on both.
+
+Uniqueness within a client's view would force ugly names — a `name` trait and a `wfDataName` trait meaning the
+same thing — except that **a trait declares the set of kinds it applies to**. `name` means the same thing on a
+form document and on workflow data, so it is one trait bound to both. Where two traits genuinely are different
 concepts, they get different ids, which was the right answer anyway.
 
 ## A trait's own data lives under `data`
