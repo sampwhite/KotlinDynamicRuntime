@@ -107,7 +107,7 @@ class GedraConfigRow(
 
     /**
      * The config's namespace (issue #614), authoritative from [namespace] when it was persisted, otherwise
-     * recovered from the qualified name of the first stored type -- a trait, state trait, or schema entry's
+     * recovered from the qualified name of the first stored type -- a trait or schema entry's
      * `typeName` is `namespace.Type`, so its prefix is the config's namespace. A config that declares no types
      * (only cfacts or usages) has none to recover and needs none, so this reads empty, which round-trips to a
      * write that supplies the namespace itself. The one place the fallback lives, shared by the boot loader
@@ -118,7 +118,7 @@ class GedraConfigRow(
             return namespace
         }
         val bySlot = entriesBySlot()
-        for (slot in listOf(CCT.traitDef, CCT.stateTraitDef, CCT.schemaDef)) {
+        for (slot in listOf(CCT.traitDef, CCT.schemaDef)) {
             for (entry in bySlot[slot].orEmpty()) {
                 val typeName = entry[CCT.typeName].toOptStr()
                 if (typeName != null && '.' in typeName) {

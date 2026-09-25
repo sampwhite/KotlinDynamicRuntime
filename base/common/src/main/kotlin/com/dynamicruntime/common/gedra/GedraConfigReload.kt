@@ -104,11 +104,12 @@ object GedraConfigReload {
                 reportConfigProblem(cxt, loader.unloadableIssue(row.configId.fullId, row.client, e), reloadIssues)
                 return@mapNotNull null
             }
-            val extendsProblem = loader.extendsProblem(config, sourceClients)
-            if (extendsProblem != null) {
-                reportConfigProblem(cxt, extendsProblem, reloadIssues)
+            val problem = loader.storedConfigProblem(config, sourceClients)
+            if (problem != null) {
+                reportConfigProblem(cxt, problem, reloadIssues)
                 null
             } else {
+                loader.unknownSlotsIssue(row)?.let { reportConfigProblem(cxt, it, reloadIssues) }
                 config
             }
         }

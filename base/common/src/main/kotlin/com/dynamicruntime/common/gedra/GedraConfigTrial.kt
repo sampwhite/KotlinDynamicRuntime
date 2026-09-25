@@ -105,11 +105,12 @@ object GedraConfigTrial {
                 reportConfigProblem(tcxt, loader.unloadableIssue(row.configId.fullId, row.client, e), ignored)
                 continue
             }
-            val problem = loader.extendsProblem(config, sourceClients)
+            val problem = loader.storedConfigProblem(config, sourceClients)
             if (problem != null) {
                 reportConfigProblem(tcxt, problem, ignored)
                 continue
             }
+            loader.unknownSlotsIssue(row)?.let { reportConfigProblem(tcxt, it, ignored) }
             if (scratch.addGedraConfig(tcxt, config)) taken.add(config)
         }
 

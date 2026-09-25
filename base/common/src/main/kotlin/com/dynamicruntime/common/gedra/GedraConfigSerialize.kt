@@ -40,11 +40,18 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
                 "and cannot be stored on a row. Only a client configuration is stored.",
         )
     }
+    // State traits likewise (issue #873): state is global, declared by components, and a stored config is always
+    // a client's -- so there is no slot for one, and a config carrying one is refused rather than stored without.
+    if (config.stateTraits.isNotEmpty()) {
+        throw KdrException.mkInput(
+            "Config '${config.gedraId}' declares state traits (${config.stateTraits.keys}). State is global and " +
+                "declared by components, so a client's configuration cannot declare it.",
+        )
+    }
     val generated = generatedTypeNames(config)
     val out = linkedMapOf<String, List<Map<String, Any?>>>()
     config.client?.let { out[CCT.clientDef] = listOf(it.toInfo()) }
     out[CCT.traitDef] = config.traits.values.map { traitToEntry(config, it) }
-    out[CCT.stateTraitDef] = config.stateTraits.values.map { traitToEntry(config, it) }
     out[CCT.usageDef] = config.usages.map { usageToEntry(it) }
     out[CCT.workflowDef] = config.workflows.values.map {
         linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to it.toJsonMap())
@@ -78,8 +85,7 @@ fun reassembleGedraConfig(
     entriesBySlot[CCT.schemaDef]?.forEach { e ->
         type(e[CCT.typeName].toOptStr().orEmpty()) { data.putAll(e[CCT.schema].toJsonMapOrEmpty()) }
     }
-    entriesBySlot[CCT.traitDef]?.forEach { reassembleTrait(it, state = false) }
-    entriesBySlot[CCT.stateTraitDef]?.forEach { reassembleTrait(it, state = true) }
+    entriesBySlot[CCT.traitDef]?.forEach { reassembleTrait(it) }
     entriesBySlot[CCT.usageDef]?.forEach { e ->
         traitUsage(
             e[CCT.traitId].toOptStr().orEmpty(),
@@ -109,7 +115,7 @@ fun reassembleGedraConfig(
 /** The qualified names of every type a config's traits **generate** -- the entry types, and the inline data types. */
 private fun generatedTypeNames(config: GedraConfig): Set<String> {
     val out = linkedSetOf<String>()
-    for (trait in config.traits.values + config.stateTraits.values) {
+    for (trait in config.traits.values) {
         out.add(trait.typeName)
         inlineDataTypeName(config, trait)?.let { out.add(it) }
     }
@@ -130,7 +136,6 @@ private fun inlineDataTypeName(config: GedraConfig, trait: GedraTrait): String? 
 /**
  * One trait's stored declaration (issue #613): the DSL inputs, with `dataSchema` the data type's **body** when
  * the trait wrote it inline (so reassembly re-manufactures the type) or the `$ref` when it named a shared type.
- * Used for both data traits ([CCT.traitDef]) and state traits, which add their [CCT.stateClass].
  */
 private fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, Any?> = buildMap {
     // The shared metadata projection (issue #702), then this path's config-only extras. `omitEmptyPrimaryKey`
@@ -141,7 +146,6 @@ private fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, An
     config.defs[trait.typeName].toJsonMapOrEmpty()[SCH.description].toOptStr()?.let { put(CCT.description, it) }
     val inlineName = inlineDataTypeName(config, trait)
     put(CCT.dataSchema, if (inlineName != null) config.defs[inlineName] ?: trait.dataSchema else trait.dataSchema)
-    trait.stateClass?.let { put(CCT.stateClass, it.name) }
 }
 
 // The full usage rule, `display` included -- the shared projection (issue #702).
@@ -155,7 +159,7 @@ private fun cfactToEntry(cfact: CFactDef): Map<String, Any?> = linkedMapOf(
 )
 
 /** Re-declares one stored trait (issue #613), feeding its stored `dataSchema` straight into the builder. */
-private fun GedraConfigBuilder.reassembleTrait(entry: Map<String, Any?>, state: Boolean) {
+private fun GedraConfigBuilder.reassembleTrait(entry: Map<String, Any?>) {
     val typeName = entry[CCT.typeName].toOptStr().orEmpty()
     val traitId = entry[CCT.traitId].toOptStr().orEmpty()
     val appliesTo = entry[CCT.appliesTo].toJsonListOfStrings()
@@ -163,13 +167,7 @@ private fun GedraConfigBuilder.reassembleTrait(entry: Map<String, Any?>, state: 
     val primaryKey = entry[CCT.primaryKey].toJsonListOfStrings()
     val description = entry[CCT.description].toOptStr()
     val dataSchema = entry[CCT.dataSchema].toJsonMapOrEmpty()
-    if (state) {
-        val stateClass = StateTraitClass.entries.firstOrNull { it.name == entry[CCT.stateClass].toOptStr() }
-            ?: StateTraitClass.asserted
-        stateTrait(typeName, traitId, appliesTo, stateClass, description, primaryKey) { data.putAll(dataSchema) }
-    } else {
-        trait(typeName, traitId, appliesTo, description, primaryKey) { data.putAll(dataSchema) }
-    }
+    trait(typeName, traitId, appliesTo, description, primaryKey) { data.putAll(dataSchema) }
 }
 
 /** A stored fragment `content` (`namespace -> key -> value`) coerced back to the shape a `FragmentSource` holds. */

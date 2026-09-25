@@ -42,9 +42,6 @@ class GedraConfigSerializeTest : StringSpec({
             property("x", "A shared field.")
         }
         trait("AcmeTaggedEntry", "acmeTagged", setOf(GedraDataType.formDoc), dataType = "AcmeShared")
-        stateTrait("AcmeDoneEntry", "acmeDone", setOf(GedraDataType.formDoc), StateTraitClass.asserted) {
-            property("by", "Who marked it done.")
-        }
         traitUsage("acmeNote", "Note", "text", UsageKind.string)
         workflow("acmeWf", WfEntry.survey) { task("t1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
         fragmentOverlay("help") { namespace("copy") { key("title", "Help") } }
@@ -56,7 +53,7 @@ class GedraConfigSerializeTest : StringSpec({
         val source = sourceConfig()
         val entries = gedraConfigToEntries(source)
         entries.keys shouldContainExactlyInAnyOrder listOf(
-            CCT.clientDef, CCT.traitDef, CCT.stateTraitDef, CCT.usageDef, CCT.workflowDef,
+            CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef,
             CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef,
         )
         val reassembled = reassembleGedraConfig(cxt, source.gedraId.baseId, source.namespace, source.gedraId.client, entries)
@@ -94,6 +91,18 @@ class GedraConfigSerializeTest : StringSpec({
     "a config carrying config traits is refused, since they cannot be stored" {
         val ex = shouldThrow<KdrException> { gedraConfigToEntries(coreConfigTraits(cxt)) }
         (ex.message ?: "").contains("config traits") shouldBe true
+    }
+
+    // State is global, so a client's config has no slot for a state trait (issue #873): one carrying any is refused
+    // rather than stored without it.
+    "a config carrying state traits is refused, since state is global" {
+        val withState = gedraConfig(cxt, "acmeState", "acmeconfig", "acme") {
+            stateTrait("AcmeDoneEntry", "acmeDone", setOf(GedraDataType.formDoc), StateTraitClass.asserted) {
+                property("by", "Who marked it done.")
+            }
+        }
+        val ex = shouldThrow<KdrException> { gedraConfigToEntries(withState) }
+        (ex.message ?: "").contains("acmeDone") shouldBe true
     }
 
     "an inline trait stores its data body; a shared-ref trait stores a ref" {

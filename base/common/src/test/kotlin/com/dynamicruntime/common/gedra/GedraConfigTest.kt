@@ -196,21 +196,20 @@ class GedraConfigTest : StringSpec({
 
     // The traits a stored client configuration is made of -- one slot per field of a GedraConfig (issue #625),
     // so a stored config round-trips faithfully rather than losing what it had no slot for. No task slot: a
-    // task lives inside its workflow.
+    // task lives inside its workflow. No state-trait slot: state is global, and a stored config a client's (#873).
     "the core config traits declare a slot for every piece of a stored client configuration" {
         val config = coreConfigTraits(cxt)
         config.configTraits.keys.toList() shouldContainExactly listOf(
-            CCT.clientDef, CCT.traitDef, CCT.stateTraitDef, CCT.usageDef, CCT.workflowDef,
+            CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef,
             CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef,
         )
         config.traits.isEmpty() shouldBe true
-        // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/state/usage slots by trait id,
+        // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/usage slots by trait id,
         // fragments/uiBlocks by their overlay id, cfacts by name; the client is single-instance.
         config.configTraits.getValue(CCT.clientDef).primaryKey shouldBe emptyList()
         config.configTraits.getValue(CCT.workflowDef).primaryKey shouldBe listOf(CCT.workflowId)
         config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)
         config.configTraits.getValue(CCT.traitDef).primaryKey shouldBe listOf(CCT.traitId)
-        config.configTraits.getValue(CCT.stateTraitDef).primaryKey shouldBe listOf(CCT.traitId)
         config.configTraits.getValue(CCT.usageDef).primaryKey shouldBe listOf(CCT.traitId)
         config.configTraits.getValue(CCT.fragmentDef).primaryKey shouldBe listOf(CCT.fileId)
         config.configTraits.getValue(CCT.uiBlockDef).primaryKey shouldBe listOf(CCT.blockId)
@@ -253,7 +252,7 @@ class GedraConfigTest : StringSpec({
     }
 
     // The enum-bounded fields on the other slots hold their closed sets (issue #625): a stored config cannot
-    // carry an unrecognized usage kind or state class, and the cfact slot keeps its declaration shape.
+    // carry an unrecognized usage kind, and the cfact slot keeps its declaration shape.
     "the enum-bounded slot fields carry their closed sets, and cfactDef keeps its declaration shape" {
         val types = parseSchemaTypes(
             coreConfigTraits(cxt).defs,
@@ -265,8 +264,6 @@ class GedraConfigTest : StringSpec({
 
         slotData("UsageDefEntry").properties.getValue(CCT.kind).valueType
             .options.shouldNotBeNull().map { it.value } shouldContainExactly UsageKind.entries.map { it.name }
-        slotData("StateTraitDefEntry").properties.getValue(CCT.stateClass).valueType
-            .options.shouldNotBeNull().map { it.value } shouldContainExactly StateTraitClass.entries.map { it.name }
         // Declaration only: name/group/description/toFrontend, and nothing that could author a production.
         slotData("CFactDefEntry").properties.keys.toList() shouldContainExactly
             listOf(CCT.name, CCT.group, CCT.description, CCT.toFrontend)
