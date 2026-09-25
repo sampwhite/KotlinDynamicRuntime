@@ -84,7 +84,7 @@ class TraitLockTest : StringSpec({
     "the owner cannot change the audit by any patch, but may change the rest of their form" {
         val gid = engagedForm()
         refused(owner, patchBody(gid, SC.siteAudit, audit("open"))).let {
-            it shouldContain "Acme site audit is locked by Audit review and can't be changed now."
+            it shouldContain "Site audit is locked by Audit review and can't be changed now."
             it shouldNotContain "override"
         }
         // A delete is an edit too.
@@ -102,7 +102,7 @@ class TraitLockTest : StringSpec({
     "nobody the lock holds for may delete the form -- it would remove the audit -- until the lock lifts" {
         val gid = engagedForm()
         owner.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[
-            "errorMessage"].toOptStr().orEmpty() shouldContain "The form can't be deleted while it's in Audit review, which locks its Acme site audit."
+            "errorMessage"].toOptStr().orEmpty() shouldContain "The form can't be deleted while it's in Audit review, which locks its Site audit."
         // Not even someone who may override an edit: a deletion leaves no form to read the override on.
         admin.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)
         owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.auditReview, WFS.engaged to false))
@@ -129,7 +129,7 @@ class TraitLockTest : StringSpec({
 
     "someone the lock does not allow to override is refused even when they ask" {
         val gid = engagedForm()
-        refused(owner, patchBody(gid, SC.siteAudit, audit("open"), reason = "Because")) shouldContain "You can't override Audit review's lock on Acme site audit."
+        refused(owner, patchBody(gid, SC.siteAudit, audit("open"), reason = "Because")) shouldContain "You can't override the lock Audit review holds on Site audit."
     }
 
     "the locks endpoint and the workflow view tell each caller what is locked for them" {
@@ -138,6 +138,7 @@ class TraitLockTest : StringSpec({
             it[WFD.traitId] shouldBe SC.siteAudit
             it[WFD.workflowId] shouldBe SW.auditReview
             it[WFD.label] shouldBe "Audit review"
+            it[WVF.traitName] shouldBe "Site audit"
             it[WVF.canOverride] shouldBe false
         }
         lockedFor(admin, gid).single()[WVF.canOverride] shouldBe true
@@ -185,8 +186,8 @@ class TraitLockTest : StringSpec({
         owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.siteFollowUp))
         owner.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[
             "errorMessage"].toOptStr().orEmpty() shouldContain
-            "The form can't be deleted while it's in Audit review and Site follow-up, which lock its Acme site audit " +
-            "and Acme site follow up."
+            "The form can't be deleted while it's in Audit review and Site follow-up, which lock its Site audit and " +
+            "Site follow-up."
     }
 
     "disengaging lifts the lock -- nothing about it was stored" {

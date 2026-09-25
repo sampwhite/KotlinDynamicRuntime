@@ -15,7 +15,6 @@ import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.util.humanizeFieldName
-import com.dynamicruntime.common.util.joinAsPhrase
 
 /**
  * Which of a form's traits are **locked for this caller** (issue #857), from the form's stored state and the caller --
@@ -89,6 +88,8 @@ object TraitLocks {
         return held.map {
             linkedMapOf<String, Any?>(
                 WFD.traitId to it.lock.traitId,
+                // Named as the server's refusals name it, so the page and the refusal beside it cannot disagree.
+                WVF.traitName to traitName(cxt, client, it.lock.traitId),
                 WFD.workflowId to it.declared.def.workflowId,
                 WFD.label to workflowLabel(it.declared.def, resolve),
                 WVF.canOverride to it.canOverride,
@@ -129,25 +130,19 @@ object TraitLockGuard : GedraWriteGuard {
         val client = write.row.client
         val held = TraitLocks.heldFor(cxt, client, write.row.entries, write.states, write.changedTraits)
         if (held.isEmpty()) return null
-        // The messages name traits and workflows as the pages do -- "Acme site audit", "Audit review" -- never by id.
-        fun traitsOf(locks: List<TraitLocks.Held>) = joinAsPhrase(locks.map { TraitLocks.traitName(cxt, client, it.lock.traitId) }.distinct())
-        fun workflowsOf(locks: List<TraitLocks.Held>) = joinAsPhrase(locks.map { TraitLocks.workflowLabel(cxt, client, it) }.distinct())
-        val workflowCount = held.map { it.declared.def.workflowId }.distinct().size
+        // The messages name traits and workflows as the pages do -- never by id -- in the wording the raw editor shares.
+        fun names(locks: List<TraitLocks.Held>) = locks.map {
+            LockNames(TraitLocks.traitName(cxt, client, it.lock.traitId), TraitLocks.workflowLabel(cxt, client, it))
+        }
         if (write.deletesGedra) {
-            throw KdrException(
-                "The form can't be deleted while it's in ${workflowsOf(held)}, which " +
-                    "${if (workflowCount == 1) "locks" else "lock"} its ${traitsOf(held)}.",
-                code = EXC.conflict,
-            )
+            throw KdrException(TraitLockCopy.deleteRefused(names(held)), code = EXC.conflict)
         }
         val reason = write.overrideReason
         if (reason == null) {
             val overridable = held.all { it.canOverride }
-            val traitCount = held.map { it.lock.traitId }.distinct().size
             throw KdrException(
-                "${traitsOf(held)} ${if (traitCount == 1) "is" else "are"} locked by ${workflowsOf(held)} and " +
-                    "can't be changed now." +
-                    if (overridable) " You can override the ${if (held.size == 1) "lock" else "locks"} by giving a reason." else "",
+                TraitLockCopy.changeRefused(names(held)) +
+                    if (overridable) " " + TraitLockCopy.overrideOffer(held.size) else "",
                 code = EXC.conflict,
             )
         }
@@ -155,12 +150,7 @@ object TraitLockGuard : GedraWriteGuard {
             throw KdrException.mkInput("Overriding a lock needs a reason, recorded with the change.")
         }
         held.filterNot { it.canOverride }.takeIf { it.isNotEmpty() }?.let { refused ->
-            throw KdrException(
-                "You can't override " +
-                    joinAsPhrase(refused.map { "${TraitLocks.workflowLabel(cxt, client, it)}'s lock on ${TraitLocks.traitName(cxt, client, it.lock.traitId)}" }) +
-                    ".",
-                code = EXC.conflict,
-            )
+            throw KdrException(TraitLockCopy.overrideRefused(names(refused)), code = EXC.conflict)
         }
         // Permitted: the override is recorded on each locking workflow's trail, with the write.
         val at = cxt.instanceNow()

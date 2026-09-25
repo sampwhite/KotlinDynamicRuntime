@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfPhase
@@ -32,6 +33,22 @@ class TraitLockViewTest {
         val lock = locks.single()
         assertEquals(listOf("acmeSiteAudit", "auditReview", "Audit review"), listOf(lock.traitId, lock.workflowId, lock.label))
         assertTrue(lock.canOverride)
+    }
+
+    @Test
+    fun aLockCarriesTheNameTheServerGivesAndFallsBackToTheHumanizedId() {
+        val locks = parseTraitLocks(
+            listOf(
+                mapOf(WFD.traitId to "acmeSiteAudit", WVF.traitName to "Site audit", WFD.label to "Audit review"),
+                mapOf(WFD.traitId to "acmeSiteFollowUp", WFD.label to "Site follow-up"),
+            ),
+        )
+        assertEquals(listOf("Site audit", "Acme site follow up"), locks.map { it.name })
+        // The page's own refusal reads as the server's does.
+        assertEquals(
+            "Site audit is locked by Audit review and can't be changed now.",
+            TraitLockCopy.changeRefused(listOf(locks.first().names)),
+        )
     }
 
     @Test

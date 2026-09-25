@@ -966,6 +966,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             items {
                 type = SCT.kObject
                 property(WFD.traitId, "The locked trait.", required = true)
+                property(WVF.traitName, "The locked trait's name, as the pages head it.", required = true)
                 property(WFD.workflowId, "The workflow locking it.", required = true)
                 property(WFD.label, "That workflow's name, resolved.", required = true)
                 property(WVF.canOverride, "Whether this caller may override the lock, with a reason.", required = true) { type = SCT.boolean }
