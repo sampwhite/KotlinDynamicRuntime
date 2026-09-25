@@ -154,11 +154,16 @@ class KdrInstanceConfig(
     /**
      * The mutable child map under [name] in [parent], created when absent (or copied into a mutable map when
      * an existing read-only map is found). A new map replaces a non-map value in the way.
+     *
+     * Only a [HashMap] (a `LinkedHashMap` included) is written into as found. The check cannot be `is
+     * MutableMap`: on the JVM every map passes it, including the read-only ones `mapOf` returns (a single entry
+     * is a `Collections.singletonMap`), so a map an overlay or a deployment supplied was written into directly
+     * and threw `UnsupportedOperationException` (issue #870, the first dotted write into a supplied map).
      */
     private fun childMap(parent: MutableMap<String, Any>, name: String): MutableMap<String, Any> {
         @Suppress("UNCHECKED_CAST")
         return when (val existing = parent[name]) {
-            is MutableMap<*, *> -> existing as MutableMap<String, Any>
+            is HashMap<*, *> -> existing as MutableMap<String, Any>
             is Map<*, *> -> LinkedHashMap(existing as Map<String, Any>).also { parent[name] = it }
             else -> LinkedHashMap<String, Any>().also { parent[name] = it }
         }

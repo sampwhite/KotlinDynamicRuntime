@@ -75,6 +75,16 @@ class KdrInstanceConfigTest : StringSpec({
         config.get("db.name") shouldBe "kdr"
     }
 
+    "a dotted put reaches into a read-only map it was given, by copying it" {
+        // A single-entry `mapOf` is a read-only `Collections.singletonMap`, which on the JVM still passes
+        // `is MutableMap` -- writing into it as found threw (issue #870).
+        val config = KdrInstanceConfig.codeTest()
+        config.put("jobs", mapOf("profile" to mapOf("trace" to "task")))
+        config.put("jobs.profile.retryLimit", 2)
+        config.get("jobs.profile.trace") shouldBe "task"
+        config.get("jobs.profile.retryLimit") shouldBe 2
+    }
+
     "a missing or non-map nested path reads as null" {
         val config = KdrInstanceConfig.codeTest()
         config.get("node.internalIpAddressFilter") shouldBe null

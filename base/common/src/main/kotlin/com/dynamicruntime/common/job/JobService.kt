@@ -12,8 +12,11 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration
+import kotlin.time.Instant
 
 /**
  * Runs this node's batch jobs (issue #869): the registry of job types, the node's job pool, and the launches in
@@ -36,6 +39,10 @@ class JobService : ServiceInitializer, AutoCloseable {
 
     @Volatile
     private var poolOrNull: ExecutorService? = null
+
+    /** The scheduler's timer, when this node runs one (issue #870). */
+    @Volatile
+    private var scheduler: ScheduledExecutorService? = null
     private val poolLock = Any()
 
     override fun checkInit(cxt: KdrCxt) {
@@ -47,6 +54,72 @@ class JobService : ServiceInitializer, AutoCloseable {
             throw KdrException("Job types registered more than once: ${dupes.sorted().joinToString(", ")}.")
         }
         defs = registered.associateBy { it.jobType }
+        JobConfig.check(cxt, defs.values)
+    }
+
+    /**
+     * Starts the scheduler (issue #870) when this node runs one and some job has a schedule: a single daemon
+     * thread that ticks every [JobConfig.tickInterval]. A node with no scheduled jobs starts no thread.
+     */
+    override fun checkReady(cxt: KdrCxt) {
+        if (!JobConfig.schedulerEnabled(cxt) || defs.values.none { it.schedule != null }) return
+        val interval = JobConfig.tickInterval(cxt).inWholeMilliseconds
+        val tickCxt = KdrCxt.mkSimpleCxt("jobScheduler", cxt.instanceConfig)
+        val timer = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "kdr-job-scheduler").also { it.isDaemon = true }
+        }
+        timer.scheduleWithFixedDelay({
+            // A tick that fails is logged and the next one tries again; the scheduler thread must outlive any
+            // one tick's trouble.
+            try {
+                scheduledTick(tickCxt)
+            } catch (e: Exception) {
+                LogJob.error(tickCxt, e) { "A job scheduler tick failed." }
+            }
+        }, interval, interval, TimeUnit.MILLISECONDS)
+        scheduler = timer
+        InstanceRegistry.registerForShutdown(this)
+        LogJob.info(cxt) { "Job scheduler started, ticking every ${interval}ms." }
+    }
+
+    /**
+     * One look for scheduled work (issue #870): what the timer does each tick, and what a test calls directly with
+     * a hand-driven clock. Takes the scheduled jobs in type order and launches the first whose slot's window is
+     * open and whose slot is neither complete nor held live elsewhere -- **one at a time**: a node runs at most
+     * one scheduled job, and scheduled jobs follow each other, so a tick with one running launches nothing.
+     *
+     * A launch takes the slot's name, so a node joining a slot another left unfinished adopts its work through
+     * the launch row, and a run stops when its window closes. [mode] is [JobRunMode.async] from the timer; a
+     * test passes [JobRunMode.pooledOnCaller] to have the run finish within the tick.
+     */
+    fun scheduledTick(cxt: KdrCxt, mode: JobRunMode = JobRunMode.async): List<JobTick> {
+        if (runs.values.any { it.first.launch.kind == JobLaunchKind.scheduled }) {
+            return listOf(JobTick(null, null, JobTickAction.nodeBusy))
+        }
+        val out = mutableListOf<JobTick>()
+        for (def in defs.values.sortedBy { it.jobType }) {
+            val schedule = def.schedule ?: continue
+            val now = Instant.fromEpochMilliseconds(cxt.instanceNow().toEpochMilliseconds())
+            val slot = schedule.openSlot(now)
+            if (slot == null) {
+                out.add(JobTick(def.jobType, null, JobTickAction.notInWindow))
+                continue
+            }
+            val name = schedule.launchName(slot)
+            val row = JobStatusRows.readLaunch(cxt, def.jobType, JobLaunchKind.scheduled)
+            if (row != null && row.launchName == name && row.runStatus == JobRunStatus.complete) {
+                out.add(JobTick(def.jobType, name, JobTickAction.complete))
+                continue
+            }
+            if (row != null && row.isLive(now, def.profile.resolve(cxt).leaseTimeout)) {
+                out.add(JobTick(def.jobType, name, JobTickAction.heldLive))
+                continue
+            }
+            val result = launch(cxt, def.jobType, name, JobLaunchKind.scheduled, mode, deadline = slot + schedule.window)
+            out.add(JobTick(def.jobType, name, JobTickAction.launched, result))
+            if (result.outcome != JobLaunchOutcome.lockedOut && result.outcome != JobLaunchOutcome.alreadyComplete) break
+        }
+        return out
     }
 
     /** The registered job types, by type. */
@@ -74,6 +147,8 @@ class JobService : ServiceInitializer, AutoCloseable {
         redoWindow: Duration? = null,
         dryRun: Boolean = false,
         trace: JobTraceLevel? = null,
+        /** For a scheduled launch, when its slot's window closes (issue #870). */
+        deadline: Instant? = null,
     ): JobLaunchResult {
         val def = def(jobType)
         val profile = def.profile.resolve(cxt)
@@ -107,7 +182,7 @@ class JobService : ServiceInitializer, AutoCloseable {
             JobTraceEvent.launchClaimed,
             data = linkedMapOf(JOB.adopted to lease.adopted, JOB.generationId to lease.generationId, JOB.traceLevel to tracer.level.name),
         )
-        val run = JobRun(def, profile, launch, runClients, workAreas, mode, jobCxt, ::pool, counted, tracer)
+        val run = JobRun(def, profile, launch, runClients, workAreas, mode, jobCxt, ::pool, counted, tracer, deadline)
         val key = runKey(jobType, kind, dryRun)
         if (mode != JobRunMode.async) {
             runs[key] = run to null
@@ -143,6 +218,7 @@ class JobService : ServiceInitializer, AutoCloseable {
 
     /** Stops every run on this node and lets its rows go; called on JVM shutdown. */
     override fun close() {
+        scheduler?.shutdownNow()
         val active = runs.values.toList()
         active.forEach { it.first.shutDown() }
         active.mapNotNull { it.second }.forEach { runCatching { it.join(shutdownGraceMs) } }
@@ -229,3 +305,25 @@ object JOBP {
     const val launchedBy = "launchedBy"
     const val trace = "trace"
 }
+
+/** What one scheduler tick did about a scheduled job (issue #870). */
+@Suppress("EnumEntryName")
+enum class JobTickAction {
+    /** The job's latest slot has no open window: it is not due, or its window closed (abort is final). */
+    notInWindow,
+
+    /** The slot's launch is complete. */
+    complete,
+
+    /** Another launch holds the slot's row live -- on another node, or this one. */
+    heldLive,
+
+    /** A launch was made; [JobTick.result] says what became of it. */
+    launched,
+
+    /** A scheduled job is already running on this node, so the tick looked no further. */
+    nodeBusy,
+}
+
+/** One decision of a scheduler tick: the job, the slot's launch name, what was done, and a launch's result. */
+class JobTick(val jobType: String?, val slotName: String?, val action: JobTickAction, val result: JobLaunchResult? = null)

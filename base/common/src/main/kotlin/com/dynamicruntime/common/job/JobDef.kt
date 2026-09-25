@@ -31,6 +31,8 @@ class JobDef(
      * on.
      */
     val countTasks: ((JobRunCxt, String) -> Int)? = null,
+    /** When the job runs on its own (issue #870); null for a job that runs only when launched. */
+    val schedule: JobSchedule? = null,
 )
 
 /** What a task did. A failure is not a result: it is thrown. */

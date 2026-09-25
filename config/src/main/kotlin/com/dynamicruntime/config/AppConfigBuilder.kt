@@ -6,7 +6,12 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.VariantScenario
+import com.dynamicruntime.common.job.JPF
+import com.dynamicruntime.common.job.JSCH
+import com.dynamicruntime.common.job.JobProfileSettings
+import com.dynamicruntime.common.job.JobSchedulerSettings
 import com.dynamicruntime.common.sql.DbEnv
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 @Suppress("MoveLambdaOutsideParentheses", "unused")
 class AppConfigBuilder(cxt: KdrCxt, data: MutableMap<String,Any?>) : KdrConfigData(cxt, data) {
@@ -43,4 +48,34 @@ class AppConfigBuilder(cxt: KdrCxt, data: MutableMap<String,Any?>) : KdrConfigDa
      * this set. See [VariantScenario] and `VariantBehavior`.
      */
     var testVariantScenarios: List<VariantScenario> by data
+
+    /**
+     * Overrides job profile [name]'s settings for this deployment (issue #870): threads, heartbeat, lease,
+     * retries, synchronous caps, trace. A deployment's choice outranks what a component contributes, and a
+     * profile no registered job uses, or a setting that does not exist, fails the boot's job-config check.
+     *
+     * ```
+     * jobProfile("workflowStates") { leaseTimeoutMs = 60_000; trace = JobTraceLevel.launch }
+     * ```
+     */
+    fun jobProfile(name: String, build: JobProfileSettings.() -> Unit) {
+        section(JPF.jobProfiles, name).putAll(JobProfileSettings().apply(build).toMap())
+    }
+
+    /** Sets the node's job scheduler for this deployment (issue #870): whether it runs, and how often it looks. */
+    fun jobScheduler(build: JobSchedulerSettings.() -> Unit) {
+        section(JSCH.jobScheduler).putAll(JobSchedulerSettings().apply(build).toMap())
+    }
+
+    /** The mutable map at [path] under [data], created (or copied from a read-only one) as needed. */
+    private fun section(vararg path: String): MutableMap<String, Any?> {
+        var current: MutableMap<String, Any?> = data
+        for (key in path) {
+            val existing = current[key].toJsonMapOrEmpty()
+            val child = LinkedHashMap(existing)
+            current[key] = child
+            current = child
+        }
+        return current
+    }
 }

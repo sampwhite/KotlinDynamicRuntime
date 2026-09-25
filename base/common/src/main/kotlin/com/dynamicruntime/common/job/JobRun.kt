@@ -81,6 +81,8 @@ internal class JobRun(
     private val countedTotal: Long?,
     /** The launch's trace (issue #879); records nothing when its level is off. */
     private val tracer: JobTracer,
+    /** For a scheduled launch, the end of its slot's window: the run stops there, unfinished or not (issue #870). */
+    private val deadline: Instant?,
 ) {
     private val lock = Any()
     private var stopReason: String? = null
@@ -126,6 +128,7 @@ internal class JobRun(
         lastProgress = lastBeat
         try {
             for (client in clients) {
+                checkDeadline(now())
                 if (stopReason() != null) break
                 when (val claim = JobStatusRows.claimClient(cxt, lease, client, profile.leaseTimeout)) {
                     is JobClaim.LockedOut -> {
@@ -291,10 +294,16 @@ internal class JobRun(
                 stop("Abort requested.")
             }
         }
+        checkDeadline(now)
         if (now - lastProgress >= profile.leaseTimeout / 2) {
             stop("Too slow: no task finished in ${now - lastProgress}, half the lease timeout or more.")
         }
         tracer.flush()
+    }
+
+    /** Stops a scheduled run once its slot's window has closed: past it, an unfinished run is final. */
+    private fun checkDeadline(now: Instant) {
+        if (deadline != null && now >= deadline) stop("The scheduled window closed at ${deadline}.")
     }
 
     private fun aggregate(): Map<String, Any?> = linkedMapOf(
