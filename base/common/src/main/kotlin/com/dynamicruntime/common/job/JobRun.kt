@@ -79,6 +79,8 @@ internal class JobRun(
     private val pool: () -> ExecutorService,
     /** The task total counted before a synchronous launch was admitted; null when not counted. */
     private val countedTotal: Long?,
+    /** The launch's trace (issue #879); records nothing when its level is off. */
+    private val tracer: JobTracer,
 ) {
     private val lock = Any()
     private var stopReason: String? = null
@@ -104,7 +106,10 @@ internal class JobRun(
 
     /** Asks the run to stop for [reason]; the first reason asked for is the one kept. */
     fun stop(reason: String) {
-        synchronized(lock) { if (stopReason == null) stopReason = reason }
+        val first = synchronized(lock) {
+            (stopReason == null).also { if (it) stopReason = reason }
+        }
+        if (first) tracer.record(JobTraceEvent.stopping, clientLease?.client, message = reason)
     }
 
     /** Stops the run for a node shutdown: it lets its rows go (released) rather than ending them aborted. */
@@ -123,9 +128,24 @@ internal class JobRun(
             for (client in clients) {
                 if (stopReason() != null) break
                 when (val claim = JobStatusRows.claimClient(cxt, lease, client, profile.leaseTimeout)) {
-                    is JobClaim.LockedOut -> busyClients.add(client)
-                    is JobClaim.AlreadyComplete -> clientsDone++
-                    is JobClaim.Claimed -> runClient(claim.lease)
+                    is JobClaim.LockedOut -> {
+                        busyClients.add(client)
+                        tracer.record(
+                            JobTraceEvent.clientBusy, client,
+                            message = "Held by launch '${claim.launchName}'" + (claim.holder?.let { " on $it" } ?: "") + ".",
+                        )
+                    }
+                    is JobClaim.AlreadyComplete -> {
+                        clientsDone++
+                        tracer.record(JobTraceEvent.clientAlreadyComplete, client, data = claim.counts.toJsonMap())
+                    }
+                    is JobClaim.Claimed -> {
+                        tracer.record(
+                            JobTraceEvent.clientClaimed, client,
+                            data = linkedMapOf(JOB.adopted to claim.lease.adopted, JOB.generationId to claim.lease.generationId),
+                        )
+                        runClient(claim.lease)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -141,7 +161,7 @@ internal class JobRun(
         clientCounts = lease.counts
         clientFenced = false
         lastProgress = now()
-        val runCxt = JobRunCxt(cxt.mkSubContext("job", client), launch, workAreas, client, lease.generationId) { stopReason() }
+        val runCxt = JobRunCxt(cxt.mkSubContext("job", client), launch, workAreas, client, lease.generationId, tracer) { stopReason() }
         try {
             val keys = def.tasks(runCxt, client)
             clientCounts = clientCounts.withTotal(keys.size.toLong())
@@ -151,13 +171,17 @@ internal class JobRun(
             stop("The run failed on client '$client': ${e.message}")
         }
         val reason = stopReason()
-        if (!clientFenced) {
-            when {
-                shuttingDown -> JobStatusRows.release(cxt, lease, clientCounts)
-                reason == null -> JobStatusRows.finish(cxt, lease, JobAttemptEnd.complete, clientCounts)
-                else -> JobStatusRows.finish(cxt, lease, JobAttemptEnd.aborted, clientCounts, reason)
-            }
+        val end = when {
+            clientFenced -> null
+            shuttingDown -> JobAttemptEnd.released
+            reason == null -> JobAttemptEnd.complete
+            else -> JobAttemptEnd.aborted
         }
+        if (end != null) JobStatusRows.finish(cxt, lease, end, clientCounts, if (end == JobAttemptEnd.aborted) reason else null)
+        tracer.record(
+            JobTraceEvent.clientEnded, client,
+            data = linkedMapOf(JOB.end to (end?.name ?: "fenced"), JOB.counts to clientCounts.toJsonMap()),
+        )
         if (reason == null) clientsDone++
         clientLease = null
     }
@@ -197,19 +221,37 @@ internal class JobRun(
 
     /** Folds one task's [outcome] into the counters, and stops the run when it calls for that. */
     private fun record(outcome: TaskOutcome) {
+        val client = clientLease?.client
         when (outcome.kind) {
-            TaskKind.done -> count(JobCounts(completed = 1))
-            TaskKind.nothingToDo -> count(JobCounts(skipped = 1))
+            TaskKind.done -> {
+                count(JobCounts(completed = 1))
+                tracer.record(JobTraceEvent.taskDone, client, outcome.key)
+            }
+            TaskKind.nothingToDo -> {
+                count(JobCounts(skipped = 1))
+                tracer.record(JobTraceEvent.taskNothingToDo, client, outcome.key)
+            }
             TaskKind.failed -> {
                 count(JobCounts(failed = 1))
                 val e = outcome.error
-                val scenario = (e as? KdrException)?.extraData?.get(KdrException.scenarioKey).toOptStr()
+                val extra = (e as? KdrException)?.extraData.orEmpty()
+                val scenario = extra[KdrException.scenarioKey].toOptStr()
                 LogJob.warn(cxt) {
                     "Job '${def.jobType}' task '${outcome.key}' failed" +
                         (if (scenario != null) " ($scenario)" else "") + ": ${e?.message}"
                 }
+                tracer.record(
+                    JobTraceEvent.taskFailed, client, outcome.key, e?.message,
+                    linkedMapOf(
+                        KdrException.scenarioKey to scenario,
+                        KdrException.resourceIdKey to extra[KdrException.resourceIdKey].toOptStr(),
+                    ),
+                )
             }
-            TaskKind.abort -> stop(outcome.error?.message ?: "A task aborted the job.")
+            TaskKind.abort -> {
+                tracer.record(JobTraceEvent.taskAborted, client, outcome.key, outcome.error?.message)
+                stop(outcome.error?.message ?: "A task aborted the job.")
+            }
             TaskKind.stopped -> {}
         }
         if (outcome.kind != TaskKind.stopped) {
@@ -252,6 +294,7 @@ internal class JobRun(
         if (now - lastProgress >= profile.leaseTimeout / 2) {
             stop("Too slow: no task finished in ${now - lastProgress}, half the lease timeout or more.")
         }
+        tracer.flush()
     }
 
     private fun aggregate(): Map<String, Any?> = linkedMapOf(
@@ -279,6 +322,11 @@ internal class JobRun(
             }
         }
         val outcome = if (reason == null) JobLaunchOutcome.completed else JobLaunchOutcome.aborted
+        tracer.record(
+            JobTraceEvent.launchEnded, message = reason,
+            data = linkedMapOf(JOB.end to outcome.name, JOB.counts to launchCounts.toJsonMap()),
+        )
+        tracer.flush(final = true)
         return JobLaunchResult(outcome, reason, launchCounts)
     }
 
@@ -300,6 +348,9 @@ internal class JobRun(
                     JobHandling.retryTask -> {
                         if (retries >= profile.retryLimit) return TaskOutcome(key, TaskKind.failed, e)
                         retries++
+                        tracer.record(
+                            JobTraceEvent.taskRetry, runCxt.client, key, e.message, linkedMapOf(JOBT.attempt to retries),
+                        )
                         Thread.sleep((profile.retryBackoff * retries).inWholeMilliseconds)
                     }
                     // Unclassified is treated as a skip: one unexpected record should not stop the whole job.

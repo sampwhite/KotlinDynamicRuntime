@@ -51,9 +51,27 @@ object JOB {
     const val end = "end"
     const val reason = "reason"
     const val counts = "counts"
+    const val adopted = "adopted"
+    const val traceLevel = "traceLevel"
 
     /** How many ended attempts a row's history keeps, newest last. */
     const val historyLimit = 5
+}
+
+/** The job-trace table and its columns (issue #879). Each name matches its value. */
+@Suppress("ConstPropertyName")
+object JOBT {
+    const val jobTrace = "JobTrace"
+
+    /** The database-assigned order of the entries: the order they were written, across runs and nodes. */
+    const val traceSeq = "traceSeq"
+    const val at = "at"
+    const val event = "event"
+    const val taskKey = "taskKey"
+    const val message = "message"
+
+    /** A retry's number, in a `taskRetry` entry's data. */
+    const val attempt = "attempt"
 }
 
 /**
@@ -86,6 +104,27 @@ fun jobTables(cxt: KdrCxt): List<KdrTable> =
             forClient()
             primaryKey(JOB.jobType, PF.client, JOB.dryRun)
             withTransactions()
+        }
+        // Append-only and never locked: a trace entry is written once, on a connection of its own, and read back
+        // in the order the database numbered it (issue #879).
+        table(JOBT.jobTrace, "Why a launch did what it did: an append-only record of its decisions (#879).") {
+            column(JOBT.traceSeq, "The entry's place in the order entries were written.", required = true, autoIncrement = true) {
+                type = SCT.integer
+            }
+            column(JOB.jobType, "The job type.", required = true)
+            column(JOB.launchKind, "The launch kind.", required = true)
+            column(JOB.dryRun, "Whether the launch is a dry run.", required = true) { type = SCT.boolean }
+            column(JOB.launchName, "The launch's name.", required = true)
+            column(JOB.leaseId, "The launch claim this entry was written under, when there was one.")
+            column(JOB.holder, "The node that wrote it.")
+            column(JOBT.at, "When it happened, on the writing node's clock.", required = true) { dateTime() }
+            column(JOBT.event, "What happened: a JobTraceEvent name.", required = true)
+            column(PF.client, "The client it concerns, if one.")
+            column(JOBT.taskKey, "The task it concerns, if one.")
+            column(JOBT.message, "A description, when there is more to say than the event.")
+            column(JOB.data, "The event's details.") { type = SCT.kObject }
+            primaryKey(JOBT.traceSeq)
+            index(JOB.jobType, JOB.launchKind, JOB.dryRun, JOB.launchName)
         }
     }
 

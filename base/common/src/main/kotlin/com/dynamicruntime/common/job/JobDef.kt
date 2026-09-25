@@ -57,6 +57,7 @@ class JobRunCxt internal constructor(
     val client: String?,
     /** The generation of [client]'s row this work belongs to; zero before the row is claimed. */
     val generationId: Long,
+    private val tracer: JobTracer?,
     private val stopping: () -> String?,
 ) {
     /** Whether the launch is a dry run: it checks for work and reports it, but does none. */
@@ -64,6 +65,15 @@ class JobRunCxt internal constructor(
 
     /** Why the run is stopping, or null while it is not. */
     val stopReason: String? get() = stopping()
+
+    /**
+     * Adds a note of the job's own to the launch's trace (issue #879), recorded at task level: why a task decided
+     * what it did, in terms only the job knows. Buffered and written by the run later, never in the caller's
+     * transaction, so it is kept even when the work it describes rolls back.
+     */
+    fun trace(message: String, taskKey: String? = null, data: Map<String, Any?>? = null) {
+        tracer?.record(JobTraceEvent.jobNote, client, taskKey, message, data)
+    }
 
     /**
      * Throws the abort variant if the run is stopping. A task that does more than one read, or a long stretch of
