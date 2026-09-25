@@ -81,10 +81,4 @@ class SupportedTraitsTest : StringSpec({
             .shouldContainExactly(listOf("address", "loyalty", "name"))
     }
 
-    // Only reachable for a client whose definition was dropped in a degraded production boot; behaving as it
-    // did before clients existed is the safer of the two answers.
-    "a client with no definition at all supports what it can see" {
-        ids(supportedTraits(collectorOf(global), "acme", null, emptySet())) shouldContainExactly
-            listOf("address", "name")
-    }
 })

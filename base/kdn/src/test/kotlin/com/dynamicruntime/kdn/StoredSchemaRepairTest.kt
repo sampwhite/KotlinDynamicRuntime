@@ -178,7 +178,7 @@ class StoredSchemaRepairTest : StringSpec({
         val badEntry = result.issues.single { it.elementId == "${client}config.BadEntry" }
         badEntry.message shouldContain "does not compile"
         result.issues.any { it.elementKind == GCEL.workflow && it.elementId == "collectBad" } shouldBe true
-        val supported = SchemaService.get(cxt).supportedGedraTraitsFor(client, ClientService.get(cxt).present(client))
+        val supported = SchemaService.get(cxt).supportedGedraTraitsFor(client, ClientService.get(cxt).present(client)!!)
             .map { it.traitId }
         supported.contains("${client}Good") shouldBe true
         supported.contains("${client}Bad") shouldBe false

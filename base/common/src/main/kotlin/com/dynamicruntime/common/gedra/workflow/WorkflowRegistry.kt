@@ -115,8 +115,8 @@ fun interface WfFragmentLookup {
 fun buildWorkflowRegistries(
     cxt: KdrCxt,
     configs: GedraConfigCollector,
-    /** The clients present on this node, by id, with their definitions (null when a definition was dropped). */
-    clients: Map<String, ClientDef?>,
+    /** The clients present on this node, by id, with their definitions. */
+    clients: Map<String, ClientDef>,
     /** The qualified type names a client overlaid -- what `supportedTraits` reads as "customized". */
     overlaidTypes: (client: String) -> Set<String>,
     fragments: WfFragmentLookup,

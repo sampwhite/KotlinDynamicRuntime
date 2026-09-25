@@ -24,7 +24,8 @@ package com.dynamicruntime.common.gedra
 fun supportedTraits(
     configs: GedraConfigCollector,
     client: String,
-    def: ClientDef?,
+    /** The client's definition. Only a present client is asked about (issue #819), and every one has a definition. */
+    def: ClientDef,
     /** Qualified type names this client overlaid; a trait whose entry type is among them was customized. */
     overlaidTypes: Set<String>,
     /**
@@ -38,16 +39,12 @@ fun supportedTraits(
         return supportedTraits(configs, client, def, overlaidTypes).filter { it.typeName !in withoutTypes }
     }
     val visible = configs.traitsFor(client)
-    // No definition means nothing has said what this client supports, so it is treated as supporting what it
-    // can see. Only reachable for a client whose definition was dropped in a degraded production boot -- and
-    // there, behaving as it did before clients existed is the safer of the two answers.
-    val declared = def ?: return visible
     val included = LinkedHashMap<String, GedraTrait>()
     for (trait in visible) {
-        val byId = trait.traitId in declared.includedTraitIds
+        val byId = trait.traitId in def.includedTraitIds
         // `#allGlobal` is functional: membership computed here from what is global, never written down, so it
         // cannot fall out of step the way a hand-applied tag would.
-        val byGroup = CLD.allGlobal in declared.includedGroups && trait !in configs.traitsOwnedBy(client)
+        val byGroup = CLD.allGlobal in def.includedGroups && trait !in configs.traitsOwnedBy(client)
         // Customized without a second mention: altering a trait's entry type is as clear a statement of intent
         // as naming it, and requiring both would make the list a place to forget.
         val customized = trait.typeName in overlaidTypes

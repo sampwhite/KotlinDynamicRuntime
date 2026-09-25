@@ -61,7 +61,7 @@ class WorkflowService : ServiceInitializer {
         found: MutableList<GedraConfigIssue>,
         onlyClient: String? = null,
     ): WorkflowRegistries {
-        val clients: Map<String, ClientDef?> = clientService.presentClients.associateBy { it.clientId }
+        val clients: Map<String, ClientDef> = clientService.presentClients.associateBy { it.clientId }
         val registries = buildWorkflowRegistries(
             cxt, collector.gedraConfigs, clients,
             overlaidTypes = { collector.clientOverlays[it]?.keys ?: emptySet() },
@@ -122,7 +122,7 @@ class WorkflowService : ServiceInitializer {
         droppedTypes: Set<String>,
     ) {
         val found = mutableListOf<GedraConfigIssue>()
-        val clients: Map<String, ClientDef?> =
+        val clients: Map<String, ClientDef> =
             if (def != null && def.isEnabledIn(cxt.instanceConfig.env)) mapOf(client to def) else emptyMap()
         buildWorkflowRegistries(
             cxt, scratch.gedraConfigs, clients,

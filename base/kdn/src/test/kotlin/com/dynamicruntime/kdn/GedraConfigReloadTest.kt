@@ -154,13 +154,8 @@ class GedraConfigReloadTest : StringSpec({
 
         // The refused revision: a single usage whose parameter name is a reserved listing field (EP.offset). It
         // stores cleanly and the collector accepts it, so the reload publishes -- and checkUsageRules then refuses.
+        // A second config of the client, so it does not define the client again (the base does).
         val bad = gedraConfig(own, "${client}collide", ns(client), client) {
-            defineClient(
-                ClientDef(
-                    clientId = client, name = client, usageType = ClientUsageType.dev,
-                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
-                ),
-            )
             trait("offsetEntry", EP.offset, setOf(GedraDataType.formDoc), "A trait named like a reserved field.") {
                 property("value", "A value.")
             }

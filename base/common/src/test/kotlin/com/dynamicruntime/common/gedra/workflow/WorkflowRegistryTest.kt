@@ -105,7 +105,7 @@ class WorkflowRegistryTest : StringSpec({
         } ?: cxt
         val collector = GedraConfigCollector()
         configs.forEach { collector.add(checkCxt, it) }
-        val clients = collector.configs.mapNotNull { it.client }.associate { it.clientId to it as ClientDef? }
+        val clients = collector.configs.mapNotNull { it.client }.associateBy { it.clientId }
         val issues = mutableListOf<GedraConfigIssue>()
         // The cfact vocabulary eligibility tests parse against: global gets one name, a client adds its own.
         val cfactNames: (String?) -> Set<String> = { scope ->

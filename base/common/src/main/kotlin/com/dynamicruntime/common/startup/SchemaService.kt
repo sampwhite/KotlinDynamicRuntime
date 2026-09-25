@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.gedra.GedraDataDeriver
@@ -238,8 +239,11 @@ class SchemaService : ServiceInitializer {
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
         val dropped = HashMap<String, Set<String>>()
+        // For the clients present here (issue #819), which the client checks decide -- `ClientService` runs ahead of
+        // this service in the startup tier for exactly this; forced here so that ordering is not an assumption.
+        val present = ClientService.get(cxt).also { it.checkInit(cxt) }.presentClients.associateBy { it.clientId }
         val variants = buildClientVariants(
-            cxt, collected, store, queryBase, repair = repairContext(collected), droppedTypes = dropped,
+            cxt, collected, store, queryBase, present, repair = repairContext(collected), droppedTypes = dropped,
         )
         droppedTypes = dropped
         // Each client that varies something gets its own copy of the client-shaped endpoints (issue #387).
@@ -521,15 +525,17 @@ class SchemaService : ServiceInitializer {
     /**
      * Evaluates [client]'s schema over a trial's [scratch] collector (issue #843) -- its cfact registry, its variant
      * (built and repaired, never published) and its usage rules -- with every problem going to the trial's capture.
-     * Returns what the rest of the trial reads: the client's cfact names and the types its variant dropped.
+     * [def] is the client's definition as the trial's client check kept it, when the client would be present; with
+     * none there is no variant, as a reload would build none (issue #819). Returns what the rest of the trial reads:
+     * the client's cfact names and the types its variant dropped.
      */
-    fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String): SchemaTrial {
+    fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String, def: ClientDef?): SchemaTrial {
         val own = scratch.clientCFacts[client].orEmpty()
         val registry = cfactRegistriesOf(cxt, scratch, mapOf(client to own)).byClient[client] ?: cfactsFor(null)
         val dropped = HashMap<String, Set<String>>()
         buildClientVariants(
-            cxt, scratch, snapshot.store, queryBase, onlyClient = client, repair = repairContext(scratch),
-            droppedTypes = dropped,
+            cxt, scratch, snapshot.store, queryBase, def?.let { mapOf(client to it) } ?: emptyMap(),
+            onlyClient = client, repair = repairContext(scratch), droppedTypes = dropped,
         )
         checkUsageRules(cxt, scratch, onlyScope = client)
         return SchemaTrial(registry.names, dropped[client].orEmpty())
@@ -768,10 +774,9 @@ class SchemaService : ServiceInitializer {
      * The gedra traits [client] actually **supports** (issue #672) -- narrower than [gedraTraitsFor], which is
      * what the client can *see* (its own plus every global trait). A client that omits a global trait can see
      * but does not support it, and this is the set its forms are built from. [def] is the client's definition
-     * (its `includedTraits` drive the computation); null means the definition was dropped in a degraded boot, in
-     * which case a client supports what it sees. The same `supportedTraits` the workflow and variant builds use.
+     * (its `includedTraits` drive the computation). The same `supportedTraits` the workflow and variant builds use.
      */
-    fun supportedGedraTraitsFor(client: String, def: ClientDef?): List<GedraTrait> =
+    fun supportedGedraTraitsFor(client: String, def: ClientDef): List<GedraTrait> =
         collector?.let {
             val overlaid = it.clientOverlays[client]?.keys ?: emptySet()
             supportedTraits(it.gedraConfigs, client, def, overlaid, droppedTypesFor(client))
@@ -878,9 +883,12 @@ class SchemaService : ServiceInitializer {
         val before = global.endpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
 
         val dropped = HashMap<String, Set<String>>()
+        // Only if the client is present (issue #819) -- the reload rechecks it first, so this is the definition that
+        // check kept. One it dropped, or one not enabled here, loses its variant.
+        val present = ClientService.get(cxt).present(client)?.let { mapOf(client to it) } ?: emptyMap()
         val variant =
             buildClientVariants(
-                cxt, collected, global, queryBase, onlyClient = client, repair = repairContext(collected),
+                cxt, collected, global, queryBase, present, onlyClient = client, repair = repairContext(collected),
                 droppedTypes = dropped,
             )[client]
         droppedTypes = (droppedTypes - client) + dropped

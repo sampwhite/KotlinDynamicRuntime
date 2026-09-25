@@ -50,9 +50,15 @@ fun buildClientVariants(
     global: KdrSchemaStore,
     queryBase: Any?,
     /**
+     * The clients present on this node, by id, with the definitions the client checks kept (issue #819) --
+     * `ClientService.presentClients` at boot, the one client after its recheck on a reload, a trial's candidate.
+     * Only these get a variant.
+     */
+    present: Map<String, ClientDef>,
+    /**
      * Restrict the build to this one client (issue #616): a running-node reload rebuilds a single client's
      * variant off the current collector, over the very same per-client body the boot runs for every client --
-     * so a reloaded variant and a booted one are the same computation. Null builds every varying client.
+     * so a reloaded variant and a booted one are the same computation. Null builds every present client.
      */
     onlyClient: String? = null,
     /**
@@ -67,20 +73,11 @@ fun buildClientVariants(
      */
     droppedTypes: MutableMap<String, Set<String>>? = null,
 ): Map<String, KdrSchemaStore> {
-    val defsByClient = collected.gedraConfigs.configs.mapNotNull { it.client }.associateBy { it.clientId }
-    // A client that only declares usage rules (issue #538) varies its listing's search fields without
-    // overlaying a `$def` or restricting its traits -- so it would be missed by the two sets below, which is
-    // exactly the ordinary case for a client that adds a search column and nothing else.
-    val usageClients = collected.gedraConfigs.configs
-        .filter { it.usages.isNotEmpty() }
-        .map { it.gedraId.client }
-        .filter { it != GID.globalClient }
-    // Every client that could differ from global: one that overlaid something, one whose definition restricts
-    // which traits it supports, and one that declared usage rules. The middle has no overlays at all, so
-    // iterating those alone would miss it -- a client that narrows its trait set purely by declaration is the
-    // ordinary case.
-    val clients = (collected.clientOverlays.keys + defsByClient.keys + usageClients).toSet()
-        .let { all -> if (onlyClient == null) all else all.filter { it == onlyClient }.toSet() }
+    // Only a **present** client gets a variant (issue #819): one the client checks dropped, or one not enabled in
+    // this environment, is not there -- nothing can reach it -- so building a variant from its rejected definition
+    // would be work for nobody, and a store holding what the checks refused. Every present client is built, since
+    // its definition alone may narrow the traits it supports; one varying nothing shares the global store.
+    val clients = present.keys.let { all -> if (onlyClient == null) all else all.filter { it == onlyClient }.toSet() }
     if (clients.isEmpty()) {
         return emptyMap()
     }
@@ -112,7 +109,7 @@ fun buildClientVariants(
             // A type the client declared and this build left out (it would not compile) takes its trait out of
             // the unions with it, or the unions would reference a type that is not there.
             val gone = (declaredNames - from.keys).filterTo(HashSet()) { it !in global.defs }
-            val unions = changedUnions(cxt, collected, global, client, defsByClient[client], from.keys, gone)
+            val unions = changedUnions(cxt, collected, global, client, present.getValue(client), from.keys, gone)
             var composed: Map<String, Any?> = overlayDefs(global.defs, from)
             if (unions.isNotEmpty()) composed = composed + unions
             if (queryOverlay.isNotEmpty()) composed = composed + queryOverlay
@@ -181,7 +178,7 @@ private fun changedUnions(
     collected: SchemaCollector,
     global: KdrSchemaStore,
     client: String,
-    def: ClientDef?,
+    def: ClientDef,
     overlaidTypes: Set<String>,
     withoutTypes: Set<String> = emptySet(),
 ): Map<String, Any?> {
