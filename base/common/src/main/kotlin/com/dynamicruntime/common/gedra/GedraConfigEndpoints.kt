@@ -318,6 +318,7 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new client is
     // created over the API (its `clientDef` slot, made present by the next reload).
     val config = reassembleGedraConfig(c, name, namespace, c.client, slots)
+    requireOperatorFieldsKept(c, config.client)
     // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
     val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
@@ -341,9 +342,33 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // and, off one, the write is refused rather than silently dropping it (the #685 explicit-write rule). The
     // 404 for a missing config is `patchConfig`'s.
     val edited = svc.patchConfig(c, configId(c, name), trial = true) { current ->
-        applyConfigSlotEdits(current, edits, pk)
+        applyConfigSlotEdits(current, edits, pk).also { patched ->
+            requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { ClientDef.fromInfo(it) })
+        }
     }
     return bundleOf(c, edited)
+}
+
+/**
+ * Refuses a **client administrator's** change to a field only a platform operator may set ([ClientOperatorFields],
+ * issue #820) -- the write by which a client's own administrator would raise its own client's authority, writing
+ * `audience: internal`, say. An `allClients` administrator is the operator, on either surface. Judged against the
+ * client's definition as it stands -- stored, or in source -- or, for a client with none, the least-authority
+ * defaults. Load trusts what is stored, since this is the gate every client-scoped write passes.
+ */
+private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
+    if (proposed == null || AdminRules.canSeeAllClients(c)) return
+    val stored = GedraConfigService.get(c).listConfigs(c)
+        .firstNotNullOfOrNull { it.entriesBySlot()[CCT.clientDef]?.firstOrNull() }
+    val current = stored ?: ClientService.get(c).known(c.client)?.toInfo()
+    val changed = ClientOperatorFields.changedBy(proposed.toInfo(), current)
+    if (changed.isEmpty()) return
+    val keep = changed.joinToString(", ") { "$it '${current?.get(it) ?: ClientOperatorFields.defaults[it]}'" }
+    throw KdrException(
+        "Client '${c.client}''s ${changed.joinToString(" and ")} may be set only by a platform operator; a client " +
+            "administrator's write must keep them as they are ($keep).",
+        code = EXC.notAuthorized,
+    )
 }
 
 /**
