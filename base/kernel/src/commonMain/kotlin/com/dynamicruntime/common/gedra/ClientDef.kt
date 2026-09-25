@@ -49,9 +49,9 @@ enum class ClientUsageType {
  * `allClients` capability stand in for "is one of us".
  *
  * **It is an authority axis, not a label.** It decides what a caller is proactively shown, and it relaxes the
- * functional-group restriction (see [ClientDef.includedTraits]), so it may be set only in source code. Once a
- * client can be defined in data, a definition arriving that way may not choose its own -- otherwise a client
- * could write `internal` and take a capability with it.
+ * functional-group restriction (see [ClientDef.includedTraits]), so a client may not choose its own: it is set in
+ * source code, or by a platform operator for a client defined in data -- never by the client's own administrator,
+ * or a client could write `internal` and take a capability with it. See [ClientOperatorFields] (issue #820).
  */
 @Suppress("EnumEntryName")
 enum class ClientAudience {
@@ -60,6 +60,33 @@ enum class ClientAudience {
 
     /** Somebody else's. */
     customer,
+}
+
+/**
+ * The [ClientDef] fields a client may not set for **itself** (issue #820): they carry authority over the client, so
+ * only we set them -- in source code, or, for a client defined in data, a platform operator (an `allClients`
+ * administrator, an import, a service write). A client's own administrator must keep them as they are: a write
+ * from one that changes any is refused. Declared here, in one place, so a further field of limited editability is
+ * one line rather than another check.
+ */
+object ClientOperatorFields {
+    /**
+     * Each operator-only field (a [CLD] key), with the value it holds for a client that has no definition yet --
+     * the least authority, which is all a client's own write could ever start from.
+     */
+    val defaults: Map<String, String> = linkedMapOf(
+        CLD.audience to ClientAudience.customer.name,
+        CLD.usageType to ClientUsageType.production.name,
+    )
+
+    /**
+     * The operator-only fields [proposed] sets differently from [current] -- both `ClientInfo` maps
+     * ([ClientDef.toInfo]) -- or, when the client has no definition, from [defaults].
+     */
+    fun changedBy(proposed: Map<String, Any?>, current: Map<String, Any?>?): List<String> =
+        defaults.keys.filter { field ->
+            proposed[field].toOptStr() != (current?.get(field).toOptStr() ?: defaults[field])
+        }
 }
 
 /** Names and field keys for a client definition (issue #343). */

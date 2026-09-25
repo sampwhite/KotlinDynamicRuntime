@@ -77,6 +77,12 @@ The trial judges the change **together with the client's other stored configs**,
 client must be sound as a set: two configs of one client both declaring the cfact `ready`, say, conflict, and the
 second write is refused. Give each bundle its own names, or its own client.
 
+**`audience` and `usageType` are the operator's** (issue #820). They carry authority over a client, so a client may
+not set them for itself: a **client administrator's** write through `/clientAdmin` must keep them as they are, and
+is refused (403) otherwise. A platform operator may set them -- the service write in the example above, an
+`allClients` administrator on either surface, an import. So a scenario client created through the service can be
+`internal`/`dev`; one whose definition a test rewrites as that client's own `TestUser` must keep what it was given.
+
 ## Narrowing a schema after data is captured (no restart)
 
 Testing that a **schema change invalidates already-captured data** — a stored value a later, tighter schema

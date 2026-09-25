@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -218,6 +219,28 @@ class StoredSchemaRepairTest : StringSpec({
 
         shouldThrow<KdrException> { Startup.mkTestBootCxt("storedRepair3", "storedSchemaRepair3", db) }
             .message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
+    }
+
+    // Issue #821: a stored row that already redeclares a global cfact -- written before the write was trialled, or
+    // restored -- no longer refuses the next boot. The node starts, reports it, and drops that one declaration.
+    "a restart over a stored cfact redeclaring a global one starts, and drops the declaration" {
+        val db = mapOf("KDR_DB_NAME" to "storedRepair_cfact", "KDR_LOAD_STORED_CONFIG" to "true")
+        val client = "rep821boot"
+        val first = Startup.mkTestBootCxt("storedRepairCf1", "storedSchemaRepairCf1", db + warn)
+        storeAndReload(first, client) {
+            cfact(SVY.surveyComplete, "rep821", "A redeclaration.")
+            cfact("rep821Own", "rep821", "The client's own.")
+        }.issues.size shouldBe 1
+
+        val restarted = Startup.mkTestBootCxt("storedRepairCf2", "storedSchemaRepairCf2", db + warn)
+        val issue = ClientConfigIssues.get(restarted).issuesFor(client).single()
+        issue.elementKind shouldBe GCEL.cfact
+        issue.elementId shouldBe SVY.surveyComplete
+        val registry = SchemaService.get(restarted).cfactsFor(client)
+        registry.names.contains("rep821Own") shouldBe true
+        // The global declaration stands, not the client's.
+        registry.defs.getValue(SVY.surveyComplete).group shouldBe
+            SchemaService.get(restarted).cfactsFor(null).defs.getValue(SVY.surveyComplete).group
     }
 
     "a client with nothing wrong is repaired of nothing" {
