@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.job.JobDef
 import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.sql.KdrTable
 
@@ -132,6 +133,17 @@ class SchemaCollector(
     /** Registers a trait save-time function (issue #728); order is preserved but does not matter, as each owns its trait. */
     fun addPrepForSaveFn(fn: GedraPrepForSaveFn) {
         prepForSaveFns.add(fn)
+    }
+
+    /**
+     * The batch-job types components registered (issue #869). Kotlin, so component-contributed, like a
+     * [GedraStateDeriver]; `JobService` runs them.
+     */
+    val jobs: MutableList<JobDef> = mutableListOf()
+
+    /** Registers a batch-job type (issue #869); a type registered twice fails the boot. */
+    fun addJob(def: JobDef) {
+        jobs.add(def)
     }
 
     /** The post-write hooks (issue #675), fired after every gedra data write inside its transaction. */

@@ -59,3 +59,25 @@ object ACT {
     const val connection = "connection"
     const val io = "io"
 }
+
+/**
+ * How a batch job's runner treats an exception a task threw (issue #869), carried on
+ * [KdrException.jobHandling]. An exception without one is treated as [skipTask]: a task that failed for a
+ * reason nobody classified is recorded and the job goes on, rather than one unexpected record stopping the
+ * whole job.
+ */
+@Suppress("EnumEntryName")
+enum class JobHandling {
+    /** The failure is likely transient: retry the task, with the job profile's backoff, up to its limit. */
+    retryTask,
+
+    /**
+     * This task failed and the job goes on. The exception should name the resource the task was for
+     * ([KdrException.resourceIdKey]) and the scenario that failed ([KdrException.scenarioKey]) in its
+     * `extraData`, so the failure can be recorded against the resource.
+     */
+    skipTask,
+
+    /** Stop the whole job: the failure means continuing would do harm, or is pointless. */
+    abortJob,
+}

@@ -13,6 +13,7 @@ object ENVGRP {
     const val content = "Content"
     const val gedra = "Gedra"
     const val edge = "Edge"
+    const val jobs = "Batch jobs"
 }
 
 /**
