@@ -197,7 +197,10 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
  * shape, validated by parsing it -- the same `schemaDocument()` a [CCT.schemaDef] uses.
  */
 private fun SchTypeBuilder.traitDeclarationFields() {
-    property(CCT.traitId, "The trait's globally unique id.", required = true)
+    property(
+        CCT.traitId, "The trait's id, unique within its client's view: its own and the global traits.",
+        required = true,
+    )
     property(CCT.typeName, "The name of the entry type the trait generates.", required = true)
     property(CCT.appliesTo, "The gedra kinds an entry of this trait may be carried on.", required = true) {
         type = SCT.array

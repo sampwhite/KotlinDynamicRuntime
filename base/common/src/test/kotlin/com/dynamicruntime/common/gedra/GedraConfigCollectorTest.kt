@@ -46,7 +46,7 @@ class GedraConfigCollectorTest : StringSpec({
         val collector = GedraConfigCollector()
         collector.add(devCxt, nameConfig()) shouldBe true
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
-        collector.traits shouldContainKey "name"
+        collector.globalTraits() shouldContainKey "name"
         collector.defs().keys shouldContain "globalconfig.NameEntry"
         collector.issues.shouldBeEmpty()
     }
@@ -109,7 +109,7 @@ class GedraConfigCollectorTest : StringSpec({
         // First wins, deterministically -- component load order is loadPriority then registration, so the
         // winner is the same across restarts rather than whichever config happened to arrive first today.
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
-        collector.traits.getValue("name").typeName shouldBe "globalconfig.NameEntry"
+        collector.globalTraits().getValue("name").typeName shouldBe "globalconfig.NameEntry"
 
         // And the node can say what it dropped, which is what stops a degraded boot from being silent.
         collector.issues.size shouldBe 1
@@ -187,7 +187,7 @@ class GedraConfigCollectorTest : StringSpec({
         issue.client shouldBe GID.globalClient
         issue.elementKind shouldBe GCEL.config
         // The source config keeps the trait; the stored one never displaced it.
-        collector.traits.getValue("name").typeName shouldBe "globalconfig.NameEntry"
+        collector.globalTraits().getValue("name").typeName shouldBe "globalconfig.NameEntry"
 
         shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "other")) }
             .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
@@ -209,7 +209,7 @@ class GedraConfigCollectorTest : StringSpec({
         collector.add(offCxt, nameConfig()) shouldBe true
         collector.add(offCxt, nameConfig(configName = "extraTraits", namespace = "other")) shouldBe true
         // The later claim wins under `off`, which is what "no checking" means rather than a second policy.
-        collector.traits.getValue("name").typeName shouldBe "other.NameEntry"
+        collector.globalTraits().getValue("name").typeName shouldBe "other.NameEntry"
         collector.issues.shouldBeEmpty()
     }
 
@@ -243,3 +243,7 @@ class GedraConfigCollectorTest : StringSpec({
         collector.configTraits().shouldBeEmpty()
     }
 })
+
+/** The global data traits kept, by id -- unique, since a global trait id is unique across every client (#807). */
+private fun GedraConfigCollector.globalTraits(): Map<String, GedraTrait> =
+    traitsOwnedBy(GID.globalClient).associateBy { it.traitId }

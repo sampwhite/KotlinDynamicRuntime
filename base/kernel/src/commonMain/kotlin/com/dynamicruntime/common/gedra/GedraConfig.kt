@@ -23,13 +23,15 @@ import com.dynamicruntime.common.schema.qualifyTypeName
  * The trait is the *definition*; the entry type is what the definition produces, and an entry stored on a
  * gedra is an instance of that type. Keeping the three straight is most of what you need to understand this layer.
  *
- * [traitId] is globally unique — across namespaces and across kinds — which is what lets stored data carry a
- * bare trait id and nothing else. [typeName] is namespaced, because two configs may each want a `NameEntry`.
- * The two rules look contradictory and are not: the namespace scopes the *types* traits create, never the
- * traits themselves.
+ * [traitId] is unique within a **client's view** (issue #807): a global trait's id across every client and every
+ * kind, a client's own trait's id within that client. Two clients may each declare the same id and get their own;
+ * no client may reuse a global one. That is what lets stored data carry a bare trait id and nothing else: the
+ * gedra holding an entry names its client, and the id resolves among that client's own traits and the global ones,
+ * which never share an id. [typeName] is namespaced, because two configs may each want a `NameEntry`. The
+ * namespace scopes the *types* traits create, never the traits themselves.
  */
 class GedraTrait(
-    /** Globally unique id, and the discriminator value in a stored entry. */
+    /** Its id -- unique within its client's view (see the class note) -- and a stored entry's discriminator value. */
     val traitId: String,
     /** Fully qualified name of the entry type this trait generated. */
     val typeName: String,
@@ -58,7 +60,7 @@ class GedraTrait(
      * When set, this is a **state** trait rather than a data trait (issue #597), and this is its classification:
      * [StateTraitClass.derived] (a projection a batch may recompute) or [StateTraitClass.asserted] (a human or
      * external act a batch must not touch). Null for an ordinary data trait -- the flavor that partitions the
-     * two, since both share this class and one global id space. Carried on the trait, the same reason
+     * two, since both share this class and one id space. Carried on the trait, the same reason
      * [appliesTo] and [primaryKey] are, so the state write path and the later batch / authorization phases read
      * it off the trait rather than parsing it back out of the generated schema.
      */
@@ -293,7 +295,7 @@ class GedraConfigBuilder(
     /**
      * The **state** traits declared in this block (issue #597); see [stateTrait]. Kept apart from [traits] so
      * every existing consumer of data traits -- the entry / edit unions, the patch keying -- sees data traits
-     * only and cannot be reached by a state trait, while the two still share one global id space (a state trait
+     * only and cannot be reached by a state trait, while the two still share one id space (a state trait
      * id may not collide with a data trait id; [checkTraitIsNew] scans both).
      */
     @Suppress("MemberVisibilityCanBePrivate")
@@ -301,7 +303,7 @@ class GedraConfigBuilder(
 
     /**
      * The **config** traits declared in this block (issue #316); see [configTrait]. Apart from [traits] and
-     * [stateTraits] so no data consumer reaches one, while all three share one global id space
+     * [stateTraits] so no data consumer reaches one, while all three share one id space
      * ([checkTraitIsNew] scans them together).
      */
     @Suppress("MemberVisibilityCanBePrivate")

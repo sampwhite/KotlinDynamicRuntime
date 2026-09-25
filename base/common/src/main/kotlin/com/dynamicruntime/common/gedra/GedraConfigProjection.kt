@@ -40,7 +40,10 @@ fun GedraTrait.toMetadataMap(omitEmptyPrimaryKey: Boolean = false): Map<String, 
 
 /** The schema of [toMetadataMap] -- called inside a `type(...) { }` block by both surfaces that emit a trait. */
 fun SchTypeBuilder.traitMetadataFields() {
-    property(CCT.traitId, "The trait's globally unique id.", required = true)
+    property(
+        CCT.traitId, "The trait's id, unique within its client's view: its own and the global traits.",
+        required = true,
+    )
     property(CCT.typeName, "The fully qualified name of the entry type this trait generated.", required = true)
     property(CCT.appliesTo, "The gedra kinds an entry of this trait may be carried on.", required = true) {
         type = SCT.array

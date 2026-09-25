@@ -257,11 +257,15 @@ fun reportConfigProblem(
  */
 class GedraConfigCollector {
     private val configsById = LinkedHashMap<String, GedraConfig>()
-    private val traitOwners = LinkedHashMap<String, GedraTrait>()
-    private val traitConfigs = LinkedHashMap<String, GedraConfig>()
+    // Data traits, keyed by their owning client as well as their id (issue #807): two clients may each declare
+    // the same trait id, and each gets its own. What stays unique is a **global** trait's id -- a client may not
+    // reuse one, so a client's own traits and the global ones it sees never share an id -- and a client's own
+    // ids within that client. See [firstProblem].
+    private val traitOwners = LinkedHashMap<TraitKey, GedraTrait>()
+    private val traitConfigs = LinkedHashMap<TraitKey, GedraConfig>()
     // State traits (issue #597) kept in their own registries, so data-trait consumers (traitsFor -> the entry /
-    // edit unions and the patch keying) never see one. A trait id is still globally unique across both -- the
-    // collision check below scans data and state together.
+    // edit unions and the patch keying) never see one. Global only (#873), so their ids are global ids -- the
+    // collision check below scans them with the global data traits.
     private val stateTraitOwners = LinkedHashMap<String, GedraTrait>()
     private val stateTraitConfigs = LinkedHashMap<String, GedraConfig>()
     // Config traits (issue #316), likewise in their own registries so no data consumer reaches one, and
@@ -276,20 +280,18 @@ class GedraConfigCollector {
     /** The configs kept, in contribution order. */
     val configs: List<GedraConfig> get() = configsById.values.toList()
 
-    /** Every trait kept, keyed by its globally unique id. */
-    val traits: Map<String, GedraTrait> get() = traitOwners.toMap()
-
     /**
      * The traits [client] can see: its own, and `global`'s. Nothing else — that is the visibility rule, and
      * this is the one place that has to know it, since assembling a client's view is the only thing that ever
-     * asks the question.
-     *
-     * Every config is `global` today, so this returns everything. It is written as the question rather than
-     * as the answer because the day a second owner exists, the answer changes and the question does not.
+     * asks the question. Unique by id (issue #807): a client may not reuse a global trait's id, so its own traits
+     * and the global ones never share one -- which is what lets every consumer of one client's view key by id.
      */
-    fun traitsFor(client: String): List<GedraTrait> = traitConfigs.entries
-        .filter { (_, config) -> config.gedraId.client == GID.globalClient || config.gedraId.client == client }
-        .mapNotNull { (traitId, _) -> traitOwners[traitId] }
+    fun traitsFor(client: String): List<GedraTrait> = traitOwners.entries
+        .filter { (key, _) -> key.client == GID.globalClient || key.client == client }
+        .map { it.value }
+
+    /** Whether [traitId] is a **global** data trait's id -- one no client may reuse (issue #807). */
+    fun isGlobalTrait(traitId: String): Boolean = TraitKey(GID.globalClient, traitId) in traitOwners
 
     /**
      * The **state** traits in force (issue #597). State is global -- a client does not vary the set (decision
@@ -320,9 +322,9 @@ class GedraConfigCollector {
      * one is what a client can *see* (for `$ref` resolution), this is part of what it may *use*. See
      * `supportedTraits`, which is where they are combined.
      */
-    fun traitsOwnedBy(client: String): List<GedraTrait> = traitConfigs.entries
-        .filter { (_, config) -> config.gedraId.client == client }
-        .mapNotNull { (traitId, _) -> traitOwners[traitId] }
+    fun traitsOwnedBy(client: String): List<GedraTrait> = traitOwners.entries
+        .filter { (key, _) -> key.client == client }
+        .map { it.value }
 
     /**
      * The trait-usage rules [client] applies (issue #537): **its own if it declared any, otherwise the global
@@ -409,8 +411,9 @@ class GedraConfigCollector {
             return false
         }
         for (traitId in config.traits.keys) {
-            if (traitConfigs[traitId]?.gedraId == config.gedraId) {
-                traitOwners.remove(traitId); traitConfigs.remove(traitId)
+            val key = TraitKey(config.gedraId.client, traitId)
+            if (traitConfigs[key]?.gedraId == config.gedraId) {
+                traitOwners.remove(key); traitConfigs.remove(key)
             }
         }
         for (traitId in keptStateTraits(config).keys) {
@@ -436,8 +439,9 @@ class GedraConfigCollector {
         configsById[config.gedraId.fullId] = config
         namespaceOwners.putIfAbsent(config.namespace, config.gedraId.client)
         for ((traitId, trait) in config.traits) {
-            traitOwners[traitId] = trait
-            traitConfigs[traitId] = config
+            val key = TraitKey(config.gedraId.client, traitId)
+            traitOwners[key] = trait
+            traitConfigs[key] = config
         }
         for ((traitId, trait) in keptStateTraits(config)) {
             stateTraitOwners[traitId] = trait
@@ -492,19 +496,50 @@ class GedraConfigCollector {
                 GCEL.config, config.gedraId.fullId,
             )
         }
-        // Data, state and config trait ids share one global id space, so a new config's traits of any kind are
-        // checked against all three registries -- a state or config trait may not reuse a data trait's id, or
-        // any other pairing.
+        // Trait ids (issue #807). A global id -- a global data trait's, or any state or config trait's, all of which
+        // are global -- is unique across every gedra kind and every client, and no client may reuse one. A client's
+        // own data trait ids are unique within that client; another client may declare the same id and get its
+        // own. So one client's view (its own traits and the global ones) never holds an id twice, and a stored
+        // entry's bare trait id resolves unambiguously against the client of the gedra that holds it.
         for (traitId in config.traits.keys + stateTraits.keys + config.configTraits.keys) {
-            val held = traitConfigs[traitId] ?: stateTraitConfigs[traitId] ?: configTraitConfigs[traitId] ?: continue
+            val held = traitHolder(config, traitId) ?: continue
+            val why = when (held.gedraId.client) {
+                config.gedraId.client ->
+                    "A trait id is unique within a client -- and a global one across every client and gedra kind."
+
+                GID.globalClient ->
+                    "It is a global trait's id, which no client may reuse: a client's own traits and the global " +
+                            "ones it sees must never share one, or a stored entry's bare trait id could mean either."
+
+                else -> "A global trait's id may not be one a client already uses, or that client's own traits and " +
+                        "the global ones it sees would share it."
+            }
             return config.issue(
-                "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}'. A trait id " +
-                    "is unique across every namespace and every gedra kind, which is what lets stored data " +
-                    "carry a bare trait id and nothing else.",
+                "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}'. $why",
                 "Keeping '${held.gedraId}''s; dropping '${config.gedraId}' and its $traitCount trait(s).",
                 GCEL.config, config.gedraId.fullId,
             )
         }
         return null
     }
+
+    /**
+     * The kept config already holding [traitId] in a way [config] may not also hold it (issue #807), or null: for a
+     * client's config, a global trait of any kind or the same client's own; for a `global` config -- whose trait ids
+     * are global ids -- any holder at all, since a global id may not be one a client already uses.
+     */
+    private fun traitHolder(config: GedraConfig, traitId: String): GedraConfig? {
+        val global = traitConfigs[TraitKey(GID.globalClient, traitId)]
+            ?: stateTraitConfigs[traitId] ?: configTraitConfigs[traitId]
+        if (global != null) return global
+        val client = config.gedraId.client
+        return if (client == GID.globalClient) {
+            traitConfigs.entries.firstOrNull { it.key.traitId == traitId }?.value
+        } else {
+            traitConfigs[TraitKey(client, traitId)]
+        }
+    }
+
+    /** A data trait's registry key: its owning client and its id (issue #807). */
+    private data class TraitKey(val client: String, val traitId: String)
 }

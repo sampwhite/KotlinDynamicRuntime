@@ -101,8 +101,9 @@ interface ComponentDefinition : KdrProvider {
      * beside schema, and for the same reason: nothing can enumerate them, so a bundle nobody declares is a
      * bundle nothing compiles.
      *
-     * Contributed configs are checked against each other as they arrive (see `GedraConfigCollector`): a trait
-     * id is unique across every namespace and kind, and a namespace has exactly one owner.
+     * Contributed configs are checked against each other as they arrive (see `GedraConfigCollector`): a global
+     * trait's id is unique across every client and kind, a client's own trait's id within that client (issue
+     * #807), and a namespace has exactly one owner.
      */
     fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = emptyList()
 

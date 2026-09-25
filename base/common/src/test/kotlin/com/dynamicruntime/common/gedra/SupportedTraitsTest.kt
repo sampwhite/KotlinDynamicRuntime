@@ -71,7 +71,7 @@ class SupportedTraitsTest : StringSpec({
     // make the declared list a place to forget.
     "a trait the client customized is supported without a second mention" {
         val configs = collectorOf(global)
-        val nameEntry = configs.traits.getValue("name").typeName
+        val nameEntry = configs.traitsOwnedBy(GID.globalClient).single { it.traitId == "name" }.typeName
         ids(supportedTraits(configs, "acme", def(), setOf(nameEntry))) shouldContainExactly listOf("name")
     }
 

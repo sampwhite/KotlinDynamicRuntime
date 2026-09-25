@@ -107,18 +107,16 @@ class GedraConfigReloadTest : StringSpec({
 
     "a reload that fails its checks leaves the node as it was" {
         val victim = "reloadvictim"
-        val owner = "reloadowner"
-        storeAndReload(owner, "rlShared")
         storeAndReload(victim, "rlMine")
         val before = schema().gedraTraitsFor(victim).map { it.traitId }
 
-        // The victim's next revision claims a trait id the owner already holds: the collector refuses it, and in
-        // the unit environment a config problem is strict, so the reload throws -- before anything is
-        // published, and with the collector rolled back to the victim's previous configuration.
-        shouldThrow<KdrException> { storeAndReload(victim, "rlMine", "rlShared") }
+        // The victim's next revision reuses a global trait's id (`name`), which no client may (issue #807): the
+        // collector refuses it, and in the unit environment a config problem is strict, so the reload throws --
+        // before anything is published, and with the collector rolled back to the victim's previous configuration.
+        shouldThrow<KdrException> { storeAndReload(victim, "rlMine", "name") }
         schema().gedraTraitsFor(victim).map { it.traitId } shouldBe before
         GedraConfigLoadService.get(cxt).loadedFor(victim).size shouldBe 1
-        schema().gedraTraitsFor(owner).map { it.traitId } shouldContain "rlShared"
+        schema().isGlobalTrait("name") shouldBe true
     }
 
     // The case above throws from the collector, *before* the snapshot is published. A check that runs *after* the
@@ -170,7 +168,7 @@ class GedraConfigReloadTest : StringSpec({
         }
         GedraConfigService.get(own).writeConfig(ownClient(), bad)
         val thrown = shouldThrow<KdrException> { GedraConfigReload.reloadClient(own, client) }
-        // The reserved-field message confirms it was checkUsageRules that refused it -- i.e. the failure came
+        // The reserved-field message confirms it was checkUsageRules that refused it -- i.e., the failure came
         // *after* the publish, which is the branch under test (an earlier guard would leave the snapshot untouched
         // and pass the identity check below trivially).
         thrown.fullMessage() shouldContainString "reserved forms-listing field"

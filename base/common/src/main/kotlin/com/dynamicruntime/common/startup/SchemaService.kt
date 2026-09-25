@@ -273,6 +273,8 @@ class SchemaService : ServiceInitializer {
         // listing field (issue #538), or two usages for one trait id (issue #681) -- are caught here rather than
         // left to silently drop the search or collide at request time.
         checkUsageRules(cxt, collected)
+        // A derivation or save-time function bound to a trait no client can share (issue #807).
+        checkTraitBindings(cxt, collected)
         // A `g-layout` naming a field its type does not declare is caught at boot (issue #584), not discovered
         // as a control that renders nothing.
         checkLayouts()
@@ -534,6 +536,34 @@ class SchemaService : ServiceInitializer {
     }
 
     /**
+     * A trait's code bindings -- its data derivers (issue #712) and save-time functions (issue #728) -- name their
+     * trait by bare id, so they must name a **global** trait (issue #807): a client's trait id may be another
+     * client's too, and a binding to it would run on both. No client may reuse a global id, so a binding to one
+     * reaches that trait alone. Judged as source config, since the bindings are code: outside production an
+     * offending binding refuses the boot; in production it is dropped and the node serves.
+     */
+    private fun checkTraitBindings(cxt: KdrCxt, collected: SchemaCollector) {
+        val issues = mutableListOf<GedraConfigIssue>()
+        fun unbound(what: String, traitId: String): Boolean {
+            if (collected.gedraConfigs.isGlobalTrait(traitId)) return false
+            reportConfigProblem(
+                cxt,
+                GedraConfigIssue(
+                    "A $what is bound to trait '$traitId', which is not a global trait. A binding names its trait by " +
+                        "bare id, so it must name a global one: a client's trait id may be another client's too, and " +
+                        "the binding would run on both.",
+                    "Dropping that $what.",
+                    client = GID.globalClient, elementKind = GCEL.function, elementId = traitId,
+                ),
+                issues,
+            )
+            return true
+        }
+        collected.dataDerivers.removeAll { unbound("data deriver", it.traitId) }
+        collected.prepForSaveFns.removeAll { unbound("save-time function", it.traitId) }
+    }
+
+    /**
      * The cfact registries for [perClient], a problem with a client's declaration dropping **that declaration**
      * (issue #841) and reported under the declaring config's check mode -- refused for source config outside
      * production, forgiven for stored config outside unit tests -- rather than refusing the boot outright.
@@ -730,6 +760,9 @@ class SchemaService : ServiceInitializer {
      * The collector is what the unions were built from, so this is the same set they select on.
      */
     fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
+
+    /** Whether [traitId] is a global data trait's id -- the same trait for every client (issue #807). */
+    fun isGlobalTrait(traitId: String): Boolean = collector?.gedraConfigs?.isGlobalTrait(traitId) ?: false
 
     /**
      * The gedra traits [client] actually **supports** (issue #672) -- narrower than [gedraTraitsFor], which is
