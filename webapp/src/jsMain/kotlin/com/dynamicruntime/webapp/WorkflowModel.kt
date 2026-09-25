@@ -312,15 +312,19 @@ fun parseApproval(raw: Any?): WfApprovalView? {
 /**
  * The text a task shows in place of its own rendering (issue #788), or null when its display is not a text branch.
  * `%{…}` arrived resolved; `${'$'}{…}` is filled here by the kernel's `evalTemplate` from the task's own view data -- its
- * approval block, so "approved by `${'$'}{approvedByName}`" names the approver. A placeholder the data cannot fill leaves
- * the text as delivered rather than failing the page, as the prefill summary's override does. Pure, and covered under
- * `jsNodeTest`.
+ * approval block, so "approved by `${'$'}{approvedByName}`" names the approver. The approver's name is not always there
+ * (their account since removed), so it reads "a reviewer" when absent; and a placeholder nothing can fill is dropped,
+ * never shown as template syntax, rather than failing the page. Pure, and covered under `jsNodeTest`.
  */
 fun displayTextOf(task: WfTaskView): String? {
     val display = task.display?.takeIf { it.mode == WDSP.textMode } ?: return null
     val text = display.text ?: return null
-    return try { text.evalTemplate(task.approval?.data ?: emptyMap()) } catch (_: Throwable) { text }
+    val data = mapOf<String, Any?>(WVF.approvedByName to "a reviewer") + (task.approval?.data ?: emptyMap()).filterValues { it != null }
+    return try { text.evalTemplate(data) } catch (_: Throwable) { text.replace(unfilledPlaceholder, "") }
 }
+
+/** A `${'$'}{…}` block, for dropping one [displayTextOf] could not fill. */
+private val unfilledPlaceholder = Regex("""\$\{[^}]*\}""")
 
 /**
  * The line an approved approval task shows in its own rendering (issue #787): who approved it and on what day, as far

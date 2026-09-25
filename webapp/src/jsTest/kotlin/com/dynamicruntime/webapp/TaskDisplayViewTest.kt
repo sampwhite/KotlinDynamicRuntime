@@ -48,12 +48,15 @@ class TaskDisplayViewTest {
     }
 
     @Test
-    fun aPlaceholderTheDataCannotFillLeavesTheTextAsDelivered() {
-        val pending = approvedBlock + (WVF.approved to false) - WVF.approvedByName - WFS.approvedAt
-        val text = $$"Approved by ${approvedByName}."
-        val task = view(approvalTask(pending, mapOf(WDSP.mode to WDSP.textMode, WDSP.text to text))).tasks.single()
-        assertEquals(text, displayTextOf(task))
-        assertEquals("Approved.", approvedLine(task.approval!!))
+    fun aPlaceholderIsNeverShownAsTemplateSyntax() {
+        // The approver's name is missing (their account since removed): it reads as "a reviewer".
+        val nameless = approvedBlock - WVF.approvedByName - WFS.approvedAt
+        val byName = view(approvalTask(nameless, mapOf(WDSP.mode to WDSP.textMode, WDSP.text to $$"Approved by ${approvedByName}."))).tasks.single()
+        assertEquals("Approved by a reviewer.", displayTextOf(byName))
+        assertEquals("Approved.", approvedLine(byName.approval!!))
+        // A placeholder nothing can fill is dropped, not shown.
+        val unknown = view(approvalTask(approvedBlock, mapOf(WDSP.mode to WDSP.textMode, WDSP.text to $$"Done${nope}."))).tasks.single()
+        assertEquals("Done.", displayTextOf(unknown))
     }
 
     @Test

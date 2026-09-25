@@ -96,12 +96,20 @@ external interface WorkflowFormProps : Props {
     var onEngage: (() -> Unit)?
 
     /**
-     * Told that approval task `taskId` was just approved (issue #832), so the page reads the view again -- the step
-     * now reads approved, and the call to action may have moved -- staying on that step, where the reviewer can see
-     * it took. The form makes the call itself, so a refusal shows by its button. Unset for a view with no approval task.
+     * Told that an approval of task `taskId` has settled (issue #832) -- approved (`refusal` null), or refused by the
+     * endpoint (a 4xx: already approved, not the current step, not a reviewer). Either way the form's state may have
+     * moved, so the page reads the view again, staying on that step, and keeps any [approveRefusal] across the reload
+     * so it is still shown by the step it concerns. A failure that never reached a verdict (the network, a 5xx) is not
+     * reported here: the form shows it itself, since a reload would only fail too. Unset for a view with no approval.
      */
-    var onApproved: ((taskId: String) -> Unit)?
+    var onApproveSettled: ((taskId: String, refusal: DisplayError?) -> Unit)?
+
+    /** The refusal the last approval came back with (issue #832), kept by the page across the reload that followed. */
+    var approveRefusal: ApproveRefusal?
 }
+
+/** An approval's refusal (issue #832) and the task it concerns -- shown by that task's button, and nowhere else. */
+class ApproveRefusal(val taskId: String, val error: DisplayError)
 
 /**
  * Renders a resolved workflow and saves it (issues #536, #659). Each trait a task collects is drawn from *its
@@ -161,9 +169,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // Each task's status for the rail (issue #700), refreshed from the view a survey edit save returns -- so
     // saving one task can move another's mark (completing one can flip the earliest-actionable pointer).
     var statuses by useState(wf.tasks.associate { it.id to it.status })
-    // An approval in flight (issue #832), by task, and the refusal the last one came back with -- shown by its button.
+    // An approval in flight (issue #832), by task, and a failure that never reached a verdict -- the network, a 5xx --
+    // shown by that task's button. A refusal instead goes to the page, which reloads (see `onApproveSettled`).
     var approvingTask by useState<String?>(null)
-    var approveError by useState<DisplayError?>(null)
+    var approveFailure by useState<ApproveRefusal?>(null)
     var failuresByTrait by useState<Map<String, List<SchFailure>>>(emptyMap())
     // Commit-time validation (issue #718): per trait, the fields the user has committed (blurred, or picked), and
     // the traits checked as a whole -- by a Save, or by leaving the task. `failuresByTrait` always holds a trait's
@@ -332,53 +341,81 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // and -- for a reviewer -- the button, which asks first, since an approval cannot be taken back. Anyone else is
     // told the step waits on a reviewer rather than shown a button the endpoint could only refuse. Not tied to Edit:
     // approving is its own act, not an edit of the form. The endpoint decides who may and when; this is presentation.
+    // The last approval's refusal or failure for [task] only -- another approval task's never shows here -- and not
+    // while a new attempt is in flight. Drawn under the approval, or under a text display standing in for it, so a
+    // refusal the reload turned into "already approved" still says the click did not take.
+    fun ChildrenBuilder.approvalNotice(task: WfTaskView) {
+        val shown = (approveFailure ?: props.approveRefusal)?.takeIf { it.taskId == task.id && approvingTask == null }
+        shown?.let { errorText("Couldn't approve the form.", it.error) }
+    }
+
     fun ChildrenBuilder.approvalBlock(task: WfTaskView, approval: WfApprovalView) {
+        // Approving reloads the view, which starts every task's working copy afresh -- so while any task holds edits
+        // not yet saved, approving waits, rather than silently dropping them (and approving what they would change).
+        val anyUnsaved = wf.tasks.any { taskUnsaved(it, valuesByTrait, stored) }
+        val busy = approvingTask != null
         div {
             className = ClassName("wf-approval")
-            if (approval.approved) {
-                p { +approvedLine(approval) }
-                return@div
-            }
-            if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt }
-            if (!task.isReviewer) {
-                p {
-                    className = ClassName("subtitle")
-                    +"Waiting for a reviewer to approve this."
-                }
-                return@div
-            }
-            val gid = gedraId ?: return@div
-            div {
-                className = ClassName("row")
-                Popconfirm {
-                    title = "Approve this form?"
-                    description = "An approval can't be taken back."
-                    okText = approval.button.ifBlank { "Approve" }
-                    cancelText = "Cancel"
-                    disabled = task.isDisabled || approvingTask != null
-                    onConfirm = {
-                        approvingTask = task.id
-                        approveError = null
-                        wfFormScope.launch {
-                            try {
-                                WorkflowApi.approve(gid, wf.workflowId, task.id, props.client)
-                                props.onApproved?.invoke(task.id)
-                            } catch (e: Throwable) {
-                                approveError = userFacingError(e)
-                            } finally {
-                                approvingTask = null
+            when {
+                approval.approved -> p { +approvedLine(approval) }
+                else -> {
+                    if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt }
+                    val gid = gedraId
+                    if (!task.isReviewer || gid == null) {
+                        p {
+                            className = ClassName("subtitle")
+                            +"Waiting for a reviewer to approve this."
+                        }
+                    } else {
+                        val blocked = task.isDisabled || busy || anyUnsaved
+                        div {
+                            className = ClassName("row")
+                            Popconfirm {
+                                title = "Approve this form?"
+                                description = "An approval can't be taken back."
+                                okText = approval.button.ifBlank { "Approve" }
+                                cancelText = "Cancel"
+                                disabled = blocked
+                                onConfirm = {
+                                    approvingTask = task.id
+                                    approveFailure = null
+                                    wfFormScope.launch {
+                                        try {
+                                            WorkflowApi.approve(gid, wf.workflowId, task.id, props.client)
+                                            props.onApproveSettled?.invoke(task.id, null)
+                                        } catch (e: Throwable) {
+                                            val shown = userFacingError(e)
+                                            // A verdict (a 4xx) means the state may have moved -- approved by someone
+                                            // else, say -- so the page reloads to show it, keeping the refusal.
+                                            val status = (e as? ApiError)?.status
+                                            if (status != null && status in 400..499 && props.onApproveSettled != null) {
+                                                props.onApproveSettled?.invoke(task.id, shown)
+                                            } else {
+                                                approveFailure = ApproveRefusal(task.id, shown)
+                                            }
+                                        } finally {
+                                            approvingTask = null
+                                        }
+                                    }
+                                }
+                                Button {
+                                    type = "primary"
+                                    loading = approvingTask == task.id
+                                    disabled = blocked
+                                    +approval.button.ifBlank { "Approve" }
+                                }
+                            }
+                        }
+                        if (anyUnsaved) {
+                            p {
+                                className = ClassName("subtitle")
+                                +"Save or undo your changes before approving."
                             }
                         }
                     }
-                    Button {
-                        type = "primary"
-                        loading = approvingTask == task.id
-                        disabled = task.isDisabled || approvingTask != null
-                        +approval.button.ifBlank { "Approve" }
-                    }
                 }
             }
-            approveError?.let { errorText("Couldn't approve the form.", it) }
+            approvalNotice(task)
         }
     }
 
@@ -399,6 +436,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     className = ClassName("wf-display-text")
                     Markdown { source = text }
                 }
+                approvalNotice(task)
                 return@div
             }
             // A step with fields this caller may not change (issue #856): say so, rather than leave a read-only
@@ -527,8 +565,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             title = explanation
             asDynamic()["aria-current"] = if (active) "true" else "false"
             asDynamic()["aria-label"] = "${task.label}: $explanation"
-            // A disabled display (issue #788): its rail entry is not a way in. The open task stays shown, greyed.
-            disabled = task.isDisabled && !active
+            // A disabled display (issue #788): its rail entry is not a way in. `aria-disabled` rather than `disabled`,
+            // so it stays focusable and keeps its tooltip -- a disabled button gets no pointer events in some
+            // browsers -- and the click below does nothing. The open task stays shown, greyed.
+            if (task.isDisabled && !active) asDynamic()["aria-disabled"] = "true"
             onClick = {
                 if (!active && !task.isDisabled) {
                     // The task being left gets its whole check before the switch (issue #718).
