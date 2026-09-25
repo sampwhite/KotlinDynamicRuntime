@@ -969,3 +969,11 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .lock-override .ant-input { max-width: 480px; margin-top: 6px; display: block; }
 /* A note beside a list element's header -- "Locked by Audit review" on a raw-editor section the caller cannot change. */
 .element-note { color: var(--accent-bright); font-size: 0.9em; margin-left: 10px; }
+
+/* Task displays and approvals (issue #832). A disabled display greys the step and its rail entry, which is no way
+   in; a text display stands in for the step's rendering; an approval shows its prompt above the button. */
+.wf-task-disabled { opacity: .55; }
+.wf-rail-item.disabled, .wf-rail-item:disabled { opacity: .5; cursor: not-allowed; }
+.wf-rail-item:disabled:hover { background: none; color: inherit; }
+.wf-display-text { margin: 4px 0 8px; }
+.wf-approval > .row { margin-top: 12px; }

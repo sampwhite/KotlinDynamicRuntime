@@ -199,6 +199,14 @@ val SurveyEditPage = FC<Props> {
                     pushHash(hashParams().filterKeys { it != HP.task }.toList() + (HP.task to id))
                 }
                 onDirtyChange = { dirty = it }
+                // Approved (issue #832): the form's state moved -- the step now reads approved, and the next one may be
+                // the call to action -- so the view is read again, as after an engage. It stays on the approved step:
+                // with every step done the view names no call to action, and the page would open on the first.
+                onApproved = { taskId ->
+                    requestedTask = taskId
+                    pushHash(hashParams().filterKeys { it != HP.task }.toList() + (HP.task to taskId))
+                    reloads += 1
+                }
                 // Engage (issue #791): put the form into the workflow, then reload the view, which now says it is
                 // engaged and opens the tasks. A refusal -- not eligible after all -- is shown with its reasons.
                 val engageClient = workflowClient

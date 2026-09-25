@@ -55,6 +55,18 @@ object WorkflowApi {
     }
 
     /**
+     * Approves approval task [taskId] of normal workflow [workflowId] for form [gedraId] (issue #787), as a reviewer.
+     * The endpoint decides who may and when -- a reviewer, not the form's owner, on the current task, once -- and a
+     * refusal comes back as the error it raised. [client] as for [fetchSurveyView].
+     */
+    suspend fun approve(gedraId: String, workflowId: String, taskId: String, client: String? = null) {
+        Http.sendApi(
+            "POST", pathFor(GEP.workflowApprove, client),
+            mapOf(GDF.gedraId to gedraId, WFD.workflowId to workflowId, GDF.taskId to taskId),
+        )
+    }
+
+    /**
      * Posts a task's collected entries; the outcome is either a refusal naming what is missing, or the form.
      * [client] as for [fetchSurveyView]: the form's client's copy of the save, so it runs under that client's rules.
      */

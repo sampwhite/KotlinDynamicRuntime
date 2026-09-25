@@ -6,7 +6,10 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GSRC
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WDSP
+import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WFS
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -21,6 +24,9 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.refName
+import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.formatDayPart
+import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -90,6 +96,43 @@ class WfTaskView(
      * enforces. True when the view says nothing (creation, survey, or a task with no rule).
      */
     val canSave: Boolean = true,
+    /**
+     * How the task is shown (issue #788): the one branch of its display selector that applies to this caller, chosen
+     * on the backend -- the page never sees the others or their conditions. Null when the task declares no display,
+     * which means its own rendering.
+     */
+    val display: WfTaskDisplay? = null,
+    /** An approval task's approval (issue #787), as the view resolved it; null on any other task. */
+    val approval: WfApprovalView? = null,
+    /** The task's facts for this caller (issues #786, #788) -- `wfReviewer` for a reviewer, `wfIsCta`, and so on. */
+    val facts: Set<String> = emptySet(),
+) {
+    /** Whether this caller is a reviewer of the task (issue #787): what an approval's button is shown to. */
+    val isReviewer: Boolean get() = WFC.reviewer in facts
+
+    /** Whether the task is shown disabled (issue #788): greyed, nothing in it actionable, its rail entry inert. */
+    val isDisabled: Boolean get() = display?.disabled == true
+}
+
+/**
+ * One task display branch (issue #788), as the view delivers it: its [mode] (`WDSP.textMode` or `WDSP.defaultMode`),
+ * the [text] a text branch shows -- `%{…}` already resolved, `${'$'}{…}` left for [displayTextOf] -- and whether the
+ * task is [disabled].
+ */
+class WfTaskDisplay(val mode: String, val text: String?, val disabled: Boolean)
+
+/**
+ * An approval task's approval (issue #787): the backend-passed [prompt] and [button] copy, whether it is [approved],
+ * and once it is, [approvedByName] (the approver's public name) and [approvedAt]. [data] is the whole block as it
+ * arrived -- what a display's `${'$'}{…}` placeholders are filled from.
+ */
+class WfApprovalView(
+    val prompt: String,
+    val button: String,
+    val approved: Boolean,
+    val approvedByName: String?,
+    val approvedAt: String?,
+    val data: Map<String, Any?>,
 )
 
 /**
@@ -148,11 +191,13 @@ class WorkflowView(
     val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { isEditable(it) })
 
     /**
-     * Whether [task] is one this caller can edit here: it offers a save, they may make it (issue #856), and not every
-     * trait it collects is locked for them (issue #857) -- what decides both its Save and the page's Edit.
+     * Whether [task] is one this caller can edit here: it offers a save, they may make it (issue #856), it is not shown
+     * disabled (issue #832), and not every trait it collects is locked for them (issue #857) -- what decides both its
+     * Save and the page's Edit.
      */
     fun isEditable(task: WfTaskView): Boolean =
-        task.canSave && task.saves.isNotEmpty() && (task.traits.isEmpty() || task.traits.any { it.traitId !in lockedTraits })
+        task.canSave && !task.isDisabled && task.saves.isNotEmpty() &&
+            (task.traits.isEmpty() || task.traits.any { it.traitId !in lockedTraits })
 
     /**
      * Whether the page offers Edit (issue #857 UI pass): the workflow can be worked on, and -- when one task is shown
@@ -216,6 +261,9 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
             entries = t[WVF.entries].toJsonListOfMaps(),
             status = parseTaskStatus(t[WVF.status]),
             canSave = t[WVF.canSave] != false,
+            display = parseTaskDisplay(t[WFD.display]),
+            approval = parseApproval(t[WVF.approval]),
+            facts = t[WVF.facts].toJsonListOfStrings().toSet(),
         )
     }
     val cfacts = results[WVF.cfacts].toJsonMapOrEmpty().mapValues { it.value == true }
@@ -234,6 +282,53 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         lockedTraits = parseTraitLocks(results[WVF.lockedTraits]).groupBy { it.traitId },
         ineligibleReasons = results[WVF.ineligibleReasons].toJsonListOfStrings(),
     )
+}
+
+/** A task's delivered display branch (issue #788), or null when it carried none -- the task's own rendering. */
+fun parseTaskDisplay(raw: Any?): WfTaskDisplay? {
+    val m = raw as? Map<*, *> ?: return null
+    val d = m.toJsonMapOrEmpty()
+    return WfTaskDisplay(
+        mode = d[WDSP.mode].toOptStr() ?: WDSP.defaultMode,
+        text = d[WDSP.text].toOptStr(),
+        disabled = d[WDSP.disabled] == true,
+    )
+}
+
+/** An approval task's delivered approval (issue #787), or null on a task that is not one. */
+fun parseApproval(raw: Any?): WfApprovalView? {
+    val m = raw as? Map<*, *> ?: return null
+    val a = m.toJsonMapOrEmpty()
+    return WfApprovalView(
+        prompt = a[WFD.prompt].toOptStr().orEmpty(),
+        button = a[WFD.button].toOptStr().orEmpty(),
+        approved = a[WVF.approved] == true,
+        approvedByName = a[WVF.approvedByName].toOptStr(),
+        approvedAt = a[WFS.approvedAt].toOptStr(),
+        data = a,
+    )
+}
+
+/**
+ * The text a task shows in place of its own rendering (issue #788), or null when its display is not a text branch.
+ * `%{…}` arrived resolved; `${'$'}{…}` is filled here by the kernel's `evalTemplate` from the task's own view data -- its
+ * approval block, so "approved by `${'$'}{approvedByName}`" names the approver. A placeholder the data cannot fill leaves
+ * the text as delivered rather than failing the page, as the prefill summary's override does. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun displayTextOf(task: WfTaskView): String? {
+    val display = task.display?.takeIf { it.mode == WDSP.textMode } ?: return null
+    val text = display.text ?: return null
+    return try { text.evalTemplate(task.approval?.data ?: emptyMap()) } catch (_: Throwable) { text }
+}
+
+/**
+ * The line an approved approval task shows in its own rendering (issue #787): who approved it and on what day, as far
+ * as the view says. Pure, and covered under `jsNodeTest`.
+ */
+fun approvedLine(approval: WfApprovalView): String {
+    val day = approval.approvedAt?.let { runCatching { it.parseDate().formatDayPart() }.getOrNull() }
+    return "Approved" + (approval.approvedByName?.let { " by $it" } ?: "") + (day?.let { " on $it" } ?: "") + "."
 }
 
 /**
