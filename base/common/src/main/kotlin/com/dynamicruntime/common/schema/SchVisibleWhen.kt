@@ -77,15 +77,19 @@ fun requiredGateProblem(where: String, property: String): String =
 
 /**
  * `g-visibleWhen` applied to a **write** (issue #830): the data to store when a caller writes [incoming] over [stored]
- * (null for a new entry) against [type], and the paths of any gated field the caller tried to change.
+ * (null for a new entry) against [type], and the paths of any gated value the caller tried to change.
  *
  * A field whose gate the caller fails ([allows] false) is not theirs to set, so it keeps its stored value: left out
  * of [incoming] -- a replace from a form that hid it -- or sent back unchanged -- a raw editor's round trip -- it is
  * stored as it was. A different value, or any value on a new entry, is a change, reported in [SchGatedWrite.refused]
- * for the caller to refuse. Sending null is leaving it out, so it cannot clear a stored value either. A field whose gate the caller passes, or that has none, is taken
- * as sent; its nested object fields are judged the same way, and a list's elements index by index against the
- * stored list's -- a list reordered or shortened by someone who cannot see a gated field inside it is judged as
- * the positions now stand. Null and absent are the same value here, as they are to the validator.
+ * for the caller to refuse. "Unchanged" is judged as the page judges it ([gateComparable]): null and blank text are
+ * absent, and numbers compare by value -- so sending null or "" cannot clear a stored value either.
+ *
+ * A field whose gate the caller passes, or that has none, is taken as sent; its nested object fields are judged the
+ * same way, and a list's elements index by index against the stored list's. Removing a container that still holds a
+ * value the caller cannot see -- leaving out a nested object or list, or dropping list elements -- is a change to
+ * that value, and refused like one ([holdsGatedValue]). A list reordered by someone who cannot see a gated field in
+ * its elements is judged as the positions now stand.
  *
  * Only gates the caller **fails** are ever consulted, and [allows] is asked at most once per declared expression by
  * a caller that memoizes it -- a write touching no gated field costs a walk of the type and nothing more.
@@ -109,9 +113,12 @@ fun keepGatedFields(
         val incomingValue = incoming[name]
         val gate = prop.visibleWhen
         if (gate != null && !allows(gate)) {
+            val sent = gateComparable(incomingValue, depth + 1)
             when {
-                incomingValue == null -> if (storedValue != null) out[name] = storedValue else out.remove(name)
-                incomingValue != storedValue -> refused.add(at)
+                sent == null -> if (storedValue != null) out[name] = storedValue else out.remove(name)
+                sent != gateComparable(storedValue, depth + 1) -> refused.add(at)
+                // Unchanged: store it exactly as it was, not as this caller happened to spell it.
+                else -> out[name] = storedValue
             }
             continue
         }
@@ -137,10 +144,63 @@ fun keepGatedFields(
                     refused.addAll(inner.refused)
                     inner.data
                 }
+                // Elements dropped off the end take their gated values with them.
+                storedList?.drop(incomingValue.size)?.forEachIndexed { j, dropped ->
+                    if (holdsGatedValue(itemType, dropped, allows, depth + 1)) refused.add("$at[${incomingValue.size + j}]")
+                }
             }
+            // The container left out (or emptied) altogether: a hidden value inside it would go with it.
+            gateComparable(incomingValue, depth + 1) == null && holdsGatedValue(valueType, storedValue, allows, depth + 1) ->
+                refused.add(at)
         }
     }
     return SchGatedWrite(out, refused)
+}
+
+/**
+ * Whether [value] (of [type]) holds, at any depth, a value in a field whose gate the caller fails (issue #830) --
+ * what removing it would take away from a caller who may not change it: a whole entry, a nested object, a list
+ * element.
+ */
+fun holdsGatedValue(type: SchType, value: Any?, allows: (expression: String) -> Boolean, depth: Int = 0): Boolean {
+    if (depth > SGATE.maxDepth) {
+        throw KdrException("A value nests deeper than ${SGATE.maxDepth} levels; the gate check stops there.")
+    }
+    return when (value) {
+        is Map<*, *> -> type.properties.any { (name, prop) ->
+            val child = value[name]
+            val gate = prop.visibleWhen
+            if (gate != null && !allows(gate)) {
+                gateComparable(child, depth + 1) != null
+            } else {
+                holdsGatedValue(prop.valueType, child, allows, depth + 1)
+            }
+        }
+        is List<*> -> type.itemType?.let { item -> value.any { holdsGatedValue(item, it, allows, depth + 1) } } ?: false
+        else -> false
+    }
+}
+
+/**
+ * A value as the gate compares it (issue #830), the way the page decides a field is untouched: null and blank text
+ * are absent, a whole number compares equal however it was spelled (`2` and `2.0`), and maps and lists compare
+ * element by element with their absent members dropped. Null means absent.
+ */
+fun gateComparable(value: Any?, depth: Int = 0): Any? {
+    if (depth > SGATE.maxDepth) {
+        throw KdrException("A value nests deeper than ${SGATE.maxDepth} levels; the gate check stops there.")
+    }
+    return when (value) {
+        null -> null
+        is String -> value.takeIf { it.isNotBlank() }
+        is Double -> if (value % 1.0 == 0.0 && kotlin.math.abs(value) < SGATE.exactWholeLimit) value.toLong() else value
+        is Float -> gateComparable(value.toDouble(), depth)
+        is Number -> value.toLong()
+        is Map<*, *> -> value.entries.mapNotNull { (k, v) -> gateComparable(v, depth + 1)?.let { k.toString() to it } }
+            .toMap().ifEmpty { null }
+        is List<*> -> value.map { gateComparable(it, depth + 1) }.ifEmpty { null }
+        else -> value
+    }
 }
 
 /** What [keepGatedFields] makes of a write: the [data] to store, and the gated fields the caller tried to change. */
@@ -151,4 +211,7 @@ class SchGatedWrite(val data: Map<String, Any?>, val refused: List<String>)
 object SGATE {
     /** How deep [keepGatedFields] follows nested objects and lists before refusing the value. */
     const val maxDepth = 30
+
+    /** Below this a double holds every whole number exactly, so [gateComparable] may read `2.0` as `2`. */
+    const val exactWholeLimit = 9.0e15
 }

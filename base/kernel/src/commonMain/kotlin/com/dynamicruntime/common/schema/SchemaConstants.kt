@@ -312,7 +312,7 @@ object SCH {
      * field, so the keyword is the advertise half of an advertise-and-enforce pair. On **trait data** the enforce
      * half is built in (issue #830): every write -- create, patch (and so the survey's and a workflow's saves),
      * import -- keeps a gated field's stored value for a caller whose cfacts fail the gate, and refuses a change to
-     * it. On an **endpoint input** the handler enforces it, the same relationship [optionsSource] has with a
+     * it, including removing it by deleting the entry, list element or object holding it. On an **endpoint input** the handler enforces it, the same relationship [optionsSource] has with a
      * handler that bounds its own input. Reads are not gated: anyone who may read the data sees the field. It
      * takes no part in validation and has no export row: it neither tightens nor loosens what a consumer may send.
      */

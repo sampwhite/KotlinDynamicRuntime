@@ -100,6 +100,7 @@ class SchVisibleWhenTest : StringSpec({
                 SCH.properties to linkedMapOf(
                     "title" to linkedMapOf(SCH.type to SCT.string),
                     "note" to linkedMapOf(SCH.type to SCT.string, SCH.visibleWhen to "admin"),
+                    "score" to linkedMapOf(SCH.type to SCT.number, SCH.visibleWhen to "admin"),
                     "detail" to linkedMapOf(
                         SCH.type to SCT.kObject,
                         SCH.properties to linkedMapOf(
@@ -124,7 +125,7 @@ class SchVisibleWhenTest : StringSpec({
     ).getValue("t.Note")
     val failsAdmin: (String) -> Boolean = { it != "admin" }
     val stored: Map<String, Any?> = mapOf(
-        "title" to "T", "note" to "N",
+        "title" to "T", "note" to "N", "score" to 2L,
         "detail" to mapOf("open" to "o", "secret" to "s"),
         "lines" to listOf(mapOf("text" to "a", "secret" to "x"), mapOf("text" to "b")),
     )
@@ -138,7 +139,7 @@ class SchVisibleWhenTest : StringSpec({
         val result = keepGatedFields(gatedType, stored, sent, failsAdmin)
         result.refused shouldBe emptyList()
         result.data shouldBe mapOf(
-            "title" to "T2", "note" to "N",
+            "title" to "T2", "note" to "N", "score" to 2L,
             "detail" to mapOf("open" to "o2", "secret" to "s"),
             "lines" to listOf(mapOf("text" to "a2", "secret" to "x"), mapOf("text" to "b2")),
         )
@@ -152,6 +153,32 @@ class SchVisibleWhenTest : StringSpec({
         )
         keepGatedFields(gatedType, stored, sent, failsAdmin).refused shouldBe listOf("detail.secret", "lines[1].secret")
         keepGatedFields(gatedType, null, mapOf("note" to "N"), failsAdmin).refused shouldBe listOf("note")
+    }
+
+    "unchanged is judged as the page judges it: blank is absent, and 2.0 is 2" {
+        val sent = mapOf(
+            "title" to "T", "note" to "", "score" to 2.0, "detail" to mapOf("open" to "o", "secret" to "s"),
+            "lines" to stored["lines"],
+        )
+        val result = keepGatedFields(gatedType, stored, sent, failsAdmin)
+        result.refused shouldBe emptyList()
+        // Both kept exactly as stored, not as this caller spelled them.
+        result.data["note"] shouldBe "N"
+        result.data["score"] shouldBe 2L
+    }
+
+    "removing a container that holds a hidden value is a change to it" {
+        // The nested object left out of a replace, and a list emptied: each would take a gated value with it.
+        keepGatedFields(gatedType, stored, mapOf("title" to "T", "lines" to listOf(mapOf("text" to "a"))), failsAdmin)
+            .refused shouldBe listOf("detail")
+        keepGatedFields(gatedType, stored, mapOf("detail" to mapOf("open" to "o"), "lines" to emptyList<Any?>()), failsAdmin)
+            .refused shouldBe listOf("lines[0]")
+        // Dropping an element with nothing hidden in it is fine.
+        keepGatedFields(
+            gatedType, stored, mapOf("detail" to mapOf("open" to "o"), "lines" to listOf(mapOf("text" to "a"))), failsAdmin,
+        ).refused shouldBe emptyList()
+        holdsGatedValue(gatedType, stored, failsAdmin) shouldBe true
+        holdsGatedValue(gatedType, mapOf("title" to "T", "lines" to listOf(mapOf("text" to "a"))), failsAdmin) shouldBe false
     }
 
     "a caller who passes the gate writes as sent, and the gate is asked only about gated fields" {

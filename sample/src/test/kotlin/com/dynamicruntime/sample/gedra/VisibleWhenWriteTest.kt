@@ -10,6 +10,8 @@ import com.dynamicruntime.common.gedra.GIF
 import com.dynamicruntime.common.gedra.GPF
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -24,8 +26,8 @@ import io.kotest.matchers.string.shouldContain
 /**
  * `g-visibleWhen` enforced on trait-data writes (issue #830). Acme's `expenseReport.reviewerNote` is gated on
  * `hasAdminLevel`: an administrator may write it; for anyone else it keeps its stored value -- left out, as a form
- * that hid it sends, or sent back unchanged, as a raw editor does -- and a change to it is refused with a 403. On
- * every write path: create, patch (which the survey's and a workflow's saves go through), and import.
+ * that hid it sends, or sent back unchanged, as a raw editor does -- and a change to it is refused with a 403,
+ * deleting the entry that holds it included. On every write path: create, patch, the survey's save, and import.
  */
 class VisibleWhenWriteTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -36,6 +38,7 @@ class VisibleWhenWriteTest : StringSpec({
     val patch = clientPath(GEP.patch, SC.acme)
     val get = clientPath(GEP.formDoc, SC.acme)
     val import = clientPath(GEP.formDocImport, SC.acme)
+    val save = clientPath(GEP.workflowSave, SC.acme)
 
     val owner = TestUser.create(cxt, "gate-owner@acme.test", userClient = SC.acme)
     val admin = TestUser.create(cxt, "gate-admin@acme.test", userClient = SC.acme, level = ROLE.admin)
@@ -114,6 +117,32 @@ class VisibleWhenWriteTest : StringSpec({
         // An administrator passes the gate, so their change lands.
         admin.postItems(patch, patchBody(gid, mapOf(ST.year to 2026L, ST.reviewerNote to "Revised")))
         expenseData(gid)[ST.reviewerNote] shouldBe "Revised"
+    }
+
+    "the survey save -- the form an owner actually edits with -- keeps the note, and refuses changing it" {
+        val gid = formWithNote("Seen")
+        fun surveySave(data: Map<String, Any?>) = mapOf(
+            WFD.workflowId to SW.reviewForm, GDF.taskId to SW.details, GDF.saveId to SW.saveDetails, GDF.gedraId to gid,
+            GDF.entries to listOf(mapOf(GE.traitId to ST.expenseReport, GE.data to data)),
+        )
+        // The survey form hides the note, so its save leaves it out.
+        owner.postData(save, surveySave(mapOf(ST.year to 2026L, ST.itemCount to 4L)))[WSF.saved] shouldBe true
+        expenseData(gid).let {
+            it[ST.itemCount] shouldBe 4L
+            it[ST.reviewerNote] shouldBe "Seen"
+        }
+        refused(owner, save, surveySave(mapOf(ST.year to 2026L, ST.reviewerNote to "Approved myself")))
+        expenseData(gid)[ST.reviewerNote] shouldBe "Seen"
+    }
+
+    "deleting an entry holding the note is refused; one without a note deletes" {
+        val noted = formWithNote("Do not lose me")
+        refused(owner, patch, patchBody(noted, null, GedraEditAction.deleteOrNoOp)).shouldContain("'${ST.expenseReport}'")
+        expenseData(noted)[ST.reviewerNote] shouldBe "Do not lose me"
+        val plain = owner.postItem(create, mapOf(GDF.entries to listOf(expense())))[GDF.gedraId].toOptStr()!!
+        owner.postItems(patch, patchBody(plain, null, GedraEditAction.deleteOrNoOp))
+        owner.getItem(get, mapOf(GDF.gedraId to plain))[GDF.entries].toJsonListOfMaps()
+            .none { it[GE.traitId] == ST.expenseReport } shouldBe true
     }
 
     "an import carrying the gated field is refused whole, forgiving or not" {
