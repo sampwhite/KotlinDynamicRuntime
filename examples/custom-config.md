@@ -166,6 +166,29 @@ Notes:
 - **The stylesheet is not brandable.** Replacing `app.css` wholesale would fork it and re-create the drift a
   single sheet exists to prevent; theming wants CSS variables instead.
 
+## Tuning batch jobs
+
+A deployment tunes its batch jobs through their **profiles** -- threads, heartbeat, lease, retries, synchronous
+caps, trace level -- and the node's **scheduler**, with typed settings (issue #870):
+
+```kotlin
+class KdrConfig : AppConfigApplier {
+    override fun AppConfigBuilder.applyAppConfig() {
+        jobProfile("workflowStates") {
+            leaseTimeoutMs = 60_000
+            trace = JobTraceLevel.launch
+        }
+        jobScheduler { tickMs = 30_000 }
+    }
+}
+```
+
+Settings are layered, lowest first: the job's registered profile in code; a component's contributions, which
+fill only what is still unset; this config object; and, for the trace level, the launch itself. So what you set
+here always stands over a component's defaults. A setting for a profile no registered job uses, or a setting
+that does not exist, fails the boot's `jobConfig` check (`KDR_JOB_CONFIG_CHECK` sets its mode), rather than being
+silently ignored.
+
 ## For Claude: controlling your own config while testing (issue #152)
 
 *This section is addressed to Claude (the coding agent), not to a human deployer.* The rest of this file is
