@@ -2,7 +2,6 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.GDF
-import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailure
@@ -236,12 +235,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         return "$lead filled in from your account — review and save to keep them."
     }
 
-    // The save a task offers for the current mode: the edit save when editing an existing form, else the create
-    // save. Each task carries exactly one today; picking by kind keeps this honest if that ever grows.
-    fun saveFor(task: WfTaskView): WfSaveView {
-        val wanted = if (isEdit) WfSaveKind.edit.name else WfSaveKind.create.name
-        return task.saves.firstOrNull { it.kind == wanted } ?: task.saves.first()
-    }
+    // The save a task offers for this page's mode -- its edit save against an existing form, else its create save --
+    // or none (issue #817): falling back to another kind would post a create against an existing form, and a task
+    // with no save of this kind (a normal workflow's approval step, say) has nothing to post.
+    fun saveFor(task: WfTaskView): WfSaveView? = saveOfKind(task, isEdit)
 
     fun onSave(task: WfTaskView) {
         // Client-side schema check per trait first; a failure keeps the save from leaving. A Save checks the
@@ -258,7 +255,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val entries = workflowSaveEntries(checks.mapValues { it.value.payload ?: emptyMap() })
         // A create save may be for another user (issue #727) when an admin picked one; an edit ignores it.
         val forUserRef = if (isEdit) null else pickedUser?.primaryId
-        val body = workflowSaveBody(wf.workflowId, task.id, saveFor(task).id, entries, gedraId, forUserRef)
+        val save = saveFor(task) ?: return
+        val body = workflowSaveBody(wf.workflowId, task.id, save.id, entries, gedraId, forUserRef)
         savingTask = task.id
         runError = null
         // The hash this save was launched under (#758 review): a create returns to the listing only while the
@@ -481,9 +479,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     SchemaForm {
                         type = trait.type
                         this.values = valuesOf(trait.traitId)
-                        // A step this caller may not save (issue #856), or a trait locked for them (issue #857), stays
-                        // read-only while the rest is edited.
-                        editable = editing && task.canSave && !task.isDisabled && trait.traitId !in wf.lockedTraits
+                        // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
+                        // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
+                        editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
                         friendly = true
                         // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
                         // an expense report's total, computed on read -- rather than hiding them; the flag is
@@ -522,7 +520,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // validation failures keeps its Save, so clicking it shows the errors rather than a dead button.
             // A task that offers no save -- a normal workflow's approval step (issues #787, #791) -- draws none:
             // there is nothing here to save, and asking for its save would find none.
-            if (editing && wf.isEditable(task)) {
+            val save = saveFor(task)
+            if (editing && wf.isEditable(task, isEdit) && save != null) {
                 // When defaults are the only thing left to do, say so above the Save (issue #710): the count is
                 // the task's still-pending defaults, and it disappears as they are accepted, edited, or saved.
                 val pendingDefaults =
@@ -540,7 +539,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         loading = savingTask == task.id
                         disabled = !taskUnsaved(task, valuesByTrait, stored) || savingTask != null
                         onClick = { onSave(task) }
-                        +saveFor(task).label
+                        +save.label
                     }
                 }
             }

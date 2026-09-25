@@ -34,6 +34,7 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.gedra.workflow.LockNames
 import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 
 /**
  * The frontend's model of a resolved creation workflow (issue #536) — the `/gedra/workflow/view` response
@@ -191,23 +192,27 @@ class WorkflowView(
      * Whether this normal workflow's tasks may be worked on now: engaged, still calculated (not frozen), and with at
      * least one task this caller can edit ([isEditable]).
      */
-    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { isEditable(it) })
+    val canWork: Boolean get() = !isNormal || (engaged == true && (phase == WfPhase.relevant.name || phase == WfPhase.engageable.name) && tasks.any { isEditable(it, isEdit = true) })
 
     /**
-     * Whether [task] is one this caller can edit here: it offers a save, they may make it (issue #856), it is not shown
-     * disabled (issue #832), and not every trait it collects is locked for them (issue #857) -- what decides both its
-     * Save and the page's Edit.
+     * Whether [task] is one this caller can edit here: it offers a save of the page's kind -- an `edit` against a form
+     * ([isEdit]), else a `create` (issue #817) -- they may make it (issue #856), it is not shown disabled (issue #832),
+     * and not every trait it collects is locked for them (issue #857). What decides its fields, its Save and the page's
+     * Edit. [isEdit] has no default: a create page and a form page answer differently, and a forgotten argument must
+     * not quietly pick one.
      */
-    fun isEditable(task: WfTaskView): Boolean =
-        task.canSave && !task.isDisabled && task.saves.isNotEmpty() &&
+    fun isEditable(task: WfTaskView, isEdit: Boolean): Boolean =
+        task.canSave && !task.isDisabled && saveOfKind(task, isEdit) != null &&
             (task.traits.isEmpty() || task.traits.any { it.traitId !in lockedTraits })
 
     /**
      * Whether the page offers Edit (issue #857 UI pass): the workflow can be worked on, and -- when one task is shown
      * at a time ([shown]) -- that task is editable, so Edit never leads to a step that is still read-only. Null
-     * [shown] means every task is on the page.
+     * [shown] means every task is on the page, and then one of them has to be (issue #817: a creation workflow
+     * opened against a form has none).
      */
-    fun offersEdit(shown: WfTaskView?): Boolean = canWork && (shown == null || isEditable(shown))
+    fun offersEdit(shown: WfTaskView?): Boolean =
+        canWork && (shown?.let { isEditable(it, isEdit = true) } ?: tasks.any { isEditable(it, isEdit = true) })
 
     /** Whether the form may be put into this normal workflow from here: not yet engaged, and engagement is open. */
     val canEngage: Boolean get() = isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name
@@ -336,6 +341,17 @@ private val unfilledPlaceholder = Regex("""\$\{[^}]*\}""")
 fun approvedLine(approval: WfApprovalView): String {
     val day = approval.approvedAt?.let { runCatching { it.parseDate().formatDayPart() }.getOrNull() }
     return "Approved" + (approval.approvedByName?.let { " by $it" } ?: "") + (day?.let { " on $it" } ?: "") + "."
+}
+
+/**
+ * The save [task] offers for the page's mode (issue #817): its `edit` save against an existing form ([isEdit]), else
+ * its `create` save -- never another kind in their place, and null when it has none. A creation task opened against
+ * a form, or a normal task that declares no save, therefore draws no Save rather than posting the wrong one. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun saveOfKind(task: WfTaskView, isEdit: Boolean): WfSaveView? {
+    val wanted = if (isEdit) WfSaveKind.edit.name else WfSaveKind.create.name
+    return task.saves.firstOrNull { it.kind == wanted }
 }
 
 /**

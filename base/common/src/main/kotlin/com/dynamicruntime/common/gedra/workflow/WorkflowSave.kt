@@ -58,6 +58,14 @@ fun saveWorkflow(
 
     return when (save.kind) {
         WfSaveKind.create -> {
+            // A create makes a new form (issue #817): one named by id is a caller mistake -- a creation workflow
+            // opened against an existing form -- and ignoring the id would quietly make a second form.
+            if (gedraId != null) {
+                throw KdrException.mkInput(
+                    "Save '$saveId' of task '$taskId' creates a new form, so it takes no ${GDF.gedraId}; " +
+                        "an existing form is changed by an edit save.",
+                )
+            }
             // The gate: a required trait with no entry present is not an error, it is an unfinished form.
             val unmet = WfEngine.missingTraits(task.requiredTraitIds, entries)
             if (unmet.isNotEmpty()) {

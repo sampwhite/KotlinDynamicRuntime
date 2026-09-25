@@ -79,7 +79,7 @@ class TaskDisplayViewTest {
         val task = disabled.tasks.single()
         assertTrue(task.isDisabled)
         assertFalse(task.isReviewer)
-        assertFalse(disabled.isEditable(task))
+        assertFalse(disabled.isEditable(task, isEdit = true))
         assertFalse(task.approval!!.approved)
         // The reviewer fact is what the button is shown on.
         assertTrue(view(approvalTask(approvedBlock, facts = listOf(WFC.reviewer))).tasks.single().isReviewer)

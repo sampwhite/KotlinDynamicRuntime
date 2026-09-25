@@ -733,6 +733,13 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             gedraId != null -> registry.survey
             else -> registry.creation
         }
+        // A creation workflow makes new forms (issue #817): asked against an existing one it would draw that form under a
+        // "new form" heading, with a save the save endpoint refuses -- so it is refused here, before anything is read.
+        if (declared != null && gedraId != null && declared.def.entry == WfEntry.creation) {
+            throw KdrException.mkInput(
+                "Workflow '${declared.def.workflowId}' creates new forms, so it cannot be opened against an existing one.",
+            )
+        }
         if (declared == null) {
             noWorkflowView()
         } else {
