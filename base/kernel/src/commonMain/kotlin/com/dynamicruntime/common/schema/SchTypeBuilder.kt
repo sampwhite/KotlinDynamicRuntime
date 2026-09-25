@@ -97,6 +97,11 @@ open class SchTypeBuilder(
 
     var type: String? by SchAttr(data, SCH.type)
     var description: String? by SchAttr(data, SCH.description)
+    /**
+     * A short human name for the type -- what a page heads a trait's data with, and what a message calls it (a trait
+     * lock's refusal, issue #857) -- beside [description]'s longer explanation. Absent, the pages humanize the id.
+     */
+    var title: String? by SchAttr(data, SCH.title)
     var format: String? by SchAttr(data, SCH.format)
 
     /** Custom `allowCoerce` keyword. When unset, the parser defaults it (true for

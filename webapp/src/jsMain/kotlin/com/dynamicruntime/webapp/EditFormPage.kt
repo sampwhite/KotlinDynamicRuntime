@@ -23,6 +23,7 @@ import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 
 /** Coroutine scope for the edit page's suspend calls (the endpoint fetches, the form fetch, and the patch). */
 private val editScope = MainScope()
@@ -289,7 +290,7 @@ val EditFormPage = FC<Props> {
                     div {
                         className = ClassName("lock-notice")
                         p {
-                            +("Locked for you: " + locks.joinToString("; ") { "${humanizeFieldName(it.traitId)} (by ${it.label})" } +
+                            +("Locked for you: " + locks.joinToString("; ") { "${it.name} (by ${it.label})" } +
                                 ". Changes to ${if (locks.size == 1) "it" else "them"} can't be saved" +
                                 if (overridable) " unless you override the lock, by Save." else ".")
                         }
@@ -349,11 +350,12 @@ val EditFormPage = FC<Props> {
                             // A local, not the state: a state set in this click still reads as its old value here.
                             val lockProblem = when {
                                 changedLocks.isEmpty() -> null
-                                !overriding -> "${changedLocks.joinToString(", ") { humanizeFieldName(it.traitId) }} " +
-                                    "is locked; undo the change" + (if (changedLocks.all { it.canOverride }) ", or override the lock." else ".")
+                                // The server's wording (`TraitLockCopy`), so a refusal reads the same whichever side catches it.
+                                !overriding -> TraitLockCopy.changeRefused(changedLocks.map { it.names }) + " Undo the change" +
+                                    (if (changedLocks.all { it.canOverride }) ", or override the lock." else ".")
                                 reason == null -> "Give a reason for overriding the lock."
-                                !changedLocks.all { it.canOverride } -> "You may not override the lock on " +
-                                    changedLocks.filterNot { it.canOverride }.joinToString(", ") { humanizeFieldName(it.traitId) } + "."
+                                !changedLocks.all { it.canOverride } ->
+                                    TraitLockCopy.overrideRefused(changedLocks.filterNot { it.canOverride }.map { it.names })
                                 else -> null
                             }
                             lockError = lockProblem

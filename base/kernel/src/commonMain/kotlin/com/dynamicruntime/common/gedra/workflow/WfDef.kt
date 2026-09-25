@@ -190,6 +190,9 @@ object WVF {
     const val lockedTraits = "lockedTraits"
     const val canOverride = "canOverride"
 
+    /** On a locked trait (issue #857): its name as the pages head it -- its title, else its id humanized. */
+    const val traitName = "traitName"
+
     /**
      * For a normal workflow viewed against a form it is not engaged with (issue #791): whether the form passes its
      * eligibility tests -- so the page offers Engage only when engaging can succeed -- and, when it does not, the

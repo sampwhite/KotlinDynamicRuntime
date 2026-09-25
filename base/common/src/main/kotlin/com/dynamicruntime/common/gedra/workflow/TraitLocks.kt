@@ -11,6 +11,10 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * Which of a form's traits are **locked for this caller** (issue #857), from the form's stored state and the caller --
@@ -84,11 +88,24 @@ object TraitLocks {
         return held.map {
             linkedMapOf<String, Any?>(
                 WFD.traitId to it.lock.traitId,
+                // Named as the server's refusals name it, so the page and the refusal beside it cannot disagree.
+                WVF.traitName to traitName(cxt, client, it.lock.traitId),
                 WFD.workflowId to it.declared.def.workflowId,
                 WFD.label to workflowLabel(it.declared.def, resolve),
                 WVF.canOverride to it.canOverride,
             )
         }
+    }
+
+    /**
+     * A trait's name as the pages head it, for a message: its data type's title in [client]'s schema, else its id
+     * humanized -- "Acme site audit", not `acmeSiteAudit`.
+     */
+    fun traitName(cxt: KdrCxt, client: String, traitId: String): String {
+        val union = SchemaService.get(cxt).storeFor(client)
+            .types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+        val title = union?.variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType?.title
+        return title?.takeIf { it.isNotBlank() } ?: humanizeFieldName(traitId)
     }
 
     /** A workflow's name, in [client]'s wording, for saying which workflow holds a lock. */
@@ -113,19 +130,19 @@ object TraitLockGuard : GedraWriteGuard {
         val client = write.row.client
         val held = TraitLocks.heldFor(cxt, client, write.row.entries, write.states, write.changedTraits)
         if (held.isEmpty()) return null
-        fun named(h: TraitLocks.Held) = "'${h.lock.traitId}' (locked by ${TraitLocks.workflowLabel(cxt, client, h)})"
+        // The messages name traits and workflows as the pages do -- never by id -- in the wording the raw editor shares.
+        fun names(locks: List<TraitLocks.Held>) = locks.map {
+            LockNames(TraitLocks.traitName(cxt, client, it.lock.traitId), TraitLocks.workflowLabel(cxt, client, it))
+        }
         if (write.deletesGedra) {
-            throw KdrException(
-                "This form cannot be deleted now: its ${held.joinToString(", ") { named(it) }} may not be changed.",
-                code = EXC.conflict,
-            )
+            throw KdrException(TraitLockCopy.deleteRefused(names(held)), code = EXC.conflict)
         }
         val reason = write.overrideReason
         if (reason == null) {
             val overridable = held.all { it.canOverride }
             throw KdrException(
-                "This form's ${held.joinToString(", ") { named(it) }} cannot be changed now." +
-                    if (overridable) " You may override the lock by giving a reason." else "",
+                TraitLockCopy.changeRefused(names(held)) +
+                    if (overridable) " " + TraitLockCopy.overrideOffer(held.size) else "",
                 code = EXC.conflict,
             )
         }
@@ -133,10 +150,7 @@ object TraitLockGuard : GedraWriteGuard {
             throw KdrException.mkInput("Overriding a lock needs a reason, recorded with the change.")
         }
         held.filterNot { it.canOverride }.takeIf { it.isNotEmpty() }?.let { refused ->
-            throw KdrException(
-                "You may not override the lock on ${refused.joinToString(", ") { named(it) }}.",
-                code = EXC.conflict,
-            )
+            throw KdrException(TraitLockCopy.overrideRefused(names(refused)), code = EXC.conflict)
         }
         // Permitted: the override is recorded on each locking workflow's trail, with the write.
         val at = cxt.instanceNow()

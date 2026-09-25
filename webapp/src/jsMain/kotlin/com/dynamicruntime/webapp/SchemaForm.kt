@@ -54,6 +54,7 @@ import web.html.InputType
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonListOrEmpty
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * How the form renders, beyond the schema itself (issue #408): whether it is a **friendly** data-entry form or
@@ -243,24 +244,6 @@ internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, 
 internal fun layoutErrorMessage(copy: LayoutCopy?, prop: SchProperty, name: String, value: Any?, f: SchFailure): String? {
     val template = copy?.errors?.let { it[f.code.name] ?: it[SCH.errorDefault] } ?: return null
     return resolveLayoutTemplate(template, errorContextData(f.code, prop.valueType, name, value, f.options))
-}
-
-/**
- * A short, readable label from a wire key: `expenseReport` -> `Expense report`, `perItemAmount` -> `Per item
- * amount`. A space goes in before each capital and the result reads as one sentence-cased phrase.
- *
- * The fallback when a field declares no `title`. Deliberately simple -- a nicety over the key, not a
- * translation -- so a run of capitals (an acronym) spaces out oddly; a field that cares declares a title.
- * Pure, and covered under `jsNodeTest`.
- */
-fun humanizeFieldName(name: String): String {
-    if (name.isEmpty()) return name
-    val sb = StringBuilder()
-    name.forEachIndexed { i, c ->
-        if (i > 0 && c.isUpperCase()) sb.append(' ')
-        sb.append(c.lowercaseChar())
-    }
-    return sb.toString().replaceFirstChar { it.uppercaseChar() }
 }
 
 /**

@@ -966,6 +966,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             items {
                 type = SCT.kObject
                 property(WFD.traitId, "The locked trait.", required = true)
+                property(WVF.traitName, "The locked trait's name, as the pages head it.", required = true)
                 property(WFD.workflowId, "The workflow locking it.", required = true)
                 property(WFD.label, "That workflow's name, resolved.", required = true)
                 property(WVF.canOverride, "Whether this caller may override the lock, with a reason.", required = true) { type = SCT.boolean }
@@ -1349,7 +1350,7 @@ private fun gedraSortFor(
         GSORT.updated -> GedraDataService.GedraSort(UsageKind.date, descending) { it.updatedAt?.toString() ?: "" }
         GSORT.created -> GedraDataService.GedraSort(UsageKind.date, descending) { it.createdAt?.toString() ?: "" }
         // The "Contains" summary orders by the row's traits as text (issue #666). Its display shows friendly
-        // labels, but those are computed on the frontend (humanizeFieldName is not in the kernel); the trait ids
+        // labels, but those are computed on the frontend (from each trait's title or humanized id); the trait ids
         // sort in the same relative order for the ordinary case where a label is just the humanized id.
         GSORT.contains -> GedraDataService.GedraSort(UsageKind.string, descending) { row ->
             row.entries.mapNotNull { it[GE.traitId].toOptStr() }.joinToString(", ")

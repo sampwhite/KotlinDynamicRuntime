@@ -534,6 +534,8 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             setOf(GedraDataType.formDoc),
             "An audit acme runs on one of its sites.",
         ) {
+            // What the pages head it, and what a lock refusal calls it -- rather than the humanized "Acme site audit".
+            title = "Site audit"
             property(SC.auditor, "Who carried out the audit.", required = true)
             property(SC.findings, "What they found.")
         }
@@ -545,6 +547,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             setOf(GedraDataType.formDoc),
             "A follow-up visit acme makes to one of its sites.",
         ) {
+            title = "Site follow-up"
             property(SC.followUpBy, "Who made the follow-up visit.", required = true)
             property(SC.followUpOutcome, "What the follow-up found.")
         }

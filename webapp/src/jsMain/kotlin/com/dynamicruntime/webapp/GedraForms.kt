@@ -43,6 +43,7 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /*
  * Shared helpers for the gedra form-document pages (issue #408): discovering the client-scoped endpoints in the

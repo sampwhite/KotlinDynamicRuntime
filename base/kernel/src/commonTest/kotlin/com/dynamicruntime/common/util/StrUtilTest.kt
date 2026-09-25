@@ -66,4 +66,13 @@ class StrUtilTest {
         assertEquals("Ada_L", " Ada_L ".normalizeLoginId())
         assertEquals("", "   ".normalizeLoginId())
     }
+
+    /** Names joined as a sentence says them, as the trait-lock messages do. */
+    @Test
+    fun joinsNamesAsAPhrase() {
+        assertEquals("", joinAsPhrase(emptyList()))
+        assertEquals("Audit review", joinAsPhrase(listOf("Audit review")))
+        assertEquals("Audit review and Site follow-up", joinAsPhrase(listOf("Audit review", "Site follow-up")))
+        assertEquals("A, B or C", joinAsPhrase(listOf("A", "B", "C"), last = "or"))
+    }
 }

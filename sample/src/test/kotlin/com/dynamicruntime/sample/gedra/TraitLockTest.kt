@@ -84,7 +84,7 @@ class TraitLockTest : StringSpec({
     "the owner cannot change the audit by any patch, but may change the rest of their form" {
         val gid = engagedForm()
         refused(owner, patchBody(gid, SC.siteAudit, audit("open"))).let {
-            it shouldContain "'${SC.siteAudit}' (locked by Audit review)"
+            it shouldContain "Site audit is locked by Audit review and can't be changed now."
             it shouldNotContain "override"
         }
         // A delete is an edit too.
@@ -102,7 +102,7 @@ class TraitLockTest : StringSpec({
     "nobody the lock holds for may delete the form -- it would remove the audit -- until the lock lifts" {
         val gid = engagedForm()
         owner.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[
-            "errorMessage"].toOptStr().orEmpty() shouldContain "cannot be deleted"
+            "errorMessage"].toOptStr().orEmpty() shouldContain "The form can't be deleted while it's in Audit review, which locks its Site audit."
         // Not even someone who may override an edit: a deletion leaves no form to read the override on.
         admin.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)
         owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.auditReview, WFS.engaged to false))
@@ -117,7 +117,7 @@ class TraitLockTest : StringSpec({
 
     "an administrator is refused unless they override, and the override is recorded" {
         val gid = engagedForm()
-        refused(admin, patchBody(gid, SC.siteAudit, audit("open"))) shouldContain "You may override the lock"
+        refused(admin, patchBody(gid, SC.siteAudit, audit("open"))) shouldContain "You can override the lock by giving a reason."
         admin.postItems(patch, patchBody(gid, SC.siteAudit, audit("seen, corrected"), reason = "Fixing the auditor's typo"))
         val trail = owner.postData(recompute, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps()
             .first { it[GE.traitId] == WFS.workflowEngagement }[GE.data].toJsonMapOrEmpty()[WFS.events].toJsonListOfMaps()
@@ -129,7 +129,7 @@ class TraitLockTest : StringSpec({
 
     "someone the lock does not allow to override is refused even when they ask" {
         val gid = engagedForm()
-        refused(owner, patchBody(gid, SC.siteAudit, audit("open"), reason = "Because")) shouldContain "may not override"
+        refused(owner, patchBody(gid, SC.siteAudit, audit("open"), reason = "Because")) shouldContain "You can't override the lock Audit review holds on Site audit."
     }
 
     "the locks endpoint and the workflow view tell each caller what is locked for them" {
@@ -138,6 +138,7 @@ class TraitLockTest : StringSpec({
             it[WFD.traitId] shouldBe SC.siteAudit
             it[WFD.workflowId] shouldBe SW.auditReview
             it[WFD.label] shouldBe "Audit review"
+            it[WVF.traitName] shouldBe "Site audit"
             it[WVF.canOverride] shouldBe false
         }
         lockedFor(admin, gid).single()[WVF.canOverride] shouldBe true
@@ -159,8 +160,34 @@ class TraitLockTest : StringSpec({
         )[GDF.gedraId].toOptStr()!!
         owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.siteFollowUp))
         val followUp = mapOf(SC.followUpBy to "A Person", SC.followUpOutcome to "All fine")
-        refused(owner, patchBody(gid, SC.siteFollowUpTrait, followUp)) shouldContain "(locked by Site follow-up)"
+        refused(owner, patchBody(gid, SC.siteFollowUpTrait, followUp)) shouldContain "is locked by Site follow-up"
         siteLead.postItems(patch, patchBody(gid, SC.siteFollowUpTrait, followUp))
+    }
+
+    "a form two workflows lock says both, by name, when a delete is refused" {
+        // A form holding the audit and a follow-up; the review approved, so the follow-up -- held off while a review
+        // is pending -- can engage too.
+        val gid = owner.postItem(
+            create,
+            mapOf(
+                GDF.entries to listOf(
+                    mapOf(GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2026)),
+                    mapOf(GE.traitId to SC.userInfo, GE.data to mapOf(SC.userName to "A Person")),
+                    mapOf(GE.traitId to SC.siteAudit, GE.data to mapOf(SC.auditor to "A Person", SC.findings to "seen")),
+                    mapOf(GE.traitId to SC.siteFollowUpTrait, GE.data to mapOf(SC.followUpBy to "A Person")),
+                ),
+            ),
+        )[GDF.gedraId].toOptStr()!!
+        owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.auditReview))
+        reviewer.postData(
+            clientPath(GEP.workflowApprove, SC.acme),
+            mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview, GDF.taskId to SW.approveAudit),
+        )
+        owner.postData(engage, mapOf(GDF.gedraId to gid, WFD.workflowId to SW.siteFollowUp))
+        owner.expectError(EXC.conflict, formDoc, args = mapOf(GDF.gedraId to gid), method = HttpMethod.DELETE)[
+            "errorMessage"].toOptStr().orEmpty() shouldContain
+            "The form can't be deleted while it's in Audit review and Site follow-up, which lock its Site audit and " +
+            "Site follow-up."
     }
 
     "disengaging lifts the lock -- nothing about it was stored" {

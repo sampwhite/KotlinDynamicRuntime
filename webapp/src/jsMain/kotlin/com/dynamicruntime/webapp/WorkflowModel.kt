@@ -31,6 +31,9 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.humanizeFieldName
+import com.dynamicruntime.common.gedra.workflow.LockNames
+import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 
 /**
  * The frontend's model of a resolved creation workflow (issue #536) — the `/gedra/workflow/view` response
@@ -635,7 +638,17 @@ fun parseSaveOutcome(results: Map<String, Any?>): WorkflowSaveOutcome = Workflow
  * A trait locked for this caller on a form (issue #857): which workflow locks it ([workflowId], [label]) and whether
  * this caller may override the lock with a reason ([canOverride]).
  */
-class TraitLock(val traitId: String, val workflowId: String, val label: String, val canOverride: Boolean)
+class TraitLock(
+    val traitId: String,
+    val workflowId: String,
+    val label: String,
+    val canOverride: Boolean,
+    /** The trait's name as the server's refusals give it -- its title, else its id humanized. */
+    val name: String = humanizeFieldName(traitId),
+) {
+    /** How a lock message names this lock -- the wording the backend's refusals share ([TraitLockCopy]). */
+    val names: LockNames get() = LockNames(name, label)
+}
 
 /** A view's or the locks endpoint's `lockedTraits` (issue #857). Pure, and covered under `jsNodeTest`. */
 fun parseTraitLocks(raw: Any?): List<TraitLock> = raw.toJsonListOfMaps().mapNotNull { l ->
@@ -644,5 +657,6 @@ fun parseTraitLocks(raw: Any?): List<TraitLock> = raw.toJsonListOfMaps().mapNotN
         workflowId = l[WFD.workflowId].toOptStr().orEmpty(),
         label = l[WFD.label].toOptStr().orEmpty(),
         canOverride = l[WVF.canOverride] == true,
+        name = l[WVF.traitName].toOptStr() ?: humanizeFieldName(l[WFD.traitId].toOptStr().orEmpty()),
     )
 }
