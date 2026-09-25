@@ -168,7 +168,7 @@ class GedraConfigReloadTest : StringSpec({
         }
         GedraConfigService.get(own).writeConfig(ownClient(), bad)
         val thrown = shouldThrow<KdrException> { GedraConfigReload.reloadClient(own, client) }
-        // The reserved-field message confirms it was checkUsageRules that refused it -- i.e. the failure came
+        // The reserved-field message confirms it was checkUsageRules that refused it -- i.e., the failure came
         // *after* the publish, which is the branch under test (an earlier guard would leave the snapshot untouched
         // and pass the identity check below trivially).
         thrown.fullMessage() shouldContainString "reserved forms-listing field"

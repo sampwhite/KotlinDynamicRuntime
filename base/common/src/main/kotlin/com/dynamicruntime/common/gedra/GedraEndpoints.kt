@@ -1546,7 +1546,7 @@ fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "adminGedr
 }
 
 /**
- * The fields that name one workflow as a listing shows it -- its client, id, resolved label and phase -- shared by
+ * The fields that name one workflow as a listing shows it -- its client, id, resolved label, and phase -- shared by
  * the forms listing's workflow summary (issue #791) and the workflow pages' aggregate (issue #792), so the two
  * describe a workflow the same way and change together.
  */

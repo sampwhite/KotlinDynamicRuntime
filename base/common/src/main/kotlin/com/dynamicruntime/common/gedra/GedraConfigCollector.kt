@@ -503,14 +503,15 @@ class GedraConfigCollector {
         // entry's bare trait id resolves unambiguously against the client of the gedra that holds it.
         for (traitId in config.traits.keys + stateTraits.keys + config.configTraits.keys) {
             val held = traitHolder(config, traitId) ?: continue
-            val why = when {
-                held.gedraId.client == config.gedraId.client ->
+            val why = when (held.gedraId.client) {
+                config.gedraId.client ->
                     "A trait id is unique within a client -- and a global one across every client and gedra kind."
-                held.gedraId.client == GID.globalClient ->
+
+                GID.globalClient ->
                     "It is a global trait's id, which no client may reuse: a client's own traits and the global " +
-                        "ones it sees must never share one, or a stored entry's bare trait id could mean either."
-                else ->
-                    "A global trait's id may not be one a client already uses, or that client's own traits and " +
+                            "ones it sees must never share one, or a stored entry's bare trait id could mean either."
+
+                else -> "A global trait's id may not be one a client already uses, or that client's own traits and " +
                         "the global ones it sees would share it."
             }
             return config.issue(
