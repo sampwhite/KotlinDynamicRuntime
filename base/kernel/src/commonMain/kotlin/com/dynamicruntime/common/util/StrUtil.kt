@@ -173,3 +173,32 @@ fun StringBuilder.appendLiteral(text: String): StringBuilder {
 /** Formats to four characters of uppercase hex */
 fun Char.toUpperHex(): String =
     this.code.toShort().toHexString(customHexFormat)
+
+/**
+ * A short, readable label from a wire key: `expenseReport` -> `Expense report`, `perItemAmount` -> `Per item
+ * amount`. A space goes in before each capital and the result reads as one sentence-cased phrase.
+ *
+ * The fallback when a field declares no `title`. Deliberately simple -- a nicety over the key, not a
+ * translation -- so a run of capitals (an acronym) spaces out oddly; a field that cares declares a title.
+ * In the kernel so the backend names a trait in a message the way the pages head it (the lock guard, say). Pure,
+ * and covered under the webapp's `jsNodeTest`.
+ */
+fun humanizeFieldName(name: String): String {
+    if (name.isEmpty()) return name
+    val sb = StringBuilder()
+    name.forEachIndexed { i, c ->
+        if (i > 0 && c.isUpperCase()) sb.append(' ')
+        sb.append(c.lowercaseChar())
+    }
+    return sb.toString().replaceFirstChar { it.uppercaseChar() }
+}
+
+/**
+ * [items] as one phrase for a sentence: `A`, `A and B`, `A, B and C` -- how a message names several things (the
+ * traits a lock holds, the workflows holding them). Empty for none.
+ */
+fun joinAsPhrase(items: List<String>, last: String = "and"): String = when (items.size) {
+    0 -> ""
+    1 -> items[0]
+    else -> items.dropLast(1).joinToString(", ") + " $last " + items.last()
+}

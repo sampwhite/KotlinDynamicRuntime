@@ -36,6 +36,7 @@ import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /** The current wall-clock time as a short local string, for the "as of" freshness stamp. */
 private fun nowTimeString(): String = js("new Date().toLocaleTimeString()") as String

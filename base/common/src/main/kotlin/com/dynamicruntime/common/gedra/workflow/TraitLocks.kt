@@ -11,6 +11,11 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.util.humanizeFieldName
+import com.dynamicruntime.common.util.joinAsPhrase
 
 /**
  * Which of a form's traits are **locked for this caller** (issue #857), from the form's stored state and the caller --
@@ -91,6 +96,17 @@ object TraitLocks {
         }
     }
 
+    /**
+     * A trait's name as the pages head it, for a message: its data type's title in [client]'s schema, else its id
+     * humanized -- "Acme site audit", not `acmeSiteAudit`.
+     */
+    fun traitName(cxt: KdrCxt, client: String, traitId: String): String {
+        val union = SchemaService.get(cxt).storeFor(client)
+            .types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+        val title = union?.variants?.byValue?.get(traitId)?.properties?.get(GE.data)?.valueType?.title
+        return title?.takeIf { it.isNotBlank() } ?: humanizeFieldName(traitId)
+    }
+
     /** A workflow's name, in [client]'s wording, for saying which workflow holds a lock. */
     fun workflowLabel(cxt: KdrCxt, client: String, held: Held): String =
         workflowLabel(held.declared.def, copyResolver(cxt, client))
@@ -113,19 +129,25 @@ object TraitLockGuard : GedraWriteGuard {
         val client = write.row.client
         val held = TraitLocks.heldFor(cxt, client, write.row.entries, write.states, write.changedTraits)
         if (held.isEmpty()) return null
-        fun named(h: TraitLocks.Held) = "'${h.lock.traitId}' (locked by ${TraitLocks.workflowLabel(cxt, client, h)})"
+        // The messages name traits and workflows as the pages do -- "Acme site audit", "Audit review" -- never by id.
+        fun traitsOf(locks: List<TraitLocks.Held>) = joinAsPhrase(locks.map { TraitLocks.traitName(cxt, client, it.lock.traitId) }.distinct())
+        fun workflowsOf(locks: List<TraitLocks.Held>) = joinAsPhrase(locks.map { TraitLocks.workflowLabel(cxt, client, it) }.distinct())
+        val workflowCount = held.map { it.declared.def.workflowId }.distinct().size
         if (write.deletesGedra) {
             throw KdrException(
-                "This form cannot be deleted now: its ${held.joinToString(", ") { named(it) }} may not be changed.",
+                "The form can't be deleted while it's in ${workflowsOf(held)}, which " +
+                    "${if (workflowCount == 1) "locks" else "lock"} its ${traitsOf(held)}.",
                 code = EXC.conflict,
             )
         }
         val reason = write.overrideReason
         if (reason == null) {
             val overridable = held.all { it.canOverride }
+            val traitCount = held.map { it.lock.traitId }.distinct().size
             throw KdrException(
-                "This form's ${held.joinToString(", ") { named(it) }} cannot be changed now." +
-                    if (overridable) " You may override the lock by giving a reason." else "",
+                "${traitsOf(held)} ${if (traitCount == 1) "is" else "are"} locked by ${workflowsOf(held)} and " +
+                    "can't be changed now." +
+                    if (overridable) " You can override the ${if (held.size == 1) "lock" else "locks"} by giving a reason." else "",
                 code = EXC.conflict,
             )
         }
@@ -134,7 +156,9 @@ object TraitLockGuard : GedraWriteGuard {
         }
         held.filterNot { it.canOverride }.takeIf { it.isNotEmpty() }?.let { refused ->
             throw KdrException(
-                "You may not override the lock on ${refused.joinToString(", ") { named(it) }}.",
+                "You can't override " +
+                    joinAsPhrase(refused.map { "${TraitLocks.workflowLabel(cxt, client, it)}'s lock on ${TraitLocks.traitName(cxt, client, it.lock.traitId)}" }) +
+                    ".",
                 code = EXC.conflict,
             )
         }

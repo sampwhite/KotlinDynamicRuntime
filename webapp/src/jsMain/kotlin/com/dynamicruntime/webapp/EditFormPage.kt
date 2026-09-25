@@ -23,6 +23,7 @@ import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /** Coroutine scope for the edit page's suspend calls (the endpoint fetches, the form fetch, and the patch). */
 private val editScope = MainScope()

@@ -7,6 +7,7 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * Pure-logic coverage for where a friendly field label's `title` comes from (issue #408).

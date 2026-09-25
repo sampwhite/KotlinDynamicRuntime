@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * Pure-logic coverage (issue #161) for [humanizeFieldName], the friendly-form fallback that turns a wire key

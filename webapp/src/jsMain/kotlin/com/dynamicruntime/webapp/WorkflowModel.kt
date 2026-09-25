@@ -31,6 +31,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.humanizeFieldName
 
 /**
  * The frontend's model of a resolved creation workflow (issue #536) — the `/gedra/workflow/view` response
