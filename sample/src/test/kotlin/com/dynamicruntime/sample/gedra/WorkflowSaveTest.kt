@@ -69,6 +69,15 @@ class WorkflowSaveTest : StringSpec({
         )
     }
 
+    "a create save naming an existing form is refused, and makes no second form (issue #817)" {
+        val existing = save(base(listOf(nameEntry("First"))))[WSF.item].toJsonMapOrEmpty()[GDF.gedraId].toOptStr()!!
+        fun count() = globex.getItems(clientPath(GEP.formDocs, SC.globex)).size
+        val before = count()
+        val refused = globex.expectError(EXC.badInput, savePath, base(listOf(nameEntry("Second"))) + (GDF.gedraId to existing))
+        refused["errorMessage"].toOptStr().orEmpty() shouldContain "creates a new form"
+        count() shouldBe before
+    }
+
     "an unknown task is a 400" {
         globex.expectError(EXC.badInput, savePath, base(listOf(nameEntry("x"))) + (GDF.taskId to "nope"))
     }

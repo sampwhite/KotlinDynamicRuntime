@@ -462,4 +462,22 @@ class WorkflowModelTest {
         assertEquals(emptyList(), shownFailures(all, emptySet(), wholeTraitChecked = false))
         assertEquals(all, shownFailures(all, emptySet(), wholeTraitChecked = true))
     }
+
+    /** Issue #817: a save of the page's own kind, or none -- never another kind in its place, never an index into nothing. */
+    @Test
+    fun aTaskOffersOnlyASaveOfThePagesKind() {
+        val create = WfSaveView("create", "Create", "create")
+        val edit = WfSaveView("saveEdit", "Save", "edit")
+        fun task(vararg saves: WfSaveView) = WfTaskView("t", "T", traits = emptyList(), saves = saves.toList())
+        assertEquals("saveEdit", saveOfKind(task(create, edit), isEdit = true)?.id)
+        assertEquals("create", saveOfKind(task(create, edit), isEdit = false)?.id)
+        // A creation task opened against a form: no edit save, so no Save -- not its create, which would make a second form.
+        assertNull(saveOfKind(task(create), isEdit = true))
+        // A normal task that declares no save.
+        assertNull(saveOfKind(task(), isEdit = true))
+        // And editability follows the same rule: a creation task is editable on a create page, not against a form.
+        val view = WorkflowView(workflowId = "createForm", entry = "creation", showTaskList = false, tasks = listOf(task(create)), cfacts = emptyMap())
+        assertTrue(view.isEditable(view.tasks.single(), isEdit = false))
+        assertFalse(view.isEditable(view.tasks.single(), isEdit = true))
+    }
 }
