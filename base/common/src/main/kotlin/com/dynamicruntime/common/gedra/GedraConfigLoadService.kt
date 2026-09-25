@@ -159,7 +159,7 @@ class GedraConfigLoadService : ServiceInitializer {
         // the node runs -- not a row it selected but then dropped as malformed or extends-invalid.
         val takenMarkers = HashMap<String, Instant>()
         for (row in rows) {
-            var stored: GedraConfigRow? = null
+            var stored: GedraConfigRow?
             val config = try {
                 // Parse the id rather than intern it: GedraService is a regular service and does not exist yet.
                 stored = GedraConfigRow.extract(row) { GedraId.parse(it) }
@@ -179,7 +179,7 @@ class GedraConfigLoadService : ServiceInitializer {
                 reportConfigProblem(cxt, problem, issues)
                 continue
             }
-            stored?.let { unknownSlotsIssue(it) }?.let { reportConfigProblem(cxt, it, issues) }
+            unknownSlotsIssue(stored)?.let { reportConfigProblem(cxt, it, issues) }
             // Routes through the same checks and degrade behavior a source config gets; a taken config's
             // fragment/UiBlock overlays are then folded in, gated on the take exactly as the boot loop does.
             if (collector.addGedraConfig(cxt, config)) {
@@ -270,7 +270,7 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /**
      * Why a stored [config] may not be taken at all, or null: its owner (see [storedOwnershipProblem]) or its
-     * `extendsFromClientId` ([extendsProblem]). What the boot load, a reload and a trial each ask of a config once
+     * `extendsFromClientId` ([extendsProblem]). What the boot load, a reload, and a trial each ask of a config once
      * it has reassembled.
      */
     fun storedConfigProblem(config: GedraConfig, sourceClients: Map<String, ClientDef>): GedraConfigIssue? {
