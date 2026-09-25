@@ -22,9 +22,11 @@ import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -61,6 +63,34 @@ class GedraConfigWriteTrialTest : StringSpec({
     )
 
     fun stored(client: String): Int = admin.getItems(ACEP.bundles, mapOf(CFEP.client to client)).size
+
+    /** A config holding [client]'s definition and the traits [traitIds] -- for another config to collect. */
+    fun defs(client: String, vararg traitIds: String) = config(client, "defs") {
+        defineClient(clientDef(client))
+        for ((i, traitId) in traitIds.withIndex()) {
+            trait("DefsEntry$i", traitId, setOf(GedraDataType.formDoc), "A trait another config collects.") {
+                property("text", "Text.")
+            }
+        }
+    }
+
+    /** A config of [client]'s holding one workflow that collects [traitId]; with none, an empty config. */
+    fun flow(client: String, traitId: String?) = config(client, "flow") {
+        if (traitId != null) {
+            workflow("collect", WfEntry.creation) {
+                task("only", "Only") {
+                    trait(traitId)
+                    save("create", "Create")
+                }
+            }
+        }
+    }
+
+    fun publish(client: String, name: String) =
+        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to client, CFEP.name to name))
+
+    fun setPublishedOnly(client: String, value: Boolean) =
+        admin.postData(ACEP.publishedOnly, mapOf(CFEP.client to client, CFEP.publishedOnlyField to value))
 
     "an unregistered options source is refused at write, and nothing is stored (B3)" {
         val client = "trial843src"
@@ -140,5 +170,80 @@ class GedraConfigWriteTrialTest : StringSpec({
         }
         admin.postData(ACEP.bundleWrite, writeBody(unrelated))
         stored(client) shouldBe 2
+    }
+
+    // A client's definition is spread across its configs, so a write is judged against the others **as stored** --
+    // not as this node last loaded them. Nothing here reloads between the writes.
+    "a write is judged against the client's other stored configs, reloaded or not" {
+        val client = "trial843set"
+        admin.postData(ACEP.bundleWrite, writeBody(defs(client, "${client}Topic")))
+        // Sound only because the stored (never loaded) 'defs' declares the trait.
+        admin.postData(ACEP.bundleWrite, writeBody(flow(client, "${client}Topic")))
+        // And dropping the trait is refused, since the stored 'flow' still collects it.
+        val refused = admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(defs(client)))
+        refused[EP.errorMessage].toString() shouldContain "collects the trait '${client}Topic'"
+        stored(client) shouldBe 2
+    }
+
+    // An import writes each client's bundles in one transaction and judges them as one set: bundles sound only
+    // together are taken in any order, and a client whose set is unsound keeps none of it -- without stopping the
+    // other clients in the same import.
+    "an import judges each client's bundles as a set, all or nothing" {
+        val good = "trial843impa"
+        val bad = "trial843impb"
+        val result = admin.postData(
+            ACEP.import,
+            mapOf(
+                ACEP.bundlesField to listOf(
+                    // The workflow comes first, before the trait it collects is declared.
+                    writeBody(flow(good, "${good}Topic")), writeBody(defs(good, "${good}Topic")),
+                    writeBody(flow(bad, "${bad}Missing")), writeBody(defs(bad, "${bad}Topic")),
+                ),
+            ),
+        )
+        result[ACEP.written].toJsonListOfMaps().map { it[CFEP.client] }.toSet() shouldBe setOf(good)
+        val failures = result[ACEP.failures].toJsonListOfMaps()
+        failures.filter { it[CFEP.client] == bad }.map { it[CFEP.name] }.toSet() shouldBe setOf("flow", "defs")
+        stored(good) shouldBe 2
+        stored(bad) shouldBe 0
+    }
+
+    // For a published-only client, a write is judged with its other drafts (so a change spanning two configs can be
+    // staged), and **publishing** is judged against what the client would then run.
+    "publishing for a published-only client is judged against the published set" {
+        val client = "trial843pub"
+        admin.postData(ACEP.bundleWrite, writeBody(defs(client, "${client}Topic")))
+        admin.postData(ACEP.bundleWrite, writeBody(flow(client, "${client}Topic")))
+        publish(client, "defs")
+        publish(client, "flow")
+        setPublishedOnly(client, true)
+
+        // Drafts that drop the workflow and then the trait: sound together.
+        admin.postData(ACEP.bundleWrite, writeBody(flow(client, null)))
+        admin.postData(ACEP.bundleWrite, writeBody(defs(client)))
+        // Publishing 'defs' first would leave the published 'flow' collecting a trait nobody declares.
+        admin.expectError(EXC.badInput, ACEP.bundlePublish, mapOf(CFEP.client to client, CFEP.name to "defs"))
+        publish(client, "flow")
+        publish(client, "defs")
+    }
+
+    // Switching tiers swaps which of a client's revisions it runs, so the switch is judged against that set.
+    "switching a client to published-only is judged against its published set" {
+        val client = "trial843tier"
+        admin.postData(ACEP.bundleWrite, writeBody(defs(client, "${client}Topic")))
+        publish(client, "defs")
+        admin.postData(ACEP.bundleWrite, writeBody(flow(client, "${client}Topic")))
+        publish(client, "flow")
+        // 'flow' moves to a second trait that only the latest 'defs' declares, and is published while 'defs' is
+        // not -- which the free tier allows, since what it runs is the latest set.
+        admin.postData(ACEP.bundleWrite, writeBody(defs(client, "${client}Topic", "${client}Other")))
+        admin.postData(ACEP.bundleWrite, writeBody(flow(client, "${client}Other")))
+        publish(client, "flow")
+        // Published, 'flow' collects a trait only the unpublished 'defs' declares.
+        admin.expectError(
+            EXC.badInput, ACEP.publishedOnly, mapOf(CFEP.client to client, CFEP.publishedOnlyField to true),
+        )
+        publish(client, "defs")
+        setPublishedOnly(client, true)
     }
 })

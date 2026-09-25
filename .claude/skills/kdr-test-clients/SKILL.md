@@ -68,9 +68,14 @@ you never author into it (`writeConfig` refuses the `global` client and the `glo
 
 **The service write does not trial; the endpoints do** (issue #843). `GedraConfigService.writeConfig` stores what
 it is given (after the namespace/owner guards), so a test can store a deliberately flawed config to exercise the
-forgiving load. The bundle-write and patch **endpoints** pass `trial = true`: a trial reload of the client with the
-written revision in place refuses the write (400) when it finds a problem the client did not already have. A test
-writing through the endpoints therefore needs a sound config -- which is the point.
+forgiving load. The **endpoints** -- bundle write, patch, import, publish and the published-only toggle -- pass
+`trial = true`: a trial reload of the client with the change in place refuses it (400) when it finds a problem the
+client did not already have. A test writing through the endpoints therefore needs a sound config -- which is the
+point.
+
+The trial judges the change **together with the client's other stored configs**, so several bundles written to one
+client must be sound as a set: two configs of one client both declaring the cfact `ready`, say, conflict, and the
+second write is refused. Give each bundle its own names, or its own client.
 
 ## Narrowing a schema after data is captured (no restart)
 

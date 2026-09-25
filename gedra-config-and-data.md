@@ -277,13 +277,29 @@ unresolvable layout pull is reported, since delivery already renders it as writt
 compile leaves the client's supported set with it, so a workflow collecting it is dropped by the existing check.
 Anything that breaks because of a drop is left to the reference checks that already exist.
 
-**Strict at write** (issue #843). The config write and patch endpoints run a **trial reload** of the client with
-the written revision in place -- the load's own checks over a scratch copy, nothing published -- and refuse the
-write with a 400 listing anything it finds that the client's configuration did not already have. A problem the
-client already has does not block an unrelated write (or fixing one of two broken configs would be refused over the
-other). `GedraConfigService.writeConfig` itself does not trial unless asked (`trial = true`), so a test can still
-store a flawed config on purpose to exercise the forgiving load; a bulk import does not trial either, since its
-bundles are written one at a time and may only be sound together.
+**Strict at write** (issue #843). Every endpoint that changes a client's stored configuration runs a **trial
+reload** of the client with the change in place -- the load's own checks over a scratch copy, nothing published --
+and refuses the change with a 400 listing anything it finds that the client's configuration did not already have. A
+problem the client already has does not block an unrelated write (or fixing one of two broken configs would be
+refused over the other).
+
+The unit is the **client**, not the config. A client's definition is spread across its configs (its `clientDef` in
+one, the traits its workflows collect in another), and a stored config depends only on source code and its own
+client's other configs, never another client's. So every config write takes the **client's** lock (on the
+`GedraConfigClientTran` root, keyed by client), and the trial judges the client's configs **as stored**, not as the
+node last loaded them:
+
+- **A write or patch** is judged with the client's other *latest* revisions. For a published-only client those are
+  its drafts, so a change spanning two configs can be staged.
+- **A bulk import** writes each client's bundles in one transaction and judges them as one set, so bundles that are
+  only sound together are taken in any order. A client whose set is refused keeps none of it; other clients in the
+  same import are unaffected.
+- **Publishing** is judged, for a published-only client, against the published set it would then run. For any other
+  client the revision is already what it runs.
+- **Switching the tier** is judged against the set the client would run afterward.
+
+`GedraConfigService.writeConfig` itself does not trial unless asked (`trial = true`), so a test can still store a
+flawed config on purpose to exercise the forgiving load.
 
 A **component's** schema fault follows the source rule: it refuses the boot outside production, and in production
 the faulty keyword, message or layout is dropped and the node serves. A global document that will not compile still

@@ -227,8 +227,8 @@ class GedraId private constructor(
 
     /**
      * The **revision class** of this id (issue #612): the same config with no revision -- `gc.cd.acme.main` for
-     * `gc.cd.acme.main~3` -- which collates every revision of one config. The transaction root
-     * (`GedraConfigTran`) and the config cache (#615) key on it. An id with no suffix is its own class.
+     * `gc.cd.acme.main~3` -- which collates every revision of one config. The config cache (#615) keys on it. An
+     * id with no suffix is its own class.
      *
      * Config ids only -- a data id's suffix is a child index, not a revision, so dropping it would forge a
      * different-looking id rather than answer a question. Guarded to fail loudly rather than return a plausible

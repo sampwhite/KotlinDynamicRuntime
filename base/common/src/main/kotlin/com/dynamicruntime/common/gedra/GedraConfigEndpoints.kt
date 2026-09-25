@@ -347,11 +347,14 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
 }
 
 /**
- * Bulk-imports config bundles (issue #733), each applied independently so one bad bundle does not abort the
- * rest. On a non-test node a bundle's `testFeatures` are stripped and logged rather than refused -- the other
- * half of the single-client write's refuse. Affected clients are then reloaded (unless asked not to) so the
- * import is live and a brand-new client becomes present. Returns what was written, stripped, reloaded, and could
- * not be applied.
+ * Bulk-imports config bundles (issue #733). Each **client's** bundles are written together, in one transaction under
+ * the client's config lock, and judged together by a trial reload (issue #843): a client's definition is spread
+ * across its configs, so bundles that are only sound as a set -- one declaring the client, another the traits its
+ * workflows collect -- must be judged as the set, and a client whose set is refused keeps none of it. One client's
+ * refusal does not stop the others. On a non-test node a bundle's `testFeatures` are stripped and logged rather
+ * than refused -- the other half of the single-client write's refuse. Affected clients are then reloaded (unless
+ * asked not to) so the import is live and a brand-new client becomes present. Returns what was written, stripped,
+ * reloaded, and could not be applied.
  */
 private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
@@ -366,6 +369,11 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
     val stripped = mutableListOf<Map<String, Any?>>()
     val failures = mutableListOf<Map<String, Any?>>()
     val affected = LinkedHashSet<String>()
+
+    // First each bundle is read into a config on its own, so a malformed one is reported by name.
+    class Prepared(val write: ConfigWrite, val strippedFeatures: List<String>)
+    val preparedByClient = LinkedHashMap<String, MutableList<Prepared>>()
+    val unpreparedClients = LinkedHashSet<String>()
     for (bundle in bundles) {
         val client = bundle[CFEP.client].toOptStr()?.trim()?.ifEmpty { null }
         val name = bundle[CFEP.name].toOptStr()
@@ -386,21 +394,43 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
                     strippedFeatures = features
                 }
             }
-            val bcxt = c.mkSubContext("configImport", client)
-            val config = reassembleGedraConfig(bcxt, name, namespace, client, slots)
+            val config = reassembleGedraConfig(c.mkSubContext("configImport", client), name, namespace, client, slots)
             val impliedDelete = bundle[CFEP.impliedDelete] as? Boolean ?: true
-            val row = svc.writeConfig(bcxt, config, impliedDelete)
-            written.add(linkedMapOf(CFEP.client to client, CFEP.name to name, CFEP.version to row.version))
-            if (strippedFeatures.isNotEmpty()) {
-                stripped.add(linkedMapOf(CFEP.client to client, ACEP.features to strippedFeatures))
-                LogStartup.info(c) {
-                    "Config import stripped testFeatures $strippedFeatures from client '$client' -- honored only on a test instance."
+            val prepared = Prepared(ConfigWrite(config, impliedDelete), strippedFeatures)
+            preparedByClient.getOrPut(client) { mutableListOf() }.add(prepared)
+        } catch (e: Throwable) {
+            // One bad bundle is reported, not fatal (issue #733) -- the restore continues.
+            failures.add(dropNulls(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to (e.message ?: "unknown error"))))
+            if (client != null) unpreparedClients.add(client)
+        }
+    }
+
+    // Then each client's set is written as one. A client missing one of its bundles is not written at all: the set
+    // is what is judged, and the rest of it may not be sound without the one that failed.
+    for ((client, prepared) in preparedByClient) {
+        val names = prepared.map { it.write.config.name }
+        try {
+            if (client in unpreparedClients) {
+                throw KdrException.mkInput("Not imported: another of client '$client''s bundles could not be read.")
+            }
+            val rows = svc.writeConfigs(c, client, prepared.map { it.write }, trial = true)
+            for ((row, prep) in rows.zip(prepared)) {
+                val name = prep.write.config.name
+                written.add(linkedMapOf(CFEP.client to client, CFEP.name to name, CFEP.version to row.version))
+                if (prep.strippedFeatures.isNotEmpty()) {
+                    stripped.add(linkedMapOf(CFEP.client to client, ACEP.features to prep.strippedFeatures))
+                    LogStartup.info(c) {
+                        "Config import stripped testFeatures ${prep.strippedFeatures} from client '$client' -- " +
+                            "honored only on a test instance."
+                    }
                 }
             }
             affected.add(client)
         } catch (e: Throwable) {
-            // One bad bundle is reported, not fatal (issue #733) -- the restore continues.
-            failures.add(dropNulls(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to (e.message ?: "unknown error"))))
+            val message = e.message ?: "unknown error"
+            for (name in names) {
+                failures.add(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to message))
+            }
         }
     }
     val reloaded = mutableListOf<String>()
@@ -461,7 +491,7 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
     if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
         throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     }
-    return summaryOf(c, GedraConfigService.get(c).publish(c, configId(c, name)))
+    return summaryOf(c, GedraConfigService.get(c).publish(c, configId(c, name), trial = true))
 }
 
 private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -501,7 +531,7 @@ private fun cfgPublishedOnlyBody(c: KdrCxt, request: Map<String, Any?>): Map<Str
     AdminRules.requireClientAdministrator(c)
     val value = request[CFEP.publishedOnlyField] as? Boolean
         ?: throw KdrException.mkInput("'${CFEP.publishedOnlyField}' is required.")
-    val effective = GedraConfigService.get(c).setPublishedOnly(c, c.client, value)
+    val effective = GedraConfigService.get(c).setPublishedOnly(c, c.client, value, trial = true)
     return linkedMapOf(CFEP.client to c.client, CFEP.publishedOnlyField to effective)
 }
 
@@ -854,14 +884,15 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     }
 
     // Bulk import / clone / restore (issue #733, #685 Slice C): write a whole set of client configurations at
-    // once. Each bundle is applied independently -- a bad one is reported in `failures` and the rest still land,
-    // so a restore is not aborted by one config -- and `testFeatures` is stripped and logged on a non-test node
-    // rather than refused (the split the single-client write's refuse is the other half of). Affected clients are
-    // reloaded so the import goes live, which is how a brand-new client becomes present.
+    // once. Each client's bundles are written and judged as one set (issue #843) -- a refused client is reported in
+    // `failures` and the other clients still land, so a restore is not aborted by one -- and `testFeatures` is
+    // stripped and logged on a non-test node rather than refused (the split the single-client write's refuse is the
+    // other half of). Affected clients are reloaded so the import goes live, which is how a brand-new client becomes
+    // present.
     generalEndpoint(
         ACEP.import,
-        "Bulk-imports a set of client configurations (issue #733): each bundle applied independently, testFeatures " +
-            "stripped+logged off a test instance, affected clients reloaded.",
+        "Bulk-imports a set of client configurations (issue #733): each client's bundles written and judged as one " +
+            "set, testFeatures stripped+logged off a test instance, affected clients reloaded.",
         HttpMethod.POST,
         outputRef = "${ACEP.namespace}.${ACEP.importResultType}",
         inputFields = {

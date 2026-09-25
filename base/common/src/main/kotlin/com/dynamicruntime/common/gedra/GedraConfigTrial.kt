@@ -9,61 +9,88 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.uiblock.UiBlockService
 
 /**
- * A **trial reload** (issue #843): what reloading a client would find if a candidate configuration replaced the
- * stored one of the same id -- run with the load's own checks, so a write and a load cannot come to disagree about
- * what is valid, and without publishing anything.
+ * A **trial reload** (issue #843): what reloading a client would find if some of its stored configs were replaced --
+ * run with the load's own checks, so a write and a load cannot come to disagree about what is valid, and without
+ * publishing anything.
  *
  * Stored configuration is judged strictly when it is **written** and forgivingly once it is stored (#839): a
- * write is where a person is still at the keyboard to fix it. So the write endpoints refuse a candidate whose
- * trial finds anything the client's configuration did not already have.
+ * write is where a person is still at the keyboard to fix it. So the write endpoints refuse a change whose trial
+ * finds anything the client's configuration did not already have.
+ *
+ * ### What it judges
+ *
+ * The client's configuration **as stored**, not as this node last loaded it: one revision per config -- its latest,
+ * or its latest published, as the caller asks (`GedraConfigService.configsAt`) -- with the replaced configs swapped
+ * in. A client's definition is spread across its configs, so a write is judged
+ * against the others as they stand -- including ones written since the last reload, or on another node. The
+ * caller holds the client's config lock (see `gedraConfigTables`), so none of them changes while it is judged.
+ * Another client's configuration is never an input: a stored config depends only on source code and its own
+ * client's configs.
  *
  * ### How it avoids side effects
  *
  * Every check reports through `reportConfigProblem`, and a context carrying [GCFG.trialCaptureKey] makes that
  * collect instead of refusing, logging or recording -- so the trial sees every problem, each treated as forgiven so
  * the evaluation carries on past it. The checks run over a scratch copy of the schema collector
- * (`SchemaCollector.trialCopy`) with the client's loaded configs withdrawn and the candidate set added, and each
+ * (`SchemaCollector.trialCopy`) with the client's loaded configs withdrawn and the trial's set added, and each
  * service evaluates its part with a `trialClient` that builds what a reload would build and keeps nothing.
  */
 object GedraConfigTrial {
 
     /**
-     * Refuses [candidate] with a 400 that lists what its trial found **beyond** what the client's configuration
-     * already has (the issues its last load recorded, #840). A pre-existing problem elsewhere in the client does
-     * not block this write -- or fixing one of two broken configs would be refused over the other -- but anything
-     * this write introduces does, wherever in the client it lands.
+     * Refuses the change with a 400 -- its message led by [refusal] -- when a trial of [client]'s latest or
+     * [published] revisions with [replacing] in place finds anything **beyond** what the client's configuration
+     * already has (the issues its last load recorded, #840). A pre-existing problem elsewhere in the client does not
+     * block the change -- or fixing one of two broken configs would be refused over the other -- but anything the
+     * change introduces does, wherever in the client it lands.
      */
-    fun requireClean(cxt: KdrCxt, candidate: GedraConfig) {
-        val client = candidate.gedraId.client
+    fun requireClean(
+        cxt: KdrCxt,
+        client: String,
+        replacing: List<GedraConfigRow>,
+        published: Boolean,
+        refusal: String,
+    ) {
         val baseline = ClientConfigIssues.get(cxt).issuesFor(client)
-        val found = trial(cxt, candidate).filterNot { issue -> baseline.any { it.sameAs(issue) } }
+        val found = trial(cxt, client, replacing, published).filterNot { issue -> baseline.any { it.sameAs(issue) } }
         if (found.isEmpty()) return
         throw KdrException.mkInput(
-            "Configuration '${candidate.gedraId}' was not stored: loading it would find ${found.size} problem(s) " +
-                "in client '$client'. " + found.joinToString(" ") { it.message },
+            "$refusal: loading client '$client' would find ${found.size} problem(s). " +
+                found.joinToString(" ") { it.message },
         )
     }
 
     /**
-     * Every problem a reload of [candidate]'s client would find with [candidate] in place (see the class note). Run
-     * under the reload lock, since it reads the collectors a reload swaps. A write calls this inside its transaction,
-     * so the order is always the config row's lock, then the reload lock; a reload never takes a row's write lock
-     * (it reads the configs), so the two cannot wait on each other.
+     * Every problem a reload of [client] would find running its latest revisions -- or its latest [published] ones --
+     * with [replacing] in place of the stored configs of the same class (see the class note); an empty [replacing]
+     * judges the client as it is stored. The stored set is read on [cxt], so inside a transaction it sees what the
+     * transaction wrote.
+     *
+     * Run under the reload lock, since it reads the collectors a reload swaps. A write calls this inside its
+     * transaction, so the order is always the client's config lock, then the reload lock; a reload never takes a
+     * config lock (it reads the configs), so the two cannot wait on each other.
      */
-    fun trial(cxt: KdrCxt, candidate: GedraConfig): List<GedraConfigIssue> =
-        GedraConfigReload.underReloadLock { trialLocked(cxt, candidate) }
+    fun trial(
+        cxt: KdrCxt,
+        client: String,
+        replacing: List<GedraConfigRow> = emptyList(),
+        published: Boolean = false,
+    ): List<GedraConfigIssue> {
+        val replaced = replacing.map { it.configId.fullId }.toSet()
+        val stored = GedraConfigService.get(cxt).configsAt(cxt, client, published)
+        val rows = stored.filter { it.configId.fullId !in replaced } + replacing
+        return GedraConfigReload.underReloadLock { trialLocked(cxt, client, rows) }
+    }
 
-    private fun trialLocked(cxt: KdrCxt, candidate: GedraConfig): List<GedraConfigIssue> {
-        val client = candidate.gedraId.client
+    private fun trialLocked(cxt: KdrCxt, client: String, rows: List<GedraConfigRow>): List<GedraConfigIssue> {
         val collector = SchemaCollector.get(cxt) ?: return emptyList()
         val capture = mutableListOf<GedraConfigIssue>()
         val tcxt = cxt.mkSubContext("configTrial", client).also { it.locals[GCFG.trialCaptureKey] = capture }
         val loader = GedraConfigLoadService.get(tcxt)
         val previous = loader.loadedFor(client)
-        val fresh = previous.filter { it.gedraId.fullId != candidate.gedraId.fullId } + candidate
 
-        // Phase one's checks, as the reload runs them: the extends rule against the source clients alone, then
-        // admission into a scratch copy of the collectors.
+        // Phase one's checks, as the reload runs them: each row reassembled (one that will not costs only itself),
+        // the extends rule against the source clients alone, then admission into a scratch copy of the collectors.
         val loadedIds = loader.allLoadedIds()
         val sourceClients = collector.gedraConfigs.configs
             .filter { it.gedraId.fullId !in loadedIds }.mapNotNull { it.client }.associateBy { it.clientId }
@@ -71,7 +98,13 @@ object GedraConfigTrial {
         previous.forEach { scratch.removeGedraConfig(it) }
         val taken = mutableListOf<GedraConfig>()
         val ignored = mutableListOf<GedraConfigIssue>()
-        for (config in fresh) {
+        for (row in rows) {
+            val config = try {
+                loader.toConfig(tcxt, row)
+            } catch (e: KdrException) {
+                reportConfigProblem(tcxt, loader.unloadableIssue(row.configId.fullId, row.client, e), ignored)
+                continue
+            }
             val problem = loader.extendsProblem(config, sourceClients)
             if (problem != null) {
                 reportConfigProblem(tcxt, problem, ignored)
