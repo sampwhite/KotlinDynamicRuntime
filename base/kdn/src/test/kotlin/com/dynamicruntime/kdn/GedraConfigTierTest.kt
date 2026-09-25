@@ -4,8 +4,6 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.EXC
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientAudience
@@ -19,9 +17,7 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.startup.ComponentDefinition
-import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.TestUser
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
@@ -29,8 +25,8 @@ import io.kotest.matchers.shouldBe
 
 /**
  * The configuration protection tiers (issue #617): what the runtime **consumes** by tier -- free takes the
- * latest revision, published-only takes the latest published one -- and that a `staticConfig` client refuses
- * the toggle while still consuming published-only. Verified through the tier-aware consumption read
+ * latest revision, published-only takes the latest published one -- and that a `staticConfig` client is no tier
+ * of its own outside production (issue #824). Verified through the tier-aware consumption read
  * (`currentConfigs`), which the reload loads from; its own client per case.
  */
 class GedraConfigTierTest : StringSpec({
@@ -97,7 +93,9 @@ class GedraConfigTierTest : StringSpec({
         GedraConfigService.get(own).publishedOnly(admin.cxt, admin.selfClient()!!) shouldBe true
     }
 
-    "a static client refuses the toggle and is published-only regardless" {
+    // `staticConfig` is not a tier (issue #824): outside production a static client is an ordinary one, free by
+    // default and toggled like any other. What it does in production is StaticConfigTest's.
+    "outside production a static client is free by default and toggles like any other" {
         val tcxt = Startup.mkTestBootCxt(
             "gedraCfgTierStatic", "gedraCfgTierStaticTest",
             mapOf(StaticClientComponent.loadFlag.name to "true", "KDR_DB_NAME" to "cfgTier_static"),
@@ -105,17 +103,15 @@ class GedraConfigTierTest : StringSpec({
         )
         val client = StaticClientComponent.clientId
         val svc = GedraConfigService.get(tcxt)
-        // staticConfig comes from the source ClientDef, so it is published-only with no toggle needed.
-        svc.publishedOnly(tcxt.mkSubContext("s", client).also { it.userId = 1L }, client) shouldBe true
-        // And the toggle is refused.
-        val ex = shouldThrow<KdrException> {
-            svc.setPublishedOnly(tcxt.mkSubContext("s", client).also { it.userId = 1L }, client, false)
-        }
-        ex.code shouldBe EXC.badInput
+        val bound = tcxt.mkSubContext("s", client).also { it.userId = 1L }
+        svc.publishedOnly(bound, client) shouldBe false
+        svc.isStaticHere(bound, client) shouldBe false
+        svc.setPublishedOnly(bound, client, true) shouldBe true
+        svc.publishedOnly(bound, client) shouldBe true
     }
 })
 
-/** A fixture component whose source-code client is `staticConfig` -- the top tier, set only in source (#617). */
+/** A fixture component whose source-code client is `staticConfig`, set only in source (#617, #824). */
 class StaticClientComponent : ComponentDefinition {
     override val providerName: String = "staticClientFixture"
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
@@ -124,7 +120,7 @@ class StaticClientComponent : ComponentDefinition {
             defineClient(
                 ClientDef(
                     clientId = clientId, name = "Static", usageType = ClientUsageType.production,
-                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.prod),
                     staticConfig = true,
                 ),
             )

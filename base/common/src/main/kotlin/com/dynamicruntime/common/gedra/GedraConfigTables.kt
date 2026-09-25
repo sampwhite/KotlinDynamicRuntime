@@ -71,8 +71,8 @@ object GC {
 
     /**
      * Whether this client, in this environment, consumes only its **published** configuration (issue #617). The
-     * runtime tier-2 state, toggled per client per environment; `ClientDef.staticConfig` is the source-code tier
-     * that forces it on and refuses the toggle. Absent (no row) means the free tier -- the latest revision.
+     * runtime state, toggled per client per environment (`ClientDef.staticConfig` is not a tier, issue #824).
+     * Absent (no row) means the free tier -- the latest revision.
      */
     const val publishedOnly = "publishedOnly"
 

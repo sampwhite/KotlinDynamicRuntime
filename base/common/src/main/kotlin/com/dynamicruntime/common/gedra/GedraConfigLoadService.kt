@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
@@ -227,14 +228,18 @@ class GedraConfigLoadService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, emptyMap())
         }
-        // Which clients consume published-only here (issue #617): their toggled state, plus the source-code
-        // static clients (`staticConfig` forces the tier on). At boot every collected config is a source one,
-        // so `staticClients` reads the whole set. A class of a published-only client takes its latest *published*
-        // revision, and loads nothing when it has none.
+        // Which clients consume published-only here (issue #617): their toggled state. A class of a published-only
+        // client takes its latest *published* revision, and loads nothing when it has none.
         val env = cxt.instanceConfig.env
-        val toggled = controlTable?.let { GedraConfigControl.publishedOnlyClients(cxt, sqlCxt, it, env) } ?: emptySet()
-        val publishedOnly = toggled + GedraConfigControl.staticClients(collector().gedraConfigs.configs)
-        return rows.filter { it[PF.enabled] == true }
+        val publishedOnly =
+            controlTable?.let { GedraConfigControl.publishedOnlyClients(cxt, sqlCxt, it, env) } ?: emptySet()
+        // A static client takes nothing stored in production (issue #824). At boot every collected config is a
+        // source one, so `staticClients` reads the whole set. Its rows are left unread, and it is said so.
+        val static =
+            if (env == ENV.prod) GedraConfigControl.staticClients(collector().gedraConfigs.configs) else emptySet()
+        val ignored = rows.mapNotNull { it[PF.client].toOptStr() }.filter { it in static }.toSortedSet()
+        ignored.forEach { reportConfigProblem(cxt, staticIgnoredIssue(it), issues) }
+        return rows.filter { it[PF.enabled] == true && it[PF.client].toOptStr() !in static }
             .groupBy { it[GC.configId].toOptStr() ?: "" }
             .filterKeys { it.isNotEmpty() }
             .values
@@ -315,6 +320,19 @@ class GedraConfigLoadService : ServiceInitializer {
         }
         return null
     }
+
+    /**
+     * The issue for a client static here whose stored configuration is ignored (issue #824): in production a
+     * `staticConfig` client's definition is its source alone, so whatever the database holds for it -- edits made
+     * outside production, not yet removed -- is left unread. About the source definition, so judged as source
+     * config: in production, where it arises, it is logged and kept on the client rather than refusing anything.
+     */
+    fun staticIgnoredIssue(client: String): GedraConfigIssue = GedraConfigIssue(
+        "Client '$client' is statically configured, so in production its stored configuration is not loaded; its " +
+            "definition is its source alone.",
+        "Ignoring the client's stored configuration.",
+        client = client, elementKind = GCEL.client, elementId = client,
+    )
 
     /**
      * The issue for a stored config that cannot be turned back into a config (issue #841): judged as stored

@@ -97,6 +97,11 @@ object GedraConfigReload {
         // #841) -- judged as stored config, as the boot load judges it -- rather than refusing the whole reload.
         // Reported before phase one, so a strict refusal changes nothing.
         val reloadIssues = mutableListOf<GedraConfigIssue>()
+        // A client static here takes nothing stored (issue #824): `currentConfigs` gave none, and it is said so when
+        // the database holds some.
+        if (configService.isStaticHere(bound, client) && configService.listConfigs(bound).isNotEmpty()) {
+            reportConfigProblem(cxt, loader.staticIgnoredIssue(client), reloadIssues)
+        }
         val fresh = currentRows.mapNotNull { row ->
             val config = try {
                 loader.toConfig(cxt, row)

@@ -290,8 +290,12 @@ data class ClientDef(
     /** Whether to do this client's cache computations before the node reports itself ready. Not yet testable. */
     val preload: Boolean = false,
     /**
-     * Whether this client refuses dynamic configuration reload, taking changes only through a deployment.
-     * Applies in production only. Not yet testable; when true, configuration is preferably done in source code.
+     * Whether this client's definition is locked to source **in production** (issue #824): there it takes nothing
+     * from the database -- not its definition, traits, workflows, cfacts, or any other stored config. A write of
+     * stored config for it is refused, stored config that exists is ignored at boot and on a reload, and
+     * "published" has no meaning: its definition is its source, implicitly published. Outside production it is an
+     * ordinary client -- which is where its configuration is edited in the database, before the changes are brought
+     * into its source component by PR and shipped. Only a source definition may set it; a stored one is refused.
      */
     val staticConfig: Boolean = false,
     /**
@@ -456,7 +460,7 @@ data class ClientDef(
                 property(CLD.preload, "Whether the client's caches are computed before the node reports ready.") {
                     type = SCT.boolean
                 }
-                property(CLD.staticConfig, "Whether the client refuses dynamic configuration reload.") {
+                property(CLD.staticConfig, "Whether, in production, the client takes nothing from the database.") {
                     type = SCT.boolean
                 }
                 property(CLD.extendsFromClientId, "The client whose definitions this one is built on top of.")

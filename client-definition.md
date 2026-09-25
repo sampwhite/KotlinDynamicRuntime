@@ -83,9 +83,11 @@ For the client configuration itself, the client has the following attributes.
   clients would therefore have to be its own environment.
 * `preload` - Whether to practively load all computations done on freshly loaded cache for the client before the
   node says it is ready to receive requests. Not yet testable.
-* `staticConfig` - If true, the client will not support dynamic reload of configuration when configuration is updated
-  in data. Only applies to the client when deployed in prod. Not yet testable. If this is true, the preferred
-  way to do configuration will be through source code changes.
+* `staticConfig` - If true, **in production** the client takes nothing from the database (issue #824): its
+  definition is its source alone, implicitly published. A write of stored config for it is refused there, and
+  stored config that exists is ignored at boot and on reload. Outside production it behaves like any client,
+  which is where its configuration is edited before the changes are brought into its source component by PR
+  and shipped. Only a source definition may set it.
 * `extendsFromClientId` - A reference to another client. When done in source code, it can be any reference.
  When done as data in the database, it can only reference template clients. When this value is present
  when the client is loaded, it first clones in all the definitions from the other client and then applies
@@ -137,9 +139,8 @@ When the client's custom view of traits and types is implemented in code, the cl
 its own customized version of the schema maintained by the SchemaService, reached through the context.
 Anonymous callers get the default global schema, and a client that varies nothing computes a schema equal to
 it -- which is why `public` never becomes a variant. This customized version
-is rebuilt any time there is a data update to the config, unless `staticConfig` is true in which
-case it will only occur when a formal deployment occurs or a scheduled event or admin action
-takes place.
+is rebuilt any time there is a data update to the config, unless `staticConfig` is true and the node is in
+production, where the client takes nothing from the database and changes only with a deployment.
 
 The test fixture that allows creation of users takes a parameter to specify the client, and a similar
 option exists for creating users in internal unit tests. A self-registered user lands in `public`, the
@@ -221,8 +222,8 @@ client is, and no registry that can be asked whether one exists or is enabled.
 - **The per-client compiled schema.** The assembly functions are ready; the *store* is not.
 - **Domain routing** (`domainPrefix`, `customDomain`), which needs a client resolved from the request rather
   than from the caller — a new trust level rather than a new lookup.
-- **`webResourcesId` packaging**, `preload` and `staticConfig`; the specification already calls the last two
-  untestable today.
+- **`webResourcesId` packaging** and `preload`; the specification already calls the last untestable today.
+  (`staticConfig` is built, issue #824.)
 - **Markdown fragment variants** and **auto-generated per-client endpoints**, both named as future issues.
 
 ## The cut for the first slice
@@ -602,7 +603,7 @@ changed rather than the size of the schema.
 
 **Invalidation is explicit and rare.** Today a variant cannot be invalidated at all. When live data editing
 exists, a **client admin asks for it through an endpoint** — nothing detects a write and rebuilds behind
-anybody's back — and only for a client that is not in production or has `staticConfig` false.
+anybody's back — and not for a `staticConfig` client in production, which takes nothing stored there.
 
 ---
 
