@@ -77,7 +77,7 @@ class JobService : ServiceInitializer, AutoCloseable {
         val def = def(jobType)
         val profile = def.profile.resolve(cxt)
         val runClients = resolveClients(cxt, clients)
-        val params = linkedMapOf<String, Any?>(
+        val params = linkedMapOf(
             JOBP.clients to clients, JOBP.workAreas to workAreas, JOBP.redoWindowHours to redoWindow?.let { it.inWholeMilliseconds / 3_600_000.0 },
             JOBP.mode to mode.name, JOBP.launchedBy to cxt.userProfile.userId,
         )
@@ -187,6 +187,7 @@ class JobService : ServiceInitializer, AutoCloseable {
 
     private fun runKey(jobType: String, kind: JobLaunchKind, dryRun: Boolean) = "$jobType/${kind.name}/$dryRun"
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val serviceName = "JobService"
 

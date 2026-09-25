@@ -17,7 +17,7 @@ import com.dynamicruntime.common.exception.KdrException
  * cheap.
  */
 class JobDef(
-    /** The key the job is registered, launched and tracked under. */
+    /** The key the job is registered, launched, and tracked under. */
     val jobType: String,
     val description: String,
     val profile: JobProfile,

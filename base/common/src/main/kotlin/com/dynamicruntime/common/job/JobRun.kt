@@ -164,7 +164,7 @@ internal class JobRun(
 
     private fun runTasks(runCxt: JobRunCxt, keys: List<String>) {
         val dispatcher = mkDispatcher(runCxt)
-        try {
+        dispatcher.use { dispatcher ->
             val pending = keys.iterator()
             var inFlight = 0
             var stoppedAtNanos = 0L
@@ -192,8 +192,6 @@ internal class JobRun(
                     }
                 }
             }
-        } finally {
-            dispatcher.close()
         }
     }
 
