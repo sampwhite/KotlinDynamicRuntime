@@ -156,13 +156,13 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         // Admin-entered (issue #569): a `g-visibleWhen` gate the frontend evaluates, so an *editable* form draws the
         // field for an administrator and hides it from an ordinary caller -- on the creation-workflow form (acme
         // collects this trait) as on the endpoint form. Optional, because the gate is refused on a required
-        // property. Presentation only: a read-only view shows the value to anyone who can see the form, the API
-        // returns it to them, and the backend does not refuse the value from a non-administrator -- the gate hides
-        // the box, nothing more. The description says what a reader can rely on.
+        // property. Enforced on every write (issue #830): a non-administrator's create, patch or save keeps the
+        // stored note and is refused if it changes it. Reads are not gated -- a read-only view shows the note to
+        // anyone who can see the form, and the API returns it to them. The description says what a reader can rely on.
         property(
             ST.reviewerNote,
-            "A reviewer's note on the report. Only an administrator is offered a field to write it; anyone who " +
-                "can see the form can read it.",
+            "A reviewer's note on the report. Only an administrator may write it; anyone who can see the form can " +
+                "read it.",
         ) {
             visibleWhen = CFACTS.hasAdminLevel
         }

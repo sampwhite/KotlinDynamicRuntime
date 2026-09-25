@@ -171,10 +171,14 @@ field(EI.user, "Confine the search to one user — a userId or an email.") {
 }
 ```
 
-**Presentation, never a gate.** Hiding a field client-side does not defend it: request validation runs against
-the compiled schema, which still carries it. A handler that accepts a `visibleWhen` field must enforce the same
-condition itself — it is the advertise half of an advertise-and-enforce pair, the same relationship
-`optionsSource` has with a handler that bounds its own input.
+**Hiding is not defending.** Request validation runs against the compiled schema, which still carries the field,
+so `visibleWhen` is the advertise half of an advertise-and-enforce pair. On **trait data** the enforce half is built
+in (issue #830): every write — create, patch, the survey and workflow saves, import — keeps a gated field's stored
+value for a caller who fails the gate (left out, sent back unchanged, or sent as null or blank) and refuses a change
+to it with a 403 — including removing it by deleting the entry, list element or object that holds it. On an
+**endpoint input** a handler that accepts the field must enforce the same condition itself, the same relationship
+`optionsSource` has with a handler that bounds its own input. Reads are not gated: anyone who may read the data sees
+the field.
 
 **Optional fields only.** The boot fails on a `visibleWhen` that: is a malformed expression; names a cfact whose
 `CFactDef` is not marked `toFrontend` (that fact never reaches the client, so the gate would hide the field from
