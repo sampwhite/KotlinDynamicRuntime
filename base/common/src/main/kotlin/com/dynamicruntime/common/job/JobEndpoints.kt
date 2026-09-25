@@ -21,11 +21,13 @@ object JOBEP {
     const val launch = "/operator/job/launch"
     const val status = "/operator/job/status"
     const val abort = "/operator/job/abort"
+    const val trace = "/operator/job/trace"
 
     const val rowType = "JobRowInfo"
     const val typeStatusType = "JobTypeStatus"
     const val launchResultType = "JobLaunchInfo"
     const val abortResultType = "JobAbortInfo"
+    const val traceEntryType = "JobTraceEntry"
 }
 
 /** Field names of the batch-job operator surface. Each name matches its value. */
@@ -46,6 +48,7 @@ object JOBF {
     const val launches = "launches"
     const val clientRows = "clientRows"
     const val requested = "requested"
+    const val trace = "trace"
 }
 
 /**
@@ -108,6 +111,19 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
         property(JOB.total, "The total number of tasks, when known.") { type = SCT.integer }
         property(JOBF.status, "The launch row afterwards.") { ref(JOBEP.rowType) }
     }
+    type(JOBEP.traceEntryType) {
+        type = SCT.kObject
+        description = "One entry of a launch's trace."
+        property(JOBT.traceSeq, "The entry's place in the order entries were written.", required = true) { type = SCT.integer }
+        property(JOB.leaseId, "The launch claim it was written under.")
+        property(JOB.holder, "The node that wrote it.")
+        property(JOBT.at, "When it happened.") { dateTime() }
+        property(JOBT.event, "What happened.") { JobTraceEvent.entries.forEach { option(it.name) } }
+        property(PF.client, "The client it concerns.")
+        property(JOBT.taskKey, "The task it concerns.")
+        property(JOBT.message, "A description.")
+        property(JOB.data, "The event's details.") { openObject() }
+    }
     type(JOBEP.abortResultType) {
         type = SCT.kObject
         property(JOBF.requested, "Whether there was an active launch to ask.", required = true) { type = SCT.boolean }
@@ -142,11 +158,15 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
                 "Adopt a client's work done by another launch if it began within this many hours before this one.",
             ) { type = SCT.number }
             field(JOBF.dryRun, "Check for work and report it, but do none.") { type = SCT.boolean }
+            field(JOBF.trace, "How much of the launch to trace; the job profile's default when absent.") {
+                JobTraceLevel.entries.forEach { option(it.name) }
+            }
         },
         tags = setOf(ETAG.internal),
     ) { c, request ->
         val jobType = request[JOBF.jobType].toOptStr() ?: throw KdrException.mkInput("A ${JOBF.jobType} is required.")
         val name = request[JOBF.name].toOptStr() ?: throw KdrException.mkInput("A ${JOBF.name} is required.")
+        val trace = JobTraceLevel.entries.firstOrNull { it.name == request[JOBF.trace].toOptStr() }
         val dryRun = request[JOBF.dryRun] == true
         val mode = if (request[JOBF.mode].toOptStr() == JobRunMode.sync.name) JobRunMode.sync else JobRunMode.async
         val result = JobService.get(c).launch(
@@ -155,6 +175,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
             workAreas = request[JOBF.workAreas].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
             redoWindow = request[JOBF.redoWindowHours].toOptDouble()?.let { (it * 3_600_000).toLong().milliseconds },
             dryRun = dryRun,
+            trace = trace,
         )
         val out = linkedMapOf<String, Any?>(JOBF.outcome to result.outcome.name)
         result.reason?.let { out[JOBF.reason] = it }
@@ -189,6 +210,31 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
                 JOBF.clientRows to JobStatusRows.readClients(c, def.jobType, dryRun).map { rowInfo(it) },
             )
         }
+    }
+
+    listEndpoint(
+        JOBEP.trace,
+        "Reports a launch's trace (issue #879): the decisions it made, in the order they were recorded.",
+        outputRef = JOBEP.traceEntryType,
+        inputFields = {
+            field(JOBF.jobType, "The job type.", required = true)
+            field(JOBF.name, "The launch's name.", required = true)
+            field(JOBF.kind, "Which launch: the endpoint one (the default) or the scheduled one.") {
+                JobLaunchKind.entries.forEach { option(it.name) }
+            }
+            field(JOBF.dryRun, "The dry run's trace instead of the real one's.") {
+                type = SCT.boolean
+                allowCoerce = true
+            }
+        },
+        hasMore = true,
+        tags = setOf(ETAG.internal),
+    ) { c, request ->
+        val jobType = request[JOBF.jobType].toOptStr() ?: throw KdrException.mkInput("A ${JOBF.jobType} is required.")
+        val name = request[JOBF.name].toOptStr() ?: throw KdrException.mkInput("A ${JOBF.name} is required.")
+        val kind = JobLaunchKind.entries.firstOrNull { it.name == request[JOBF.kind].toOptStr() } ?: JobLaunchKind.endpoint
+        JobService.get(c).def(jobType)
+        JobTraceRows.read(c, jobType, kind, name, request[JOBF.dryRun] == true).map { it.toInfo() }
     }
 
     generalEndpoint(

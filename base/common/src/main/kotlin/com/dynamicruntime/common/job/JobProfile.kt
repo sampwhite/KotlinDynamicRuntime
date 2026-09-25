@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -42,7 +43,23 @@ class JobProfile(
     val syncTaskCap: Int = 200,
     /** A synchronous run that reaches this many tasks aborts, in case the count it was admitted on was low. */
     val syncHardCap: Int = 250,
+    /**
+     * How much of a launch the trace records when the launch does not say (issue #879). Null takes the
+     * deployment's default: [JobTraceLevel.task] on a test instance, [JobTraceLevel.off] elsewhere.
+     */
+    val trace: JobTraceLevel? = null,
+    /** The most trace entries one launch records; past it, only launch-level entries are. */
+    val traceMaxEntries: Int = 10_000,
+    /** How many of a job type's launches the trace keeps. */
+    val traceKeepLaunches: Int = 20,
 ) {
+    /**
+     * The trace level for a launch that asked for [requested] (or nothing): the request, else this profile's, else
+     * task level on a test instance and off elsewhere.
+     */
+    fun traceLevel(cxt: KdrCxt, requested: JobTraceLevel?): JobTraceLevel =
+        requested ?: trace ?: if (cxt.instanceConfig.isTestInstance) JobTraceLevel.task else JobTraceLevel.off
+
     /** [heartbeatInterval], or the environment's default: five seconds in production, two elsewhere. */
     fun heartbeatIn(env: String): Duration = heartbeatInterval ?: if (env == ENV.prod) 5.seconds else 2.seconds
 
@@ -62,6 +79,9 @@ class JobProfile(
             retryBackoff = ms(JPF.retryBackoffMs, retryBackoff) ?: retryBackoff,
             syncTaskCap = int(JPF.syncTaskCap, syncTaskCap),
             syncHardCap = int(JPF.syncHardCap, syncHardCap),
+            trace = over[JPF.trace].toOptStr()?.let { s -> JobTraceLevel.entries.firstOrNull { it.name == s } } ?: trace,
+            traceMaxEntries = int(JPF.traceMaxEntries, traceMaxEntries),
+            traceKeepLaunches = int(JPF.traceKeepLaunches, traceKeepLaunches),
         )
     }
 }
@@ -80,4 +100,7 @@ object JPF {
     const val retryBackoffMs = "retryBackoffMs"
     const val syncTaskCap = "syncTaskCap"
     const val syncHardCap = "syncHardCap"
+    const val trace = "trace"
+    const val traceMaxEntries = "traceMaxEntries"
+    const val traceKeepLaunches = "traceKeepLaunches"
 }

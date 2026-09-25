@@ -73,28 +73,41 @@ class JobService : ServiceInitializer, AutoCloseable {
         workAreas: List<String> = emptyList(),
         redoWindow: Duration? = null,
         dryRun: Boolean = false,
+        trace: JobTraceLevel? = null,
     ): JobLaunchResult {
         val def = def(jobType)
         val profile = def.profile.resolve(cxt)
         val runClients = resolveClients(cxt, clients)
         val params = linkedMapOf(
             JOBP.clients to clients, JOBP.workAreas to workAreas, JOBP.redoWindowHours to redoWindow?.let { it.inWholeMilliseconds / 3_600_000.0 },
-            JOBP.mode to mode.name, JOBP.launchedBy to cxt.userProfile.userId,
+            JOBP.mode to mode.name, JOBP.launchedBy to cxt.userProfile.userId, JOBP.trace to trace?.name,
         )
         val launch = JobLaunch(jobType, kind, name, params, dryRun, redoWindow)
         // The job works as the system user, on a context of its own: not the launching request's, which ends
         // with the request, nor its caller's identity, which is recorded above rather than acted as.
         val jobCxt = KdrCxt.mkSimpleCxt("job", cxt.instanceConfig)
         val counted = if (mode == JobRunMode.sync) admitSync(jobCxt, def, profile, launch, workAreas, runClients) else null
+        val tracer = JobTracer(jobCxt, profile.traceLevel(cxt, trace), launch, profile.traceMaxEntries, profile.traceKeepLaunches)
         val lease = when (val claim = JobStatusRows.claimLaunch(jobCxt, launch, profile.leaseTimeout)) {
-            is JobClaim.LockedOut -> return JobLaunchResult(
-                JobLaunchOutcome.lockedOut,
-                "Launch '${claim.launchName}' holds it" + (claim.holder?.let { " on $it" } ?: "") + ".",
-            )
-            is JobClaim.AlreadyComplete -> return JobLaunchResult(JobLaunchOutcome.alreadyComplete, counts = claim.counts)
+            is JobClaim.LockedOut -> {
+                val reason = "Launch '${claim.launchName}' holds it" + (claim.holder?.let { " on $it" } ?: "") + "."
+                tracer.record(JobTraceEvent.launchLockedOut, message = reason)
+                tracer.flush(final = true)
+                return JobLaunchResult(JobLaunchOutcome.lockedOut, reason)
+            }
+            is JobClaim.AlreadyComplete -> {
+                tracer.record(JobTraceEvent.launchAlreadyComplete, data = claim.counts.toJsonMap())
+                tracer.flush(final = true)
+                return JobLaunchResult(JobLaunchOutcome.alreadyComplete, counts = claim.counts)
+            }
             is JobClaim.Claimed -> claim.lease
         }
-        val run = JobRun(def, profile, launch, runClients, workAreas, mode, jobCxt, ::pool, counted)
+        tracer.leaseId = lease.leaseId
+        tracer.record(
+            JobTraceEvent.launchClaimed,
+            data = linkedMapOf(JOB.adopted to lease.adopted, JOB.generationId to lease.generationId, JOB.traceLevel to tracer.level.name),
+        )
+        val run = JobRun(def, profile, launch, runClients, workAreas, mode, jobCxt, ::pool, counted, tracer)
         val key = runKey(jobType, kind, dryRun)
         if (mode != JobRunMode.async) {
             runs[key] = run to null
@@ -160,7 +173,7 @@ class JobService : ServiceInitializer, AutoCloseable {
                 "asynchronously.",
         )
         val total = clients.sumOf { client ->
-            counter(JobRunCxt(cxt.mkSubContext("job", client), launch, workAreas, client, 0) { null }, client).toLong()
+            counter(JobRunCxt(cxt.mkSubContext("job", client), launch, workAreas, client, 0, null) { null }, client).toLong()
         }
         if (total > profile.syncTaskCap) {
             throw KdrException.mkInput(
@@ -214,4 +227,5 @@ object JOBP {
     const val redoWindowHours = "redoWindowHours"
     const val mode = "mode"
     const val launchedBy = "launchedBy"
+    const val trace = "trace"
 }
