@@ -33,6 +33,12 @@ class JobDef(
     val countTasks: ((JobRunCxt, String) -> Int)? = null,
     /** When the job runs on its own (issue #870); null for a job that runs only when launched. */
     val schedule: JobSchedule? = null,
+    /**
+     * The gedra a task is for, from its key (issue #871) -- often the key itself. Given, a task that fails without
+     * naming its resource is recorded against this one, and a task that succeeds clears the job's earlier failure
+     * there. Null for a job whose tasks are not about gedras.
+     */
+    val resourceOf: ((String) -> String?)? = null,
 )
 
 /** What a task did. A failure is not a result: it is thrown. */
@@ -92,4 +98,7 @@ class JobRunCxt internal constructor(
 object JOBR {
     /** A task noticed the run stopping (a requested abort, a fenced lease, a stall) through `checkAbort`. */
     const val stopping = "stopping"
+
+    /** A failure recorded against a gedra whose exception named no scenario. */
+    const val unclassified = "unclassified"
 }
