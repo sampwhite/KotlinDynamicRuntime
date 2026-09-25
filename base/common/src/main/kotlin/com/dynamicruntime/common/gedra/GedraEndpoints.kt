@@ -48,6 +48,7 @@ import com.dynamicruntime.common.gedra.workflow.noWorkflowView
 import com.dynamicruntime.common.gedra.workflow.resolveWorkflowView
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AuthUserRow
@@ -333,10 +334,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     type(WCOL.summaryWorkflowType) {
         type = SCT.kObject
         description = "One workflow the forms listing's workflow column may show."
-        property(WCOL.client, "The client whose workflow it is.", required = true)
-        property(WFD.workflowId, "The workflow.", required = true)
-        property(WFD.label, "Its name, resolved; its id when it has none.", required = true)
-        property(WCOL.phase, "Where it stands in its time windows.", required = true) { options(WfPhase.entries) }
+        listedWorkflowFields()
         property(WCOL.explanations, "Each eligibility test's id and its explanation, resolved.", required = true) {
             type = SCT.kObject
             additionalProperties = true
@@ -772,10 +770,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     type(WAGG.entryType) {
         type = SCT.kObject
         description = "One workflow on the workflow pages, with how many of the caller's visible forms are in each state."
-        property(WCOL.client, "The client whose workflow it is.", required = true)
-        property(WFD.workflowId, "The workflow.", required = true)
-        property(WFD.label, "Its name, resolved; its id when it has none.", required = true)
-        property(WCOL.phase, "Where it stands in its time windows.", required = true) { options(WfPhase.entries) }
+        listedWorkflowFields()
         property(WAGG.eligible, "Forms eligible for it and not in it, while it takes new forms.", required = true) { type = SCT.integer }
         property(WAGG.engaged, "Forms engaged with it, with work under way.", required = true) { type = SCT.integer }
         property(WAGG.finished, "Forms engaged with it and finished.", required = true) { type = SCT.integer }
@@ -1548,4 +1543,16 @@ fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "adminGedr
             .createGedra(ownerCxt, onBehalfKind, entries, request.getOptBool(GDF.allowAdditionalTraits) == true)
             .toJsonMap()
     }
+}
+
+/**
+ * The fields that name one workflow as a listing shows it -- its client, id, resolved label and phase -- shared by
+ * the forms listing's workflow summary (issue #791) and the workflow pages' aggregate (issue #792), so the two
+ * describe a workflow the same way and change together.
+ */
+private fun SchTypeBuilder.listedWorkflowFields() {
+    property(WCOL.client, "The client whose workflow it is.", required = true)
+    property(WFD.workflowId, "The workflow.", required = true)
+    property(WFD.label, "Its name, resolved; its id when it has none.", required = true)
+    property(WCOL.phase, "Where it stands in its time windows.", required = true) { options(WfPhase.entries) }
 }
