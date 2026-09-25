@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.keepGatedFields
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.SqlCxt
@@ -460,9 +461,13 @@ class GedraDataService : ServiceInitializer {
         // Trait save-time functions (issue #728): calculate or validate each entry's data before anything is
         // minted or locked. A validation throws a 400 from here; a calculation's output is what gets stamped and
         // stored below. `cxt` is bound to the gedra's owner (the create binds it), so its client is the gedra's.
+        // The caller's `g-visibleWhen` gates first (issue #830), on what they sent: a new entry has no stored value to
+        // keep, so any value in a field whose gate they fail is refused, before anything is minted.
+        val gate = gatedWrite(cxt, kind)
         val prepared = entries.map { entry ->
             val traitId = entry[GE.traitId].toOptStr() ?: return@map entry
-            entry + (GE.data to prepForSaveData(cxt, kind, traitId, entry[GE.data].toJsonMapOrEmpty(), cxt.client))
+            val data = gate(traitId, null, entry[GE.data].toJsonMapOrEmpty())
+            entry + (GE.data to prepForSaveData(cxt, kind, traitId, data, cxt.client))
         }
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
         // not yet hold every extant id, so this buys identity and cheap keys and not existence -- see
@@ -780,6 +785,7 @@ class GedraDataService : ServiceInitializer {
     ): GedraImportResult {
         val union = clientUnion(cxt, kind)
         val variants = union?.variants
+        val gate = gatedWrite(cxt, kind)
         val now = cxt.instanceNow()
         val actor = cxt.userProfile.userId
         // Aggregated across every document, since the result reports one count per (category, trait).
@@ -818,7 +824,12 @@ class GedraDataService : ServiceInitializer {
                 }
                 // Strip to the trait and its data, then stamp a fresh envelope -- so an incoming source,
                 // timestamp, actor, or workflow field is dropped rather than carried across the import.
-                val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entry[GE.data].toJsonMapOrEmpty())
+                // The caller's `g-visibleWhen` gates (issue #830), as on a create: an import makes new forms, so a gated
+                // value from someone the gate refuses refuses the whole import -- never forgiven, since it is a
+                // permission rather than a malformed entry.
+                val slim = linkedMapOf<String, Any?>(
+                    GE.traitId to traitId, GE.data to gate(traitId, null, entry[GE.data].toJsonMapOrEmpty()),
+                )
                 // Trait save-time functions (issue #728) run on an import too, so it cannot store what a create
                 // or a patch would refuse. A rejection is treated exactly like the schema failure below --
                 // forgiven and counted when `forgiveInvalidEntries` is set, fatal to the whole import otherwise
@@ -1222,8 +1233,10 @@ class GedraDataService : ServiceInitializer {
             val now = checkNotNull(SqlTopicUtil.prepForStdUpdate(txCxt, table, bind, row.updatedAt)) {
                 "${GDT.gedraData} must declare ${PF.updatedAt} for a patch to stamp it."
             }
+            // The caller's `g-visibleWhen` gates (issue #830), judged per edit against the entry as stored under this lock.
+            val gate = gatedWrite(txCxt, kind)
             for (edit in target.edits) {
-                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(txCxt, edit, byKey, pkFieldsOf(edit.traitId), now)))
+                outcomes.add(GedraEditOutcome(edit.traitId, applyEdit(txCxt, edit, byKey, pkFieldsOf(edit.traitId), now, gate)))
             }
             // The registered guards (issue #857) -- a trait lock, say -- on the same lock, once the edits are folded in
             // memory and before anything is written. They judge the traits the edits actually **change** (an edit
@@ -1294,6 +1307,8 @@ class GedraDataService : ServiceInitializer {
         byKey: MutableMap<String, Map<String, Any?>>,
         pkFields: List<String>,
         now: Instant,
+        /** The caller's `g-visibleWhen` gates over the entry's data (issue #830); see [gatedWrite]. */
+        gate: GatedWrite,
     ): Boolean {
         // The entry an edit names: its trait, plus its primary-key values when the trait declares a key (issue
         // #487). The key rides in the edit's own data -- a delete of a keyed trait carries a minimal `{key:
@@ -1332,11 +1347,15 @@ class GedraDataService : ServiceInitializer {
         // A merge folds the supplied keys over what is stored; a "replace" takes the supplied data whole. Keys
         // rather than a deep merge, which is what the questionnaire case wants: a page owns the answers it
         // shows and says nothing about the rest.
-        val data = if (edit.action == GedraEditAction.addOrMerge) {
+        val assembled = if (edit.action == GedraEditAction.addOrMerge) {
             existing?.get(GE.data).toJsonMapOrEmpty() + supplied
         } else {
             supplied
         }
+        // A field the caller's gate hides keeps its stored value (issue #830): left out by a replace from a form that
+        // hid it, or sent back unchanged, it stays as it was; a change to it refuses the patch. Before the diff, so an
+        // edit that differs only there reads as no change.
+        val data = gate(edit.traitId, existing?.get(GE.data)?.toJsonMapOrEmpty(), assembled)
         // Diff before stamp (issue #626): an update whose data equals what is stored changes nothing, so the
         // entry -- and its `updated` stamps -- is left as it is, and the edit reports not-applied. Covers a
         // `replace` with identical data and a `merge` that resolves to it. `GedraEditOutcome.applied` then means
@@ -1406,6 +1425,38 @@ class GedraDataService : ServiceInitializer {
             byKey[entryKey(traitId, entryKeyValues(entry, traitId, pkFieldsOf(traitId), stored = true))] = entry
         }
         return byKey
+    }
+
+    /**
+     * The caller's `g-visibleWhen` gates over trait data of [kind] (issue #830), for one write: given a trait, the entry's
+     * stored data (null for a new entry) and the data being written, the data to store -- see [keepGatedFields] -- or
+     * a 403 naming each gated field the caller tried to change. `g-visibleWhen` hides a field on the page; this is
+     * the other half, so a caller cannot write through the API what the page would not offer them.
+     *
+     * The gates are judged against the caller's request facts (`CFactRegistry.assemble`) in [cxt]'s client -- the
+     * data's, as [clientUnion] reads it -- which is the set the page's delivered cfacts are drawn from, so the page
+     * and this agree. Facts are assembled only once a gated field is met, and each expression answered once.
+     */
+    private fun gatedWrite(cxt: KdrCxt, kind: GedraDataType): GatedWrite {
+        val union = clientUnion(cxt, kind)
+        val registry by lazy { SchemaService.get(cxt).cfactsFor(cxt.client) }
+        val present by lazy { registry.assemble(cxt) }
+        val answers = HashMap<String, Boolean>()
+        val allows = { expression: String -> answers.getOrPut(expression) { registry.parse(expression).matches(present) } }
+        return GatedWrite { traitId, stored, incoming ->
+            val dataType = union?.variants?.select(traitId)?.properties?.get(GE.data)?.valueType
+                ?: return@GatedWrite incoming
+            val gated = keepGatedFields(dataType, stored, incoming, allows)
+            if (gated.refused.isNotEmpty()) {
+                throw KdrException(
+                    "You may not set ${gated.refused.joinToString(", ") { "'$it'" }} of '$traitId': " +
+                        "${if (gated.refused.size == 1) "it is" else "they are"} not offered to you, so " +
+                        "${if (gated.refused.size == 1) "it keeps its" else "they keep their"} stored value.",
+                    code = EXC.notAuthorized,
+                )
+            }
+            gated.data
+        }
     }
 
     /** The entry union as [cxt]'s client sees it, or null on a node with no compiled schema for it. */
@@ -1771,3 +1822,12 @@ class GedraImportResult(val imported: List<GedraImportedDoc>, val discarded: Lis
  * client's configuration its state is read against -- and its state entries, whether the row stays.
  */
 typealias GedraStateFilter = (gedraId: GedraId, states: List<Map<String, Any?>>) -> Boolean
+
+/** One write's `g-visibleWhen` rule over trait data (issue #830); see `GedraDataService.gatedWrite`. */
+fun interface GatedWrite {
+    /**
+     * The data to store for [traitId], given its [stored] data (null for a new entry) and the data [incoming];
+     * throws when the caller changed a field its gate hides.
+     */
+    operator fun invoke(traitId: String, stored: Map<String, Any?>?, incoming: Map<String, Any?>): Map<String, Any?>
+}

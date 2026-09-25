@@ -137,9 +137,9 @@ open class SchTypeBuilder(
     /**
      * Custom `g-visibleWhen` keyword (issue #545): a cfact expression deciding whether this property is shown to
      * a given caller. Resolved when the catalog renders for that caller -- the property is dropped for one whose
-     * cfacts do not satisfy the expression. Presentation only: a handler accepting the field must still enforce
-     * the same condition, since request validation runs against the compiled schema that still carries it. See
-     * [SCH.visibleWhen].
+     * cfacts do not satisfy the expression. Trait data enforces it on every write (issue #830); a handler
+     * accepting it as an endpoint input must enforce it itself, since request validation runs against the
+     * compiled schema that still carries it. See [SCH.visibleWhen].
      */
     var visibleWhen: String? by SchAttr(data, SCH.visibleWhen)
 

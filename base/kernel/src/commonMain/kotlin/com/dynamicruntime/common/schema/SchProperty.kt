@@ -35,8 +35,9 @@ class SchProperty(
      * `g-visibleWhen`: a cfact expression deciding whether this field is shown, **evaluated on the frontend**
      * (issue #564) against the caller's delivered cfacts; null when the field is always shown. On the property,
      * not [valueType], for the same reason as [title] and [presentation] -- a `$ref` field's value type is
-     * shared, so a gate written beside the `$ref` belongs to this use site. Presentation only: the served
-     * schema keeps the field, so the handler still enforces the condition. See [SCH.visibleWhen].
+     * shared, so a gate written beside the `$ref` belongs to this use site. The served schema keeps the field; on
+     * trait data the backend enforces the gate on every write (issue #830), and on an endpoint input the handler
+     * does. See [SCH.visibleWhen].
      */
     val visibleWhen: String? = null,
 ) {
