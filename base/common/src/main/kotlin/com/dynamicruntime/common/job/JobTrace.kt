@@ -207,7 +207,7 @@ class JobTracer(
     }
 }
 
-/** Writes, reads and prunes the job trace (issue #879). */
+/** Writes, reads, and prunes the job trace (issue #879). */
 object JobTraceRows {
     /** Inserts [entries] in order, on [cxt]'s own session. */
     fun write(cxt: KdrCxt, entries: List<Map<String, Any?>>) {
