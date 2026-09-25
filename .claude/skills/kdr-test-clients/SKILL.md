@@ -66,6 +66,12 @@ from `scenarioB`, even by an `allClients` admin on a client-scoped endpoint. Tha
 many scenarios without bleed — no new node, no teardown. `global` is the reserved owner of shared/app-level data;
 you never author into it (`writeConfig` refuses the `global` client and the `globalconfig` namespace).
 
+**The service write does not trial; the endpoints do** (issue #843). `GedraConfigService.writeConfig` stores what
+it is given (after the namespace/owner guards), so a test can store a deliberately flawed config to exercise the
+forgiving load. The bundle-write and patch **endpoints** pass `trial = true`: a trial reload of the client with the
+written revision in place refuses the write (400) when it finds a problem the client did not already have. A test
+writing through the endpoints therefore needs a sound config -- which is the point.
+
 ## Narrowing a schema after data is captured (no restart)
 
 Testing that a **schema change invalidates already-captured data** — a stored value a later, tighter schema

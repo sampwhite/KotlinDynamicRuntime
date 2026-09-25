@@ -177,9 +177,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         cxt: KdrCxt,
         results: List<FragmentCheckResult>,
         judged: List<FragmentSource>?,
+        sources: List<FragmentSource> = registeredFragmentSources(cxt),
+        /** False for a trial (issue #843), which reports what it finds and changes nothing. */
+        apply: Boolean = true,
     ) {
         val shared = results.filter { it.client == null }.associate { it.fileId to findingsOf(it).toSet() }
-        val sources = registeredFragmentSources(cxt)
         val configs = SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
         val dropped = mutableListOf<FragmentSource>()
         val issues = mutableListOf<GedraConfigIssue>()
@@ -208,7 +210,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 dropped.add(layer)
             }
         }
-        if (dropped.isNotEmpty()) {
+        if (apply && dropped.isNotEmpty()) {
             cxt.instanceConfig.put(FRAG.registryKey, sources.filter { s -> dropped.none { it === s } })
             val clients = dropped.mapNotNull { it.client }.toSet()
             for ((key, merged) in effectiveCache.entries.toList()) {
@@ -237,8 +239,9 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         cxt: KdrCxt,
         only: String? = null,
         data: Map<String, Any?>? = null,
+        /** The layers to check -- the registry's, unless a trial (issue #843) checks a candidate set. */
+        sources: List<FragmentSource> = registeredFragmentSources(cxt),
     ): List<FragmentCheckResult> {
-        val sources = registeredFragmentSources(cxt)
         val fileIds = if (only != null) listOf(only) else sources.map { it.fileId }.distinct()
         // Cross-file backend cycles are a whole-registry fact, so they are found once per *client* here rather
         // than per file, and attached below to the shared row of each cycle's entry-point file (issue #505).
@@ -638,6 +641,26 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                 byBuildId.remove("${key.removeSuffix(suffix)}|${merged.buildId}")
             }
         }
+    }
+
+    /**
+     * A trial of [client]'s candidate fragment layers (issue #843): [added] in place of [removed], checked as a
+     * reload checks them, with every finding going to the trial's capture and nothing registered. Returns the
+     * candidate layer set, which the trial's workflow check resolves labels against.
+     */
+    fun trialClient(
+        cxt: KdrCxt,
+        client: String,
+        removed: List<FragmentSource>,
+        added: List<FragmentSource>,
+    ): List<FragmentSource> {
+        val sources = registeredFragmentSources(cxt).filter { held -> removed.none { it === held } } + added
+        if (added.isNotEmpty()) {
+            val results = added.map { it.fileId }.toSet().flatMap { checkFragments(cxt, only = it, sources = sources) }
+                .filter { it.client == null || it.client == client }
+            dropFaultyClientOverlays(cxt, results, judged = added, sources = sources, apply = false)
+        }
+        return sources
     }
 
     /** The content of [fileId] that [buildId] names, or null when this node has no such version of it. */

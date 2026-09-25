@@ -104,7 +104,17 @@ class GedraConfigService : ServiceInitializer {
      * The context is bound to the config's own client before writing, so ownership and audit stamp from the
      * right owner whatever the caller was bound to -- the same move the patch path's `oneClient` makes.
      */
-    fun writeConfig(cxt: KdrCxt, config: GedraConfig, impliedDelete: Boolean = true): GedraConfigRow {
+    fun writeConfig(
+        cxt: KdrCxt,
+        config: GedraConfig,
+        impliedDelete: Boolean = true,
+        /**
+         * Refuse the write when a trial reload of the client with the written revision in place finds a problem it
+         * did not already have (issue #843) -- what the write endpoints ask for. Off for a caller writing
+         * deliberately (a test storing a flawed config to exercise the forgiving load, a bulk restore).
+         */
+        trial: Boolean = false,
+    ): GedraConfigRow {
         checkWritableConfig(cxt, config)
         val configId = config.gedraId.revisionClass()
         val wcxt = boundToClient(cxt, configId.client)
@@ -113,9 +123,19 @@ class GedraConfigService : ServiceInitializer {
         var result: GedraConfigRow? = null
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
             val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
-            result = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete)
+            val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete)
+            if (trial) trialWritten(wcxt, written)
+            result = written
         }
         return result!!
+    }
+
+    /**
+     * Runs the trial (issue #843) on the revision as written -- after the slots it carried forward or dropped, so on
+     * exactly what a reload would read -- inside the write's transaction, so a refusal rolls the write back.
+     */
+    private fun trialWritten(wcxt: KdrCxt, written: GedraConfigRow) {
+        GedraConfigTrial.requireClean(wcxt, GedraConfigLoadService.get(wcxt).toConfig(wcxt, written))
     }
 
     /**
@@ -130,6 +150,8 @@ class GedraConfigService : ServiceInitializer {
     fun patchConfig(
         cxt: KdrCxt,
         configClassId: GedraId,
+        /** As [writeConfig]'s: refuse an edit whose trial reload finds a new problem (issue #843). */
+        trial: Boolean = false,
         applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
     ): GedraConfigRow {
         val configId = configClassId.revisionClass()
@@ -144,7 +166,9 @@ class GedraConfigService : ServiceInitializer {
             // Reassemble -> validate, exactly as the bundle write does; then write the whole edited set.
             val config = reassembleGedraConfig(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited)
             checkWritableConfig(wcxt, config)
-            result = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true)
+            val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true)
+            if (trial) trialWritten(wcxt, written)
+            result = written
         }
         return result!!
     }

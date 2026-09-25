@@ -77,8 +77,9 @@ class UiBlockService : ServiceInitializer {
         cxt: KdrCxt,
         sources: List<UiBlockSource>,
         judged: List<UiBlockSource>,
+        allowedFor: (String?) -> Set<String> = { client -> SchemaService.get(cxt).cfactsFor(client).names },
     ): List<UiBlockSource> {
-        val faults = uiBlockFaults(sources) { client -> SchemaService.get(cxt).cfactsFor(client).names }
+        val faults = uiBlockFaults(sources, allowedFor)
         val configs = SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
         val dropped = mutableListOf<UiBlockSource>()
         val issues = mutableListOf<GedraConfigIssue>()
@@ -140,6 +141,25 @@ class UiBlockService : ServiceInitializer {
         cxt.instanceConfig.put(UIB.registryKey, dropFaultyOverlays(cxt, kept + added, added))
         mergedCache.keys.removeIf { it.endsWith("|$client") }
         predicateCache.keys.removeIf { it.startsWith("$client|") }
+    }
+
+    /**
+     * A trial of [client]'s candidate UiBlock overlays (issue #843): [added] in place of [removed], judged as a
+     * reload judges them -- the client's expressions against its candidate [cfactNames] -- with every finding going
+     * to the trial's capture and nothing registered.
+     */
+    fun trialClient(
+        cxt: KdrCxt,
+        client: String,
+        removed: List<UiBlockSource>,
+        added: List<UiBlockSource>,
+        cfactNames: Set<String>,
+    ) {
+        if (added.isEmpty()) return
+        val sources = registeredUiBlocks(cxt).filter { held -> removed.none { it === held } } + added
+        dropFaultyOverlays(cxt, sources, added) { c ->
+            if (c == client) cfactNames else SchemaService.get(cxt).cfactsFor(c).names
+        }
     }
 
     @Suppress("ConstPropertyName")

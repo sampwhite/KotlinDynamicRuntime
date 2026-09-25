@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -31,29 +32,40 @@ fun resolveWorkflowFunctions(
      * every other bundle already holds what the boot (or its own reload) resolved. Null resolves them all.
      */
     onlyClient: String? = null,
+    /** The client definition a bundle is held to -- the node's, unless a trial (issue #843) supplies a candidate. */
+    clientDefOf: (String) -> ClientDef? = { ClientService.get(cxt).present(it) },
+    /** The cfact names a client declares -- the node's, unless a trial supplies the candidate's. */
+    cfactNamesOf: (String) -> Set<String> = { SchemaService.get(cxt).cfactsFor(it).names },
+    /**
+     * Whether to store what resolves on each `WfDef` and `WfTask`. A trial (issue #843) passes false: it wants the
+     * problems, not the functions -- and the definitions it walks may be the node's own (a client's source-code
+     * bundles are shared with the running collector), which a refused write must leave as they were.
+     */
+    assign: Boolean = true,
 ) {
     val byFn: Map<String, WfFunctionCreation> = creations.associateBy { it.fn }
-    val schemaService = SchemaService.get(cxt)
 
     for (bundle in configs.configs) {
         val client = bundle.gedraId.client
         if (onlyClient != null && client != onlyClient) continue
-        val declaredCfacts = schemaService.cfactsFor(client).names
+        val declaredCfacts = cfactNamesOf(client)
         // The labels the client suggests (issue #786), or null for a bundle with no client definition present
         // here -- a global workflow has no one client's list to be held to, so its labels are not checked.
-        val suggestedLabels = ClientService.get(cxt).present(client)?.userLabels?.toSet()
+        val suggestedLabels = clientDefOf(client)?.userLabels?.toSet()
         val bundleScope = ResolutionScope(cxt, bundle, byFn, declaredCfacts, suggestedLabels, issues)
         for (def in bundle.workflows.values) {
-            def.resolvedFunctions = bundleScope.resolveList(
+            val defFunctions = bundleScope.resolveList(
                 def.workflowId, "the workflow", def.functionUsages, WfEventScope.global, collectedTraits = null,
             )
+            if (assign) def.resolvedFunctions = defFunctions
             for (task in def.tasks) {
-                task.resolvedFunctions = bundleScope.resolveList(
+                val taskFunctions = bundleScope.resolveList(
                     def.workflowId, "task '${task.id}'", task.functionUsages, WfEventScope.task,
                     collectedTraits = task.traits.map { it.traitId }.toSet(),
                 )
-                bundleScope.checkApprovalAuthority(def, task)
-                bundleScope.checkSaveRuleViewerFacts(def, task)
+                if (assign) task.resolvedFunctions = taskFunctions
+                bundleScope.checkApprovalAuthority(def, task, taskFunctions)
+                bundleScope.checkSaveRuleViewerFacts(def, task, taskFunctions)
             }
             bundleScope.checkSaveRuleLocks(def)
         }
@@ -83,9 +95,9 @@ private class ResolutionScope(
  * it could never be approved by anyone, which is reported here rather than discovered by the first reviewer who
  * cannot press the button. Reported, not dropped: there is nothing to drop that would make the task work.
  */
-private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask) {
+private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask, resolved: List<WfFunction>) {
     task.approval ?: return
-    if (!grantsReviewer(task)) {
+    if (!grantsReviewer(task, resolved)) {
         reportConfigProblem(
             cxt,
             bundle.issue(
@@ -103,11 +115,12 @@ private fun ResolutionScope.checkApprovalAuthority(def: WfDef, task: WfTask) {
  * Whether one of [task]'s own **resolved** `viewerCfacts` functions can emit [WFC.reviewer] (issues #787, #856) -- the
  * only source of that fact. Shared by the two checks that need it, so what grants review is decided in one place.
  */
-private fun ResolutionScope.grantsReviewer(task: WfTask): Boolean {
-    val resolved = task.resolvedFunctions.map { it.fn }.toSet()
+private fun ResolutionScope.grantsReviewer(task: WfTask, resolved: List<WfFunction>): Boolean {
+    val resolvedFns = resolved.map { it.fn }.toSet()
     return task.functionUsages.any { usage ->
         val creation = byFn[usage.fn]
-        usage.fn in resolved && creation?.event == WfEventType.viewerCfacts && WFC.reviewer in creation.emittedCfacts(usage)
+        usage.fn in resolvedFns && creation?.event == WfEventType.viewerCfacts &&
+            WFC.reviewer in creation.emittedCfacts(usage)
     }
 }
 
@@ -118,11 +131,11 @@ private fun ResolutionScope.grantsReviewer(task: WfTask): Boolean {
  * configuration mistake rather than an intent -- so it is reported, the way [checkApprovalAuthority] reports an
  * approval nobody could give.
  */
-private fun ResolutionScope.checkSaveRuleViewerFacts(def: WfDef, task: WfTask) {
+private fun ResolutionScope.checkSaveRuleViewerFacts(def: WfDef, task: WfTask, resolved: List<WfFunction>) {
     val rule = task.saveWhen ?: return
     val named = Regex("[A-Za-z_][A-Za-z0-9_]*").findAll(rule).map { it.value }.toSet()
     if (WFC.reviewer !in named) return
-    if (!grantsReviewer(task)) {
+    if (!grantsReviewer(task, resolved)) {
         reportConfigProblem(
             cxt,
             bundle.issue(
