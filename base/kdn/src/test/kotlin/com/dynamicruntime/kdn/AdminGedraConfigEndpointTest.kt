@@ -141,7 +141,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
         admin.expectError(EXC.notFound, ACEP.reload, mapOf(CFEP.client to "nosuchclient685"))
     }
 
-    "a bulk import writes each bundle independently, isolating failures and reloading (issue #733)" {
+    "a bulk import writes each client independently, isolating failures and reloading (issue #733)" {
         val admin = fullAdmin()
         val newClient = "acep733import"
         val ns = "${newClient}config"

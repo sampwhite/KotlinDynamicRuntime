@@ -18,6 +18,9 @@ import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
+/** One config for [GedraConfigService.writeConfigs] to store, with its own [impliedDelete] (see the service note). */
+class ConfigWrite(val config: GedraConfig, val impliedDelete: Boolean = true)
+
 /**
  * Stores a client [GedraConfig] as a versioned config row, and publishes a revision (issue #633): the write
  * half of #611's "dynamic client configuration in a database", built on the tables #612 declared and the
@@ -27,7 +30,8 @@ import kotlin.time.Instant
  * ### The version / publish transition
  *
  * A config's revision class ([GedraId.revisionClass]) collates all of its revisions, and #611 gives two rules
- * over that class, which [writeConfig] enforces under one lock on [GCT.gedraConfigTran]:
+ * over that class, which [writeConfig] enforces under its client's lock on [GCT.gedraConfigClientTran] (a client's
+ * lock rather than the class's since issue #843 -- see [gedraConfigTables]):
  *
  * - **Edit the latest revision until it is published.** While the latest revision has no [GC.publishedAt], a
  *   write updates that row in place at the same [GC.version] -- an author is still working on it.
@@ -57,7 +61,7 @@ import kotlin.time.Instant
  * ### What is not here
  *
  * No validation of the config's own shape: [writeConfig] takes a [GedraConfig] the builder already assembled,
- * so its traits, schemas and workflows are well-formed by construction (a config carrying config traits is the
+ * so its traits, schemas, and workflows are well-formed by construction (a config carrying config traits is the
  * one thing refused, by [gedraConfigToEntries], since those are hardwired and never stored). Reading a row back
  * into a [GedraConfig] and loading configs at boot are #614; the two-revision cache is #615.
  */
@@ -111,31 +115,81 @@ class GedraConfigService : ServiceInitializer {
         /**
          * Refuse the write when a trial reload of the client with the written revision in place finds a problem it
          * did not already have (issue #843) -- what the write endpoints ask for. Off for a caller writing
-         * deliberately (a test storing a flawed config to exercise the forgiving load, a bulk restore).
+         * deliberately (a test storing a flawed config to exercise the forgiving load).
          */
         trial: Boolean = false,
-    ): GedraConfigRow {
-        checkWritableConfig(cxt, config)
-        val configId = config.gedraId.revisionClass()
-        val wcxt = boundToClient(cxt, configId.client)
-        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
-        val table = configTable(wcxt)
-        var result: GedraConfigRow? = null
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
-            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
-            val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete)
-            if (trial) trialWritten(wcxt, written)
-            result = written
+    ): GedraConfigRow =
+        writeConfigs(cxt, config.gedraId.client, listOf(ConfigWrite(config, impliedDelete)), trial).single()
+
+    /**
+     * Stores several configs of one [client] in **one** transaction under the client's lock (issue #843), each as
+     * [writeConfig] stores one, and -- with [trial] -- judges them **together**: a client's definition is spread
+     * across its configs, so bundles that are sound only as a set (one declaring the client, another the traits its
+     * workflows collect) are judged as the set, and a refusal takes them all back. What a bulk import writes per
+     * client. A config named twice is refused, since the second would silently replace the first.
+     */
+    fun writeConfigs(
+        cxt: KdrCxt,
+        client: String,
+        writes: List<ConfigWrite>,
+        trial: Boolean = false,
+    ): List<GedraConfigRow> {
+        for (write in writes) {
+            if (write.config.gedraId.client != client) {
+                throw KdrException.mkInput("Config '${write.config.gedraId}' does not belong to client '$client'.")
+            }
+            checkWritableConfig(cxt, write.config)
         }
-        return result!!
+        val twice = writes.groupBy { it.config.gedraId.revisionClass().fullId }.filterValues { it.size > 1 }.keys
+        if (twice.isNotEmpty()) {
+            throw KdrException.mkInput("Configs ${twice.sorted()} are each written more than once.")
+        }
+        val wcxt = boundToClient(cxt, client)
+        return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
+            val written = writes.map { write ->
+                val configId = write.config.gedraId.revisionClass()
+                val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, write.config, latest, write.impliedDelete)
+            }
+            if (trial) trialWritten(wcxt, written)
+            written
+        }
     }
 
     /**
-     * Runs the trial (issue #843) on the revision as written -- after the slots it carried forward or dropped, so on
-     * exactly what a reload would read -- inside the write's transaction, so a refusal rolls the write back.
+     * Runs the trial (issue #843) on the revisions as written -- after the slots they carried forward or dropped, so
+     * on exactly what a reload would read -- inside the write's transaction, so a refusal rolls the write back.
+     *
+     * A write is judged with the client's other **latest** revisions, whatever its tier: for a published-only client
+     * the latest revisions are its drafts, and judging a draft against the published set would stop an author
+     * staging a change that spans two configs. What such a client runs is judged when it changes -- at [publish] and
+     * at [setPublishedOnly].
      */
-    private fun trialWritten(wcxt: KdrCxt, written: GedraConfigRow) {
-        GedraConfigTrial.requireClean(wcxt, GedraConfigLoadService.get(wcxt).toConfig(wcxt, written))
+    private fun trialWritten(wcxt: KdrCxt, written: List<GedraConfigRow>) {
+        val names = written.joinToString(", ") { "'${it.configId.baseId}'" }
+        GedraConfigTrial.requireClean(
+            wcxt, wcxt.client, written, published = false, "Configuration $names was not stored",
+        )
+    }
+
+    /**
+     * Runs [block] in a config transaction holding [wcxt]'s client's lock on [GCT.gedraConfigClientTran] (issue #843),
+     * handing it the transaction's SQL context and the content table, and returns what it returns.
+     *
+     * The config cache is brought up to date **first**, since it will not refresh inside a transaction: a trial
+     * reads the client's other stored configs from it, and should see the ones written since this node last
+     * looked. A write that lands on another node between that refresh and this lock is not seen -- a narrow window
+     * at the rate configuration changes, and one the next reload reports rather than hides.
+     */
+    private fun <T> underClientLock(wcxt: KdrCxt, tranName: String, block: (SqlCxt, KdrTable) -> T): T {
+        configCache?.checkRefresh(wcxt)
+        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
+        val table = configTable(wcxt)
+        val result = mutableListOf<T>()
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranName, null, mapOf(PF.client to wcxt.client)) {
+            result.add(block(sqlCxt, table))
+        }
+        return result.single()
     }
 
     /**
@@ -156,10 +210,7 @@ class GedraConfigService : ServiceInitializer {
     ): GedraConfigRow {
         val configId = configClassId.revisionClass()
         val wcxt = boundToClient(cxt, configId.client)
-        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
-        val table = configTable(wcxt)
-        var result: GedraConfigRow? = null
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
+        return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
             val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
                 ?: throw KdrException("No configuration '${configId.baseId}' for client '${configId.client}'.", code = EXC.notFound)
             val edited = applyEdits(latest.entriesBySlot())
@@ -167,10 +218,9 @@ class GedraConfigService : ServiceInitializer {
             val config = reassembleGedraConfig(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited)
             checkWritableConfig(wcxt, config)
             val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true)
-            if (trial) trialWritten(wcxt, written)
-            result = written
+            if (trial) trialWritten(wcxt, listOf(written))
+            written
         }
-        return result!!
     }
 
     /**
@@ -241,20 +291,21 @@ class GedraConfigService : ServiceInitializer {
      * [GC.publishedAt], after which the next [writeConfig] mints a new revision rather than editing this one.
      * Idempotent -- if the latest revision is already published there is nothing editable to publish, so it is
      * returned unchanged. Throws when the class has no revision at all.
+     *
+     * For a published-only client, publishing is what changes what the client runs, so with [trial] it is judged
+     * the way a write is (issue #843): refused if a trial reload with this revision live would find a problem the
+     * client does not already have. For any other client the revision is already what it runs, and was judged
+     * when written.
      */
-    fun publish(cxt: KdrCxt, configClassId: GedraId): GedraConfigRow {
+    fun publish(cxt: KdrCxt, configClassId: GedraId, trial: Boolean = false): GedraConfigRow {
         val configId = configClassId.revisionClass()
         val wcxt = boundToClient(cxt, configId.client)
-        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
-        val table = configTable(wcxt)
         val now = wcxt.instanceNow()
-        var result: GedraConfigRow? = null
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranPublish, null, mapOf(GC.configId to configId.fullId)) {
+        return underClientLock(wcxt, tranPublish) { sqlCxt, table ->
             val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
                 ?: throw KdrException.mkInput("There is no config '$configId' to publish.")
             if (latest.isPublished) {
-                result = latest
-                return@executeTopicTran
+                return@underClientLock latest
             }
             val stmt = SqlTopicUtil.mkPartialUpdateStmt(
                 sqlCxt, table, "uGedraConfigPublish",
@@ -263,9 +314,15 @@ class GedraConfigService : ServiceInitializer {
             val bind = mutableMapOf<String, Any?>(GC.gedraId to latest.gedraId.fullId, GC.publishedAt to now)
             SqlTopicUtil.prepForStdUpdate(wcxt, table, bind, latest.updatedAt)
             sqlCxt.sqlDb.executeStatement(wcxt, stmt, bind)
-            result = readRowUnderLock(wcxt, sqlCxt, table, latest.gedraId)
+            val stamped = readRowUnderLock(wcxt, sqlCxt, table, latest.gedraId)
+            if (trial && publishedOnly(wcxt, configId.client)) {
+                GedraConfigTrial.requireClean(
+                    wcxt, configId.client, listOf(stamped), published = true,
+                    "Configuration '${configId.baseId}' was not published",
+                )
+            }
+            stamped
         }
-        return result!!
     }
 
     /**
@@ -292,30 +349,29 @@ class GedraConfigService : ServiceInitializer {
             )
         }
         val wcxt = boundToClient(cxt, configId.client)
-        val sqlCxt = SqlTopicService.mkSqlCxt(wcxt, gedraConfigTopic)
-        val table = configTable(wcxt)
-        var result: GedraConfigRow? = null
-        SqlTopicTranProvider.executeTopicTran(sqlCxt, tranWrite, null, mapOf(GC.configId to configId.fullId)) {
+        return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
             val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
                 ?: throw KdrException.mkInput("There is no config '$configId' to reopen for editing.")
             if (!latest.isPublished) {
                 // Already editable: the head is what a write would land on, so there is nothing to reopen.
-                result = latest
-                return@executeTopicTran
+                return@underClientLock latest
             }
             // Mint version+1 as an unpublished copy of the published head. Its own entries are both the new slots
             // and the diff source, so every slot is unchanged and keeps its stored envelope across the bump.
             val slots = latest.entriesBySlot()
             val priorByKey = keyStoredEntries(latest.entries)
-            result = insertRevision(
+            insertRevision(
                 wcxt, sqlCxt, table, configId, latest.version + 1, latest.resolvedNamespace(),
                 slots, priorByKey, impliedDelete = true, prior = latest,
             )
         }
-        return result!!
     }
 
-    /** Binds [cxt] to [client] so ownership/audit stamp from the config's own client, or returns it unchanged. */
+    /**
+     * Binds [cxt] to [client] so ownership/audit stamp from the config's own client, or returns it unchanged. Made
+     * **before** a transaction, never inside one: a sub-context does not carry the SQL session, so work on it would
+     * run outside the transaction.
+     */
     private fun boundToClient(cxt: KdrCxt, client: String): KdrCxt =
         if (cxt.client == client) cxt else cxt.mkSubContext("configWrite", client)
 
@@ -466,16 +522,31 @@ class GedraConfigService : ServiceInitializer {
      * Sets [client]'s published-only state in this node's environment (issue #617), refusing a `staticConfig`
      * client -- its tier is fixed in source and is not the toggle's to change. Returns the effective state after
      * the write, which for a non-static client is [value].
+     *
+     * Taken under the client's config lock, since the tier decides which of the client's revisions it runs: a
+     * toggle swaps the whole set, from the latest revisions to the published ones or back. So with [trial] it is
+     * judged the way a write is (issue #843) -- refused if a trial reload of the set the client would then run finds
+     * a problem it does not already have.
      */
-    fun setPublishedOnly(cxt: KdrCxt, client: String, value: Boolean): Boolean {
+    fun setPublishedOnly(cxt: KdrCxt, client: String, value: Boolean, trial: Boolean = false): Boolean {
         if (client in staticClients(cxt)) {
             throw KdrException.mkInput(
                 "Client '$client' is statically configured: its configuration comes from source in production, " +
                     "so the published-only tier cannot be toggled for it.",
             )
         }
-        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
-        GedraConfigControl.setPublishedOnly(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env, value)
+        val wcxt = boundToClient(cxt, client)
+        underClientLock(wcxt, tranWrite) { sqlCxt, _ ->
+            val env = wcxt.instanceConfig.env
+            GedraConfigControl.setPublishedOnly(wcxt, sqlCxt, controlTable(wcxt), client, env, value)
+            // Nothing is replaced: the trial judges the set the client would now run, as stored.
+            if (trial) {
+                val state = if (value) "published-only" else "latest-revision"
+                GedraConfigTrial.requireClean(
+                    wcxt, client, emptyList(), published = value, "Client '$client' was not switched to $state",
+                )
+            }
+        }
         return value
     }
 
@@ -485,14 +556,19 @@ class GedraConfigService : ServiceInitializer {
      * for a class that has none. This is the tier-aware read the reload (#616) loads from, distinct from
      * [listConfigs], which serves the editing surface and always shows the latest.
      */
-    fun currentConfigs(cxt: KdrCxt, client: String): List<GedraConfigRow> {
-        val publishedOnly = publishedOnly(cxt, client)
-        val rowsByClass = listRevisionRows(cxt, client)
-        return rowsByClass.mapNotNull { classRows ->
-            val chosen = if (publishedOnly) latestPublishedRow(classRows) else latestRevisionRow(classRows)
+    fun currentConfigs(cxt: KdrCxt, client: String): List<GedraConfigRow> =
+        configsAt(cxt, client, published = publishedOnly(cxt, client))
+
+    /**
+     * One [GedraConfigRow] per class of [client]'s configs: the latest [published] revision, or the latest revision
+     * of any kind -- nothing for a class with none. [currentConfigs] picks by the client's tier; a trial (issue
+     * #843) picks the set it is judging.
+     */
+    fun configsAt(cxt: KdrCxt, client: String, published: Boolean): List<GedraConfigRow> =
+        listRevisionRows(cxt, client).mapNotNull { classRows ->
+            val chosen = if (published) latestPublishedRow(classRows) else latestRevisionRow(classRows)
             chosen?.let { GedraConfigRow.extract(gedraService, it) }
         }
-    }
 
     /** Every enabled revision row of [client]'s configs, grouped by class -- the raw material both list reads reduce. */
     private fun listRevisionRows(cxt: KdrCxt, client: String): List<List<Map<String, Any?>>> {
@@ -517,7 +593,7 @@ class GedraConfigService : ServiceInitializer {
     /**
      * The latest revision of [configId] as it stands inside the transaction, or null when the class has no
      * enabled revision yet. Ordered by version so the first enabled row is the latest; read with
-     * `queryStatement` because the lock this transaction holds is on [GCT.gedraConfigTran], not on these rows.
+     * `queryStatement` because the lock this transaction holds is on [GCT.gedraConfigClientTran], not on these rows.
      */
     private fun readLatestUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, configId: GedraId): GedraConfigRow? {
         val row = sqlCxt.sqlDb.queryStatement(

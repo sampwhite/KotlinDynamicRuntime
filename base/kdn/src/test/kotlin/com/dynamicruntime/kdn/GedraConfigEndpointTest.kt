@@ -42,11 +42,15 @@ class GedraConfigEndpointTest : StringSpec({
     // the config is written under whatever client that is.
     fun admin(): TestUser = TestUser.create(cxt, "cfgadmin@example.com", level = ROLE.admin)
 
-    // A bundle's slots: a cfact named `ready`, and a directly-declared shared type (so the namespace is
+    // The cfact config [name] declares. Named for the config because every bundle here goes to the one client, and
+    // the write judges it together with the client's others (issue #843): two declaring one cfact would conflict.
+    fun ready(name: String): String = "${name}Ready"
+
+    // A bundle's slots: its own cfact ([ready]), and a directly-declared shared type (so the namespace is
     // recoverable from a stored qualified type name).
-    fun slots(readyDesc: String): Map<String, Any?> = mapOf(
+    fun slots(name: String, readyDesc: String): Map<String, Any?> = mapOf(
         CCT.cfactDef to listOf(
-            mapOf(CCT.name to "ready", CCT.group to "grp", CCT.description to readyDesc, CCT.toFrontend to false),
+            mapOf(CCT.name to ready(name), CCT.group to "grp", CCT.description to readyDesc, CCT.toFrontend to false),
         ),
         CCT.schemaDef to listOf(
             mapOf(CCT.typeName to "$namespace.Shared", CCT.schema to mapOf(SCH.type to SCT.kObject)),
@@ -59,7 +63,7 @@ class GedraConfigEndpointTest : StringSpec({
             buildMap {
                 put(CFEP.name, name)
                 put(CFEP.namespaceField, namespace)
-                put(CFEP.slots, slots(readyDesc))
+                put(CFEP.slots, slots(name, readyDesc))
                 if (impliedDelete != null) put(CFEP.impliedDelete, impliedDelete)
             },
         )
@@ -109,7 +113,7 @@ class GedraConfigEndpointTest : StringSpec({
     "a patch edits one slot entry and leaves the rest (issue #732)" {
         val u = admin()
         val name = "patchtarget"
-        writeBundle(u, name, "Ready v1") // cfactDef 'ready' (desc "Ready v1", group "grp") + schemaDef namespace.Shared
+        writeBundle(u, name, "Ready v1") // its cfactDef (desc "Ready v1", group "grp") + schemaDef namespace.Shared
 
         // Merge a new description into the 'ready' cfact; touch nothing else.
         val patched = u.postData(
@@ -119,7 +123,7 @@ class GedraConfigEndpointTest : StringSpec({
                 CFEP.edits to listOf(
                     mapOf(
                         CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrMerge.name,
-                        GE.data to mapOf(CCT.name to "ready", CCT.description to "Ready patched"),
+                        GE.data to mapOf(CCT.name to ready(name), CCT.description to "Ready patched"),
                     ),
                 ),
             ),
@@ -139,7 +143,7 @@ class GedraConfigEndpointTest : StringSpec({
             mapOf(
                 CFEP.name to name,
                 CFEP.edits to listOf(
-                    mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.deleteOrNoOp.name, GE.data to mapOf(CCT.name to "ready")),
+                    mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.deleteOrNoOp.name, GE.data to mapOf(CCT.name to ready(name))),
                     mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.deleteOrNoOp.name, GE.data to mapOf(CCT.name to "gone")),
                 ),
             ),
@@ -223,7 +227,7 @@ class GedraConfigEndpointTest : StringSpec({
         user.expectError(
             EXC.notAuthorized,
             CFEP.bundleWrite,
-            mapOf(CFEP.name to "x", CFEP.namespaceField to namespace, CFEP.slots to slots("x")),
+            mapOf(CFEP.name to "x", CFEP.namespaceField to namespace, CFEP.slots to slots("x", "x")),
         )
     }
 

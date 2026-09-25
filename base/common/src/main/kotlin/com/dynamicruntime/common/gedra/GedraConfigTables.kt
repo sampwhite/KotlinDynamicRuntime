@@ -16,7 +16,7 @@ const val gedraConfigTopic = "gedraConfig"
 /** Gedra config table names. Each name matches its value. */
 @Suppress("ConstPropertyName")
 object GCT {
-    const val gedraConfigTran = "GedraConfigTran"
+    const val gedraConfigClientTran = "GedraConfigClientTran"
     const val gedraConfig = "GedraConfig"
     const val gedraConfigControl = "GedraConfigControl"
 }
@@ -83,14 +83,29 @@ object GC {
  * reason: a topic's transaction is taken by locking one row on one table, and the tables under a root are
  * expected to grow.
  *
- * ### The root is keyed by the revision class, not the version
+ * ### The root is keyed by the client, not the config
  *
  * This is the one place the config tables deliberately differ from the data tables, which key both tiers by
  * the same id. #611's two rules -- *edit the latest revision until it is published* and *the next edit after
- * publishing creates a new row and version* -- are statements about a config's whole revision class, and they
- * race across nodes unless something serialises writes to that class: two nodes could each mint `~4`. Locking
- * `gc.cd.acme.main` on [GCT.gedraConfigTran] is that something. The content row keeps the versioned key, so a
- * revision is addressed exactly and a class is a predicate ([GC.configId]).
+ * publishing creates a new row and version* -- race across nodes unless something serializes writes: two nodes
+ * could each mint `~4`. Locking the client's row on [GCT.gedraConfigClientTran] is that something.
+ *
+ * It locks the **client** rather than one config's revision class (issue #843) because the client is the unit
+ * that has to be valid: a client's definition is spread across several configs -- its `clientDef` in one, the
+ * traits its workflows collect in another -- and what they must agree on is the client's whole set. A stored
+ * config depends on source code and on its own client's other configs, never on another client's, so the client
+ * is exactly the set a write must be judged against. Holding its lock, a write sees every other config of the
+ * client as it stands, and several configs (a bulk import's bundles for one client) can be written and judged
+ * together, all or nothing. Config writes are rare and made by administrators, so serializing a client's configs
+ * behind one row costs nothing that matters.
+ *
+ * The content row keeps the versioned key, so a revision is addressed exactly and a class is a predicate
+ * ([GC.configId]).
+ *
+ * The root was `GedraConfigTran`, keyed by revision class, until #843. It was **renamed** rather than rekeyed
+ * because table setup only adds what is missing: an existing database would have kept the old key, and the
+ * schema-drift check would have refused the boot. Under the new name it is created fresh, and a database from
+ * before keeps an unused `GedraConfigTran` of disposable lock rows, safe to drop.
  *
  * ### Owned by a client, and nothing narrower
  *
@@ -98,20 +113,15 @@ object GC {
  * never to a person or an organization inside it, and the choice is load-bearing rather than cosmetic:
  * `SqlScopeUtil` **throws** on a table that cannot express a constrained scope dimension rather than quietly
  * widening the answer, so a client-scoped read must find its column here and a user-scoped one must not.
- *
- * ### Nothing reads or writes these yet
- *
- * Declaration and storage only: the tables exist, and that is all. The write path, its diff-before-stamp rule
- * and the split into traits are #613; loading at boot is #614; the two-revision cache is #615.
  */
 fun gedraConfigTables(cxt: KdrCxt): List<KdrTable> =
     tableModule(cxt, namespace = "gedraConfig", topic = gedraConfigTopic) {
         table(
-            GCT.gedraConfigTran,
-            "Transaction root for one config across all of its revisions: what a write takes its lock on.",
+            GCT.gedraConfigClientTran,
+            "Transaction root for one client's configuration, across all of its configs and their revisions: what a " +
+                "config write takes its lock on.",
         ) {
-            column(GC.configId, "Revision class of the config this row governs -- its id with no revision.", required = true)
-            primaryKey(GC.configId)
+            primaryKey(PF.client)
             forClient()
             withTransactions()
         }

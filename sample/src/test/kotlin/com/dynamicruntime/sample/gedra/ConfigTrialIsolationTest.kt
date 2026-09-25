@@ -1,9 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
-import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigTrial
-import com.dynamicruntime.common.gedra.gedraConfig
-import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
@@ -30,13 +27,9 @@ class ConfigTrialIsolationTest : StringSpec({
         val before = defs.associateWith { def -> def.resolvedFunctions to def.tasks.map { it.resolvedFunctions } }
         (defs.flatMap { d -> d.tasks.flatMap { it.resolvedFunctions } }.isNotEmpty()) shouldBe true
 
-        val candidate = gedraConfig(cxt, "trialProbe", "acmetrialprobe", SC.acme, GedraConfigOrigin.stored) {
-            type("Probe") {
-                type = SCT.kObject
-                property("text", "Some text.")
-            }
-        }
-        GedraConfigTrial.trial(cxt, candidate).shouldBeEmpty()
+        // acme has no stored config here, so the trial judges its source bundles alone -- which is all it takes to
+        // walk their workflows.
+        GedraConfigTrial.trial(cxt, SC.acme).shouldBeEmpty()
 
         for (def in defs) {
             val (defFns, taskFns) = before.getValue(def)
