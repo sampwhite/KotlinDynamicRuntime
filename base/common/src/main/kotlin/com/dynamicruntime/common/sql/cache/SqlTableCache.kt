@@ -478,6 +478,7 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         }
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         /** Schema type name for a cache's state report (the shape of [toJsonMap]). */
         const val infoTypeName = "TableCacheInfo"
