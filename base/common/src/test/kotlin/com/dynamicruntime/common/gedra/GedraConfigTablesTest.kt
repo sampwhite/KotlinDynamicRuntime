@@ -85,7 +85,7 @@ class GedraConfigTablesTest : StringSpec({
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         // The lock is taken on the client; the row written inside it is keyed by the revision.
         SqlTopicTranProvider.executeTopicTran(sqlCxt, "storeRevision", null, mapOf(PF.client to cxt.client)) {
-            val row = mutableMapOf<String, Any?>(
+            val row = mutableMapOf(
                 GC.gedraId to rev3.fullId,
                 GC.configId to classId.fullId,
                 GC.version to 3L,

@@ -30,7 +30,7 @@ import com.dynamicruntime.common.uiblock.UiBlockService
  * ### How it avoids side effects
  *
  * Every check reports through `reportConfigProblem`, and a context carrying [GCFG.trialCaptureKey] makes that
- * collect instead of refusing, logging or recording -- so the trial sees every problem, each treated as forgiven so
+ * collect instead of refusing, logging, or recording -- so the trial sees every problem, each treated as forgiven so
  * the evaluation carries on past it. The checks run over a scratch copy of the schema collector
  * (`SchemaCollector.trialCopy`) with the client's loaded configs withdrawn and the trial's set added, and each
  * service evaluates its part with a `trialClient` that builds what a reload would build and keeps nothing.

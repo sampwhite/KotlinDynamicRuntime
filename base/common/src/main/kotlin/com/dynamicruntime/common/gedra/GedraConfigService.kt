@@ -61,7 +61,7 @@ class ConfigWrite(val config: GedraConfig, val impliedDelete: Boolean = true)
  * ### What is not here
  *
  * No validation of the config's own shape: [writeConfig] takes a [GedraConfig] the builder already assembled,
- * so its traits, schemas and workflows are well-formed by construction (a config carrying config traits is the
+ * so its traits, schemas, and workflows are well-formed by construction (a config carrying config traits is the
  * one thing refused, by [gedraConfigToEntries], since those are hardwired and never stored). Reading a row back
  * into a [GedraConfig] and loading configs at boot are #614; the two-revision cache is #615.
  */
