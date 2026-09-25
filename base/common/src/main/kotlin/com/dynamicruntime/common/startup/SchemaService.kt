@@ -44,6 +44,7 @@ import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.searchParamCollisions
 import com.dynamicruntime.common.gedra.withSearchProperties
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.job.JobDef
 import com.dynamicruntime.common.schema.collectDefs
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.errorMessageProblems
@@ -768,6 +769,9 @@ class SchemaService : ServiceInitializer {
      * a gedra's initial derived state. Empty on a node whose components registered none.
      */
     fun stateDerivers(): List<GedraStateDeriver> = collector?.stateDerivers ?: emptyList()
+
+    /** The registered batch-job types (issue #869) -- what `JobService` runs. Empty on a node whose components registered none. */
+    fun jobDefs(): List<JobDef> = collector?.jobs ?: emptyList()
 
     /**
      * The registered data derivations (issue #712) -- what a read surface runs through `deriveEntryData` to

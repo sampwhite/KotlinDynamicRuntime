@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
+import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
@@ -111,6 +112,13 @@ class JobBeat(val fenced: Boolean, val abortRequested: Boolean)
 
 /** A status row as stored, typed for reading. */
 class JobStatusRow(row: Map<String, Any?>) {
+    val jobType: String? = row[JOB.jobType].toOptStr()
+
+    /** The launch kind, on a launch row; null on a per-client row. */
+    val launchKind: JobLaunchKind? = row[JOB.launchKind].toOptStr()?.let { s -> JobLaunchKind.entries.firstOrNull { it.name == s } }
+
+    /** The client, on a per-client row; null on a launch row. */
+    val client: String? = row[PF.client].toOptStr()
     val runStatus: JobRunStatus? = row[JOB.runStatus].toOptStr()?.let { s -> JobRunStatus.entries.firstOrNull { it.name == s } }
     val launchName: String? = row[JOB.launchName].toOptStr()
     val launchTime: Instant? = row[JOB.launchTime].toOptInstant()
@@ -280,6 +288,23 @@ object JobStatusRows {
     /** The launch row of [jobType] launched as [kind] (a dry run's, when [dryRun]), or null if none has been written. */
     fun readLaunch(cxt: KdrCxt, jobType: String, kind: JobLaunchKind, dryRun: Boolean = false): JobStatusRow? =
         readRow(cxt, JOB.jobStatus, launchKey(jobType, kind, dryRun))
+
+    /** Every client row [jobType] has (a dry run's, when [dryRun]), ordered by client. */
+    fun readClients(cxt: KdrCxt, jobType: String, dryRun: Boolean = false): List<JobStatusRow> {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, jobTopic)
+        val table = cxt.getSchema().tables[JOB.jobClientStatus]
+            ?: throw KdrException("${JOB.jobClientStatus} table is not registered in the schema store.")
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qJobClientsByType", table.columns,
+            "select * from t:${JOB.jobClientStatus} where c:${JOB.jobType} = :${JOB.jobType} " +
+                "and c:${JOB.dryRun} = :${JOB.dryRun} order by c:${PF.client}",
+        )
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) {
+            rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(JOB.jobType to jobType, JOB.dryRun to dryRun))
+        }
+        return rows.map { JobStatusRow(it) }
+    }
 
     /** [client]'s row for [jobType] (a dry run's, when [dryRun]), or null if none has been written. */
     fun readClient(cxt: KdrCxt, jobType: String, client: String, dryRun: Boolean = false): JobStatusRow? =

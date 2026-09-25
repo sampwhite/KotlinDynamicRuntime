@@ -28,6 +28,8 @@ class KdrMsg(val fileId: String, val namespace: String, val key: String) {
  *  - [extraData]: a map of additional data that may be useful for logging or error handling.
  *  - [msg]/[msgParams]: when set, the *wire* message is rendered from this fragment reference (issue #108) at
  *    the top-level error handler; [message] stays the log/fallback text (see [mkMsg]).
+ *  - [jobHandling]: for an error a batch-job task throws, whether to retry the task, skip it, or abort the
+ *    job (see [JobHandling] and [mkJob]).
  *
  * Error handling is groomed so that, looking at the full stack of causes, one can
  * tell where an error occurred and what its precise source was. In some cases
@@ -52,6 +54,8 @@ class KdrException(
      * the top-level handler, logging the real one (issue #108). The error is otherwise unchanged.
      */
     val sensitive: Boolean = false,
+    /** How a batch job's runner should treat this when a task throws it, or null for its default (issue #869). */
+    val jobHandling: JobHandling? = null,
 ) : Exception(message, cause) {
 
     /**
@@ -117,6 +121,14 @@ class KdrException(
         const val fragmentKey = "fragment"
 
         /**
+         * Standard [extraData] keys for a batch-job task failure (issue #869): the id of the resource the task
+         * was for (typically a gedra id), and an enum-like code naming the logic scenario that failed. Together
+         * they are what lets a failure be recorded against its resource and grouped by cause.
+         */
+        const val resourceIdKey = "resourceId"
+        const val scenarioKey = "scenario"
+
+        /**
          * A bad-input (HTTP 400) error -- typically from schema validation. If a
          * [cause] is itself a [KdrException], its [source]/[activity] are carried
          * over; otherwise the error is attributed to deliberate code logic.
@@ -157,5 +169,21 @@ class KdrException(
         /** A problem accessing a file, with an explicit HTTP [code]. */
         fun mkFileIo(message: String, cause: Throwable?, code: Int): KdrException =
             KdrException(message, cause, code, SRC.file, ACT.io)
+
+        /**
+         * A batch-job task failure (issue #869), handled as [handling] says, carrying the task's [resourceId] and
+         * the [scenario] that failed under the standard keys.
+         */
+        fun mkJob(
+            message: String,
+            handling: JobHandling,
+            scenario: String,
+            resourceId: String? = null,
+            cause: Throwable? = null,
+        ): KdrException {
+            val extra = linkedMapOf<String, Any?>(scenarioKey to scenario)
+            if (resourceId != null) extra[resourceIdKey] = resourceId
+            return KdrException(message, cause, EXC.internalError, SRC.system, ACT.code, extra, jobHandling = handling)
+        }
     }
 }

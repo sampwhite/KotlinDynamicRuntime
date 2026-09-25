@@ -19,6 +19,8 @@ import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.RequestService
+import com.dynamicruntime.common.job.JobService
+import com.dynamicruntime.common.job.jobOperatorSchema
 import com.dynamicruntime.common.job.jobTables
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
@@ -168,6 +170,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(cfactSchema(cxt))
         // Operator: running-the-deployment diagnostics, gated on ROLE.operator by their `operator` section.
         collector.addModule(operatorSchema(cxt))
+        // The batch-job operator surface (issue #869): launch, status, abort.
+        collector.addModule(jobOperatorSchema(cxt), appOnly)
         // Home/shell: the UI-config endpoint that tells the frontend which layout to build and which
         // Markdown documents to link to.
         collector.addModule(homeSchema(cxt))
@@ -293,6 +297,8 @@ class CommonComponent : ComponentDefinition {
             service(::GedraDataService, roles = setOf(BOOT.app)),
             service(::GedraConfigService, roles = setOf(BOOT.app)),
             service(::ClientSyncService, roles = setOf(BOOT.app)),
+            // Batch jobs (issue #869): the registry, the node's job pool, and the launches in progress.
+            service(::JobService, roles = setOf(BOOT.app)),
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
