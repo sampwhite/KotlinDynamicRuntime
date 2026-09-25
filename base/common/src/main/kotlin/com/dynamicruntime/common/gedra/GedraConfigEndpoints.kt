@@ -268,8 +268,8 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
     // The published-only tier toggle (issue #617): sets whether the caller's client consumes only its published
     // configuration on nodes in this environment. Per the caller's own client, as every endpoint here is;
-    // refused for a `staticConfig` client, whose tier is fixed in source. The runtime effect follows on the
-    // next reload -- this records the state, `POST config/reload` rebuilds against it.
+    // refused in production for a `staticConfig` client, which takes nothing stored there. The runtime effect follows
+    // on the next reload -- this records the state, `POST config/reload` rebuilds against it.
     generalEndpoint(
         CFEP.publishedOnly,
         "Sets whether this client consumes only its published configuration on nodes in this environment.",

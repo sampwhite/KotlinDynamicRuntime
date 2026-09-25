@@ -13,23 +13,22 @@ import kotlin.time.Instant
 /**
  * The configuration **protection tier** (issue #617), read and written on the [GCT.gedraConfigControl] table.
  *
- * There are three tiers, and they are one ladder: a client consumes the latest revision (**free**), or only its
- * latest **published** revision (**published-only**), the runtime state toggled per client per environment; and
- * `ClientDef.staticConfig` is the source-code **static** tier -- published-only that cannot be toggled off, for
- * a client whose production configuration comes from source with unit tests against it. The word "protected" is
+ * There are two tiers: a client consumes its latest revision (**free**), or only its latest **published**
+ * revision (**published-only**), the runtime state toggled per client per environment. The word "protected" is
  * avoided on purpose: `AdminEndpoints` already uses `selfProtected` for self-role edits, and one word reading
  * two ways is what #611 asked to settle.
  *
- * What the runtime **consumes** is a single question -- latest, or latest-published -- so the tier collapses to
- * one boolean at the point it matters:
+ * `ClientDef.staticConfig` is **not** a third tier (issue #824). A static client takes nothing from the database
+ * in production -- its definition is its source alone, implicitly published -- and outside production it is an
+ * ordinary client with an ordinary tier; see `GedraConfigService.isStaticHere`. The tier is the toggled state:
  *
  * ```
- * publishedOnly(client) = staticConfig(client) || the toggled state for (client, environment)
+ * publishedOnly(client) = the toggled state for (client, environment)
  * ```
  *
- * so `static` is exactly `published-only` a client cannot turn off. The loader (#614) and the reload (#616)
- * consult this; the config-editing reads (`readLatest`, `listConfigs`) do **not** -- an administrator editing a
- * client's config must still see the editable latest, whatever tier the client runs at.
+ * The loader (#614) and the reload (#616) consult this; the config-editing reads (`readLatest`, `listConfigs`) do
+ * **not** -- an administrator editing a client's config must still see the editable latest, whatever tier the
+ * client runs at.
  *
  * These are free functions taking the topic's [SqlCxt] and table, because the boot loader reaches the table
  * through its own bootstrap (before the schema store exists) while the endpoint and the reload reach it through
@@ -38,8 +37,7 @@ import kotlin.time.Instant
 object GedraConfigControl {
     /**
      * The clients that consume published-only in [env] by their **toggled state** alone (issue #617) -- one row
-     * per client, read as a set. `staticConfig` is not here: it is a source-code fact, folded in by
-     * [staticClients], so a static client with no toggle row is still treated as published-only.
+     * per client, read as a set.
      */
     fun publishedOnlyClients(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, env: String): Set<String> {
         val stmt = SqlStmtUtil.prepareSql(
@@ -107,8 +105,8 @@ object GedraConfigControl {
 
     /**
      * Sets [client]'s published-only state in [env] (issue #617), an upsert under the row's own lock -- the same
-     * shape `InstanceConfigService.setConfig` uses for a small keyed row. The caller has already refused a
-     * `staticConfig` client (its tier is not the toggle's to change); this only records the runtime state.
+     * shape `InstanceConfigService.setConfig` uses for a small keyed row. The caller has already refused a client
+     * static here (issue #824); this only records the runtime state.
      */
     fun setPublishedOnly(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, client: String, env: String, value: Boolean) {
         val keys = mapOf(PF.client to client, GC.environment to env)
@@ -138,9 +136,9 @@ object GedraConfigControl {
     }
 
     /**
-     * The clients a source-code definition marks `staticConfig` (issue #617). Read from [sourceConfigs] -- the
-     * configs that are **not** data-loaded -- because static is the source tier: a client cannot make itself
-     * static through the very data the tier exists to stop it changing. The default is not static, so a client
+     * The clients a source-code definition marks `staticConfig` (issues #617, #824). Read from [sourceConfigs] -- the
+     * configs that are **not** data-loaded -- because static is a source-only fact: a client cannot make itself
+     * static through the very data it exists to keep out. The default is not static, so a client
      * with no source definition (one defined purely in data) is never static.
      */
     fun staticClients(sourceConfigs: List<GedraConfig>): Set<String> =

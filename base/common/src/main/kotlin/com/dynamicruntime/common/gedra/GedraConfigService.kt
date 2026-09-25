@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.EXC
@@ -143,6 +144,7 @@ class GedraConfigService : ServiceInitializer {
             }
             checkWritableConfig(cxt, write.config)
         }
+        requireNotStaticHere(cxt, client, "writing its stored configuration")
         val twice = writes.groupBy { it.config.gedraId.revisionClass().fullId }.filterValues { it.size > 1 }.keys
         if (twice.isNotEmpty()) {
             throw KdrException.mkInput("Configs ${twice.sorted()} are each written more than once.")
@@ -212,6 +214,7 @@ class GedraConfigService : ServiceInitializer {
         applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
     ): GedraConfigRow {
         val configId = configClassId.revisionClass()
+        requireNotStaticHere(cxt, configId.client, "patching its stored configuration")
         val wcxt = boundToClient(cxt, configId.client)
         return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
             val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
@@ -235,6 +238,14 @@ class GedraConfigService : ServiceInitializer {
      */
     private fun checkWritableConfig(cxt: KdrCxt, config: GedraConfig) {
         storedOwnershipProblem(config)?.let { throw KdrException.mkInput(it) }
+        // `staticConfig` is a source-only fact (issue #824): a static client takes nothing stored in production, so
+        // a stored definition claiming it would describe a client with no definition there at all.
+        if (config.client?.staticConfig == true) {
+            throw KdrException.mkInput(
+                "Config '${config.gedraId}' sets staticConfig, which only a client's source definition may: a static " +
+                    "client takes nothing from the database in production.",
+            )
+        }
         val nsOwner = SchemaService.get(cxt).gedraNamespaceOwner(config.namespace)
         if (nsOwner != null && nsOwner != config.gedraId.client) {
             throw KdrException.mkInput(
@@ -291,6 +302,7 @@ class GedraConfigService : ServiceInitializer {
      */
     fun publish(cxt: KdrCxt, configClassId: GedraId, trial: Boolean = false): GedraConfigRow {
         val configId = configClassId.revisionClass()
+        requireNotStaticHere(cxt, configId.client, "publishing its stored configuration")
         val wcxt = boundToClient(cxt, configId.client)
         val now = wcxt.instanceNow()
         return underClientLock(wcxt, tranPublish) { sqlCxt, table ->
@@ -329,13 +341,14 @@ class GedraConfigService : ServiceInitializer {
      * accounting rather than looking freshly authored.
      *
      * Idempotent when the head is already editable (nothing to reopen) -- returned unchanged. Refused for a
-     * `publishedOnly`/`staticConfig` client, mirroring [setPublishedOnly]: such a client consumes its latest
-     * *published* revision, so reopening the head neither changes what it consumes nor is a safe thing to offer
-     * (un-stamping there is the prod lockout's whole point). Throws when the class has no revision. Like publish,
-     * nothing a node runs changes until a reload.
+     * `publishedOnly` client: it consumes its latest *published* revision, so reopening the head neither changes
+     * what it consumes nor is a safe thing to offer (un-stamping there is the prod lockout's whole point). Refused
+     * too for a client static here ([isStaticHere]), as every change to its stored configuration is. Throws when
+     * the class has no revision. Like publish, nothing a node runs changes until a reload.
      */
     fun revertToEditable(cxt: KdrCxt, configClassId: GedraId): GedraConfigRow {
         val configId = configClassId.revisionClass()
+        requireNotStaticHere(cxt, configId.client, "reopening its stored configuration")
         if (publishedOnly(cxt, configId.client)) {
             throw KdrException.mkInput(
                 "Client '${configId.client}' consumes only its published configuration, so config " +
@@ -485,12 +498,11 @@ class GedraConfigService : ServiceInitializer {
 
     /**
      * Whether [client] consumes only its published configuration in this node's environment (issue #617): its
-     * `staticConfig` (a source tier, forced on) **or** its toggled state. The one place the tier collapses to
-     * the single question the loader and the reload ask. Reads `staticConfig` from the source-code client
-     * definitions -- the configs that are not data-loaded -- since static is the source tier.
+     * toggled state. The one place the tier collapses to the single question the loader and the reload ask.
+     * (`staticConfig` is not a tier: a static client takes nothing stored in production, and outside it toggles
+     * like any other -- see [isStaticHere], issue #824.)
      */
     fun publishedOnly(cxt: KdrCxt, client: String): Boolean {
-        if (client in staticClients(cxt)) return true
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         return GedraConfigControl.isToggledPublishedOnly(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env)
     }
@@ -505,6 +517,26 @@ class GedraConfigService : ServiceInitializer {
         return GedraConfigControl.controlMarker(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env)
     }
 
+    /**
+     * Whether [client] takes **nothing** from the database on this node (issue #824): its source definition sets
+     * `staticConfig`, and this node is production. There its stored configuration is ignored -- at boot and on a
+     * reload -- and every write of it refused, so its definition is exactly what source says, implicitly
+     * published. Outside production a static client behaves like any other: that is where its configuration is
+     * edited in the database, before the changes are brought into its source component and shipped.
+     */
+    fun isStaticHere(cxt: KdrCxt, client: String): Boolean =
+        cxt.instanceConfig.env == ENV.prod && client in staticClients(cxt)
+
+    /** Refuses [what] -- a change to [client]'s stored configuration -- when the client is [isStaticHere]. */
+    private fun requireNotStaticHere(cxt: KdrCxt, client: String, what: String) {
+        if (isStaticHere(cxt, client)) {
+            throw KdrException.mkInput(
+                "Client '$client' is statically configured: in production its configuration comes from source " +
+                    "alone, so $what is refused. Change it outside production and bring it into source.",
+            )
+        }
+    }
+
     /** The clients a source-code definition marks `staticConfig`; the source configs are the not-data-loaded ones. */
     private fun staticClients(cxt: KdrCxt): Set<String> {
         val loadedIds = GedraConfigLoadService.get(cxt).allLoadedIds()
@@ -513,9 +545,8 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
-     * Sets [client]'s published-only state in this node's environment (issue #617), refusing a `staticConfig`
-     * client -- its tier is fixed in source and is not the toggle's to change. Returns the effective state after
-     * the write, which for a non-static client is [value].
+     * Sets [client]'s published-only state in this node's environment (issue #617), refused for a client that is
+     * static here ([isStaticHere], issue #824). Returns the state after the write, [value].
      *
      * Taken under the client's config lock, since the tier decides which of the client's revisions it runs: a
      * toggle swaps the whole set, from the latest revisions to the published ones or back. So with [trial] it is
@@ -523,12 +554,7 @@ class GedraConfigService : ServiceInitializer {
      * a problem it does not already have.
      */
     fun setPublishedOnly(cxt: KdrCxt, client: String, value: Boolean, trial: Boolean = false): Boolean {
-        if (client in staticClients(cxt)) {
-            throw KdrException.mkInput(
-                "Client '$client' is statically configured: its configuration comes from source in production, " +
-                    "so the published-only tier cannot be toggled for it.",
-            )
-        }
+        requireNotStaticHere(cxt, client, "toggling its published-only tier")
         val wcxt = boundToClient(cxt, client)
         underClientLock(wcxt, tranWrite) { sqlCxt, _ ->
             val env = wcxt.instanceConfig.env
@@ -547,11 +573,12 @@ class GedraConfigService : ServiceInitializer {
     /**
      * The configuration [client] should **consume** now (issue #617), one [GedraConfigRow] per class: its
      * latest revision, or -- when the client is published-only -- its latest *published* revision, and nothing
-     * for a class that has none. This is the tier-aware read the reload (#616) loads from, distinct from
-     * [listConfigs], which serves the editing surface and always shows the latest.
+     * for a class that has none -- and nothing at all for a client static here ([isStaticHere], issue #824). This
+     * is the tier-aware read the reload (#616) loads from, distinct from [listConfigs], which serves the editing
+     * surface and always shows the latest.
      */
     fun currentConfigs(cxt: KdrCxt, client: String): List<GedraConfigRow> =
-        configsAt(cxt, client, published = publishedOnly(cxt, client))
+        if (isStaticHere(cxt, client)) emptyList() else configsAt(cxt, client, published = publishedOnly(cxt, client))
 
     /**
      * One [GedraConfigRow] per class of [client]'s configs: the latest [published] revision, or the latest revision

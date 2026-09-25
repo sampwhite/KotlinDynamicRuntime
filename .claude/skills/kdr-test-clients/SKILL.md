@@ -127,7 +127,7 @@ later schema rejects" test.
   - **`defineClient(ClientDef(...))`** — exactly one per bundle (a second throws). `ClientDef` needs
     `clientId`, `name`, `usageType` (`ClientUsageType`), `audience` (`ClientAudience`), and
     `enabledEnvironments` (include `ENV.unit` and `ENV.local` so a test node loads it). `staticConfig = true`
-    pins it to source-only, published-only.
+    (source only) makes it take nothing stored **in production**; elsewhere it is an ordinary client.
     - **`testFeatures = setOf(...)`** — test/demo feature names honored only on a test instance (a demo state
       derivation, a `cfactCalc` strict-unknown-cfact throw). It **round-trips through stored config (#696)**, so
       on a test instance you author a test-feature client over the API the same `writeConfig` + `reloadClient`
@@ -184,8 +184,9 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `GedraConfigEndpointTest.kt` is the
 reference. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A **free-tier** client's latest revision loads
-whether published or not; **static** (`staticConfig`) is source-only. The runtime collapses the ladder to
-`publishedOnly(client) = staticConfig(client) || toggled(client, env)` (`GedraConfigControl`).
+whether published or not. The tier is `publishedOnly(client) = toggled(client, env)` (`GedraConfigControl`).
+**`staticConfig`** is not a tier (issue #824): set only in source, it makes the client take nothing stored in
+production -- writes refused, stored config ignored -- and leaves it an ordinary client everywhere else.
 
 ## How config reaches a node
 
