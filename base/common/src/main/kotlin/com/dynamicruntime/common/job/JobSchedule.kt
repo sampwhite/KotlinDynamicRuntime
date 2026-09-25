@@ -73,6 +73,7 @@ sealed class JobSchedule(
         }
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         private const val minuteMs = 60_000L
         private const val dayMs = 24 * 60 * minuteMs
