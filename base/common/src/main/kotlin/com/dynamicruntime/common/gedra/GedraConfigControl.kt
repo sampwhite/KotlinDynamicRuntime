@@ -52,19 +52,9 @@ object GedraConfigControl {
         return rows.mapNotNull { it[PF.client].toOptStr() }.toSet()
     }
 
-    /** Whether [client] is toggled published-only in [env] by its stored state alone (ignores `staticConfig`). */
-    fun isToggledPublishedOnly(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, client: String, env: String): Boolean {
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "qGedraConfigControlOne", table.columns,
-            "select * from t:${GCT.gedraConfigControl} where c:${PF.client} = :${PF.client} " +
-                "and c:${GC.environment} = :${GC.environment} and c:${PF.enabled} = true",
-        )
-        var row: Map<String, Any?>? = null
-        sqlCxt.sqlDb.withSession(cxt) {
-            row = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to client, GC.environment to env)).firstOrNull()
-        }
-        return row?.get(GC.publishedOnly) == true
-    }
+    /** Whether [client] is toggled published-only in [env] -- its stored tier state. */
+    fun isToggledPublishedOnly(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, client: String, env: String): Boolean =
+        controlRow(cxt, sqlCxt, table, client, env)?.get(GC.publishedOnly) == true
 
     /**
      * When [client]'s tier last changed in [env] (issue #618): the control row's own `updatedAt`, or null when
@@ -72,17 +62,29 @@ object GedraConfigControl {
      * switching to published-only makes the consumed set *older* -- so this date is folded into the sync marker,
      * or a monotonic-max announce would never carry a toggle to peers.
      */
-    fun controlMarker(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, client: String, env: String): Instant? {
-        val stmt = SqlStmtUtil.prepareSql(
-            sqlCxt, "qGedraConfigControlOne", table.columns,
-            "select * from t:${GCT.gedraConfigControl} where c:${PF.client} = :${PF.client} " +
-                "and c:${GC.environment} = :${GC.environment} and c:${PF.enabled} = true",
+    fun controlMarker(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, client: String, env: String): Instant? =
+        controlRow(cxt, sqlCxt, table, client, env)?.get(PF.updatedAt).toOptInstant()
+
+    /**
+     * [client]'s control row in [env], or null when it has none **enabled**. The one read of a single row, so the
+     * tier, its date and the toggle's upsert agree on what "the row" is: a disabled row (a future clear-the-tier
+     * path) reads as absent to all three. Runs in the caller's session when there is one.
+     */
+    private fun controlRow(
+        cxt: KdrCxt,
+        sqlCxt: SqlCxt,
+        table: KdrTable,
+        client: String,
+        env: String,
+    ): Map<String, Any?>? {
+        val stmt = SqlTopicUtil.mkNamedTableSelectStmt(
+            sqlCxt, "qGedraConfigControlPk", table, listOf(PF.client, GC.environment),
         )
         var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
-            row = sqlCxt.sqlDb.queryStatement(cxt, stmt, mapOf(PF.client to client, GC.environment to env)).firstOrNull()
+            row = sqlCxt.sqlDb.queryOneEnabled(cxt, stmt, mapOf(PF.client to client, GC.environment to env))
         }
-        return row?.get(PF.updatedAt).toOptInstant()
+        return row
     }
 
     /** Every client's tier date in [env] (issue #618): client id -> when its tier last changed, for the boot load. */
@@ -109,15 +111,11 @@ object GedraConfigControl {
      * static here (issue #824); this only records the runtime state.
      */
     fun setPublishedOnly(cxt: KdrCxt, sqlCxt: SqlCxt, table: KdrTable, client: String, env: String, value: Boolean) {
-        val keys = mapOf(PF.client to client, GC.environment to env)
-        val selectStmt = SqlTopicUtil.mkNamedTableSelectStmt(
-            sqlCxt, "qGedraConfigControlPk", table, listOf(PF.client, GC.environment),
-        )
         sqlCxt.sqlDb.withSession(cxt) {
             // Read enabled-only: a disabled row (a future clear-the-tier path) reads as absent, so the insert
             // path takes it and `prepForStdExecute` re-enables it -- an update would leave it disabled and every
             // reader, which filters on enabled, would ignore the toggle.
-            val existing = sqlCxt.sqlDb.queryOneEnabled(cxt, selectStmt, keys)
+            val existing = controlRow(cxt, sqlCxt, table, client, env)
             if (existing == null) {
                 val data = mutableMapOf<String, Any?>(PF.client to client, GC.environment to env, GC.publishedOnly to value)
                 SqlTopicUtil.prepForStdExecute(cxt, table, data)
