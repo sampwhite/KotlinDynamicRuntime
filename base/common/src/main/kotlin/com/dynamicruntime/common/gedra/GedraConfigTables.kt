@@ -56,6 +56,14 @@ object GC {
     /** Everything the revision holds, as a map: its config traits (#613), plus whatever later keys arrive. */
     const val data = "data"
 
+    /**
+     * Whether the revision is **current** (issue #875): its config's latest, or its latest published -- the only two
+     * a read can still want. The rest are history, and the reads that start from nothing (the boot load, the
+     * config cache's first load, a client's listing) skip them. Not required: a row written before the flag existed
+     * has none until the boot backfills it. See `ConfigCurrentRevisions`.
+     */
+    const val isCurrent = "isCurrent"
+
     // --- protection tier (#617), on the control table ---
 
     /** The environment a control row governs -- a client's tier is per-environment. */
@@ -141,6 +149,9 @@ fun gedraConfigTables(cxt: KdrCxt): List<KdrTable> =
             column(GC.data, "A JSON map: the config's traits, plus whatever keys later capabilities add.") {
                 type = SCT.kObject
             }
+            column(GC.isCurrent, "Whether this is its config's latest or latest published revision, not history.") {
+                type = SCT.boolean
+            }
             primaryKey(GC.gedraId)
             forClient()
             // The shape every reader of a class takes -- the latest revision, the latest published one (#615),
@@ -149,6 +160,10 @@ fun gedraConfigTables(cxt: KdrCxt): List<KdrTable> =
             // The in-memory cache reloads by asking for the rows changed since it last looked (#615), a
             // predicate on `updatedAt` run on every node; without this index that is a full scan.
             index(PF.updatedAt)
+            // The reads that skip history (issue #875): across every client (the boot load, the cache's first
+            // load), and one client's (its listing, the tier-aware read).
+            index(GC.isCurrent)
+            index(PF.client, GC.isCurrent)
         }
         // The protection tier (#617): one row per (client, environment) saying whether that client, in that
         // environment, consumes only its published configuration. Deployment-shared like the config rows and

@@ -34,15 +34,22 @@ class ConfigRevisions(
 /**
  * The in-memory cache of the `GedraConfig` table (issue #615), modeled on [GedraDataCache].
  *
+ * ### History is left out at load
+ *
+ * The first load reads only **current** revisions ([GC.isCurrent], issue #875) -- each config's latest and latest
+ * published -- so the history every publish leaves behind is not held. A revision that goes historical later (a
+ * publish supersedes it) keeps its `updatedAt`, so the incremental refresh never re-sends it and it stays cached
+ * until restart; the two-revision rule below ignores it.
+ *
  * ### The two-revision rule lives here, not in the snapshot
  *
  * What matters about a revision class is its **latest** revision and its **latest published** one. The cache
- * keeps every enabled revision and applies that rule at read time ([revisionsOf], over the [GCX.configId]
+ * keeps every enabled revision it reads and applies that rule at read time ([revisionsOf], over the [GCX.configId]
  * group), rather than holding only two rows per class. That is deliberate: the cache core derives every index
  * from one row at a time and evicts a row only as a disabled tombstone, so keeping two-per-class *inside* the
  * snapshot would mean a new published row evicting a live sibling -- a change to a shared subsystem, for one
- * consumer, that its cursors are not built for. The table is tiny (configs times revisions), so holding the
- * older rows costs nothing, and the policy is still in exactly one place: [latestRevisionRow] and
+ * consumer, that its cursors are not built for. Holding the few rows a publish supersedes until the next restart
+ * costs nothing, and the policy is still in exactly one place: [latestRevisionRow] and
  * [latestPublishedRow], which the boot loader (#614) reduces with too, so the loader and the cache cannot
  * disagree about what "the current config" is even though the loader reads the table directly (it runs
  * before the cache service exists).
@@ -61,6 +68,8 @@ object GedraConfigCache {
         topic = gedraConfigTopic,
         tableName = GCT.gedraConfig,
         extract = { _, data -> data },
+        // The first load skips history (issue #875); the read-time rule below ignores what the refresh keeps.
+        initialLoadColumn = GC.isCurrent,
         indexes = listOf(
             SqlCacheIndex(GCX.configId) { it[GC.configId].toOptStr() },
             SqlCacheIndex(GCX.client) { it[PF.client].toOptStr() },

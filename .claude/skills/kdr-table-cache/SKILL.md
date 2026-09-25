@@ -68,6 +68,11 @@ val params = SqlCacheParams(
   key maps to every row sharing it. `keyOf` returning null leaves the row out of *that* index only.
 - **The payload implements nothing.** The id comes from the table's declared primary key, and
   `enabled`/`updatedAt` are protocol columns every table has.
+- **`initialLoadColumn`** (optional) names a boolean column the **first** load also requires to be true, for
+  a table whose rows go historical: the load then leaves that history out of memory, as it already leaves out
+  disabled rows. The incremental refresh is unchanged, so a row that goes historical without its `updatedAt`
+  moving stays cached until restart, and your readers must tolerate it. `GedraConfigCache` uses it for config
+  revisions (`GC.isCurrent`, issue #875), whose read-time rule already picks the current revision from the rest.
 
 **Cache the raw row map when consumers need a mutable object.** `AuthUserCache` does: `AuthUserRow` is
 mutable and callers edit one and write it back, so a shared instance would be everyone's edit. Extracting per

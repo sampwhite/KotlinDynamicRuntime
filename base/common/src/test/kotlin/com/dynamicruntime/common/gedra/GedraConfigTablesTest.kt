@@ -66,8 +66,14 @@ class GedraConfigTablesTest : StringSpec({
         content.columnsByName.getValue(GC.publishedAt).schema[SCH.format] shouldBe SFMT.dateTime
         content.columnsByName.getValue(GC.publishedAt).required shouldBe false
         content.columnsByName.getValue(GC.data).schema[SCH.type] shouldBe SCT.kObject
-        content.indexes.map { it.fieldNames } shouldContainExactly
-            listOf(listOf(GC.configId, GC.version), listOf(PF.updatedAt))
+        // The current flag is optional (a row from before it has none until the boot backfills it), and indexed for
+        // the reads that skip history across every client and within one (issue #875).
+        content.columnsByName.getValue(GC.isCurrent).schema[SCH.type] shouldBe SCT.boolean
+        content.columnsByName.getValue(GC.isCurrent).required shouldBe false
+        content.indexes.map { it.fieldNames } shouldContainExactly listOf(
+            listOf(GC.configId, GC.version), listOf(PF.updatedAt),
+            listOf(GC.isCurrent), listOf(PF.client, GC.isCurrent),
+        )
     }
 
     // The point of the two-key design, proven rather than described: one transaction locks the client's row on
