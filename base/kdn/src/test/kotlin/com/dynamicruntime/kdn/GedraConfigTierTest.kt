@@ -4,8 +4,6 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.EXC
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientAudience
@@ -19,9 +17,7 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.startup.ComponentDefinition
-import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.TestUser
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
