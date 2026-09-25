@@ -872,20 +872,21 @@ class SchemaService : ServiceInitializer {
      * that throws -- a variant that fails the narrowing check, a cfact a client may not redeclare -- throws
      * **before** the swap and leaves the running set untouched. Serialized against other reloads.
      *
+     * [def] is [client]'s rechecked definition when it would be present here, null when it would not (issue #819):
+     * a variant is built only for a present client, so without one the client loses its variant.
+     *
      * Returns the collation keys of [client]'s endpoint copies before and after, which is exactly the set of
      * path-keyed type-cache entries the caller must evict: the copies' paths name the client, so their cached
      * types are the ones a changed variant invalidates and no shared entry is touched.
      */
-    fun reloadClient(cxt: KdrCxt, client: String): Set<String> = synchronized(reloadLock) {
+    fun reloadClient(cxt: KdrCxt, client: String, def: ClientDef?): Set<String> = synchronized(reloadLock) {
         val collected = collector ?: throw KdrException("$serviceName.reloadClient ran before onCreate.")
         val current = snapshot
         val global = current.store
         val before = global.endpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
 
         val dropped = HashMap<String, Set<String>>()
-        // Only if the client is present (issue #819) -- the reload rechecks it first, so this is the definition that
-        // check kept. One it dropped, or one not enabled here, loses its variant.
-        val present = ClientService.get(cxt).present(client)?.let { mapOf(client to it) } ?: emptyMap()
+        val present = def?.let { mapOf(client to it) } ?: emptyMap()
         val variant =
             buildClientVariants(
                 cxt, collected, global, queryBase, present, onlyClient = client, repair = repairContext(collected),

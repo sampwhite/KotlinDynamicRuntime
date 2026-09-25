@@ -136,13 +136,17 @@ object GedraConfigReload {
         loader.recordLoaded(client, taken)
 
         // --- phase two: rebuild and publish, in order ---
-        // The client's definition first (issue #819): the schema builds a variant only for a present client, so it
-        // reads what this recheck keeps -- a client the checks now drop, or one not enabled here, loses its variant.
-        ClientService.get(cxt).recheck(cxt, client)
+        // The client's definition is judged first (issue #819): the schema builds a variant only for a present client,
+        // from the definition this recheck keeps -- a client the checks now drop, or one not enabled here, loses its
+        // variant. Committed only once the schema is in place, so a schema check refusing the reload leaves the
+        // client set as it was, beside the schema it restored.
+        val clientService = ClientService.get(cxt)
+        val rechecked = clientService.recheck(cxt, client)
         // The schema swap and the eviction of its path-keyed types go together, back to back: a request between
         // them would resolve against the new store but find a type parsed against the old one. The two cannot be
         // made one atomic step without versioning the cache, so the window is kept to the unavoidable minimum.
-        val typeKeys = SchemaService.get(cxt).reloadClient(cxt, client)
+        val typeKeys = SchemaService.get(cxt).reloadClient(cxt, client, clientService.presentIn(rechecked, client))
+        clientService.commit(client, rechecked)
         RequestService.get(cxt).evictTypes(typeKeys)
         // Overlays before workflows, as at boot: admitting a workflow validates its labels against the
         // fragments, so the fragments a revision adds must be in place before its workflows are judged.
