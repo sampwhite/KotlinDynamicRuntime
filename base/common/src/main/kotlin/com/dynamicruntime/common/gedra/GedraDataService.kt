@@ -468,7 +468,7 @@ class GedraDataService : ServiceInitializer {
         val gate = gatedWrite(cxt, kind)
         val prepared = entries.map { entry ->
             val traitId = entry[GE.traitId].toOptStr() ?: return@map entry
-            val data = prepForSaveData(cxt, kind, traitId, entry[GE.data].toJsonMapOrEmpty(), cxt.client)
+            val data = prepForSaveData(cxt, kind, traitId, entryDataOf(entry, traitId), cxt.client)
             entry + (GE.data to gate.write(traitId, null, data))
         }
         // Interned as it is minted, so every later reader of this gedra shares one instance. The cache does
@@ -826,7 +826,19 @@ class GedraDataService : ServiceInitializer {
                 }
                 // Strip to the trait and its data, then stamp a fresh envelope -- so an incoming source,
                 // timestamp, actor, or workflow field is dropped rather than carried across the import.
-                val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entry[GE.data].toJsonMapOrEmpty())
+                // The entry's data, which the endpoint does not check per entry (its `data` input is free-form): absent
+                // or not an object is an invalid entry (issue #818) -- forgiven and counted when asked, fatal otherwise.
+                val entryData = try {
+                    entryDataOf(entry, traitId)
+                } catch (e: KdrException) {
+                    if (!opts.forgiveInvalidEntries) {
+                        throw e
+                    }
+                    discard(GIF.invalidEntry, traitId)
+                    excluded.add(traitId)
+                    continue
+                }
+                val slim = linkedMapOf<String, Any?>(GE.traitId to traitId, GE.data to entryData)
                 // Trait save-time functions (issue #728) run on an import too, so it cannot store what a create
                 // or a patch would refuse. A rejection is treated exactly like the schema failure below --
                 // forgiven and counted when `forgiveInvalidEntries` is set, fatal to the whole import otherwise
@@ -1850,3 +1862,18 @@ interface GatedWrite {
     /** Throws when removing the [traitId] entry holding [stored] would take a value the caller's gate hides. */
     fun checkRemoval(traitId: String, stored: Map<String, Any?>)
 }
+
+/**
+ * An entry's `data` as a write takes it (issue #818): the object it carries, or a 400 -- absent `data` is not `{}`,
+ * and a value that is not an object is not data at all. An explicit `{}` is data ("these fields, none of them") and
+ * is taken. [missingHint] is appended to the absent case's message: what the caller probably meant instead (on an
+ * edit, a delete).
+ */
+fun entryDataOf(entry: Map<String, Any?>, traitId: String, missingHint: String = ""): Map<String, Any?> =
+    when (val raw = entry[GE.data]) {
+        null -> throw KdrException.mkInput("The '$traitId' entry carries no ${GE.data}.$missingHint")
+        is Map<*, *> -> raw.toJsonMapOrEmpty()
+        else -> throw KdrException.mkInput(
+            "The '$traitId' entry's ${GE.data} is not an object: an entry's data is its trait's fields, by name.",
+        )
+    }

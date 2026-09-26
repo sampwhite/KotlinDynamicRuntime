@@ -6,7 +6,10 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GIF
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraDataService
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.saveWorkflow
@@ -118,6 +121,31 @@ class WorkflowSaveTest : StringSpec({
         // An explicit {} is data -- "these fields, none of them" -- and is taken.
         acme.postData(acmeSave, edit(mapOf(GE.traitId to ST.questionnaire, GE.data to emptyMap<String, Any?>())))[WSF.saved] shouldBe true
         hasQuestionnaire() shouldBe true
+    }
+
+    "no path stores an entry with no data as {} -- import over HTTP, create from code -- and a wrong shape says so" {
+        val acme = TestUser.create(cxt, "save818b@acme.test", userClient = SC.acme)
+        val acmeImport = clientPath(GEP.formDocImport, SC.acme)
+        val noData = mapOf(GIF.data to mapOf(GDF.entries to listOf(mapOf(GE.traitId to ST.questionnaire))))
+        // The import's `data` is free-form, so this one reaches the service over HTTP: refused, or dropped and counted.
+        acme.expectError(EXC.badInput, acmeImport, noData)["errorMessage"].toOptStr().orEmpty() shouldContain
+            "'${ST.questionnaire}' entry carries no data"
+        val forgiven = acme.postData(acmeImport, noData + (GIF.forgiveInvalidEntries to true))
+        forgiven[GIF.imported].toJsonListOfMaps().isEmpty() shouldBe true
+        forgiven[GIF.discarded].toJsonListOfMaps().any {
+            it[GIF.category] == GIF.invalidEntry && it[GE.traitId] == ST.questionnaire
+        } shouldBe true
+        // A create from code, past the endpoint's schema check.
+        val asAcme = cxt.mkSubContext("save818b", SC.acme).also { it.userId = acme.userId }
+        shouldThrow<KdrException> {
+            GedraDataService.get(cxt).createGedra(asAcme, GedraDataType.formDoc, listOf(mapOf(GE.traitId to ST.questionnaire)))
+        }.message.orEmpty() shouldContain "carries no data"
+        // Data that is not an object is its own mistake, not "no data".
+        shouldThrow<KdrException> {
+            GedraDataService.get(cxt).createGedra(
+                asAcme, GedraDataType.formDoc, listOf(mapOf(GE.traitId to ST.questionnaire, GE.data to "n/a")),
+            )
+        }.message.orEmpty() shouldContain "is not an object"
     }
 
     "an unknown task is a 400" {

@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.gedra.entryDataOf
 
 /**
  * Saves the entries a workflow task collected (issue #535) -- the guarded write the creation page posts to.
@@ -105,13 +106,12 @@ private fun editForm(
         val traitId = entry[GE.traitId].toOptStr()
             ?: throw KdrException.mkInput("A survey edit entry has no ${GE.traitId}.")
         // Absent data is not `{}` (issue #818): replacing an entry with nothing would store an empty one. The endpoint's
-        // schema check already refuses it over HTTP; this holds for a caller reaching here from code. An explicit `{}`
-        // is data -- "these fields, none of them" -- and is taken.
-        val data = (entry[GE.data] as? Map<*, *>)?.toJsonMapOrEmpty()
-            ?: throw KdrException.mkInput(
-                "The '$traitId' entry carries no ${GE.data}. An edit save replaces each entry with the data it " +
-                    "carries; to remove an entry, delete it (a patch with ${GedraEditAction.deleteOrNoOp.name}).",
-            )
+        // schema check already refuses it over HTTP; this holds for a caller reaching here from code.
+        val data = entryDataOf(
+            entry, traitId,
+            missingHint = " An edit save replaces each entry with the data it carries; to remove an entry, delete it " +
+                "(a patch with ${GedraEditAction.deleteOrNoOp.name}).",
+        )
         GedraEdit(GedraEditAction.addOrReplace, traitId, data = data)
     }
     svc.patchGedras(cxt, mapOf(GedraDataType.formDoc to listOf(GedraPatchTarget(id, edits, underLock))), scope)
