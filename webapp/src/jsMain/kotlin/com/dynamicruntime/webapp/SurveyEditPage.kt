@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.GEP
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.promise
 import react.FC
 import react.Key
 import react.Props
@@ -133,11 +134,7 @@ val SurveyEditPage = FC<Props> {
                 val viewPath = if (id.isBlank()) null else
                     fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
                 val surfaceClient = clientOfResolvedPath(viewPath, GEP.workflowView, formClient)
-                val v = when {
-                    id.isBlank() -> null
-                    wfId != null -> WorkflowApi.fetchWorkflowView(wfId, id, surfaceClient)
-                    else -> WorkflowApi.fetchSurveyView(id, surfaceClient)
-                }
+                val v = if (id.isBlank()) null else fetchFormView(id, wfId, surfaceClient)
                 rawEditAvailable = patchFetch.await()
                 workflowClient = surfaceClient
                 if (v == null) noSurvey = true else view = v
@@ -215,6 +212,18 @@ val SurveyEditPage = FC<Props> {
                     reloads += 1
                 }
                 this.approveRefusal = approveRefusal
+                // A task saved (issue #827): the save says only that the form's state may have moved, so the view is
+                // read again -- in place, without the loading card or a remount, so the other tasks' unsaved edits
+                // survive. It stays on the saved task: the fresh view may name another as needing action.
+                val refreshClient = workflowClient
+                refreshView = { taskId ->
+                    surveyEditScope.promise {
+                        val fresh = fetchFormView(gedraId, workflowId, refreshClient)
+                        requestedTask = taskId
+                        fresh?.let { view = it }
+                        fresh
+                    }
+                }
                 // Engage (issue #791): put the form into the workflow, then reload the view, which now says it is
                 // engaged and opens the tasks. A refusal -- not eligible after all -- is shown with its reasons.
                 val engageClient = workflowClient
@@ -234,3 +243,15 @@ val SurveyEditPage = FC<Props> {
         }
     }
 }
+
+/**
+ * The view the survey page shows (issue #827): normal workflow [workflowId] against form [gedraId] when one is named,
+ * else the form's survey, from [client]'s copy of the endpoint. Null when there is no such workflow or survey. The one
+ * read behind both the page's load and its re-read after a save, so the two cannot ask differently.
+ */
+suspend fun fetchFormView(gedraId: String, workflowId: String?, client: String?): WorkflowView? =
+    if (workflowId != null) {
+        WorkflowApi.fetchWorkflowView(workflowId, gedraId, client)
+    } else {
+        WorkflowApi.fetchSurveyView(gedraId, client)
+    }

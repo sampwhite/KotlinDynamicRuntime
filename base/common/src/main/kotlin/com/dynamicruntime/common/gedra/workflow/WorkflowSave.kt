@@ -2,7 +2,6 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -30,8 +29,9 @@ import com.dynamicruntime.common.gedra.entryDataOf
  *
  * A `create` save makes the gedra ([GedraDataService.createGedra]), stamping the workflow reference under
  * `creationWorkflowId`, and answers with the stored row the way `formDoc/create` does -- under [WSF.item]. An
- * `edit` save (a survey, issue #658) updates an existing form named by [gedraId] and answers with the updated
- * row under [WSF.item]. Only `create` and `edit` exist as save kinds; the `when` on [WfSaveKind] covers both, so
+ * `edit` save (a survey, issue #658) updates an existing form named by [gedraId] and answers with only that id: like
+ * a patch, it says the form's state may have moved rather than carrying it (issue #827), and a page re-reads the
+ * workflow view to show what the save changed. Only `create` and `edit` exist as save kinds; the `when` on [WfSaveKind] covers both, so
  * a later kind (submit/approve/export) is a **compile error** until it is handled here -- which is what keeps a
  * new kind from silently behaving as an unintended write, without a runtime "unknown kind" branch.
  */
@@ -88,7 +88,8 @@ fun saveWorkflow(
  * is replaced wholesale ([GedraEditAction.addOrReplace]) with what the task supplied, through the ordinary
  * patch fold, so client-scope and validation are the patch endpoint's, unchanged. The form's derived survey
  * state is recomputed by the patch's own post-write hook (issue #675), inside the same transaction, so this
- * does not recompute it explicitly; it simply returns the updated row under [WSF.item].
+ * does not recompute it explicitly. It answers with the form's id and nothing of its data (issue #827): the view
+ * is the one place a page reads a form's workflow state from, so a save that returned it too would be a second.
  */
 private fun editForm(
     cxt: KdrCxt,
@@ -115,7 +116,5 @@ private fun editForm(
         GedraEdit(GedraEditAction.addOrReplace, traitId, data = data)
     }
     svc.patchGedras(cxt, mapOf(GedraDataType.formDoc to listOf(GedraPatchTarget(id, edits, underLock))), scope)
-    val updated = svc.queryGedra(cxt, fullId, GedraDataType.formDoc, scope)
-        ?: throw KdrException("The form '$fullId' could not be read back after its survey edit.", code = EXC.notFound)
-    return linkedMapOf<String, Any?>(WSF.saved to true, WSF.item to updated.toJsonMap())
+    return linkedMapOf<String, Any?>(WSF.saved to true, GDF.gedraId to id.fullId)
 }

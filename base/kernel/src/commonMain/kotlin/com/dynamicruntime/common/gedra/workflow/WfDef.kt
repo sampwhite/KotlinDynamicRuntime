@@ -286,8 +286,9 @@ object WVF {
  * The field names of a **workflow-save result** (issue #535) -- the shape `/gedra/<client>/workflow/save`
  * returns, either way. A save is not all-or-nothing at the HTTP level: an incomplete one is a **result**
  * ([saved] false, [unmetTraits] naming what is missing), not an error, the soft-validation shape
- * `gedra-patch.md` draws. A satisfied one carries the created gedra under [item], the shape `formDoc/create`
- * returns.
+ * `gedra-patch.md` draws. A satisfied create carries the created gedra under [item], the shape `formDoc/create`
+ * returns; a satisfied edit carries only the form's `gedraId` (issue #827) -- it signals that the form's state may have
+ * moved, as a patch does, and the page re-reads the workflow view rather than rendering from the save.
  */
 @Suppress("ConstPropertyName")
 object WSF {
@@ -297,15 +298,8 @@ object WSF {
     /** When not [saved]: the required trait ids no entry satisfied, in the order the task declares them. */
     const val unmetTraits = "unmetTraits"
 
-    /** When [saved]: the created gedra, as `formDoc/create` returns it. */
+    /** When [saved] by a create: the created gedra, as `formDoc/create` returns it. */
     const val item = "item"
-
-    /**
-     * When [saved] by a survey `edit`: the **refreshed workflow view** (issue #700), re-resolved against the
-     * updated form -- every task's entries and [WVF.status], and [WVF.focusTask] -- so the save is the refresh
-     * and the task rail needs no second call. Absent on a create save.
-     */
-    const val view = "view"
 }
 
 /**

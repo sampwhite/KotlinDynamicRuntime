@@ -236,10 +236,14 @@ object AdminApi {
         Http.sendApi("POST", GEP.adminFormDocForUser, formForUserBody(userRef, payload))[EP.item]
             .toJsonMapOrEmpty()[GDF.gedraId] as? String
 
-    /** Replaces a user's free-form labels (issue #786); an empty list clears them. */
-    suspend fun setLabels(userId: Long, labels: List<String>): AdminUser =
+    /**
+     * Replaces a user's free-form labels (issue #786); an empty list clears them. Like every setter here, it answers
+     * with nothing (issue #827): the endpoint returns the updated user, but the page re-reads what it shows after an
+     * edit rather than repairing it from the reply, so there is one way it renders a user.
+     */
+    suspend fun setLabels(userId: Long, labels: List<String>) {
         Http.sendApi("POST", UADEP.userSetLabels, mapOf(ADF.userId to userId, ADF.labels to labels))
-            .results().toAdminUser()
+    }
 
     /**
      * The labels [client] suggests (issue #786) -- what the label editor offers. The caller's own client when
@@ -252,16 +256,17 @@ object AdminApi {
     }
 
     /** Replaces a user's roles -- the call that grants or revokes administrator rights. */
-    suspend fun setRoles(userId: Long, roles: List<String>): AdminUser =
+    suspend fun setRoles(userId: Long, roles: List<String>) {
         Http.sendApi("POST", UADEP.userSetRoles, mapOf(ADF.userId to userId, ADF.roles to roles))
-            .results().toAdminUser()
+    }
 
     /** Sets or clears a user's primary organization; a null [org] clears it. */
-    suspend fun setOrg(userId: Long, org: String?): AdminUser =
+    suspend fun setOrg(userId: Long, org: String?) {
         Http.sendApi("POST", UADEP.userSetOrg, buildMap {
             put(ADF.userId, userId)
             if (org != null) put(ADF.org, org)
-        }).results().toAdminUser()
+        })
+    }
 
     /**
      * The person behind [userId] (issue #770): the identity's facts and the users of it the caller administers --
@@ -279,21 +284,23 @@ object AdminApi {
     }
 
     /** (Re)sends the invitation for a user nobody has claimed yet (issue #751); refused for a claimed or disabled one. */
-    suspend fun inviteUser(userId: Long): AdminUser =
-        Http.sendApi("POST", UADEP.userInvite, mapOf(ADF.userId to userId)).results().toAdminUser()
+    suspend fun inviteUser(userId: Long) {
+        Http.sendApi("POST", UADEP.userInvite, mapOf(ADF.userId to userId))
+    }
 
     /** Sets a user's name, and whether the account is a business; the name survives a change of [isEntity]. */
-    suspend fun setName(userId: Long, name: String?, isEntity: Boolean): AdminUser =
+    suspend fun setName(userId: Long, name: String?, isEntity: Boolean) {
         Http.sendApi("POST", UADEP.userSetName, buildMap {
             put(ADF.userId, userId)
             put(ADF.isEntity, isEntity)
             if (name != null) put(ADF.name, name)
-        }).results().toAdminUser()
+        })
+    }
 
     /** Enables or disables a user's account. */
-    suspend fun setEnabled(userId: Long, enabled: Boolean): AdminUser =
+    suspend fun setEnabled(userId: Long, enabled: Boolean) {
         Http.sendApi("POST", UADEP.userSetEnabled, mapOf(ADF.userId to userId, ADF.enabled to enabled))
-            .results().toAdminUser()
+    }
 
     /**
      * Deletes a user: recoverable (merely disabled) by default, or -- when [permanent] -- disabled with the
