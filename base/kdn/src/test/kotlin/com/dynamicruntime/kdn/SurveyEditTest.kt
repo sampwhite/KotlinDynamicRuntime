@@ -142,6 +142,7 @@ class SurveyEditTest : StringSpec({
         res[WSF.saved] shouldBe true
         res[GDF.gedraId] shouldBe gid
         res.containsKey(WSF.item) shouldBe false
+        // A literal on purpose: `WSF.view` was retired with the field (#827), and this pins that it stays gone.
         res.containsKey("view") shouldBe false
         // The view -- where a page reads the new state from -- reflects the save: the task is now complete, its seeded
         // entry is the new value, and no task needs action any more.

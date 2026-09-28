@@ -214,13 +214,26 @@ val SurveyEditPage = FC<Props> {
                 this.approveRefusal = approveRefusal
                 // A task saved (issue #827): the save says only that the form's state may have moved, so the view is
                 // read again -- in place, without the loading card or a remount, so the other tasks' unsaved edits
-                // survive. It stays on the saved task: the fresh view may name another as needing action.
+                // survive. When the URL names no task, the page was showing the view's task needing action -- the one
+                // just saved -- and the fresh view may name another, so the saved task is pinned, in the URL too (a
+                // refinement, so replaced, not pushed) so a reload does not jump either. A URL naming a task already
+                // holds the page still, and may be one the user moved to while the save was in flight, so it is left
+                // alone. Applied only while the page still shows this form -- a re-read landing after a move to another
+                // form would otherwise put this one's view under that one's address (the #758 rule).
                 val refreshClient = workflowClient
+                val refreshForm = gedraId
+                val refreshWorkflow = workflowId
                 refreshView = { taskId ->
                     surveyEditScope.promise {
-                        val fresh = fetchFormView(gedraId, workflowId, refreshClient)
-                        requestedTask = taskId
-                        fresh?.let { view = it }
+                        val fresh = fetchFormView(refreshForm, refreshWorkflow, refreshClient)
+                        val h = hashParams()
+                        if (h[HP.page] == pageSurveyEdit && h[HP.gedra] == refreshForm && h[HP.workflow] == refreshWorkflow) {
+                            if (h[HP.task] == null) {
+                                requestedTask = taskId
+                                replaceHash(h.toList() + (HP.task to taskId))
+                            }
+                            fresh?.let { view = it }
+                        }
                         fresh
                     }
                 }

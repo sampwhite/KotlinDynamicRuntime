@@ -12,7 +12,6 @@ import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.GedraPatchTarget
 import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.user.ReadScopeRules
-import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.gedra.entryDataOf
 

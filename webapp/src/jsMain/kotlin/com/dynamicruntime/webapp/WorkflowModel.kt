@@ -541,8 +541,8 @@ fun prefillPresentationOf(view: WorkflowView): PrefillPresentation {
 
 /**
  * Every task's seed values in one map, keyed by trait id (trait ids are unique across a workflow's tasks) -- what
- * the form starts from, and what it re-snapshots from the refreshed view a survey edit save returns (issue
- * #700). Supplied defaults are split by mode ([prefillPresentationOf]): a `filled` default seeds, an `offer` one
+ * the form starts from, and what it re-snapshots from the view the page re-reads after a survey edit save (issue
+ * #827). Supplied defaults are split by mode ([prefillPresentationOf]): a `filled` default seeds, an `offer` one
  * does not (it is offered, not entered), so the seed and the presented form never disagree about "unsaved".
  */
 fun seedValuesOf(view: WorkflowView): Map<String, Map<String, Any?>> = prefillPresentationOf(view).working
