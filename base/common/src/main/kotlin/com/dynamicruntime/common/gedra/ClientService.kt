@@ -97,24 +97,37 @@ class ClientService : ServiceInitializer {
     }
 
     /**
-     * Re-checks [client]'s definition over the current collector and swaps the result in (issues #616, #842):
-     * the one way a running node's client set follows a reloaded configuration. **Only the reloaded client is
-     * judged**; every other client is carried across as the node runs it. A whole-node pass would re-judge
-     * clients nobody changed: on strict, fail this client's reload over another's problem; on warn, report every
-     * other client's issues again. The checks stay relational (an extended client or an included trait is looked
-     * up among the rest), which the carried-over clients answer.
+     * Re-checks [client]'s definition over the current collector (issues #616, #842) -- the one way a running
+     * node's client set follows a reloaded configuration, together with [commit], which swaps the result in.
+     * **Only the reloaded client is judged**; every other client is carried across as the node runs it. A
+     * whole-node pass would re-judge clients nobody changed: on strict, fail this client's reload over another's
+     * problem; on warn, report every other client's issues again. The checks stay relational (an extended client
+     * or an included trait is looked up among the rest), which the carried-over clients answer.
      *
      * No other client's verdict can move with this reload. The one relation that points *at* a client is
      * extension, and a base must be a source-code definition (`checkClientDefs`), which a reload never changes --
      * a stored config redefining it is refused as a second definition. So a client extending [client] is judged
      * exactly as before, and is not re-checked.
      *
-     * The map is replaced by reference, so readers see the old set or the new; a problem that would have refused
-     * the boot throws before the swap.
+     * Judges only; nothing is swapped until [commit] (issue #819). A reload builds [client]'s schema from the
+     * rechecked definition ([presentIn]) and commits only once that schema is in place, so a schema check that
+     * refuses the reload leaves this service exactly as it was. A problem that would have refused the boot throws
+     * here, before either.
      */
-    fun recheck(cxt: KdrCxt, client: String) {
+    fun recheck(cxt: KdrCxt, client: String): ClientCheckResult {
         val collected = collector ?: throw KdrException("$serviceName.recheck ran before onCreate.")
-        val result = checkClientDefs(cxt, collected.gedraConfigs, setOf(client), clients)
+        return checkClientDefs(cxt, collected.gedraConfigs, setOf(client), clients)
+    }
+
+    /** [client]'s definition in [result] when it would be present here -- what a reload builds its schema from. */
+    fun presentIn(result: ClientCheckResult, client: String): ClientDef? =
+        result.clients[client]?.takeIf { it.isEnabledIn(env) }
+
+    /**
+     * Swaps in what [recheck] found for [client]: the client set it produced, and [client]'s issues replaced. The
+     * map is replaced by reference, so readers see the old set or the new.
+     */
+    fun commit(client: String, result: ClientCheckResult) {
         clients = result.clients
         issues = issues.filter { it.client != client } + result.issues
     }

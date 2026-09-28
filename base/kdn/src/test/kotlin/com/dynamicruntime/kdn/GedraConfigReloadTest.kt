@@ -154,13 +154,8 @@ class GedraConfigReloadTest : StringSpec({
 
         // The refused revision: a single usage whose parameter name is a reserved listing field (EP.offset). It
         // stores cleanly and the collector accepts it, so the reload publishes -- and checkUsageRules then refuses.
+        // A second config of the client, so it does not define the client again (the base does).
         val bad = gedraConfig(own, "${client}collide", ns(client), client) {
-            defineClient(
-                ClientDef(
-                    clientId = client, name = client, usageType = ClientUsageType.dev,
-                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
-                ),
-            )
             trait("offsetEntry", EP.offset, setOf(GedraDataType.formDoc), "A trait named like a reserved field.") {
                 property("value", "A value.")
             }
@@ -177,6 +172,39 @@ class GedraConfigReloadTest : StringSpec({
         // resolves the client to the identical store, which never carried the refused revision's type.
         ownSchema().storeFor(client) shouldBeSameInstanceAs storeBefore
         ownSchema().storeFor(client).types.keys shouldNotContain "${ns(client)}.offsetEntry"
+    }
+
+    // The reload rechecks the client's definition *before* rebuilding its schema (issue #819), so a revision the
+    // schema then refuses must take its definition change back with it -- or the node would run the refused
+    // definition beside the schema it kept. Its own instance, for the same reason as the case above.
+    "a reload refused by a post-publish check also keeps the client definition it had" {
+        val own = Startup.mkTestBootCxt(
+            "cfgReloadRestoreDef", "cfgReloadRestoreDefTest", mapOf("KDR_DB_NAME" to "cfgReload_restoreDef"),
+        )
+        val client = "reloadredefine"
+        fun ownClient() = own.mkSubContext("restoreDef", client).also { it.userId = 9101L }
+        fun revision(name: String, reservedUsage: Boolean) = gedraConfig(own, "${client}main", ns(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = name, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+            if (reservedUsage) {
+                trait("offsetEntry", EP.offset, setOf(GedraDataType.formDoc), "A trait named like a reserved field.") {
+                    property("value", "A value.")
+                }
+                traitUsage(EP.offset, "Offset", $$"${value}", UsageKind.string)
+            }
+        }
+        GedraConfigService.get(own).writeConfig(ownClient(), revision("Before", reservedUsage = false))
+        GedraConfigReload.reloadClient(own, client)
+
+        // Renames the client, and trips checkUsageRules after the schema publishes.
+        GedraConfigService.get(own).writeConfig(ownClient(), revision("After", reservedUsage = true))
+        shouldThrow<KdrException> { GedraConfigReload.reloadClient(own, client) }
+            .fullMessage() shouldContainString "reserved forms-listing field"
+        ClientService.get(own).known(client).shouldNotBeNull().name shouldBe "Before"
     }
 
     // Its own database, named explicitly: an admin created without a client lands in `public`, and when the

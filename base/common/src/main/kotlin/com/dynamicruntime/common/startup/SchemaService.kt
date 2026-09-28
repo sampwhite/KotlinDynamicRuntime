@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientTraitUsage
 import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.gedra.GedraDataDeriver
@@ -238,8 +239,11 @@ class SchemaService : ServiceInitializer {
         // Built after the global store, from it (issue #356). A variant is the same document with one
         // client's overlays applied and re-parsed, so it cannot exist until the document is complete.
         val dropped = HashMap<String, Set<String>>()
+        // For the clients present here (issue #819), which the client checks decide -- `ClientService` runs ahead of
+        // this service in the startup tier for exactly this; forced here so that ordering is not an assumption.
+        val present = ClientService.get(cxt).also { it.checkInit(cxt) }.presentClients.associateBy { it.clientId }
         val variants = buildClientVariants(
-            cxt, collected, store, queryBase, repair = repairContext(collected), droppedTypes = dropped,
+            cxt, collected, store, queryBase, present, repair = repairContext(collected), droppedTypes = dropped,
         )
         droppedTypes = dropped
         // Each client that varies something gets its own copy of the client-shaped endpoints (issue #387).
@@ -521,15 +525,17 @@ class SchemaService : ServiceInitializer {
     /**
      * Evaluates [client]'s schema over a trial's [scratch] collector (issue #843) -- its cfact registry, its variant
      * (built and repaired, never published) and its usage rules -- with every problem going to the trial's capture.
-     * Returns what the rest of the trial reads: the client's cfact names and the types its variant dropped.
+     * [def] is the client's definition as the trial's client check kept it, when the client would be present; with
+     * none there is no variant, as a reload would build none (issue #819). Returns what the rest of the trial reads:
+     * the client's cfact names and the types its variant dropped.
      */
-    fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String): SchemaTrial {
+    fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String, def: ClientDef?): SchemaTrial {
         val own = scratch.clientCFacts[client].orEmpty()
         val registry = cfactRegistriesOf(cxt, scratch, mapOf(client to own)).byClient[client] ?: cfactsFor(null)
         val dropped = HashMap<String, Set<String>>()
         buildClientVariants(
-            cxt, scratch, snapshot.store, queryBase, onlyClient = client, repair = repairContext(scratch),
-            droppedTypes = dropped,
+            cxt, scratch, snapshot.store, queryBase, def?.let { mapOf(client to it) } ?: emptyMap(),
+            onlyClient = client, repair = repairContext(scratch), droppedTypes = dropped,
         )
         checkUsageRules(cxt, scratch, onlyScope = client)
         return SchemaTrial(registry.names, dropped[client].orEmpty())
@@ -768,10 +774,9 @@ class SchemaService : ServiceInitializer {
      * The gedra traits [client] actually **supports** (issue #672) -- narrower than [gedraTraitsFor], which is
      * what the client can *see* (its own plus every global trait). A client that omits a global trait can see
      * but does not support it, and this is the set its forms are built from. [def] is the client's definition
-     * (its `includedTraits` drive the computation); null means the definition was dropped in a degraded boot, in
-     * which case a client supports what it sees. The same `supportedTraits` the workflow and variant builds use.
+     * (its `includedTraits` drive the computation). The same `supportedTraits` the workflow and variant builds use.
      */
-    fun supportedGedraTraitsFor(client: String, def: ClientDef?): List<GedraTrait> =
+    fun supportedGedraTraitsFor(client: String, def: ClientDef): List<GedraTrait> =
         collector?.let {
             val overlaid = it.clientOverlays[client]?.keys ?: emptySet()
             supportedTraits(it.gedraConfigs, client, def, overlaid, droppedTypesFor(client))
@@ -867,20 +872,24 @@ class SchemaService : ServiceInitializer {
      * that throws -- a variant that fails the narrowing check, a cfact a client may not redeclare -- throws
      * **before** the swap and leaves the running set untouched. Serialized against other reloads.
      *
+     * [def] is [client]'s rechecked definition when it would be present here, null when it would not (issue #819):
+     * a variant is built only for a present client, so without one the client loses its variant.
+     *
      * Returns the collation keys of [client]'s endpoint copies before and after, which is exactly the set of
      * path-keyed type-cache entries the caller must evict: the copies' paths name the client, so their cached
      * types are the ones a changed variant invalidates and no shared entry is touched.
      */
-    fun reloadClient(cxt: KdrCxt, client: String): Set<String> = synchronized(reloadLock) {
+    fun reloadClient(cxt: KdrCxt, client: String, def: ClientDef?): Set<String> = synchronized(reloadLock) {
         val collected = collector ?: throw KdrException("$serviceName.reloadClient ran before onCreate.")
         val current = snapshot
         val global = current.store
         val before = global.endpoints.values.filter { it.client == client }.map { it.collationKey }.toSet()
 
         val dropped = HashMap<String, Set<String>>()
+        val present = def?.let { mapOf(client to it) } ?: emptyMap()
         val variant =
             buildClientVariants(
-                cxt, collected, global, queryBase, onlyClient = client, repair = repairContext(collected),
+                cxt, collected, global, queryBase, present, onlyClient = client, repair = repairContext(collected),
                 droppedTypes = dropped,
             )[client]
         droppedTypes = (droppedTypes - client) + dropped

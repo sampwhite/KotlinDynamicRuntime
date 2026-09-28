@@ -165,6 +165,13 @@ class ClientStateComponent : ComponentDefinition {
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
         gedraConfig(cxt, "isoState", namespace, client) {
+            // A defined client, so it is present and gets a variant (issue #819) -- where its data trait is checked.
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.prod),
+                ),
+            )
             trait("IsoNoteEntry", "iso873Note", setOf(GedraDataType.formDoc), "A note.") { property("text", "Text.") }
             stateTrait("IsoStateEntry", stateTraitId, setOf(GedraDataType.formDoc), StateTraitClass.asserted) {
                 property("by", "Who.")
