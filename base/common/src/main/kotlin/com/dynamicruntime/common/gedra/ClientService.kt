@@ -73,6 +73,13 @@ class ClientService : ServiceInitializer {
     fun declared(clientId: String): ClientDef? = clients[clientId]
         ?: collector?.gedraConfigs?.configs?.firstNotNullOfOrNull { it.client?.takeIf { d -> d.clientId == clientId } }
 
+    /**
+     * Every client a kept config declares, as the first such config declares it, whether or not a check kept the
+     * definition (issue #828) -- the set [declared] answers over, for a listing of clients that are not working.
+     */
+    fun declaredClients(): List<ClientDef> =
+        collector?.gedraConfigs?.configs.orEmpty().mapNotNull { it.client }.distinctBy { it.clientId }
+
     override fun onCreate(cxt: KdrCxt) {
         collector = SchemaCollector.get(cxt)
             ?: throw KdrException("Schema collector was not created for $serviceName.")

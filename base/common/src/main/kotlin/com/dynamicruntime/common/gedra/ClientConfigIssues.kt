@@ -60,6 +60,10 @@ class ClientConfigIssues {
     @Synchronized
     fun issuesFor(client: String): List<GedraConfigIssue> = byClient[client].orEmpty()
 
+    /** The clients holding any issue (issue #828) -- including one whose configuration was refused whole. */
+    @Synchronized
+    fun clients(): Set<String> = byClient.keys.toSet()
+
     /** The issues held by the stored config [storedConfigId] of [client]. */
     fun issuesForConfig(client: String, storedConfigId: String): List<GedraConfigIssue> =
         issuesFor(client).filter { it.storedConfigId == storedConfigId }
