@@ -20,13 +20,14 @@ import kotlin.time.Instant
  *
  * ### What engagement gates, and what it does not
  *
- * Engagement records that a form is in a normal workflow, and it gates **that workflow's own work** (issue #829):
- * saving and approving its tasks (issues #856, #787), its trait locks, which hold only while the form is engaged
- * (#857), and -- once the engagement window has closed -- whether the workflow is shown for the form at all, since
- * only an engaged form still sees it (#790). It does **not** gate the form: reading it, and writing its data through
- * the survey, a raw patch or an import, are the same engaged or not (bar the locks an engagement holds). What stands
+ * Engagement records that a form is in a normal workflow. As things stand (issue #829), it gates **that workflow's
+ * own work**, each by the slice that added it rather than by one standing rule: saving and approving its tasks
+ * (issues #856, #787), its trait locks, which hold only while the form is engaged (#857), and -- once the engagement
+ * window has closed -- whether the workflow is shown for the form at all, since only an engaged form still sees it
+ * (#790). It does **not** gate the form: reading it, and writing its data through the survey, a raw patch or an
+ * import, are the same engaged or not (bar the locks an engagement holds). Of the form's own state, what stands
  * before engaging is the workflow's window and its own eligibility tests -- nothing else, the survey included, unless
- * a workflow's tests name it.
+ * a workflow's tests name it; the caller must of course also be admitted to the form, on the form's own client.
  *
  * ### Why disengaging does not delete
  *
