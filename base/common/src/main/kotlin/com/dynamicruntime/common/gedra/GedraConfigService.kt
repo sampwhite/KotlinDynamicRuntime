@@ -429,6 +429,23 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
+     * Every client that has stored configuration (issue #828), from its current revisions -- what a listing of the
+     * clients a node knows of adds for one whose configuration never produced a definition. Read with SQL over the
+     * `(isCurrent)` index rather than the cache, whose rows are indexed by client but not enumerable by it.
+     */
+    fun storedClients(cxt: KdrCxt): Set<String> {
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
+        val table = configTable(cxt)
+        val stmt = SqlStmtUtil.prepareSql(
+            sqlCxt, "qGedraConfigClients", table.columns,
+            "select distinct c:${PF.client} from t:${GCT.gedraConfig} where c:${GC.isCurrent} = true",
+        )
+        var rows: List<Map<String, Any?>> = emptyList()
+        sqlCxt.sqlDb.withSession(cxt) { rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, emptyMap()) }
+        return rows.mapNotNull { it[PF.client].toOptStr() }.toSet()
+    }
+
+    /**
      * Serves [readLatest] from [configCache], or null when it cannot -- which the caller turns into its SQL
      * query, so the cache only ever saves a round trip and never changes an answer. The class's rows come off
      * the [GCX.configId] index and the pair is reduced by the one shared rule ([GedraConfigCache.revisionsOf]);

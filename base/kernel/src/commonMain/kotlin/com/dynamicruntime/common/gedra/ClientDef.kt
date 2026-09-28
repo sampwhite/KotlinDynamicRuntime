@@ -63,6 +63,29 @@ enum class ClientAudience {
 }
 
 /**
+ * Where a client stands on this node (issue #828) -- a client summary row's [CLD.status]. The summary listing's
+ * `allKnown` option lists every client this node knows of, so an administrator asking why a client is not working
+ * can see one that is not, and this says which way it is not.
+ */
+@Suppress("EnumEntryName")
+enum class ClientStatus {
+    /** Carried here: declared, kept by the checks, and enabled in this environment. */
+    present,
+
+    /** Declared and kept by the checks, but not enabled in this environment. */
+    notEnabled,
+
+    /** Declared, but a check dropped its definition; its issues say why. */
+    dropped,
+
+    /**
+     * Stored configuration exists for it, but no loaded config declares it: its configuration was refused whole,
+     * or none of it defines the client.
+     */
+    storedOnly,
+}
+
+/**
  * The [ClientDef] fields a client may not set for **itself** (issue #820): they carry authority over the client, so
  * only we set them -- in source code, or, for a client defined in data, a platform operator (an `allClients`
  * administrator, an import, a service write). A client's own administrator must keep them as they are: a write
@@ -198,6 +221,15 @@ object CLD {
      * returned anyway, with its [issues], so an administrator can see why it is not working.
      */
     const val present = "present"
+
+    /** On a summary row (issue #828): where the client stands on this node, a [ClientStatus] name. */
+    const val status = "status"
+
+    /**
+     * The summary listing's option (issue #828): also list every client this node knows of but does not carry --
+     * not enabled here, dropped by a check, or known only from stored configuration -- each with its [status].
+     */
+    const val allKnown = "allKnown"
 }
 
 /**
