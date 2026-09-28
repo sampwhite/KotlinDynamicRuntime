@@ -24,9 +24,9 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * It reports what was **declared and survived**, which is the useful thing rather than the tidy one: a client
  * whose definition was refused is simply not here, and on a production node that refusal is in the startup log
- * beside the reason (see [checkClientDefs]). The listing is not the place to explain an absence, because
- * anything that could explain one would also have to be readable by somebody who should not see the client at
- * all.
+ * beside the reason (see [checkClientDefs]). This listing is not the place to explain an absence: it feeds choice
+ * lists too, which a client-scoped caller reads. The full-scope summary listing is, with its `allKnown` option
+ * (issue #828): every client this node knows of, each with its status and the issues that say why.
  *
  * The module is named `clientCatalog`, not `clientAdmin` (issue #466). This is a *catalog of clients*, served
  * full-scope under the `admin` section; `clientAdmin` now names the opposite thing -- the client-*scoped*
@@ -158,6 +158,9 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         property(CLD.hasSurvey, "Whether the client declares a survey workflow (issue #695): a forms surface working in this client then offers its survey-status filter.", required = true) {
             type = SCT.boolean
         }
+        property(CLD.status, "Where the client stands on this node (issue #828).", required = true) {
+            options(ClientStatus.entries)
+        }
         property(CLD.issues, "Problems found in the client's configuration and forgiven (issue #840).", required = true) {
             type = SCT.array
             items { ref(CLD.configIssueTypeName) }
@@ -185,14 +188,23 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
 
     listEndpoint(
         ADEP.clientSummaries,
-        "Every present client with a brief summary: its workflow ids, trait ids and usage-column labels.",
+        "Every present client with a brief summary: its workflow ids, trait ids and usage-column labels -- or, with " +
+            "allKnown, every client this node knows of, each with its status.",
         outputRef = CLD.summaryTypeName,
+        inputFields = {
+            field(
+                CLD.allKnown,
+                "Also list every client this node knows of but does not carry -- not enabled here, dropped by a " +
+                    "check, or known only from stored configuration -- each with its status (issue #828).",
+            ) { type = SCT.boolean }
+        },
         // The clients are a declared set loaded at boot, small enough that paging would pretend otherwise -- as
         // the `/admin/clients` listing above says for the same reason.
         noLimit = true,
         needsClientConfig = true,
-    ) { c, _ ->
-        namableClients(c).map { clientSummaryOf(c, it) }
+    ) { c, request ->
+        val present = namableClients(c).map { clientSummaryOf(c, it) }
+        if (request[CLD.allKnown] == true) present + absentClientSummaries(c) else present
     }
 }
 
@@ -260,7 +272,45 @@ private fun clientSummaryOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
         CLD.usageLabels to schema.traitUsagesFor(def.clientId).map { it.label },
         CLD.hasSurvey to (WorkflowService.get(cxt).forClient(def.clientId).survey != null),
         CLD.issues to ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() },
+        CLD.status to ClientStatus.present.name,
     )
+}
+
+/**
+ * A summary row for every client this node knows of but does not carry (issue #828), by client id: one declared and
+ * kept but not enabled here ([ClientStatus.notEnabled]); one declared but dropped by a check
+ * ([ClientStatus.dropped]); and one known only from stored configuration or its issues, with no loaded config
+ * declaring it ([ClientStatus.storedOnly]). Each carries its issues, which say why, and nothing it defines -- it
+ * defines nothing here. So an administrator asking why a client is not working sees the client, not its absence.
+ */
+private fun absentClientSummaries(cxt: KdrCxt): List<Map<String, Any?>> {
+    val service = ClientService.get(cxt)
+    val present = service.presentClients.map { it.clientId }.toSet()
+    val absent = LinkedHashMap<String, Pair<ClientStatus, String>>()
+    for (def in service.clients.values) {
+        if (def.clientId !in present) absent[def.clientId] = ClientStatus.notEnabled to def.name
+    }
+    for (def in service.declaredClients()) {
+        if (def.clientId !in present) absent.putIfAbsent(def.clientId, ClientStatus.dropped to def.name)
+    }
+    val stored = GedraConfigService.get(cxt).storedClients(cxt) + ClientConfigIssues.get(cxt).clients()
+    for (client in stored) {
+        if (client == GID.globalClient || client in present) continue
+        absent.putIfAbsent(client, ClientStatus.storedOnly to client)
+    }
+    val issues = ClientConfigIssues.get(cxt)
+    return absent.entries.sortedBy { it.key }.map { (client, statusAndName) ->
+        mapOf(
+            CLD.clientId to client,
+            CLD.name to statusAndName.second,
+            CLD.workflowIds to emptyList<String>(),
+            CLD.traitIds to emptyList<String>(),
+            CLD.usageLabels to emptyList<String>(),
+            CLD.hasSurvey to false,
+            CLD.issues to issues.issuesFor(client).map { it.toWireMap() },
+            CLD.status to statusAndName.first.name,
+        )
+    }
 }
 
 /**
