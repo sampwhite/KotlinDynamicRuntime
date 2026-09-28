@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.JobHandling
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.SRJ
 import com.dynamicruntime.common.job.BCHKJ
 import com.dynamicruntime.common.job.JPF
 import com.dynamicruntime.common.job.JSCH
@@ -60,7 +61,13 @@ class JobSchedulerTest : StringSpec({
         return cxt
     }
 
-    fun tick(cxt: KdrCxt): List<JobTick> = JobService.get(cxt).scheduledTick(cxt, JobRunMode.pooledOnCaller)
+    /**
+     * One tick, reporting on the case's own jobs. Every node also carries the built-in derived-state recompute
+     * (issue #793), scheduled at 03:00; the cases run around 02:00, outside its window, so it never launches here,
+     * but a tick still reports it as not in its window.
+     */
+    fun tick(cxt: KdrCxt): List<JobTick> =
+        JobService.get(cxt).scheduledTick(cxt, JobRunMode.pooledOnCaller).filter { it.jobType != SRJ.jobType }
 
     fun scheduled(type: String, schedule: JobSchedule, profile: JobProfile = JobProfile("schedTest")) = JobDef(
         type, "Scheduled test job $type.", profile,
