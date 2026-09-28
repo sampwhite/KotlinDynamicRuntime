@@ -24,6 +24,7 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
@@ -611,7 +612,13 @@ class GedraDataService : ServiceInitializer {
      * whose output does not validate must not fail an otherwise-valid write: the `KdrException` is logged and the
      * state left as it was. A deriver's own programming error is not caught -- it should surface.
      */
-    fun recomputeDerivedStateUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, row: GedraDataRow) {
+    fun recomputeDerivedStateUnderLock(
+        cxt: KdrCxt,
+        sqlCxt: SqlCxt,
+        row: GedraDataRow,
+        /** Skip the write when the recompute would store what is already there (the batch job's case, #793). */
+        skipIfUnchanged: Boolean = false,
+    ): StateRecompute {
         // Bind to the gedra's owner and client before anything reads `cxt`, so the derivation, its feature
         // gating, and the state write all run in the gedra's scope. Safe: `cxt` is the transaction-scoped
         // context this write runs on, discarded when the transaction ends.
@@ -625,12 +632,41 @@ class GedraDataService : ServiceInitializer {
         val recomputed = preservedAsserted + computeDerivedState(cxt, row, existingEntries)
         // Skip an empty write on a gedra that has no state row yet (a client with no derivers), but do write --
         // to clear or update -- when a state row already exists.
-        if (recomputed.isEmpty() && existing == null) return
-        try {
+        if (recomputed.isEmpty() && existing == null) return StateRecompute(StateRecomputeOutcome.unchanged)
+        if (skipIfUnchanged && sameState(recomputed, existingEntries)) return StateRecompute(StateRecomputeOutcome.unchanged)
+        return try {
             writeState(cxt, row.gedraId, recomputed)
+            StateRecompute(StateRecomputeOutcome.written)
         } catch (e: KdrException) {
             LogGedra.warn(cxt) { "Skipped invalid derived state for '${row.gedraId.fullId}': ${e.message}" }
+            StateRecompute(StateRecomputeOutcome.invalid, e.message)
         }
+    }
+
+    /**
+     * Whether [row]'s stored state is already what a recompute would make it (issue #793), judged **outside any
+     * lock**, from the resident caches: the batch job's cheap first look, which lets it skip the lock for the
+     * common case of a form whose state is current. A form it finds out of date is then recomputed under the lock
+     * ([recomputeDerivedState]), which decides again from the data as it stands there.
+     */
+    fun derivedStateCurrent(cxt: KdrCxt, row: GedraDataRow): Boolean {
+        // In the gedra's own client, as the recompute runs: the derivers' feature gating reads `cxt.client`.
+        val gedraCxt = cxt.mkSubContext("stateCheck", row.client).also { it.userId = row.userId }
+        val existing = readState(gedraCxt, row.gedraId, ReadScope.unrestricted)
+        val stateClassOf = SchemaService.get(cxt).gedraStateTraits().associate { it.traitId to it.stateClass }
+        val asserted = existing.filter { stateClassOf[it[GE.traitId].toOptStr()] == StateTraitClass.asserted }
+        return sameState(asserted + computeDerivedState(gedraCxt, row, existing), existing)
+    }
+
+    /**
+     * Whether two state entry lists hold the same entries in the same order, by trait and data alone: the
+     * envelope a stored entry carries (its id and stamps) is not part of what a recompute decides. Compared
+     * through their JSON text, so a number stored as a `Long` and derived as an `Int` do not differ.
+     */
+    private fun sameState(a: List<Map<String, Any?>>, b: List<Map<String, Any?>>): Boolean {
+        fun essence(entries: List<Map<String, Any?>>) =
+            entries.map { linkedMapOf(GE.traitId to it[GE.traitId], GE.data to it[GE.data]) }.toJsonStr(compact = true)
+        return essence(a) == essence(b)
     }
 
     /**
@@ -639,10 +675,11 @@ class GedraDataService : ServiceInitializer {
      * in play. [scope] is checked by reading the gedra through the cache; the recompute itself is the
      * row-taking overload's, which derives from the data as it stands under the lock.
      */
-    fun recomputeDerivedState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope) {
-        val kind = gedraId.dataType ?: return
-        val row = queryGedra(cxt, gedraId.fullId, kind, scope) ?: return
-        recomputeDerivedState(cxt, row)
+    fun recomputeDerivedState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): StateRecompute {
+        val gone = StateRecompute(StateRecomputeOutcome.gone)
+        val kind = gedraId.dataType ?: return gone
+        val row = queryGedra(cxt, gedraId.fullId, kind, scope) ?: return gone
+        return recomputeDerivedState(cxt, row)
     }
 
     /**
@@ -655,7 +692,8 @@ class GedraDataService : ServiceInitializer {
      * which a recompute from the older copy would overwrite until the gedra's next write. A gedra deleted in
      * between is skipped -- there is nothing left to derive for.
      */
-    fun recomputeDerivedState(cxt: KdrCxt, row: GedraDataRow) {
+    fun recomputeDerivedState(cxt: KdrCxt, row: GedraDataRow, skipIfUnchanged: Boolean = false): StateRecompute {
+        var result = StateRecompute(StateRecomputeOutcome.gone)
         // A transaction-scoped context created before the transaction (issue #687): it owns the session and the
         // recompute rebinds its owner to the gedra's, so a standalone recompute owns state the same way the write
         // hook does.
@@ -664,9 +702,10 @@ class GedraDataService : ServiceInitializer {
         SqlTopicTranProvider.executeTopicTran(sqlCxt, tranRecompute, null, mapOf(GD.gedraId to row.gedraId.fullId)) {
             val current = readDataRowUnderLock(txCxt, sqlCxt, gedraDataTable(txCxt), row.gedraId)
             if (current != null) {
-                recomputeDerivedStateUnderLock(txCxt, sqlCxt, current)
+                result = recomputeDerivedStateUnderLock(txCxt, sqlCxt, current, skipIfUnchanged)
             }
         }
+        return result
     }
 
     /**
@@ -1736,6 +1775,10 @@ class GedraDataService : ServiceInitializer {
         return readStates(cxt, ids.values.toList(), scope).mapKeys { (fullId, _) -> ids.getValue(fullId) }
     }
 
+    /** The full ids of [client]'s live gedras of [kind], from the cache: what a batch job walks (issue #793). */
+    fun liveGedraIds(cxt: KdrCxt, kind: GedraDataType, client: String): List<String> =
+        liveIdsInScope(cxt, kind, ReadScope.ofClient(client))
+
     /** The full ids of the live gedras of [kind] that [scope] admits, from the cache when it can key on the scope. */
     private fun liveIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> {
         val cache = dataCache
@@ -1877,3 +1920,22 @@ fun entryDataOf(entry: Map<String, Any?>, traitId: String, missingHint: String =
             "The '$traitId' entry's ${GE.data} is not an object: an entry's data is its trait's fields, by name.",
         )
     }
+
+/** What a derived-state recompute did (issue #793). */
+@Suppress("EnumEntryName")
+enum class StateRecomputeOutcome {
+    /** The recomputed state was written. */
+    written,
+
+    /** Nothing needed writing: the state was already current, or there was none to write. */
+    unchanged,
+
+    /** The derivers produced state that does not validate, so the stored state was left as it was. */
+    invalid,
+
+    /** The gedra is gone -- deleted, or never there -- so there was nothing to derive for. */
+    gone,
+}
+
+/** The outcome of a derived-state recompute, and for an [StateRecomputeOutcome.invalid] one, why. */
+class StateRecompute(val outcome: StateRecomputeOutcome, val message: String? = null)
