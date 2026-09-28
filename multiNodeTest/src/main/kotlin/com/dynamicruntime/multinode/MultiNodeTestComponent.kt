@@ -70,7 +70,6 @@ class MultiNodeTestComponent : ComponentDefinition {
         MultiNodeJobs.jobs().forEach { collector.addJob(it) }
     }
 
-    @Suppress("ConstPropertyName")
     companion object {
         /** A convenience switch for the harness, known only to this component, so never read on a deployed node. */
         val enabledVar = EnvVarDef(

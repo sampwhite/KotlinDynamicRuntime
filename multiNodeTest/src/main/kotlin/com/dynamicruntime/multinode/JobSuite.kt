@@ -94,8 +94,8 @@ class JobSuite(private val nodes: List<HarnessNode>) {
         val first = launch(sessions[0], name, tasks = 40, taskMs = 300)
         if (first != JobLaunchOutcome.started.name) return listOf("The launch did not start: $first.")
         Thread.sleep(1_000)
-        val requested = sessions[1].sendJsonPostRequest(JOBEP.abort, mapOf(JOBF.jobType to MNJ.workJob))
-            .get(EP.results).toJsonMapOrEmpty()[JOBF.requested]
+        val requested = sessions[1].sendJsonPostRequest(JOBEP.abort,
+            mapOf(JOBF.jobType to MNJ.workJob))[EP.results].toJsonMapOrEmpty()[JOBF.requested]
         if (requested != true) out.add("The abort request on ${nodes[1].label} found no active launch.")
         out.addAll(awaitEnd(name, JobRunStatus.aborted))
         val reason = launchRow()?.get(JOB.history).toJsonListOfMaps().lastOrNull()?.get(JOB.reason).toOptStr()

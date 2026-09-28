@@ -11,6 +11,7 @@ import kotlin.system.exitProcess
  * It connects to the server's `postgres` maintenance database as an administrative role -- by default the OS
  * user, which a local Homebrew install makes a superuser -- over local TCP, where no password is asked.
  */
+@Suppress("SqlNoDataSourceInspection", "ConstPropertyName")
 object MultiNodeDb {
     const val dbName = "kdr_multinode"
     const val owner = "kdr"

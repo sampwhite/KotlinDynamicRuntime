@@ -70,6 +70,7 @@ object MNJ {
  * cut off by a killed node has no end, and it is not counted as overlapping the one that later redoes its task:
  * that redo is the framework working, not failing.
  */
+@Suppress("ConstPropertyName")
 object MultiNodeJobs {
     const val profileName = "multiNodeTest"
 
@@ -224,7 +225,7 @@ class WorkExecution(
 class WorkOverlap(val a: WorkExecution, val b: WorkExecution)
 
 /**
- * Every pair of **ended** executions of one task -- one launch, client and task key -- whose times overlap. An
+ * Every pair of **ended** executions of one task -- one launch, client, and task key -- whose times overlap. An
  * execution with no end (cut off by a killed node) is left out: the task it began is rightly redone by whoever
  * adopts the work, and the two are not concurrent in any sense the framework could have prevented.
  */
