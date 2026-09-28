@@ -362,6 +362,13 @@ object SCH {
      * and exported schema ([withoutLayouts]), and delivered out-of-band. See `SchLayout` and `SL`.
      */
     const val layout = "g-layout"
+
+    /**
+     * The gedra kinds a trait's entry type applies to -- a gedra concept the schema carries without reading (see
+     * `GE.appliesTo`, which names it). Declared here so the schema layer's list of its own keywords is whole
+     * ([SchGKeywords], issue #822).
+     */
+    const val appliesTo = "g-appliesTo"
 }
 
 /** Values of the JSON Schema `type` keyword (object/null collide with Kotlin
@@ -444,6 +451,9 @@ object PRES {
      *  Master-detail -- for a heavy nested array (a database table's `columns`) that would otherwise force the
      *  row very wide. Ignored on a property that is not a structured array. */
     const val detail = "detail"
+
+    /** Every value, for the parser's check that a `g-presentation` names one (issue #822). */
+    val all: Set<String> = setOf(status, table, identifier, detail)
 }
 
 /**

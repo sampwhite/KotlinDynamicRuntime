@@ -290,6 +290,11 @@ fun parseNode(
     if (depth > 20) {
         throw KdrException.mkConv("Schema is nested too deeply (over 20 levels); it may contain a self-reference.")
     }
+    // Our own keywords are strict (issue #822): an unknown `g-` key, or one of ours with a value of the wrong shape,
+    // fails the parse rather than being read leniently.
+    SchGKeywords.problems(name?.let { "Type '$it'" } ?: "A schema", map).firstOrNull()?.let {
+        throw KdrException.mkConv(it)
+    }
     val properties = LinkedHashMap<String, SchProperty>()
     val rawProps = map[SCH.properties]
     if (rawProps is Map<*, *>) {
@@ -555,6 +560,8 @@ fun parseProperty(
     pendingBranchRefs: MutableList<PendingBranchRef>,
     depth: Int,
 ): SchProperty {
+    // The keywords on the property itself, which a `$ref` property's target never sees (issue #822).
+    SchGKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw KdrException.mkConv(it) }
     val description = map[SCH.description].toOptStr()
     // On the property, not only its value type -- see [SchProperty.title] for why a `$ref` field needs its own.
     val title = map[SCH.title].toOptStr()
