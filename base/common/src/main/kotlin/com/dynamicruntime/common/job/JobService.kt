@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.fmt
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -165,7 +166,9 @@ class JobService : ServiceInitializer, AutoCloseable {
         val tracer = JobTracer(jobCxt, profile.traceLevel(cxt, trace), launch, profile.traceMaxEntries, profile.traceKeepLaunches)
         val lease = when (val claim = JobStatusRows.claimLaunch(jobCxt, launch, profile.leaseTimeout)) {
             is JobClaim.LockedOut -> {
-                val reason = "Launch '${claim.launchName}' holds it" + (claim.holder?.let { " on $it" } ?: "") + "."
+                // The last heartbeat says whether to wait: a live holder's is recent, one about to lapse is not.
+                val reason = "Launch '${claim.launchName}' holds it" + (claim.holder?.let { " on $it" } ?: "") +
+                    (claim.heartbeatAt?.let { ", last heartbeat at ${it.fmt()}" } ?: "") + "."
                 tracer.record(JobTraceEvent.launchLockedOut, message = reason)
                 tracer.flush(final = true)
                 return JobLaunchResult(JobLaunchOutcome.lockedOut, reason)

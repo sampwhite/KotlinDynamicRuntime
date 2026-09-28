@@ -296,6 +296,34 @@ Scenarios print as they go, so a run that dies partway leaves output that reads 
 — and piping through `grep` or `tail` loses the exit code. **Absence of the completion line means the report is
 incomplete however complete it looks.**
 
+## Several nodes at once: the multi-node harness
+
+Some behavior shows only with several backends on one database: which of two nodes' simultaneous claims wins, a
+lease lapsing when a node dies, a graceful stop releasing work to a peer. No in-process test sees it, so it lives in
+the **multi-node harness** (issue #872), not the unit suite:
+
+```bash
+./gradlew :multiNodeTest:harness                                   # start 3 backends, run the suites, stop them
+./gradlew :multiNodeTest:harness -Pattach=http://localhost:7071,http://localhost:7073,http://localhost:7074
+```
+
+- **Start mode** (the default) resets the `kdr_multinode` Postgres database, starts backends on **7071, 7073 and
+  7074** (never 7070 or kd3's 7072) and stops them afterwards. A port already in use stops the run before anything
+  starts; it never takes over, or stops, a server it did not start. About 45 seconds for the jobs suite.
+- **Attach mode** runs against nodes you started yourself (in IntelliJ, with breakpoints), on `kdr_multinode`, with
+  the `multiNodeTest` component switched on. Scenarios that stop or kill a node are skipped.
+- **The database** is managed by `bin/kdr-multinode-db create|reset|drop`, which touches `kdr_multinode` and nothing
+  else. Backends read the Postgres password from the workspace's `private/secrets.properties` (`dbPassword`).
+- **The fixtures** are the `multiNodeTest` module's `MultiNodeTestComponent`: inert unless
+  `multiNodeTest.enabled` is set (in your `customConfig`) or `KDR_MULTI_NODE_TEST=true`, never on a production node,
+  and left out of the deployable distribution. Its fast job timings are contributions, so a `jobProfile(...)` in
+  your `customConfig` overrides them for a rerun.
+- **A scenario judges from the nodes' own surfaces** -- the `/operator/job` status and trace, and the fixture's
+  `/operator/multiNode/work`, which reports any two executions of one task that ran at the same time.
+- **Run it before a job-related PR.** It is outside `test allTests` (it needs Postgres and starts processes), so
+  the gate does not run it for you. Its first run found two real bugs no unit test had: the topic-transaction loop
+  retrying a lost lock-row insert instead of taking the lock, and a pooled run's tasks sharing one SQL session.
+
 ## Traveling the clock (`/fixture/clock`)
 
 Anything gated on elapsed time — a session lapsing, a rate-limit window reopening, a device's trust running

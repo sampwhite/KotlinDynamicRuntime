@@ -7,7 +7,6 @@ import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.util.fmt
-import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
@@ -79,13 +78,12 @@ enum class JobTraceEvent(val level: JobTraceLevel) {
     truncated(JobTraceLevel.launch),
 }
 
-/** One trace entry, as read back. */
+/**
+ * One trace entry, as read back. The launch it belongs to -- job type, kind, dry run, name -- is not repeated here:
+ * a trace is read by those, so its reader already has them.
+ */
 class JobTraceEntry(row: Map<String, Any?>) {
     val traceSeq: Long = row[JOBT.traceSeq].toOptLong() ?: 0
-    val jobType: String? = row[JOB.jobType].toOptStr()
-    val launchKind: String? = row[JOB.launchKind].toOptStr()
-    val dryRun: Boolean = row.getOptBool(JOB.dryRun) == true
-    val launchName: String? = row[JOB.launchName].toOptStr()
     val leaseId: String? = row[JOB.leaseId].toOptStr()
     val holder: String? = row[JOB.holder].toOptStr()
     val at: Instant? = row[JOBT.at].toOptInstant()
@@ -195,7 +193,7 @@ class JobTracer(
             JOB.dryRun to launch.dryRun,
             JOB.launchName to launch.name,
             JOB.leaseId to leaseId,
-            JOB.holder to cxt.instanceConfig.instanceName,
+            JOB.holder to jobHolder(cxt),
             JOBT.at to Instant.fromEpochMilliseconds(cxt.instanceNow().toEpochMilliseconds()),
             JOBT.event to event.name,
             PF.client to client,

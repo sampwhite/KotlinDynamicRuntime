@@ -235,6 +235,32 @@ class JobRunnerTest : StringSpec({
         threads.values.forEach { it.isVirtual shouldBe true }
     }
 
+    "a launch whose row is held live is locked out, and says when its holder last beat" {
+        JobScripts.set("jtHeld", mapOf(CL.hub to listOf("a1"))) { _, _ -> JobTaskResult.done }
+        // Another launch's live claim on the row.
+        JobStatusRows.claimLaunch(cxt, JobLaunch("jtHeld", JobLaunchKind.endpoint, "other"), 30.seconds)
+            .shouldBeInstanceOf<JobClaim.Claimed>()
+        val result = sync("jtHeld", "run1")
+        result.outcome shouldBe JobLaunchOutcome.lockedOut
+        result.reason.shouldNotBeNull() shouldContain "Launch 'other' holds it"
+        result.reason.shouldNotBeNull() shouldContain "last heartbeat at"
+    }
+
+    "each task runs on a context of its own, so tasks running at once never share a SQL session" {
+        val contexts = ConcurrentHashMap<String, KdrCxt>()
+        val keys = (1..8).map { "c$it" }
+        JobScripts.set("jtOwnCxt", mapOf(CL.hub to keys)) { run, key ->
+            contexts[key] = run.cxt
+            // A read on the task's context: with a shared one, concurrent tasks would share its session.
+            JobStatusRows.readLaunch(run.cxt, "jtOwnCxt", JobLaunchKind.endpoint)
+            JobTaskResult.done
+        }
+        service().launch(cxt, "jtOwnCxt", "run1", mode = JobRunMode.pooledOnCaller, clients = listOf(CL.hub))
+            .outcome shouldBe JobLaunchOutcome.completed
+        contexts.values.map { System.identityHashCode(it) }.toSet().size shouldBe keys.size
+        contexts.values.forEach { it.client shouldBe CL.hub }
+    }
+
     "the operator surface launches, reports and aborts, and is closed to anyone else" {
         JobScripts.set("jtEndpoint", mapOf(CL.hub to listOf("a1", "a2"))) { _, _ -> JobTaskResult.done }
         val opal = TestUser.createOperator(cxt, "jobs-opal@example.com")
@@ -278,7 +304,7 @@ private class JobFixture : ComponentDefinition {
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         val profile = JobProfile("jobTest", platformThreads = 4, retryBackoff = 0.seconds, retryLimit = retryLimit)
-        for (type in listOf("jtCounts", "jtRetry", "jtAbort", "jtRequested", "jtFenced", "jtSlow", "jtDry", "jtPooled", "jtEndpoint")) {
+        for (type in listOf("jtCounts", "jtRetry", "jtAbort", "jtRequested", "jtFenced", "jtSlow", "jtDry", "jtPooled", "jtEndpoint", "jtOwnCxt", "jtHeld")) {
             collector.addJob(scripted(type, profile))
         }
         collector.addJob(scripted("jtUncounted", profile, counted = false))

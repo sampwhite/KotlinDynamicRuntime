@@ -8,6 +8,8 @@ import com.dynamicruntime.buildlogic.wireInjectedComponents
 
 // Resolved outside `dependencies` so the null check reads once; see the edge note inside.
 val edgeProject = findProject(":edge")
+// The multi-node test harness's fixtures (issue #872), guarded for the same reason as the edge.
+val multiNodeTestProject = findProject(":multiNodeTest")
 
 plugins {
     id("kdr.kotlin-conventions")
@@ -51,6 +53,20 @@ dependencies {
     // who has not added that line -- their whole build refuses, not merely one file. Declaring nothing is not
     // an error here; `StartEdge` reports the absence itself, to whoever actually runs an edge.
     edgeProject?.let { runtimeOnly(project(it.path)) }
+    // The multi-node test fixtures (issue #872): on the runtime classpath, so `:launch:run`, IntelliJ run
+    // configurations and the pathing jar load them for development -- inert unless switched on -- but filtered
+    // out of the distribution below, so a deployment never ships them.
+    multiNodeTestProject?.let { runtimeOnly(project(it.path)) }
+}
+
+// The deployable distribution (`installDist` / `distZip`) leaves the multi-node test module out (issue #872): a
+// production node carries no fake jobs, rather than carrying them switched off.
+distributions {
+    main {
+        contents {
+            exclude("**/multiNodeTest*.jar")
+        }
+    }
 }
 
 // Deployment-injected providers (issue #171): custom config now, custom components later. The deployment

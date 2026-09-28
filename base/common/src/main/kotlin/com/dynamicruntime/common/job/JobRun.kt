@@ -393,7 +393,9 @@ internal class JobRun(
     // --- running one task ------------------------------------------------------------------------------------
 
     /** Runs [key]'s task, retrying a retryable failure with backoff, and answers what became of it. */
-    private fun attempt(runCxt: JobRunCxt, key: String): TaskOutcome {
+    private fun attempt(clientCxt: JobRunCxt, key: String): TaskOutcome {
+        // Each task on a context of its own, so tasks running at once never share a SQL session.
+        val runCxt = clientCxt.forTask()
         var retries = 0
         while (true) {
             if (stopReason() != null) return TaskOutcome(key, TaskKind.stopped)

@@ -1,0 +1,3 @@
+# The multi-node test component, discovered at startup by ServiceLoader.load(KdrProvider) (issues #171, #872).
+# Inert unless its configuration switches it on.
+com.dynamicruntime.multinode.MultiNodeTestComponent

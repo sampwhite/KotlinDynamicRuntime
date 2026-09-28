@@ -2,6 +2,7 @@ package com.dynamicruntime.common.job
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.SqlStmtUtil
@@ -104,7 +105,7 @@ sealed interface JobClaim {
     class LockedOut(val holder: String?, val launchName: String?, val heartbeatAt: Instant?) : JobClaim
 
     /** The claim would adopt the row, and its work is already complete; nothing was written. */
-    class AlreadyComplete(val generationId: Long, val counts: JobCounts) : JobClaim
+    class AlreadyComplete(val counts: JobCounts) : JobClaim
 }
 
 /** The answer to a heartbeat. A [fenced] holder has lost its row and must stop; nothing was written. */
@@ -392,7 +393,7 @@ object JobStatusRows {
 
         fun alreadyComplete(row: JobStatusRow): JobClaim {
             noWrite()
-            return JobClaim.AlreadyComplete(row.generationId, row.counts)
+            return JobClaim.AlreadyComplete(row.counts)
         }
 
         /**
@@ -419,7 +420,7 @@ object JobStatusRows {
             row[JOB.launchName] = launch.name
             row[JOB.generationId] = generationId
             row[JOB.leaseId] = leaseId
-            row[JOB.holder] = cxt.instanceConfig.instanceName
+            row[JOB.holder] = jobHolder(cxt)
             row[JOB.claimedAt] = now
             row[JOB.heartbeatAt] = now
             putCounts(counts)
@@ -455,4 +456,14 @@ object JobStatusRows {
             putData(JOB.history, (attempt.history + entry).takeLast(JOB.historyLimit))
         }
     }
+}
+
+/**
+ * Who a claim or a trace entry is by: the node's `ip:port` label when the node knows it, else the instance name.
+ * Not the instance name alone -- every node of one environment shares it (`prod`, `local`), which would make
+ * several nodes' claims on one row indistinguishable (found by the multi-node harness, issue #872).
+ */
+internal fun jobHolder(cxt: KdrCxt): String {
+    val node = cxt.instanceConfig.get(NodeService.serviceName) as? NodeService
+    return node?.takeIf { it.hasNodeId }?.nodeLabel ?: cxt.instanceConfig.instanceName
 }
