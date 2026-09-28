@@ -6,6 +6,8 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.sql.PF
@@ -22,12 +24,14 @@ object JOBEP {
     const val status = "/operator/job/status"
     const val abort = "/operator/job/abort"
     const val trace = "/operator/job/trace"
+    const val exceptions = "/operator/job/exceptions"
 
     const val rowType = "JobRowInfo"
     const val typeStatusType = "JobTypeStatus"
     const val launchResultType = "JobLaunchInfo"
     const val abortResultType = "JobAbortInfo"
     const val traceEntryType = "JobTraceEntry"
+    const val exceptionInfoType = "JobExceptionInfo"
 }
 
 /** Field names of the batch-job operator surface. Each name matches its value. */
@@ -123,6 +127,15 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
         property(JOBT.taskKey, "The task it concerns.")
         property(JOBT.message, "A description.")
         property(JOB.data, "The event's details.") { openObject() }
+    }
+    jobExceptionEntryType()
+    type(JOBEP.exceptionInfoType) {
+        type = SCT.kObject
+        description = "One job's recorded failure on a gedra, as a jobException trait entry."
+        property(GE.traitId, "Always the jobException trait.", required = true)
+        property(GE.data, "The failure.", required = true) { ref(JOBX.entryType) }
+        property(GE.createdAt, "When the job first failed on the gedra.") { dateTime() }
+        property(GE.updatedAt, "When it last did.") { dateTime() }
     }
     type(JOBEP.abortResultType) {
         type = SCT.kObject
@@ -235,6 +248,18 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
         val kind = JobLaunchKind.entries.firstOrNull { it.name == request[JOBF.kind].toOptStr() } ?: JobLaunchKind.endpoint
         JobService.get(c).def(jobType)
         JobTraceRows.read(c, jobType, kind, name, request[JOBF.dryRun] == true).map { it.toInfo() }
+    }
+
+    listEndpoint(
+        JOBEP.exceptions,
+        "Reports the jobs whose tasks failed on a gedra (issue #871), within the caller's reach.",
+        outputRef = JOBEP.exceptionInfoType,
+        inputFields = { field(JOBX.gedraId, "The gedra.", required = true) },
+        noLimit = true,
+        tags = setOf(ETAG.internal),
+    ) { c, request ->
+        val gedraId = request[JOBX.gedraId].toOptStr() ?: throw KdrException.mkInput("A ${JOBX.gedraId} is required.")
+        JobExceptionRows.read(c, gedraId, ReadScopeRules.forCaller(c))
     }
 
     generalEndpoint(

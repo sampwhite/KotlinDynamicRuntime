@@ -103,6 +103,9 @@ internal class JobRun(
     private var clientsDone = 0
     private val busyClients = mutableListOf<String>()
 
+    /** The current client's gedras with an earlier failure of this job recorded, to clear as their tasks succeed. */
+    private var withFailures: MutableSet<String> = mutableSetOf()
+
     /** Why the run is stopping, or null while it is not. */
     fun stopReason(): String? = synchronized(lock) { stopReason }
 
@@ -165,6 +168,13 @@ internal class JobRun(
         clientFenced = false
         lastProgress = now()
         val runCxt = JobRunCxt(cxt.mkSubContext("job", client), launch, workAreas, client, lease.generationId, tracer) { stopReason() }
+        withFailures = if (def.resourceOf != null && !launch.dryRun) {
+            bestEffort("read the recorded failures of client '$client'") {
+                JobExceptionRows.gedrasWithEntries(cxt, def.jobType, client)
+            }.orEmpty().toMutableSet()
+        } else {
+            mutableSetOf()
+        }
         try {
             val keys = def.tasks(runCxt, client)
             clientCounts = clientCounts.withTotal(keys.size.toLong())
@@ -229,10 +239,12 @@ internal class JobRun(
             TaskKind.done -> {
                 count(JobCounts(completed = 1))
                 tracer.record(JobTraceEvent.taskDone, client, outcome.key)
+                clearFailure(outcome.key)
             }
             TaskKind.nothingToDo -> {
                 count(JobCounts(skipped = 1))
                 tracer.record(JobTraceEvent.taskNothingToDo, client, outcome.key)
+                clearFailure(outcome.key)
             }
             TaskKind.failed -> {
                 count(JobCounts(failed = 1))
@@ -243,11 +255,21 @@ internal class JobRun(
                     "Job '${def.jobType}' task '${outcome.key}' failed" +
                         (if (scenario != null) " ($scenario)" else "") + ": ${e?.message}"
                 }
+                val resource = extra[KdrException.resourceIdKey].toOptStr() ?: resourceOf(outcome.key)
+                val recorded = resource != null && !launch.dryRun && bestEffort("record the failure on '$resource'") {
+                    val details = extra.filterKeys { it != KdrException.scenarioKey && it != KdrException.resourceIdKey }
+                    JobExceptionRows.record(
+                        cxt, def.jobType, resource, scenario ?: JOBR.unclassified, e?.message ?: "The task failed.",
+                        details, launch.name,
+                    )
+                } == true
+                if (recorded) withFailures.add(resource)
                 tracer.record(
                     JobTraceEvent.taskFailed, client, outcome.key, e?.message,
                     linkedMapOf(
                         KdrException.scenarioKey to scenario,
-                        KdrException.resourceIdKey to extra[KdrException.resourceIdKey].toOptStr(),
+                        KdrException.resourceIdKey to resource,
+                        JOBX.recorded to recorded,
                     ),
                 )
             }
@@ -264,6 +286,33 @@ internal class JobRun(
         if (mode == JobRunMode.sync && tasksRun >= profile.syncHardCap) {
             stop("A synchronous run reached its hard cap of ${profile.syncHardCap} tasks.")
         }
+    }
+
+    /** Clears this job's earlier failure on the gedra [key]'s task is for, when one was recorded (issue #871). */
+    private fun clearFailure(key: String) {
+        val resource = resourceOf(key) ?: return
+        if (!withFailures.remove(resource)) return
+        bestEffort("clear the failure on '$resource'") { JobExceptionRows.clear(cxt, def.jobType, resource) }
+    }
+
+    /**
+     * The gedra [key]'s task is for, by the job's `resourceOf` -- which is the job's own code, so it is run as
+     * bookkeeping is: a key it cannot map is logged and treated as naming no gedra, never allowed to stop the run.
+     */
+    private fun resourceOf(key: String): String? {
+        val mapping = def.resourceOf ?: return null
+        return bestEffort("map task '$key' to its gedra") { mapping(key) }
+    }
+
+    /**
+     * Runs [block], answering null when it throws: recording failures is the job's bookkeeping, and a problem
+     * with it is logged rather than allowed to fail or stop the work it describes.
+     */
+    private fun <T> bestEffort(what: String, block: () -> T): T? = try {
+        block()
+    } catch (e: Exception) {
+        LogJob.warn(cxt) { "Job '${def.jobType}' could not $what: ${e.message}" }
+        null
     }
 
     private fun count(delta: JobCounts) {

@@ -20,6 +20,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.job.JobService
+import com.dynamicruntime.common.job.jobExceptionTables
 import com.dynamicruntime.common.job.jobOperatorSchema
 import com.dynamicruntime.common.job.jobTables
 import com.dynamicruntime.common.node.InstanceConfigService
@@ -201,6 +202,8 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(clientSyncTables(cxt), appOnly)
         // Batch-job status rows (issue #868): the launch and per-client rows every claim and heartbeat locks.
         collector.addTables(jobTables(cxt), appOnly)
+        // Per-gedra job failures (issue #871), in the same topic.
+        collector.addTables(jobExceptionTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)
         // The cross-client admin config surface (issue #685): the same operations full-scope, for managing any
         // client's stored configuration (and creating a new one) over the API.
