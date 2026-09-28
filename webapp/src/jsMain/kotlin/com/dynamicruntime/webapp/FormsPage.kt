@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.GSORT
+import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
@@ -41,6 +42,22 @@ private val formsScope = MainScope()
 
 /** What identifies a forms-page destination: which form is open. Everything else refines it. */
 private val formsIdentity = setOf(HP.gedra)
+
+/**
+ * The **workflow's listing** route (issue #792): the forms in one state -- eligible, engaged, finished -- for one
+ * normal workflow, where a count on the Workflows page leads. Its own page under Workflows rather than My forms
+ * filtered: the workflow and the state are what the page *is* (its heading, a state switch, a way back to
+ * Workflows), not a chip among the trait filters that Clear would drop and a stranger to the page would miss.
+ * Drawn by [FormsPage] in workflow mode, so the rows, the search within them and every row action are the
+ * listing's own. Frontend-only, like the editor routes: reached from the Workflows page, not the server-built nav.
+ */
+const val pageWorkflowForms = "workflowForms"
+
+/** The forms page's one prop: which listing it is drawing. */
+external interface FormsPageProps : Props {
+    /** [pageWorkflowForms] for a workflow's listing; absent (or [HMENU.pageForms]) for My forms. */
+    var listing: String?
+}
 
 /** How many forms a page shows. Small enough to page a long list, large enough that most callers never do. */
 private const val formsPageSize = 25
@@ -78,7 +95,14 @@ private fun includeUsersArg(on: Boolean): Map<String, Any?> = if (on) mapOf(EI.i
  * The stored row renders through the shared [SchemaForm] in friendly, read-only mode, so its derived system
  * fields drop away and the trait data reads as a filled-in form.
  */
-val FormsPage = FC<Props> {
+val FormsPage = FC<FormsPageProps> { props ->
+    // Which listing this is (issue #792): My forms, or a workflow's listing of forms. The page id every hash it
+    // writes and every child it opens carries, so a form worked on from a workflow's listing returns to it.
+    val listingPage = props.listing ?: HMENU.pageForms
+    val workflowMode = listingPage == pageWorkflowForms
+    // The workflow's listing pushes a history entry when its workflow or state changes: a move between destinations,
+    // as a switch of state is, where on My forms a search change only refines the one destination.
+    val identity = if (workflowMode) formsIdentity + formsDrillKeys else formsIdentity
     var catalog by useState<Catalog?>(null)
     var listEndpoint by useState<EndpointInfo?>(null)
     var getEndpoint by useState<EndpointInfo?>(null)
@@ -143,6 +167,9 @@ val FormsPage = FC<Props> {
     // True once the initial hash restore has run; until then the sync effect stays quiet so it cannot overwrite
     // a `g=` we are about to read (the same gate the Users page uses).
     var restored by useState(false)
+    // The search a hash change asks for (issue #792), read by an effect with fresh state rather than by the hash
+    // listener, whose closure is the first render's. Null until a hash change names this page.
+    var hashSearch by useState<Map<String, String>?>(null)
 
     // The gedra id of the form open in the view, or null in the list.
     var viewingId by useState<String?>(null)
@@ -255,6 +282,19 @@ val FormsPage = FC<Props> {
         loadPage(ep, 0, applied)
     }
 
+    // A history move between the workflow's states (issue #792): the state is part of what identifies the page,
+    // so a switch pushed an entry, and Back lands on a hash whose state differs from the one applied. The page
+    // follows it, as it follows `g=` -- only when a drill key moved: a search change writes the hash in place
+    // and never reaches here as a difference, and an unrelated hash change (a form opened) leaves it alone.
+    useEffect(hashSearch) {
+        val wanted = hashSearch ?: return@useEffect
+        val ep = listEndpoint ?: return@useEffect
+        if (workflowMode && formsDrillKeys.any { wanted[it] != appliedSearch[it] }) {
+            searchDraft = wanted
+            applySearch(ep, wanted)
+        }
+    }
+
     /**
      * Loads the whole surface for [client] and its first page (issue #714): the catalog for that client (null =
      * the caller's own cross-client surface), which rebinds every form endpoint and -- because a client-scoped
@@ -328,9 +368,13 @@ val FormsPage = FC<Props> {
         // view. Found by #694's status-chip link; it also caught the Actions "Edit" link.
         onHashChange {
             val h = hashParams()
-            if (h[HP.page] == HMENU.pageForms) viewingId = h[HP.gedra]
+            if (h[HP.page] == listingPage) {
+                viewingId = h[HP.gedra]
+                hashSearch = formsSearchFromHash(h)
+            }
         }
     }
+
 
     // Clear the flash after a beat, so it plays once on arrival and a later re-render (paging, a reload) does
     // not repeat it (issue #592). The timer is cleared on the next run rather than via an effect-cleanup
@@ -459,22 +503,65 @@ val FormsPage = FC<Props> {
         // across an edit. It is not part of `formsIdentity` (only the open form is), so a filter change replaces
         // the entry in place rather than pushing one -- typing a filter never spams Back.
         val params = buildList {
-            add(HP.page to HMENU.pageForms)
+            add(HP.page to listingPage)
             viewingId?.let { add(HP.gedra to it) }
             addAll(formsSearchHashParams(appliedSearch))
             addAll(sortHashParams(sortColumn, sortDescending))
         }
         val current = hashParams()[HP.gedra]
         val reachable = current == null || rows.any { it[GDF.gedraId] == current }
-        applyHashWrite(params, formsIdentity, reachable)
+        applyHashWrite(params, identity, reachable)
     }
 
     div {
         className = ClassName("card wide")
-        h1 { +"My forms" }
-
         val cat = catalog
         val ep = listEndpoint
+        // The workflow drilled into (issue #792) -- the page's identity in workflow mode, null on My forms.
+        val drill = workflowDrillOf(appliedSearch)
+        if (workflowMode) {
+            // The workflow's listing heads itself with the workflow (its label, as the Workflows page shows it) and
+            // a way back to Workflows, and switches state in place: the same three counts the Workflows page
+            // offered, so moving from the engaged forms to the finished ones needs no trip back. Drawn above the
+            // list's own states so the switch is there while a state lists nothing.
+            div {
+                className = ClassName("wf-header")
+                backToListing(HMENU.pageWorkflows)
+                h1 { MarkdownInline { source = workflowDrillLabel(appliedSearch, listingWorkflows) ?: "Workflow" } }
+                if (ep != null && viewingId == null) {
+                    div {
+                        className = ClassName("wf-actions")
+                        WAGG.drillStates.forEach { state ->
+                            Button {
+                                type = if (state == drill?.second) "primary" else "default"
+                                onClick = {
+                                    if (state != drill?.second) {
+                                        // The state is one of the listing's search keys, so it rides the query like
+                                        // the rest; the draft follows so a later Apply does not undo the switch.
+                                        val next = appliedSearch + (WAGG.workflowState to state.name)
+                                        searchDraft = searchDraft + (WAGG.workflowState to state.name)
+                                        applySearch(ep, next)
+                                    }
+                                }
+                                +workflowStateHeading(state).replaceFirstChar { it.uppercase() }
+                            }
+                        }
+                    }
+                }
+            }
+            if (viewingId == null) {
+                p {
+                    className = ClassName("subtitle")
+                    +workflowDrillNote(drill?.second)
+                }
+            }
+        } else {
+            h1 { +"My forms" }
+        }
+        // The search beyond the listing's own identity (issue #792): on the workflow's listing the workflow and state
+        // are not a narrowing of it, so "no forms match your search" and "nothing here at all" part on this.
+        val narrowing = appliedSearch - formsDrillKeys
+
         when {
             listLoading -> p {
                 className = ClassName("subtitle")
@@ -495,7 +582,7 @@ val FormsPage = FC<Props> {
                 // view in place, rows kept. Drawn for every sub-state so a loading or missing form still has a
                 // way back; the actions appear once the form is up.
                 val formUp = !viewLoading && viewError == null && viewRow != null
-                formsEditorHeader(title = { +"View form" }) {
+                formsEditorHeader(title = { +"View form" }, listing = listingPage) {
                     if (formUp) {
                         // Edit, offered only when the caller's surface carries the patch endpoint (issue #417).
                         patchEndpoint?.let {
@@ -504,7 +591,7 @@ val FormsPage = FC<Props> {
                                 onClick = {
                                     viewingId?.let { id ->
                                         navigateHash(
-                                            listOf(HP.page to pageEditForm, HP.from to HMENU.pageForms, HP.gedra to id) +
+                                            listOf(HP.page to pageEditForm, HP.from to listingPage, HP.gedra to id) +
                                                 formsSearchHashParams(appliedSearch) +
                                                 sortHashParams(sortColumn, sortDescending),
                                         )
@@ -580,7 +667,7 @@ val FormsPage = FC<Props> {
             // The list, but truly empty: no forms at all, and no search narrowing it (a search that matches
             // nothing is a different state, handled in the list branch so its box stays on screen to be cleared),
             // and no reload failure -- an empty page after a failed request is unknown, not empty (#562 review).
-            rows.isEmpty() && offset == 0 && appliedSearch.isEmpty() && searchError == null -> {
+            rows.isEmpty() && offset == 0 && narrowing.isEmpty() && searchError == null -> {
                 // A create that returned to an empty page still says it happened (#758 review): without a filter
                 // this branch is where such an arrival lands, and "you haven't created any forms yet" straight
                 // after creating one is the create-reads-as-failed outcome the note exists to prevent.
@@ -593,12 +680,15 @@ val FormsPage = FC<Props> {
                 } else {
                     p {
                         className = ClassName("subtitle")
-                        +"You haven't created any forms yet."
+                        // A workflow's listing with nothing in this state says so; the heading above still names
+                        // the workflow and the switch still offers the other states.
+                        +(if (workflowMode) "No forms are ${drill?.second?.let(::workflowStateHeading) ?: "listed"} here." else "You haven't created any forms yet.")
                     }
                 }
                 // Offered only when the caller's surface can create -- the same rule the edit/delete controls
-                // follow, so the empty state never dangles a button that would 404.
-                createEndpoint?.let {
+                // follow, so the empty state never dangles a button that would 404. Not on a workflow's listing: a
+                // new form is not in the workflow, so it would land on My forms, off this page.
+                if (!workflowMode) createEndpoint?.let {
                     div {
                         className = ClassName("row")
                         Button {
@@ -609,7 +699,7 @@ val FormsPage = FC<Props> {
                             // on the create round-trip. Kept identical to the other button so neither drifts.
                             onClick = {
                                 navigateHash(
-                                    listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms) +
+                                    listOf(HP.page to HMENU.pageNewForm, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
                                         sortHashParams(sortColumn, sortDescending),
                                 )
@@ -621,13 +711,13 @@ val FormsPage = FC<Props> {
                 // A cross-client admin can create for another user even with no forms of their own (issue #672
                 // Slice 3): the on-behalf create is user-first, so it belongs in the empty state too, beside the
                 // list branch's copy.
-                if (canSeeAllClients) {
+                if (canSeeAllClients && !workflowMode) {
                     div {
                         className = ClassName("row")
                         Button {
                             onClick = {
                                 navigateHash(
-                                    listOf(HP.page to pageCreateForUser, HP.from to HMENU.pageForms) +
+                                    listOf(HP.page to pageCreateForUser, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
                                         sortHashParams(sortColumn, sortDescending),
                                 )
@@ -648,7 +738,7 @@ val FormsPage = FC<Props> {
                 // client, so under another client's listing the new row would land elsewhere and read as
                 // "filtered out". Creating on another client's behalf is its own issue (#672 Slice 3); until
                 // then the note under the selector says where a new form goes.
-                if (chosenClient == null) createEndpoint?.let {
+                if (chosenClient == null && !workflowMode) createEndpoint?.let {
                     div {
                         className = ClassName("row")
                         Button {
@@ -658,7 +748,7 @@ val FormsPage = FC<Props> {
                             // the same filtered, sorted listing rather than the default one.
                             onClick = {
                                 navigateHash(
-                                    listOf(HP.page to HMENU.pageNewForm, HP.from to HMENU.pageForms) +
+                                    listOf(HP.page to HMENU.pageNewForm, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
                                         sortHashParams(sortColumn, sortDescending),
                                 )
@@ -671,13 +761,13 @@ val FormsPage = FC<Props> {
                 // stands apart from "New form" (which makes one in the caller's own client) and is offered whether
                 // or not a client is chosen -- the target user's client is what the on-behalf create uses. Carries
                 // the listing's search and sort so the page's back link returns to the same list.
-                if (canSeeAllClients) {
+                if (canSeeAllClients && !workflowMode) {
                     div {
                         className = ClassName("row")
                         Button {
                             onClick = {
                                 navigateHash(
-                                    listOf(HP.page to pageCreateForUser, HP.from to HMENU.pageForms) +
+                                    listOf(HP.page to pageCreateForUser, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
                                         sortHashParams(sortColumn, sortDescending),
                                 )
@@ -787,18 +877,16 @@ val FormsPage = FC<Props> {
                         values = searchDraft
                         applied = appliedSearch
                         showSurveyStatus = surveyFilterOffered
-                        // The workflow drill-down (issue #792) names itself among the chips, so a listing opened from
-                        // a count on the workflow pages never looks like the whole list; Clear drops it with the rest.
-                        extraChips = listOfNotNull(workflowDrillChip(appliedSearch, listingWorkflows))
                         panelOpen = filtersOpen
                         onTogglePanel = { filtersOpen = !filtersOpen }
                         onChange = { name, value -> searchDraft = searchDraft + (name to value) }
                         onSearch = { applySearch(ep, searchDraft) }
                         onClear = {
-                            // Clear drops the trait filters and the free-text term, but keeps the scope controls,
-                            // which have their own controls outside this panel: the user scope (issue #562) and the
-                            // client scope (issue #668). Clearing either is done through its own control.
-                            val kept = appliedSearch.filterKeys { it == EI.user || it == EI.client }
+                            // Clear drops the trait filters and the free-text term, but keeps what no filter control
+                            // put there (`formsScopeKeys`): the user scope (issue #562) and the client scope (#668),
+                            // each cleared through its own control, and a workflow listing's own workflow and state
+                            // (#792), which are the page rather than a filter on it.
+                            val kept = appliedSearch.filterKeys { it in formsScopeKeys }
                             searchDraft = kept
                             applySearch(ep, kept)
                         }
@@ -864,13 +952,13 @@ val FormsPage = FC<Props> {
                     val listingContext = formsSearchHashParams(appliedSearch) + sortHashParams(sortColumn, sortDescending)
                     // "View Info" (issue #694): the survey's read-only view, with its Edit toggle.
                     onSurveyView = { id ->
-                        navigateHash(listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id) + listingContext)
+                        navigateHash(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id) + listingContext)
                     }
                     // The status chip's direct-to-edit link (issue #694): straight into the survey's edit mode,
                     // bypassing the read-only stop -- a real href, so it is keyboard-reachable and can open in a
                     // new tab.
                     surveyEditHref = { id ->
-                        hashHref(listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to id, HP.edit to "1") + listingContext)
+                        hashHref(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id, HP.edit to "1") + listingContext)
                     }
                     // The workflow column (issue #791): its summary, the client's copy for an empty cell, and where
                     // a workflow link goes -- the survey page opened on that workflow, carrying the listing's context
@@ -878,12 +966,12 @@ val FormsPage = FC<Props> {
                     workflowSummary = listingWorkflows
                     noWorkflowsCopy = emptyWorkflowsCopy
                     workflowHref = { id, wf, task, edit ->
-                        hashHref(workflowPageHash(id, wf, task, edit) + listingContext)
+                        hashHref(workflowPageHash(id, wf, task, edit, listingPage) + listingContext)
                     }
                     // Drilled in from the workflow pages (issue #792): View Workflow and a row double-click open it.
                     drillWorkflowId = workflowDrillOf(appliedSearch)?.first
                     onOpenWorkflow = { id, wf, task, edit ->
-                        navigateHash(workflowPageHash(id, wf, task, edit) + listingContext)
+                        navigateHash(workflowPageHash(id, wf, task, edit, listingPage) + listingContext)
                     }
                     confirmingDeleteId = rowConfirmDeleteId
                     deletingId = rowDeletingId

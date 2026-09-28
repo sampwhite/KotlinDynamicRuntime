@@ -298,6 +298,13 @@ unrestricted scope). The rules that follow from that:
   returns to the listing the page was launched from **as it was**, never to the user's client's listing: that
   switched the admin's Client selector to a client they never chose, and the cross-client view shows the new
   row with its Client column anyway.
+- **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
+  page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
+  with the workflow and state riding the hash as search keys (`formsDrillKeys`) so paging, sorting and a client
+  switch carry them, but kept by Clear and part of the page's history identity, never a chip. Every way home
+  reads the listing off `from` (`formsListingOf`, honouring only the two forms listings), so a form opened
+  there returns there; a `page=forms` hash naming a workflow is routed to the workflow's listing, so old links
+  still open where they did.
 - **Choosing a client drops the `user` scope** (`formsSearchForClient`): a user belongs to one client. A shared
   `client=X` link opened by a caller without `allClients` drops the selector from the search too
   (`formsInitialSearch`), since no control would let them clear it.

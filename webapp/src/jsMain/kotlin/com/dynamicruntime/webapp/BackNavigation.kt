@@ -27,6 +27,9 @@ val backListings: Map<String, BackListing> = listOf(
     BackListing(HMENU.pageDocs, "Documents"),
     BackListing(HMENU.pageOperator, "Operator"),
     BackListing(HMENU.pageForms, "My forms"),
+    // The workflow pages (issue #792): the aggregate, and a workflow's own listing of forms under it.
+    BackListing(HMENU.pageWorkflows, "Workflows"),
+    BackListing(pageWorkflowForms, "Workflow forms"),
     BackListing(HMENU.pageUsers, "Users"),
     BackListing(HMENU.pageCatalog, "Endpoint catalog"),
     BackListing(HMENU.pageDebug, "Debug"),

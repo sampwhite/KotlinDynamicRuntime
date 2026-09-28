@@ -279,7 +279,8 @@ val EditFormPage = FC<Props> {
                 p {
                     className = ClassName("subtitle")
                     +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
-                        "Save sends only the sections you leave in place; Done returns to your forms.")
+                        "Save sends only the sections you leave in place; Reset drops what you have changed; " +
+                        "Done returns to your forms.")
                 }
 
                 // The traits locked for this caller (issue #857): named, with the workflow locking each, so a refused
@@ -331,6 +332,9 @@ val EditFormPage = FC<Props> {
                     Button {
                         type = "primary"
                         loading = running
+                        // Nothing to send while the fields hold what is stored -- right after a load, and right after
+                        // a save that re-seeded them -- so Save waits for a change rather than posting an empty patch.
+                        disabled = !dirty
                         onClick = {
                             val check = checkInput(targetType, values)
                             // An addOrReplace must carry complete data; checkInput does not demand it (the edit's
@@ -351,7 +355,7 @@ val EditFormPage = FC<Props> {
                             val lockProblem = when {
                                 changedLocks.isEmpty() -> null
                                 // The server's wording (`TraitLockCopy`), so a refusal reads the same whichever side catches it.
-                                !overriding -> TraitLockCopy.changeRefused(changedLocks.map { it.names }) + " Undo the change" +
+                                !overriding -> TraitLockCopy.changeRefused(changedLocks.map { it.names }) + " Reset to drop the change" +
                                     (if (changedLocks.all { it.canOverride }) ", or override the lock." else ".")
                                 reason == null -> "Give a reason for overriding the lock."
                                 !changedLocks.all { it.canOverride } ->
@@ -416,6 +420,25 @@ val EditFormPage = FC<Props> {
                             }
                         }
                         +"Save changes"
+                    }
+                    // Reset: every section back to what is stored, and with it whatever a change had raised -- a
+                    // validation mark, a lock refusal and its override, a save that was refused. The way out when a
+                    // change cannot be saved (a locked section, a refused write) or is simply not wanted; offered only
+                    // while there is something to drop, so it cannot read as a control that does nothing.
+                    Button {
+                        disabled = !dirty || running
+                        onClick = {
+                            values = seeded
+                            failures = null
+                            revalidate = false
+                            runError = null
+                            lockError = null
+                            overriding = false
+                            overrideReason = ""
+                            saved = false
+                            editedSinceSave.current = false
+                        }
+                        +"Reset"
                     }
                 }
 

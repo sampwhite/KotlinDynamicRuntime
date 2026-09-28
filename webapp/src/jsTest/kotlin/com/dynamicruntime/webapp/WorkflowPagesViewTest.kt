@@ -39,9 +39,10 @@ class WorkflowPagesViewTest {
     }
 
     @Test
-    fun aCountLeadsToTheListingDrilledIntoItsWorkflowAndState() {
+    fun aCountLeadsToTheWorkflowsListingOfItsFormsInThatState() {
+        // The workflow's own listing page, not My forms filtered: the workflow and state are the page's identity.
         assertEquals(
-            listOf(HP.page to HMENU.pageForms, WAGG.workflowId to "audit", WAGG.workflowState to "engaged"),
+            listOf(HP.page to pageWorkflowForms, WAGG.workflowId to "audit", WAGG.workflowState to "engaged"),
             workflowDrillHash("audit", WfColumnCategory.engaged, client = null),
         )
         // Across clients, the listing's client says whose workflow it is.
@@ -54,7 +55,7 @@ class WorkflowPagesViewTest {
     }
 
     @Test
-    fun theListingNamesTheDrillDownItWasOpenedWith() {
+    fun theWorkflowsListingIsHeadedByTheWorkflowAndSaysWhichFormsTheseAre() {
         val summary = parseWorkflowSummary(
             mapOf(
                 WCOL.workflows to listOf(
@@ -67,11 +68,43 @@ class WorkflowPagesViewTest {
         )
         val applied = mapOf(WAGG.workflowId to "audit", WAGG.workflowState to "engaged")
         assertEquals("audit" to WfColumnCategory.engaged, workflowDrillOf(applied))
-        // Named with the word the count's heading used, so the click and the listing agree.
-        assertEquals("Workflow: Audit review (engaged)", workflowDrillChip(applied, summary))
-        // Without a summary naming it, the id stands in; without a state, any.
-        assertEquals("Workflow: other", workflowDrillChip(mapOf(WAGG.workflowId to "other"), summary))
-        assertNull(workflowDrillChip(emptyMap(), summary))
+        // Headed with the workflow's label, as the Workflows page showed it; the id stands in where no summary names it.
+        assertEquals("Audit review", workflowDrillLabel(applied, summary))
+        assertEquals("other", workflowDrillLabel(mapOf(WAGG.workflowId to "other"), summary))
+        assertNull(workflowDrillLabel(emptyMap(), summary))
+        // Under another client the summary's entry is another client's workflow, so it does not name this one.
+        assertEquals("audit", workflowDrillLabel(applied + (EI.client to "globex"), summary))
+        // The line under the heading says which forms these are, with the word the count's heading used.
+        assertEquals("The forms engaged with this workflow, with work under way.", workflowDrillNote(WfColumnCategory.engaged))
+        assertEquals("Every form this workflow applies to.", workflowDrillNote(null))
+        // The workflow and state are the listing's own, kept by Clear beside the scope controls.
+        assertTrue(formsDrillKeys.all { it in formsScopeKeys } && EI.user in formsScopeKeys && EI.client in formsScopeKeys)
+    }
+
+    /**
+     * A form page opened from a workflow's listing goes home to it (issue #792): every way back reads the listing off
+     * `from`, and a page opened from My forms, or from nowhere the back rules know, still goes to My forms.
+     */
+    @Test
+    fun aFormOpenedFromTheWorkflowsListingReturnsToIt() {
+        val fromWorkflow = mapOf(
+            HP.page to pageSurveyEdit, HP.from to pageWorkflowForms, HP.gedra to "g1", HP.workflow to "audit",
+            WAGG.workflowId to "audit", WAGG.workflowState to "engaged",
+        )
+        val home = formsListingReturn(fromWorkflow, "g1").toMap()
+        assertEquals(pageWorkflowForms, home[HP.page])
+        // The workflow and state ride home as search keys, so the listing reopens on the same state.
+        assertEquals("audit", home[WAGG.workflowId])
+        assertEquals("engaged", home[WAGG.workflowState])
+        assertEquals(pageWorkflowForms, formsRawViewHash(fromWorkflow, "g1").toMap()[HP.page])
+        assertEquals(pageWorkflowForms, formsSurveyViewHash(fromWorkflow, "g1").toMap()[HP.from])
+        // A workflow-column link on the workflow's listing says so, so the survey page's back link leads there.
+        assertEquals(pageWorkflowForms, workflowPageHash("g1", "audit", "t", edit = true, from = pageWorkflowForms).toMap()[HP.from])
+        assertEquals(HMENU.pageForms, workflowPageHash("g1", "audit", "t", edit = true).toMap()[HP.from])
+        // Opened from My forms, or from an unknown page, home is My forms.
+        assertEquals(HMENU.pageForms, formsListingOf(mapOf(HP.from to HMENU.pageForms)))
+        assertEquals(HMENU.pageForms, formsListingOf(mapOf(HP.from to "users")))
+        assertEquals(HMENU.pageForms, formsListingOf(emptyMap()))
     }
 
     @Test
