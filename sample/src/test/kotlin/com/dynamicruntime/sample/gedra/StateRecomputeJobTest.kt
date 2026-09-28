@@ -148,6 +148,7 @@ private class BrokenStateFixture : ComponentDefinition {
         )
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         /** The expense year that marks a form for breaking; no other test uses it. */
         const val markerYear = 2003
