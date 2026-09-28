@@ -99,7 +99,7 @@ fun SchTypesBuilder.jobExceptionEntryType() {
 }
 
 /**
- * Records, clears and reads per-gedra job failures (issue #871).
+ * Records, clears, and reads per-gedra job failures (issue #871).
  *
  * Each row holds entries in the Gedra entry shape -- `traitId`, `data`, `createdAt`, `updatedAt` -- of the one
  * [JOBX.traitId] trait, keyed by job type: `createdAt` is the first failure, `updatedAt` the latest. A failure
@@ -134,7 +134,7 @@ object JobExceptionRows {
             val history = if (prior == null) {
                 emptyList()
             } else {
-                val earlier = linkedMapOf<String, Any?>(
+                val earlier = linkedMapOf(
                     JOBX.at to prior[GE.updatedAt], JOBX.scenario to priorData[JOBX.scenario],
                     JOBX.message to priorData[JOBX.message], JOB.launchName to priorData[JOB.launchName],
                 )

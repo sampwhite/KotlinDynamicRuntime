@@ -263,7 +263,7 @@ internal class JobRun(
                         details, launch.name,
                     )
                 } == true
-                if (recorded && resource != null) withFailures.add(resource)
+                if (recorded) withFailures.add(resource)
                 tracer.record(
                     JobTraceEvent.taskFailed, client, outcome.key, e?.message,
                     linkedMapOf(
