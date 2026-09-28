@@ -214,7 +214,15 @@ class WorkflowView(
     fun offersEdit(shown: WfTaskView?): Boolean =
         canWork && (shown?.let { isEditable(it, isEdit = true) } ?: tasks.any { isEditable(it, isEdit = true) })
 
-    /** Whether the form may be put into this normal workflow from here: not yet engaged, and engagement is open. */
+    /**
+     * Whether the form may be put into this normal workflow from here: not yet engaged, eligible, and engagement is open.
+     *
+     * Offering Engage here -- on the form's own page, once it is eligible, which for a workflow that tests the survey
+     * means once the survey is complete -- is the current **best-guess presentation**, not a direction (issue #829): a
+     * large client may well need a different UI, and an API integration may engage a form as soon as the engage
+     * endpoint allows. The endpoint's gates -- the engagement window and the eligibility tests -- are the rule; this
+     * only mirrors them, so a page does not offer what the endpoint would refuse.
+     */
     val canEngage: Boolean get() = isNormal && engaged == false && eligible == true && phase == WfPhase.engageable.name
 }
 
@@ -482,7 +490,14 @@ fun localTaskStatus(task: WfTaskView, values: Map<String, Map<String, Any?>>): W
 fun shownFailures(all: List<SchFailure>, committed: Set<String>, wholeTraitChecked: Boolean): List<SchFailure> =
     if (wholeTraitChecked) all else all.filter { f -> committed.any { c -> f.path == c || f.path.startsWith("$c.") || f.path.startsWith("$c[") } }
 
-/** Whether a stored entry is a **supplied default** (`source=prefill`, issue #679/#710), not entered data. */
+/**
+ * Whether a stored entry is a **supplied default** (`source=prefill`, issue #679/#710), not entered data.
+ *
+ * The one seam where presentation asks "is this a default" (issue #829). The defaults design deliberately kept the
+ * presentation -- the chip, "Use it", the reset, the summary line -- off any particular source: `prefill` is the only
+ * supplier today, but others may come, and a new one joins by being recognised here, not at each place that presents
+ * a default.
+ */
 private fun isPrefillEntry(entry: Map<String, Any?>): Boolean = entry[GE.source].toOptStr() == GSRC.prefill
 
 /**

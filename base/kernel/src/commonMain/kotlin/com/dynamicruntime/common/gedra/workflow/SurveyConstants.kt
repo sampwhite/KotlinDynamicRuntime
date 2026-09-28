@@ -14,6 +14,11 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * backend writes the `surveyCompletion` state and the two cfacts under these names, and the **frontend** reads
  * them back to render the forms-list survey-status column (issue #694). The producer -- the state config and
  * the deriver -- stays in `base:common` (`SurveyState.kt`); only these shared names live here.
+ *
+ * **The survey gates nothing on its own** (issue #829). A complete survey surfaces as [surveyComplete], a valid one
+ * as [surveyValid] -- form-singleton cfacts, and that is all. Whether a normal workflow requires them is that
+ * workflow's own choice, made in its eligibility tests (the sample's audit review does); a workflow whose tests do
+ * not name them may engage a form whose survey is unfinished.
  */
 @Suppress("ConstPropertyName")
 object SVY {

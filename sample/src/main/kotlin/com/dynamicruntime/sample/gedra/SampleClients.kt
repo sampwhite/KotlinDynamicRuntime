@@ -443,6 +443,8 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             label = "Audit review"
             // Eligibility (issue #783), against the cfacts the survey emits: a form is offered the audit review
             // once its review is done and still valid. Every test is evaluated, so a form failing both says both.
+            // Requiring the survey is this workflow's choice, not the framework's (issue #829): another may leave
+            // these tests out and engage a form before its survey is finished.
             eligibility(SW.surveyDone, SVY.surveyComplete, "%{@t(\"${SF.acmeWf}.${SW.auditReview}.${SW.surveyDone}\")}")
             eligibility(SW.surveyClean, SVY.surveyValid, "Some of the form's entries no longer pass their checks.")
             // The workflow's own cfact (issue #784): an audit whose findings are still open means the site is under
