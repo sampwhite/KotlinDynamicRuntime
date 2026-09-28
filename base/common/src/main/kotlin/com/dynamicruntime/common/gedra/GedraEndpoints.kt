@@ -59,7 +59,6 @@ import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.getOptBool
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 // `GEP` (the endpoint paths and response type-names) now lives in `base/kernel` (GedraConstants.kt) so the
@@ -1022,7 +1021,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
 
     type(GEP.workflowSaveType) {
         type = SCT.kObject
-        description = "The outcome of a workflow save: either a refusal naming what is missing, or the created gedra."
+        description = "The outcome of a workflow save: a refusal naming what is missing, the created gedra, or the " +
+            "id of the form an edit updated."
         property(WSF.saved, "Whether the save happened; false means a required trait was missing.", required = true) {
             type = SCT.boolean
         }
@@ -1030,12 +1030,10 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             type = SCT.array
             items { type = SCT.string }
         }
-        property(WSF.item, "When saved: the created form document, or the updated one for a survey edit.") { ref(docType) }
-        property(
-            WSF.view,
-            "When saved by a survey edit: the refreshed workflow view -- each task's status and the earliest task " +
-                "needing action -- so the save is the refresh (issue #700).",
-        ) { ref(GEP.workflowViewType) }
+        property(WSF.item, "When saved by a create: the created form document.") { ref(docType) }
+        // An edit answers with the id alone (issue #827), as a patch does: it says the form's state may have moved, and
+        // the workflow view is where a page reads the new state from.
+        property(GDF.gedraId, "When saved by an edit: the form it updated. Its new state is read from the workflow view.")
     }
 
     // Saves the entries a workflow task collected, with the workflow's gate (issue #535). A refused save is a
@@ -1044,8 +1042,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     generalEndpoint(
         GEP.workflowSave,
         "Saves a workflow task's entries. A `create` save creates the form (or, if incomplete, answers with the " +
-            "unmet required traits -- not an error); a survey `edit` save updates the form named by gedraId and " +
-            "recomputes its survey state.",
+            "unmet required traits -- not an error); an `edit` save updates the form named by gedraId, recomputes " +
+            "its state and answers with its id, the new state being the workflow view's to show.",
         HttpMethod.POST,
         outputRef = GEP.workflowSaveType,
         inputFields = {
@@ -1083,31 +1081,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // A `create` save (no gedraId) may be for another user (issue #727); an `edit` acts on the named form as
         // the caller, so `user` does not apply there and the caller's own context is used.
         val saveCxt = if (gedraId == null) createForUserCxt(c, request) else c
-        val result = saveWorkflow(saveCxt, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), gedraId, underLock)
-        // A survey edit answers with the refreshed view too (issue #700): re-resolved against the updated form,
-        // so the task rail's per-task statuses and its earliest-actionable task follow the save without a second
-        // call -- the save is the refresh. A create save has no form to resolve a survey against, so it answers as
-        // before. The same helpers the view endpoint uses, so the two cannot drift.
-        if (gedraId != null && result[WSF.saved] == true) {
-            // From the row the save already read back and returned as `item` -- its entries and owner are all the
-            // resolver needs -- rather than reading it a second time; the client confinement the view endpoint's
-            // own read re-checks is already guaranteed here by the patch path.
-            val item = result[WSF.item].toJsonMapOrEmpty()
-            val entriesByTask = entriesByTaskOf(declared, item[GDF.entries].toJsonListOfMaps())
-            val owner = prefillOwnerAttributes(c, declared, item[GDF.userId].toOptLong() ?: c.userId)
-            val approvals = WorkflowApprovals.forView(c, declared.def, gedraId)
-            // A normal workflow's refreshed view says whether the form is engaged, as the view endpoint's does.
-            val formId = GedraId.parse(gedraId)
-            val states = GedraDataService.get(c).readState(c, formId, ReadScopeRules.forCaller(c))
-            val formFacts = if (declared.def.entry == WfEntry.normal) WorkflowFormFacts.of(c, declared.def, states) else null
-            // The locks by the form's own client, as the view endpoint reads them (issue #857 review).
-            val lockedTraits = TraitLocks.describe(
-                c, formId.client, TraitLocks.heldFor(c, formId.client, item[GDF.entries].toJsonListOfMaps(), states),
-            )
-            result + (WSF.view to resolveWorkflowView(c, declared, entriesByTask, owner, approvals, formFacts, lockedTraits))
-        } else {
-            result
-        }
+        saveWorkflow(saveCxt, declared, taskId, saveId, request[GDF.entries].toJsonListOfMaps(), gedraId, underLock)
     }
 }
 

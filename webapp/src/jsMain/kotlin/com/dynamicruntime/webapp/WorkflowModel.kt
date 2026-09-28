@@ -482,20 +482,6 @@ fun localTaskStatus(task: WfTaskView, values: Map<String, Map<String, Any?>>): W
 fun shownFailures(all: List<SchFailure>, committed: Set<String>, wholeTraitChecked: Boolean): List<SchFailure> =
     if (wholeTraitChecked) all else all.filter { f -> committed.any { c -> f.path == c || f.path.startsWith("$c.") || f.path.startsWith("$c[") } }
 
-/**
- * The values to seed a task's fields from, keyed by trait id (issue #659): the inverse of [workflowSaveEntries].
- * A task's [WfTaskView.entries] are `{traitId, data}` maps; this pulls each `data` out under its `traitId`, so a
- * survey edit renders each field pre-filled with what is stored. A creation task has no entries, so this is empty.
- *
- * This is the **raw** read that keeps every entry -- used for a stored item straight off a save, which carries
- * only entered (`source=user`) data. To seed a *resolved view*, whose entries may include supplied defaults,
- * use [seedValuesOf], which splits them by mode.
- */
-fun seedValuesFromEntries(entries: List<Map<String, Any?>>): Map<String, Map<String, Any?>> =
-    entries.mapNotNull { entry ->
-        entry[GE.traitId].toOptStr()?.let { it to entry[GE.data].toJsonMapOrEmpty() }
-    }.toMap()
-
 /** Whether a stored entry is a **supplied default** (`source=prefill`, issue #679/#710), not entered data. */
 private fun isPrefillEntry(entry: Map<String, Any?>): Boolean = entry[GE.source].toOptStr() == GSRC.prefill
 
@@ -555,8 +541,8 @@ fun prefillPresentationOf(view: WorkflowView): PrefillPresentation {
 
 /**
  * Every task's seed values in one map, keyed by trait id (trait ids are unique across a workflow's tasks) -- what
- * the form starts from, and what it re-snapshots from the refreshed view a survey edit save returns (issue
- * #700). Supplied defaults are split by mode ([prefillPresentationOf]): a `filled` default seeds, an `offer` one
+ * the form starts from, and what it re-snapshots from the view the page re-reads after a survey edit save (issue
+ * #827). Supplied defaults are split by mode ([prefillPresentationOf]): a `filled` default seeds, an `offer` one
  * does not (it is offered, not entered), so the seed and the presented form never disagree about "unsaved".
  */
 fun seedValuesOf(view: WorkflowView): Map<String, Map<String, Any?>> = prefillPresentationOf(view).working
@@ -631,15 +617,14 @@ fun workflowSaveBody(
 }
 
 /**
- * The outcome of a save: whether it happened, the required trait ids left unmet, the created or updated form,
- * and -- on a survey edit (issue #700) -- the **refreshed view**, so the rail's statuses follow the save with no
- * second call. Null [view] on a create save, or a refusal.
+ * The outcome of a save: whether it happened, the required trait ids left unmet, and -- on a create -- the created
+ * form, whose id the page returns to the listing with. An edit carries none of the form (issue #827): it says only
+ * that the form's state may have moved, and the page re-reads the view to show what changed.
  */
 class WorkflowSaveOutcome(
     val saved: Boolean,
     val unmetTraits: List<String>,
     val item: Map<String, Any?>,
-    val view: WorkflowView? = null,
 )
 
 /** Reads a `/gedra/workflow/save` `results` map into a [WorkflowSaveOutcome]. */
@@ -647,7 +632,6 @@ fun parseSaveOutcome(results: Map<String, Any?>): WorkflowSaveOutcome = Workflow
     saved = results[WSF.saved] == true,
     unmetTraits = results[WSF.unmetTraits].toJsonListOfStrings(),
     item = results[WSF.item].toJsonMapOrEmpty(),
-    view = results[WSF.view]?.let { parseWorkflowView(it.toJsonMapOrEmpty()) },
 )
 
 /**

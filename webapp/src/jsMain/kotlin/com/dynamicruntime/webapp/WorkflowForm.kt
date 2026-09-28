@@ -8,6 +8,8 @@ import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.await
+import kotlin.js.Promise
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
@@ -106,6 +108,15 @@ external interface WorkflowFormProps : Props {
 
     /** The refusal the last approval came back with (issue #832), kept by the page across the reload that followed. */
     var approveRefusal: ApproveRefusal?
+
+    /**
+     * Re-reads the view after task `taskId`'s edit save (issue #827), staying on that task. A save says only that the
+     * form's state may have moved -- saving one task can move another's mark, a lock, the task needing action -- so the
+     * page reads the whole view again **in place**: the form is not remounted, so the other tasks' unsaved edits
+     * survive. Resolves with the fresh view once the page holds it, null when the form no longer resolves; rejects
+     * when the read fails. Unset for a creation form, whose save leaves the page.
+     */
+    var refreshView: ((taskId: String) -> Promise<WorkflowView?>)?
 }
 
 /** An approval's refusal (issue #832) and the task it concerns -- shown by that task's button, and nowhere else. */
@@ -150,25 +161,33 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // The user a create is being made for (issue #727), when an admin picked one; null is the self-create.
     // Meaningful only on a creation form; a survey edit never reads it.
     var pickedUser by useState<AdminUser?>(null)
-    var valuesByTrait by useState(seeded)
+    // Each of the four states a save settles is also held by its setter, which a save's continuation updates with a
+    // transform: it runs after two round trips (the save, then the view's re-read, issue #827), and the values its
+    // closure captured at the click are stale by then if the user typed on meanwhile.
+    val valuesState = useState(seeded)
+    var valuesByTrait by valuesState
+    val updateValues = valuesState.component2()
     // Which supplied `filled` defaults are still suggestions (issue #710), by trait: seeded from the view's
     // filled defaults, a field leaving the set the first time it is touched (below) and a "reset" putting it
     // back. `offer` defaults are not seeded here -- they are not shown until applied, so they are never
     // "suggested". Empty for a form that carries no prefill, which is every form but the demo today.
-    var suggestedByTrait by useState(wf.tasks.flatMap { it.traits }.associate { t ->
+    val suggestedState = useState(wf.tasks.flatMap { it.traits }.associate { t ->
         t.traitId to suggestedFilledFields(presentation, t.traitId)
     }.filterValues { it.isNotEmpty() })
+    var suggestedByTrait by suggestedState
+    val updateSuggested = suggestedState.component2()
     // Traits whose defaults are settled: once a task saves, its fields are stored as the user's own, so they
     // drop every default affordance (chip, "Use it", "reset") and read as ordinary fields (issue #710). The
-    // `presentation` here is from the first view and does not re-derive per save, so this records what it can no
-    // longer tell. A fresh load returns those entries as `source=user`, carrying nothing to present anyway.
-    var resolvedTraits by useState(emptySet<String>())
+    // `presentation` re-derives from the view the page re-reads after a save (issue #827), which returns those
+    // entries as `source=user`, carrying nothing to present; this covers a save whose re-read failed.
+    val resolvedState = useState(emptySet<String>())
+    val resolvedTraits by resolvedState
+    val updateResolved = resolvedState.component2()
     // The last-stored values, refreshed on each successful save -- what "unsaved" is measured against, so after a
     // save the saved task reads as clean rather than as differing from the first-render `seeded` snapshot.
-    var stored by useState(seeded)
-    // Each task's status for the rail (issue #700), refreshed from the view a survey edit save returns -- so
-    // saving one task can move another's mark (completing one can flip the earliest-actionable pointer).
-    var statuses by useState(wf.tasks.associate { it.id to it.status })
+    val storedState = useState(seeded)
+    val stored by storedState
+    val updateStored = storedState.component2()
     // An approval in flight (issue #832), by task, and a failure that never reached a verdict -- the network, a 5xx --
     // shown by that task's button. A refusal instead goes to the page, which reloads (see `onApproveSettled`).
     var approvingTask by useState<String?>(null)
@@ -183,6 +202,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     var unmetTraits by useState<Set<String>>(emptySet())
     var savingTask by useState<String?>(null)
     var runError by useState<DisplayError?>(null)
+    // A save that landed but whose re-read of the view failed (issue #827): said beside the save rather than as a failed
+    // save, since the data is stored -- only what the page shows of the form's state may be behind.
+    var refreshError by useState<DisplayError?>(null)
     // Whether a survey edit has saved since the page opened -- the "✓ Saved." beside the header's actions.
     var justSaved by useState(false)
 
@@ -257,8 +279,12 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         val forUserRef = if (isEdit) null else pickedUser?.primaryId
         val save = saveFor(task) ?: return
         val body = workflowSaveBody(wf.workflowId, task.id, save.id, entries, gedraId, forUserRef)
+        // What this save sends, by trait, as the working values held it at the click -- what "stored" becomes for them.
+        val savedTraitIds = task.traits.map { it.traitId }.toSet()
+        val sent = valuesByTrait.filterKeys { it in savedTraitIds }
         savingTask = task.id
         runError = null
+        refreshError = null
         // The hash this save was launched under (#758 review): a create returns to the listing only while the
         // user is still on this page, and carries *this* listing context home -- not whatever page a slow
         // response finds them on.
@@ -286,26 +312,39 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     justSaved = true
                     // A survey edit stays on the form and in edit mode -- a multi-task survey is saved one task
                     // at a time, so exiting or re-seeding the whole form here would discard the other tasks'
-                    // in-progress edits. Refresh the stored snapshot from the whole updated form, then push only
-                    // *this* task's (possibly server-canonicalized) values into the fields; other tasks keep
-                    // what the user has typed. "Done" returns to read-only showing `stored`.
-                    // The refreshed snapshot comes from the returned VIEW's per-task entries -- the same
-                    // presented shape the seed used (filled prefill defaults seeded, offer ones held aside;
-                    // issues #679/#710) -- not the raw stored item, or a prefilled task the user never touched
-                    // would read as unsaved from here on. The item is the fallback only for a save that
-                    // carried no view.
-                    val storedNow = outcome.view?.let { v -> seedValuesOf(v) }
-                        ?: seedValuesFromEntries(outcome.item[GDF.entries].toJsonListOfMaps())
-                    stored = storedNow
-                    val savedTraitIds = task.traits.map { it.traitId }.toSet()
-                    valuesByTrait = valuesByTrait + storedNow.filterKeys { it in savedTraitIds }
+                    // in-progress edits. The save answers only that the form's state may have moved (issue #827),
+                    // so the page re-reads the whole view in place, and the stored snapshot is re-taken from it --
+                    // the same presented shape the seed used (filled prefill defaults seeded, offer ones held aside;
+                    // issues #679/#710) -- then only *this* task's (possibly server-canonicalized) values are pushed
+                    // into the fields; other tasks keep what the user has typed. The rail's marks, locks and
+                    // approvals follow from the fresh view the page now holds. "Done" returns to read-only.
+                    // Every state below is updated by transform, never from this closure's click-time values: the
+                    // user may have typed on during the two round trips, and that must survive. A field of the saved
+                    // task takes its stored value only while it still holds what was sent.
+                    val refresh = props.refreshView
+                    val refreshed = refresh?.let { runCatching { it(task.id).await() } }
+                    val fresh = refreshed?.getOrNull()
+                    if (fresh != null) {
+                        val storedNow = seedValuesOf(fresh)
+                        updateStored { storedNow }
+                        updateValues { current ->
+                            current + storedNow.filterKeys { it in savedTraitIds && current[it] == sent[it] }
+                        }
+                    } else {
+                        // The save landed but the view was not read back: what was sent is what is stored, so the
+                        // task reads as saved. When a re-read was asked and failed, the note beside the save says
+                        // the rest of the page may be behind; with none wired there is nothing to report.
+                        if (refreshed != null) {
+                            refreshError = refreshed.exceptionOrNull()?.let { userFacingError(it) }
+                                ?: DisplayError.expected("The form no longer resolves.")
+                        }
+                        updateStored { it + sent }
+                    }
                     // The saved task's fields are now the user's own stored data, not pending defaults, so
                     // drop their default affordances and summary (issue #710): out of the suggested set, and
                     // into the resolved set so `prefillFor` and the count stop treating them as defaults.
-                    suggestedByTrait = suggestedByTrait.filterKeys { it !in savedTraitIds }
-                    resolvedTraits = resolvedTraits + savedTraitIds
-                    // The save is the refresh (issue #700): every task's status follows from the returned view.
-                    outcome.view?.let { v -> statuses = v.tasks.associate { it.id to it.status } }
+                    updateSuggested { current -> current.filterKeys { it !in savedTraitIds } }
+                    updateResolved { it + savedTraitIds }
                 }
             } catch (e: Throwable) {
                 runError = userFacingError(e)
@@ -331,10 +370,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
 
     // The status a rail entry draws (issue #718): while the task holds unsaved edits, the client's projection
     // from the working values -- what the server will say once they are saved, by the same rule -- so clearing
-    // a required field drops the check at once; otherwise the server's verdict from the last view or save,
+    // a required field drops the check at once; otherwise the server's verdict from the view (re-read after a save),
     // which stays the authority for anything the kernel check cannot see.
     fun statusFor(task: WfTaskView, unsaved: Boolean): WfTaskStatus? =
-        if (unsaved) localTaskStatus(task, valuesByTrait) else statuses[task.id]
+        if (unsaved) localTaskStatus(task, valuesByTrait) else task.status
 
     // An approval task drawn in its own way (issue #832): once approved, who approved it and when; before, the prompt
     // and -- for a reviewer -- the button, which asks first, since an approval cannot be taken back. Anyone else is
@@ -720,6 +759,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
         }
         runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
+        refreshError?.let { errorText("Saved, but couldn't reload the form, so what it shows may be out of date.", it) }
     }
 }
 

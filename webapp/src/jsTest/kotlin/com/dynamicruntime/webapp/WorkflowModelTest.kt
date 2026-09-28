@@ -268,9 +268,8 @@ class WorkflowModelTest {
         assertEquals("survey", wf.entry)
         val task = wf.tasks.single()
         assertEquals("edit", task.saves.single().kind)
-        // seedValuesFromEntries is the inverse of workflowSaveEntries: {traitId -> data}; seedValuesOf is the same
-        // over every task of the view -- what the form seeds from and re-snapshots from after a save.
-        assertEquals(mapOf("name" to mapOf("name" to "Stored name")), seedValuesFromEntries(task.entries))
+        // seedValuesOf is the inverse of workflowSaveEntries over every task of the view, {traitId -> data} -- what
+        // the form seeds from, and re-snapshots from after a save re-reads the view (issue #827).
         assertEquals(mapOf("name" to mapOf("name" to "Stored name")), seedValuesOf(wf))
     }
 
@@ -283,10 +282,10 @@ class WorkflowModelTest {
         val ok = parseSaveOutcome(mapOf(WSF.saved to true, WSF.item to mapOf(GDF.gedraId to "gd.fd.acme.u1")))
         assertTrue(ok.saved)
         assertEquals("gd.fd.acme.u1", ok.item[GDF.gedraId])
-        // No refreshed view on a create save (issue #700); a survey edit carries one, parsed like the view call's.
-        assertNull(ok.view)
-        val edited = parseSaveOutcome(mapOf(WSF.saved to true, WSF.item to emptyMap<String, Any?>(), WSF.view to view()))
-        assertEquals("createForm", edited.view?.workflowId)
+        // An edit answers with the form's id alone (issue #827): no item, and nothing of the form to render from.
+        val edited = parseSaveOutcome(mapOf(WSF.saved to true, GDF.gedraId to "gd.fd.acme.u1"))
+        assertTrue(edited.saved)
+        assertTrue(edited.item.isEmpty())
     }
 
     // --- the task rail (issue #700) ---------------------------------------------------------------------

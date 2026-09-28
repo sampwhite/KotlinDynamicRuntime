@@ -135,14 +135,19 @@ class SurveyEditTest : StringSpec({
         done.containsKey(WVF.focusTask) shouldBe false
     }
 
-    "a survey edit save answers with the refreshed view, so the save is the refresh (#700)" {
+    "a survey edit save answers with the form's id alone; the view read after it shows the save (#827)" {
         val gid = create("note", "aside")
         val res = editSave(gid, "answered")
+        // The save signals that the form's state may have moved, as a patch does, and carries none of it.
         res[WSF.saved] shouldBe true
-        val view = res[WSF.view].toJsonMapOrEmpty()
+        res[GDF.gedraId] shouldBe gid
+        res.containsKey(WSF.item) shouldBe false
+        // A literal on purpose: `WSF.view` was retired with the field (#827), and this pins that it stays gone.
+        res.containsKey("view") shouldBe false
+        // The view -- where a page reads the new state from -- reflects the save: the task is now complete, its seeded
+        // entry is the new value, and no task needs action any more.
+        val view = user.getData(viewPath, mapOf(GDF.gedraId to gid))
         view[WVF.found] shouldBe true
-        // The refreshed view reflects the save: the task is now complete, its seeded entry is the new value, and
-        // no task needs action any more.
         val task = view[WFD.tasks].toJsonListOfMaps().single()
         task[WVF.status].toJsonMapOrEmpty()[SVY.complete] shouldBe true
         task[WVF.entries].toJsonListOfMaps().first { it[GE.traitId].toOptStr() == "detail" }[GE.data].toJsonMapOrEmpty()["text"] shouldBe "answered"
@@ -242,11 +247,10 @@ class SurveyEditTest : StringSpec({
         adminIds(SVYS.needsInfo) shouldNotContain done
     }
 
-    "a survey edit save folds new data into the form, and the returned item reflects it" {
+    "a survey edit save folds new data into the form" {
         val gid = create("detail", "before")
-        val res = editSave(gid, "after")
-        res[WSF.saved] shouldBe true
-        val detail = res[WSF.item].toJsonMapOrEmpty()[GDF.entries].toJsonListOfMaps()
+        editSave(gid, "after")[WSF.saved] shouldBe true
+        val detail = user.getItem(GEP.formDoc, mapOf(GDF.gedraId to gid))[GDF.entries].toJsonListOfMaps()
             .first { it[GE.traitId].toOptStr() == "detail" }
         detail[GE.data].toJsonMapOrEmpty()["text"] shouldBe "after"
     }
