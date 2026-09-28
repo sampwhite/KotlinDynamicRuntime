@@ -5,7 +5,6 @@ import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GCFG
-import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.withSearchProperties
