@@ -2,20 +2,6 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 
-/** Wire field names of a [GedraConfigIssue] as the client and config endpoints return it (issue #840). */
-@Suppress("ConstPropertyName")
-object GCI {
-    const val message = "message"
-    const val degradedTo = "degradedTo"
-    const val client = "client"
-    const val storedConfigId = "storedConfigId"
-    const val elementKind = "elementKind"
-    const val elementId = "elementId"
-
-    /** `source` or `stored` -- a [GedraConfigOrigin] name. */
-    const val origin = "origin"
-}
-
 /** The issue as its wire map: every field it knows, absent ones left out. */
 fun GedraConfigIssue.toWireMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     GCI.message to message,

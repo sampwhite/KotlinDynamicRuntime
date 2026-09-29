@@ -322,7 +322,11 @@ admits both kinds of administrator and an `allClients` holder is unconfined ther
 who is asking beyond the line under its heading. Per row: the load status (`clientLoadText`), where the
 definition came from (`clientOriginText`: source, stored, and how many stored configurations are loaded), live
 forms, active users with the unclaimed ones told apart (`userCountText`), and workflows. Counts are client-wide
-and count active users only -- disabled and deleted users are never in the cache the count reads.
+and count active users only -- disabled and deleted users are never in the cache the count reads. A present
+client's Forms and Users counts link to the listings behind them (`clientFormsHref`, `clientUsersHref`): with the
+client chosen or filtered for an `allClients` administrator, bare for a scoped one, whose listings are their own
+client already (the Users page draws no client filter for them, so a `client=` in the hash would be one they
+could not clear). The Workflows page takes no client, so that count is plain text until it does.
 
 Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
 not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,

@@ -1,8 +1,12 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.user.USF
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -16,7 +20,7 @@ class ClientsPageTest {
                     CLD.clientId to "acme", CLD.name to "Acme", CLD.status to ClientStatus.present.name,
                     CLD.origin to GedraConfigOrigin.source.name, CLD.storedConfigs to 1, CLD.forms to 3, CLD.users to 5,
                     CLD.unclaimedUsers to 2, CLD.workflowCount to 4, CLD.hasSurvey to true,
-                    CLD.issues to listOf(mapOf("message" to "m")),
+                    CLD.issues to listOf(mapOf(GCI.message to "m", GCI.degradedTo to "d"), mapOf(GCI.degradedTo to "no message")),
                 ),
                 // Keys missing: defaults, not a dropped row.
                 mapOf(CLD.clientId to "bare"),
@@ -28,10 +32,11 @@ class ClientsPageTest {
         val acme = parsed[0]
         assertEquals(listOf(1, 3, 5, 2, 4), listOf(acme.storedConfigs, acme.forms, acme.users, acme.unclaimedUsers, acme.workflowCount))
         assertEquals(true, acme.hasSurvey)
-        assertEquals(1, acme.issueCount)
+        // The messages, so the listing can say what was forgiven; an issue with none is not a message.
+        assertEquals(listOf("m"), acme.issues)
         val bare = parsed[1]
         assertEquals("", bare.name)
-        assertEquals(0, bare.forms + bare.users + bare.issueCount)
+        assertEquals(0, bare.forms + bare.users + bare.issues.size)
         assertEquals(false, bare.hasSurvey)
     }
 
@@ -55,6 +60,15 @@ class ClientsPageTest {
         assertEquals("Stored", clientOriginText(GedraConfigOrigin.stored.name, 1))
         assertEquals("Stored", clientOriginText(GedraConfigOrigin.stored.name, 0))
         assertEquals("Stored (3 configs)", clientOriginText(GedraConfigOrigin.stored.name, 3))
+    }
+
+    @Test
+    fun theCountsLeadToTheListingsBehindThem() {
+        // Across clients the link chooses the client; a scoped administrator's listing is their own already.
+        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.client}=acme", clientFormsHref("acme", acrossClients = true))
+        assertEquals("#${HP.page}=${HMENU.pageForms}", clientFormsHref("acme", acrossClients = false))
+        assertEquals("#${HP.page}=${HMENU.pageUsers}&${USF.client}=acme", clientUsersHref("acme", acrossClients = true))
+        assertEquals("#${HP.page}=${HMENU.pageUsers}", clientUsersHref("acme", acrossClients = false))
     }
 
     @Test
