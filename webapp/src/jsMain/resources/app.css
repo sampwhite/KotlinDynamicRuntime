@@ -755,6 +755,8 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
     vertical-align: top;
 }
 .op-table th { color: var(--text-dim); font-weight: 600; font-size: .85rem; }
+/* A numeric column (issue #905): its header and cells right-aligned, so counts line up by magnitude. */
+.op-table th.op-num, .op-table td.op-num { text-align: right; }
 /* A cell shows the value, not the wire's "(type)" annotation the catalog outline wants. */
 .op-table td .field-type { display: none; }
 /* A wide/tall table scrolls inside this box rather than pushing past the card (issue #540). The height is

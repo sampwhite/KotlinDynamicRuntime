@@ -101,6 +101,9 @@ object HP {
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 
+    /** Clients page: the client open in the detail view (issue #906), or absent for the listing. */
+    const val client = "c"
+
     /**
      * The listing page a child was opened from (issue #554), so its back link can return there; absent when
      * the child was reached some other way, in which case the child's natural parent is used. Honoured only

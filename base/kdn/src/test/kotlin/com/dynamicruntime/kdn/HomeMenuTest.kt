@@ -96,6 +96,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.users, "Users", HMENU.pageUsers),
+            page(HMENU.clients, "Clients", HMENU.pageClients),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
         )

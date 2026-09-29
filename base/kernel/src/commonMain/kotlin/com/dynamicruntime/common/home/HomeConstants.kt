@@ -136,6 +136,8 @@ object HMENU {
     /** The documents listing page (issue #554). */
     const val docs = "docs"
     const val users = "users"
+    /** The clients listing (issue #905): the clients an administrator oversees, each with its status and counts. */
+    const val clients = "clients"
     const val envReference = "envReference"
     /** Operator boot-checks page (issue #540). */
     const val bootChecks = "bootChecks"
@@ -188,6 +190,7 @@ object HMENU {
     const val pageNewForm = "newForm"
     const val pageForms = "forms"
     const val pageWorkflows = "workflows"
+    const val pageClients = "clients"
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"
