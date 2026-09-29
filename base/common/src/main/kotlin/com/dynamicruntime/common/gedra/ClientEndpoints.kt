@@ -177,13 +177,7 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         // client's config is picked up before the read rather than served stale.
         needsClientConfig = true,
     ) { c, request ->
-        val clientId = request[CLD.client].toOptStr().orEmpty()
-        val def = ClientService.get(c).present(clientId)
-        if (def != null) {
-            clientDefinitionOf(c, def)
-        } else {
-            droppedClientDefinitionOf(c, clientId)
-        }
+        clientDefinitionItem(c, request[CLD.client].toOptStr().orEmpty())
     }
 
     listEndpoint(
@@ -209,8 +203,18 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
 }
 
 /** The ids of the workflows [clientId] sees (issue #672); its own plus the inherited global ones. */
-private fun workflowIdsFor(cxt: KdrCxt, clientId: String): List<String> =
+internal fun workflowIdsFor(cxt: KdrCxt, clientId: String): List<String> =
     WorkflowService.get(cxt).forClient(clientId).workflows.keys.toList()
+
+/**
+ * The definition item for [clientId], as the retrieve answers it: the present definition, else the dropped one with
+ * its issues, else a 404 ([droppedClientDefinitionOf] says which). Shared by the full-scope retrieve and the scoped
+ * one (issue #904), so the two cannot answer differently about the same client.
+ */
+internal fun clientDefinitionItem(cxt: KdrCxt, clientId: String): Map<String, Any?> {
+    val def = ClientService.get(cxt).present(clientId)
+    return if (def != null) clientDefinitionOf(cxt, def) else droppedClientDefinitionOf(cxt, clientId)
+}
 
 /** One client's definition for the retrieve endpoint (issue #672): its attributes, the traits it **supports**
  *  (as metadata -- the resolved schema is read from the endpoint catalog with `client=`), its usage rules, and
@@ -276,14 +280,18 @@ private fun clientSummaryOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
     )
 }
 
+/** A client this node knows of but does not carry (issue #828): its id, its name (the id, when nothing names it) and why. */
+internal class AbsentClient(val clientId: String, val name: String, val status: ClientStatus)
+
 /**
- * A summary row for every client this node knows of but does not carry (issue #828), by client id: one declared and
- * kept but not enabled here ([ClientStatus.notEnabled]); one declared but dropped by a check
- * ([ClientStatus.dropped]); and one known only from stored configuration or its issues, with no loaded config
- * declaring it ([ClientStatus.storedOnly]). Each carries its issues, which say why, and nothing it defines -- it
- * defines nothing here. So an administrator asking why a client is not working sees the client, not its absence.
+ * Every client this node knows of but does not carry (issue #828), by client id: one declared and kept but not
+ * enabled here ([ClientStatus.notEnabled]); one declared but dropped by a check ([ClientStatus.dropped]); and one
+ * known only from stored configuration or its issues, with no loaded config declaring it
+ * ([ClientStatus.storedOnly]). What the summary listing's `allKnown` and the administrators' overview (issue #904)
+ * both list, so an administrator asking why a client is not working sees the client, not its absence. Costs one
+ * query for the stored clients.
  */
-private fun absentClientSummaries(cxt: KdrCxt): List<Map<String, Any?>> {
+internal fun absentClients(cxt: KdrCxt): List<AbsentClient> {
     val service = ClientService.get(cxt)
     val present = service.presentClients.map { it.clientId }.toSet()
     val absent = LinkedHashMap<String, Pair<ClientStatus, String>>()
@@ -298,17 +306,27 @@ private fun absentClientSummaries(cxt: KdrCxt): List<Map<String, Any?>> {
         if (client == GID.globalClient || client in present) continue
         absent.putIfAbsent(client, ClientStatus.storedOnly to client)
     }
-    val issues = ClientConfigIssues.get(cxt)
     return absent.entries.sortedBy { it.key }.map { (client, statusAndName) ->
+        AbsentClient(client, statusAndName.second, statusAndName.first)
+    }
+}
+
+/**
+ * A summary row for each of [absentClients]: its issues, which say why, and nothing it defines -- it defines
+ * nothing here.
+ */
+private fun absentClientSummaries(cxt: KdrCxt): List<Map<String, Any?>> {
+    val issues = ClientConfigIssues.get(cxt)
+    return absentClients(cxt).map { absent ->
         mapOf(
-            CLD.clientId to client,
-            CLD.name to statusAndName.second,
+            CLD.clientId to absent.clientId,
+            CLD.name to absent.name,
             CLD.workflowIds to emptyList<String>(),
             CLD.traitIds to emptyList<String>(),
             CLD.usageLabels to emptyList<String>(),
             CLD.hasSurvey to false,
-            CLD.issues to issues.issuesFor(client).map { it.toWireMap() },
-            CLD.status to statusAndName.first.name,
+            CLD.issues to issues.issuesFor(absent.clientId).map { it.toWireMap() },
+            CLD.status to absent.status.name,
         )
     }
 }

@@ -230,6 +230,35 @@ object CLD {
      * not enabled here, dropped by a check, or known only from stored configuration -- each with its [status].
      */
     const val allKnown = "allKnown"
+
+    // --- the administrators' clients overview (issue #904) --------------------------------------------------
+
+    /** Schema type name for one row of the clients overview: a client, where it stands, and what it holds. */
+    const val overviewTypeName = "ClientOverview"
+
+    /** The namespace the overview module declares [overviewTypeName] in; its value is that name. */
+    const val overviewNamespace = "clientOverview"
+
+    /** [definitionTypeName] qualified by [catalogNamespace], for the scoped retrieve's cross-namespace `$ref`. */
+    const val definitionTypeQualified = "$catalogNamespace.$definitionTypeName"
+
+    /** Where the client's definition comes from: source code, or stored configuration (a `GedraConfigOrigin`). */
+    const val origin = "origin"
+
+    /** How many stored configurations this node loaded for the client -- its own definition, or overlays on one from source. */
+    const val storedConfigs = "storedConfigs"
+
+    /** How many live form documents the client holds. */
+    const val forms = "forms"
+
+    /** How many active (enabled) users the client has; disabled and deleted users are not counted. */
+    const val users = "users"
+
+    /** Of [users], how many have not yet claimed their account (invited, not registered). */
+    const val unclaimedUsers = "unclaimedUsers"
+
+    /** How many workflows the client sees, its own and the inherited global ones. */
+    const val workflowCount = "workflowCount"
 }
 
 /**

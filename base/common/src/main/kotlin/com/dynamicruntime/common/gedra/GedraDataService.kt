@@ -1779,6 +1779,13 @@ class GedraDataService : ServiceInitializer {
     fun liveGedraIds(cxt: KdrCxt, kind: GedraDataType, client: String): List<String> =
         liveIdsInScope(cxt, kind, ReadScope.ofClient(client))
 
+    /**
+     * How many live gedras of [kind] [client] holds (issue #904) -- what the clients overview shows for its forms.
+     * Client-wide, from the same cache index [liveGedraIds] reads (or its SQL fallback); the ids are in hand
+     * anyway, and at the sizes a client holds a count query would save nothing worth a second path.
+     */
+    fun countLiveGedras(cxt: KdrCxt, kind: GedraDataType, client: String): Int = liveGedraIds(cxt, kind, client).size
+
     /** The full ids of the live gedras of [kind] that [scope] admits, from the cache when it can key on the scope. */
     private fun liveIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> {
         val cache = dataCache

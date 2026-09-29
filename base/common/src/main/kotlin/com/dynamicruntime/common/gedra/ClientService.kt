@@ -80,6 +80,15 @@ class ClientService : ServiceInitializer {
     fun declaredClients(): List<ClientDef> =
         collector?.gedraConfigs?.configs.orEmpty().mapNotNull { it.client }.distinctBy { it.clientId }
 
+    /**
+     * Where [clientId]'s definition comes from (issue #904): the origin of the first kept config declaring it --
+     * [GedraConfigOrigin.source] for a component's code, [GedraConfigOrigin.stored] for a row read back from the
+     * database (the loader stamps every such config `stored`, so the config's own origin is the authority). Null
+     * when no kept config declares it: a client known only from stored configuration, or from its issues.
+     */
+    fun originOf(clientId: String): GedraConfigOrigin? =
+        collector?.gedraConfigs?.configs?.firstOrNull { it.client?.clientId == clientId }?.origin
+
     override fun onCreate(cxt: KdrCxt) {
         collector = SchemaCollector.get(cxt)
             ?: throw KdrException("Schema collector was not created for $serviceName.")

@@ -602,6 +602,18 @@ class UserService : ServiceInitializer {
     }
 
     /**
+     * How many **active** users [client] has (issue #904): the enabled ones -- what the cache holds, so a disabled
+     * or deleted user is not counted -- and, of those, how many have not yet claimed their account (invited but
+     * not registered). Client-wide, whoever asks: it describes the client, not the caller's reach, so an
+     * org-narrowed administrator sees the same number as the client's other administrators. Read off the cache's
+     * `client` index, with [visibleEnabledUsers]'s SQL fallback when there is no cache.
+     */
+    fun countActiveUsers(cxt: KdrCxt, client: String): ActiveUserCount {
+        val users = visibleEnabledUsers(cxt, ReadScope.ofClient(client))
+        return ActiveUserCount(total = users.size, unclaimed = users.count { !it.isRegistered })
+    }
+
+    /**
      * The active (enabled) users [scope] may see, extracted from the cache when it is present (the cache holds
      * raw maps -- see [AuthUserCache] -- so each is extracted fresh, as `cachedUser` does).
      *
@@ -923,3 +935,6 @@ class UserService : ServiceInitializer {
         fun getOrNull(cxt: KdrCxt): UserService? = cxt.instanceConfig.get(serviceName) as? UserService
     }
 }
+
+/** A client's active users, counted (issue #904): [total] enabled users, of which [unclaimed] never registered. */
+class ActiveUserCount(val total: Int, val unclaimed: Int)

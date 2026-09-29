@@ -113,6 +113,16 @@ object UADEP {
     const val userIdentity = "/${SECT.clientAdmin}/user/identity"
     /** `DELETE`, like [ADEP.userDelete], and scoped to the caller's own client. */
     const val userDelete = "/${SECT.clientAdmin}/user"
+
+    /**
+     * The clients an administrator oversees, each with its status, origin and counts (issue #904): every known
+     * client for an `allClients` holder, their own for a client-scoped administrator. Here rather than beside
+     * [ADEP.clientSummaries] because this is the surface both kinds of administrator reach.
+     */
+    const val clientsOverview = "/${SECT.clientAdmin}/clients/overview"
+
+    /** The scoped counterpart to [ADEP.clientDefinition]: the caller's own client unless they may name another. */
+    const val clientDefinition = "/${SECT.clientAdmin}/client/definition"
 }
 
 /** Admin request/response field (JSON key) names. */
