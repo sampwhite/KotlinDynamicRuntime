@@ -121,6 +121,28 @@ class StoredSchemaRepairTest : StringSpec({
         errors.containsKey("wrongType") shouldBe true
     }
 
+    // Issue #822: a `g-` key that is not one of ours, or one of ours with a value of the wrong shape, costs only
+    // that keyword -- where the parser alone would refuse the whole type.
+    "an unknown or ill-shaped g- keyword is dropped, and the field stands" {
+        val client = "rep822kw"
+        val result = storeAndReload(cxt, client) {
+            type("Keyed") {
+                type = SCT.kObject
+                property("typo", "A misspelled keyword.") { data["g-allowCoerse"] = true }
+                property("lax", "A keyword of the wrong shape.") { data[SCH.allowCoerce] = "yes" }
+            }
+        }
+        result.issues.map { it.message }.let { messages ->
+            messages.size shouldBe 2
+            messages.any { "'g-allowCoerse'" in it } shouldBe true
+            messages.any { "'${SCH.allowCoerce}'" in it } shouldBe true
+        }
+        val def = defOf(cxt, client, "${client}config.Keyed")
+        propertyOf(def, "typo").containsKey("g-allowCoerse") shouldBe false
+        propertyOf(def, "lax").containsKey(SCH.allowCoerce) shouldBe false
+        propertyOf(def, "lax")[SCH.type] shouldBe SCT.string
+    }
+
     "a layout naming a field its type lacks is dropped, and the type stands" {
         val client = "rep841lay"
         val result = storeAndReload(cxt, client) {

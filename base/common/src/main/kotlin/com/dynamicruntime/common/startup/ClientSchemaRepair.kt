@@ -2,6 +2,7 @@ package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchGKeywords
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.errorContextNames
@@ -36,7 +37,9 @@ class DefRepairContext(
  *   property: the keyword goes, and the field shows for everyone -- acceptable, because the gate controls display,
  *   not access;
  * - a `g-errors` entry keyed by no failure code, or whose template could not render right: that message goes, and
- *   the failure falls back to the validator's own wording.
+ *   the failure falls back to the validator's own wording;
+ * - an unknown `g-` key, or one of ours whose value has the wrong shape ([SchGKeywords], issue #822): the keyword
+ *   goes.
  *
  * The checks are the boot's own -- the same messages, from the same helpers -- run on the **raw** definition,
  * where a keyword can still be removed; the boot's later passes over the compiled document then find nothing in
@@ -53,8 +56,15 @@ fun repairTypeDef(
     // that matters.
     fun repairNode(at: String, node: Map<String, Any?>, requiredHere: Boolean): Map<String, Any?> {
         val out = LinkedHashMap(node)
+        // An unknown `g-` key, or one of ours with a value of the wrong shape (issue #822): the keyword goes, and the
+        // rest of the definition stands. First, so the checks below read only well-shaped keywords.
+        for ((key, value) in node) {
+            val problem = SchGKeywords.problem(at, key, value) ?: continue
+            out.remove(key)
+            repairs.add(DefRepair(problem, "Dropping '$key'."))
+        }
 
-        when (val source = node[SCH.optionsSource]) {
+        when (val source = out[SCH.optionsSource]) {
             null -> {}
             !is String -> {
                 out.remove(SCH.optionsSource)
@@ -74,7 +84,7 @@ fun repairTypeDef(
                     ),
                 )
             }
-            else -> if (node[SCH.options] != null) {
+            else -> if (out[SCH.options] != null) {
                 out.remove(SCH.optionsSource)
                 repairs.add(
                     DefRepair(
@@ -85,7 +95,7 @@ fun repairTypeDef(
             }
         }
 
-        (node[SCH.visibleWhen] as? String)?.let { expression ->
+        (out[SCH.visibleWhen] as? String)?.let { expression ->
             val detail = context.visibleWhenProblem(expression)
                 ?: if (requiredHere) "gates a required property, which a caller it hides could never submit" else null
             if (detail != null) {
@@ -99,7 +109,7 @@ fun repairTypeDef(
             }
         }
 
-        (node[SCH.errors] as? Map<*, *>)?.let { raw ->
+        (out[SCH.errors] as? Map<*, *>)?.let { raw ->
             val jsonType = node[SCH.type] as? String
             val hasMin = node[minBoundKeyword(jsonType)] != null
             val hasMax = node[maxBoundKeyword(jsonType)] != null

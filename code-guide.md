@@ -280,10 +280,15 @@ There are several reasons we choose this, and they compound:
   handler receive a value it does not have to re-clean.
 
 One deliberate asymmetry is worth stating, because it is easy to mistake for inconsistency: we are relaxed
-about **the values flowing through** a schema, but **strict about our own schema-authoring keywords**. A
-mistyped `g-` keyword, an unknown error code, a `g-outerWhitespace` mode we do not recognize -- these fail the
-boot by name rather than being ignored, because that kind of mistake is otherwise *silent*: the schema looks
-like it says something and quietly does not. Leniency is for the data; fail-fast is for the schema author.
+about **the values flowing through** a schema, but **strict about our own schema-authoring keywords**. The
+`g-` keywords are ours, so their list is closed (`SchGKeywords`, issue #822): a `g-` key that is not one of them
+is refused by name, and so is one of ours whose value has the wrong shape -- `g-allowCoerce: "yes"`, a
+`g-presentation` outside `PRES`, a `g-primaryKey` that is not a list -- as are an unknown error code or a
+`g-outerWhitespace` mode we do not recognize. That kind of mistake is otherwise *silent*: the schema looks like it
+says something and quietly does not. Where the refusal lands follows the configuration rule: in source code it
+fails the boot (outside production); in a client's stored schema it is refused at write, and at load the one
+keyword is dropped and reported. A key without the `g-` prefix is the document's own, and left alone. Leniency is
+for the data; fail-fast is for the schema author.
 
 **The accepted downside.** Relaxed coercion and validation will sometimes let data into the system that
 tighter, stricter rules would have caught and rejected -- a value that was malformed in a way we chose to

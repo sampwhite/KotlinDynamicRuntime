@@ -65,6 +65,9 @@ Use constants, never string literals, from `SchemaConstants.kt`:
   keyword's *value* carries a `g-` prefix its name does not — `SCH.allowCoerce`
   is `"g-allowCoerce"` — so a document says which keywords are ours while call
   sites read unchanged (see `SCH.gPrefix`). Standard keywords stay bare.
+- **The `g-` keywords are a closed list** (`SchGKeywords`, issue #822): a `g-` key that is not one of ours, or one
+  of ours whose value has the wrong shape (`g-allowCoerce: "yes"`, a `g-presentation` outside `PRES`), fails the
+  parse by name. A key of your own without the prefix is left alone.
 - `SCT` — `type` values (`SCT.string`, `SCT.integer`, `SCT.kObject`, `SCT.kNull`, …).
 - `SFMT` — `format` values (`SFMT.date`, `SFMT.dateTime`, `SFMT.binary`).
 

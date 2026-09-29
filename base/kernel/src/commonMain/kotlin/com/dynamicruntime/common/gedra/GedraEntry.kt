@@ -69,10 +69,10 @@ object GE {
      * on whether one is valid. Keeping it on export is a decision for whoever builds the export.
      *
      * Deliberately not surfaced on `SchType`. The schema layer does not need to understand a gedra concept
-     * to carry one: the parser ignores keywords it does not know, and the raw defs ride along in the schema
-     * store, so assembly reads it from there.
+     * to carry one: the parser accepts it without reading it ([SCH.appliesTo], so its list of our keywords is
+     * whole -- issue #822), and the raw defs ride along in the schema store, so assembly reads it from there.
      */
-    const val appliesTo = "g-appliesTo"
+    const val appliesTo = SCH.appliesTo
 }
 
 /**
