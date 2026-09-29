@@ -260,11 +260,12 @@ fun formsSearchHashParams(search: Map<String, String>): List<Pair<String, String
  * *different* listing than it was launched from (create-for-user, into the user's client) passes that context
  * instead. Shared by the survey and raw editors' Done and by every create surface, so the ways home cannot
  * drift: #758 was exactly that, a return the picker had (#663) and the workflow create did not. The bare back
- * link is the same target without the flash. Pure, and covered under `jsNodeTest`.
+ * link is the same target without the flash. The listing is the one the page was opened from ([formsListingOf]),
+ * so a form worked on from a workflow's listing goes home to that listing. Pure, and covered under `jsNodeTest`.
  */
 fun formsListingReturn(hp: Map<String, String>, highlightId: String?, created: Boolean = false): List<Pair<String, String>> =
     buildList {
-        add(HP.page to HMENU.pageForms)
+        add(HP.page to formsListingOf(hp))
         addAll(formsSearchHashParams(formsSearchFromHash(hp)))
         highlightId?.let { add(HP.highlight to it) }
         if (created) add(HP.created to formsHashFlagOn)
@@ -289,11 +290,12 @@ fun formsCreateReturn(
  * The raw **read-only** view of one form (issue #726): the listing page with the form open in place -- the same
  * view a row click opens where the client has no survey -- reached from the survey's "View raw" beside "Raw
  * edit", so every trait can be looked at without entering the editor. Carries the listing's search and sort out
- * of the survey's own hash [hp], as its other ways home do, and none of the survey's own keys. Pure, and covered
- * under `jsNodeTest`.
+ * of the survey's own hash [hp], as its other ways home do, and none of the survey's own keys. The listing is
+ * the one the survey was opened from ([formsListingOf]), so a form reached through a workflow's listing is viewed
+ * there. Pure, and covered under `jsNodeTest`.
  */
 fun formsRawViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
-    listOf(HP.page to HMENU.pageForms, HP.gedra to gedraId) + formsSearchHashParams(formsSearchFromHash(hp))
+    listOf(HP.page to formsListingOf(hp), HP.gedra to gedraId) + formsSearchHashParams(formsSearchFromHash(hp))
 
 /**
  * The survey's read-only "View Info" of one form (issue #726): reached from the raw editor's "View info" beside
@@ -302,8 +304,20 @@ fun formsRawViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String
  * and covered under `jsNodeTest`.
  */
 fun formsSurveyViewHash(hp: Map<String, String>, gedraId: String): List<Pair<String, String>> =
-    listOf(HP.page to pageSurveyEdit, HP.from to HMENU.pageForms, HP.gedra to gedraId) +
+    listOf(HP.page to pageSurveyEdit, HP.from to formsListingOf(hp), HP.gedra to gedraId) +
         formsSearchHashParams(formsSearchFromHash(hp))
+
+/** The listings a form belongs to: My forms, and a workflow's listing of forms (issue #792). */
+private val formsListings = setOf(HMENU.pageForms, pageWorkflowForms)
+
+/**
+ * The forms listing a form page belongs to, from its hash [hp]: the one `from` names when it is a forms listing
+ * ([formsListings]) -- a workflow's listing as well as My forms -- else My forms, the natural parent. Only a forms
+ * listing counts, unlike a back link's `from`: a way *home* for a form is a listing that can show it flashed, and
+ * another page the back rules know (Users, say) cannot. What every way home reads, so a form opened from a
+ * workflow's listing returns there. Pure, and covered under `jsNodeTest`.
+ */
+fun formsListingOf(hp: Map<String, String>): String = hp[HP.from]?.takeIf { it in formsListings } ?: HMENU.pageForms
 
 /**
  * The `← My forms` link atop a forms child page (issues #554, #671): the shared row + [backToListing], carrying
@@ -320,10 +334,12 @@ fun ChildrenBuilder.formsBackToListing() {
 
 /**
  * The bare back link of [formsBackToListing], for a header that lays it out itself (the workflow form's one
- * header line, issue #719): the same target and the same forwarded search, without the `.row` around it.
+ * header line, issue #719): the same target and the same forwarded search, without the `.row` around it. The
+ * target is the listing the page's `from` names, else [listing] -- My forms, unless a listing page draws the link
+ * on itself (its in-place form view) and says which listing it is.
  */
-fun ChildrenBuilder.formsBackLink() {
-    backToListing(HMENU.pageForms, formsSearchHashParams(formsSearchFromHash(hashParams())))
+fun ChildrenBuilder.formsBackLink(listing: String = HMENU.pageForms) {
+    backToListing(listing, formsSearchHashParams(formsSearchFromHash(hashParams())))
 }
 
 /**
@@ -333,10 +349,14 @@ fun ChildrenBuilder.formsBackLink() {
  * in where "back" lives or how the actions sit. [title] is a builder so a survey can render its Markdown label
  * where the raw editor renders plain text.
  */
-fun ChildrenBuilder.formsEditorHeader(title: ChildrenBuilder.() -> Unit, actions: ChildrenBuilder.() -> Unit) {
+fun ChildrenBuilder.formsEditorHeader(
+    title: ChildrenBuilder.() -> Unit,
+    listing: String = HMENU.pageForms,
+    actions: ChildrenBuilder.() -> Unit,
+) {
     div {
         className = ClassName("wf-header")
-        formsBackLink()
+        formsBackLink(listing)
         h1 { title() }
         div {
             className = ClassName("wf-actions")
@@ -790,12 +810,19 @@ fun workflowCellOf(states: List<Map<String, Any?>>, client: String, summary: Lis
 /**
  * Where a workflow-column link goes (issue #791): the survey page opened on normal workflow [workflowId] against
  * form [gedraId], on [task] when given, and in edit mode when [edit] -- the current task of an engaged workflow is
- * work to do; a finished workflow's last task is there to be looked at. Pure, and covered under `jsNodeTest`.
+ * work to do; a finished workflow's last task is there to be looked at. [from] is the listing the link is on, so
+ * the page's way back leads to it. Pure, and covered under `jsNodeTest`.
  */
-fun workflowPageHash(gedraId: String, workflowId: String, task: String?, edit: Boolean): List<Pair<String, String>> =
+fun workflowPageHash(
+    gedraId: String,
+    workflowId: String,
+    task: String?,
+    edit: Boolean,
+    from: String = HMENU.pageForms,
+): List<Pair<String, String>> =
     buildList {
         add(HP.page to pageSurveyEdit)
-        add(HP.from to HMENU.pageForms)
+        add(HP.from to from)
         add(HP.gedra to gedraId)
         add(HP.workflow to workflowId)
         task?.let { add(HP.task to it) }
@@ -804,6 +831,20 @@ fun workflowPageHash(gedraId: String, workflowId: String, task: String?, edit: B
 
 /** Whether a cell item's link opens its task ready to edit (issue #791): only an engaged workflow's current task. */
 val WorkflowCellItem.linkEdits: Boolean get() = workflow.category == WfColumnCategory.engaged
+
+/**
+ * The search keys that say **which workflow's forms** a listing shows (issue #792): the workflow and the state. On
+ * the workflow's listing they are its identity rather than a filter -- kept by Clear, part of what a history entry
+ * is -- though they ride the query like any other search key, so paging, sorting and a client switch carry them.
+ */
+val formsDrillKeys: Set<String> = setOf(WAGG.workflowId, WAGG.workflowState)
+
+/**
+ * The search keys the listing's **Clear** keeps: the scope controls outside the filter panel -- whose forms
+ * ([EI.user], issue #562) and which client's ([EI.client], #668), each cleared through its own control -- and the
+ * workflow's listing's own identity ([formsDrillKeys]), which no filter control put there.
+ */
+val formsScopeKeys: Set<String> = setOf(EI.user, EI.client) + formsDrillKeys
 
 /**
  * The workflow drill-down a forms search carries (issue #792): the workflow id and, when given, the state -- or null
@@ -816,15 +857,26 @@ fun workflowDrillOf(applied: Map<String, Any?>): Pair<String, WfColumnCategory?>
 }
 
 /**
- * The chip naming an applied workflow drill-down (issue #792), `Workflow: Audit review (in progress)`: the label from
- * the listing's [summary] when it names the workflow, else its id. Null when none is applied. Pure, and covered
- * under `jsNodeTest`.
+ * What the workflow's listing is headed (issue #792): the workflow's label from the listing's [summary] when it names
+ * the workflow -- under the listing's client, across clients -- else its id. Null when the search names no workflow.
+ * Pure, and covered under `jsNodeTest`.
  */
-fun workflowDrillChip(applied: Map<String, Any?>, summary: List<WorkflowSummaryEntry>): String? {
-    val (id, state) = workflowDrillOf(applied) ?: return null
+fun workflowDrillLabel(applied: Map<String, Any?>, summary: List<WorkflowSummaryEntry>): String? {
+    val (id, _) = workflowDrillOf(applied) ?: return null
     val client = applied[EI.client]?.toString()
-    val label = summary.firstOrNull { it.workflowId == id && (client == null || it.client == client) }?.label ?: id
-    return "Workflow: $label" + (state?.let { " (${workflowStateHeading(it)})" } ?: "")
+    return summary.firstOrNull { it.workflowId == id && (client == null || it.client == client) }?.label ?: id
+}
+
+/**
+ * The line under the workflow's listing's heading (issue #792): which forms these are, `The forms engaged with
+ * this workflow.` -- or every form it knows when the search names no state. Pure, and covered under `jsNodeTest`.
+ */
+fun workflowDrillNote(state: WfColumnCategory?): String = when (state) {
+    WfColumnCategory.eligible -> "The forms eligible for this workflow, not yet in it."
+    WfColumnCategory.engaged -> "The forms engaged with this workflow, with work under way."
+    WfColumnCategory.finished -> "The forms finished with this workflow."
+    WfColumnCategory.ineligible -> "The forms not eligible for this workflow."
+    null -> "Every form this workflow applies to."
 }
 
 /**
@@ -855,12 +907,14 @@ fun parseWorkflowAggregate(items: List<Map<String, Any?>>): List<WorkflowAggrega
 }
 
 /**
- * Where a count on the workflow pages leads (issue #792): the forms listing drilled into [workflowId] in [state] --
- * the drill-down rides the hash as search parameters, like any other filter -- narrowed to [client] when the caller
- * sees across clients, since the listing's client names whose workflow it is. Pure, and covered under `jsNodeTest`.
+ * Where a count on the workflow pages leads (issue #792): the **workflow's listing** ([pageWorkflowForms]) of the forms
+ * in [state] for [workflowId] -- its own page under Workflows rather than My forms filtered, so what it lists is
+ * its heading and not a chip. The workflow and state ride the hash as search keys, so the listing sends them on
+ * like any other; narrowed to [client] when the caller sees across clients, since the listing's client names
+ * whose workflow it is. Pure, and covered under `jsNodeTest`.
  */
 fun workflowDrillHash(workflowId: String, state: WfColumnCategory, client: String?): List<Pair<String, String>> =
-    listOf(HP.page to HMENU.pageForms, WAGG.workflowId to workflowId, WAGG.workflowState to state.name) +
+    listOf(HP.page to pageWorkflowForms, WAGG.workflowId to workflowId, WAGG.workflowState to state.name) +
         listOfNotNull(client?.let { EI.client to it })
 
 /**
@@ -873,6 +927,9 @@ fun workflowStateHeading(state: WfColumnCategory): String = when (state) {
     WfColumnCategory.finished -> "finished"
     WfColumnCategory.ineligible -> "not eligible"
 }
+
+/** [workflowStateHeading] as a title -- the Workflows page's column headings and the listing's state switch. */
+fun workflowStateTitle(state: WfColumnCategory): String = workflowStateHeading(state).replaceFirstChar { it.uppercase() }
 
 /** A phase as the workflow pages say it beside a workflow's name (issue #792); empty for one open to new forms. */
 fun workflowPhaseText(phase: WfPhase?): String = when (phase) {

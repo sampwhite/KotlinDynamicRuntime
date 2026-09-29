@@ -318,16 +318,13 @@ external interface FormsSearchProps : Props {
      */
     var fetchValues: ((String, String, (List<String>) -> Unit) -> Unit)?
 
-    /** Further chips for filters the page applies itself -- the workflow drill-down (issue #792). */
-    var extraChips: List<String>?
 }
 
 val FormsSearch = FC<FormsSearchProps> { props ->
     val groups = props.groups
     // The free-text term searches the text fields, so the box is offered only where there is one to search.
     val hasText = groups.any { it.kind == UsageKind.string }
-    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(surveyStatusChip(props.applied)) +
-        props.extraChips.orEmpty()
+    val chips = activeFilterChips(groups, props.applied) + listOfNotNull(surveyStatusChip(props.applied))
     val termApplied = props.applied[EI.q]?.toString()?.isNotBlank() == true
     div {
         className = ClassName("row forms-toolbar")

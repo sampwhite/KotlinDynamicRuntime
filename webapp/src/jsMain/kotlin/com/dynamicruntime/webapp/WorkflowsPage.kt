@@ -103,7 +103,7 @@ val WorkflowsPage = FC<Props> {
                         th { +"Workflow" }
                         if (acrossClients) th { +"Client" }
                         WAGG.drillStates.forEach { state ->
-                            th { className = ClassName("wf-count"); +workflowStateHeading(state).replaceFirstChar { it.uppercase() } }
+                            th { className = ClassName("wf-count"); +workflowStateTitle(state) }
                         }
                     }
                 }

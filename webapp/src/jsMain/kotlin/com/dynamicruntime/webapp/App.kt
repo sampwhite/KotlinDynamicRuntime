@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 // The antd `theme` export, aliased: inside the ConfigProvider builder block, `theme` is its prop.
 import com.dynamicruntime.common.app.APP
+import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.webapp.theme as antdTheme
@@ -137,7 +138,7 @@ val App = FC<Props> {
                     }
                 }
                 AppBar {
-                    this.currentPage = page
+                    this.currentPage = menuPageOf(page)
                     this.onRevisit = { setRevisit { it + 1 } }
                     this.envAuthSuppressible = envAuthSuppressible
                     this.envAuthActing = envAuthActing
@@ -213,6 +214,7 @@ val App = FC<Props> {
                             pageNewForm -> CreationPage {}
                             pageForms -> FormsPage {}
                             pageWorkflows -> WorkflowsPage {}
+                            pageWorkflowForms -> FormsPage { listing = pageWorkflowForms }
                             pageEditForm -> EditFormPage {}
                             pageSurveyEdit -> SurveyEditPage {}
                             pageCreateForUser -> CreateForUserPage {}
@@ -285,8 +287,15 @@ private const val pageNewForm = HMENU.pageNewForm
 private const val pageForms = HMENU.pageForms
 
 // The workflow pages (issue #792): the menu, built server-side, decides whether they are offered (a client turns
-// the item on); the route exists unconditionally, like the others.
+// the item on); the route exists unconditionally, like the others. A workflow's own listing of forms
+// (`pageWorkflowForms`, defined with the forms page that draws it) is a child of it, reached from its counts.
 private const val pageWorkflows = HMENU.pageWorkflows
+
+/**
+ * The menu item a page sits under, for the bar's highlight: a workflow's listing is the Workflows item's, since it
+ * is that page drilled into; every other page is its own item's (or none, for a child route the menu never names).
+ */
+private fun menuPageOf(page: String): String = if (page == pageWorkflowForms) pageWorkflows else page
 // The edit-a-form page (issue #417); its id (`pageEditForm`) lives with the page in EditFormPage.kt, since the
 // view's Edit button names the same route. Reached from the view rather than the top nav; the section gates it.
 
@@ -318,6 +327,9 @@ private fun currentPage(): String {
         params[HP.page] == pageOperator -> pageOperator
         params[HP.page] == pageCfacts -> pageCfacts
         params[HP.page] == pageNewForm -> pageNewForm
+        // A forms hash naming a workflow is the workflow's listing (issue #792) -- what a count linked to before the
+        // listing had its own page, so a saved link still opens where it did; the page then rewrites the hash to its own id.
+        params[HP.page] == pageWorkflowForms || (params[HP.page] == pageForms && params.containsKey(WAGG.workflowId)) -> pageWorkflowForms
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageWorkflows -> pageWorkflows
         params[HP.page] == pageEditForm -> pageEditForm
