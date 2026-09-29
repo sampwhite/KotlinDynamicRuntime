@@ -215,6 +215,7 @@ val App = FC<Props> {
                             pageForms -> FormsPage {}
                             pageWorkflows -> WorkflowsPage {}
                             pageWorkflowForms -> FormsPage { listing = pageWorkflowForms }
+                            pageClients -> ClientsPage {}
                             pageEditForm -> EditFormPage {}
                             pageSurveyEdit -> SurveyEditPage {}
                             pageCreateForUser -> CreateForUserPage {}
@@ -286,6 +287,10 @@ private const val pageNewForm = HMENU.pageNewForm
 // The list/view page for the caller's form documents (issue #408); same login gating and route policy.
 private const val pageForms = HMENU.pageForms
 
+// The clients page (issue #905): offered in the menu to administrators; the route exists unconditionally, and the
+// page reports honestly when the caller may not see it.
+private const val pageClients = HMENU.pageClients
+
 // The workflow pages (issue #792): the menu, built server-side, decides whether they are offered (a client turns
 // the item on); the route exists unconditionally, like the others. A workflow's own listing of forms
 // (`pageWorkflowForms`, defined with the forms page that draws it) is a child of it, reached from its counts.
@@ -332,6 +337,7 @@ private fun currentPage(): String {
         params[HP.page] == pageWorkflowForms || (params[HP.page] == pageForms && params.containsKey(WAGG.workflowId)) -> pageWorkflowForms
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageWorkflows -> pageWorkflows
+        params[HP.page] == pageClients -> pageClients
         params[HP.page] == pageEditForm -> pageEditForm
         params[HP.page] == pageSurveyEdit -> pageSurveyEdit
         params[HP.page] == pageCreateForUser -> pageCreateForUser

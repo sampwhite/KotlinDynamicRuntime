@@ -787,6 +787,9 @@ external interface LoadStateCardProps : Props {
 
     /** The load failure to show; null renders the "Loading…" state instead. */
     var loadError: DisplayError?
+
+    /** What the failure is a failure of ("Couldn't load the clients."); the form pages' wording when unset. */
+    var errorLead: String?
 }
 
 /**
@@ -805,7 +808,7 @@ val LoadStateCard = FC<LoadStateCardProps> { props ->
                 +"Loading…"
             }
         } else {
-            errorText("Couldn't load the form.", err)
+            errorText(props.errorLead ?: "Couldn't load the form.", err)
         }
     }
 }

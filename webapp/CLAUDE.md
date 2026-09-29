@@ -312,6 +312,25 @@ unrestricted scope). The rules that follow from that:
   in locals and publishes them together, so a failed switch leaves the previous surface whole rather than X's
   controls over the old rows.
 
+## The Clients page (issues #903, #905)
+
+`#page=clients` lists the clients an administrator oversees, from `GET /clientAdmin/clients/overview`
+(`ClientsApi.listOverview`, rows parsed by the pure `parseClientOverview`): an `allClients` administrator sees
+every client the node knows of -- present, not enabled here, dropped by a check, or known only from stored
+configuration -- and a client-scoped one sees their own. It is the **scoped** surface on purpose: that section
+admits both kinds of administrator and an `allClients` holder is unconfined there, so the page needs no branch on
+who is asking beyond the line under its heading. Per row: the load status (`clientLoadText`), where the
+definition came from (`clientOriginText`: source, stored, and how many stored configurations are loaded), live
+forms, active users with the unclaimed ones told apart (`userCountText`), and workflows. Counts are client-wide
+and count active users only -- disabled and deleted users are never in the cache the count reads.
+
+Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
+not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,
+who administers only their own users (#805) -- is shown as it came, through `LoadStateCard`'s `errorLead`. The
+menu item is gated on the admin level like Users, so a `public` self-administrator is offered it and refused on the
+page; the endpoint is the authority. The detail view (`c=<id>`, issue #906) and, later, editing a client and
+designing its workflows (#903) open from this page.
+
 ## Buttons and links on the form surfaces (issue #726)
 
 The form view and edit pages draw two kinds of control, and which one a control gets is decided **by what it

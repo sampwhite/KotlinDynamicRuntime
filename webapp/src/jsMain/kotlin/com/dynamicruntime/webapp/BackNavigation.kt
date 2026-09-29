@@ -31,6 +31,7 @@ val backListings: Map<String, BackListing> = listOf(
     BackListing(HMENU.pageWorkflows, "Workflows"),
     BackListing(pageWorkflowForms, "Workflow forms"),
     BackListing(HMENU.pageUsers, "Users"),
+    BackListing(HMENU.pageClients, "Clients"),
     BackListing(HMENU.pageCatalog, "Endpoint catalog"),
     BackListing(HMENU.pageDebug, "Debug"),
 ).associateBy { it.page }
