@@ -170,9 +170,10 @@ const val platformSetNote = "(set by the platform)"
  * The read-only summary of a client (issue #906): its attributes in the order an administrator reads them, then
  * what it defines. From the overview [row] when the listing has one (status, origin, counts) and the definition
  * [def] when it could be read; either may be missing -- a client this node does not carry has no definition to
- * retrieve, and a deep link arrives before the listing -- so [clientId] is the hash's, which is always there. The operator-only attributes (`ClientOperatorFields`) are
- * noted as the platform's when the caller may not change them, so the later editor disables exactly those. A list
- * that is empty reads as a dash. Pure, and covered under `jsNodeTest`.
+ * retrieve, and a deep link arrives before the listing -- so [clientId] is the hash's, which is always there. The
+ * operator-only attributes (`ClientOperatorFields`) are noted as the platform's when the caller may not change
+ * them, so the later editor disables exactly those. A list that is empty reads as a dash. Pure, and covered under
+ * `jsNodeTest`.
  */
 fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinitionView?, canSeeAllClients: Boolean): List<Pair<String, String>> {
     val info = def?.info.orEmpty()
@@ -222,17 +223,23 @@ object ClientsApi {
         parseClientDefinition(Http.getApi(UADEP.clientDefinition + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
 
     /**
-     * The stored configurations this node holds for a client (issue #906): the full-scope listing, naming the client,
-     * for an administrator who sees across clients; the client-scoped one otherwise -- which lists the caller's
-     * **own** client whatever is asked, so it is asked only about that client ([ownClient]), and another client's
-     * page gets none rather than the caller's own under a foreign heading.
+     * The stored configurations this node holds for a client (issue #906), from the listing [storedConfigsPath]
+     * names -- or none, when there is no listing this caller may ask about that client.
      */
     suspend fun storedConfigs(clientId: String, acrossClients: Boolean, ownClient: String): List<ConfigSummaryView> {
-        val path = when {
-            acrossClients -> ACEP.bundles + queryString(mapOf(CFEP.client to clientId))
-            clientId == ownClient -> CFEP.bundles
-            else -> return emptyList()
-        }
+        val path = storedConfigsPath(clientId, acrossClients, ownClient) ?: return emptyList()
         return parseConfigSummaries(Http.getApi(path)[EP.items].toJsonListOfMaps())
     }
+}
+
+/**
+ * Which stored-configuration listing answers for [clientId] (issue #906): the full-scope one, naming the client,
+ * for an administrator who sees across clients; the client-scoped one for the caller's **own** client -- it lists
+ * that client whatever is asked, so it is asked only about it; and null for another client, whose page then shows
+ * none rather than the caller's own under a foreign heading. Pure, and covered under `jsNodeTest`.
+ */
+fun storedConfigsPath(clientId: String, acrossClients: Boolean, ownClient: String): String? = when {
+    acrossClients -> ACEP.bundles + queryString(mapOf(CFEP.client to clientId))
+    clientId == ownClient -> CFEP.bundles
+    else -> null
 }

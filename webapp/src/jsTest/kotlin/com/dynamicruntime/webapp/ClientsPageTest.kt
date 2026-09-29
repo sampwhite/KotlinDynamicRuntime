@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
@@ -131,6 +132,16 @@ class ClientsPageTest {
         assertEquals(null, definitionOnly["Load"])
         // Neither yet (a deep link before anything answered): the id the hash named still heads the summary.
         assertEquals("globex", clientSummaryRows("globex", null, null, canSeeAllClients = false).toMap()["Client id"])
+    }
+
+    @Test
+    fun theStoredConfigurationsAreAskedOfTheListingTheCallerMayUse() {
+        // Across clients: the full-scope listing, naming the client -- any client.
+        assertEquals("${ACEP.bundles}?${CFEP.client}=globex", storedConfigsPath("globex", acrossClients = true, ownClient = "hub"))
+        // Scoped: the caller's own listing, for their own client only...
+        assertEquals(CFEP.bundles, storedConfigsPath("acme", acrossClients = false, ownClient = "acme"))
+        // ...and nothing for another's, rather than their own under a foreign heading.
+        assertEquals(null, storedConfigsPath("globex", acrossClients = false, ownClient = "acme"))
     }
 
     @Test

@@ -61,9 +61,14 @@ val ClientsPage = FC<Props> {
     val openId = hashParams()[HP.client]
     var definition by useState<ClientDefinitionView?>(null)
     var storedConfigs by useState<List<ConfigSummaryView>?>(null)
+    // The definition's failure to load, or -- a designed answer, a 403 or 404 -- what the endpoint said instead.
     var detailError by useState<DisplayError?>(null)
-    // Monotonic token, so a slow answer for a client the user has moved on from is dropped rather than shown.
+    var detailNote by useState<String?>(null)
+    var storedError by useState<DisplayError?>(null)
+    // Monotonic token, so a slow answer for a client the user has moved on from is dropped rather than shown; and
+    // the id last asked about, so a re-read of the same client keeps what is shown until its replacement arrives.
     val latestDetail = useRef(0)
+    val lastOpenId = useRef<String>(null)
 
     useEffect(generation) {
         clientsScope.launch {
@@ -81,31 +86,52 @@ val ClientsPage = FC<Props> {
     }
 
     // The open client's definition and stored configurations, once the shell has said who is asking (the stored
-    // configurations' path depends on it). Cleared first, so a switch never shows the previous client's under the
-    // new heading. Each is fetched on its own: a client this node does not carry has no definition to retrieve,
-    // which must not hide the configurations it does hold.
-    useEffect(openId, config) {
-        definition = null
-        storedConfigs = null
-        detailError = null
+    // configurations' path depends on it), and again on each refresh generation. Keyed on the shell's two facts
+    // rather than the config object, which every generation replaces. Cleared only when the *client* changes, so a
+    // switch never shows the previous client's under the new heading while a re-read keeps what is shown until its
+    // replacement arrives. Each is fetched on its own: a client this node does not carry has no definition to
+    // retrieve, which must not hide the configurations it does hold.
+    val across = config?.canSeeAllClients
+    val own = config?.user?.client
+    useEffect(openId, across, own, generation) {
+        if (lastOpenId.current != openId) {
+            lastOpenId.current = openId
+            definition = null
+            storedConfigs = null
+            detailError = null
+            detailNote = null
+            storedError = null
+        }
         val id = openId
-        val shell = config
-        if (id == null || shell == null) return@useEffect
-        val across = shell.canSeeAllClients
-        val own = shell.user.client
+        if (id == null || across == null || own == null) return@useEffect
         val token = (latestDetail.current ?: 0) + 1
         latestDetail.current = token
         clientsScope.launch {
             try {
                 val loaded = ClientsApi.definition(id)
-                if (latestDetail.current == token) definition = loaded
+                if (latestDetail.current == token) {
+                    definition = loaded
+                    detailError = null
+                    detailNote = null
+                }
             } catch (e: Throwable) {
-                if (latestDetail.current == token) detailError = userFacingError(e)
+                if (latestDetail.current != token) return@launch
+                // A refusal or an absence is the endpoint's designed answer, said in its words; anything else failed.
+                val status = (e as? ApiError)?.status
+                if (status == EXC.notAuthorized || status == EXC.notFound) detailNote = e.message else detailError = userFacingError(e)
             }
         }
         clientsScope.launch {
-            val loaded = runCatching { ClientsApi.storedConfigs(id, across, own) }.getOrDefault(emptyList())
-            if (latestDetail.current == token) storedConfigs = loaded
+            try {
+                val loaded = ClientsApi.storedConfigs(id, across, own)
+                if (latestDetail.current == token) {
+                    storedConfigs = loaded
+                    storedError = null
+                }
+            } catch (e: Throwable) {
+                // Never swallowed into "none": a listing that failed is not a client with no configuration.
+                if (latestDetail.current == token) storedError = userFacingError(e)
+            }
         }
     }
 
@@ -120,7 +146,8 @@ val ClientsPage = FC<Props> {
         }
         !current.canManageUsers -> deniedCard("You do not have permission to see clients.")
         openId != null -> clientDetail(
-            openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs, detailError, current.canSeeAllClients,
+            openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
+            detailError, detailNote, storedError, current.canSeeAllClients,
         )
         else -> clientsListing(rows, current.canSeeAllClients, loadError)
     }
@@ -128,8 +155,9 @@ val ClientsPage = FC<Props> {
 
 /**
  * One client (issue #906): the way back, the heading, the summary rows, the issues, and the stored configurations.
- * [row] is the listing's overview of it when the listing holds it; [def] the retrieved definition, or [detailError]
- * why not -- shown under the summary, since the summary still says what the listing knows.
+ * [row] is the listing's overview of it when the listing holds it; [def] the retrieved definition -- or, under the
+ * summary (which still says what the listing knows), [detailNote], the endpoint's own words for a refusal or an
+ * absence, or [detailError], a load that failed. [storedError] likewise stands in for the configurations table.
  */
 private fun ChildrenBuilder.clientDetail(
     clientId: String,
@@ -137,6 +165,8 @@ private fun ChildrenBuilder.clientDetail(
     def: ClientDefinitionView?,
     configs: List<ConfigSummaryView>?,
     detailError: DisplayError?,
+    detailNote: String?,
+    storedError: DisplayError?,
     acrossClients: Boolean,
 ) {
     div {
@@ -145,7 +175,13 @@ private fun ChildrenBuilder.clientDetail(
         h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
         for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) readOnlyField(label, value)
         detailError?.let { errorText("Couldn't load this client's definition.", it) }
-        if (def == null && detailError == null) {
+        detailNote?.let {
+            p {
+                className = ClassName("subtitle")
+                +it
+            }
+        }
+        if (def == null && detailError == null && detailNote == null) {
             p {
                 className = ClassName("subtitle")
                 +"Loading…"
@@ -169,6 +205,7 @@ private fun ChildrenBuilder.clientDetail(
         }
         h2 { +"Stored configuration" }
         when {
+            storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
             configs == null -> p {
                 className = ClassName("subtitle")
                 +"Loading…"
