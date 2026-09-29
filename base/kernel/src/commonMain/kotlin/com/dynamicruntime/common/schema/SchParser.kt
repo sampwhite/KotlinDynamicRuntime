@@ -12,16 +12,20 @@ import com.dynamicruntime.common.util.toOptDouble
  * `schemaDefs { ... }`) into resolved [SchType] / [SchProperty] objects.
  *
  * Every `$ref` is checked: its target must be one of the types in [defs] or in
- * [existingTypes]; otherwise a [KdrException] is thrown. `anyOf` and `allOf` are
- * not handled yet; `oneOf` needs a declared discriminator (see [parseVariants])
- * and `if`/`then`/`else` is read in one narrow shape (see [parseCondition]).
+ * [existingTypes]; otherwise a [KdrException] is thrown. `oneOf` needs a declared discriminator (see
+ * [parseVariants]) and `if`/`then`/`else` is read in one narrow shape (see [parseCondition]).
  *
- * **An unrecognized keyword is ignored, not rejected** — deliberately, since being strict about standard
- * keywords would reject documents a stock validator accepts. Note what that costs, because it is not free: a
- * keyword we do not read constrains nothing, silently. Before issue #252 a `oneOf` parsed to a type with no
- * `type`, no properties and `additionalProperties` true, so a document could claim to be a discriminated union
- * and enforce nothing at all, with no symptom. That is the argument for reading a construct rather than
- * deferring it, and the reason [SCH.discriminator] is *required* alongside a `oneOf` we do read.
+ * **An unrecognized keyword is ignored, not rejected** — deliberately, so a document may carry keywords of its own
+ * as documentation. Note what that costs, because it is not free: a keyword we do not read constrains nothing,
+ * silently. Before issue #252 a `oneOf` parsed to a type with no `type`, no properties and `additionalProperties`
+ * true, so a document could claim to be a discriminated union and enforce nothing at all, with no symptom. That is
+ * the argument for reading a construct rather than deferring it, and the reason [SCH.discriminator] is *required*
+ * alongside a `oneOf` we do read.
+ *
+ * It is also why the standard keywords that would imply large behavior we do not have are **refused** by name
+ * ([refusedKeywords], issue #823) rather than ignored: `enum`, `allOf`, `anyOf`, `not` and `dependentSchemas`. A
+ * denylist, not an allowlist: any other keyword stays allowed. Our own `g-` keywords are the opposite -- a closed
+ * list, checked by [SchGKeywords].
  *
  * @return the newly parsed types keyed by fully qualified name.
  */
@@ -284,6 +288,8 @@ fun parseNode(
     pendingItemRefs: MutableList<PendingItemRef>,
     pendingBranchRefs: MutableList<PendingBranchRef>,
     depth: Int = 0,
+    // What a refusal names: the type, or -- for a property's inline body -- the property.
+    where: String = name?.let { "Type '$it'" } ?: "A schema",
 ): SchType {
     // Guard against runaway recursion -- e.g., a raw schema Map that references itself (see JsonUtil for the
     // same nesting guard on formatting). A legitimate schema never nests anywhere near this deep.
@@ -292,9 +298,8 @@ fun parseNode(
     }
     // Our own keywords are strict (issue #822): an unknown `g-` key, or one of ours with a value of the wrong shape,
     // fails the parse rather than being read leniently.
-    SchGKeywords.problems(name?.let { "Type '$it'" } ?: "A schema", map).firstOrNull()?.let {
-        throw KdrException.mkConv(it)
-    }
+    SchGKeywords.problems(where, map).firstOrNull()?.let { throw KdrException.mkConv(it) }
+    refusedKeywordProblem(where, map)?.let { throw KdrException.mkConv(it) }
     val properties = LinkedHashMap<String, SchProperty>()
     val rawProps = map[SCH.properties]
     if (rawProps is Map<*, *>) {
@@ -323,6 +328,8 @@ fun parseNode(
     val jsonType = map[SCH.type].toOptStr()
     val format = map[SCH.format].toOptStr()
     val variants = parseVariants(name, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth)
+    val (minBound, minExclusive) = parseBound(where, map, jsonType, lower = true)
+    val (maxBound, maxExclusive) = parseBound(where, map, jsonType, lower = false)
     val schType = SchType(
         name = name,
         jsonType = jsonType,
@@ -333,6 +340,7 @@ fun parseNode(
         emptyIsAbsent = (map[SCH.emptyIsAbsent] as? Boolean) ?: isScalarType(jsonType),
         visibleOnly = parseVisibleOnly(map[SCH.visibleOnly], name, jsonType, format),
         outerWhitespace = parseOuterWhitespace(map[SCH.outerWhitespace], name, jsonType, format),
+        pattern = parsePattern(where, map[SCH.pattern], jsonType, format),
         format = format,
         title = map[SCH.title].toOptStr(),
         description = map[SCH.description].toOptStr(),
@@ -353,8 +361,11 @@ fun parseNode(
         condition = parseCondition(name, map),
         default = map[SCH.default],
         errorMessages = parseErrorMessages(map[SCH.errors], name),
-        minBound = map[minBoundKeyword(jsonType)].toOptDouble(),
-        maxBound = map[maxBoundKeyword(jsonType)].toOptDouble(),
+        minBound = minBound,
+        maxBound = maxBound,
+        minExclusive = minExclusive,
+        maxExclusive = maxExclusive,
+        uniqueItems = parseUniqueItems(where, map[SCH.uniqueItems]),
         // Ordered, so a composite key keeps the order it was declared in (issue #487).
         primaryKey = (map[SCH.primaryKey] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList(),
         // A display hint only (issue #540): carried through unread by validation, for a read-only renderer.
@@ -398,6 +409,87 @@ fun maxBoundKeyword(jsonType: String?): String = when {
     jsonType == SCT.array -> SCH.maxItems
     jsonType == SCT.kObject -> SCH.maxProperties
     else -> ""
+}
+
+/**
+ * The lower ([lower]) or upper bound [map] declares for [jsonType], and whether it is exclusive -- (null, false)
+ * when it declares none. The inclusive keyword is [minBoundKeyword] / [maxBoundKeyword]'s; a numeric type may also
+ * declare `exclusiveMinimum` / `exclusiveMaximum` (issue #823), and where it declares both kinds on one side the
+ * stricter wins, so one bound and one flag say exactly what is accepted. On any other type the exclusive keywords
+ * are not read, as JSON Schema does not apply them there.
+ *
+ * An exclusive bound must be a number, as JSON Schema 2020-12 has it: draft 4's boolean form (`exclusiveMinimum:
+ * true` beside `minimum`) is refused by name rather than read as no bound at all.
+ */
+@KdrPrivate
+fun parseBound(where: String, map: Map<String, Any?>, jsonType: String?, lower: Boolean): Pair<Double?, Boolean> {
+    val inclusive = map[if (lower) minBoundKeyword(jsonType) else maxBoundKeyword(jsonType)].toOptDouble()
+    if (!isNumericType(jsonType)) return inclusive to false
+    val keyword = if (lower) SCH.exclusiveMinimum else SCH.exclusiveMaximum
+    val raw = map[keyword] ?: return inclusive to false
+    val exclusive = (raw as? Number)?.toDouble()
+        ?: throw KdrException.mkConv(
+            "$where sets '$keyword' to ${if (raw is String) "'$raw'" else raw}; it must be a number (the bound " +
+                "itself, as JSON Schema 2020-12 has it, not draft 4's true/false beside '${
+                    if (lower) SCH.minimum else SCH.maximum
+                }').",
+        )
+    val exclusiveWins = inclusive == null || (if (lower) exclusive >= inclusive else exclusive <= inclusive)
+    return if (exclusiveWins) exclusive to true else inclusive to false
+}
+
+/**
+ * Reads JSON Schema `pattern` (issue #823) into a [SchPattern], or null when absent. Only a plain string may carry
+ * it -- the parser refuses it elsewhere, as it does `g-visibleOnly`: on a date or binary format the value is parsed
+ * or is not text, so the pattern would check nothing where a standard validator checks the string; and on a
+ * non-string it would constrain nothing, which is a mistake worth naming.
+ */
+@KdrPrivate
+fun parsePattern(where: String, raw: Any?, jsonType: String?, format: String?): SchPattern? {
+    if (raw == null) return null
+    val source = raw as? String
+        ?: throw KdrException.mkConv("$where sets '${SCH.pattern}' to something other than text.")
+    if (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
+        val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
+        throw KdrException.mkConv(
+            "$where has '${SCH.pattern}', which applies to a plain string, and this type is $actual. It would " +
+                "constrain nothing there.",
+        )
+    }
+    return SchPattern.compile(where, source)
+}
+
+/** Reads JSON Schema `uniqueItems` (issue #823): absent is false, and anything but true or false is refused. */
+@KdrPrivate
+fun parseUniqueItems(where: String, raw: Any?): Boolean {
+    if (raw == null) return false
+    return raw as? Boolean
+        ?: throw KdrException.mkConv("$where sets '${SCH.uniqueItems}' to $raw; it must be true or false.")
+}
+
+/**
+ * The standard keywords refused at parse time (issue #823), each with what to use instead. Each would imply
+ * behavior we do not have -- general composition, negation, schema-valued dependencies -- or duplicates a
+ * construct of ours, and ignoring one would leave a schema that looks as if it constrains and does not.
+ *
+ * A **denylist**, deliberately: any other keyword this layer does not read stays allowed, so a document may carry
+ * keywords of its own. (`not` stays legal inside an `if`/`then`/`else` clause, where [parseCondition] reads it.)
+ */
+@KdrPrivate
+val refusedKeywords: Map<String, String> = linkedMapOf(
+    SCH.enum to "Declare the choices with '${SCH.options}' (the builder's option(...)); they export as 'enum'.",
+    SCH.allOf to "Compose by extending a type, or declare the properties on the type itself.",
+    SCH.anyOf to "Use a discriminated '${SCH.oneOf}', whose branches say which one they are.",
+    SCH.not to "Constrain what is accepted directly; a negated schema is not supported.",
+    SCH.dependentSchemas to "Use '${SCH.kIf}'/'${SCH.kThen}'/'${SCH.kElse}' to require or forbid properties by " +
+        "another's value.",
+)
+
+/** The first keyword of [map] in [refusedKeywords], as a message naming it and [where]; null when there is none. */
+@KdrPrivate
+fun refusedKeywordProblem(where: String, map: Map<String, Any?>): String? {
+    val keyword = refusedKeywords.keys.firstOrNull { it in map } ?: return null
+    return "$where uses '$keyword', which is not supported. ${refusedKeywords.getValue(keyword)}"
 }
 
 /**
@@ -562,6 +654,8 @@ fun parseProperty(
 ): SchProperty {
     // The keywords on the property itself, which a `$ref` property's target never sees (issue #822).
     SchGKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw KdrException.mkConv(it) }
+    // And the refused standard ones (issue #823), which would otherwise be ignored beside a `$ref`.
+    refusedKeywordProblem("Property '$name'", map)?.let { throw KdrException.mkConv(it) }
     val description = map[SCH.description].toOptStr()
     // On the property, not only its value type -- see [SchProperty.title] for why a `$ref` field needs its own.
     val title = map[SCH.title].toOptStr()
@@ -582,7 +676,8 @@ fun parseProperty(
         name, description, refName = null, title = title, optionalContents = optionalContents,
         presentation = presentation, visibleWhen = visibleWhen,
     )
-    prop.valueType = parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
+    prop.valueType =
+        parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1, where = "Property '$name'")
     return prop
 }
 

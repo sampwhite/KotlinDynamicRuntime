@@ -157,6 +157,10 @@ object SCH {
      * means clients send a subset of what we accept, while a looser one manufactures rejections at the
      * boundary, with the client's own tooling calling a payload valid and us returning a 400.
      *
+     * The standard keywords we read (`pattern`, the bounds, `uniqueItems`) export as the schema declared them:
+     * `pattern`'s translation to a portable dialect ([SchPattern]) is internal, and what it accepts is what
+     * ECMA-262 -- JSON Schema's dialect -- says the declared pattern accepts.
+     *
      * Nothing consumes an export today, so none of that is built (issue #194).
      */
     const val gPrefix = "g-"
@@ -312,7 +316,8 @@ object SCH {
      * field, so the keyword is the advertise half of an advertise-and-enforce pair. On **trait data** the enforce
      * half is built in (issue #830): every write -- create, patch (and so the survey's and a workflow's saves),
      * import -- keeps a gated field's stored value for a caller whose cfacts fail the gate, and refuses a change to
-     * it, including removing it by deleting the entry, list element or object holding it. On an **endpoint input** the handler enforces it, the same relationship [optionsSource] has with a
+     * it, including removing it by deleting the entry, list element, or object holding it. On an
+     * **endpoint input** the handler enforces it, the same relationship [optionsSource] has with a
      * handler that bounds its own input. Reads are not gated: anyone who may read the data sees the field. It
      * takes no part in validation and has no export row: it neither tightens nor loosens what a consumer may send.
      */

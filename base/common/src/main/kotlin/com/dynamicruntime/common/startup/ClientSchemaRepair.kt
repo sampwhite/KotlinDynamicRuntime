@@ -7,6 +7,7 @@ import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.errorContextNames
 import com.dynamicruntime.common.schema.errorMessageTemplateProblems
+import com.dynamicruntime.common.schema.isNumericType
 import com.dynamicruntime.common.schema.maxBoundKeyword
 import com.dynamicruntime.common.schema.minBoundKeyword
 import com.dynamicruntime.common.util.analyzeTemplate
@@ -111,8 +112,10 @@ fun repairTypeDef(
 
         (out[SCH.errors] as? Map<*, *>)?.let { raw ->
             val jsonType = node[SCH.type] as? String
-            val hasMin = node[minBoundKeyword(jsonType)] != null
-            val hasMax = node[maxBoundKeyword(jsonType)] != null
+            // A number's bound may be exclusive instead (issue #823).
+            val numeric = isNumericType(jsonType)
+            val hasMin = node[minBoundKeyword(jsonType)] != null || numeric && node[SCH.exclusiveMinimum] != null
+            val hasMax = node[maxBoundKeyword(jsonType)] != null || numeric && node[SCH.exclusiveMaximum] != null
             val kept = LinkedHashMap<String, Any?>()
             for ((k, v) in raw) {
                 val codeKey = k.toString()
