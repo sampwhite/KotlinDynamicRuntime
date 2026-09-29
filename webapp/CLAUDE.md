@@ -328,6 +328,16 @@ client chosen or filtered for an `allClients` administrator, bare for a scoped o
 client already (the Users page draws no client filter for them, so a `client=` in the hash would be one they
 could not clear). The Workflows page takes no client, so that count is plain text until it does.
 
+**One client** (`c=<id>`, issue #906) shows, on the same route with `← Clients` back: the listing's facts for it,
+its definition from `/clientAdmin/client/definition` (`clientSummaryRows`, drawn with `readOnlyField`; the
+operator-only `audience` and `usageType` (#820) are noted "(set by the platform)" for a scoped administrator, so
+the later editor disables exactly those), the issues its checks forgave, and the stored configurations this node
+holds for it -- the full-scope bundles listing naming the client for an `allClients` administrator, the scoped
+one otherwise. The definition and the configurations are fetched apart and keyed on the open id with a
+monotonic token, so a client this node does not carry still shows what the listing knows above the retrieve's
+404, and a slow answer for a client the user moved on from is dropped. The constants the frontend reads these by
+(`CFEP`, `ACEP`, `CCT`, `GCI`) live in the kernel for that reason.
+
 Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
 not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,
 who administers only their own users (#805) -- is shown as it came, through `LoadStateCard`'s `errorLead`. The
