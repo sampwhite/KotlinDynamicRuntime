@@ -15,40 +15,24 @@ package com.dynamicruntime.common.schema
  * is a boot-time concern the schema build already owns, not this walk's to relitigate. The result is keyed
  * the same way [defs] is, so it drops under a [SCH.dDefs] key unchanged.
  *
- * Pure and transpile-safe: it walks raw maps and lists, so backend and (later) frontend share one hunt.
+ * The walk is the endpoint catalog's own ([collectRefsInto], issue #813), started from names rather than from
+ * rendered nodes -- so it follows everything that one does, a discriminator's `defaultMapping` included, and
+ * resolves a reference by the same rule. A second walk that followed only `$ref` once shipped a view whose union
+ * the frontend could not parse, for want of its default branch.
  */
 fun collectDefClosure(seeds: Collection<String>, defs: Map<String, Any?>): Map<String, Any?> {
     val out = LinkedHashMap<String, Any?>()
-    val queue = ArrayDeque(seeds.toList())
-    while (queue.isNotEmpty()) {
-        val name = queue.removeFirst()
-        if (name in out) continue
-        val body = defs[name] ?: continue
-        out[name] = body
-        for (ref in refsIn(body)) {
-            if (ref !in out) queue.addLast(ref)
-        }
+    for (seed in seeds) {
+        includeDef(seed, defs, out)
     }
     return out
 }
 
-/** The type name a `#/$defs/x` pointer names, or null when [ref] is not a local `$defs` pointer. */
+/**
+ * The type name a `#/$defs/x` pointer names, or null when [ref] is not a local `$defs` pointer -- for a caller that
+ * must refuse anything else. Resolving a reference, as the closure and the parser do, is [refTargetName]'s job.
+ */
 fun refName(ref: String): String? {
     val prefix = "#/${SCH.dDefs}/"
     return if (ref.startsWith(prefix)) ref.substring(prefix.length) else null
-}
-
-/** Every local `$defs` type name a raw schema [node] references, at any depth (following `$ref` values). */
-private fun refsIn(node: Any?): List<String> {
-    val found = mutableListOf<String>()
-    fun walk(n: Any?) {
-        when (n) {
-            is Map<*, *> -> for ((k, v) in n) {
-                if (k == SCH.dRef && v is String) refName(v)?.let { found.add(it) } else walk(v)
-            }
-            is List<*> -> n.forEach { walk(it) }
-        }
-    }
-    walk(node)
-    return found
 }

@@ -56,4 +56,48 @@ class SchemaDefsTest {
     fun emptySeedsGiveAnEmptyClosure() {
         assertTrue(collectDefClosure(emptyList(), defs).isEmpty())
     }
+
+    // A discriminator's `defaultMapping` is a bare ref string, which a walk looking only for `$ref` never sees
+    // (issue #813). The closure must carry the default branch -- or the union it ships cannot be parsed, which is
+    // what the frontend does with a workflow view's `$defs`. Parsed here, so it is checked on both runtimes.
+    @Test
+    fun theClosureCarriesAUnionsDefaultBranchAndParses() {
+        fun branch(kind: String) = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("kind" to mapOf(SCH.type to SCT.string, SCH.const to kind)),
+        )
+        val union = mapOf(
+            "u.Holder" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf("entry" to mapOf(SCH.dRef to "#/${SCH.dDefs}/u.Entry")),
+            ),
+            "u.Entry" to mapOf(
+                SCH.oneOf to listOf(mapOf(SCH.dRef to "#/${SCH.dDefs}/u.Known")),
+                SCH.discriminator to mapOf(
+                    SCH.propertyName to "kind",
+                    SCH.defaultMapping to "#/${SCH.dDefs}/u.Opaque",
+                ),
+            ),
+            "u.Known" to branch("known"),
+            "u.Opaque" to branch("opaque"),
+            "u.Unrelated" to mapOf(SCH.type to SCT.string),
+        )
+        val closure = collectDefClosure(listOf("u.Holder"), union)
+        assertEquals(setOf("u.Holder", "u.Entry", "u.Known", "u.Opaque"), closure.keys)
+        assertTrue("u.Holder" in parseSchemaTypes(closure))
+    }
+
+    // One rule for what a reference names -- the parser's: a pointer names its type, and anything else is taken as
+    // the name as written. So a bare name the parser would resolve is carried too.
+    @Test
+    fun aReferenceResolvesAsTheParserResolvesIt() {
+        val bare = mapOf(
+            "b.A" to mapOf(SCH.properties to mapOf("b" to mapOf(SCH.dRef to "b.B"))),
+            "b.B" to mapOf(SCH.type to SCT.string),
+        )
+        assertEquals(setOf("b.A", "b.B"), collectDefClosure(listOf("b.A"), bare).keys)
+        // A non-local URI names nothing in the bag, so nothing is carried for it.
+        val remote = mapOf("r.A" to mapOf(SCH.properties to mapOf("x" to mapOf(SCH.dRef to "https://example.com/s"))))
+        assertEquals(setOf("r.A"), collectDefClosure(listOf("r.A"), remote).keys)
+    }
 }

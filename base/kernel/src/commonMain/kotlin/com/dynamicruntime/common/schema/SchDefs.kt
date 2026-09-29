@@ -9,8 +9,13 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  * In the **kernel** rather than beside the endpoint builders that first needed it, because both sides need the
  * same answer and must not each have their own: the backend closes an endpoint's `$defs` before shipping the
  * catalog, and the frontend closes them again to assemble a standalone document from what it received
- * (issue #262). One notorious detail is why sharing matters more than it looks -- see the `defaultMapping`
- * note below.
+ * (issue #262). A workflow view closes its trait types the same way ([collectDefClosure], issue #813). One
+ * notorious detail is why sharing matters more than it looks -- see the `defaultMapping` note below.
+ *
+ * A reference is resolved by one rule, the parser's own ([refTargetName]): a `#/$defs/x` pointer names `x`, and
+ * anything else is taken as the name as written. So the closure carries exactly what `parseSchemaTypes` will look
+ * up, and a reference that names nothing in the bag -- a non-local URI, a dangling name -- is simply not carried,
+ * leaving the parser to refuse it as it would anyway.
  */
 
 /**
@@ -49,10 +54,14 @@ fun collectRefsInto(node: Any?, allDefs: Map<String, Any?>, out: MutableMap<Stri
 
 /** Adds the def [ref] points at (and everything it reaches) to [out], if it is a ref that resolves. */
 private fun includeRef(ref: Any?, allDefs: Map<String, Any?>, out: MutableMap<String, Any?>) {
-    if (ref !is String) {
-        return
+    if (ref is String) {
+        includeDef(refTargetName(ref), allDefs, out)
     }
-    val name = refTargetName(ref)
+}
+
+/** Adds the def named [name] (and everything it reaches) to [out], if [allDefs] has it. */
+@KdrPrivate
+fun includeDef(name: String, allDefs: Map<String, Any?>, out: MutableMap<String, Any?>) {
     if (name in out) {
         return
     }
