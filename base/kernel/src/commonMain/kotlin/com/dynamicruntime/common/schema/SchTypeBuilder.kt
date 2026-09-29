@@ -422,10 +422,7 @@ open class SchTypeBuilder(
         if (required) this.required(property.name)
     }
 
-    // Conceptually private helper; left open per the code guide and marked rather
-    // than hidden.
-    @KdrPrivate
-    fun propertiesMap(): MutableMap<String, Any?> =
+    private fun propertiesMap(): MutableMap<String, Any?> =
         data.getOrPut(SCH.properties) { LinkedHashMap<String, Any?>() }.toT()
 
     /** Records one or more property names in this type's `required` array. */

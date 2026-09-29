@@ -13,9 +13,8 @@ import com.dynamicruntime.common.logging.LogStartup
 /**
  * VM global registry that assembles running instances from components. Startup is
  * assumed single-threaded per instance, but the registry guards its shared maps so
- * concurrent callers see a consistent view; the maps use real `private` and
- * synchronization because enforcement genuinely matters here (a guide-sanctioned
- * exception to the minimize-`private` rule).
+ * concurrent callers see a consistent view; the maps are `private` and every
+ * access to them is synchronized.
  *
  * Typical use is via a module boot helper (e.g., kdn's `Startup`): pass the components to
  * [getOrCreateInstanceConfig] to build the instance, then [createCxt] for a context bound to it. The component
