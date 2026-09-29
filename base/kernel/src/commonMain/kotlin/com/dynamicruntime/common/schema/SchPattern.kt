@@ -28,7 +28,7 @@ import com.dynamicruntime.common.exception.KdrException
  * POSIX and Java property names), escapes the two engines read differently (`\v`, `\0`, `\b` or `\S` inside a
  * class), a `{` that is not a quantifier, and an empty class. `\p{…}` is accepted with a Unicode general category
  * (`L`, `Lu`, `Nd`, …), which both engines name alike. `\d`, `\w` and `\b` are ASCII in both (Java's `\b` since
- * JDK 19). There are no flags: case-insensitivity is written as a class, `Aa`.
+ * JDK 19). There are no flags: case-insensitivity is written as an alternation, `(?:A|a)`.
  *
  * A match is **unanchored**, as JSON Schema specifies: `pattern: "[0-9]"` accepts any value containing a digit.
  * Anchor with `^…$` to constrain the whole value.
