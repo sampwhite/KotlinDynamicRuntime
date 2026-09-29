@@ -119,6 +119,40 @@ stored and matched; `noOuterWhitespace()` (`"reject"`) on a code or identifier w
 beats silently cleaning it; `trimmed()` (`"trim"`) only to force the strip on output/stored values too, since
 input already trims. This default is part of the codebase's relaxed-coercion posture (see `code-guide.md`).
 
+## Standard constraints: `pattern`, exclusive bounds, `uniqueItems` (issue #823)
+
+```kotlin
+type("Order") {
+    type = SCT.kObject
+    property("postcode", "A five-digit postal code.") {
+        pattern = "^[0-9]{5}$"                               // anchor it: a pattern matches anywhere
+        errors { patternMismatch("A postal code is five digits.") }
+    }
+    property("price", "Price, above zero.") { type = SCT.number; exclusiveMinimum = 0 }
+    property("tags", "Distinct tags.") { type = SCT.array; uniqueItems = true; items { type = SCT.string } }
+}
+```
+
+- **`pattern`** (a plain string only; refused elsewhere, date and binary formats included) fails as
+  `patternMismatch`, after edge whitespace is handled, like the other string checks. It is **unanchored**, as JSON
+  Schema has it -- `^…$` to constrain the whole value. The dialect is ECMA-262 restricted to what the JVM and the
+  browser read alike (`SchPattern`): `$` is the end of the value (not before a trailing newline, as Java's is),
+  `.` and `\s` mean what they do in JavaScript, and Java-only or ambiguous syntax -- possessive quantifiers,
+  atomic groups, inline flags like `(?i)`, `\A`/`\Z`, class union/intersection, a non-quantifier `{`, `\p{…}` with
+  anything but a general category -- is refused by name at parse. There are no flags; write `[Aa]`. The default
+  message quotes the pattern, so say what it is *for* in `g-errors`.
+- **`exclusiveMinimum` / `exclusiveMaximum`** (numbers only) refuse the bound itself; they share
+  `belowMinimum` / `aboveMaximum` with the inclusive pair ("This must be more than 0."). With both kinds on one
+  side the stricter wins. Draft 4's boolean form (`exclusiveMinimum: true`) is refused.
+- **`uniqueItems`** fails as `duplicateItem` ("Item 3 repeats item 1…"), comparing elements as validated JSON
+  values: `1` equals `1.0`, `"5"` coerced to an integer equals `5`, and object key order does not matter.
+
+**Refused by name** at parse -- on a type, a property, or beside a `$ref`: `enum` (use `options`), `allOf`,
+`anyOf`, `not` (legal only inside an `if`/`then`/`else` clause), `dependentSchemas`, and, as before, `oneOf`
+without a `discriminator`. A **denylist**: any other keyword this layer does not read stays allowed, so a document
+may carry its own. A client's alteration of a type may not change any of these (they take part in validation);
+it extends instead.
+
 ## Choice lists: written down, or sourced at render time
 
 `option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects
@@ -380,7 +414,8 @@ validation even when no output is requested:
 - A `binary`-format field is exempt from all of it (see above), though `required` still applies.
 
 `SchFailCode`: `missingRequired`, `invalidOption`, **`wrongType`** (a plain type check
-rejected it), **`badValue`** (its content was inspected and failed to coerce). A
+rejected it), **`badValue`** (its content was inspected and failed to coerce), `additionalProperty`,
+`notAllowed`, `belowMinimum` / `aboveMaximum` (any bound), `patternMismatch`, `duplicateItem`. A
 parse-driven `badValue` carries the parser exception in `SchFailure.cause`.
 
 ## Casts
@@ -393,6 +428,7 @@ Don't write `as`/`@Suppress("UNCHECKED_CAST")`. Use `com.dynamicruntime.common.u
 
 - `base/kernel/src/commonMain/.../schema/`: `SchemaConstants.kt` (SCH/SCT/SFMT), `SchTypeBuilder.kt`,
   `SchTypesBuilder.kt`, `SchParser.kt`, `SchValidator.kt`, `SchType.kt`, `SchProperty.kt`, `SchOption.kt`,
+  `SchPattern.kt` (the portable `pattern` dialect), `SchGKeywords.kt` (the closed `g-` keyword list),
   `SchLayout.kt` (the `g-layout` model, its `SL` vocabulary, collect/strip/prune and the boot check)
 - `base/kernel/src/commonMain/.../util/`: `CollectionUtil.kt` (`deepClone`), `ConvertUtil.kt`
   (`toT`/`toJsonMap`/`toOptStr`)

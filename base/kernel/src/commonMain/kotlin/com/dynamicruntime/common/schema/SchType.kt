@@ -5,10 +5,11 @@ package com.dynamicruntime.common.schema
  * as opposed to the Map-backed builders. Everything the validator needs is a
  * declared attribute here, so validation never reaches into a raw schema Map.
  *
- * Only the constructs we support so far are modeled; `anyOf` and `allOf` are
- * intentionally not represented yet. A keyword that is not modeled is
- * **ignored** rather than rejected, so a document a stock validator accepts still
- * loads — see [parseSchemaTypes] for what that costs.
+ * Only the constructs we support are modeled. A standard keyword that would imply
+ * behavior we do not have -- `enum`, `allOf`, `anyOf`, `not`, `dependentSchemas` --
+ * is **refused** by the parser (issue #823); any other keyword that is not modeled
+ * is ignored, so a document may carry keywords of its own as documentation -- see
+ * [parseSchemaTypes].
  */
 class SchType(
     /** Fully qualified name for a `$defs` type; null for an anonymous/inline schema. */
@@ -48,6 +49,12 @@ class SchType(
      * that must preserve edge whitespace even on input.
      */
     val outerWhitespace: SchOuterWhitespace? = null,
+    /**
+     * JSON Schema `pattern`, compiled to mean the same on the JVM and in the browser (issue #823) -- see
+     * [SchPattern]. Null unless declared, and only ever set on a plain string type; the parser refuses it
+     * elsewhere. Checked after edge whitespace is handled, like the other string checks.
+     */
+    val pattern: SchPattern? = null,
     /**
      * The JSON Schema `format` value (e.g. [SFMT.date] / [SFMT.dateTime]) for a string type, or null.
      * A recognized date format makes a string field validate as a date and default [allowCoerce] to true.
@@ -154,6 +161,20 @@ class SchType(
     val minBound: Double?,
     /** The declared upper bound, or null; the counterpart of [minBound] and read the same way. */
     val maxBound: Double?,
+    /**
+     * Whether [minBound] is **exclusive** -- the value must be greater than it, not merely at least it -- because
+     * it was read from `exclusiveMinimum` (issue #823). Only ever true on a numeric type, the only one that keyword
+     * applies to. Where a type declares both `minimum` and `exclusiveMinimum`, [minBound] is the stricter of the
+     * two and this says which.
+     */
+    val minExclusive: Boolean = false,
+    /** The upper-bound counterpart of [minExclusive], from `exclusiveMaximum`. */
+    val maxExclusive: Boolean = false,
+    /**
+     * JSON Schema `uniqueItems`, for an array type (issue #823): no two elements may be equal, judged as JSON
+     * values -- so `1` and `1.0` are equal, and objects are compared regardless of key order. False otherwise.
+     */
+    val uniqueItems: Boolean = false,
     /**
      * Custom `g-primaryKey` keyword (resolved): the ordered field names that identify one element of an array
      * of this type (issue #487) -- empty when the type is single-instance.

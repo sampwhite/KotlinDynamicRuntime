@@ -290,6 +290,17 @@ fails the boot (outside production); in a client's stored schema it is refused a
 keyword is dropped and reported. A key without the `g-` prefix is the document's own, and left alone. Leniency is
 for the data; fail-fast is for the schema author.
 
+The standard keywords follow the same line from the other side (issue #823). One we read is enforced exactly --
+the length, size and numeric bounds (`exclusiveMinimum` / `exclusiveMaximum` included), `pattern`, `uniqueItems`,
+`const`, `required`. A handful that would imply behavior we do not have, or that duplicate a construct of ours,
+are **refused** by name rather than ignored: `enum` (use `g-options`), `allOf`, `anyOf`, `not`,
+`dependentSchemas`, and a `oneOf` without a discriminator. Any other standard or unknown keyword stays allowed --
+a denylist, deliberately, so a document may carry keywords of its own as documentation. `pattern` is ECMA-262, as
+JSON Schema specifies, restricted to the syntax the JVM and the browser read alike (`SchPattern`): the same
+validator runs in both, and a pattern the two engines read differently would accept a value on one side and
+refuse it on the other. When schema is exported, our constructs are emitted as their JSON Schema equivalents
+(`g-options` as `enum`), per `SCH.gPrefix`.
+
 **The accepted downside.** Relaxed coercion and validation will sometimes let data into the system that
 tighter, stricter rules would have caught and rejected -- a value that was malformed in a way we chose to
 clean past rather than refuse. We accept that risk knowingly. The cost of the occasional too-forgiving
@@ -297,7 +308,7 @@ acceptance is judged smaller than the cost of a system that is brittle to paste 
 the untyped reality of the spreadsheet and script inputs we intend to feed it. Where a particular field cannot
 afford that trade -- a credential, an identifier, anything where a wrong-but-plausible value is dangerous --
 that field tightens itself explicitly (`g-outerWhitespace: "reject"` / `"keep"`, an explicit `g-allowCoerce:
-false`, a pattern or a bounded option list), and the relaxed default steps aside for it.
+false`, a `pattern` or a bounded option list), and the relaxed default steps aside for it.
 
 ### Whether to put logic in the frontend or backend
 

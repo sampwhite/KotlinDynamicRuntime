@@ -2229,10 +2229,13 @@ private fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null) {
         SCT.kObject -> "properties"
         else -> null
     }
+    // An exclusive end (issue #823) does not admit the bound itself, so it is said differently.
     val range = when {
-        min != null && max != null -> "${min.fmtD()} to ${max.fmtD()}"
-        min != null -> "${min.fmtD()} or more"
-        else -> "${max!!.fmtD()} or less"
+        min != null && max != null ->
+            "${min.fmtD()}${if (vt.minExclusive) " (exclusive)" else ""} to " +
+                "${max.fmtD()}${if (vt.maxExclusive) " (exclusive)" else ""}"
+        min != null -> if (vt.minExclusive) "more than ${min.fmtD()}" else "${min.fmtD()} or more"
+        else -> if (vt.maxExclusive) "less than ${max!!.fmtD()}" else "${max!!.fmtD()} or less"
     }
     p {
         className = ClassName("type-hint")

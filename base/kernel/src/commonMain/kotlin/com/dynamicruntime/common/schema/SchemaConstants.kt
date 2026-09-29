@@ -157,6 +157,10 @@ object SCH {
      * means clients send a subset of what we accept, while a looser one manufactures rejections at the
      * boundary, with the client's own tooling calling a payload valid and us returning a 400.
      *
+     * The standard keywords we read (`pattern`, the bounds, `uniqueItems`) export as the schema declared them:
+     * `pattern`'s translation to a portable dialect ([SchPattern]) is internal, and what it accepts is what
+     * ECMA-262 -- JSON Schema's dialect -- says the declared pattern accepts.
+     *
      * Nothing consumes an export today, so none of that is built (issue #194).
      */
     const val gPrefix = "g-"

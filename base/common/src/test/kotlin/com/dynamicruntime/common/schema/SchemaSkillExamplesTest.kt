@@ -169,4 +169,27 @@ class SchemaSkillExamplesTest : StringSpec({
         withoutLayouts(defs)["lay.Questionnaire"].toJsonMapOrEmpty().containsKey(SCH.layout) shouldBe false
         deliveredLayouts(layouts, listOf("lay.Questionnaire")).keys shouldBe setOf("lay.Questionnaire")
     }
+    // Transcribed from the skill's "Standard constraints" section (issue #823).
+    "the standard constraints example validates as the skill says" {
+        val defs = schemaDefs(cxt, "core") {
+            type("Order") {
+                type = SCT.kObject
+                property("postcode", "A five-digit postal code.") {
+                    pattern = "^[0-9]{5}$"
+                    errors { patternMismatch("A postal code is five digits.") }
+                }
+                property("price", "Price, above zero.") { type = SCT.number; exclusiveMinimum = 0 }
+                property("tags", "Distinct tags.") { type = SCT.array; uniqueItems = true; items { type = SCT.string } }
+            }
+        }
+        val order = parseSchemaTypes(defs).getValue("core.Order")
+        val failures = validate(order, mapOf("postcode" to "1234", "price" to 0, "tags" to listOf("a", "b", "a")))
+        failures.map { it.code } shouldContainExactlyInAnyOrder
+            listOf(SchFailCode.patternMismatch, SchFailCode.belowMinimum, SchFailCode.duplicateItem)
+        // The built-in message quotes the pattern; the schema's own wording rides beside it.
+        val mismatch = failures.single { it.code == SchFailCode.patternMismatch }
+        mismatch.message shouldBe "This must match the pattern '^[0-9]{5}$'."
+        mismatch.userMessage shouldBe "A postal code is five digits."
+        failures.single { it.code == SchFailCode.belowMinimum }.message shouldBe "This must be more than 0."
+    }
 })

@@ -55,6 +55,12 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
     /** Shown when the value exceeds the field's upper bound; the counterpart of [belowMinimum]. */
     fun aboveMaximum(message: String) = set(SchFailCode.aboveMaximum, message)
 
+    /** Shown when a string does not match the field's `pattern` -- the place to say what the pattern is for. */
+    fun patternMismatch(message: String) = set(SchFailCode.patternMismatch, message)
+
+    /** Shown when an array declared `uniqueItems` holds the same item twice. */
+    fun duplicateItem(message: String) = set(SchFailCode.duplicateItem, message)
+
     /**
      * Shown for any failure this block does not name. Not itself a failure code — the fallback *after* the
      * specific ones and *before* the validator's built-in wording.
@@ -156,8 +162,6 @@ open class SchTypeBuilder(
     // because that is what the document has to say; the parser folds whichever one applies into a single
     // bound on SchType, since a type declares at most one pair. A pair belonging to another type is ignored
     // rather than rejected -- that is what a standard validator does with an inapplicable keyword.
-    // `exclusiveMinimum`/`exclusiveMaximum` are deliberately not supported: rare in practice, and they would
-    // complicate both the bound and its wording for no case anything here has.
 
     /** Smallest accepted value, for a number or integer field. */
     var minimum: Number? by SchAttr(data, SCH.minimum)
@@ -165,17 +169,33 @@ open class SchTypeBuilder(
     /** Largest accepted value, for a number or integer field. */
     var maximum: Number? by SchAttr(data, SCH.maximum)
 
+    /** A value the number must exceed, for a number or integer field -- the bound itself is refused (issue #823). */
+    var exclusiveMinimum: Number? by SchAttr(data, SCH.exclusiveMinimum)
+
+    /** A value the number must stay below; the counterpart of [exclusiveMinimum]. */
+    var exclusiveMaximum: Number? by SchAttr(data, SCH.exclusiveMaximum)
+
     /** Fewest accepted characters, for a string field. Counted in code points, so an emoji counts once. */
     var minLength: Number? by SchAttr(data, SCH.minLength)
 
     /** Most accepted characters, for a string field; see [minLength] on how they are counted. */
     var maxLength: Number? by SchAttr(data, SCH.maxLength)
 
+    /**
+     * A regular expression a plain string field's value must contain a match of (issue #823) -- anchor it with
+     * `^…$` to constrain the whole value. ECMA-262 syntax, restricted to what the backend and the browser read
+     * alike; see [SchPattern] for what is refused and why. Say what it is for in [errors]' `patternMismatch`.
+     */
+    var pattern: String? by SchAttr(data, SCH.pattern)
+
     /** Fewest accepted elements, for an array field. */
     var minItems: Number? by SchAttr(data, SCH.minItems)
 
     /** Most accepted elements, for an array field. */
     var maxItems: Number? by SchAttr(data, SCH.maxItems)
+
+    /** Whether an array field's elements must all differ, compared as JSON values (issue #823). */
+    var uniqueItems: Boolean? by SchAttr(data, SCH.uniqueItems)
 
     /** Fewest accepted properties, for an object field. */
     var minProperties: Number? by SchAttr(data, SCH.minProperties)

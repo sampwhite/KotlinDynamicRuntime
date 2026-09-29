@@ -19,6 +19,7 @@ import com.dynamicruntime.common.util.toOptBool
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toStartOfDay
 import kotlinx.datetime.LocalDate
+import kotlin.math.abs
 import kotlin.time.Instant
 
 /**
@@ -73,6 +74,16 @@ enum class SchFailCode {
 
     /** The value exceeded its declared upper bound; see [belowMinimum] for why the four pairs share two codes. */
     aboveMaximum,
+
+    /**
+     * A string did not match its field's `pattern` (issue #823). Its own code rather than [badValue], so a field's
+     * `g-errors` can say what the pattern is *for* -- "a postal code is five digits" -- without that wording also
+     * landing on an unrelated failure.
+     */
+    patternMismatch,
+
+    /** An array declared `uniqueItems` holds two equal elements (issue #823). */
+    duplicateItem,
 }
 
 /**
@@ -442,6 +453,7 @@ fun validateValue(
         // that arrived as a string (below).
         val effective = applyOuterWhitespace(type, coerced, opts.forInput, path, failures)
         checkVisible(type, effective, path, failures)
+        checkPattern(type, effective, path, failures)
         checkBounds(type, effective, path, failures)
         return effective
     }
@@ -455,8 +467,9 @@ fun validateValue(
 
     // Character rules run on every string that reached here, ahead of `const` and `options`: a value that is
     // one of the listed choices yet carries an invisible character is a broken list, and saying so beats
-    // letting the list vouch for it.
+    // letting the list vouch for it. `pattern` is one of them (issue #823), for the same reason.
     checkVisible(type, effective, path, failures)
+    checkPattern(type, effective, path, failures)
 
     // `const`: the type admits one value. Checked before options, and separately from them, because it is a
     // statement about the shape rather than a choice being offered -- most often a union branch saying which
@@ -788,6 +801,9 @@ fun validateArray(
     // does not carry into them (issue #487). Reset here as well as at each object property, so the semantic
     // holds however the flag is placed. Normally a no-op -- `withSkipCompleteness` returns the same instance.
     val elementOpts = opts.withSkipCompleteness(false)
+    // `uniqueItems` compares the elements as validated -- `"5"` coerced to `5` equals a `5` -- so they are kept
+    // even in validate-only mode when it is on.
+    val seen: MutableMap<String, Int>? = if (type.uniqueItems) HashMap(list.size) else null
     list.forEachIndexed { i, elem ->
         val coerced = if (itemType != null) {
             validateValue(itemType, elem, indexPath(path, i), coerce, failures, elementOpts)
@@ -795,8 +811,37 @@ fun validateArray(
             elem
         }
         out?.add(coerced)
+        if (seen != null) {
+            val first = seen.getOrPut(uniquenessKey(coerced)) { i }
+            if (first != i) {
+                failures.add(
+                    type.failure(
+                        path, SchFailCode.duplicateItem,
+                        "Item ${i + 1} repeats item ${first + 1}; each item must be different.", value = list,
+                    ),
+                )
+            }
+        }
     }
     return out ?: list
+}
+
+/**
+ * [value] as a string two JSON-equal values share and unequal ones do not (issue #823): a whole number reads the
+ * same however it is held (`1`, `1L` and `1.0` are one JSON number), an object's keys are sorted (JSON objects are
+ * unordered), and a string is quoted, so `"1"` and `1` stay apart.
+ */
+@KdrPrivate
+fun uniquenessKey(value: Any?): String = when (value) {
+    null -> "null"
+    is String -> "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    is Long, is Int, is Short, is Byte -> value.toString()
+    // A whole Double reads as the integer it equals; beyond Long's range it is left as a Double.
+    is Number -> value.toDouble().let { if (it % 1.0 == 0.0 && abs(it) < 9.0e18) it.toLong().toString() else it.toString() }
+    is Map<*, *> -> value.entries.sortedBy { it.key.toString() }
+        .joinToString(",", "{", "}") { uniquenessKey(it.key.toString()) + ":" + uniquenessKey(it.value) }
+    is List<*> -> value.joinToString(",", "[", "]") { uniquenessKey(it) }
+    else -> value.toString()
 }
 
 /**
@@ -1123,11 +1168,14 @@ fun checkBounds(type: SchType, value: Any?, path: String, failures: MutableList<
     val max = type.maxBound
     if (min == null && max == null) return
     val measured = measureFor(type.jsonType, value) ?: return
-    if (min != null && measured < min) {
-        failures.add(type.failure(path, SchFailCode.belowMinimum, boundMsg(type.jsonType, min, atLeast = true), value = value))
+    // An exclusive bound (issue #823) refuses the bound itself as well.
+    if (min != null && (measured < min || type.minExclusive && measured == min)) {
+        val message = boundMsg(type.jsonType, min, atLeast = true, exclusive = type.minExclusive)
+        failures.add(type.failure(path, SchFailCode.belowMinimum, message, value = value))
     }
-    if (max != null && measured > max) {
-        failures.add(type.failure(path, SchFailCode.aboveMaximum, boundMsg(type.jsonType, max, atLeast = false), value = value))
+    if (max != null && (measured > max || type.maxExclusive && measured == max)) {
+        val message = boundMsg(type.jsonType, max, atLeast = false, exclusive = type.maxExclusive)
+        failures.add(type.failure(path, SchFailCode.aboveMaximum, message, value = value))
     }
 }
 
@@ -1171,6 +1219,21 @@ fun checkVisible(type: SchType, value: Any?, path: String, failures: MutableList
             path, SchFailCode.badValue,
             "Character ${hit.second} at position ${hit.first} is not a visible character.", value = value,
         )
+    )
+}
+
+/**
+ * JSON Schema `pattern` (issue #823): a [SchFailCode.patternMismatch] when a string [value] contains no match of
+ * the field's [SchType.pattern], or nothing when it does or there is none. Unanchored, as the standard has it --
+ * see [SchPattern]. The message cannot say what the pattern is *for*, so it quotes it; a field whose readers are
+ * not developers should say what it means in its `g-errors`.
+ */
+@KdrPrivate
+fun checkPattern(type: SchType, value: Any?, path: String, failures: MutableList<SchFailure>) {
+    val pattern = type.pattern ?: return
+    if (value !is String || pattern.matches(value)) return
+    failures.add(
+        type.failure(path, SchFailCode.patternMismatch, "This must match the pattern '${pattern.source}'.", value = value),
     )
 }
 
@@ -1316,9 +1379,13 @@ fun codePointLength(s: String): Int {
  * characters.
  */
 @KdrPrivate
-fun boundMsg(jsonType: String?, bound: Double, atLeast: Boolean): String {
+fun boundMsg(jsonType: String?, bound: Double, atLeast: Boolean, exclusive: Boolean = false): String {
     val n = bound.fmtD()
-    val side = if (atLeast) "at least" else "at most"
+    // Only a number is ever exclusive; see [SchType.minExclusive].
+    val side = when {
+        exclusive -> if (atLeast) "more than" else "less than"
+        else -> if (atLeast) "at least" else "at most"
+    }
     val one = bound == 1.0
     return when (jsonType) {
         SCT.string -> "This must be $side $n character${if (one) "" else "s"}."
