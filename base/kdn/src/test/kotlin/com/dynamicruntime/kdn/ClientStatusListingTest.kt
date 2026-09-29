@@ -8,12 +8,14 @@ import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
@@ -94,5 +96,23 @@ class ClientStatusListingTest : StringSpec({
         val bare = listed.getValue(storedOnly)
         bare[CLD.status] shouldBe ClientStatus.storedOnly.name
         bare[CLD.name] shouldBe storedOnly
+    }
+
+    "the administrators' overview lists the same clients, each defined in stored configuration (#904)" {
+        val overview = admin.getItems(UADEP.clientsOverview).associateBy { it[CLD.clientId] as String }
+        for ((client, status) in listOf(present to ClientStatus.present, notEnabled to ClientStatus.notEnabled, dropped to ClientStatus.dropped)) {
+            val row = overview.getValue(client)
+            row[CLD.status] shouldBe status.name
+            // Declared by a stored configuration, which this node loaded: one for each.
+            row[CLD.origin] shouldBe GedraConfigOrigin.stored.name
+            row[CLD.storedConfigs] shouldBe 1L
+        }
+        // Nothing declares the bare client; it is known from stored configuration alone.
+        val bare = overview.getValue(storedOnly)
+        bare[CLD.status] shouldBe ClientStatus.storedOnly.name
+        bare[CLD.origin] shouldBe GedraConfigOrigin.stored.name
+        // The count is of loaded configurations, not definitions: the trait-only one is what makes it known.
+        bare[CLD.storedConfigs] shouldBe 1L
+        bare[CLD.workflowCount] shouldBe 0L
     }
 })
