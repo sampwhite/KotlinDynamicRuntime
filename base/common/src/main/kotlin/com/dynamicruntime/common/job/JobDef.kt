@@ -53,7 +53,9 @@ enum class JobTaskResult {
 
 /**
  * What a job's code is handed: the context to work in, the launch it belongs to, and the means to notice it is
- * being stopped. One per client, bound to that client.
+ * being stopped. Bound to the client being worked, and **one per task**: a pooled run's tasks run at once on
+ * different threads, and a context holds its SQL session, so tasks sharing one would share a connection -- one
+ * thread handing it back to the pool while another was still using it (found by the multi-node harness, #872).
  */
 class JobRunCxt internal constructor(
     /** A context bound to [client] (or the job's own context, before any client), acting as the system user. */
@@ -68,11 +70,11 @@ class JobRunCxt internal constructor(
     private val tracer: JobTracer?,
     private val stopping: () -> String?,
 ) {
+    /** A copy for one task: the same client, launch and generation, on a context -- and so a session -- of its own. */
+    internal fun forTask(): JobRunCxt = JobRunCxt(cxt.mkSubContext("jobTask"), launch, workAreas, client, generationId, tracer, stopping)
+
     /** Whether the launch is a dry run: it checks for work and reports it, but does none. */
     val dryRun: Boolean get() = launch.dryRun
-
-    /** Why the run is stopping, or null while it is not. */
-    val stopReason: String? get() = stopping()
 
     /**
      * Adds a note of the job's own to the launch's trace (issue #879), recorded at task level: why a task decided

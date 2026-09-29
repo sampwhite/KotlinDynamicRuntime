@@ -88,6 +88,9 @@ class NodeService : ServiceInitializer {
 
     val nodeLabel: String get() = nodeId.label
 
+    /** Whether [nodeId] has been settled yet: it is set as the service is created, so early in a boot it is not. */
+    val hasNodeId: Boolean get() = this::nodeId.isInitialized
+
     /** Basic health/status report returned by the `/health` endpoint. */
     fun getHealth(cxt: KdrCxt): Map<String, Any?> {
         val now = cxt.now()

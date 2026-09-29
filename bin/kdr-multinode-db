@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# @desc: Create, reset or drop the multi-node harness's local Postgres database (kdr_multinode).
+#
+# Usage:
+#   kdr-multinode-db create|reset|drop [--admin <role>]
+#
+# The one intrusive thing the multi-node harness does (issue #872), kept in a command of its own: it touches the
+# kdr_multinode database and no other. A dumb wrapper; the work is Kotlin (MultiNodeDb.kt).
+set -euo pipefail
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$script_dir/kdr-run" com.dynamicruntime.multinode.MultiNodeDbKt "$@"

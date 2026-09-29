@@ -40,6 +40,11 @@ object SqlTranUtil {
                         if (e.source != SRC.database) {
                             throw e
                         }
+                        // Most often the row now exists because a concurrent writer inserted it first (a unique
+                        // violation), so go back to taking the lock on it rather than inserting again. Retrying the
+                        // insert could only fail the same way, which is how three nodes launching one job at once
+                        // failed two of them outright (issue #872).
+                        doInsert = false
                         i++
                         continue
                     }
