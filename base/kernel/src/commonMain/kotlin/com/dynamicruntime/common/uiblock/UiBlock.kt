@@ -101,6 +101,10 @@ class UiBlockSource(
      * would let it change how it is itself merged, which is a question with no good answer.
      */
     val arrayKeys: Map<String, String> = emptyMap(),
+    /** The client config this layer came from, or null for a component's; see `FragmentSource.configName`. */
+    val configName: String? = null,
+    /** Whether this came from a stored client config (issue #916); see `overlayPrecedence`. */
+    val stored: Boolean = false,
 ) {
     init {
         if (isOverlay && arrayKeys.isNotEmpty()) {

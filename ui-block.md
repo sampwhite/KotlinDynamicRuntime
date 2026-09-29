@@ -27,6 +27,18 @@ Worth stating because the alternative reading is available and would dissolve th
 a UiBlock, the word would mean "part of a UI" and carry no information. What it actually names is *the thing a
 contributor registers and an overlay targets*.
 
+## Layer order, and seeing a client's layers
+
+A UiBlock and a fragment file fold their layers in the same order, later winning (`overlayPrecedence`, issue
+#916): the **bases**, then **component** overlays, then the client's overlays from **source** configuration,
+then the client's from **stored** configuration. A stable sort, so declaration order settles ties within a step.
+Stored last is a rule rather than a load-order accident because editing a client's copy or menu writes stored
+configuration, and that edit has to win over the client's own source config.
+
+`GET /clientAdmin/client/overrides` reports what a client's own layers change — fragment keys, and UiBlock items
+(by their array key) or objects — each with what everybody else gets, what the client gets, and the config that
+set it. A component's overlays count as what everybody gets, not as a client's change.
+
 ## Not "blob"
 
 The working name was "SDUI blob", and `blob` says *opaque bag of bytes* — which is precisely wrong. A UiBlock

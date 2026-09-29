@@ -45,15 +45,20 @@ class EffectiveFragments(
  *
  * 1. **Base** layers, in declaration order.
  * 2. **Component** overlays (`client == null`), in declaration order.
- * 3. **This client's** overlays, in declaration order.
+ * 3. **This client's** overlays from **source** configuration, in declaration order.
+ * 4. **This client's** overlays from **stored** configuration, in declaration order (issue #916).
  *
  * Later wins, so a client's overlay is consulted before a component's and both before the base -- "consulted
  * first" and "applied last" being the same statement. The client-after-component half is the one that had to
  * be decided rather than fallen into (Sam): a client is the most specific thing that has an opinion, so it
  * gets the last word, and a component cannot take a customer's copy back by adding an overlay of its own.
  *
+ * Stored after source is the same argument one step further (issue #916): editing a client's copy writes to its
+ * stored configuration, so an administrator's change to a key the client's source config also sets must win --
+ * by a rule ([overlayPrecedence]), not because stored configs happen to load later.
+ *
  * Within a step, declaration order settles it. That is not much of a rule, and it does not have to be while a
- * key overlaid twice at the same level is an authoring mistake rather than a composition -- if that stops
+ * key overlaid twice at the same step is an authoring mistake rather than a composition -- if that stops
  * being true, this is the paragraph to change.
  *
  * A layer whose resource is absent contributes nothing and is not an error here; a *declared* file with no
@@ -63,8 +68,9 @@ class EffectiveFragments(
 fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: String?): EffectiveFragments {
     val applicable = sources.filter { it.fileId == fileId && (it.client == null || it.client == client) }
     val bases = applicable.filter { !it.isOverlay }
-    // A component's overlays before this client's, which is the whole of the precedence decision above.
-    val overlays = applicable.filter { it.isOverlay }.sortedBy { if (it.client == null) 0 else 1 }
+    // A component's overlays before this client's, and the client's source ones before its stored ones, which
+    // is the whole of the precedence decision above. A stable sort, so declaration order settles the rest.
+    val overlays = applicable.filter { it.isOverlay }.sortedBy { overlayPrecedence(it.client, it.stored) }
 
     val merged = LinkedHashMap<String, LinkedHashMap<String, String>>()
     var found = false

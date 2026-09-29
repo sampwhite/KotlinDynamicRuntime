@@ -259,6 +259,12 @@ object CLD {
 
     /** How many workflows the client sees, its own and the inherited global ones. */
     const val workflowCount = "workflowCount"
+
+    /** How many fragment keys the client's own configuration overrides (issue #916). */
+    const val copyOverrides = "copyOverrides"
+
+    /** How many UiBlock items and objects -- menu entries among them -- the client's own configuration changes (issue #916). */
+    const val blockOverrides = "blockOverrides"
 }
 
 /**

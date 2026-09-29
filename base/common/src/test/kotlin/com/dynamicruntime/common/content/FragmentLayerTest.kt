@@ -51,6 +51,16 @@ class FragmentLayerTest : StringSpec({
         merged.content.getValue("welcome")["title"] shouldBe "Acme title"
     }
 
+    "a client's stored overlay wins over its source one, whatever order they were declared in (issue #916)" {
+        val stored = FragmentSource("home", isOverlay = true, client = "acme", origin = "stored", stored = true) {
+            mapOf("welcome" to mapOf("title" to "Edited title"))
+        }
+        val source = layer(isOverlay = true, client = "acme", content = mapOf("welcome" to mapOf("title" to "Acme title")))
+        // Stored declared first -- the registry order a reload can produce -- so only the rule gives the right answer.
+        mergeFragmentLayers("home", listOf(base, stored, source), client = "acme")
+            .content.getValue("welcome")["title"] shouldBe "Edited title"
+    }
+
     "another client's overlay is not applied" {
         val acme = layer(isOverlay = true, client = "acme", content = mapOf("welcome" to mapOf("title" to "Acme title")))
         mergeFragmentLayers("home", listOf(base, acme), client = "globex")
@@ -211,7 +221,7 @@ class FragmentLayerTest : StringSpec({
 
     "a backend base makes the merged file backend" {
         val backendBase = layer(content = mapOf("email" to mapOf("subject" to "Code"))).let {
-            FragmentSource(it.fileId, it.isOverlay, it.client, it.origin, FragmentAudience.backend, it.load)
+            FragmentSource(it.fileId, it.isOverlay, it.client, it.origin, FragmentAudience.backend, load = it.load)
         }
         mergeFragmentLayers("home", listOf(backendBase), client = null).audience shouldBe FragmentAudience.backend
     }

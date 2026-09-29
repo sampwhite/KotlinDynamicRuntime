@@ -87,6 +87,17 @@ class FragmentSource(
      */
     val audience: FragmentAudience = FragmentAudience.frontend,
     /**
+     * The name of the client config this layer came from, or null for a component's (issue #916). Kept beside
+     * the free-text [origin] because a report of what a client customized has to name the config that set a
+     * value -- to show it, and later to write to it -- rather than a diagnostic phrase about it.
+     */
+    val configName: String? = null,
+    /**
+     * Whether this layer came from a **stored** client config rather than one in source (issue #916). It is
+     * what orders a client's own overlays -- see [overlayPrecedence].
+     */
+    val stored: Boolean = false,
+    /**
      * Reads this layer's content, or null when its resource is absent.
      *
      * A function rather than a map so a classpath read stays lazy and an inline map needs no wrapper: both
@@ -96,6 +107,22 @@ class FragmentSource(
     val load: () -> Map<String, Map<String, String>>?,
 ) {
     override fun toString(): String = "$fileId <- $origin" + (client?.let { " ($it)" } ?: "")
+}
+
+/**
+ * Where an overlay is applied among the overlays of one merge (issue #916): a component's first, then the
+ * client's from **source**, then the client's from **stored** configuration -- later wins, so a stored overlay
+ * has the last word. Shared by the fragment and the UiBlock merges, which order their layers alike.
+ *
+ * The stored-after-source half is a rule rather than an accident of load order (stored configs happen to load
+ * after source ones) because editing a client's copy writes to stored configuration: an administrator's change
+ * to a key the client's source config also sets has to win, and has to go on winning however the registry is
+ * next assembled -- at boot, or by a reload appending a client's revised layers.
+ */
+fun overlayPrecedence(client: String?, stored: Boolean): Int = when {
+    client == null -> 0
+    !stored -> 1
+    else -> 2
 }
 
 /** The suffix marking a classpath fragment file as an overlay: `<fileId>_overlay.md`. */
