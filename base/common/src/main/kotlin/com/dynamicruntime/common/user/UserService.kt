@@ -23,6 +23,7 @@ import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
 import com.dynamicruntime.common.util.normalizeLoginId
+import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toT
@@ -609,8 +610,12 @@ class UserService : ServiceInitializer {
      * `client` index, with [visibleEnabledUsers]'s SQL fallback when there is no cache.
      */
     fun countActiveUsers(cxt: KdrCxt, client: String): ActiveUserCount {
-        val users = visibleEnabledUsers(cxt, ReadScope.ofClient(client))
-        return ActiveUserCount(total = users.size, unclaimed = users.count { !it.isRegistered })
+        // The raw rows, not extracted users: a count needs two facts a row carries on its own (enabled is what the
+        // cache holds; registered is a date in the auth data), so it takes no identity join per row -- and a row
+        // whose identity has gone missing counts rather than failing every client's listing.
+        val rows = enabledUserRows(cxt, ReadScope.ofClient(client))
+        val unclaimed = rows.count { row -> row[AU.authUserData]?.toJsonMap()?.get(AD.registeredAt) == null }
+        return ActiveUserCount(total = rows.size, unclaimed = unclaimed)
     }
 
     /**
@@ -628,7 +633,15 @@ class UserService : ServiceInitializer {
      * narrowing to the client in SQL when the scope names one, so the search still answers -- just without the
      * in-memory speed the feature exists for.
      */
-    private fun visibleEnabledUsers(cxt: KdrCxt, scope: ReadScope): List<AuthUserRow> {
+    private fun visibleEnabledUsers(cxt: KdrCxt, scope: ReadScope): List<AuthUserRow> =
+        enabledUserRows(cxt, scope).map { AuthUserRow.extract(it, identityOf(cxt)) }
+
+    /**
+     * The rows behind [visibleEnabledUsers], as stored: from the cache's narrowest index for [scope], else the SQL
+     * scan. Its own step so a caller that needs only a row's own columns -- [countActiveUsers] -- reads them
+     * without extracting a user from each.
+     */
+    private fun enabledUserRows(cxt: KdrCxt, scope: ReadScope): List<Map<String, Any?>> {
         // Captured to a local: `scope.client` is a kernel property, so the compiler will not smart-cast it.
         val scopeClient = scope.client
         val scopeIdentity = scope.identityId
@@ -643,7 +656,7 @@ class UserService : ServiceInitializer {
                 scopeClient != null -> snapshot.allByIndex(PF.client, scopeClient)
                 else -> snapshot.byId.values
             }
-            return rows.map { AuthUserRow.extract(it.value, identityOf(cxt)) }
+            return rows.map { it.value }
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authUsersTable(cxt)
@@ -664,7 +677,7 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, data)
         }
-        return rows.map { AuthUserRow.extract(it, identityOf(cxt)) }
+        return rows
     }
 
     /** Inserts a new `AuthUsers` row (protocol columns stamped), returning the generated `userId`. */

@@ -111,6 +111,8 @@ class ClientStatusListingTest : StringSpec({
         val bare = overview.getValue(storedOnly)
         bare[CLD.status] shouldBe ClientStatus.storedOnly.name
         bare[CLD.origin] shouldBe GedraConfigOrigin.stored.name
+        // The count is of loaded configurations, not definitions: the trait-only one is what makes it known.
+        bare[CLD.storedConfigs] shouldBe 1L
         bare[CLD.workflowCount] shouldBe 0L
     }
 })

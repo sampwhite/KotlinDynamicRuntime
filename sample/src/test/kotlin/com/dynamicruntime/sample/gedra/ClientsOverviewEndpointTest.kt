@@ -9,6 +9,10 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
@@ -93,5 +97,21 @@ class ClientsOverviewEndpointTest : StringSpec({
         selfAdmin.expectError(EXC.notAuthorized, UADEP.clientsOverview)
         val user = TestUser.create(cxt, "overview-user@acme.test", userClient = SC.acme)
         user.expectError(EXC.notAuthorized, UADEP.clientsOverview)
+    }
+
+    // Last: it changes acme's configuration for the rest of the boot.
+    "a client defined in source keeps that origin under stored overlays, which the count says are loaded" {
+        val overlay = gedraConfig(cxt, "main", "acmeOverlay904", SC.acme) {
+            trait("OverlayEntry", "acmeOverlay904", setOf(GedraDataType.formDoc), "A trait acme's administrator added.") {
+                property("text", "Text.")
+            }
+        }
+        val writer = cxt.mkSubContext("overlay", SC.acme).also { it.userId = 9040L }
+        GedraConfigService.get(cxt).writeConfig(writer, overlay)
+        GedraConfigReload.reloadClient(cxt, SC.acme)
+        val acme = rows(admin).getValue(SC.acme)
+        acme[CLD.origin] shouldBe GedraConfigOrigin.source.name
+        count(acme, CLD.storedConfigs) shouldBe 1
+        acme[CLD.status] shouldBe ClientStatus.present.name
     }
 })

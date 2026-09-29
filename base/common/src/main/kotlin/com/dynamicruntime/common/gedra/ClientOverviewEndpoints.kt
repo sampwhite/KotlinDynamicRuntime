@@ -86,9 +86,9 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     ) { c, _ ->
         // A `public` self-administrator administers only themselves (issue #805); there is no client for them to oversee.
         AdminRules.requireClientAdministrator(c)
-        val present = namableClients(c).map { overviewRow(c, it.clientId, it.name, ClientStatus.present, GedraConfigOrigin.source) }
+        val present = namableClients(c).map { overviewRow(c, it.clientId, it.name, ClientStatus.present) }
         if (!AdminRules.canSeeAllClients(c)) return@listEndpoint present
-        present + absentClients(c).map { overviewRow(c, it.clientId, it.name, it.status, GedraConfigOrigin.stored) }
+        present + absentClients(c).map { overviewRow(c, it.clientId, it.name, it.status) }
     }
 
     itemEndpoint(
@@ -111,19 +111,18 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
 }
 
 /**
- * One overview row. [fallbackOrigin] stands in when no kept config declares the client: `source` cannot happen
- * for a present client (a present client was declared), and an absent one nobody declares is known from stored
- * configuration alone. Workflows and the survey are read only for a present client -- an absent one has no
- * registry to ask.
+ * One overview row. A client no kept config declares -- which a present client never is -- is known from stored
+ * configuration alone, so that is its origin. Workflows and the survey are read only for a present client: an
+ * absent one has no registry to ask.
  */
-private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatus, fallbackOrigin: GedraConfigOrigin): Map<String, Any?> {
+private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatus): Map<String, Any?> {
     val isPresent = status == ClientStatus.present
     val users = UserService.get(cxt).countActiveUsers(cxt, clientId)
     return mapOf(
         CLD.clientId to clientId,
         CLD.name to name,
         CLD.status to status.name,
-        CLD.origin to (ClientService.get(cxt).originOf(clientId) ?: fallbackOrigin).name,
+        CLD.origin to (ClientService.get(cxt).originOf(clientId) ?: GedraConfigOrigin.stored).name,
         CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).size,
         CLD.forms to GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId),
         CLD.users to users.total,
