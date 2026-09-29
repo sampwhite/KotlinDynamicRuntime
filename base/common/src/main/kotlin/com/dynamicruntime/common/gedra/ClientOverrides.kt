@@ -165,21 +165,31 @@ fun copyOverrides(
     return out
 }
 
-/** Where a client layer touches a block: a keyed-array item (`itemId` set), or an object outside one. */
-private data class BlockTouch(val path: String, val itemId: String?)
+/**
+ * Where a client layer touches a block: a keyed-array item (`itemId` set), an object outside one, or an item a
+ * keyed array holds with **no key** ([keyless] set -- `mergeArray` appends such an item rather than dropping it, so
+ * it is served and has to be reported). A keyless item has nothing to match it by, so each is its own touch,
+ * told apart by [ordinal].
+ */
+private data class BlockTouch(val path: String, val itemId: String?, val ordinal: Int = 0) {
+    var keyless: Map<*, *>? = null
+}
 
 /**
  * Each item and object [layers] touch, with the fields each sets and the last layer to set it -- the rows of a
  * block's overrides before any merge is consulted, so [countBlockOverrides] can count them cheaply.
  *
  * Fields are taken one level deep: a keyed item's own fields, or an object's non-object values. A field holding an
- * object or an array (other than a keyed array, which is walked) is reported whole, as text.
+ * object or an array is reported whole, as text -- and that includes a keyed array nested **inside** an item
+ * (`items.*.actions`): only keyed arrays reached through objects are walked into items. Nothing declares a nested
+ * one today; an editor that needs to address one of its elements is where the walk would grow.
  */
 private fun blockTouches(
     layers: List<UiBlockSource>,
     arrayKeys: Map<String, String>,
 ): Map<BlockTouch, LinkedHashMap<String, UiBlockSource>> {
     val touches = LinkedHashMap<BlockTouch, LinkedHashMap<String, UiBlockSource>>()
+    var keylessCount = 0
     fun walk(node: Map<*, *>, path: String, layer: UiBlockSource, depth: Int) {
         if (depth > maxBlockDepth) {
             throw KdrException("UiBlock '${layer.blockId}' from ${layer.origin} nests deeper than $maxBlockDepth levels.")
@@ -191,8 +201,9 @@ private fun blockTouches(
             when {
                 v is List<*> && keyField != null -> for (item in v) {
                     val map = item as? Map<*, *> ?: continue
-                    val id = map[keyField]?.toString() ?: continue
-                    val fields = touches.getOrPut(BlockTouch(at, id)) { LinkedHashMap() }
+                    val id = map[keyField]?.toString()
+                    val touch = if (id != null) BlockTouch(at, id) else BlockTouch(at, null, ++keylessCount).also { it.keyless = map }
+                    val fields = touches.getOrPut(touch) { LinkedHashMap() }
                     for (f in map.keys) {
                         if (f != keyField) fields[f.toString()] = layer
                     }
@@ -234,13 +245,19 @@ fun blockOverrides(
         val effective = merged(blockId, client)
         for ((touch, fields) in blockTouches(layers.filter { it.blockId == blockId }, shared.arrayKeys)) {
             val keyField = shared.arrayKeys[touch.path]
-            val base = objectAt(shared.content, touch, keyField)
-            val mine = objectAt(effective.content, touch, keyField)
+            val keyless = touch.keyless
+            // A keyless item is the client's own by construction, and cannot be found in a merge by anything but
+            // itself -- so it is reported as the layer wrote it.
+            val base = if (keyless != null) null else objectAt(shared.content, touch, keyField)
+            val mine = keyless ?: objectAt(effective.content, touch, keyField)
+            val isItem = touch.itemId != null || keyless != null
             out.add(
                 BlockOverride(
                     blockId, touch.path, touch.itemId,
-                    added = touch.itemId != null && base == null,
-                    hidden = touch.itemId != null && mine?.get(UIB.cfactExpression) == CFACT.neverName,
+                    added = isItem && base == null,
+                    // Withdrawn *by this client*: an item the base already withdraws is not the client's doing,
+                    // even when the client renames it.
+                    hidden = isItem && mine.isNever() && !base.isNever(),
                     fields = fields.map { (field, layer) ->
                         BlockFieldOverride(
                             field, base?.get(field).asText(), mine?.get(field).asText(), layer.configName, layer.stored,
@@ -252,6 +269,8 @@ fun blockOverrides(
     }
     return out
 }
+
+private fun Map<*, *>?.isNever(): Boolean = this?.get(UIB.cfactExpression) == CFACT.neverName
 
 /** The item [touch] names in the keyed array at its path, or the object at its path; null when absent. */
 private fun objectAt(content: Map<String, Any?>, touch: BlockTouch, keyField: String?): Map<*, *>? {

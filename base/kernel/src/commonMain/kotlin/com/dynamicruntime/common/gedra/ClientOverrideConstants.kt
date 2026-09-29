@@ -4,11 +4,10 @@ package com.dynamicruntime.common.gedra
  * The wire vocabulary of a client's **overrides** (issue #916): the copy (Markdown fragment keys) and the interface
  * (UiBlock items and fields) that its own configuration changes, each with the value it replaces and the config
  * that set it. In the kernel so the Clients page reads the same names the endpoint writes. Each name matches its
- * value.
+ * value. The types are declared in the clients overview module (`CLD.overviewNamespace`), beside the endpoint.
  */
 @Suppress("ConstPropertyName")
 object COV {
-    const val namespace = "clientOverrides"
     const val typeName = "ClientOverrides"
     const val copyTypeName = "CopyOverride"
     const val blockTypeName = "BlockOverride"
@@ -48,13 +47,16 @@ object COV {
     /** The dotted path to the keyed array holding [itemId], or to the object whose fields changed ("" for the root). */
     const val path = "path"
 
-    /** The item's primary-key value within its keyed array; absent for a change to an object outside one. */
+    /**
+     * The item's primary-key value within its keyed array. Absent for a change to an object outside one, and for an
+     * item the client adds with no key (then [added] is true and [path] names the array).
+     */
     const val itemId = "itemId"
 
     /** Whether the item is the client's own, not in the block everybody else gets. */
     const val added = "added"
 
-    /** Whether the item is withdrawn for this client (its condition is `#never`). */
+    /** Whether this client's layers withdraw the item (its condition is `#never` here and not for everybody else). */
     const val hidden = "hidden"
 
     const val fields = "fields"

@@ -125,6 +125,38 @@ class ClientOverridesTest : StringSpec({
         title.value shouldBe "Acme menu"
     }
 
+    "an item the base already withdraws is not reported hidden when the client only renames it" {
+        val withdrawn = uiBlock("menu", origin = "core", arrayKeys = mapOf("items" to "id")) {
+            items("items") { item { set("id", "old"); set("label", "Old"); set(UIB.cfactExpression, CFACT.neverName) } }
+        }
+        val rename = uiBlockOverlay("menu", origin = "acme", client = "acme") {
+            items("items") { item { set("id", "old"); set("label", "Older") } }
+        }
+        val layers = listOf(withdrawn, rename)
+        val row = blockOverrides(layers, "acme") { blockId, forClient -> mergeUiBlock(blockId, layers, forClient) }.single()
+        row.hidden shouldBe false
+        row.fields.single().value shouldBe "Older"
+    }
+
+    "an item added with no key is served, so it is reported -- as the client's own, one row each" {
+        val stray = uiBlockOverlay("menu", origin = "acme", client = "acme") {
+            items("items") {
+                item { set("label", "Stray one") }
+                item { set("label", "Stray two"); set(UIB.cfactExpression, CFACT.neverName) }
+            }
+        }
+        val layers = listOf(menu, stray)
+        val rows = blockOverrides(layers, "acme") { blockId, forClient -> mergeUiBlock(blockId, layers, forClient) }
+        rows.map { it.fields.first().value } shouldBe listOf("Stray one", "Stray two")
+        rows.forEach {
+            it.path shouldBe "items"
+            it.itemId shouldBe null
+            it.added shouldBe true
+        }
+        rows.map { it.hidden } shouldBe listOf(false, true)
+        countBlockOverrides(layers, "acme") shouldBe 2
+    }
+
     "the block count matches the rows, and another client has none" {
         countBlockOverrides(blocks, "acme") shouldBe 4
         countBlockOverrides(blocks, "globex") shouldBe 0

@@ -11,7 +11,6 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.uiblock.UiBlockService
-import com.dynamicruntime.common.uiblock.mergeUiBlock
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
@@ -128,11 +127,14 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(COV.path, "The dotted path to the list holding the item, or to the object; empty for the root.", required = true) {
             emptyIsAbsent = false
         }
-        property(COV.itemId, "The item's key within its list; absent for an object outside one.")
+        property(COV.itemId, "The item's key within its list; absent for an object outside one, and for an item " +
+            "the client adds with no key.")
         property(COV.added, "Whether the item is the client's own rather than a change to one everybody has.", required = true) {
             type = SCT.boolean
         }
-        property(COV.hidden, "Whether the item is withdrawn for this client.", required = true) { type = SCT.boolean }
+        property(COV.hidden, "Whether the client withdraws the item -- hidden here, shown to everybody else.", required = true) {
+            type = SCT.boolean
+        }
         property(COV.fields, "The fields the client sets.", required = true) {
             type = SCT.array
             items { ref(COV.blockFieldTypeName) }
@@ -198,14 +200,14 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     ) { c, request ->
         val clientId = overseenClient(c, request[COV.client].toOptStr())
         val fragments = MarkdownFragmentService.get(c)
-        val uiBlocks = UiBlockService.registeredUiBlocks(c)
+        val blocks = UiBlockService.get(c)
         mapOf(
             COV.client to clientId,
             COV.copy to copyOverrides(MarkdownFragmentService.registeredFragmentSources(c), clientId) { fileId, forClient ->
                 fragments.effectiveFragmentsFor(c, fileId, forClient)
             }.map { it.toJsonMap() },
-            COV.blocks to blockOverrides(uiBlocks, clientId) { blockId, forClient ->
-                mergeUiBlock(blockId, uiBlocks, forClient)
+            COV.blocks to blockOverrides(UiBlockService.registeredUiBlocks(c), clientId) { blockId, forClient ->
+                blocks.merged(c, blockId, forClient)
             }.map { it.toJsonMap() },
         )
     }
