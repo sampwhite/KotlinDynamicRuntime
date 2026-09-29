@@ -274,12 +274,16 @@ val FormsPage = FC<FormsPageProps> { props ->
         }
     }
 
-    /** Promotes [draft] -- its non-blank values -- to the applied filter and reloads from the top (issue #538). */
-    fun applySearch(ep: EndpointInfo, draft: Map<String, String>) {
+    /**
+     * Promotes [draft] -- its non-blank values -- to the applied filter and reloads from the top (issue #538).
+     * [withSummary] asks for the workflow column's summary again, for a search that changes which workflow the
+     * listing is of (issue #792), so the heading's label is looked up in a summary that names it.
+     */
+    fun applySearch(ep: EndpointInfo, draft: Map<String, String>, withSummary: Boolean = false) {
         val applied = draft.filterValues { it.isNotBlank() }
         appliedSearch = applied
         offset = 0
-        loadPage(ep, 0, applied)
+        loadPage(ep, 0, applied, withSummary = withSummary)
     }
 
     // A history move between the workflow's states (issue #792): the state is part of what identifies the page,
@@ -287,11 +291,15 @@ val FormsPage = FC<FormsPageProps> { props ->
     // follows it, as it follows `g=` -- only when a drill key moved: a search change writes the hash in place
     // and never reaches here as a difference, and an unrelated hash change (a form opened) leaves it alone.
     useEffect(hashSearch) {
-        val wanted = hashSearch ?: return@useEffect
+        val fromHash = hashSearch ?: return@useEffect
         val ep = listEndpoint ?: return@useEffect
+        // Read through the listing's own whitelist, as the mount does: the sort rides the hash beside the search
+        // and is applied on its own, and a stale key must not reach the endpoint.
+        val wanted = fromHash.filterKeys { it in formsSearchKeys(ep.inputSchema) }
         if (workflowMode && formsDrillKeys.any { wanted[it] != appliedSearch[it] }) {
             searchDraft = wanted
-            applySearch(ep, wanted)
+            // Another workflow altogether needs the summary again, or its heading may not be named.
+            applySearch(ep, wanted, withSummary = wanted[WAGG.workflowId] != appliedSearch[WAGG.workflowId])
         }
     }
 
@@ -374,7 +382,6 @@ val FormsPage = FC<FormsPageProps> { props ->
             }
         }
     }
-
 
     // Clear the flash after a beat, so it plays once on arrival and a later re-render (paging, a reload) does
     // not repeat it (issue #592). The timer is cleared on the next run rather than via an effect-cleanup
@@ -543,7 +550,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                         applySearch(ep, next)
                                     }
                                 }
-                                +workflowStateHeading(state).replaceFirstChar { it.uppercase() }
+                                +workflowStateTitle(state)
                             }
                         }
                     }
@@ -969,7 +976,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                         hashHref(workflowPageHash(id, wf, task, edit, listingPage) + listingContext)
                     }
                     // Drilled in from the workflow pages (issue #792): View Workflow and a row double-click open it.
-                    drillWorkflowId = workflowDrillOf(appliedSearch)?.first
+                    drillWorkflowId = drill?.first
                     onOpenWorkflow = { id, wf, task, edit ->
                         navigateHash(workflowPageHash(id, wf, task, edit, listingPage) + listingContext)
                     }

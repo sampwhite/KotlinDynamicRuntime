@@ -928,6 +928,9 @@ fun workflowStateHeading(state: WfColumnCategory): String = when (state) {
     WfColumnCategory.ineligible -> "not eligible"
 }
 
+/** [workflowStateHeading] as a title -- the Workflows page's column headings and the listing's state switch. */
+fun workflowStateTitle(state: WfColumnCategory): String = workflowStateHeading(state).replaceFirstChar { it.uppercase() }
+
 /** A phase as the workflow pages say it beside a workflow's name (issue #792); empty for one open to new forms. */
 fun workflowPhaseText(phase: WfPhase?): String = when (phase) {
     WfPhase.lifetimeOnly -> "closed"
