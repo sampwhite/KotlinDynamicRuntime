@@ -1,8 +1,11 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.clientLabel
+import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -12,6 +15,8 @@ import react.Props
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
+import react.dom.html.ReactHTML.h2
+import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.table
 import react.dom.html.ReactHTML.tbody
@@ -19,7 +24,9 @@ import react.dom.html.ReactHTML.td
 import react.dom.html.ReactHTML.th
 import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
+import react.dom.html.ReactHTML.ul
 import react.useEffect
+import react.useRef
 import react.useState
 import web.cssom.ClassName
 
@@ -35,8 +42,13 @@ private val clientsScope = MainScope()
  * endpoint's own refusal -- a `public` self-administrator, who administers only their own users -- is shown as the
  * denial it is, in the endpoint's words, not as a failed load. A failed *refresh* keeps the listing already on
  * screen and says so above it: the page re-reads on every refresh generation, and a blip must not take away what
- * was being read. The detail view (issue #906) and, later, editing a client and designing its workflows (#903) open
- * from here.
+ * was being read.
+ *
+ * With `c=<id>` (issue #906) it shows **one client** instead -- as Docs shows one document -- with `← Clients` back:
+ * the overview's facts for it, its definition as the scoped retrieve answers, the issues its checks forgave, and
+ * the stored configurations this node holds for it. The definition is asked for on its own, keyed on the open id,
+ * so a deep link works before the listing has loaded and a client this node does not carry still shows what the
+ * listing knows above the retrieve's honest 404. Editing a client and designing its workflows (#903) will open here.
  */
 val ClientsPage = FC<Props> {
     var config by useState<HomeConfig?>(null)
@@ -45,6 +57,13 @@ val ClientsPage = FC<Props> {
     // The endpoint's refusal (a 403), in its words: a designed answer, drawn as the permission panel.
     var refusal by useState<String?>(null)
     val generation = useRefreshGeneration()
+    // The open client's detail (issue #906): read on its own, keyed on the id the hash names.
+    val openId = hashParams()[HP.client]
+    var definition by useState<ClientDefinitionView?>(null)
+    var storedConfigs by useState<List<ConfigSummaryView>?>(null)
+    var detailError by useState<DisplayError?>(null)
+    // Monotonic token, so a slow answer for a client the user has moved on from is dropped rather than shown.
+    val latestDetail = useRef(0)
 
     useEffect(generation) {
         clientsScope.launch {
@@ -61,6 +80,35 @@ val ClientsPage = FC<Props> {
         }
     }
 
+    // The open client's definition and stored configurations, once the shell has said who is asking (the stored
+    // configurations' path depends on it). Cleared first, so a switch never shows the previous client's under the
+    // new heading. Each is fetched on its own: a client this node does not carry has no definition to retrieve,
+    // which must not hide the configurations it does hold.
+    useEffect(openId, config) {
+        definition = null
+        storedConfigs = null
+        detailError = null
+        val id = openId
+        val shell = config
+        if (id == null || shell == null) return@useEffect
+        val across = shell.canSeeAllClients
+        val own = shell.user.client
+        val token = (latestDetail.current ?: 0) + 1
+        latestDetail.current = token
+        clientsScope.launch {
+            try {
+                val loaded = ClientsApi.definition(id)
+                if (latestDetail.current == token) definition = loaded
+            } catch (e: Throwable) {
+                if (latestDetail.current == token) detailError = userFacingError(e)
+            }
+        }
+        clientsScope.launch {
+            val loaded = runCatching { ClientsApi.storedConfigs(id, across, own) }.getOrDefault(emptyList())
+            if (latestDetail.current == token) storedConfigs = loaded
+        }
+    }
+
     val current = config
     when {
         refusal != null -> deniedCard(refusal!!)
@@ -71,7 +119,93 @@ val ClientsPage = FC<Props> {
             errorLead = "Couldn't load the clients."
         }
         !current.canManageUsers -> deniedCard("You do not have permission to see clients.")
+        openId != null -> clientDetail(
+            openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs, detailError, current.canSeeAllClients,
+        )
         else -> clientsListing(rows, current.canSeeAllClients, loadError)
+    }
+}
+
+/**
+ * One client (issue #906): the way back, the heading, the summary rows, the issues, and the stored configurations.
+ * [row] is the listing's overview of it when the listing holds it; [def] the retrieved definition, or [detailError]
+ * why not -- shown under the summary, since the summary still says what the listing knows.
+ */
+private fun ChildrenBuilder.clientDetail(
+    clientId: String,
+    row: ClientOverview?,
+    def: ClientDefinitionView?,
+    configs: List<ConfigSummaryView>?,
+    detailError: DisplayError?,
+    acrossClients: Boolean,
+) {
+    div {
+        className = ClassName("card wide")
+        backToListing(HMENU.pageClients)
+        h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
+        for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) readOnlyField(label, value)
+        detailError?.let { errorText("Couldn't load this client's definition.", it) }
+        if (def == null && detailError == null) {
+            p {
+                className = ClassName("subtitle")
+                +"Loading…"
+            }
+        }
+        // The issues, from the definition when it was read and from the listing's row otherwise (the row carries
+        // the messages alone), so a dropped client's reasons show either way.
+        val issues = def?.issues?.map { "${it.message} ${it.degradedTo}".trim() + (if (it.origin.isEmpty()) "" else " (${it.origin})") }
+            ?: row?.issues.orEmpty()
+        if (issues.isNotEmpty()) {
+            h2 { +"Issues" }
+            ul {
+                className = ClassName("wf-reasons")
+                issues.forEachIndexed { i, text ->
+                    li {
+                        key = i.toString().unsafeCast<Key>()
+                        +text
+                    }
+                }
+            }
+        }
+        h2 { +"Stored configuration" }
+        when {
+            configs == null -> p {
+                className = ClassName("subtitle")
+                +"Loading…"
+            }
+            configs.isEmpty() -> p {
+                className = ClassName("subtitle")
+                +"This node holds no stored configuration for this client."
+            }
+            else -> div {
+                className = ClassName("op-table-scroll")
+                table {
+                    className = ClassName("op-table")
+                    thead {
+                        tr {
+                            th { +"Name" }
+                            th { className = ClassName("op-num"); +"Version" }
+                            th { +"Published" }
+                            th { +"Updated" }
+                            th { className = ClassName("op-num"); +"Issues" }
+                        }
+                    }
+                    tbody {
+                        configs.forEach { c ->
+                            tr {
+                                key = c.name.unsafeCast<Key>()
+                                td { +c.name }
+                                td { className = ClassName("op-num"); +c.version.toString() }
+                                td { +(if (c.published) c.publishedAt?.let { formatTimestamp(it) } ?: "Yes" else "No") }
+                                td { +(c.updatedAt?.let { formatTimestamp(it) } ?: "\u2014") }
+                                td { className = ClassName("op-num"); +c.issueCount.toString() }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Editing the client, and designing its workflows, land here (#903, later slices).
     }
 }
 
@@ -127,7 +261,14 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
                         rows.forEach { c ->
                             tr {
                                 key = c.clientId.unsafeCast<Key>()
-                                td { +clientLabel(c.clientId, c.name) }
+                                td {
+                                    // The client's own page (issue #906): its definition, issues and stored configuration.
+                                    a {
+                                        className = ClassName("wf-cell-link")
+                                        href = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to c.clientId))
+                                        +clientLabel(c.clientId, c.name)
+                                    }
+                                }
                                 td {
                                     // The issues themselves, on hover: what a check forgave, or why the client was dropped.
                                     if (c.issues.isNotEmpty()) title = c.issues.joinToString("\n")

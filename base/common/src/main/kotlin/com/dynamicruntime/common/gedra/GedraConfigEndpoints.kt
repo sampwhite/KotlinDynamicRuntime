@@ -49,50 +49,6 @@ import com.dynamicruntime.common.util.toOptStr
  * (#617). Because nothing loads a stored config yet, the end-to-end browser round trip is deferred to #614, as
  * the issue allows; these endpoints are verified by service- and HTTP-level tests.
  */
-@Suppress("ConstPropertyName")
-object CFEP {
-    /** The schema namespace the config-endpoint types live in (distinct from the `clientAdmin` section path). */
-    const val namespace = "clientAdminConfig"
-
-    // --- paths (all in the `clientAdmin` section, so the section gate is the path prefix) ---
-    const val bundles = "/${SECT.clientAdmin}/config/bundles"
-    const val bundle = "/${SECT.clientAdmin}/config/bundle"
-    const val bundleWrite = "/${SECT.clientAdmin}/config/bundle/write"
-    const val bundlePatch = "/${SECT.clientAdmin}/config/bundle/patch"
-    const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
-    const val bundleRevert = "/${SECT.clientAdmin}/config/bundle/revert"
-    const val traits = "/${SECT.clientAdmin}/config/traits"
-    const val reload = "/${SECT.clientAdmin}/config/reload"
-    const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
-
-    // --- type names ---
-    const val bundleType = "ConfigBundle"
-    const val bundleWriteType = "ConfigBundleWrite"
-    const val summaryType = "ConfigSummary"
-    const val traitEntryType = "ConfigTraitEntry"
-    const val reloadResultType = "ConfigReloadResult"
-    const val tierType = "ConfigTier"
-
-    // --- field names (each matches its value) ---
-    const val name = "name"
-    const val namespaceField = "namespace"
-    const val client = "client"
-    const val version = "version"
-    const val published = "published"
-    const val publishedAt = "publishedAt"
-    const val slots = "slots"
-    const val impliedDelete = "impliedDelete"
-    const val edits = "edits"
-    const val slot = "slot"
-    const val entries = "entries"
-    const val createdAt = "createdAt"
-    const val updatedAt = "updatedAt"
-    const val loaded = "loaded"
-    const val evictedTypes = "evictedTypes"
-    const val issues = "issues"
-    const val publishedOnlyField = "publishedOnly"
-}
-
 @Suppress("DuplicatedCode")
 fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace) {
 
@@ -729,37 +685,6 @@ private fun dropNulls(map: Map<String, Any?>): Map<String, Any?> =
  * "post the entire definition, replace what is there" create/update variant; the per-slot PATCH and the bulk
  * import/clone-restore paths the issue also names are later slices.
  */
-@Suppress("ConstPropertyName")
-object ACEP {
-    /** The schema namespace the admin config-endpoint types live in (distinct from the `admin` section path). */
-    const val namespace = "adminClientConfig"
-
-    const val bundles = "/${SECT.admin}/client/config/bundles"
-    const val bundle = "/${SECT.admin}/client/config/bundle"
-    const val bundleWrite = "/${SECT.admin}/client/config/bundle/write"
-    const val bundlePatch = "/${SECT.admin}/client/config/bundle/patch"
-    const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
-    const val bundleRevert = "/${SECT.admin}/client/config/bundle/revert"
-    const val traits = "/${SECT.admin}/client/config/traits"
-    const val reload = "/${SECT.admin}/client/config/reload"
-    const val publishedOnly = "/${SECT.admin}/client/config/publishedOnly"
-    const val import = "/${SECT.admin}/client/config/import"
-
-    /** The write input adds the named [CFEP.client] to what the client-scoped write takes. */
-    const val writeType = "AdminConfigBundleWrite"
-    const val importResultType = "ConfigImportResult"
-
-    // --- import field names (each matches its value) ---
-    const val bundlesField = "bundles"
-    const val reloadField = "reload"
-    const val written = "written"
-    const val stripped = "stripped"
-    const val failures = "failures"
-    const val reloaded = "reloaded"
-    const val features = "features"
-    const val message = "message"
-}
-
 @Suppress("DuplicatedCode")
 fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.namespace) {
     // What a caller sends to write a named client's bundle: the client, plus the bundle-write fields the
