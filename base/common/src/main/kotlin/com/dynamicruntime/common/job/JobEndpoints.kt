@@ -8,7 +8,9 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.user.ReadScopeRules
+import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.util.fmt
@@ -32,6 +34,9 @@ object JOBEP {
     const val abortResultType = "JobAbortInfo"
     const val traceEntryType = "JobTraceEntry"
     const val exceptionInfoType = "JobExceptionInfo"
+
+    /** The choice list behind every `jobType` field: the job types this node registered. */
+    const val jobTypeOptions = "jobTypeOptions"
 }
 
 /** Field names of the batch-job operator surface. Each name matches its value. */
@@ -63,6 +68,11 @@ object JOBF {
  * asynchronously unless it asks for `sync`, which only a job able to count its tasks may do, within its cap.
  */
 fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
+    // A closed choice in the UI. The list takes no part in validation (a sourced list never does); an unknown job
+    // type is refused by the handler, as a 404.
+    optionsProvider(JOBEP.jobTypeOptions) { c, _ ->
+        JobService.get(c).defs().sortedBy { it.jobType }.map { SchOption(it.jobType, it.jobType) }
+    }
     type(JOBEP.rowType) {
         type = SCT.kObject
         description = "One batch-job status row: a launch row, or one client's row."
@@ -148,7 +158,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
         HttpMethod.POST,
         outputRef = JOBEP.launchResultType,
         inputFields = {
-            field(JOBF.jobType, "The job type to launch.", required = true)
+            field(JOBF.jobType, "The job type to launch.", required = true) { optionsSource(JOBEP.jobTypeOptions) }
             field(
                 JOBF.name,
                 "The launch's name. Launching again under the same name continues the work already done under it.",
@@ -160,7 +170,11 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
             }
             field(JOBF.clients, "The clients to run on; all of this node's when absent.") {
                 type = SCT.array
-                items { type = SCT.string }
+                // The clients this node carries, as the handler requires; the handler refuses any other.
+                items {
+                    type = SCT.string
+                    clientAttribute()
+                }
             }
             field(JOBF.workAreas, "Areas to restrict the job to, in the job's own terms; everything when absent.") {
                 type = SCT.array
@@ -202,7 +216,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
         "Reports how each registered batch job's launches and clients stand, or one job's when named.",
         outputRef = JOBEP.typeStatusType,
         inputFields = {
-            field(JOBF.jobType, "Report only this job type.")
+            field(JOBF.jobType, "Report only this job type.") { optionsSource(JOBEP.jobTypeOptions) }
             field(JOBF.dryRun, "Report the dry runs' rows instead of the real ones.") {
                 type = SCT.boolean
                 allowCoerce = true
@@ -230,7 +244,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
         "Reports a launch's trace (issue #879): the decisions it made, in the order they were recorded.",
         outputRef = JOBEP.traceEntryType,
         inputFields = {
-            field(JOBF.jobType, "The job type.", required = true)
+            field(JOBF.jobType, "The job type.", required = true) { optionsSource(JOBEP.jobTypeOptions) }
             field(JOBF.name, "The launch's name.", required = true)
             field(JOBF.kind, "Which launch: the endpoint one (the default) or the scheduled one.") {
                 JobLaunchKind.entries.forEach { option(it.name) }
@@ -268,7 +282,7 @@ fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
         HttpMethod.POST,
         outputRef = JOBEP.abortResultType,
         inputFields = {
-            field(JOBF.jobType, "The job type whose launch to abort.", required = true)
+            field(JOBF.jobType, "The job type whose launch to abort.", required = true) { optionsSource(JOBEP.jobTypeOptions) }
             field(JOBF.kind, "Which launch: the endpoint one (the default) or the scheduled one.") {
                 JobLaunchKind.entries.forEach { option(it.name) }
             }
