@@ -4,12 +4,13 @@ package com.dynamicruntime.common.annotation
  * Marks a declaration that should be *treated as if it were* `internal`, even though it is left with
  * open (public) visibility.
  *
- * This is the annotation form of the code-guide rule that we minimize use of the `internal` keyword.
- * The member stays accessible across module boundaries -- which keeps it testable and reachable by the
- * dynamic / plugin parts of the code base -- but a reader is signalled that it is conceptually internal
- * to its owning module / component and should not be referenced by unrelated code.
+ * The real `internal` keyword is the default for a declaration whose reach is limited to its module. This marker
+ * is for the exception: a declaration that would be `internal` but has to be reachable across module boundaries
+ * in a way with limited logical implications -- most often so a unit test in another module can reach it. The
+ * member stays accessible, and a reader is signaled that it is conceptually internal to its owning module /
+ * component and should not be referenced by unrelated code.
  *
- * Use sparingly. Where actual enforcement genuinely matters, prefer the real `internal` keyword.
+ * Use sparingly.
  *
  * See [KdrPrivate] for the class scoped counterpart.
  */

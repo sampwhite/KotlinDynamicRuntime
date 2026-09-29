@@ -96,10 +96,8 @@ class KdrInstanceConfig(
      */
     val bootRole: String? = null,
 ) {
-    // Conceptually private: the counter must only be advanced through
-    // nextLoggingId(). Left open per the code guide; marked rather than hidden.
-    @KdrPrivate
-    val loggingIdCounter: AtomicLong = AtomicLong(0)
+    // Advanced only through nextLoggingId().
+    private val loggingIdCounter: AtomicLong = AtomicLong(0)
 
     // The shared config/service store. Real `private` because it is mutated
     // concurrently and must only be reached through the accessors below.

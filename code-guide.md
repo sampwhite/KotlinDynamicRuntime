@@ -18,12 +18,12 @@ this in more detail later on. Reflection can be used to discover whether a class
 an override configuration class, but such classes should always implement an expected interface whose
 methods do not require reflection to call.
 
-* We will minimize the use of `internal` or `private`. In the cases where we want to signal that a
-declaration should be thought of as 'internal' or 'private' even though it is left with open visibility,
-we annotate it with `@KdrInternal` or `@KdrPrivate` (defined in the `common` project). These are
-source-level markers only and do not change actual visibility. They should be used sparingly. We will
-still use the real `private` or `internal` keyword in the occasional case where enforcement genuinely
-matters, such as a cache that is mutated without first synchronizing.
+* In the cases where we want to signal that a declaration should be thought of as 'internal' or 'private' 
+even though it is left with open visibility, we annotate it with `@KdrInternal` or `@KdrPrivate` 
+(defined in the `common` project). These are source-level markers only and do not change actual visibility.
+They should be used sparingly and will tend to be applied when we need to make an existing 'internal' or
+'private' attribute/method accessible to other code in a way that has limited logical implications. An
+example scenario is where only a unit test wants to access an attribute or method.
 
 * This code base will use environment variables more than is typical to create variations in configuration on startup.
 Each is **declared once in code** as an `EnvVarDef` value (grouped by area — see `DbEnv`, `NodeUtil`,
