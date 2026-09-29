@@ -1125,4 +1125,31 @@ class SchValidatorTest : StringSpec({
         // Not an object at all is the ordinary wrong-type failure, before any parsing is attempted.
         validate(holder, mapOf("schema" to "text")).first().code shouldBe SchFailCode.wrongType
     }
+
+    // The store's types reach a schema document however deep it sits -- including beneath an `optionalContents`
+    // property, whose fragment options were once rebuilt without them, so the document's `$ref` failed (#812).
+    "a schema document under an optionalContents property resolves refs against the supplied types" {
+        val types = parseSchemaTypes(
+            mapOf(
+                "t.Doc" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf("schema" to mapOf(SCH.type to SCT.kObject, SCH.schemaDocument to true)),
+                ),
+                "t.Holder" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "frag" to mapOf(SCH.dRef to $$"#/$defs/t.Doc", SCH.optionalContents to true),
+                    ),
+                ),
+            ),
+        )
+        val holder = types.getValue("t.Holder")
+        val document = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("x" to mapOf(SCH.dRef to $$"#/$defs/t.Stored")),
+        )
+        val existing = parseSchemaTypes(mapOf("t.Stored" to mapOf(SCH.type to SCT.string)))
+        validate(holder, mapOf("frag" to mapOf("schema" to document)), SchOpts(existingTypes = existing))
+            .shouldBeEmpty()
+    }
 })

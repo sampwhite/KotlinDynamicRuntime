@@ -315,8 +315,12 @@ fun errorMessageTemplateProblems(
  * An option may change the coerced output or how something is reported; it may never change what a schema
  * considers **valid**, so no setting here can turn a failure into a success. This is an object rather than a
  * parameter because the list is expected to grow as the frontend asks for more.
+ *
+ * A data class so a variant is derived with `copy`, which carries every other field along. Rebuilding one field by
+ * field once dropped [existingTypes] under an `optionalContents` property (issue #812), and a field added later
+ * would have been dropped the same way.
  */
-class SchOpts(
+data class SchOpts(
     /**
      * Keep an undeclared property in the coerced output instead of dropping it. It is reported as an
      * [SchFailCode.additionalProperty] failure either way.
@@ -383,7 +387,7 @@ class SchOpts(
      */
     fun withSkipCompleteness(v: Boolean): SchOpts =
         if (v == skipCompleteness) this
-        else SchOpts(keepAdditionalProperties, forInput, allowUnknownVariant, skipCompleteness = v)
+        else copy(skipCompleteness = v)
 }
 
 /** Result of a coercing validation: the (possibly transformed) [value] and the [failures]. */
