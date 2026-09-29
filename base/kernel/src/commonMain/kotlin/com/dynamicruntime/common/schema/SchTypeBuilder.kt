@@ -42,7 +42,10 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
     /** Shown when the value is not one of the field's declared options. */
     fun invalidOption(message: String) = set(SchFailCode.invalidOption, message)
 
-    /** Shown when the field was supplied but a conditional rule says it may not be, given some other field. */
+    /**
+     * Shown when the field was supplied but a conditional rule says it may not be, given some other field. Unused so
+     * far, and that is fine: there is one function per failure code, whether or not a schema needs it yet.
+     */
     fun notAllowed(message: String) = set(SchFailCode.notAllowed, message)
 
     /**
@@ -58,7 +61,10 @@ class SchErrors(private val data: MutableMap<String, Any?>) {
     /** Shown when a string does not match the field's `pattern` -- the place to say what the pattern is for. */
     fun patternMismatch(message: String) = set(SchFailCode.patternMismatch, message)
 
-    /** Shown when an array declared `uniqueItems` holds the same item twice. */
+    /**
+     * Shown when an array declared `uniqueItems` holds the same item twice. Unused so far, and that is fine: there is
+     * one function per failure code, whether or not a schema needs it yet.
+     */
     fun duplicateItem(message: String) = set(SchFailCode.duplicateItem, message)
 
     /**
@@ -172,7 +178,10 @@ open class SchTypeBuilder(
     /** A value the number must exceed, for a number or integer field -- the bound itself is refused (issue #823). */
     var exclusiveMinimum: Number? by SchAttr(data, SCH.exclusiveMinimum)
 
-    /** A value the number must stay below; the counterpart of [exclusiveMinimum]. */
+    /**
+     * A value the number must stay below; the counterpart of [exclusiveMinimum]. Unused so far, and that is fine: the
+     * builder names every keyword the parser reads, whether or not a schema needs it yet.
+     */
     var exclusiveMaximum: Number? by SchAttr(data, SCH.exclusiveMaximum)
 
     /** Fewest accepted characters, for a string field. Counted in code points, so an emoji counts once. */

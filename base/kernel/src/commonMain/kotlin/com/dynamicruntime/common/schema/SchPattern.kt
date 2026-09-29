@@ -28,7 +28,7 @@ import com.dynamicruntime.common.exception.KdrException
  * POSIX and Java property names), escapes the two engines read differently (`\v`, `\0`, `\b` or `\S` inside a
  * class), a `{` that is not a quantifier, and an empty class. `\p{…}` is accepted with a Unicode general category
  * (`L`, `Lu`, `Nd`, …), which both engines name alike. `\d`, `\w` and `\b` are ASCII in both (Java's `\b` since
- * JDK 19). There are no flags: case-insensitivity is written as a class, `[Aa]`.
+ * JDK 19). There are no flags: case-insensitivity is written as a class, `Aa`.
  *
  * A match is **unanchored**, as JSON Schema specifies: `pattern: "[0-9]"` accepts any value containing a digit.
  * Anchor with `^…$` to constrain the whole value.
@@ -41,6 +41,7 @@ class SchPattern private constructor(
     /** Whether [value] contains a match, as JSON Schema's `pattern` asks. */
     fun matches(value: String): Boolean = regex.containsMatchIn(value)
 
+    @Suppress("ConstPropertyName")
     companion object {
         /**
          * [source] compiled, or a [KdrException] saying what in it is not portable or not valid, prefixed by
@@ -179,13 +180,14 @@ class SchPattern private constructor(
                     continue
                 }
                 if (inClass) {
-                    when {
-                        c == ']' -> {
+                    when (c) {
+                        ']' -> {
                             if (i == classStart) refuse("has an empty class, or one that opens with ']'; escape it as '\\]'.")
                             inClass = false
                         }
-                        c == '[' -> refuse("has '[' inside a class, which Java reads as a union; escape it as '\\['.")
-                        c == '&' && i + 1 < n && source[i + 1] == '&' ->
+
+                        '[' -> refuse("has '[' inside a class, which Java reads as a union; escape it as '\\['.")
+                        '&' if i + 1 < n && source[i + 1] == '&' ->
                             refuse("has '&&' inside a class, which Java reads as an intersection.")
                     }
                     out.append(c)

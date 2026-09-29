@@ -44,7 +44,7 @@ class SchemaSkillExamplesTest : StringSpec({
         }
     }
 
-    "the skill's example builds the \$defs it says it does" {
+    $$"the skill's example builds the $defs it says it does" {
         // "returns the $defs contents keyed by fully-qualified namespace.Name (here core.Count, core.Person)"
         example().keys shouldContainExactlyInAnyOrder listOf("core.Count", "core.Person")
     }
@@ -63,9 +63,9 @@ class SchemaSkillExamplesTest : StringSpec({
         props["age"].toJsonMapOrEmpty()[SCH.type] shouldBe SCT.integer
     }
 
-    "ref(\"Count\") points at #/\$defs/core.Count" {
+    $$"ref(\"Count\") points at #/$defs/core.Count" {
         val props = example()["core.Person"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
-        props["count"].toJsonMapOrEmpty()[SCH.dRef] shouldBe "#/\$defs/core.Count"
+        props["count"].toJsonMapOrEmpty()[SCH.dRef] shouldBe $$"#/$defs/core.Count"
     }
 
     "a reused property is cloned per use, so mutating one does not touch the other" {
