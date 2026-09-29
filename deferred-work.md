@@ -174,7 +174,8 @@ first. Noticeable because someone asks for it by name.
   output both resolve against — removing it there would take it out of the response schema too. Fixing that
   means the input and the output carry separately projected defs, which is a change to the shape of the
   catalog and is only worth making once something consumes an export. Until then the keyword travels and each
-  surface honors it, which is why the form draws no control for such a field.
+  surface honors it, which is why the form draws no control for such a field. The same projection would let
+  the input schema state resolved defaults, such as the input trim, that the catalog leaves out today (#772).
 
 - **Strip the default branch from a strictly-read union** *(from #301).* A manufactured entry union always
   declares a default branch, so an unrecognized `traitId` can pass through where that is the right answer.
@@ -191,6 +192,19 @@ first. Noticeable because someone asks for it by name.
   made, only the code is missing. Note one known gap recorded there — `g-primaryKey` has no standard
   equivalent, so stripping it makes the export looser, which is accepted because the constraint governs our
   own stored entries rather than anything a third party validates.
+
+## When public API documentation is written
+
+The point at which we publish documentation for people calling the API from outside — a page, not only the
+catalog. Noticeable because somebody sits down to write it.
+
+- **A general page on how the API works** *(from #772).* The catalog's per-field schema does not tell the
+  whole story: it is JSON Schema (draft 2020-12) plus our `g-` keywords, and some of its behavior comes from
+  defaults that never appear on a field — plain string input is trimmed, a blank scalar counts as absent,
+  and numeric, boolean and date fields coerce from strings. The page states those as global rules, so a
+  field's schema only has to show where it departs from them (`g-outerWhitespace: "keep"`,
+  `g-allowCoerce: false`). The rules are in `code-guide.md`'s "Relaxed validation and coercion is the default"
+  section.
 
 ## When fragment copy computes with its data
 
