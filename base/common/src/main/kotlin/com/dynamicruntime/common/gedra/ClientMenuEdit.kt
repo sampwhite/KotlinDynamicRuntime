@@ -104,6 +104,7 @@ object ClientMenuEdit {
         }
         if (fields.isEmpty()) throw KdrException.mkInput("A menu edit renames the item, hides it, or shows it; this one does none.")
         requireShippedItem(cxt, itemId)
+        if (visibility == MNU.hide) requireNoChildren(cxt, itemId)
 
         val bound = cxt.mkSubContext("menuEdit", client)
         val svc = GedraConfigService.get(bound)
@@ -145,20 +146,40 @@ object ClientMenuEdit {
 
     private fun menuItems(content: Map<String, Any?>): List<Map<String, Any?>> = content[HFLD.menu].toJsonListOfMaps()
 
+    /**
+     * Refuses to hide a group: the app bar draws a child only under a parent it keeps, so hiding the parent would take
+     * every child with it -- Log out among them, for the Account group -- while each child's row still read as
+     * offered. Hide the children instead, one by one, where each is seen to go.
+     */
+    private fun requireNoChildren(cxt: KdrCxt, itemId: String) {
+        val children = menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, null).content)
+            .filter { it[UIB.parentId].toOptStr() == itemId }.mapNotNull { it[HFLD.id].toOptStr() }
+        if (children.isEmpty()) return
+        throw KdrException.mkInput(
+            "'$itemId' is a group: hiding it would hide everything under it (${children.joinToString(", ")}). Hide " +
+                "those items instead.",
+        )
+    }
+
     /** Refuses an item the shipped menu does not have: an overlay of it would add an item, which this editor does not do. */
     private fun requireShippedItem(cxt: KdrCxt, itemId: String) {
         val known = menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, null).content).any { it[HFLD.id].toOptStr() == itemId }
         if (!known) throw KdrException("The home menu has no item '$itemId'.", code = EXC.notFound)
     }
 
-    /** The client's stored menu items by id, folded over its stored configs in listing order. */
+    /**
+     * The client's stored menu items by id, folded over the stored configs **this node runs** for the client -- the
+     * loaded set, not every latest revision: a draft a published-only client does not consume is not a change its
+     * people see, and marking it as one would offer a reset the draft rule then refuses.
+     */
     private fun storedItems(cxt: KdrCxt, client: String): Map<String, Map<String, Any?>> {
-        val bound = cxt.mkSubContext("menuItems", client)
         val out = LinkedHashMap<String, Map<String, Any?>>()
-        for (row in GedraConfigService.get(bound).listConfigs(bound).filter { it.client == client }) {
-            for (item in menuEntry(row.entriesBySlot())?.get(CCT.content).toJsonMapOrEmpty()[HFLD.menu].toJsonListOfMaps()) {
-                val id = item[HFLD.id].toOptStr() ?: continue
-                out[id] = out[id].orEmpty() + item
+        for (config in GedraConfigLoadService.get(cxt).loadedFor(client)) {
+            for (layer in config.uiBlocks.filter { it.blockId == HMENU.block }) {
+                for (item in menuItems(layer.content)) {
+                    val id = item[HFLD.id].toOptStr() ?: continue
+                    out[id] = out[id].orEmpty() + item
+                }
             }
         }
         return out

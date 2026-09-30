@@ -389,6 +389,8 @@ class ClientsPageTest {
         assertEquals(listOf(false, false, false, true, false), items.map { menuItemHidden(it) })
         // The audiences a client may show an item to: everyone, then each condition the shipped menu draws for, once.
         assertEquals(listOf("#always", "app", "loggedIn,app"), menuAudiences(items))
+        // The groups: what some other item sits under; those get no Hide.
+        assertEquals(setOf("account"), menuGroups(items))
     }
 
     @Test

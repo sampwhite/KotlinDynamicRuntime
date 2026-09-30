@@ -341,6 +341,8 @@ private fun ChildrenBuilder.clientDetail(
                 h3 { +"Menu" }
                 MenuEditor {
                     this.clientId = clientId
+                    // The overrides report's home-menu rows say which config -- source or stored -- set an item.
+                    setBy = overrides.blocks.filter { it.blockId == HMENU.block && it.itemId != null }.associate { it.itemId!! to blockSetByText(it) }
                     this.onChanged = onChanged
                 }
                 // Any other block the client changes (the sample's nav, say) is shown as it was: this editor is the
@@ -647,6 +649,8 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
 
 external interface MenuEditorProps : Props {
     var clientId: String
+    /** Which config set each changed item, by item id -- from the overrides report, which knows source from stored. */
+    var setBy: Map<String, String>
     var onChanged: () -> Unit
 }
 
@@ -673,12 +677,18 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
     var showing by useState<String?>(null)
     var audience by useState<String?>(null)
     val latest = useRef(0)
-    var generation by useState(0)
+    val lastClient = useRef<String>(null)
+    // Re-read on the app's refresh generation -- an idle tick, a return to the tab, another editor's save -- as the
+    // rest of the page does; an edit here bumps it through `onChanged`.
+    val generation = useRefreshGeneration()
 
     useEffect(props.clientId, generation) {
         val token = (latest.current ?: 0) + 1
         latest.current = token
-        if (generation == 0) {
+        // A new client: nothing of the previous one's rows or editing state carries over, while a re-read of the
+        // same client keeps what is shown until its replacement arrives.
+        if (lastClient.current != props.clientId) {
+            lastClient.current = props.clientId
             items = null
             renaming = null
             showing = null
@@ -707,7 +717,6 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                 note = done(result)
                 renaming = null
                 showing = null
-                generation += 1
                 props.onChanged()
             } catch (e: Throwable) {
                 editError = userFacingError(e)
@@ -726,6 +735,12 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
         else -> {
             val listed = items!!
             val audiences = menuAudiences(listed)
+            val groups = menuGroups(listed)
+            // A rename is sent only when it would change something; Enter and the Save button agree on that.
+            fun rename(item: MenuItemView) {
+                if (draft.isBlank() || draft == item.label) return
+                run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
+            }
             div {
                 className = ClassName("op-table-scroll")
                 table {
@@ -736,6 +751,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                             th { +"Shipped" }
                             th { +"This client" }
                             th { +"Offered to" }
+                            th { +"Set by" }
                             th { +"" }
                         }
                     }
@@ -756,9 +772,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                             disabled = busy
                                             style = js("({ width: 200 })")
                                             onChange = { e -> draft = e.target.value }
-                                            onPressEnter = {
-                                                run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
-                                            }
+                                            onPressEnter = { rename(item) }
                                         }
                                     } else {
                                         +(item.label ?: "\u2014")
@@ -784,6 +798,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                         +menuVisibilityText(item)
                                     }
                                 }
+                                td { +(props.setBy[item.itemId] ?: "\u2014") }
                                 td {
                                     when {
                                         renaming == item.itemId -> {
@@ -792,9 +807,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                                 size = "small"
                                                 loading = busy
                                                 disabled = draft.isBlank() || draft == item.label
-                                                onClick = {
-                                                    run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
-                                                }
+                                                onClick = { rename(item) }
                                                 +"Save"
                                             }
                                             Button {
@@ -839,6 +852,14 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                                     disabled = busy
                                                     onClick = { showing = item.itemId; audience = null; renaming = null; editError = null; note = null }
                                                     +"Show"
+                                                }
+                                            } else if (item.itemId in groups) {
+                                                // A group cannot be hidden -- the bar would take its children with it -- so
+                                                // no Hide is offered; the backend refuses it too.
+                                                span {
+                                                    className = ClassName("subtitle")
+                                                    title = "A group cannot be hidden: hide the items under it instead."
+                                                    +"group"
                                                 }
                                             } else {
                                                 Button {

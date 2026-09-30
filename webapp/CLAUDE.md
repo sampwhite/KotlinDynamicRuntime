@@ -370,7 +370,9 @@ shell re-reads its copy: a changed `home.brand` appears in the app bar without a
 item for the client from `/clientAdmin/client/menu/items` (`ClientsApi.menuItems`; shipped and effective label
 and condition, before any one caller's cfacts -- an editor lists what can be changed), with **Rename**, **Hide**,
 **Show** (a choice of the audiences the shipped menu already draws for, `menuAudiences`; the backend refuses any
-other expression) and, where the client's stored config changed the item, **Reset**. `menuVisibilityText` reads
+other expression) and, where the client's stored config changed the item, **Reset**; a group (`menuGroups`: anything another item
+sits under) gets no Hide, since the bar draws a child only under a parent it keeps, and the backend refuses it
+too. "Set by" comes from the overrides report's rows, which know source from stored. `menuVisibilityText` reads
 the condition as "everyone", "hidden" or the expression itself, noting the shipped state when the client changed
 it. Each action posts `/clientAdmin/client/menu/set` or `/reset` (`menuEditRequest`), the same write-trial-publish-
 reload path as a copy edit, landing in the config already changing the item, else one overlaying the menu, else

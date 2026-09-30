@@ -6,6 +6,7 @@ import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ACEP
+import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
@@ -112,6 +113,24 @@ class ClientMenuEditEndpointTest : StringSpec({
         admin.expectError(EXC.badInput, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.docs, MNU.visibility to MNU.show))
         admin.expectError(EXC.badInput, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.docs))
         admin.expectError(EXC.notFound, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to "noSuchItem", MNU.label to "x"))
+        // A group cannot be hidden: the app bar would take every child with it, Log out included.
+        val group = admin.expectError(EXC.badInput, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.account, MNU.visibility to MNU.hide))
+        group[EP.errorMessage].toOptStr().orEmpty() shouldContain HMENU.logout
+        servedMenu(globexUser).keys shouldContain HMENU.logout
+    }
+
+    "a draft this node does not run is not a change the listing reports" {
+        // An unpublished revision of a new globex config renaming Profile, written through the bundle API, which does
+        // not reload: nothing the client's people see has changed, and the listing says so.
+        admin.postData(
+            ACEP.bundleWrite,
+            mapOf(CFEP.client to SC.globex, CFEP.name to "menuDraft", CFEP.namespaceField to "globexMenuDraft",
+                CFEP.slots to mapOf(CCT.uiBlockDef to listOf(mapOf(CCT.blockId to HMENU.block, CCT.content to mapOf(HFLD.menu to listOf(mapOf(HFLD.id to HMENU.profile, HFLD.label to "Draft profile"))))))),
+        )
+        val profile = items(SC.globex).getValue(HMENU.profile)
+        profile[MNU.label] shouldBe "Profile"
+        profile[CPY.stored] shouldBe false
+        servedMenu(globexUser)[HMENU.profile] shouldBe "Profile"
     }
 
     "a reset restores the shipped item; one with nothing stored is refused" {

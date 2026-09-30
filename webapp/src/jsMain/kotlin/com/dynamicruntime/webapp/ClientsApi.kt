@@ -411,6 +411,9 @@ fun menuVisibilityText(item: MenuItemView): String {
 fun menuAudiences(items: List<MenuItemView>): List<String> =
     listOf(CFACT.alwaysName) + items.mapNotNull { it.baseCondition }.filter { it != CFACT.neverName }.distinct()
 
+/** The items other items sit under -- the groups, which cannot be hidden (the bar would take their children too). Pure, and covered under `jsNodeTest`. */
+fun menuGroups(items: List<MenuItemView>): Set<String> = items.mapNotNull { it.parentId }.toSet()
+
 /**
  * The request that changes one item (issue #919): its address and the client, a new [label] when renaming, and the
  * [visibility] with its [condition] when hiding or showing. Pure, and covered under `jsNodeTest`.
