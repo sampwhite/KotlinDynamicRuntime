@@ -61,7 +61,9 @@ class MailCopyTest : StringSpec({
         )
         fragmentOverlay(AFRAG.mail) {
             namespace(MCOPY.invitation) {
-                key(MCOPY.body, $$"Welcome to Mail Co, ${address}. Accept here: ${url}")
+                // Emphasis and a role, which the text part must not show; and a `forHtml` branch where the two parts
+                // genuinely want different words (issue #795).
+                key(MCOPY.body, $$"Welcome to *Mail Co*, [${address}]{.value}. ${forHtml ? \"Accept with the link:\" : \"Open this link to accept:\"} ${url}")
             }
             namespace(MCOPY.common) {
                 key(MCOPY.footer, "Sent by the Mail Co desk.")
@@ -134,10 +136,15 @@ class MailCopyTest : StringSpec({
         val overlaid = "mailcopy-overlaid@other.test"
         admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to overlaid, ADF.client to overlayClient))
         val sent = mail.lastEmailTo(overlaid).shouldNotBeNull()
-        sent.text shouldContain "Welcome to Mail Co, $overlaid."
+        // The text part is the copy rendered to plain text (issue #795): no emphasis marks, no role block, and the
+        // `forHtml` branch taken the text way; the HTML part has the emphasis, the value's anchor, and the other branch.
+        sent.text shouldContain "Welcome to Mail Co, $overlaid. Open this link to accept: https://mail.test"
+        sent.text shouldNotContain "*"
+        sent.text shouldNotContain "{.value}"
         sent.text shouldContain "Sent by the Mail Co desk."
         sent.text shouldNotContain "sent automatically"
-        sent.html.shouldNotBeNull() shouldContain "Sent by the Mail Co desk."
+        sent.html.shouldNotBeNull() shouldContain "Welcome to <em>Mail Co</em>, <a style=\"font-weight: bold; color: inherit; text-decoration: none;\">$overlaid</a>. Accept with the link:"
+        sent.html!! shouldContain "Sent by the Mail Co desk."
         // The overlay named only the invitation, so the client's other mails keep the shipped wording -- with
         // the client's own footer, since that is shared.
         val rendered = MailCopy.render(cxt, overlayClient, MCOPY.verifyCode, mapOf(MCOPY.codeParam to "123456"))

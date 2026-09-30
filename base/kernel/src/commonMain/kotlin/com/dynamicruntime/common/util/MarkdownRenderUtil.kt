@@ -4,6 +4,27 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
 
 /**
+ * What a surface tells the renderer (issue #795). The renderer knows the syntax; the surface knows what a link
+ * points at from where it is rendered, and what a role looks like there.
+ */
+class MarkdownHooks(
+    /**
+     * Applied to each link's and image's raw target *before* [safeUrl], so it can never reintroduce an unsafe
+     * scheme. Null uses a target as written -- the default, and what fragment copy wants; a document served to
+     * the frontend passes a resolver that retargets its repo-relative links (issue #492).
+     */
+    val resolveUrl: ((String) -> String)? = null,
+    /**
+     * Realizes a bracketed span's roles (see [MDR]) around its already-rendered inner HTML, or returns null for the
+     * default: `<span class="md-role">…</span>`, which the frontend styles by class. A mail passes a hook that
+     * emits inline styles instead, since mail clients strip stylesheets. The hook receives rendered, escaped
+     * HTML and must return HTML; it never sees raw text, so the escaping rule that protects every fragment
+     * holds through it.
+     */
+    val decorateSpan: ((roles: List<String>, innerHtml: String) -> String?)? = null,
+)
+
+/**
  * Renders Markdown to HTML. Pure, transpile-safe Kotlin (no `java.*`, no reflection) in the kernel, so the
  * Kotlin/JS frontend and the JVM backend render identically -- the frontend needs this for both halves of the
  * content story: the Markdown *values* inside a fragment file (see [parseMarkdownFragments]) and whole
@@ -14,11 +35,14 @@ import com.dynamicruntime.common.exception.KdrException
  * ordered (`1.`) lists, blockquotes (`>`), horizontal rules (`---`/`***`/`___`), GitHub-style pipe tables (a
  * header row, a `| --- |` delimiter row, then body rows -- alignment taken from the delimiter's colons), and
  * the inline constructs: code spans (`` `x` ``), links (`[text](url)`), bold (`**x**`/`__x__`), and italic
- * (`*x*`/`_x_`).
+ * (`*x*`/`_x_`) -- and, past standard Markdown, two Pandoc-style **attributed** constructs (issue #795): a
+ * bracketed span `[text]{.role}`, and an image `![alt](src){.role width=240}`. See [parseAttrBlock] for what an
+ * attribute block may hold, and [MarkdownHooks.decorateSpan] for how a surface realizes a role. The same source
+ * renders to plain text with [renderMarkdownText].
  *
- * Deliberately **not** supported (add when the copy needs it): nested lists, reference links, images, setext
- * headings, and raw inline HTML -- raw HTML is escaped rather than passed through, so a fragment or document
- * can never inject markup.
+ * Deliberately **not** supported (add when the copy needs it): nested lists, reference links, setext headings,
+ * and raw inline HTML -- raw HTML is escaped rather than passed through, so a fragment or document can never
+ * inject markup.
  *
  * ## Safety
  * All text is HTML-escaped, and link URLs are restricted to http/https/mailto or a relative path
@@ -32,7 +56,13 @@ import com.dynamicruntime.common.exception.KdrException
  * [resolveDocLink]) that rewrites the file's repo-relative interior links to an in-app document or the source
  * repository, since a relative href written for a Git checkout points nowhere from inside the app (issue #492).
  */
-fun String.renderMarkdown(resolveUrl: ((String) -> String)? = null): String {
+fun String.renderMarkdown(resolveUrl: ((String) -> String)? = null): String = renderMarkdown(MarkdownHooks(resolveUrl))
+
+/**
+ * [renderMarkdown] with every hook (issue #795): [MarkdownHooks.resolveUrl] for link and image targets, and
+ * [MarkdownHooks.decorateSpan] for what a role means on this surface.
+ */
+fun String.renderMarkdown(hooks: MarkdownHooks): String {
     val lines = this.replace("\r\n", "\n").replace('\r', '\n').split('\n')
     val sb = StringBuilder()
     var i = 0
@@ -41,13 +71,13 @@ fun String.renderMarkdown(resolveUrl: ((String) -> String)? = null): String {
         i = when {
             isBlankLine(line) -> i + 1
             fenceMarker(line) != null -> appendFencedCode(sb, lines, i)
-            headingLevel(line) > 0 -> appendHeading(sb, line, i, resolveUrl)
+            headingLevel(line) > 0 -> appendHeading(sb, line, i, hooks)
             isHorizontalRule(line) -> appendHr(sb, i)
-            bulletContent(line) != null -> appendList(sb, lines, i, ordered = false, resolveUrl)
-            orderedContent(line) != null -> appendList(sb, lines, i, ordered = true, resolveUrl)
-            isQuoteLine(line) -> appendQuote(sb, lines, i, resolveUrl)
-            isTableAt(lines, i) -> appendTable(sb, lines, i, resolveUrl)
-            else -> appendParagraph(sb, lines, i, resolveUrl)
+            bulletContent(line) != null -> appendList(sb, lines, i, ordered = false, hooks)
+            orderedContent(line) != null -> appendList(sb, lines, i, ordered = true, hooks)
+            isQuoteLine(line) -> appendQuote(sb, lines, i, hooks)
+            isTableAt(lines, i) -> appendTable(sb, lines, i, hooks)
+            else -> appendParagraph(sb, lines, i, hooks)
         }
     }
     return sb.toString()
@@ -62,7 +92,10 @@ fun String.renderMarkdown(resolveUrl: ((String) -> String)? = null): String {
  * Same safety as [renderMarkdown] -- it shares the renderer -- so all text is escaped and link URLs are
  * restricted. Block syntax is not interpreted: a leading `#` or `-` is simply text.
  */
-fun String.renderMarkdownInline(resolveUrl: ((String) -> String)? = null): String = renderInline(this, 0, resolveUrl)
+fun String.renderMarkdownInline(resolveUrl: ((String) -> String)? = null): String = renderInline(this, 0, MarkdownHooks(resolveUrl))
+
+/** [renderMarkdownInline] with every hook (issue #795). */
+fun String.renderMarkdownInline(hooks: MarkdownHooks): String = renderInline(this, 0, hooks)
 
 // --- block constructs -------------------------------------------------------------------------------------
 
@@ -116,7 +149,7 @@ fun headingLevel(line: String): Int {
 }
 
 @KdrPrivate
-fun appendHeading(sb: StringBuilder, line: String, index: Int, resolveUrl: ((String) -> String)? = null): Int {
+fun appendHeading(sb: StringBuilder, line: String, index: Int, hooks: MarkdownHooks): Int {
     val level = headingLevel(line)
     // Trailing hashes are a closing sequence in ATX headings; drop them.
     val text = line.substring(level).trim().trimEnd('#').trim()
@@ -129,7 +162,7 @@ fun appendHeading(sb: StringBuilder, line: String, index: Int, resolveUrl: ((Str
         sb.append(" id=\"").append(escapeHtml(slug)).append('"')
     }
     sb.append('>')
-        .append(renderInline(text, 0, resolveUrl))
+        .append(renderInline(text, 0, hooks))
         .append("</h").append(level).append(">\n")
     return index + 1
 }
@@ -197,7 +230,7 @@ fun orderedContent(line: String): String? {
 
 /** Emits a flat list of consecutive items (nesting is not supported); returns the resume index. */
 @KdrPrivate
-fun appendList(sb: StringBuilder, lines: List<String>, start: Int, ordered: Boolean, resolveUrl: ((String) -> String)? = null): Int {
+fun appendList(sb: StringBuilder, lines: List<String>, start: Int, ordered: Boolean, hooks: MarkdownHooks): Int {
     val tag = if (ordered) "ol" else "ul"
     sb.append('<').append(tag).append(">\n")
     var i = start
@@ -213,7 +246,7 @@ fun appendList(sb: StringBuilder, lines: List<String>, start: Int, ordered: Bool
             parts.add(lines[j].trim())
             j++
         }
-        sb.append("<li>").append(renderInline(parts.joinToString(" "), 0, resolveUrl)).append("</li>\n")
+        sb.append("<li>").append(renderInline(parts.joinToString(" "), 0, hooks)).append("</li>\n")
         i = j
     }
     sb.append("</").append(tag).append(">\n")
@@ -225,27 +258,27 @@ fun isQuoteLine(line: String): Boolean = line.trimStart().startsWith(">")
 
 /** Emits a blockquote from consecutive `>` lines; returns the resume index. */
 @KdrPrivate
-fun appendQuote(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: ((String) -> String)? = null): Int {
+fun appendQuote(sb: StringBuilder, lines: List<String>, start: Int, hooks: MarkdownHooks): Int {
     val parts = mutableListOf<String>()
     var i = start
     while (i < lines.size && isQuoteLine(lines[i])) {
         parts.add(lines[i].trimStart().removePrefix(">").trim())
         i++
     }
-    sb.append("<blockquote>").append(renderInline(parts.joinToString(" "), 0, resolveUrl)).append("</blockquote>\n")
+    sb.append("<blockquote>").append(renderInline(parts.joinToString(" "), 0, hooks)).append("</blockquote>\n")
     return i
 }
 
 /** Emits a paragraph: consecutive lines until a blank line or the start of another block. */
 @KdrPrivate
-fun appendParagraph(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: ((String) -> String)? = null): Int {
+fun appendParagraph(sb: StringBuilder, lines: List<String>, start: Int, hooks: MarkdownHooks): Int {
     val parts = mutableListOf(lines[start].trim())
     var i = start + 1
     while (i < lines.size && !startsBlock(lines[i]) && !isTableAt(lines, i)) {
         parts.add(lines[i].trim())
         i++
     }
-    sb.append("<p>").append(renderInline(parts.joinToString(" "), 0, resolveUrl)).append("</p>\n")
+    sb.append("<p>").append(renderInline(parts.joinToString(" "), 0, hooks)).append("</p>\n")
     return i
 }
 
@@ -348,13 +381,13 @@ fun cellAlign(delimiterCell: String): String? {
  * resume index.
  */
 @KdrPrivate
-fun appendTable(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: ((String) -> String)? = null): Int {
+fun appendTable(sb: StringBuilder, lines: List<String>, start: Int, hooks: MarkdownHooks): Int {
     val headers = splitTableRow(lines[start])
     val aligns = splitTableRow(lines[start + 1]).map { cellAlign(it) }
     val cols = headers.size
     sb.append("<div class=\"md-table-scroll\">\n<table>\n<thead>\n<tr>")
     for (c in 0 until cols) {
-        appendTableCell(sb, "th", headers[c], aligns.getOrNull(c), resolveUrl)
+        appendTableCell(sb, "th", headers[c], aligns.getOrNull(c), hooks)
     }
     sb.append("</tr>\n</thead>\n")
     val body = StringBuilder()
@@ -363,7 +396,7 @@ fun appendTable(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: 
         val cells = splitTableRow(lines[i])
         body.append("<tr>")
         for (c in 0 until cols) {
-            appendTableCell(body, "td", cells.getOrElse(c) { "" }, aligns.getOrNull(c), resolveUrl)
+            appendTableCell(body, "td", cells.getOrElse(c) { "" }, aligns.getOrNull(c), hooks)
         }
         body.append("</tr>\n")
         i++
@@ -378,12 +411,12 @@ fun appendTable(sb: StringBuilder, lines: List<String>, start: Int, resolveUrl: 
 /** Emits one `<th>`/`<td>` with optional alignment; the cell text goes through [renderInline] so links, code
  *  spans and emphasis work inside a cell and everything else is escaped. */
 @KdrPrivate
-fun appendTableCell(sb: StringBuilder, tag: String, raw: String, align: String?, resolveUrl: ((String) -> String)?) {
+fun appendTableCell(sb: StringBuilder, tag: String, raw: String, align: String?, hooks: MarkdownHooks) {
     sb.append('<').append(tag)
     if (align != null) {
         sb.append(" style=\"text-align:").append(align).append('"')
     }
-    sb.append('>').append(renderInline(raw, 0, resolveUrl)).append("</").append(tag).append('>')
+    sb.append('>').append(renderInline(raw, 0, hooks)).append("</").append(tag).append('>')
 }
 
 // --- inline constructs ------------------------------------------------------------------------------------
@@ -397,7 +430,7 @@ private const val maxInlineDepth = 20
  * a `*` inside `` `code` `` is never emphasis. [depth] bounds the nesting of links/emphasis.
  */
 @KdrPrivate
-fun renderInline(text: String, depth: Int, resolveUrl: ((String) -> String)? = null): String {
+fun renderInline(text: String, depth: Int, hooks: MarkdownHooks): String {
     if (depth > maxInlineDepth) {
         throw KdrException.mkConv("Markdown inline nesting exceeded $maxInlineDepth levels.")
     }
@@ -407,8 +440,9 @@ fun renderInline(text: String, depth: Int, resolveUrl: ((String) -> String)? = n
         val c = text[i]
         val consumed = when (c) {
             '`' -> appendCodeSpan(sb, text, i)
-            '[' -> appendLink(sb, text, i, depth, resolveUrl)
-            '*', '_' -> appendEmphasis(sb, text, i, depth, resolveUrl)
+            '!' -> appendImage(sb, text, i, hooks)
+            '[' -> appendLink(sb, text, i, depth, hooks).takeIf { it > 0 } ?: appendSpan(sb, text, i, depth, hooks)
+            '*', '_' -> appendEmphasis(sb, text, i, depth, hooks)
             else -> 0
         }
         if (consumed > 0) {
@@ -434,7 +468,7 @@ fun appendCodeSpan(sb: StringBuilder, text: String, start: Int): Int {
 
 /** Emits a `[label](url)` link; returns the characters consumed, or 0 when [start] opens no complete link. */
 @KdrPrivate
-fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int, resolveUrl: ((String) -> String)? = null): Int {
+fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int, hooks: MarkdownHooks): Int {
     val close = text.indexOf(']', start + 1)
     if (close < 0 || close + 1 >= text.length || text[close + 1] != '(') {
         return 0
@@ -447,11 +481,108 @@ fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int, resolveU
     val url = text.substring(close + 2, paren).trim().substringBefore(' ')
     // The resolver (if any) rewrites the target for where this is *rendered*; safeUrl still guards the result,
     // so a resolver can never turn a link into an executable scheme.
-    val resolved = resolveUrl?.invoke(url) ?: url
+    val resolved = hooks.resolveUrl?.invoke(url) ?: url
     sb.append("<a href=\"").append(escapeHtml(safeUrl(resolved))).append("\">")
-        .append(renderInline(text.substring(start + 1, close), depth + 1, resolveUrl))
+        .append(renderInline(text.substring(start + 1, close), depth + 1, hooks))
         .append("</a>")
     return paren - start + 1
+}
+
+/**
+ * What an attribute block `{.role width=240}` holds (issue #795): roles, and the whitelisted numeric attributes.
+ * Closed by construction -- see [parseAttrBlock].
+ */
+class MdAttrs(val roles: List<String>, val width: Int?, val height: Int?)
+
+/**
+ * Parses a Pandoc-style attribute block opening at [start] (`text[start] == '{'`): whitespace-separated tokens,
+ * each a `.role` (a name matching `[A-Za-z][A-Za-z0-9-]*`) or `key=value` with [MDR.width] / [MDR.height] and a
+ * non-negative integer. Returns the attributes and the block's length, or null when [start] opens no
+ * well-formed block -- unclosed, spanning a line, empty, or holding a token of any other shape -- in which case
+ * the caller renders the text as literal, like every other unrecognized construct.
+ *
+ * **Closed by construction.** Only role names and two numeric attributes ever come out, so nothing here can
+ * carry a style, an event handler or raw markup into the output: a `{style=...}` is a malformed block and stays
+ * text. Whitelisting the attribute *names* while dropping unknown ones would leave `{.role foo=bar}` valid; the
+ * rule is stricter than that, since a misspelled `widht=` silently dropped is a placement that silently fails.
+ */
+@KdrPrivate
+fun parseAttrBlock(text: String, start: Int): Pair<MdAttrs, Int>? {
+    if (start >= text.length || text[start] != '{') return null
+    val end = text.indexOf('}', start + 1)
+    if (end < 0 || text.substring(start + 1, end).contains('\n')) return null
+    val tokens = text.substring(start + 1, end).trim().split(' ', '\t').filter { it.isNotEmpty() }
+    if (tokens.isEmpty()) return null
+    val roles = mutableListOf<String>()
+    var width: Int? = null
+    var height: Int? = null
+    for (token in tokens) {
+        when {
+            token.startsWith(".") && isRoleName(token.substring(1)) -> roles.add(token.substring(1))
+            token.startsWith("${MDR.width}=") -> width = token.substringAfter('=').toIntOrNull()?.takeIf { it >= 0 } ?: return null
+            token.startsWith("${MDR.height}=") -> height = token.substringAfter('=').toIntOrNull()?.takeIf { it >= 0 } ?: return null
+            else -> return null
+        }
+    }
+    return MdAttrs(roles, width, height) to (end - start + 1)
+}
+
+@KdrPrivate
+fun isRoleName(name: String): Boolean =
+    name.isNotEmpty() && name[0].isLetter() && name.all { it.isLetterOrDigit() || it == '-' }
+
+/**
+ * Emits a bracketed span `[text]{.role}` (issue #795); returns the characters consumed, or 0 when [start] opens
+ * no span -- no closing bracket, or no well-formed attribute block right after it. Tried after [appendLink],
+ * so `[text](url)` is a link and `[text]` alone is literal text, as before. A span with no role at all is
+ * literal too: an empty decoration says nothing. Width and height on a span are accepted by the block and
+ * dropped: they place an image, not a phrase.
+ */
+@KdrPrivate
+fun appendSpan(sb: StringBuilder, text: String, start: Int, depth: Int, hooks: MarkdownHooks): Int {
+    val close = text.indexOf(']', start + 1)
+    if (close < 0 || close + 1 >= text.length || text[close + 1] != '{') return 0
+    val (attrs, attrLength) = parseAttrBlock(text, close + 1) ?: return 0
+    if (attrs.roles.isEmpty()) return 0
+    val inner = renderInline(text.substring(start + 1, close), depth + 1, hooks)
+    sb.append(hooks.decorateSpan?.invoke(attrs.roles, inner) ?: defaultSpan(attrs.roles, inner))
+    return close + 1 + attrLength - start
+}
+
+/** The default rendering of a role: a class the frontend styles, prefixed so it never meets an app class. */
+@KdrPrivate
+fun defaultSpan(roles: List<String>, innerHtml: String): String =
+    "<span class=\"" + roleClasses(roles) + "\">" + innerHtml + "</span>"
+
+@KdrPrivate
+fun roleClasses(roles: List<String>): String = roles.joinToString(" ") { MDR.classPrefix + escapeHtml(it) }
+
+/**
+ * Emits an image `![alt](src)`, with an optional attribute block `{.role width=240}` placing and sizing it
+ * (issue #795); returns the characters consumed, or 0 when [start] opens no image. The source goes through
+ * [MarkdownHooks.resolveUrl] then [safeUrl] as a link's target does; the alt text is escaped. Roles become
+ * classes as a span's do, and width and height are emitted as the plain attributes they are -- numbers, so
+ * nothing else can ride in on them.
+ */
+@KdrPrivate
+fun appendImage(sb: StringBuilder, text: String, start: Int, hooks: MarkdownHooks): Int {
+    if (start + 1 >= text.length || text[start + 1] != '[') return 0
+    val close = text.indexOf(']', start + 2)
+    if (close < 0 || close + 1 >= text.length || text[close + 1] != '(') return 0
+    val paren = text.indexOf(')', close + 2)
+    if (paren < 0) return 0
+    val alt = text.substring(start + 2, close)
+    val src = text.substring(close + 2, paren).trim().substringBefore(' ')
+    val resolved = hooks.resolveUrl?.invoke(src) ?: src
+    val attrs = parseAttrBlock(text, paren + 1)
+    sb.append("<img src=\"").append(escapeHtml(safeUrl(resolved))).append("\" alt=\"").append(escapeHtml(alt)).append('"')
+    attrs?.first?.let { a ->
+        if (a.roles.isNotEmpty()) sb.append(" class=\"").append(roleClasses(a.roles)).append('"')
+        a.width?.let { sb.append(" width=\"").append(it).append('"') }
+        a.height?.let { sb.append(" height=\"").append(it).append('"') }
+    }
+    sb.append('>')
+    return paren + 1 + (attrs?.second ?: 0) - start
 }
 
 /**
@@ -459,7 +590,7 @@ fun appendLink(sb: StringBuilder, text: String, start: Int, depth: Int, resolveU
  * opens no closed run. An `_` run must start at a word boundary, so `snake_case_names` stays literal.
  */
 @KdrPrivate
-fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int, resolveUrl: ((String) -> String)? = null): Int {
+fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int, hooks: MarkdownHooks): Int {
     val c = text[start]
     if (c == '_' && start > 0 && isWordChar(text[start - 1])) {
         return 0 // intra word underscore: not emphasis
@@ -479,7 +610,7 @@ fun appendEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int, reso
     }
     val tag = if (double) "strong" else "em"
     sb.append('<').append(tag).append('>')
-        .append(renderInline(text.substring(from, end), depth + 1, resolveUrl))
+        .append(renderInline(text.substring(from, end), depth + 1, hooks))
         .append("</").append(tag).append('>')
     return end + marker.length - start
 }
@@ -523,4 +654,195 @@ fun escapeHtml(text: String): String {
         }
     }
     return sb.toString()
+}
+
+// --- plain text (issue #795) ------------------------------------------------------------------------------
+
+/**
+ * Renders Markdown to clean **plain text** -- the companion of [renderMarkdown], so one source gives a mail its
+ * text part as well as its HTML part, and copy may carry emphasis and roles without either reaching a reader
+ * as syntax.
+ *
+ * Block by block, as the HTML renderer walks them: a heading is its text on a line of its own; a paragraph's
+ * wrapped lines join into one; a list is one `- item` (or `1. item`) per line; a quote is its lines, unmarked;
+ * a fenced code block is its lines verbatim; a table is one row per line with cells joined by ` | `, the
+ * delimiter row dropped; a horizontal rule is a blank line's worth of nothing. Blocks are separated by a blank
+ * line. Inline: emphasis marks and role blocks are dropped (`[x]{.code}` is `x`), a code span is its text, a
+ * link is `text (url)` -- or the bare URL when its text is the URL -- and an image is its alt text. Anything
+ * unrecognized is kept as written, so a `${...}` block a fragment carries onward for the frontend passes
+ * through untouched, as it does in the HTML renderer.
+ */
+fun String.renderMarkdownText(): String {
+    val lines = this.replace("\r\n", "\n").replace('\r', '\n').split('\n')
+    val blocks = mutableListOf<String>()
+    var i = 0
+    while (i < lines.size) {
+        val line = lines[i]
+        i = when {
+            isBlankLine(line) -> i + 1
+            fenceMarker(line) != null -> textFencedCode(blocks, lines, i)
+            headingLevel(line) > 0 -> { blocks.add(renderInlineText(line.trim().trimStart('#').trim().trimEnd('#').trim(), 0)); i + 1 }
+            isHorizontalRule(line) -> i + 1
+            bulletContent(line) != null -> textList(blocks, lines, i, ordered = false)
+            orderedContent(line) != null -> textList(blocks, lines, i, ordered = true)
+            isQuoteLine(line) -> textQuote(blocks, lines, i)
+            isTableAt(lines, i) -> textTable(blocks, lines, i)
+            else -> textParagraph(blocks, lines, i)
+        }
+    }
+    return blocks.joinToString("\n\n")
+}
+
+@KdrPrivate
+fun textFencedCode(blocks: MutableList<String>, lines: List<String>, start: Int): Int {
+    val marker = fenceMarker(lines[start]) ?: return start + 1
+    val body = mutableListOf<String>()
+    var i = start + 1
+    while (i < lines.size && fenceMarker(lines[i]) != marker) {
+        body.add(lines[i])
+        i++
+    }
+    blocks.add(body.joinToString("\n"))
+    return if (i < lines.size) i + 1 else i
+}
+
+@KdrPrivate
+fun textList(blocks: MutableList<String>, lines: List<String>, start: Int, ordered: Boolean): Int {
+    val items = mutableListOf<String>()
+    var i = start
+    while (i < lines.size) {
+        val content = if (ordered) orderedContent(lines[i]) else bulletContent(lines[i])
+        if (content == null) break
+        val parts = mutableListOf(content)
+        var j = i + 1
+        while (j < lines.size && !startsBlock(lines[j]) && !isTableAt(lines, j)) {
+            parts.add(lines[j].trim())
+            j++
+        }
+        val text = renderInlineText(parts.joinToString(" "), 0)
+        items.add(if (ordered) "${items.size + 1}. $text" else "- $text")
+        i = j
+    }
+    blocks.add(items.joinToString("\n"))
+    return i
+}
+
+@KdrPrivate
+fun textQuote(blocks: MutableList<String>, lines: List<String>, start: Int): Int {
+    val parts = mutableListOf<String>()
+    var i = start
+    while (i < lines.size && isQuoteLine(lines[i])) {
+        parts.add(lines[i].trimStart().removePrefix(">").trim())
+        i++
+    }
+    blocks.add(renderInlineText(parts.joinToString(" "), 0))
+    return i
+}
+
+@KdrPrivate
+fun textParagraph(blocks: MutableList<String>, lines: List<String>, start: Int): Int {
+    val parts = mutableListOf(lines[start].trim())
+    var i = start + 1
+    while (i < lines.size && !startsBlock(lines[i]) && !isTableAt(lines, i)) {
+        parts.add(lines[i].trim())
+        i++
+    }
+    blocks.add(renderInlineText(parts.joinToString(" "), 0))
+    return i
+}
+
+@KdrPrivate
+fun textTable(blocks: MutableList<String>, lines: List<String>, start: Int): Int {
+    val rows = mutableListOf(splitTableRow(lines[start]).joinToString(" | ") { renderInlineText(it, 0) })
+    var i = start + 2
+    while (i < lines.size && lines[i].contains('|') && !startsBlock(lines[i])) {
+        rows.add(splitTableRow(lines[i]).joinToString(" | ") { renderInlineText(it, 0) })
+        i++
+    }
+    blocks.add(rows.joinToString("\n"))
+    return i
+}
+
+/** The inline constructs of [text] as plain text; see [renderMarkdownText]. [depth] bounds the nesting. */
+@KdrPrivate
+fun renderInlineText(text: String, depth: Int): String {
+    if (depth > maxInlineDepth) {
+        throw KdrException.mkConv("Markdown inline nesting exceeded $maxInlineDepth levels.")
+    }
+    val sb = StringBuilder()
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        val consumed = when (c) {
+            '`' -> textCodeSpan(sb, text, i)
+            '!' -> textImage(sb, text, i)
+            '[' -> textLink(sb, text, i, depth).takeIf { it > 0 } ?: textSpan(sb, text, i, depth)
+            '*', '_' -> textEmphasis(sb, text, i, depth)
+            else -> 0
+        }
+        if (consumed > 0) {
+            i += consumed
+        } else {
+            sb.append(c)
+            i++
+        }
+    }
+    return sb.toString()
+}
+
+@KdrPrivate
+fun textCodeSpan(sb: StringBuilder, text: String, start: Int): Int {
+    val end = text.indexOf('`', start + 1)
+    if (end < 0) return 0
+    sb.append(text, start + 1, end)
+    return end - start + 1
+}
+
+/** A link as `text (url)`, or the bare URL when the text is the URL itself -- what a mail's `[url](url)` wants. */
+@KdrPrivate
+fun textLink(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
+    val close = text.indexOf(']', start + 1)
+    if (close < 0 || close + 1 >= text.length || text[close + 1] != '(') return 0
+    val paren = text.indexOf(')', close + 2)
+    if (paren < 0) return 0
+    val url = text.substring(close + 2, paren).trim().substringBefore(' ')
+    val label = renderInlineText(text.substring(start + 1, close), depth + 1)
+    sb.append(if (label == url || label.isEmpty()) url else "$label ($url)")
+    return paren - start + 1
+}
+
+@KdrPrivate
+fun textSpan(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
+    val close = text.indexOf(']', start + 1)
+    if (close < 0 || close + 1 >= text.length || text[close + 1] != '{') return 0
+    val (attrs, attrLength) = parseAttrBlock(text, close + 1) ?: return 0
+    if (attrs.roles.isEmpty()) return 0
+    sb.append(renderInlineText(text.substring(start + 1, close), depth + 1))
+    return close + 1 + attrLength - start
+}
+
+@KdrPrivate
+fun textImage(sb: StringBuilder, text: String, start: Int): Int {
+    if (start + 1 >= text.length || text[start + 1] != '[') return 0
+    val close = text.indexOf(']', start + 2)
+    if (close < 0 || close + 1 >= text.length || text[close + 1] != '(') return 0
+    val paren = text.indexOf(')', close + 2)
+    if (paren < 0) return 0
+    sb.append(text, start + 2, close)
+    return paren + 1 + (parseAttrBlock(text, paren + 1)?.second ?: 0) - start
+}
+
+@KdrPrivate
+fun textEmphasis(sb: StringBuilder, text: String, start: Int, depth: Int): Int {
+    val c = text[start]
+    if (c == '_' && start > 0 && isWordChar(text[start - 1])) return 0
+    val double = start + 1 < text.length && text[start + 1] == c
+    val marker = if (double) "$c$c" else "$c"
+    val from = start + marker.length
+    if (from >= text.length) return 0
+    val end = text.indexOf(marker, from)
+    if (end <= from) return 0
+    if (c == '_' && end + marker.length < text.length && isWordChar(text[end + marker.length])) return 0
+    sb.append(renderInlineText(text.substring(from, end), depth + 1))
+    return end + marker.length - start
 }

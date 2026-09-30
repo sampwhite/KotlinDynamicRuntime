@@ -111,6 +111,98 @@ class MarkdownRenderUtilTest : StringSpec({
         html shouldNotContain "javascript:"
     }
 
+    // --- attributed spans and images (issue #795) ---------------------------------------------------------
+
+    "renders a bracketed span with a role as a prefixed class, several roles as several classes" {
+        "code is [123456]{.code}.".renderMarkdown() shouldBe "<p>code is <span class=\"md-code\">123456</span>.</p>\n"
+        "[x]{.value .wide}".renderMarkdownInline() shouldBe "<span class=\"md-value md-wide\">x</span>"
+        // Inline constructs inside the span still render; the text inside is still escaped.
+        "[**b** <i>]{.value}".renderMarkdownInline() shouldBe "<span class=\"md-value\"><strong>b</strong> &lt;i&gt;</span>"
+    }
+
+    "a malformed or empty attribute block, and a bare bracket, stay literal text" {
+        // Not a block at all, so the brackets are ordinary text as they always were.
+        "[x] alone".renderMarkdownInline() shouldBe "[x] alone"
+        // A token of any other shape -- a style, an unknown attribute, a bad role name -- makes the whole block literal:
+        // nothing but role names and two numbers ever comes out of a block.
+        "[x]{style=color:red}".renderMarkdownInline() shouldBe "[x]{style=color:red}"
+        "[x]{.value foo=bar}".renderMarkdownInline() shouldBe "[x]{.value foo=bar}"
+        "[x]{.1bad}".renderMarkdownInline() shouldBe "[x]{.1bad}"
+        "[x]{}".renderMarkdownInline() shouldBe "[x]{}"
+        "[x]{.value".renderMarkdownInline() shouldBe "[x]{.value"
+        // Width and height are placement, not a role: on a span they are accepted and dropped.
+        "[x]{.value width=3}".renderMarkdownInline() shouldBe "<span class=\"md-value\">x</span>"
+        // A block with no role decorates nothing, so it is literal.
+        "[x]{width=3}".renderMarkdownInline() shouldBe "[x]{width=3}"
+    }
+
+    "a link still wins over a span, and a span decorator replaces the default" {
+        "[t](x.md){.value}".renderMarkdownInline() shouldBe "<a href=\"x.md\">t</a>{.value}"
+        val hooks = MarkdownHooks(decorateSpan = { roles, inner -> if (MDR.code in roles) "<b>$inner</b>" else null })
+        "[1]{.code} and [2]{.value}".renderMarkdownInline(hooks) shouldBe "<b>1</b> and <span class=\"md-value\">2</span>"
+    }
+
+    "renders an image with its constrained attributes, resolving and guarding the source" {
+        "![a dog](dog.png)".renderMarkdownInline() shouldBe "<img src=\"dog.png\" alt=\"a dog\">"
+        "![a](dog.png){.float-right width=240 height=120}".renderMarkdownInline() shouldBe
+            "<img src=\"dog.png\" alt=\"a\" class=\"md-float-right\" width=\"240\" height=\"120\">"
+        // A malformed block is not the image's: it stays literal after it.
+        "![a](dog.png){width=big}".renderMarkdownInline() shouldBe "<img src=\"dog.png\" alt=\"a\">{width=big}"
+        // The source is resolved like a link's, then guarded; the alt text is escaped.
+        "![<x>](img.png)".renderMarkdown(MarkdownHooks(resolveUrl = { "https://x/$it" })) shouldContain
+            "<img src=\"https://x/img.png\" alt=\"&lt;x&gt;\">"
+        // Inert like a link's, and the source ends at the first `)` as a link's target does.
+        "![a](javascript:alert(1))".renderMarkdownInline() shouldBe "<img src=\"\" alt=\"a\">)"
+        "a ! b".renderMarkdownInline() shouldBe "a ! b"
+    }
+
+    // --- plain text (issue #795) -------------------------------------------------------------------------
+
+    "renders every construct to clean plain text" {
+        val md = """
+            # Title
+
+            A *wrapped*
+            **paragraph** with `code` and a [link](https://x.y).
+
+            - one
+            - two [2]{.value}
+
+            1. first
+            2. second
+
+            > quoted
+
+            ```
+            keep **this**
+            ```
+
+            | a | b |
+            | --- | --- |
+            | 1 | 2 |
+
+            ---
+
+            ![a dog](dog.png){width=3} and [https://x.y](https://x.y)
+        """.trimIndent()
+        md.renderMarkdownText() shouldBe listOf(
+            "Title",
+            "A wrapped paragraph with code and a link (https://x.y).",
+            "- one\n- two 2",
+            "1. first\n2. second",
+            "quoted",
+            "keep **this**",
+            "a | b\n1 | 2",
+            "a dog and https://x.y",
+        ).joinToString("\n\n")
+    }
+
+    "plain text keeps what it does not recognize, a frontend template block included" {
+        "Hello \${user.name ?: \"there\"}, a * b and [x".renderMarkdownText() shouldBe "Hello \${user.name ?: \"there\"}, a * b and [x"
+        "code is [123456]{.code}.".renderMarkdownText() shouldBe "code is 123456."
+        "KDR_WORKSPACE_DIR is set".renderMarkdownText() shouldBe "KDR_WORKSPACE_DIR is set"
+    }
+
     // --- tables (issue #547) ------------------------------------------------------------------------------
 
     "renders a github-style pipe table with a header and body rows" {

@@ -31,6 +31,14 @@ The backend serves per-component UI text as **Markdown fragment files** through 
 behind a shared cache: a URL names one document, because the `buildId` hashes the merged content rather than
 the underlying file, so two clients reading different copy never share a URL.
 
+**Beyond standard Markdown** the renderer takes two Pandoc-style attributed constructs (issue #795): a bracketed
+span with a role, `[text]{.role}`, and an image with placement, `![alt](src){.float-right width=240}`. A role
+renders as a `md-`-prefixed class by default (`.md-value`, `.md-code` are styled in `app.css`); a surface that
+cannot use a stylesheet -- a mail -- passes `MarkdownHooks(decorateSpan = …)` and realizes the role itself. An
+attribute block holds only role names and numeric `width`/`height`; anything else makes it literal text. The
+same source renders to plain text with `renderMarkdownText()` (emphasis and roles dropped, a link as
+`text (url)`, an image as its alt text), which is how a mail gets its text part from the one body.
+
 **Using a fragment value:** each value is Markdown that may embed `${namespace.key}` placeholders. Resolve
 them with the kernel's `String.evalTemplate(data)` — the fragment map *is* the data map, so `${email.subject}`
 reads `map["email"]["subject"]` — then render the resulting Markdown.
@@ -130,11 +138,13 @@ Current UI-config endpoints:
 - **The mails are fragment copy** (issue #773): every mail the auth flows send -- the code, the invitation, the
   claim page's answers -- is authored in the **backend** fragment file `mail.md` (never served; one namespace
   per mail, `subject` + `body`, a shared `common.footer` and `common.htmlStyle`) and goes out as one message
-  with a text part (the Markdown as written) and an HTML part (the kernel's `renderMarkdown`). `MailCopy`
+  with a text part (the kernel's `renderMarkdownText`) and an HTML part (`renderMarkdown`, issue #795). `MailCopy`
   renders it for the client of the user the mail is *about* -- an invitation's user, a claim's key -- so a
   client's config overlay of `mail` rewords its mails and signs them as itself, whoever sent them. Params are
-  sanitized like an error message's; a URL param becomes an anchor in the HTML part on its own, and every
-  other param sits in a style-only anchor there so Gmail does not linkify an address or a code. The dev
+  sanitized like an error message's; a URL param becomes an anchor in the HTML part on its own, and a value a
+  reader copies out is marked in the copy with a role -- `[${address}]{.value}`, `[${code}]{.code}` -- which
+  the HTML part realizes as a style-only anchor (so Gmail does not linkify an address or a code) and the text
+  part shows bare. `forHtml` is bound by every render, for a body whose two parts want different words. The dev
   autofill (`fetchDevCode`) and the tests read the code out of the text part's "verification code is <code>."
   -- keep that phrase when rewording. `/fixture/simulatedEmails` returns both parts (`text`, `html`). The
   sample's acme and globex each overlay `common.footer` alone, so every mail about one of their users is
