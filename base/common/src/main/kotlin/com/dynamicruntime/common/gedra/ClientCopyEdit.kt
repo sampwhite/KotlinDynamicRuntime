@@ -39,7 +39,9 @@ import com.dynamicruntime.common.util.toOptStr
  * client consumes only published configuration) and the client reloaded on this node and announced to peers, so
  * the next page load reads the new copy under a new build id. The publish has a trial of its own, judged against
  * the client's *published* revisions, and can refuse what the write's trial passed; the write is then undone --
- * the key put back as it was -- so a refused change is not left in a draft for the next edit to publish.
+ * the key put back as it was -- so a refused change is not left in a draft for the next edit to publish. The
+ * shared half of that -- where an edit lands, the draft rule, publish-reload-undo -- is [ClientStoredEdit], which
+ * the menu editor (issue #919) writes through too.
  */
 object ClientCopyEdit {
     /** One key the client's people read: its address, who the file is for, and the value this client gets. */
@@ -78,17 +80,15 @@ object ClientCopyEdit {
         requireShippedKey(cxt, fileId, namespace, key)
         val bound = cxt.mkSubContext("copyEdit", client)
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, client, fileId, namespace, key)
-            ?: svc.readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        val holder = holderOf(bound, client, fileId, namespace, key) ?: ClientStoredEdit.editConfig(bound, client)
         if (holder == null) {
             // The first edit of a file no stored config overlays, with no `copy` config yet: created with just this key.
-            val config = gedraConfig(bound, CPY.copyConfigName, "${client}Copy", client) {
+            val written = ClientStoredEdit.createEditConfig(bound, client) {
                 fragmentOverlay(fileId, mapOf(namespace to mapOf(key to value)))
             }
-            val written = svc.writeConfig(bound, config, trial = true)
             return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, null) })
         }
-        requireNoForeignDraft(holder)
+        ClientStoredEdit.requireNoForeignDraft(holder, "a copy edit")
         val before = storedValue(holder, fileId, namespace, key)
         val written = patchKey(svc, bound, holder, fileId, namespace, key, value)
         return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
@@ -106,22 +106,10 @@ object ClientCopyEdit {
                 "No stored value sets '$fileId: $namespace.$key' for client '$client'; what it reads comes from source " +
                     "code or the shipped copy, which a reset cannot remove.",
             )
-        requireNoForeignDraft(holder)
+        ClientStoredEdit.requireNoForeignDraft(holder, "a copy edit")
         val before = storedValue(holder, fileId, namespace, key)
         val written = patchKey(svc, bound, holder, fileId, namespace, key, value = null)
         return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
-    }
-
-    /**
-     * Refuses to write into a config that has unpublished changes of its own -- unless it is the editor's own `copy`
-     * config, whose only drafts are this editor's (a publish that was refused). See the class note.
-     */
-    private fun requireNoForeignDraft(holder: GedraConfigRow) {
-        if (holder.isPublished || holder.configId.baseId == CPY.copyConfigName) return
-        throw KdrException.mkInput(
-            "Configuration '${holder.configId.baseId}' of client '${holder.client}' has unpublished changes, which a " +
-                "copy edit would publish with it. Publish or revert that configuration first.",
-        )
     }
 
     /** Refuses a key no shipped file declares: an overlay of it would be stored and never read (an orphan). */
@@ -189,11 +177,7 @@ object ClientCopyEdit {
         out
     }
 
-    /**
-     * Publishes [written]'s config, reloads [client] on this node, announces it, and reads back what is now served.
-     * A publish the trial refuses runs [undo] -- the key put back as it was -- before the refusal is rethrown, so
-     * the change is not left in a draft that the next edit would publish.
-     */
+    /** Makes [written] live (see [ClientStoredEdit.publishAndReload]) and reads back what the client now reads. */
     private fun goLive(
         cxt: KdrCxt,
         bound: KdrCxt,
@@ -204,15 +188,7 @@ object ClientCopyEdit {
         key: String,
         undo: () -> Unit,
     ): Result {
-        val svc = GedraConfigService.get(bound)
-        try {
-            svc.publish(bound, written.configId, trial = true)
-        } catch (e: KdrException) {
-            undo()
-            throw e
-        }
-        val reload = GedraConfigReload.reloadClient(cxt, client)
-        ClientSyncService.get(cxt).announceAndMark(cxt, client, reload.marker)
+        val reload = ClientStoredEdit.publishAndReload(cxt, bound, client, written, undo)
         val effective = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, fileId, client)
         return Result(
             configName = written.configId.baseId,
