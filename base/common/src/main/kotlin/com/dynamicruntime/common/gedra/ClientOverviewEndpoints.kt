@@ -135,6 +135,8 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(COV.hidden, "Whether the client withdraws the item -- hidden here, shown to everybody else.", required = true) {
             type = SCT.boolean
         }
+        property(COV.baseLabel, "The item's label in the block everybody else gets, when it has one; absent for an item " +
+            "the client added, or an object.")
         property(COV.fields, "The fields the client sets.", required = true) {
             type = SCT.array
             items { ref(COV.blockFieldTypeName) }

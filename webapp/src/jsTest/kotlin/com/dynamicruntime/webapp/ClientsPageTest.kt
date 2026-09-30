@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.endpoint.EI
@@ -176,8 +177,8 @@ class ClientsPageTest {
     private fun field(name: String, base: String?, value: String, config: String = "acmeClient", origin: String = "source") =
         mapOf(COV.field to name, COV.baseValue to base, COV.value to value, COV.configName to config, COV.origin to origin)
 
-    private fun blockRow(block: String, item: String?, added: Boolean, hidden: Boolean, vararg fields: Map<String, Any?>) =
-        mapOf(COV.blockId to block, COV.path to "items", COV.itemId to item, COV.added to added, COV.hidden to hidden, COV.fields to fields.toList())
+    private fun blockRow(block: String, item: String?, added: Boolean, hidden: Boolean, vararg fields: Map<String, Any?>, baseLabel: String? = null) =
+        mapOf(COV.blockId to block, COV.path to "items", COV.itemId to item, COV.added to added, COV.hidden to hidden, COV.baseLabel to baseLabel, COV.fields to fields.toList())
 
     private fun acmeOverrides() = parseClientOverrides(
         mapOf(
@@ -189,8 +190,8 @@ class ClientsPageTest {
                 mapOf(COV.fileId to "home", COV.namespaceField to "home"),
             ),
             COV.blocks to listOf(
-                blockRow("homeMenu", "cfactReference", false, true, field(UIB.cfactExpression, null, "#never")),
-                blockRow("homeMenu", "workflows", false, false, field(UIB.cfactExpression, "#never", "loggedIn,app")),
+                blockRow("homeMenu", "cfactReference", false, true, field(UIB.cfactExpression, null, "#never"), baseLabel = "Client facts"),
+                blockRow("homeMenu", "workflows", false, false, field(UIB.cfactExpression, "#never", "loggedIn,app"), baseLabel = "Workflows"),
                 blockRow("sampleNav", "overview", false, false, field("label", "Overview", "Acme overview")),
                 blockRow("sampleNav", "siteAudits", true, false, field("label", null, "Site audits"), field(UIB.displayOrder, null, "150")),
                 blockRow("homeMenu", null, true, false, field("label", null, "Stray")),
@@ -212,8 +213,12 @@ class ClientsPageTest {
         assertEquals(true, acme.copy[1].orphan)
         assertEquals(null, acme.copy[1].baseValue)
         assertEquals(5, acme.blocks.size)
+        assertEquals("Client facts", acme.blocks[0].baseLabel)
+        assertEquals(null, acme.blocks[3].baseLabel)
         assertEquals("homeMenu: cfactReference", blockItemText(acme.blocks[0]))
         assertEquals("homeMenu: (new item)", blockItemText(acme.blocks[4]))
+        assertEquals("(block)", blockItemName(BlockOverrideView("m", "", null, added = false, hidden = false, baseLabel = null, fields = emptyList())))
+        assertEquals("m: nav", blockItemText(BlockOverrideView("m", "nav", null, added = false, hidden = false, baseLabel = null, fields = emptyList())))
     }
 
     @Test
@@ -224,18 +229,28 @@ class ClientsPageTest {
         assertEquals("renamed", menuChangeText(b[2]))
         assertEquals("added", menuChangeText(b[3]))
         // Several at once read together; a field with no word of its own is "changed".
-        val renamedAndHidden = BlockOverrideView("m", "items", "x", added = false, hidden = true, fields = listOf(
-            BlockFieldView("label", "A", "B", "c", "source"), BlockFieldView(UIB.cfactExpression, null, "#never", "c", "source"),
+        val renamedAndHidden = BlockOverrideView("m", "items", "x", added = false, hidden = true, baseLabel = "A", fields = listOf(
+            BlockFieldView(HFLD.label, "A", "B", "c", "source"), BlockFieldView(UIB.cfactExpression, null, "#never", "c", "source"),
         ))
         assertEquals("hidden, renamed", menuChangeText(renamedAndHidden))
-        val other = BlockOverrideView("m", "items", "x", added = false, hidden = false, fields = listOf(BlockFieldView("icon", "a", "b", "c", "source")))
+        val other = BlockOverrideView("m", "items", "x", added = false, hidden = false, baseLabel = "A", fields = listOf(BlockFieldView("icon", "a", "b", "c", "source")))
         assertEquals("changed", menuChangeText(other))
-        // The client's value: the label when set, the one field's value otherwise, all of them as a last resort.
+        // A condition that neither hides nor un-hides -- narrowed, or `#never` on an item the base already withdraws
+        // (which #916 does not call hidden) -- is a change to the condition, not "shown".
+        fun condition(base: String?, value: String) = BlockOverrideView("m", "items", "x", added = false, hidden = false, baseLabel = "A",
+            fields = listOf(BlockFieldView(UIB.cfactExpression, base, value, "c", "source")))
+        assertEquals("condition changed", menuChangeText(condition("loggedIn", "hasAdminLevel")))
+        assertEquals("condition changed", menuChangeText(condition("#never", "#never")))
+        assertEquals("shown", menuChangeText(condition("#never", "#always")))
+        // The client's value: the label when set; nothing for a hide or a show (the condition is not a value anybody
+        // reads); the one field's value otherwise, all of them as a last resort.
         assertEquals("Acme overview", blockValueText(b[2]))
-        assertEquals("loggedIn,app", blockValueText(b[1]))
+        assertEquals("", blockValueText(b[0]))
+        assertEquals("", blockValueText(b[1]))
+        assertEquals("hasAdminLevel", blockValueText(condition("loggedIn", "hasAdminLevel")))
         assertEquals("b", blockValueText(other))
         assertEquals("Site audits", blockValueText(b[3]))
-        assertEquals("icon: a, ${UIB.displayOrder}: 1", blockValueText(BlockOverrideView("m", "items", "x", added = true, hidden = false, fields = listOf(
+        assertEquals("icon: a, ${UIB.displayOrder}: 1", blockValueText(BlockOverrideView("m", "items", "x", added = true, hidden = false, baseLabel = null, fields = listOf(
             BlockFieldView("icon", null, "a", "c", "source"), BlockFieldView(UIB.displayOrder, null, "1", "c", "source"),
         ))))
         // In a phrase, for the view across clients: the words, and the label when one was set.
@@ -251,6 +266,12 @@ class ClientsPageTest {
         assertEquals("source", setByText(null, "source"))
         assertEquals("acmeClient", setByText("acmeClient", ""))
         assertEquals("acmeClient (source)", blockSetByText(acmeOverrides().blocks[2]))
+        // A row two configs set names both, the stored one first: applied last, its values are the ones that win.
+        val mixed = BlockOverrideView("m", "items", "x", added = false, hidden = false, baseLabel = "A", fields = listOf(
+            BlockFieldView(HFLD.label, "A", "B", "edits", "stored"), BlockFieldView(UIB.cfactExpression, null, "loggedIn", "acmeClient", "source"),
+            BlockFieldView(UIB.displayOrder, null, "5", "acmeClient", "source"),
+        ))
+        assertEquals("edits (stored), acmeClient (source)", blockSetByText(mixed))
     }
 
     @Test

@@ -12,6 +12,8 @@ import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.cfact.CFACT
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.UADEP
@@ -152,6 +154,8 @@ class BlockOverrideView(
     val itemId: String?,
     val added: Boolean,
     val hidden: Boolean,
+    /** The item's label in the block everybody else gets, when it has one. */
+    val baseLabel: String?,
     val fields: List<BlockFieldView>,
 )
 
@@ -185,6 +189,7 @@ fun parseClientOverrides(item: Map<String, Any?>): ClientOverridesView = ClientO
             itemId = row[COV.itemId].toOptStr(),
             added = row[COV.added] == true,
             hidden = row[COV.hidden] == true,
+            baseLabel = row[COV.baseLabel].toOptStr(),
             fields = row[COV.fields].toJsonListOfMaps().mapNotNull { f ->
                 BlockFieldView(
                     field = f[COV.field].toOptStr() ?: return@mapNotNull null,
@@ -201,26 +206,39 @@ fun parseClientOverrides(item: Map<String, Any?>): ClientOverridesView = ClientO
 /** A copy row's address as the tables show it: `file: namespace.key`. */
 fun copyKeyText(row: CopyOverrideView): String = "${row.fileId}: ${row.namespace}.${row.key}"
 
-/** An interface row's address: the block and the item within it -- or its path, for an object outside a list. */
-fun blockItemText(row: BlockOverrideView): String = when {
-    row.itemId != null -> "${row.blockId}: ${row.itemId}"
-    row.added -> "${row.blockId}: (new item)"
-    row.path.isEmpty() -> row.blockId
-    else -> "${row.blockId}: ${row.path}"
+/**
+ * What an interface row is within its block: the item's key, "(new item)" for one added with no key, the path of
+ * an object outside a list, or "(block)" for the block's own fields. Pure, and covered under `jsNodeTest`.
+ */
+fun blockItemName(row: BlockOverrideView): String = when {
+    row.itemId != null -> row.itemId
+    row.added -> "(new item)"
+    row.path.isEmpty() -> "(block)"
+    else -> row.path
 }
 
+/** An interface row's address: the block and [blockItemName] within it. */
+fun blockItemText(row: BlockOverrideView): String = "${row.blockId}: ${blockItemName(row)}"
+
+/** The row's own `label` field, when the client set one. */
+private fun labelField(row: BlockOverrideView): BlockFieldView? = row.fields.firstOrNull { it.field == HFLD.label }
+
 /**
- * What the client did to an interface item, in a word each (issue #917): added, hidden, shown (a condition set
- * that is not `#never`), renamed (a label), reordered (a display order), and "changed" for anything else -- joined
- * when several apply, so a rename beside a hide reads "renamed, hidden". Pure, and covered under `jsNodeTest`.
+ * What the client did to an interface item, in a word each (issue #917): added; hidden; shown (a condition that was
+ * `#never` and no longer is); "condition changed" for any other condition the client set; renamed (a label);
+ * reordered (a display order); and "changed" for anything else -- joined when several apply, so a rename beside a
+ * hide reads "hidden, renamed". Pure, and covered under `jsNodeTest`.
  */
 fun menuChangeText(row: BlockOverrideView): String {
-    val fields = row.fields.map { it.field }.toSet()
+    val fields = row.fields.associateBy { it.field }
+    val condition = fields[UIB.cfactExpression]
     val words = buildList {
         if (row.added) add("added")
         if (row.hidden) add("hidden")
-        if (!row.hidden && UIB.cfactExpression in fields) add("shown")
-        if (!row.added && "label" in fields) add("renamed")
+        if (!row.added && !row.hidden && condition != null) {
+            add(if (condition.baseValue == CFACT.neverName && condition.value != CFACT.neverName) "shown" else "condition changed")
+        }
+        if (!row.added && HFLD.label in fields) add("renamed")
         if (!row.added && UIB.displayOrder in fields) add("reordered")
         if (isEmpty() && fields.isNotEmpty()) add("changed")
     }
@@ -228,12 +246,14 @@ fun menuChangeText(row: BlockOverrideView): String {
 }
 
 /**
- * The value an interface row shows for the client: its label when one is set, else the one field's value, else the
- * fields as `name: value`. Pure, and covered under `jsNodeTest`.
+ * The value an interface row shows for the client: its label when it set one; nothing for a row that only hides or
+ * shows the item (the change column says it, and the condition is not a value anybody reads); else the one field's
+ * value, else the fields as `name: value`. Pure, and covered under `jsNodeTest`.
  */
 fun blockValueText(row: BlockOverrideView): String {
-    val label = row.fields.firstOrNull { it.field == "label" }
-    if (label != null) return label.value.orEmpty()
+    labelField(row)?.let { return it.value.orEmpty() }
+    val words = menuChangeText(row)
+    if (words == "hidden" || words == "shown") return ""
     val single = row.fields.singleOrNull()
     if (single != null) return single.value.orEmpty()
     return row.fields.joinToString(", ") { "${it.field}: ${it.value.orEmpty()}" }
@@ -245,7 +265,7 @@ fun blockValueText(row: BlockOverrideView): String {
  */
 fun blockSummaryText(row: BlockOverrideView): String {
     val words = menuChangeText(row)
-    val label = row.fields.firstOrNull { it.field == "label" }?.value ?: return words
+    val label = labelField(row)?.value ?: return words
     return "$words: $label"
 }
 
@@ -256,8 +276,14 @@ fun setByText(configName: String?, origin: String): String = when {
     else -> "$configName ($origin)"
 }
 
-/** The config that set an interface row: the last field's, which is the one applied last. */
-fun blockSetByText(row: BlockOverrideView): String = row.fields.lastOrNull()?.let { setByText(it.configName, it.origin) } ?: ""
+/**
+ * The configs that set an interface row's fields, each once, a stored one first -- it is applied last, so it is the
+ * one whose values win where the two set the same field. A row set by one config reads as that config; one set by
+ * a source and a stored config names both. Pure, and covered under `jsNodeTest`.
+ */
+fun blockSetByText(row: BlockOverrideView): String = row.fields
+    .sortedByDescending { it.origin == GedraConfigOrigin.stored.name }
+    .map { setByText(it.configName, it.origin) }.distinct().joinToString(", ")
 
 /** One key as the cross-client view lists it (issue #917): who overrides it, and with what. */
 class KeyAcrossClients(val group: String, val key: String, val clients: List<Pair<String, String>>)
@@ -271,10 +297,7 @@ fun overridesAcrossClients(byClient: List<Pair<String, ClientOverridesView>>): L
     val keys = LinkedHashMap<Pair<String, String>, MutableList<Pair<String, String>>>()
     for ((clientId, view) in byClient) {
         for (row in view.copy) keys.getOrPut(row.fileId to "${row.namespace}.${row.key}") { mutableListOf() }.add(clientId to row.value.orEmpty())
-        for (row in view.blocks) {
-            val item = row.itemId ?: if (row.added) "(new item)" else row.path.ifEmpty { "(block)" }
-            keys.getOrPut(row.blockId to item) { mutableListOf() }.add(clientId to blockSummaryText(row))
-        }
+        for (row in view.blocks) keys.getOrPut(row.blockId to blockItemName(row)) { mutableListOf() }.add(clientId to blockSummaryText(row))
     }
     return keys.entries.sortedWith(compareBy({ it.key.first }, { it.key.second })).map { KeyAcrossClients(it.key.first, it.key.second, it.value) }
 }

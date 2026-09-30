@@ -59,6 +59,12 @@ object COV {
     /** Whether this client's layers withdraw the item (its condition is `#never` here and not for everybody else). */
     const val hidden = "hidden"
 
+    /**
+     * The item's `label` in the block everybody else gets, when it has one -- so a row that hides or shows an item
+     * can name it, whether or not the client set a label of its own. Absent for an added item or an object.
+     */
+    const val baseLabel = "baseLabel"
+
     const val fields = "fields"
     const val field = "field"
 }

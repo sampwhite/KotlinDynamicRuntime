@@ -7,6 +7,9 @@ import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
@@ -174,7 +177,11 @@ val ClientsPage = FC<Props> {
         latestDetail.current = token
         clientsScope.launch {
             try {
-                val loaded = listed.map { it.clientId to ClientsApi.overrides(it.clientId) }
+                // Only the clients the listing says change something, and all at once: the rest have nothing to add.
+                val loaded = coroutineScope {
+                    listed.filter { it.copyOverrides + it.blockOverrides > 0 }
+                        .map { c -> async { c.clientId to ClientsApi.overrides(c.clientId) } }.awaitAll()
+                }
                 if (latestDetail.current == token) {
                     acrossRows = loaded
                     acrossError = null
@@ -197,10 +204,10 @@ val ClientsPage = FC<Props> {
         !current.canManageUsers -> deniedCard("You do not have permission to see clients.")
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
-            detailError, detailNote, storedError, overrides.takeIf { !overridesRefused }, overridesError, overridesRefused, current.canSeeAllClients,
+            detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
         )
         // The view across clients is the allClients administrator's; anyone else lands on their listing.
-        acrossView && current.canSeeAllClients -> overridesAcross(rows, acrossRows, loadError ?: acrossError)
+        acrossView && current.canSeeAllClients -> overridesAcross(rows, acrossRows, loadError, acrossError)
         else -> clientsListing(rows, current.canSeeAllClients, loadError)
     }
 }
@@ -357,9 +364,9 @@ private fun ChildrenBuilder.copyOverridesTable(rows: List<CopyOverrideView>) {
                             // The client's own source value a stored change overrides: what a reset would return to.
                             r.sourceValue?.let {
                                 div {
-                                    className = ClassName("subtitle")
+                                    className = ClassName("subtitle cell-clamp")
                                     title = it
-                                    +"was: ${shortValue(it)}"
+                                    +"was: $it"
                                 }
                             }
                         }
@@ -392,8 +399,8 @@ private fun ChildrenBuilder.blockOverridesTable(rows: List<BlockOverrideView>) {
                         key = "${blockItemText(r)}#$i".unsafeCast<Key>()
                         td { +blockItemText(r) }
                         td { +menuChangeText(r) }
-                        td { +(r.fields.firstOrNull { it.field == "label" }?.baseValue ?: "\u2014") }
-                        td { +blockValueText(r) }
+                        td { +(r.baseLabel ?: "\u2014") }
+                        td { +blockValueText(r).ifEmpty { "\u2014" } }
                         td { +blockSetByText(r) }
                     }
                 }
@@ -402,18 +409,20 @@ private fun ChildrenBuilder.blockOverridesTable(rows: List<BlockOverrideView>) {
     }
 }
 
-/** A cut of a long value for a cell, the whole in its title. */
-private fun shortValue(value: String): String = if (value.length <= 80) value else value.take(77) + "…"
-
-/** A fragment value as a cell: rendered inline (it is Markdown), cut when long with the whole on hover; a dash for none. */
+/**
+ * A fragment value as a cell: rendered inline, since it is Markdown, and clamped to one line by `.cell-clamp` with
+ * the whole on hover -- clamped after rendering, never cut before it, since a cut through a link or an emphasis
+ * would show its syntax. A dash for none.
+ */
 private fun ChildrenBuilder.valueCell(value: String?) {
     if (value == null) {
         +"\u2014"
         return
     }
     span {
-        if (value.length > 80) title = value
-        MarkdownInline { source = shortValue(value) }
+        className = ClassName("cell-clamp")
+        title = value
+        MarkdownInline { source = value }
     }
 }
 
@@ -421,7 +430,13 @@ private fun ChildrenBuilder.valueCell(value: String?) {
  * The overrides across every client (issue #917): each overridden key, grouped by file or block, with the clients
  * that override it and their values -- the `allClients` administrator's answer to "who customizes what".
  */
-private fun ChildrenBuilder.overridesAcross(rows: List<ClientOverview>?, byClient: List<Pair<String, ClientOverridesView>>?, error: DisplayError?) {
+private fun ChildrenBuilder.overridesAcross(
+    rows: List<ClientOverview>?,
+    byClient: List<Pair<String, ClientOverridesView>>?,
+    /** The listing's failure: to load, or -- with rows on screen -- to refresh; each said as what it is. */
+    loadError: DisplayError?,
+    acrossError: DisplayError?,
+) {
     div {
         className = ClassName("card wide")
         backToListing(HMENU.pageClients)
@@ -430,10 +445,11 @@ private fun ChildrenBuilder.overridesAcross(rows: List<ClientOverview>?, byClien
             className = ClassName("subtitle")
             +"Every piece of copy and every menu item a client changes, and which clients change it."
         }
-        error?.let { errorText("Couldn't load the clients' changes.", it) }
+        loadError?.let { errorText(if (rows == null) "Couldn't load the clients." else "Couldn't refresh the clients; showing what was loaded.", it) }
+        acrossError?.let { errorText(if (byClient == null) "Couldn't load the clients' changes." else "Couldn't refresh the clients' changes; showing what was loaded.", it) }
         val keys = byClient?.let { overridesAcrossClients(it) }
         when {
-            rows == null || keys == null -> if (error == null) p {
+            rows == null || keys == null -> if (loadError == null && acrossError == null) p {
                 className = ClassName("subtitle")
                 +"Loading…"
             }
@@ -470,10 +486,7 @@ private fun ChildrenBuilder.overridesAcross(rows: List<ClientOverview>?, byClien
                                                     +clientLabel(clientId, rows.firstOrNull { it.clientId == clientId }?.name.orEmpty())
                                                 }
                                                 +": "
-                                                span {
-                                                    if (value.length > 80) title = value
-                                                    MarkdownInline { source = shortValue(value) }
-                                                }
+                                                valueCell(value)
                                             }
                                         }
                                     }

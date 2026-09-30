@@ -344,8 +344,10 @@ names are the kernel's `COV`). The detail's "Copy & menu" section draws two tabl
 (`file: namespace.key`, the shipped value, the client's, "Set by" as `config (source|stored)` -- `setByText`; a
 stored change over the client's own source value shows "was: …", and an orphan -- a key no shipped file declares,
 so the value is never read -- is flagged), and the interface items it changes (`menuChangeText`: added, hidden,
-shown, renamed, reordered; `blockValueText`). Every value is Markdown and renders with `MarkdownInline`, cut at 80
-characters with the whole on hover. The listing's **Customized** column says how much (`customizedText`, "3 copy,
+shown, renamed, reordered; `blockValueText`; the shipped label rides on the row as `baseLabel`, so a row that only
+hides an item still names it; "Set by" names every config that set a field, a stored one first -- `blockSetByText`).
+Every value is Markdown and renders with `MarkdownInline`, then clamped to one line by `.cell-clamp` with the whole
+on hover -- clamped after rendering, never cut before it, since a cut through a link would show its syntax. The listing's **Customized** column says how much (`customizedText`, "3 copy,
 2 menu" -- "menu" because every block a client can overlay today is one) and links to the detail; an `allClients`
 administrator also gets **Copy & menu across clients** (`ov=1` on the same route, `overridesAcrossHref`): one
 retrieve per listed client, grouped by the pure `overridesAcrossClients` into file-or-block → key → the clients

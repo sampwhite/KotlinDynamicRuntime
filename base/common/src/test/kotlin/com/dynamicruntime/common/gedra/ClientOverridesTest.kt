@@ -113,6 +113,9 @@ class ClientOverridesTest : StringSpec({
         label.stored shouldBe true
 
         rows.getValue("facts").hidden shouldBe true
+        // The shipped label rides along, so a row that only hides an item can still name it.
+        rows.getValue("facts").baseLabel shouldBe "Facts"
+        rows.getValue("audits").baseLabel shouldBe null
         rows.getValue("facts").fields.single().baseValue shouldBe null
 
         val audits = rows.getValue("audits")
