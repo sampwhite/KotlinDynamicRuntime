@@ -447,8 +447,11 @@ attractive and not yet taken — see [Open questions](#open-questions).
 
 ## Tasks declare what is owed
 
-**An entry with no data does not exist.** Nothing is created as a placeholder, and "not yet answered" is never
-a state of the entry.
+**An entry is present or absent; its data is not what makes it present.** A present entry with empty data (`{}`)
+satisfies a task that requires its trait -- a trait whose payload is legitimately empty must be able to meet a
+gate -- and the form page stores one for every trait of a task the user saves, touched or not. What a trait needs
+of its *content* is said by its schema's required fields, which a save refuses to leave unmet. "Not yet answered"
+is therefore never a state of the entry: either no entry exists, or one does and holds what was answered.
 
 Instead a workflow **task** declares what it expects: which `traitId`s, and optionally which primary keys —
 including a range, such as the years 2020 through 2024. Missing data is then a diff between what a task expects

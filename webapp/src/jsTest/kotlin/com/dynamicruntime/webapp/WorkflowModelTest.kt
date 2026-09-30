@@ -9,6 +9,7 @@ import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WVF
+import com.dynamicruntime.common.gedra.workflow.WfEngine
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
@@ -423,15 +424,22 @@ class WorkflowModelTest {
         assertTrue(taskUnsaved(wf.tasks[0], mapOf("name" to mapOf<String, Any?>("name" to "kept ")), stored))
     }
 
-    /** The client-side status (issue #718) follows the server's rule: presence by required trait, content by the kernel. */
+    /**
+     * The client-side status (issue #718) follows the server's rule: presence by entry, content by the kernel. A
+     * required trait left empty is **present** -- the save sends it as `{}` -- so it is complete before the save
+     * exactly as the server says after it (issue #826); `NameData` requires no field of its content.
+     */
     @Test
     fun projectsATaskStatusFromWorkingValues() {
         val task = parseWorkflowView(surveyView(null, null, null))!!.tasks[0]
-        val empty = localTaskStatus(task, emptyMap())
-        assertTrue(!empty.complete && empty.valid)
-        assertEquals(listOf("name"), empty.missingTraits)
-        // A blank string is absent, not present-and-wrong.
-        assertTrue(!localTaskStatus(task, mapOf("name" to mapOf<String, Any?>("name" to " "))).complete)
+        val untouched = mapOf("name" to emptyMap<String, Any?>())
+        val empty = localTaskStatus(task, untouched)
+        assertTrue(empty.complete && empty.valid && empty.missingTraits.isEmpty())
+        // The same verdict the engine gives the entries that save would send.
+        assertEquals(emptyList(), WfEngine.missingTraits(listOf("name"), workflowSaveEntries(untouched)))
+        assertEquals(RailMark.complete, railMark(empty))
+        // A blank string is absent, so the entry is present-but-empty: complete too.
+        assertTrue(localTaskStatus(task, mapOf("name" to mapOf<String, Any?>("name" to " "))).complete)
         val ok = localTaskStatus(task, mapOf("name" to mapOf<String, Any?>("name" to "Ada")))
         assertTrue(ok.complete && ok.valid && ok.problems.isEmpty())
         assertEquals(RailMark.complete, railMark(ok))
@@ -442,6 +450,31 @@ class WorkflowModelTest {
         assertEquals("name", bad.problems.single().path)
         assertEquals("name", bad.problems.single().traitId)
         assertEquals(RailMark.invalid, railMark(bad))
+    }
+
+    /**
+     * What a trait needs of its *content* is its schema's required fields (issue #826): with `name` required, the
+     * trait left empty is "needs information" -- the save would refuse it, so the server never sees that state.
+     */
+    @Test
+    fun aRequiredFieldLeftEmptyIsMissing() {
+        val strict = surveyView(null, null, null).toMutableMap().apply {
+            put(
+                SCH.dDefs,
+                mapOf(
+                    "globalconfig.NameData" to mapOf(
+                        SCH.type to SCT.kObject,
+                        SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string)),
+                        SCH.required to listOf("name"),
+                    ),
+                ),
+            )
+        }
+        val task = parseWorkflowView(strict)!!.tasks[0]
+        val empty = localTaskStatus(task, mapOf("name" to emptyMap()))
+        assertTrue(!empty.complete)
+        assertEquals(listOf("name"), empty.missingTraits)
+        assertTrue(localTaskStatus(task, mapOf("name" to mapOf<String, Any?>("name" to "Ada"))).complete)
     }
 
     /** The workflow's own label (issue #719) parses through; absent, it is empty and the page titles itself. */
