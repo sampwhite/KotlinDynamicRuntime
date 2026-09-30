@@ -129,10 +129,10 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /**
      * Loads the stored configuration each client consumes, by its tier, into [collector]. Answers every client's
-     * **latest** stored revisions regardless of tier -- what a sandbox runs (issue #928) -- empty when nothing was
-     * loaded.
+     * **latest** stored rows regardless of tier -- what a sandbox runs (issue #928) -- whether or not any client
+     * consumed a row, and empty only when nothing was read. Left raw: only a parent with a sandbox needs them parsed.
      */
-    private fun loadStored(cxt: KdrCxt, collector: SchemaCollector, sql: SqlTopicService): Map<String, List<GedraConfigRow>> {
+    private fun loadStored(cxt: KdrCxt, collector: SchemaCollector, sql: SqlTopicService): Map<String, List<Map<String, Any?>>> {
 
         // Load on a persistent node, not an in-memory one. A production node is Postgres-backed and loads what
         // was stored; an in-memory node is a test or a throwaway, and nothing meaningfully persists across its
@@ -162,7 +162,8 @@ class GedraConfigLoadService : ServiceInitializer {
         val read = readLatestConfigRows(cxt, contentTable, controlTable)
         val rows = read.consumed
         if (rows.isEmpty()) {
-            return emptyMap()
+            // Nothing consumed is not nothing stored: a published-only parent's drafts are still its sandbox's.
+            return read.latestByClient
         }
         // The source clients, snapshotted before any stored config is added, so the extends rule tests against
         // the source-code set alone (a stored config may not become the base another extends).
@@ -225,7 +226,7 @@ class GedraConfigLoadService : ServiceInitializer {
             if (existing == null || at > existing) takenMarkers[markerClient] = at
         }
         recordRestartLoad(takenMarkers)
-        return read.latestByClient.mapValues { (_, classRows) -> classRows.map { row -> GedraConfigRow.extract(row) { GedraId.parse(it) } } }
+        return read.latestByClient
     }
 
     /**
@@ -234,14 +235,24 @@ class GedraConfigLoadService : ServiceInitializer {
      * layer is the parent's latest revisions in [latestByClient]; its marker, what a restart announces for it, is
      * the newest of those.
      */
-    private fun addSandboxes(cxt: KdrCxt, collector: SchemaCollector, latestByClient: Map<String, List<GedraConfigRow>>) {
+    private fun addSandboxes(cxt: KdrCxt, collector: SchemaCollector, latestByClient: Map<String, List<Map<String, Any?>>>) {
         val parents = SandboxConfigs.parentsWithSandboxes(collector.gedraConfigs)
         if (parents.isEmpty()) return
         val sourceClients = sourceClientsOf(collector)
         val markers = HashMap(loadedMarkers)
         for (parent in parents) {
             val sandbox = sandboxOf(parent)
-            val built = sandboxConfigs(cxt, collector, parent, latestByClient[parent].orEmpty(), sourceClients, issues)
+            // Parsed here, per row: one whose id will not parse costs only itself, reported on the sandbox's list, as
+            // the boot load treats a client's own.
+            val latest = latestByClient[parent].orEmpty().mapNotNull { row ->
+                try {
+                    GedraConfigRow.extract(row) { GedraId.parse(it) }
+                } catch (e: KdrException) {
+                    reportConfigProblem(cxt, unloadableIssue(row[GC.gedraId].toOptStr() ?: "?", sandbox, e), issues)
+                    null
+                }
+            }
+            val built = sandboxConfigs(cxt, collector, parent, latest, sourceClients, issues)
             val taken = built.configs.filter { collector.addGedraConfig(cxt, it) }
             taken.forEach { appendOverlays(cxt, it) }
             recordLoaded(sandbox, taken)

@@ -118,6 +118,20 @@ class SandboxBootAndSyncTest : StringSpec({
         traits(nodeC, sandboxOf(client)) shouldContain "syB"
         GedraConfigLoadService.get(nodeC).loadedMarkers() shouldContainKey sandboxOf(client)
     }
+
+    // Nothing consumed is not nothing stored. Here the only stored row is a draft on a published-only parent, so no
+    // client consumes anything at boot -- and the sandbox must still be built with the draft, as a reload builds it.
+    "a node booting with nothing consumed still gives the sandbox its parent's drafts" {
+        val draftDb = mapOf("KDR_DB_NAME" to "sandboxDraftDb", "KDR_LOAD_STORED_CONFIG" to "true")
+        val first = Startup.mkTestBootCxt("sandboxDraft1", "sandboxDraftNode1", draftDb, listOf(SandboxParentComponent()))
+        write(first, parent, "drA", define = false)
+        GedraConfigService.get(first).setPublishedOnly(asClient(first, parent), parent, true)
+
+        val second = Startup.mkTestBootCxt("sandboxDraft2", "sandboxDraftNode2", draftDb, listOf(SandboxParentComponent()))
+        traits(second, parent) shouldNotContain "drA"
+        traits(second, sandboxOf(parent)) shouldContain "drA"
+        GedraConfigLoadService.get(second).loadedMarkers() shouldContainKey sandboxOf(parent)
+    }
 })
 
 /** A fixture component whose source-code client asks for a sandbox (issue #928). */
