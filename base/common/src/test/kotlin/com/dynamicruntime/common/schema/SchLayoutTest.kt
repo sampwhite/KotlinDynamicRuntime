@@ -127,6 +127,29 @@ class SchLayoutTest : StringSpec({
         layoutFieldProblems("Type 'X'", authLayout("a"), recType(derivedRequired = true)) shouldBe emptyList()
     }
 
+    // A field required only through `if`/`then`/`else` is still one the form must be able to show (issue #811).
+    "an authoritative layout must list a field the type requires only conditionally, on either side" {
+        fun conditional(side: String) = parseSchemaTypes(
+            mapOf(
+                "t.Cond" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf<String, Any?>(
+                        "kind" to mapOf(SCH.type to SCT.string),
+                        "detail" to mapOf(SCH.type to SCT.string),
+                    ),
+                    SCH.kIf to mapOf(SCH.properties to mapOf("kind" to mapOf(SCH.const to "other"))),
+                    side to mapOf(SCH.required to listOf("detail")),
+                ),
+            ),
+        ).getValue("t.Cond")
+        for (side in listOf(SCH.kThen, SCH.kElse)) {
+            val problem = layoutFieldProblems("Type 'X'", authLayout("kind"), conditional(side)).single()
+            problem shouldContain "'detail'"
+            problem shouldContain "conditionally"
+            layoutFieldProblems("Type 'X'", authLayout("kind", "detail"), conditional(side)) shouldBe emptyList()
+        }
+    }
+
     "reorder and overlay owe no required field, since they hide nothing" {
         val reorder = SchLayout(null, null, listOf(SchLayoutField("a", null, null, null)), mode = SchLayoutMode.reorder)
         val overlay = SchLayout(null, null, listOf(SchLayoutField("a", null, null, null)), mode = SchLayoutMode.overlay)

@@ -514,22 +514,35 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
         .map { "$where: '${SCH.layout}' names field '$it', which the type does not declare." }
     if (undeclared.isNotEmpty()) return undeclared
 
-    // Authoritative mode (issue #777): the layout is the whole presented set, so a required property it omits
-    // could never be supplied and the form is unsubmittable by construction -- refuse the boot. A *derived*
-    // required property is exempt: the server supplies it, not the person at the form, so it has no field to
-    // list (issue #254). reorder/overlay hide nothing, so nothing is owed. The narrowing path prunes the layout
-    // against the client's type and re-runs this check, so a client's authoritative layout is held to the
-    // client's own required set.
-    if (layout.mode == SchLayoutMode.authoritative) {
-        val listed = layout.fieldNames.toSet()
-        return type.required
-            .filter { it !in listed && type.properties[it]?.valueType?.derived != true }
-            .map {
-                "$where: an ${SLM.authoritative} '${SCH.layout}' must list every required field, but omits '$it' " +
-                    "-- add it, or drop it from '${SCH.required}', or use '${SLM.reorder}'."
-            }
-    }
-    return emptyList()
+    return authoritativeLayoutProblems(where, layout, type)
+}
+
+/**
+ * The problems with an **authoritative** [layout] against [type] (issue #777): the layout is the whole presented
+ * set, so a property the type may require that it omits could never be supplied, and the form is unsubmittable by
+ * construction. Empty for any other mode -- reorder and overlay hide nothing, so nothing is owed.
+ *
+ * "May require" is [SchType.required] **and** both sides of the type's `if`/`then`/`else` (issue #811): a field
+ * required only when another field holds some value is still one the form must be able to show. A *derived*
+ * property is exempt -- the server supplies it, not the person at the form, so it has no field to list (issue
+ * #254).
+ *
+ * Also run for a client whose narrowing of a type inherits global's layout (issue #811): the narrowing may add to
+ * the required set, and an inherited layout is otherwise never checked against the client's type. That re-check is
+ * the client-variant build's (`dropFaultyLayouts`), against the layout as pruned to the client's type.
+ */
+fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType): List<String> {
+    if (layout.mode != SchLayoutMode.authoritative) return emptyList()
+    val listed = layout.fieldNames.toSet()
+    val condition = type.condition
+    val mayRequire = type.required + condition?.thenRequired.orEmpty() + condition?.elseRequired.orEmpty()
+    return mayRequire
+        .filter { it !in listed && type.properties[it]?.valueType?.derived != true }
+        .map {
+            val how = if (it in type.required) "" else " (conditionally, through '${SCH.kIf}')"
+            "$where: an ${SLM.authoritative} '${SCH.layout}' must list every required field, but omits '$it'$how " +
+                "-- add it, or drop it from '${SCH.required}', or use '${SLM.reorder}'."
+        }
 }
 
 /**
