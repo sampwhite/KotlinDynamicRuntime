@@ -11,6 +11,8 @@ import com.dynamicruntime.common.startup.bootCheckMode
 import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
+import com.dynamicruntime.common.naming.OwnedNameKind
+import com.dynamicruntime.common.naming.clientNameProblem
 
 /** Names and modes for the Gedra config checks (issue #299). */
 @Suppress("ConstPropertyName")
@@ -496,6 +498,18 @@ class GedraConfigCollector {
                 GCEL.config, config.gedraId.fullId,
             )
         }
+        // A client's own names are bare (issue #921): a colon means a reference to another owner's definition, and
+        // the rest of each name is held to its kind's rule. Global names are not yet rooted, so only a client's are
+        // judged here.
+        if (config.gedraId.client != GID.globalClient) {
+            clientNamesProblem(config)?.let { why ->
+                return config.issue(
+                    "Gedra config '${config.gedraId}' declares a name its client may not use. $why",
+                    "Dropping '${config.gedraId}' and its $traitCount trait(s).",
+                    GCEL.config, config.gedraId.fullId,
+                )
+            }
+        }
         // Trait ids (issue #807). A global id -- a global data trait's, or any state or config trait's, all of which
         // are global -- is unique across every gedra kind and every client, and no client may reuse one. A client's
         // own data trait ids are unique within that client; another client may declare the same id and get its
@@ -547,6 +561,19 @@ class GedraConfigCollector {
      * path's owner check (`namespaceOwner`) answers with the parent either way.
      */
     private val GedraConfig.namespaceClaimant: String get() = sandboxParentOf(gedraId.client) ?: gedraId.client
+
+    /**
+     * The first name a client's [config] declares that its client may not use (issue #921), or null: a trait id,
+     * cfact, workflow id, or a task id in one of its workflows -- each bare, and following its kind's rule.
+     */
+    private fun clientNamesProblem(config: GedraConfig): String? {
+        val names = config.traits.keys.map { OwnedNameKind.trait to it } +
+            config.cfacts.map { OwnedNameKind.cfact to it.name } +
+            config.workflows.values.flatMap { wf ->
+                listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
+            }
+        return names.firstNotNullOfOrNull { (kind, name) -> clientNameProblem(kind, name) }
+    }
 
     /** A data trait's registry key: its owning client and its id (issue #807). */
     private data class TraitKey(val client: String, val traitId: String)

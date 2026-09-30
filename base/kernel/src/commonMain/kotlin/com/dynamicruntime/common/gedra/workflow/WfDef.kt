@@ -3,6 +3,8 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.naming.OwnedNameKind
+import com.dynamicruntime.common.naming.isOwnedName
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
@@ -481,6 +483,14 @@ class WfTask(
     init {
         if (id.isEmpty()) {
             throw KdrException.mkConv("A workflow task has no id.")
+        }
+        // A task id is persisted -- a CTA task and an approval are recorded by it -- so it is held to the owner-name
+        // rule (issue #921): a variable name, or a rooted one. Which of the two a task may use depends on who owns
+        // its workflow, and is checked where the owner is known (`GedraConfigCollector`).
+        if (!isOwnedName(OwnedNameKind.task, id)) {
+            throw KdrException.mkConv(
+                "'$id' cannot be a task id: it has to be ${OwnedNameKind.task.localRule}, or a rooted name.",
+            )
         }
         val traitIds = traits.map { it.traitId }
         traitIds.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.firstOrNull()?.let {

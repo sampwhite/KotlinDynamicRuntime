@@ -6,6 +6,8 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -241,6 +243,62 @@ class GedraConfigCollectorTest : StringSpec({
         val ex = shouldThrow<KdrException> { collector.add(devCxt, clash) }
         (ex.message ?: "") shouldContain "Trait 'name'"
         collector.configTraits().shouldBeEmpty()
+    }
+
+    // --- owner names (issue #921) ----------------------------------------------
+
+    // A client's own names are bare: a colon would read as another owner's definition, and it is what global names
+    // are rooted with -- so refusing it on the client's side is what keeps the two disjoint by construction.
+    "a client config declaring a rooted name is refused, whatever the kind" {
+        fun clientConfig(build: GedraConfigBuilder.() -> Unit) = gedraConfig(devCxt, "acmeMain", "acmeconfig", "acme") {
+            trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
+            build()
+        }
+        val cases = mapOf(
+            "trait id" to clientConfig {
+                trait("KdrNoteEntry", "kdr:note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
+            },
+            "cfact name" to clientConfig { cfact("kdr:ready", "acme", "When acme is set up") },
+            "task id" to clientConfig {
+                workflow("acmeWf", WfEntry.survey) { task("kdr:first", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
+            },
+        )
+        for ((kind, config) in cases) {
+            val message = shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, config) }.fullMessage()
+            message shouldContain "A client's own $kind may not hold ':'"
+        }
+        // In production the config is dropped and the node carries on, saying so.
+        val collector = GedraConfigCollector()
+        collector.add(cxtIn(ENV.prod), cases.getValue("trait id")) shouldBe false
+        collector.issues.single().message shouldContain "declares a name its client may not use"
+    }
+
+    "a client trait id is held to letters, digits and underscores" {
+        val config = gedraConfig(devCxt, "acmeMain", "acmeconfig", "acme") {
+            trait("AcmeNoteEntry", "acme.note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
+        }
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, config) }.fullMessage() shouldContain
+            "letters, digits and underscores"
+    }
+
+    // A task id is persisted -- a CTA task and an approval are recorded by it -- so it is a variable name like a
+    // workflow id, refused as the workflow is built.
+    "a task id has to be a variable name" {
+        shouldThrow<KdrException> {
+            gedraConfig(devCxt, "acmeMain", "acmeconfig", "acme") {
+                trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
+                workflow("acmeWf", WfEntry.survey) { task("review-1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
+            }
+        }.fullMessage() shouldContain "'review-1' cannot be a task id"
+    }
+
+    // The rooted form is the global side's, so a global config may already declare one; renaming core's own names
+    // under `kdr` is the rest of #921.
+    "a global config may declare a rooted trait id" {
+        val rooted = gedraConfig(devCxt, "rootedTraits", GCFG.globalNamespace) {
+            trait("RootedEntry", "kdr:rooted", setOf(GedraDataType.formDoc)) { property("value", "Something.") }
+        }
+        GedraConfigCollector().add(devCxt, rooted) shouldBe true
     }
 })
 
