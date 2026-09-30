@@ -109,21 +109,28 @@ class UiBlockService : ServiceInitializer {
      * satisfy removed. Null when nothing registers the block.
      */
     fun resolve(cxt: KdrCxt, blockId: String, targetFacts: Set<String> = emptySet()): Map<String, Any?>? {
-        val sources = registeredUiBlocks(cxt).filter { it.blockId == blockId }
-        if (sources.isEmpty()) {
-            return null
-        }
-        // A client that overlays nothing merges to the shared content, so it gets no variant of its own.
-        val client = cxt.client.takeIf { c -> sources.any { it.client == c } }
-        val merged = mergedCache.getOrPut("$blockId|${client ?: ""}") { mergeUiBlock(blockId, sources, client) }
+        val merged = merged(cxt, blockId, cxt.client)
         if (!merged.found) {
             return null
         }
+        val client = merged.client
         val registry = SchemaService.get(cxt).cfactsFor(client)
         val present = registry.assemble(cxt, targetFacts)
         return filterByCFacts(merged.content, present) { expression ->
             predicateCache.getOrPut("${client ?: ""}|$expression") { parseCFactOrAlways(expression, registry.names) }
         }
+    }
+
+    /**
+     * [blockId] merged **for [client]** -- or for everybody with a null client -- before any caller's cfacts are
+     * applied, from the same cache [resolve] reads (issue #916). A client that overlays nothing merges to the shared
+     * content, so it gets no variant of its own, and the result's `client` says which was served. Never null: a
+     * block nothing registers comes back with `found` false.
+     */
+    fun merged(cxt: KdrCxt, blockId: String, client: String?): MergedUiBlock {
+        val sources = registeredUiBlocks(cxt).filter { it.blockId == blockId }
+        val forClient = client.takeIf { c -> sources.any { it.client == c } }
+        return mergedCache.getOrPut("$blockId|${forClient ?: ""}") { mergeUiBlock(blockId, sources, forClient) }
     }
 
     /**

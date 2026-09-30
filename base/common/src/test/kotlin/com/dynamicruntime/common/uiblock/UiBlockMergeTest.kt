@@ -47,6 +47,14 @@ class UiBlockMergeTest : StringSpec({
         merged.content["title"] shouldBe "Menu"
     }
 
+    "a client's stored overlay wins over its source one, whatever order they were declared in (issue #916)" {
+        val source = overlay(client = "acme") { items("items") { item { set("id", "home"); set("label", "Acme home") } } }
+        val stored = overlay(client = "acme") { items("items") { item { set("id", "home"); set("label", "Edited home") } } }
+            .let { UiBlockSource(it.blockId, isOverlay = true, client = it.client, origin = "stored", content = it.content, stored = true) }
+        val merged = mergeUiBlock(menu, listOf(base("home" to 100), stored, source), client = "acme")
+        (merged.content["items"] as List<*>).first().let { (it as Map<*, *>)["label"] } shouldBe "Edited home"
+    }
+
     "an overlay adds an item the base never had" {
         val over = overlay {
             items("items") { item { set("id", "extra"); set(UIB.displayOrder, 150) } }

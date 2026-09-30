@@ -123,6 +123,12 @@ object UADEP {
 
     /** The scoped counterpart to [ADEP.clientDefinition]: the caller's own client unless they may name another. */
     const val clientDefinition = "/${SECT.clientAdmin}/client/definition"
+
+    /**
+     * The copy and interface one client's own configuration changes (issue #916) -- fragment keys and UiBlock
+     * items, each with the value it replaces and the config that set it. Scoped as [clientDefinition] is.
+     */
+    const val clientOverrides = "/${SECT.clientAdmin}/client/overrides"
 }
 
 /** Admin request/response field (JSON key) names. */

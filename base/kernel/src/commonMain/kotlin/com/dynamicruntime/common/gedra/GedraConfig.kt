@@ -288,6 +288,8 @@ class GedraConfigBuilder(
     /** This config's name and client, so a contribution can say where it came from; see [fragmentOverlay]. */
     private val configName: String = "",
     private val configClient: String? = null,
+    /** Where the config comes from, stamped on its overlays so a stored one is applied after a source one. */
+    private val loadedFrom: GedraConfigOrigin = GedraConfigOrigin.source,
 ) : SchTypesBuilder(cxt, namespace) {
     @Suppress("MemberVisibilityCanBePrivate")
     val traits: MutableMap<String, GedraTrait> = LinkedHashMap()
@@ -324,7 +326,9 @@ class GedraConfigBuilder(
      * value rather than only that something did.
      */
     fun fragmentOverlay(fileId: String, build: FragmentMapBuilder.() -> Unit) {
-        fragments.add(fragmentInline(fileId, origin = configOrigin(), client = configClient, build = build))
+        fragments.add(
+            fragmentInline(fileId, origin = configOrigin(), client = configClient, build = build).stampedByConfig(),
+        )
     }
 
     /**
@@ -333,11 +337,28 @@ class GedraConfigBuilder(
      * run. The stamp (this config's client and origin) is applied here, as it is for the authored form.
      */
     fun fragmentOverlay(fileId: String, content: Map<String, Map<String, String>>) {
-        fragments.add(FragmentSource(fileId, isOverlay = true, client = configClient, origin = configOrigin(), load = { content }))
+        fragments.add(
+            FragmentSource(
+                fileId, isOverlay = true, client = configClient, origin = configOrigin(),
+                configName = stampName, stored = isStored, load = { content },
+            ),
+        )
     }
 
     /** How a contribution from this config identifies itself in a report. */
     private fun configOrigin(): String = if (configName.isEmpty()) "a Gedra config" else "config '$configName'"
+
+    /** The name stamped on this config's layers (issue #916); null for an unnamed config. */
+    private val stampName: String? get() = configName.ifEmpty { null }
+
+    private val isStored: Boolean get() = loadedFrom == GedraConfigOrigin.stored
+
+    /** [this] layer stamped with the config's name and origin (issue #916), which the DSL builders do not take. */
+    private fun FragmentSource.stampedByConfig(): FragmentSource =
+        FragmentSource(fileId, isOverlay, client, origin, audience, stampName, isStored, load)
+
+    private fun UiBlockSource.stampedByConfig(): UiBlockSource =
+        UiBlockSource(blockId, isOverlay, client, origin, content, arrayKeys, stampName, isStored)
 
     /** The UiBlock overlays declared in this block; see [uiBlockOverlay]. */
     @Suppress("MemberVisibilityCanBePrivate")
@@ -352,12 +373,17 @@ class GedraConfigBuilder(
      * knows where it belongs.
      */
     fun uiBlockOverlay(blockId: String, build: UiBlockBuilder.() -> Unit) {
-        uiBlocks.add(uiBlockOverlay(blockId, origin = configOrigin(), client = configClient, build = build))
+        uiBlocks.add(uiBlockOverlay(blockId, origin = configOrigin(), client = configClient, build = build).stampedByConfig())
     }
 
     /** A UiBlock overlay from a **pre-built** content map (issue #613) -- how reassembly restores a stored one. */
     fun uiBlockOverlay(blockId: String, content: Map<String, Any?>) {
-        uiBlocks.add(UiBlockSource(blockId, isOverlay = true, client = configClient, origin = configOrigin(), content = content))
+        uiBlocks.add(
+            UiBlockSource(
+                blockId, isOverlay = true, client = configClient, origin = configOrigin(), content = content,
+                configName = stampName, stored = isStored,
+            ),
+        )
     }
 
     /** The client this config defines, if it declared one; see [defineClient]. */
@@ -642,7 +668,7 @@ fun gedraConfig(
     // The name and client are handed to the builder rather than stamped onto what it produced: a contribution
     // that knows where it came from can be built complete, and nothing downstream has to rewrite it.
     val configClient = client.takeIf { it != GID.globalClient }
-    val builder = GedraConfigBuilder(cxt, namespace, name, configClient).apply(build)
+    val builder = GedraConfigBuilder(cxt, namespace, name, configClient, origin).apply(build)
     return GedraConfig(
         // `of` validates the name as it builds the id, so a config called something a base id cannot spell is
         // refused here rather than at whatever later point first tried to address it.
