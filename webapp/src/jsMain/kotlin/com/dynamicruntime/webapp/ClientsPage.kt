@@ -7,6 +7,9 @@ import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
@@ -18,6 +21,7 @@ import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
 import react.dom.html.ReactHTML.tbody
 import react.dom.html.ReactHTML.td
@@ -65,6 +69,16 @@ val ClientsPage = FC<Props> {
     var detailError by useState<DisplayError?>(null)
     var detailNote by useState<String?>(null)
     var storedError by useState<DisplayError?>(null)
+    // What the open client's own configuration changes (issue #917), read beside the definition.
+    var overrides by useState<ClientOverridesView?>(null)
+    var overridesError by useState<DisplayError?>(null)
+    // The endpoint's designed answer instead -- a refusal -- said once, above, by the definition's note.
+    var overridesRefused by useState(false)
+    // The overrides of every listed client (issue #917), for the cross-client view: read once the listing has
+    // answered, one retrieve per client, keyed on the rows so a refresh re-reads them.
+    val acrossView = hashParams().containsKey(HP.overrides)
+    var acrossRows by useState<List<Pair<String, ClientOverridesView>>?>(null)
+    var acrossError by useState<DisplayError?>(null)
     // Monotonic token, so a slow answer for a client the user has moved on from is dropped rather than shown; and
     // the id last asked about, so a re-read of the same client keeps what is shown until its replacement arrives.
     val latestDetail = useRef(0)
@@ -101,6 +115,9 @@ val ClientsPage = FC<Props> {
             detailError = null
             detailNote = null
             storedError = null
+            overrides = null
+            overridesError = null
+            overridesRefused = false
         }
         val id = openId
         if (id == null || across == null || own == null) return@useEffect
@@ -133,6 +150,46 @@ val ClientsPage = FC<Props> {
                 if (latestDetail.current == token) storedError = userFacingError(e)
             }
         }
+        clientsScope.launch {
+            try {
+                val loaded = ClientsApi.overrides(id)
+                if (latestDetail.current == token) {
+                    overrides = loaded
+                    overridesError = null
+                    overridesRefused = false
+                }
+            } catch (e: Throwable) {
+                if (latestDetail.current != token) return@launch
+                // A refusal is the same answer the definition's retrieve gave, already said under the summary:
+                // the section is then left out rather than repeating it as a failure.
+                val status = (e as? ApiError)?.status
+                if (status == EXC.notAuthorized || status == EXC.notFound) overridesRefused = true else overridesError = userFacingError(e)
+            }
+        }
+    }
+
+    // The cross-client view's data (issue #917): each listed client's overrides, in the listing's order. Only for
+    // an administrator who sees across clients -- a scoped one has one client, and the view is not offered.
+    useEffect(acrossView, rows, across) {
+        if (!acrossView || rows == null || across != true) return@useEffect
+        val listed = rows!!
+        val token = (latestDetail.current ?: 0) + 1
+        latestDetail.current = token
+        clientsScope.launch {
+            try {
+                // Only the clients the listing says change something, and all at once: the rest have nothing to add.
+                val loaded = coroutineScope {
+                    listed.filter { it.copyOverrides + it.blockOverrides > 0 }
+                        .map { c -> async { c.clientId to ClientsApi.overrides(c.clientId) } }.awaitAll()
+                }
+                if (latestDetail.current == token) {
+                    acrossRows = loaded
+                    acrossError = null
+                }
+            } catch (e: Throwable) {
+                if (latestDetail.current == token) acrossError = userFacingError(e)
+            }
+        }
     }
 
     val current = config
@@ -147,8 +204,10 @@ val ClientsPage = FC<Props> {
         !current.canManageUsers -> deniedCard("You do not have permission to see clients.")
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
-            detailError, detailNote, storedError, current.canSeeAllClients,
+            detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
         )
+        // The view across clients is the allClients administrator's; anyone else lands on their listing.
+        acrossView && current.canSeeAllClients -> overridesAcross(rows, acrossRows, loadError, acrossError)
         else -> clientsListing(rows, current.canSeeAllClients, loadError)
     }
 }
@@ -167,6 +226,9 @@ private fun ChildrenBuilder.clientDetail(
     detailError: DisplayError?,
     detailNote: String?,
     storedError: DisplayError?,
+    overrides: ClientOverridesView?,
+    overridesError: DisplayError?,
+    overridesRefused: Boolean,
     acrossClients: Boolean,
 ) {
     div {
@@ -242,7 +304,199 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
         }
+        // What the client's own configuration changes about what its people see (issue #917): the copy it rewords
+        // and the interface items it renames, hides, shows or adds. The editors (#918, #919) open from these rows.
+        if (!overridesRefused) h2 { +"Copy & menu" }
+        when {
+            overridesRefused -> {}
+            overridesError != null -> errorText("Couldn't load this client's copy and menu changes.", overridesError)
+            overrides == null -> p {
+                className = ClassName("subtitle")
+                +"Loading…"
+            }
+            overrides.copy.isEmpty() && overrides.blocks.isEmpty() -> p {
+                className = ClassName("subtitle")
+                +"This client uses the shipped copy and menu."
+            }
+            else -> {
+                if (overrides.copy.isNotEmpty()) copyOverridesTable(overrides.copy)
+                if (overrides.blocks.isNotEmpty()) blockOverridesTable(overrides.blocks)
+            }
+        }
         // Editing the client, and designing its workflows, land here (#903, later slices).
+    }
+}
+
+/** The copy a client rewords: each key with what everybody else reads, what the client reads, and who set it. */
+private fun ChildrenBuilder.copyOverridesTable(rows: List<CopyOverrideView>) {
+    div {
+        className = ClassName("op-table-scroll")
+        table {
+            className = ClassName("op-table")
+            thead {
+                tr {
+                    th { +"Copy" }
+                    th { +"Shipped" }
+                    th { +"This client" }
+                    th { +"Set by" }
+                }
+            }
+            tbody {
+                rows.forEach { r ->
+                    tr {
+                        key = copyKeyText(r).unsafeCast<Key>()
+                        td {
+                            +copyKeyText(r)
+                            // An orphan replaces nothing anybody reads -- usually a renamed key -- and silently
+                            // reverts to the shipped copy, which is exactly why it is said here.
+                            if (r.orphan) {
+                                +" "
+                                span {
+                                    className = ClassName("subtitle")
+                                    title = "No shipped copy declares this key, so this value is not read."
+                                    +"(orphan)"
+                                }
+                            }
+                        }
+                        td { valueCell(r.baseValue) }
+                        td {
+                            valueCell(r.value)
+                            // The client's own source value a stored change overrides: what a reset would return to.
+                            r.sourceValue?.let {
+                                div {
+                                    className = ClassName("subtitle cell-clamp")
+                                    title = it
+                                    +"was: $it"
+                                }
+                            }
+                        }
+                        td { +setByText(r.configName, r.origin) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The interface items a client changes: what it did, the base label, the client's, and who set it. */
+private fun ChildrenBuilder.blockOverridesTable(rows: List<BlockOverrideView>) {
+    div {
+        className = ClassName("op-table-scroll")
+        table {
+            className = ClassName("op-table")
+            thead {
+                tr {
+                    th { +"Menu item" }
+                    th { +"Change" }
+                    th { +"Shipped" }
+                    th { +"This client" }
+                    th { +"Set by" }
+                }
+            }
+            tbody {
+                rows.forEachIndexed { i, r ->
+                    tr {
+                        key = "${blockItemText(r)}#$i".unsafeCast<Key>()
+                        td { +blockItemText(r) }
+                        td { +menuChangeText(r) }
+                        td { +(r.baseLabel ?: "\u2014") }
+                        td { +blockValueText(r).ifEmpty { "\u2014" } }
+                        td { +blockSetByText(r) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A fragment value as a cell: rendered inline, since it is Markdown, and clamped to one line by `.cell-clamp` with
+ * the whole on hover -- clamped after rendering, never cut before it, since a cut through a link or an emphasis
+ * would show its syntax. A dash for none.
+ */
+private fun ChildrenBuilder.valueCell(value: String?) {
+    if (value == null) {
+        +"\u2014"
+        return
+    }
+    span {
+        className = ClassName("cell-clamp")
+        title = value
+        MarkdownInline { source = value }
+    }
+}
+
+/**
+ * The overrides across every client (issue #917): each overridden key, grouped by file or block, with the clients
+ * that override it and their values -- the `allClients` administrator's answer to "who customizes what".
+ */
+private fun ChildrenBuilder.overridesAcross(
+    rows: List<ClientOverview>?,
+    byClient: List<Pair<String, ClientOverridesView>>?,
+    /** The listing's failure: to load, or -- with rows on screen -- to refresh; each said as what it is. */
+    loadError: DisplayError?,
+    acrossError: DisplayError?,
+) {
+    div {
+        className = ClassName("card wide")
+        backToListing(HMENU.pageClients)
+        h1 { +"Copy & menu across clients" }
+        p {
+            className = ClassName("subtitle")
+            +"Every piece of copy and every menu item a client changes, and which clients change it."
+        }
+        loadError?.let { errorText(if (rows == null) "Couldn't load the clients." else "Couldn't refresh the clients; showing what was loaded.", it) }
+        acrossError?.let { errorText(if (byClient == null) "Couldn't load the clients' changes." else "Couldn't refresh the clients' changes; showing what was loaded.", it) }
+        val keys = byClient?.let { overridesAcrossClients(it) }
+        when {
+            rows == null || keys == null -> if (loadError == null && acrossError == null) p {
+                className = ClassName("subtitle")
+                +"Loading…"
+            }
+            keys.isEmpty() -> p {
+                className = ClassName("subtitle")
+                +"No client changes the shipped copy or menu."
+            }
+            else -> div {
+                className = ClassName("op-table-scroll")
+                table {
+                    className = ClassName("op-table")
+                    thead {
+                        tr {
+                            th { +"File or menu" }
+                            th { +"Key" }
+                            th { +"Clients" }
+                        }
+                    }
+                    tbody {
+                        keys.forEach { k ->
+                            tr {
+                                key = "${k.group}|${k.key}".unsafeCast<Key>()
+                                td { +k.group }
+                                td { +k.key }
+                                td {
+                                    ul {
+                                        className = ClassName("wf-reasons")
+                                        k.clients.forEach { (clientId, value) ->
+                                            li {
+                                                key = clientId.unsafeCast<Key>()
+                                                a {
+                                                    className = ClassName("wf-cell-link")
+                                                    href = clientOverridesHref(clientId)
+                                                    +clientLabel(clientId, rows.firstOrNull { it.clientId == clientId }?.name.orEmpty())
+                                                }
+                                                +": "
+                                                valueCell(value)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -268,7 +522,15 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
         h1 { +"Clients" }
         p {
             className = ClassName("subtitle")
-            +(if (acrossClients) "Every client this node knows of, present or not." else "Your client, as this node carries it.")
+            +(if (acrossClients) "Every client this node knows of, present or not. " else "Your client, as this node carries it.")
+            // The view across clients (issue #917) is the allClients administrator's: a scoped one has one client.
+            if (acrossClients) {
+                a {
+                    className = ClassName("wf-cell-link")
+                    href = overridesAcrossHref()
+                    +"Copy & menu across clients"
+                }
+            }
         }
         loadError?.let { errorText(if (rows == null) "Couldn't load the clients." else "Couldn't refresh the clients; showing what was loaded.", it) }
         when {
@@ -292,6 +554,7 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
                             th { className = ClassName("op-num"); +"Forms" }
                             th { className = ClassName("op-num"); +"Users" }
                             th { className = ClassName("op-num"); +"Workflows" }
+                            th { +"Customized" }
                         }
                     }
                     tbody {
@@ -324,6 +587,12 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
                                     countCell(userCountText(c.users, c.unclaimedUsers), clientUsersHref(c.clientId, acrossClients).takeIf { present })
                                 }
                                 td { className = ClassName("op-num"); +workflowsText(c.workflowCount, c.hasSurvey) }
+                                // How much the client's own configuration changes (issue #917), leading to the detail's
+                                // Copy & menu section; a dash, unlinked, when it changes nothing.
+                                td {
+                                    val text = customizedText(c.copyOverrides, c.blockOverrides)
+                                    countCell(text, clientOverridesHref(c.clientId).takeIf { c.copyOverrides + c.blockOverrides > 0 })
+                                }
                             }
                         }
                     }

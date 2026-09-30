@@ -757,6 +757,10 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 .op-table th { color: var(--text-dim); font-weight: 600; font-size: .85rem; }
 /* A numeric column (issue #905): its header and cells right-aligned, so counts line up by magnitude. */
 .op-table th.op-num, .op-table td.op-num { text-align: right; }
+/* A long value kept to one line in a cell (the Clients page's copy tables, issue #917): clamped after the Markdown
+   is rendered, with the whole in the cell's title, so no cut ever lands inside a link or an emphasis. */
+.op-table .cell-clamp { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.op-table .cell-clamp p { display: inline; margin: 0; }
 /* A cell shows the value, not the wire's "(type)" annotation the catalog outline wants. */
 .op-table td .field-type { display: none; }
 /* A wide/tall table scrolls inside this box rather than pushing past the card (issue #540). The height is

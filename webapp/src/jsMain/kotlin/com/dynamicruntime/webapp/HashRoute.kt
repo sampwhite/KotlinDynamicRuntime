@@ -104,6 +104,9 @@ object HP {
     /** Clients page: the client open in the detail view (issue #906), or absent for the listing. */
     const val client = "c"
 
+    /** Clients page: present for the overrides across every client (issue #917), the `allClients` administrator's view. */
+    const val overrides = "ov"
+
     /**
      * The listing page a child was opened from (issue #554), so its back link can return there; absent when
      * the child was reached some other way, in which case the child's natural parent is used. Honoured only

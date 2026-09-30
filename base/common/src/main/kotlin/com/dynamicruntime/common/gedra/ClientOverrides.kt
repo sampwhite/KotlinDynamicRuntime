@@ -5,6 +5,7 @@ import com.dynamicruntime.common.content.EffectiveFragments
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.overlayPrecedence
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.uiblock.MergedUiBlock
 import com.dynamicruntime.common.uiblock.UIB
@@ -90,6 +91,8 @@ class BlockOverride(
     val itemId: String?,
     val added: Boolean,
     val hidden: Boolean,
+    /** The item's label in the block everybody else gets, when it has one -- see `COV.baseLabel`. */
+    val baseLabel: String?,
     val fields: List<BlockFieldOverride>,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> {
@@ -97,6 +100,7 @@ class BlockOverride(
         if (itemId != null) out[COV.itemId] = itemId
         out[COV.added] = added
         out[COV.hidden] = hidden
+        if (baseLabel != null) out[COV.baseLabel] = baseLabel
         out[COV.fields] = fields.map { it.toJsonMap() }
         return out
     }
@@ -258,6 +262,7 @@ fun blockOverrides(
                     // Withdrawn *by this client*: an item the base already withdraws is not the client's doing,
                     // even when the client renames it.
                     hidden = isItem && mine.isNever() && !base.isNever(),
+                    baseLabel = if (isItem) base?.get(HFLD.label).asText() else null,
                     fields = fields.map { (field, layer) ->
                         BlockFieldOverride(
                             field, base?.get(field).asText(), mine?.get(field).asText(), layer.configName, layer.stored,
