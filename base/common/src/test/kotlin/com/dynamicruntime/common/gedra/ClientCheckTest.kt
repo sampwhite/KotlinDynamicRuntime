@@ -211,6 +211,38 @@ class ClientCheckTest : StringSpec({
         refusal(clientConfig("acme", extendsFrom = "template")) shouldContain "does not define"
     }
 
+    // --- sandboxes (issue #928) --------------------------------------------------
+
+    /** A source config defining [clientId] with a sandbox unless [sandbox] is false. */
+    fun sandboxParent(clientId: String, sandbox: Boolean = true): GedraConfig =
+        gedraConfig(devCxt, "${clientId}Client", "${clientId}config", clientId) {
+            defineClient(
+                ClientDef(
+                    clientId = clientId, name = clientId, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = sandbox,
+                ),
+            )
+        }
+
+    "a sandbox stands beside a parent that asks for one" {
+        val parent = sandboxParent("acme")
+        checkClientDefs(devCxt, collectorOf(parent, SandboxConfigs.rebind(parent))).clients.keys shouldBe
+            setOf("acme", "acme:sandbox")
+    }
+
+    "a sandbox whose parent no longer asks for one is dropped" {
+        val asked = sandboxParent("acme")
+        refusal(sandboxParent("acme", sandbox = false), SandboxConfigs.rebind(asked)) shouldContain
+            "does not ask for a sandbox"
+    }
+
+    // A sandbox runs its parent's unpublished configuration, so a client built on one would be built on a draft.
+    "a client extending a sandbox is refused" {
+        val parent = sandboxParent("acme")
+        refusal(parent, SandboxConfigs.rebind(parent), clientConfig("leaf", extendsFrom = "acme:sandbox")) shouldContain
+            "extends the sandbox 'acme:sandbox'"
+    }
+
     "extension is one level" {
         val message = refusal(
             clientConfig("base"),

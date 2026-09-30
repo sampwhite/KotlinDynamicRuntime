@@ -211,6 +211,15 @@ private fun relatedProblem(
         }
     }
     def.extendsFromClientId?.let { parentId ->
+        // A sandbox runs its parent's latest, unpublished configuration and has a derived definition nobody wrote
+        // (issue #928), so a client built on one would be built on a draft. The parent is what to extend.
+        sandboxParentOf(parentId)?.let { sandboxParent ->
+            return GedraConfigIssue(
+                "Client '${def.clientId}' extends the sandbox '$parentId'. A sandbox runs its parent's unpublished " +
+                    "configuration and is never a base; extend '$sandboxParent' instead.",
+                "Dropping the client '${def.clientId}'.",
+            )
+        }
         val parent = kept[parentId]
             ?: return GedraConfigIssue(
                 "Client '${def.clientId}' extends '$parentId', which this deployment does not define.",
