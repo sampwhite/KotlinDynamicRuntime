@@ -597,8 +597,11 @@ fun isDateFormat(format: String?): Boolean = format == SFMT.date || format == SF
 fun isBinaryFormat(format: String?): Boolean = format == SFMT.binary
 
 /**
- * Parses the custom `options` construct: a list of `{label, value}` entries. A missing `label` defaults to the
- * `value`.
+ * Parses the custom `options` construct: a list whose entries are each a `{value, label}` map or a **bare value**
+ * (issue #816), mixed as the author likes. A bare value, and a map with no `label`, is labeled by its value -- the
+ * same two forms the narrowing check reads. An entry that is neither -- a map without a `value`, a list, a null --
+ * fails the parse, naming its position, rather than being dropped: `["a","b"]` once parsed to an empty closed list
+ * that refused every value.
  *
  * **Only a plain string may carry one** (issue #815). A choice is a string -- its `value` is read as text -- so on
  * any other declared type a closed list rejected every correctly typed value, and on a date or binary format it was
@@ -615,13 +618,16 @@ fun parseOptions(where: String, raw: Any?, jsonType: String?, format: String?): 
                 "text, so a list here would refuse every value or check none.",
         )
     }
-    return raw.mapNotNull { entry ->
-        if (entry is Map<*, *>) {
-            val value = entry[SCH.value].toOptStr() ?: return@mapNotNull null
-            SchOption(value, entry[SCH.label].toOptStr() ?: value)
-        } else {
-            null
-        }
+    return raw.mapIndexed { i, entry ->
+        val value = when (entry) {
+            is Map<*, *> -> entry[SCH.value].takeIf { it is String || it is Number || it is Boolean }.toOptStr()
+            is String, is Number, is Boolean -> entry.toOptStr()
+            else -> null
+        } ?: throw KdrException.mkConv(
+            "$where has '${SCH.options}' entry ${i + 1}, which is neither a value nor a " +
+                "{'${SCH.value}', '${SCH.label}'} object with a '${SCH.value}'.",
+        )
+        SchOption(value, (entry as? Map<*, *>)?.get(SCH.label).toOptStr() ?: value)
     }
 }
 
