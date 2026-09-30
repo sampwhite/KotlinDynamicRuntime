@@ -24,7 +24,16 @@ class ConfigReloadResult(
     val issues: List<GedraConfigIssue>,
     /** The newest configuration date the client now runs at (issue #618): what the sync tracking announces. */
     val marker: kotlin.time.Instant?,
-)
+    /**
+     * The reload of the client's **sandbox** (issue #928), which a parent's reload runs after its own: the sandbox
+     * runs the parent's latest configuration, so every change to the parent is a change to it. Null when the
+     * client has no sandbox and had none, and on a sandbox's own reload.
+     */
+    val sandbox: ConfigReloadResult? = null,
+) {
+    /** This reload and its [sandbox]'s, the client's first -- each is announced to peers under its own marker. */
+    val all: List<ConfigReloadResult> get() = listOfNotNull(this, sandbox)
+}
 
 /**
  * Reloads one client's stored configuration on a running node (issue #616) -- the mechanism the multi-node
@@ -51,6 +60,14 @@ class ConfigReloadResult(
  * it withdraws and re-adds the same configs and re-runs every publish, idempotently.
  *
  * Reloads are serialized. Per client only; a global reload is a restart.
+ *
+ * ### A sandbox reloads with its parent
+ *
+ * A sandbox (issue #928) runs its parent's source configuration and latest stored revisions, copied under its own
+ * id (`SandboxConfigs`). So a parent's reload is followed by its sandbox's, under the same lock, and the result
+ * carries both; a sandbox may also be reloaded alone -- a peer catching up on the sandbox's own marker does that --
+ * and is then rebuilt from its parent as it stands. When the parent no longer asks for a sandbox, the sandbox's
+ * reload withdraws everything it held, and the client checks drop it.
  */
 object GedraConfigReload {
     private val lock = Any()
@@ -62,11 +79,23 @@ object GedraConfigReload {
     fun <T> underReloadLock(block: () -> T): T = synchronized(lock) { block() }
 
     fun reloadClient(cxt: KdrCxt, client: String): ConfigReloadResult = synchronized(lock) {
+        val own = reloadOne(cxt, client)
+        if (client == GID.globalClient || isSandboxClient(client)) return own
+        // After the parent, since whether it has a sandbox is read from the definition it now runs. A sandbox it
+        // had and no longer asks for is reloaded too, so that reload withdraws it.
+        val sandbox = sandboxOf(client)
+        val collector = SchemaCollector.get(cxt) ?: throw KdrException("No schema collector to reload into.")
+        val had = GedraConfigLoadService.get(cxt).loadedFor(sandbox).isNotEmpty()
+        if (!had && !SandboxConfigs.hasSandbox(collector.gedraConfigs, client)) return own
+        ConfigReloadResult(own.client, own.loaded, own.evictedTypes, own.issues, own.marker, reloadOne(cxt, sandbox))
+    }
+
+    private fun reloadOne(cxt: KdrCxt, client: String): ConfigReloadResult {
         // The client's issue list is replaced by what this reload finds (issue #840): cleared first, so every
         // phase records afresh, and restored if the reload throws, so a refused reload leaves it as it was.
         val issueRegistry = ClientConfigIssues.get(cxt)
         val priorIssues = issueRegistry.replace(client, emptyList())
-        try {
+        return try {
             reloadLocked(cxt, client)
         } catch (e: Exception) {
             issueRegistry.replace(client, priorIssues)
@@ -79,44 +108,12 @@ object GedraConfigReload {
         val loader = GedraConfigLoadService.get(cxt)
         val configService = GedraConfigService.get(cxt)
 
-        // The client's current stored configuration, by its protection tier (issue #617): the latest revision
-        // of each class, or the latest *published* one for a published-only (or static) client.
-        val bound = if (cxt.client == client) cxt else cxt.mkSubContext("configReload", client)
-        val currentRows = configService.currentConfigs(bound, client)
-        // The marker peers compare against (issue #618) is the newest of what this client now consumes: the
-        // newest consumed revision, and the tier row's own date -- because a tier toggle (#617) changes what is
-        // consumed without touching a content row, and can even make the consumed set older, so a content-only
-        // marker with a monotonic-max announce would never carry a toggle to the other nodes.
-        val contentMarker = currentRows.mapNotNull { it.updatedAt }.maxOrNull()
-        val marker = listOfNotNull(contentMarker, configService.tierMarker(bound, client)).maxOrNull()
-        // The extends rule a data config is held to, against the source-code clients alone.
-        val loadedIds = loader.allLoadedIds()
-        val sourceClients = collector.gedraConfigs.configs
-            .filter { it.gedraId.fullId !in loadedIds }.mapNotNull { it.client }.associateBy { it.clientId }
-        // A row that will not reassemble, or a config breaking the extends rule, costs only that config (issue
-        // #841) -- judged as stored config, as the boot load judges it -- rather than refusing the whole reload.
-        // Reported before phase one, so a strict refusal changes nothing.
         val reloadIssues = mutableListOf<GedraConfigIssue>()
-        // A client static here takes nothing stored (issue #824): `currentConfigs` gave none, and it is said so when
-        // the database holds some.
-        if (configService.isStaticHere(bound, client) && configService.listConfigs(bound).isNotEmpty()) {
-            reportConfigProblem(cxt, loader.staticIgnoredIssue(client), reloadIssues)
-        }
-        val fresh = currentRows.mapNotNull { row ->
-            val config = try {
-                loader.toConfig(cxt, row)
-            } catch (e: KdrException) {
-                reportConfigProblem(cxt, loader.unloadableIssue(row.configId.fullId, row.client, e), reloadIssues)
-                return@mapNotNull null
-            }
-            val problem = loader.storedConfigProblem(config, sourceClients)
-            if (problem != null) {
-                reportConfigProblem(cxt, problem, reloadIssues)
-                null
-            } else {
-                loader.unknownSlotsIssue(row)?.let { reportConfigProblem(cxt, it, reloadIssues) }
-                config
-            }
+        val sandboxParent = sandboxParentOf(client)
+        val (fresh, marker) = if (sandboxParent != null) {
+            sandboxConfigs(cxt, collector, loader, configService, sandboxParent, reloadIssues)
+        } else {
+            clientConfigs(cxt, collector, loader, configService, client, reloadIssues)
         }
 
         // --- phase one: swap the collectors, reversibly ---
@@ -159,5 +156,76 @@ object GedraConfigReload {
         LogStartup.info(cxt) { "Reloaded client '$client': ${taken.size} stored configuration(s), ${typeKeys.size} type-cache entries dropped." }
         val issues = ClientConfigIssues.get(cxt).issuesFor(client)
         return ConfigReloadResult(client, taken.size, typeKeys.size, issues, marker)
+    }
+    /**
+     * The stored configs [client] now consumes, reassembled and judged, with its marker: the ordinary client's half
+     * of phase one's input (issues #616, #617).
+     */
+    private fun clientConfigs(
+        cxt: KdrCxt,
+        collector: SchemaCollector,
+        loader: GedraConfigLoadService,
+        configService: GedraConfigService,
+        client: String,
+        reloadIssues: MutableList<GedraConfigIssue>,
+    ): Pair<List<GedraConfig>, kotlin.time.Instant?> {
+        // The client's current stored configuration, by its protection tier (issue #617): the latest revision
+        // of each class, or the latest *published* one for a published-only (or static) client.
+        val bound = if (cxt.client == client) cxt else cxt.mkSubContext("configReload", client)
+        val currentRows = configService.currentConfigs(bound, client)
+        // The marker peers compare against (issue #618) is the newest of what this client now consumes: the
+        // newest consumed revision, and the tier row's own date -- because a tier toggle (#617) changes what is
+        // consumed without touching a content row, and can even make the consumed set older, so a content-only
+        // marker with a monotonic-max announce would never carry a toggle to the other nodes.
+        val contentMarker = currentRows.mapNotNull { it.updatedAt }.maxOrNull()
+        val marker = listOfNotNull(contentMarker, configService.tierMarker(bound, client)).maxOrNull()
+        // The extends rule a data config is held to, against the source-code clients alone.
+        val sourceClients = loader.sourceClientsOf(collector)
+        // A client static here takes nothing stored (issue #824): `currentConfigs` gave none, and it is said so when
+        // the database holds some.
+        if (configService.isStaticHere(bound, client) && configService.listConfigs(bound).isNotEmpty()) {
+            reportConfigProblem(cxt, loader.staticIgnoredIssue(client), reloadIssues)
+        }
+        // A row that will not reassemble, or a config breaking the extends rule, costs only that config (issue
+        // #841) -- judged as stored config, as the boot load judges it -- rather than refusing the whole reload.
+        // Reported before phase one, so a strict refusal changes nothing.
+        val fresh = currentRows.mapNotNull { row ->
+            val config = try {
+                loader.toConfig(cxt, row)
+            } catch (e: KdrException) {
+                reportConfigProblem(cxt, loader.unloadableIssue(row.configId.fullId, row.client, e), reloadIssues)
+                return@mapNotNull null
+            }
+            val problem = loader.storedConfigProblem(config, sourceClients)
+            if (problem != null) {
+                reportConfigProblem(cxt, problem, reloadIssues)
+                null
+            } else {
+                loader.unknownSlotsIssue(row)?.let { reportConfigProblem(cxt, it, reloadIssues) }
+                config
+            }
+        }
+        return fresh to marker
+    }
+
+    /**
+     * A sandbox's configs (issue #928), rebuilt from its [parent] as it stands: the parent's source configs and its
+     * **latest** stored revisions, whatever its tier, rebound -- or nothing, when the parent no longer asks for a
+     * sandbox, so the swap withdraws it. Nothing stored when the parent is static here, which takes none. The marker
+     * is the newest of those revisions: a sandbox has no tier, so no tier date is folded in.
+     */
+    private fun sandboxConfigs(
+        cxt: KdrCxt,
+        collector: SchemaCollector,
+        loader: GedraConfigLoadService,
+        configService: GedraConfigService,
+        parent: String,
+        reloadIssues: MutableList<GedraConfigIssue>,
+    ): Pair<List<GedraConfig>, kotlin.time.Instant?> {
+        if (!SandboxConfigs.hasSandbox(collector.gedraConfigs, parent)) return emptyList<GedraConfig>() to null
+        val bound = if (cxt.client == parent) cxt else cxt.mkSubContext("configReload", parent)
+        val latest = if (configService.isStaticHere(bound, parent)) emptyList() else configService.configsAt(bound, parent, published = false)
+        val built = loader.sandboxConfigs(cxt, collector, parent, latest, loader.sourceClientsOf(collector), reloadIssues)
+        return built.configs to built.marker
     }
 }

@@ -46,7 +46,7 @@ object ClientStoredEdit {
             throw e
         }
         val reload = GedraConfigReload.reloadClient(cxt, client)
-        ClientSyncService.get(cxt).announceAndMark(cxt, client, reload.marker)
+        ClientSyncService.get(cxt).announceReload(cxt, reload)
         return reload
     }
 }

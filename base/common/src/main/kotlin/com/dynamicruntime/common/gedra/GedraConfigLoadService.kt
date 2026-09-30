@@ -122,6 +122,18 @@ class GedraConfigLoadService : ServiceInitializer {
         isInit = true
         val collector = schemaCollector ?: throw KdrException("$serviceName.checkInit ran before onCreate.")
         val sql = sqlTopicService ?: throw KdrException("$serviceName.checkInit ran before onCreate.")
+        val latestByClient = loadStored(cxt, collector, sql)
+        // Sandboxes are built on every node, loading or not (issue #928): a source-defined parent asking for one
+        // gets one on an in-memory node too, with no stored layer.
+        addSandboxes(cxt, collector, latestByClient)
+    }
+
+    /**
+     * Loads the stored configuration each client consumes, by its tier, into [collector]. Answers every client's
+     * **latest** stored rows regardless of tier -- what a sandbox runs (issue #928) -- whether or not any client
+     * consumed a row, and empty only when nothing was read. Left raw: only a parent with a sandbox needs them parsed.
+     */
+    private fun loadStored(cxt: KdrCxt, collector: SchemaCollector, sql: SqlTopicService): Map<String, List<Map<String, Any?>>> {
 
         // Load on a persistent node, not an in-memory one. A production node is Postgres-backed and loads what
         // was stored; an in-memory node is a test or a throwaway, and nothing meaningfully persists across its
@@ -133,24 +145,26 @@ class GedraConfigLoadService : ServiceInitializer {
         sql.checkInit(cxt)
         val enabled = cxt.getEnvBool(loadEnvVar) ?: !sql.isInMemory
         if (!enabled) {
-            return
+            return emptyMap()
         }
 
         // The config topic's whole table set, from the collector rather than the (not-yet-built) store.
         val configTables = collector.tables.filter { it.topic == gedraConfigTopic }
         if (configTables.isEmpty()) {
             // No config tables on this node (the component that declares them is not loaded): nothing to load.
-            return
+            return emptyMap()
         }
-        val contentTable = configTables.firstOrNull { it.tableName == GCT.gedraConfig } ?: return
+        val contentTable = configTables.firstOrNull { it.tableName == GCT.gedraConfig } ?: return emptyMap()
         sql.reconcileTopicFromTables(cxt, gedraConfigTopic, configTables)
         // The read below skips history by the current flag (issue #875), so flag first any row that predates it.
         ConfigCurrentRevisions.backfill(cxt, SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic), contentTable)
 
         val controlTable = configTables.firstOrNull { it.tableName == GCT.gedraConfigControl }
-        val rows = readLatestConfigRows(cxt, contentTable, controlTable)
+        val read = readLatestConfigRows(cxt, contentTable, controlTable)
+        val rows = read.consumed
         if (rows.isEmpty()) {
-            return
+            // Nothing consumed is not nothing stored: a published-only parent's drafts are still its sandbox's.
+            return read.latestByClient
         }
         // The source clients, snapshotted before any stored config is added, so the extends rule tests against
         // the source-code set alone (a stored config may not become the base another extends).
@@ -213,10 +227,95 @@ class GedraConfigLoadService : ServiceInitializer {
             if (existing == null || at > existing) takenMarkers[markerClient] = at
         }
         recordRestartLoad(takenMarkers)
+        return read.latestByClient
     }
 
+    /**
+     * Builds the sandbox of every client whose definition asks for one (issue #928) and adds its configuration to
+     * [collector] ahead of the client checks and the schema build, which then treat it as any client's. Its stored
+     * layer is the parent's latest revisions in [latestByClient]; its marker, what a restart announces for it, is
+     * the newest of those.
+     */
+    private fun addSandboxes(cxt: KdrCxt, collector: SchemaCollector, latestByClient: Map<String, List<Map<String, Any?>>>) {
+        val parents = SandboxConfigs.parentsWithSandboxes(collector.gedraConfigs)
+        if (parents.isEmpty()) return
+        val sourceClients = sourceClientsOf(collector)
+        val markers = HashMap(loadedMarkers)
+        for (parent in parents) {
+            val sandbox = sandboxOf(parent)
+            // Parsed here, per row: one whose id will not parse costs only itself, reported on the sandbox's list, as
+            // the boot load treats a client's own.
+            val latest = latestByClient[parent].orEmpty().mapNotNull { row ->
+                try {
+                    GedraConfigRow.extract(row) { GedraId.parse(it) }
+                } catch (e: KdrException) {
+                    reportConfigProblem(cxt, unloadableIssue(row[GC.gedraId].toOptStr() ?: "?", sandbox, e), issues)
+                    null
+                }
+            }
+            val built = sandboxConfigs(cxt, collector, parent, latest, sourceClients, issues)
+            val taken = built.configs.filter { collector.addGedraConfig(cxt, it) }
+            taken.forEach { appendOverlays(cxt, it) }
+            recordLoaded(sandbox, taken)
+            built.marker?.let { markers[sandbox] = it }
+        }
+        recordRestartLoad(markers)
+    }
+
+    /**
+     * [parent]'s sandbox configuration (issue #928), in layer order: the parent's **source** configs -- those in
+     * [collector] this service did not load -- then the parent's [latestRows] reassembled, each rebound by
+     * [SandboxConfigs]. A row that will not reassemble, or a config the stored rules drop, costs only itself and is
+     * reported on the sandbox's list, as the boot load and a reload judge a client's own. Shared by the boot and a
+     * reload of the sandbox, so the two build the same thing.
+     */
+    fun sandboxConfigs(
+        cxt: KdrCxt,
+        collector: SchemaCollector,
+        parent: String,
+        latestRows: List<GedraConfigRow>,
+        sourceClients: Map<String, ClientDef>,
+        sink: MutableList<GedraConfigIssue>,
+    ): SandboxBuild {
+        val sandbox = sandboxOf(parent)
+        val loadedIds = allLoadedIds()
+        val parentSource = collector.gedraConfigs.configs
+            .filter { it.gedraId.client == parent && it.gedraId.fullId !in loadedIds }
+        val parentStored = latestRows.mapNotNull { row ->
+            val config = try {
+                toConfig(cxt, row)
+            } catch (e: KdrException) {
+                reportConfigProblem(cxt, unloadableIssue(row.configId.fullId, sandbox, e), sink)
+                return@mapNotNull null
+            }
+            val problem = storedConfigProblem(config, sourceClients)
+            if (problem != null) {
+                reportConfigProblem(cxt, problem, sink)
+                null
+            } else {
+                unknownSlotsIssue(row)?.let { reportConfigProblem(cxt, it, sink) }
+                config
+            }
+        }
+        return SandboxBuild(SandboxConfigs.configsFor(parentSource, parentStored), latestRows.mapNotNull { it.updatedAt }.maxOrNull())
+    }
+
+    /** The clients defined in source code -- those whose defining config this service did not load. */
+    fun sourceClientsOf(collector: SchemaCollector): Map<String, ClientDef> {
+        val loadedIds = allLoadedIds()
+        return collector.gedraConfigs.configs.filter { it.gedraId.fullId !in loadedIds }
+            .mapNotNull { it.client }.associateBy { it.clientId }
+    }
+
+    /**
+     * What the boot reads of every stored config, across all clients, from the current rows (#875): the revision each
+     * client [consumed] by its tier, and each client's [latestByClient] regardless of tier -- what its sandbox runs
+     * (issue #928). A client static here has neither.
+     */
+    private class LatestRows(val consumed: List<Map<String, Any?>>, val latestByClient: Map<String, List<Map<String, Any?>>>)
+
     /** The latest enabled revision of every stored config, across all clients -- read from the current ones (#875). */
-    private fun readLatestConfigRows(cxt: KdrCxt, contentTable: KdrTable, controlTable: KdrTable?): List<Map<String, Any?>> {
+    private fun readLatestConfigRows(cxt: KdrCxt, contentTable: KdrTable, controlTable: KdrTable?): LatestRows {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         // Ordered class then version-desc, so the first enabled row of each class is its latest -- the same
         // reduction `GedraConfigService.listConfigs` does, but across every client rather than one.
@@ -240,14 +339,17 @@ class GedraConfigLoadService : ServiceInitializer {
             if (env == ENV.prod) GedraConfigControl.staticClients(collector().gedraConfigs.configs) else emptySet()
         val ignored = rows.mapNotNull { it[PF.client].toOptStr() }.filter { it in static }.toSortedSet()
         ignored.forEach { reportConfigProblem(cxt, staticIgnoredIssue(it), issues) }
-        return rows.filter { it[PF.enabled] == true && it[PF.client].toOptStr() !in static }
+        val classes = rows.filter { it[PF.enabled] == true && it[PF.client].toOptStr() !in static }
             .groupBy { it[GC.configId].toOptStr() ?: "" }
             .filterKeys { it.isNotEmpty() }
             .values
-            .mapNotNull { classRows ->
-                val client = classRows.first()[PF.client].toOptStr()
-                if (client != null && client in publishedOnly) latestPublishedRow(classRows) else latestRevisionRow(classRows)
-            }
+        val consumed = classes.mapNotNull { classRows ->
+            val client = classRows.first()[PF.client].toOptStr()
+            if (client != null && client in publishedOnly) latestPublishedRow(classRows) else latestRevisionRow(classRows)
+        }
+        val latestByClient = classes.mapNotNull { latestRevisionRow(it) }
+            .groupBy { it[PF.client].toOptStr() ?: "" }.filterKeys { it.isNotEmpty() }
+        return LatestRows(consumed, latestByClient)
     }
 
     /** The schema collector, resolved in `onCreate`. */
@@ -407,6 +509,9 @@ class GedraConfigLoadService : ServiceInitializer {
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }
+
+/** A sandbox's configuration as built (issue #928), in layer order, and its marker: the newest stored row it took. */
+class SandboxBuild(val configs: List<GedraConfig>, val marker: Instant?)
 
 /**
  * Why [config] may not be **stored** as it is owned, or null (issues #292, #873): not by the runtime's `global`

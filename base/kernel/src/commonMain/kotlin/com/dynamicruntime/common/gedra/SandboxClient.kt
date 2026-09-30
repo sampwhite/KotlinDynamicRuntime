@@ -32,6 +32,8 @@ import com.dynamicruntime.common.exception.KdrException
  * - **Schema namespaces** built from a client (`client.<clientId>`, `"${client}Copy"`) never see a sandbox, because
  *   a sandbox owns no configuration and `gedraConfig` refuses to file one under it. That matters: an OpenAPI
  *   component key may not hold a colon.
+ * - **Client definitions**: `ClientCheck` holds a declared id to the identifier rule, and judges a sandbox's derived
+ *   definition by its parent (issue #928) -- an authored one naming a sandbox never gets that far.
  * - **File paths**: none holds a client id today. A future per-client file or object-store key layout has to
  *   encode the colon, which Windows forbids in a file name.
  */

@@ -427,7 +427,7 @@ class GedraConfigCollector {
             }
         }
         // Withdraw the namespace claim only when no other kept config of the same owner still uses it.
-        if (namespaceOwners[config.namespace] == config.gedraId.client &&
+        if (namespaceOwners[config.namespace] == config.namespaceClaimant &&
             configsById.values.none { it.namespace == config.namespace }
         ) {
             namespaceOwners.remove(config.namespace)
@@ -437,7 +437,7 @@ class GedraConfigCollector {
 
     private fun keep(config: GedraConfig) {
         configsById[config.gedraId.fullId] = config
-        namespaceOwners.putIfAbsent(config.namespace, config.gedraId.client)
+        namespaceOwners.putIfAbsent(config.namespace, config.namespaceClaimant)
         for ((traitId, trait) in config.traits) {
             val key = TraitKey(config.gedraId.client, traitId)
             traitOwners[key] = trait
@@ -487,7 +487,7 @@ class GedraConfigCollector {
             )
         }
         val owner = namespaceOwners[config.namespace]
-        if (owner != null && owner != config.gedraId.client) {
+        if (owner != null && owner != config.namespaceClaimant) {
             return config.issue(
                 "Gedra config '${config.gedraId}' declares its types in namespace '${config.namespace}', " +
                     "which belongs to '$owner'. A namespace has exactly one owner, and reaching into " +
@@ -539,6 +539,14 @@ class GedraConfigCollector {
             traitConfigs[TraitKey(client, traitId)]
         }
     }
+
+    /**
+     * Who a config claims its namespace for: its client, or -- for a sandbox's copy of its parent's configuration
+     * (issue #928) -- the parent. A sandbox shares its parent's namespaces and never holds one of its own, so the
+     * parent's configuration may later declare into a namespace its sandbox's copy used first, and the write
+     * path's owner check (`namespaceOwner`) answers with the parent either way.
+     */
+    private val GedraConfig.namespaceClaimant: String get() = sandboxParentOf(gedraId.client) ?: gedraId.client
 
     /** A data trait's registry key: its owning client and its id (issue #807). */
     private data class TraitKey(val client: String, val traitId: String)

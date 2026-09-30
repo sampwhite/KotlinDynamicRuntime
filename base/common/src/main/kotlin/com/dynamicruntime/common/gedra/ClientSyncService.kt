@@ -94,6 +94,8 @@ class ClientSyncService : ServiceInitializer {
                 // config cache (#615) consumed older config, and leaving lastSynced below the shared marker is
                 // what makes the next window retry it. Falls back to the shared marker when nothing was consumed.
                 lastSynced[client] = result.marker ?: marker
+                // A parent's reload rebuilt its sandbox too (issue #928), so this node has caught up to that as well.
+                result.sandbox?.let { sb -> sb.marker?.let { m -> markSeen(sb.client, m) } }
                 retryAfterMs.remove(client)
             } catch (e: Exception) {
                 LogStartup.error(cxt, "Client-config sync reload of '$client' failed; will retry after a backoff.", e)
@@ -111,6 +113,20 @@ class ClientSyncService : ServiceInitializer {
         if (!enabled || marker == null) return
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, clientSyncTopic)
         ClientSyncTracking.announce(cxt, sqlCxt, mapOf(client to marker))
+        markSeen(client, marker)
+    }
+
+    /**
+     * Announces what [result] made this node run: the client's marker, and its sandbox's when the reload rebuilt one
+     * (issue #928). A sandbox runs its parent's *latest* configuration, so an edit a published-only parent does not
+     * consume still moves the sandbox's marker, and peers catch up on the sandbox by it. What every caller of a reload
+     * announces with.
+     */
+    fun announceReload(cxt: KdrCxt, result: ConfigReloadResult) {
+        for (r in result.all) announceAndMark(cxt, r.client, r.marker)
+    }
+
+    private fun markSeen(client: String, marker: Instant) {
         val seen = lastSynced[client]
         if (seen == null || marker > seen) lastSynced[client] = marker
     }

@@ -419,7 +419,7 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
         for (client in affected) {
             try {
                 val result = GedraConfigReload.reloadClient(c, client)
-                ClientSyncService.get(c).announceAndMark(c, client, result.marker)
+                ClientSyncService.get(c).announceReload(c, result)
                 reloaded.add(client)
                 // A reload can *drop* a config it just wrote -- a namespace or trait-id clash the write-time check
                 // (which sees only loaded owners) could not catch, e.g., two imported clients claiming one new
@@ -499,7 +499,7 @@ private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
     val result = GedraConfigReload.reloadClient(c, c.client)
     // Announce to peers that this node reloaded newer configuration (issue #618), so a node behind catches up.
-    ClientSyncService.get(c).announceAndMark(c, c.client, result.marker)
+    ClientSyncService.get(c).announceReload(c, result)
     return linkedMapOf(
         CFEP.client to result.client,
         CFEP.loaded to result.loaded,
