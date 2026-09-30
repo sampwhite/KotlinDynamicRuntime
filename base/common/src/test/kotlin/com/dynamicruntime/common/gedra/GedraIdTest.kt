@@ -126,6 +126,51 @@ class GedraIdTest : StringSpec({
         GedraId.of(GedraDataType.formDoc, "_internal", "a1").client shouldBe "_internal"
     }
 
+    // --- sandbox clients (issue #927) -------------------------------------------
+
+    // A sandbox id names its parent, so the colon it carries is the one exception to the identifier rule. The
+    // id travels through every surface a client id does, so the round trip is the thing to pin.
+    "a sandbox client is carried in an id and survives the round trip" {
+        val id = GedraId.of(GedraDataType.formDoc, "acme:sandbox", "e20260812130405123AbCd")
+        id.fullId shouldBe "gd.fd.acme:sandbox.e20260812130405123AbCd"
+        val parsed = GedraId.parse(id.fullId)
+        parsed shouldBe id
+        parsed.client shouldBe "acme:sandbox"
+        parsed.baseId shouldBe "e20260812130405123AbCd"
+        GedraId.parse("gc.cd.acme:sandbox.main~3").revision shouldBe 3
+    }
+
+    // The colon is the system's, so it is accepted in exactly one form. Anything else a colon could spell --
+    // another role, a sandbox of a sandbox, an empty or badly spelled parent, the global client's sandbox --
+    // is refused, and the message says what the one legal form is.
+    "a colon in a client is refused in every form but a sandbox of a real client" {
+        shouldThrow<KdrException> { GedraId.of(GedraDataType.formDoc, "acme:demo", "a1") }
+            .message.shouldNotBeNull() shouldContain "only as a sandbox id"
+        shouldThrow<KdrException> { GedraId.of(GedraDataType.formDoc, "acme:sandbox:sandbox", "a1") }
+        shouldThrow<KdrException> { GedraId.of(GedraDataType.formDoc, ":sandbox", "a1") }
+        shouldThrow<KdrException> { GedraId.of(GedraDataType.formDoc, "9acme:sandbox", "a1") }
+            .message.shouldNotBeNull() shouldContain "start with a letter"
+        shouldThrow<KdrException> { GedraId.of(GedraDataType.formDoc, "ac-me:sandbox", "a1") }
+        shouldThrow<KdrException> { GedraId.parse("gd.fd.acme:.a1") }
+        shouldThrow<KdrException> { GedraId.of(GedraDataType.formDoc, "global:sandbox", "a1") }
+            .message.shouldNotBeNull() shouldContain "has no sandbox"
+    }
+
+    "the sandbox helpers agree with each other and with the id" {
+        sandboxOf("acme") shouldBe "acme:sandbox"
+        sandboxParentOf("acme:sandbox") shouldBe "acme"
+        sandboxParentOf(sandboxOf("_internal")) shouldBe "_internal"
+        isSandboxClient("acme:sandbox") shouldBe true
+        for (notOne in listOf("acme", "acme:demo", "acme:sandbox:sandbox", ":sandbox", "sandbox", "acmesandbox")) {
+            isSandboxClient(notOne) shouldBe false
+            sandboxParentOf(notOne).shouldBeNull()
+        }
+        shouldThrow<KdrException> { sandboxOf("acme:sandbox") }.message.shouldNotBeNull() shouldContain "colon"
+        shouldThrow<KdrException> { sandboxOf(GID.globalClient) }
+        // Whatever `sandboxOf` builds, an id accepts.
+        GedraId.of(GedraDataType.userData, sandboxOf("acme"), "u12").client shouldBe "acme:sandbox"
+    }
+
     // --- minting -------------------------------------------------------------
 
     "a minted id carries its origin letter and is unique" {
