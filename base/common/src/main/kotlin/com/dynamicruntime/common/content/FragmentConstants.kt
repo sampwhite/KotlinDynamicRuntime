@@ -2,7 +2,6 @@ package com.dynamicruntime.common.content
 
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
-import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.startup.BootCheckMode
 
 /**
@@ -68,7 +67,7 @@ object FCHK {
     const val notes = "notes"
 
     /** Where the application shows the file's copy (issue #933); absent for a file it does not show. */
-    const val shownOn = COV.shownOn
+    const val shownOn = "shownOn"
 
     const val found = "found"
 

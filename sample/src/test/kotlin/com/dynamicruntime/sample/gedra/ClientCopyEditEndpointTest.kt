@@ -68,6 +68,9 @@ class ClientCopyEditEndpointTest : StringSpec({
         keys.getValue("${HFRAG.home}:home.brand")[COV.shownOn].toOptStr().orEmpty() shouldContain "app bar"
         keys.getValue("${AFRAG.mail}:${MCOPY.common}.${MCOPY.footer}")[COV.shownOn].toOptStr() shouldNotBe null
         keys.getValue("${SF.content}:${SF.welcome}.${SF.title}").containsKey(COV.shownOn) shouldBe false
+        // A file acme's configuration alone reads is shown for acme, and for nobody else.
+        keys.filterKeys { it.startsWith("${SF.acmeWf}:") }.values.first()[COV.shownOn].toOptStr().orEmpty() shouldContain "acme"
+        admin.getItems(CPY.keysPath, mapOf(COV.client to SC.globex)).first { it[COV.fileId] == SF.acmeWf }.containsKey(COV.shownOn) shouldBe false
         // The fragment check reports it too.
         val checked = fragments.checkFragments(cxt).filter { it.client == null }.associateBy { it.fileId }
         checked.getValue(HFRAG.home).shownOn.orEmpty() shouldContain "app bar"

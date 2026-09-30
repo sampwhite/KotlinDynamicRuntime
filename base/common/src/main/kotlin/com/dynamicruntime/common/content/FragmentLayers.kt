@@ -38,7 +38,21 @@ class EffectiveFragments(
     val audienceConflict: Boolean,
     /** Where the application shows this file's copy, as the first base declaring it says (issue #933); null when nowhere. */
     val shownOn: String? = null,
-)
+    /** The one client [shownOn] holds for, or null for every client -- see `FragmentSource.shownFor`. */
+    val shownFor: String? = null,
+    /**
+     * Every distinct place the bases say the file is shown (issue #933). More than one is a disagreement between
+     * declarations -- resolved to the first, since it is descriptive text, but reported by the check as a note,
+     * the way an audience disagreement is reported: whichever loads first decides what every administrator is told.
+     */
+    val shownOnDeclarations: List<String> = emptyList(),
+) {
+    /**
+     * Where the file is shown **for [client]** (issue #933): [shownOn], unless the file is shown for one other client
+     * alone -- to any other it is not shown at all.
+     */
+    fun shownOnFor(client: String?): String? = shownOn?.takeIf { shownFor == null || shownFor == client }
+}
 
 /**
  * Merges every layer that applies to one fragment file, for [client] (issue #456).
@@ -104,6 +118,8 @@ fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: S
         audienceConflict = backendBases > 0 && backendBases < bases.size,
         // The base's fact, like the audience: the first base that says where the file is shown.
         shownOn = bases.firstNotNullOfOrNull { it.shownOn },
+        shownFor = bases.firstOrNull { it.shownOn != null }?.shownFor,
+        shownOnDeclarations = bases.mapNotNull { it.shownOn }.distinct(),
     )
 }
 

@@ -66,7 +66,7 @@ object ClientCopyEdit {
         return fileIds.flatMap { fileId ->
             val effective = fragments.effectiveFragmentsFor(cxt, fileId, client) ?: return@flatMap emptyList()
             effective.content.flatMap { (ns, keys) ->
-                keys.map { (key, value) -> CopyKey(fileId, ns, key, effective.audience.name, value, effective.shownOn) }
+                keys.map { (key, value) -> CopyKey(fileId, ns, key, effective.audience.name, value, effective.shownOnFor(client)) }
             }
         }
     }

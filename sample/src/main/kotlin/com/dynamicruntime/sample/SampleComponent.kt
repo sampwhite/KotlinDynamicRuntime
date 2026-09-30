@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlock
 import com.dynamicruntime.sample.gedra.SB
+import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.SF
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
@@ -91,7 +92,8 @@ class SampleComponent : ComponentDefinition {
         fragmentFiles(SF.content) +
             fragmentOverlayFile(SF.content) +
             // Acme's workflow copy (issue #533): a backend file, pulled by its creation workflow's labels.
-            backendFragmentFiles(SF.acmeWf, shownOn = "acme's creation workflow") +
+            // Read by acme's configuration alone, so it is shown for acme and for nobody else (issue #933).
+            backendFragmentFiles(SF.acmeWf, shownOn = "acme's creation workflow", shownFor = SC.acme) +
             // Layout copy help (issue #605): a backend file pulled by a g-layout description's %{@t(...)}.
             backendFragmentFiles(SF.formHelp, shownOn = "the sample form's layout help") +
             // In code rather than in a file, which is the case a small change should not need a resource for.

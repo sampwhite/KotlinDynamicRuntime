@@ -67,6 +67,13 @@ class FragmentLayerTest : StringSpec({
         mergeFragmentLayers("home", listOf(base, shown, overlay), client = null).shownOn shouldBe "the home page"
         // A file no base places is not shown by this application.
         mergeFragmentLayers("home", listOf(base, overlay), client = null).shownOn shouldBe null
+        // A file shown for one client alone is not shown for another; bases that disagree are recorded, first wins.
+        val acmeOnly = FragmentSource("home", isOverlay = false, client = null, origin = "c", shownOn = "acme's workflow", shownFor = "acme") { mapOf("home" to mapOf("k" to "v")) }
+        val merged = mergeFragmentLayers("home", listOf(acmeOnly, shown), client = null)
+        merged.shownOnFor("acme") shouldBe "acme's workflow"
+        merged.shownOnFor("globex") shouldBe null
+        merged.shownOnDeclarations shouldBe listOf("acme's workflow", "the home page")
+        mergeFragmentLayers("home", listOf(base, shown), client = null).shownOnDeclarations shouldBe listOf("the home page")
     }
 
     "another client's overlay is not applied" {

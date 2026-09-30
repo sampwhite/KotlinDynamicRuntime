@@ -165,7 +165,7 @@ fun copyOverrides(
                     stored = layer.stored,
                     sourceValue = if (layer.stored) sourceValue[at] else null,
                     orphan = "$ns.$key" in orphans,
-                    shownOn = effective.shownOn,
+                    shownOn = effective.shownOnFor(client),
                 ),
             )
         }

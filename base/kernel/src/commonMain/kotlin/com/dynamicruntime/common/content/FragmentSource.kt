@@ -95,6 +95,12 @@ class FragmentSource(
      */
     val shownOn: String? = null,
     /**
+     * The one client [shownOn] holds for (issue #933), when the file is read by that client's configuration alone
+     * -- a backend file its workflows pull, say. Null, the ordinary case, means every client. Base-declared like
+     * [shownOn]; to any other client the file is then not shown.
+     */
+    val shownFor: String? = null,
+    /**
      * The name of the client config this layer came from, or null for a component's (issue #916). Kept beside
      * the free-text [origin] because a report of what a client customized has to name the config that set a
      * value -- to show it, and later to write to it -- rather than a diagnostic phrase about it.
@@ -155,10 +161,11 @@ fun fragmentInline(
     client: String? = null,
     audience: FragmentAudience = FragmentAudience.frontend,
     shownOn: String? = null,
+    shownFor: String? = null,
     build: FragmentMapBuilder.() -> Unit,
 ): FragmentSource {
     val content = FragmentMapBuilder().apply(build).build()
-    return FragmentSource(fileId, isOverlay, client, origin, audience, shownOn, load = { content })
+    return FragmentSource(fileId, isOverlay, client, origin, audience, shownOn, shownFor, load = { content })
 }
 
 /**

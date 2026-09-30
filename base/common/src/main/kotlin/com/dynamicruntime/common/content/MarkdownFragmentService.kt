@@ -320,7 +320,14 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     audience = merged.audience,
                     audienceConflict = merged.audienceConflict && !(client != null && sharedConflict),
                     audienceIssues = findings.audienceIssues,
-                    notes = findings.notes,
+                    // A disagreement between bases about where the file is shown is worth a note, as an audience
+                    // disagreement is a finding: the first declaration wins, and the others should know it did.
+                    notes = findings.notes + listOfNotNull(
+                        merged.shownOnDeclarations.takeIf { it.size > 1 && client == null }?.let { places ->
+                            "The bases disagree about where the file is shown -- ${places.joinToString(" / ") { "'$it'" }}; " +
+                                "the first is what administrators are told."
+                        },
+                    ),
                     shownOn = merged.shownOn,
                 )
             }
