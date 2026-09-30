@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.ClientOperatorFields
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
@@ -359,6 +360,80 @@ fun addableCopyKeys(keys: List<CopyKeyView>, overridden: List<CopyOverrideView>)
     return keys.filterNot { Triple(it.fileId, it.namespace, it.key) in taken }
 }
 
+/** One home-menu item as a client sees it (issue #919): a row of `/clientAdmin/client/menu/items`. */
+class MenuItemView(
+    val itemId: String,
+    val parentId: String?,
+    val baseLabel: String?,
+    val label: String?,
+    val baseCondition: String?,
+    val condition: String?,
+    /** Whether the client's stored configuration changes the item -- what a reset would remove. */
+    val stored: Boolean,
+)
+
+/** The items listing as [MenuItemView]s; one without an id is not an item. Pure, and covered under `jsNodeTest`. */
+fun parseMenuItems(items: List<Map<String, Any?>>): List<MenuItemView> = items.mapNotNull { row ->
+    MenuItemView(
+        itemId = row[COV.itemId].toOptStr() ?: return@mapNotNull null,
+        parentId = row[MNU.parentId].toOptStr(),
+        baseLabel = row[COV.baseLabel].toOptStr(),
+        label = row[MNU.label].toOptStr(),
+        baseCondition = row[MNU.baseCondition].toOptStr(),
+        condition = row[MNU.condition].toOptStr(),
+        stored = row[CPY.stored] == true,
+    )
+}
+
+/** Whether an item is withdrawn for the client: its condition is `#never`. Pure, and covered under `jsNodeTest`. */
+fun menuItemHidden(item: MenuItemView): Boolean = item.condition == CFACT.neverName
+
+/**
+ * How an item's visibility reads (issue #919): "hidden" when withdrawn; "everyone" when nothing conditions it; else
+ * the condition itself, since a cfact expression is the audience's name here. With a note when the client changed
+ * it from the shipped state ("hidden (shipped: shown)"). Pure, and covered under `jsNodeTest`.
+ */
+fun menuVisibilityText(item: MenuItemView): String {
+    fun word(condition: String?): String = when (condition) {
+        null, CFACT.alwaysName -> "everyone"
+        CFACT.neverName -> "hidden"
+        else -> condition
+    }
+    val now = word(item.condition)
+    val shipped = word(item.baseCondition)
+    return if (now == shipped) now else "$now (shipped: $shipped)"
+}
+
+/**
+ * The audiences a client may show an item to (issue #919): the conditions the shipped menu itself draws for, each
+ * once, plus everyone -- the backend accepts exactly these. Pure, and covered under `jsNodeTest`.
+ */
+fun menuAudiences(items: List<MenuItemView>): List<String> =
+    listOf(CFACT.alwaysName) + items.mapNotNull { it.baseCondition }.filter { it != CFACT.neverName }.distinct()
+
+/**
+ * The request that changes one item (issue #919): its address and the client, a new [label] when renaming, and the
+ * [visibility] with its [condition] when hiding or showing. Pure, and covered under `jsNodeTest`.
+ */
+fun menuEditRequest(clientId: String, itemId: String, label: String?, visibility: String?, condition: String?): Map<String, Any?> =
+    linkedMapOf<String, Any?>(COV.client to clientId, COV.itemId to itemId).also {
+        if (label != null) it[MNU.label] = label
+        if (visibility != null) it[MNU.visibility] = visibility
+        if (condition != null) it[MNU.condition] = condition
+    }
+
+/** What a menu edit did (issue #919). */
+class MenuEditResult(val configName: String, val label: String?, val condition: String?, val stored: Boolean, val issues: List<String>)
+
+/** The set/reset result as a [MenuEditResult]. Pure, and covered under `jsNodeTest`. */
+fun parseMenuEditResult(results: Map<String, Any?>): MenuEditResult = MenuEditResult(
+    configName = results[COV.configName].toOptStr().orEmpty(),
+    label = results[MNU.label].toOptStr(),
+    condition = results[MNU.condition].toOptStr(),
+    stored = results[CPY.stored] == true,
+    issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
+)
+
 /** One configuration issue as the detail lists it (issue #906): what is wrong, what was dropped, and where it came from. */
 class ConfigIssueView(val message: String, val degradedTo: String, val origin: String)
 
@@ -484,6 +559,18 @@ object ClientsApi {
     /** Removes a client's stored value for one key and makes that live (issue #918). */
     suspend fun resetCopy(clientId: String, fileId: String, namespace: String, key: String): CopyEditResult =
         parseCopyEditResult(Http.sendApi("POST", CPY.resetPath, copyEditRequest(clientId, fileId, namespace, key, null))[EP.results].toJsonMapOrEmpty())
+
+    /** The home menu's items for a client (issue #919): shipped and effective label and condition. */
+    suspend fun menuItems(clientId: String): List<MenuItemView> =
+        parseMenuItems(Http.getApi(MNU.itemsPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())
+
+    /** Renames, hides or shows one item for a client and makes it live (issue #919). */
+    suspend fun setMenuItem(clientId: String, itemId: String, label: String?, visibility: String?, condition: String?): MenuEditResult =
+        parseMenuEditResult(Http.sendApi("POST", MNU.setPath, menuEditRequest(clientId, itemId, label, visibility, condition))[EP.results].toJsonMapOrEmpty())
+
+    /** Removes a client's stored changes to one item and makes that live (issue #919). */
+    suspend fun resetMenuItem(clientId: String, itemId: String): MenuEditResult =
+        parseMenuEditResult(Http.sendApi("POST", MNU.resetPath, menuEditRequest(clientId, itemId, null, null, null))[EP.results].toJsonMapOrEmpty())
 
     /** What one client's own configuration changes (issue #917), through the scoped retrieve. */
     suspend fun overrides(clientId: String): ClientOverridesView =

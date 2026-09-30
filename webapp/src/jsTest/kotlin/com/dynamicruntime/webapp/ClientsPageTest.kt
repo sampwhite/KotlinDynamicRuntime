@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientStatus
@@ -357,6 +358,51 @@ class ClientsPageTest {
         val reset = parseCopyEditResult(mapOf(COV.configName to "copy", CPY.stored to false))
         assertEquals(null, reset.value)
         assertEquals(false, reset.stored)
+    }
+
+    // --- editing the menu (issue #919) ---------------------------------------------------------------------
+
+    private fun menuRow(id: String, base: String?, label: String?, baseCond: String?, cond: String?, stored: Boolean = false, parent: String? = null) =
+        mapOf(COV.itemId to id, MNU.parentId to parent, COV.baseLabel to base, MNU.label to label, MNU.baseCondition to baseCond, MNU.condition to cond, CPY.stored to stored)
+
+    private fun sampleMenu() = parseMenuItems(
+        listOf(
+            menuRow("account", "Account", "Account", "app", "app"),
+            menuRow("profile", "Profile", "My account", "loggedIn,app", "loggedIn,app", stored = true, parent = "account"),
+            menuRow("catalog", "Endpoint catalog", "Endpoint catalog", null, null),
+            menuRow("docs", "Documents", "Documents", "app", "#never", stored = true),
+            menuRow("workflows", "Workflows", "Workflows", "#never", "loggedIn,app"),
+            mapOf(MNU.label to "no id"),
+        ),
+    )
+
+    @Test
+    fun theMenuItemsParseAndSayHowEachIsOffered() {
+        val items = sampleMenu()
+        assertEquals(listOf("account", "profile", "catalog", "docs", "workflows"), items.map { it.itemId })
+        assertEquals("account", items[1].parentId)
+        assertEquals(true, items[1].stored)
+        assertEquals("app", menuVisibilityText(items[0]))
+        assertEquals("everyone", menuVisibilityText(items[2]))
+        assertEquals("hidden (shipped: app)", menuVisibilityText(items[3]))
+        assertEquals("loggedIn,app (shipped: hidden)", menuVisibilityText(items[4]))
+        assertEquals(listOf(false, false, false, true, false), items.map { menuItemHidden(it) })
+        // The audiences a client may show an item to: everyone, then each condition the shipped menu draws for, once.
+        assertEquals(listOf("#always", "app", "loggedIn,app"), menuAudiences(items))
+    }
+
+    @Test
+    fun aMenuEditRequestCarriesOnlyWhatIsAsked() {
+        assertEquals(mapOf(COV.client to "acme", COV.itemId to "profile", MNU.label to "Me"), menuEditRequest("acme", "profile", "Me", null, null))
+        assertEquals(mapOf(COV.client to "acme", COV.itemId to "docs", MNU.visibility to MNU.hide), menuEditRequest("acme", "docs", null, MNU.hide, null))
+        assertEquals(
+            mapOf(COV.client to "acme", COV.itemId to "workflows", MNU.visibility to MNU.show, MNU.condition to "loggedIn,app"),
+            menuEditRequest("acme", "workflows", null, MNU.show, "loggedIn,app"),
+        )
+        val result = parseMenuEditResult(mapOf(COV.configName to "copy", MNU.label to "Me", MNU.condition to "#never", CPY.stored to true))
+        assertEquals("copy" to "Me", result.configName to result.label)
+        assertEquals("#never", result.condition)
+        assertEquals(true, result.stored)
     }
 
     @Test

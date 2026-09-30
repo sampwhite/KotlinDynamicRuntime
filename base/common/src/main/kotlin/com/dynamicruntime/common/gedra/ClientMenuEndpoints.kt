@@ -1,0 +1,123 @@
+package com.dynamicruntime.common.gedra
+
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
+import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.util.getReqNonBlankStr
+import com.dynamicruntime.common.util.toOptStr
+
+/**
+ * Editing a client's home menu (issue #919): its items as the client sees them, and the rename, hide, show and reset
+ * of one -- written to the client's stored configuration, trial-checked, published and made live at once (see
+ * [ClientMenuEdit]). In the `clientAdmin` section and scoped as the client overview's retrieves are. App-only, as
+ * the copy editor is.
+ */
+fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) {
+    type(MNU.itemTypeName) {
+        type = SCT.kObject
+        description = "One home-menu item as a client sees it: what the shipped menu says, what the client changed."
+        property(COV.itemId, "The item's id.", required = true)
+        property(MNU.parentId, "The item this one sits under; absent for a top-level item.")
+        property(COV.baseLabel, "The shipped label; absent for an item with none.")
+        property(MNU.label, "The label this client's people see.") { emptyIsAbsent = false }
+        property(MNU.baseCondition, "The shipped condition deciding who is offered the item; absent means everyone.")
+        property(MNU.condition, "The condition for this client; `#never` withdraws the item.")
+        property(CPY.stored, "Whether this client's stored configuration changes the item's label or condition.", required = true) {
+            type = SCT.boolean
+        }
+    }
+    type(MNU.resultTypeName) {
+        type = SCT.kObject
+        description = "What a menu edit did: where it landed, and the item as the client's people now get it."
+        property(COV.client, "The client.", required = true)
+        property(COV.itemId, "The item's id.", required = true)
+        property(COV.configName, "The stored configuration the change landed in.", required = true)
+        property(MNU.label, "The label the client's people now see.") { emptyIsAbsent = false }
+        property(MNU.condition, "The condition the item is now offered under; `#never` withdraws it.")
+        property(CPY.stored, "Whether a stored change to the item remains -- false after a reset.", required = true) { type = SCT.boolean }
+        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing.", required = true) {
+            type = SCT.array
+            items { ref(CLD.configIssueTypeQualified) }
+        }
+    }
+
+    listEndpoint(
+        MNU.itemsPath,
+        "The home menu's items for a client, in the menu's order: the shipped label and condition, the client's, " +
+            "and whether the client's stored configuration changes the item. Every item the menu holds, before any " +
+            "one caller's cfacts are applied. The caller's own client, or one an administrator who sees every client names.",
+        outputRef = MNU.itemTypeName,
+        noLimit = true,
+        needsClientConfig = true,
+        inputFields = { field(COV.client, "The client; the caller's own when absent.") },
+    ) { c, request ->
+        val client = overseenClient(c, request[COV.client].toOptStr())
+        ClientMenuEdit.itemsFor(c, client).map { item ->
+            val out = linkedMapOf<String, Any?>(COV.itemId to item.itemId)
+            item.parentId?.let { out[MNU.parentId] = it }
+            item.baseLabel?.let { out[COV.baseLabel] = it }
+            item.label?.let { out[MNU.label] = it }
+            item.baseCondition?.let { out[MNU.baseCondition] = it }
+            item.condition?.let { out[MNU.condition] = it }
+            out[CPY.stored] = item.stored
+            out
+        }
+    }
+
+    generalEndpoint(
+        MNU.setPath,
+        "Renames, hides or shows one home-menu item for a client and makes it live: written into the client's " +
+            "stored configuration (the config already changing the item, else one overlaying the menu, else " +
+            "'${CPY.copyConfigName}'), refused when a trial reload would find a new problem, then published and " +
+            "reloaded. Hiding or showing is presentation, not permission: the section gate still decides who may " +
+            "reach a page. Showing names a condition the shipped menu already draws for.",
+        HttpMethod.POST,
+        outputRef = MNU.resultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            menuItemInput()
+            field(MNU.label, "The new label; absent leaves the label as it is.")
+            field(MNU.visibility, "'${MNU.hide}' withdraws the item; '${MNU.show}' offers it under '${MNU.condition}'; absent leaves it.") {
+                option(MNU.hide, "Hide")
+                option(MNU.show, "Show")
+            }
+            field(MNU.condition, "For a show: the condition to offer the item under, one of the shipped menu's own or '#always'.")
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[COV.client].toOptStr())
+        ClientMenuEdit.set(
+            c, client, request.getReqNonBlankStr(COV.itemId), request[MNU.label].toOptStr(),
+            request[MNU.visibility].toOptStr(), request[MNU.condition].toOptStr(),
+        ).toWireMap(client, request)
+    }
+
+    generalEndpoint(
+        MNU.resetPath,
+        "Removes a client's stored changes to one home-menu item and makes that live, so the item shows as the " +
+            "client's source configuration or the shipped menu says. Refused when no stored change touches it.",
+        HttpMethod.POST,
+        outputRef = MNU.resultTypeName,
+        needsClientConfig = true,
+        inputFields = { menuItemInput() },
+    ) { c, request ->
+        val client = overseenClient(c, request[COV.client].toOptStr())
+        ClientMenuEdit.reset(c, client, request.getReqNonBlankStr(COV.itemId)).toWireMap(client, request)
+    }
+}
+
+private fun InputFieldsBuilder.menuItemInput() {
+    field(COV.client, "The client; the caller's own when absent.")
+    field(COV.itemId, "The home-menu item's id.", required = true)
+}
+
+private fun ClientMenuEdit.Result.toWireMap(client: String, request: Map<String, Any?>): Map<String, Any?> {
+    val out = linkedMapOf<String, Any?>(COV.client to client, COV.itemId to request[COV.itemId].toOptStr(), COV.configName to configName)
+    label?.let { out[MNU.label] = it }
+    condition?.let { out[MNU.condition] = it }
+    out[CPY.stored] = stored
+    out[CPY.issues] = issues.map { it.toWireMap() }
+    return out
+}

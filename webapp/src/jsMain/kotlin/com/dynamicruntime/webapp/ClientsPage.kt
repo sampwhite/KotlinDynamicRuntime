@@ -1,8 +1,10 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientStatus
+import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.util.toOptStr
@@ -335,7 +337,19 @@ private fun ChildrenBuilder.clientDetail(
                     rows = overrides.copy
                     this.onChanged = onChanged
                 }
-                if (overrides.blocks.isNotEmpty()) blockOverridesTable(overrides.blocks)
+                // The home menu and its editor (issue #919): every item, renamed, hidden, shown or reset here.
+                h3 { +"Menu" }
+                MenuEditor {
+                    this.clientId = clientId
+                    this.onChanged = onChanged
+                }
+                // Any other block the client changes (the sample's nav, say) is shown as it was: this editor is the
+                // home menu's.
+                val otherBlocks = overrides.blocks.filter { it.blockId != HMENU.block }
+                if (otherBlocks.isNotEmpty()) {
+                    h3 { +"Other interface changes" }
+                    blockOverridesTable(otherBlocks)
+                }
             }
         }
         // Editing the client, and designing its workflows, land here (#903, later slices).
@@ -629,6 +643,252 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
         // A reset's refusal lands here, since no editor is open for it.
         editError?.let { errorText("Couldn't change the copy.", it) }
     }
+}
+
+external interface MenuEditorProps : Props {
+    var clientId: String
+    var onChanged: () -> Unit
+}
+
+/**
+ * The home menu as a client sees it, and its editor (issue #919). Every item the menu holds -- before any one
+ * caller's cfacts are applied, since an editor lists what can be changed -- with its shipped label, the client's,
+ * who is offered it, and the actions: **Rename**, **Hide**, **Show** (to an audience the shipped menu already draws
+ * for -- a client picks one, it never writes an expression) and, where the client's stored configuration changed
+ * the item, **Reset**. Read from `/clientAdmin/client/menu/items` on mount and again after each change.
+ *
+ * Hiding or showing is presentation, not permission -- the section gate still decides who may reach a page -- and
+ * the hint under the table says so. A change is written, trial-checked, published and made live in one call, as a
+ * copy edit is; a refusal is shown in the backend's words.
+ */
+private val MenuEditor = FC<MenuEditorProps> { props ->
+    var items by useState<List<MenuItemView>?>(null)
+    var loadError by useState<DisplayError?>(null)
+    var busy by useState(false)
+    var editError by useState<DisplayError?>(null)
+    var note by useState<String?>(null)
+    // The item being renamed, and its draft; the item being shown, and the chosen audience.
+    var renaming by useState<String?>(null)
+    var draft by useState("")
+    var showing by useState<String?>(null)
+    var audience by useState<String?>(null)
+    val latest = useRef(0)
+    var generation by useState(0)
+
+    useEffect(props.clientId, generation) {
+        val token = (latest.current ?: 0) + 1
+        latest.current = token
+        if (generation == 0) {
+            items = null
+            renaming = null
+            showing = null
+            editError = null
+            note = null
+        }
+        clientsScope.launch {
+            try {
+                val loaded = ClientsApi.menuItems(props.clientId)
+                if (latest.current == token) {
+                    items = loaded
+                    loadError = null
+                }
+            } catch (e: Throwable) {
+                if (latest.current == token) loadError = userFacingError(e)
+            }
+        }
+    }
+
+    fun run(action: suspend () -> MenuEditResult, done: (MenuEditResult) -> String) {
+        busy = true
+        editError = null
+        clientsScope.launch {
+            try {
+                val result = action()
+                note = done(result)
+                renaming = null
+                showing = null
+                generation += 1
+                props.onChanged()
+            } catch (e: Throwable) {
+                editError = userFacingError(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    when {
+        loadError != null -> errorText("Couldn't load this client's menu.", loadError!!)
+        items == null -> p {
+            className = ClassName("subtitle")
+            +"Loading…"
+        }
+        else -> {
+            val listed = items!!
+            val audiences = menuAudiences(listed)
+            div {
+                className = ClassName("op-table-scroll")
+                table {
+                    className = ClassName("op-table")
+                    thead {
+                        tr {
+                            th { +"Item" }
+                            th { +"Shipped" }
+                            th { +"This client" }
+                            th { +"Offered to" }
+                            th { +"" }
+                        }
+                    }
+                    tbody {
+                        listed.forEach { item ->
+                            tr {
+                                key = item.itemId.unsafeCast<Key>()
+                                td {
+                                    // A child sits under its parent, as it does in the menu.
+                                    if (item.parentId != null) +"\u2003"
+                                    +item.itemId
+                                }
+                                td { +(item.baseLabel ?: "\u2014") }
+                                td {
+                                    if (renaming == item.itemId) {
+                                        Input {
+                                            value = draft
+                                            disabled = busy
+                                            style = js("({ width: 200 })")
+                                            onChange = { e -> draft = e.target.value }
+                                            onPressEnter = {
+                                                run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
+                                            }
+                                        }
+                                    } else {
+                                        +(item.label ?: "\u2014")
+                                        if (item.stored) {
+                                            +" "
+                                            span {
+                                                className = ClassName("subtitle")
+                                                +"(changed)"
+                                            }
+                                        }
+                                    }
+                                }
+                                td {
+                                    if (showing == item.itemId) {
+                                        Select {
+                                            value = audience
+                                            placeholder = "Offer to"
+                                            options = choiceOptions(audiences.map { audienceText(it) to it })
+                                            style = js("({ minWidth: 200 })")
+                                            onChange = { v -> audience = v as? String }
+                                        }
+                                    } else {
+                                        +menuVisibilityText(item)
+                                    }
+                                }
+                                td {
+                                    when {
+                                        renaming == item.itemId -> {
+                                            Button {
+                                                type = "primary"
+                                                size = "small"
+                                                loading = busy
+                                                disabled = draft.isBlank() || draft == item.label
+                                                onClick = {
+                                                    run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
+                                                }
+                                                +"Save"
+                                            }
+                                            Button {
+                                                type = "link"
+                                                size = "small"
+                                                disabled = busy
+                                                onClick = { renaming = null; editError = null }
+                                                +"Cancel"
+                                            }
+                                        }
+                                        showing == item.itemId -> {
+                                            Button {
+                                                type = "primary"
+                                                size = "small"
+                                                loading = busy
+                                                disabled = audience == null
+                                                onClick = {
+                                                    run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.show, audience) }) { "${item.itemId} is now offered to ${audienceText(it.condition)}." }
+                                                }
+                                                +"Show"
+                                            }
+                                            Button {
+                                                type = "link"
+                                                size = "small"
+                                                disabled = busy
+                                                onClick = { showing = null; editError = null }
+                                                +"Cancel"
+                                            }
+                                        }
+                                        else -> {
+                                            Button {
+                                                type = "link"
+                                                size = "small"
+                                                disabled = busy
+                                                onClick = { renaming = item.itemId; draft = item.label.orEmpty(); showing = null; editError = null; note = null }
+                                                +"Rename"
+                                            }
+                                            if (menuItemHidden(item)) {
+                                                Button {
+                                                    type = "link"
+                                                    size = "small"
+                                                    disabled = busy
+                                                    onClick = { showing = item.itemId; audience = null; renaming = null; editError = null; note = null }
+                                                    +"Show"
+                                                }
+                                            } else {
+                                                Button {
+                                                    type = "link"
+                                                    size = "small"
+                                                    disabled = busy
+                                                    onClick = {
+                                                        run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.hide, null) }) { "${item.itemId} is now hidden." }
+                                                    }
+                                                    +"Hide"
+                                                }
+                                            }
+                                            if (item.stored) {
+                                                Button {
+                                                    type = "link"
+                                                    size = "small"
+                                                    disabled = busy
+                                                    onClick = {
+                                                        run({ ClientsApi.resetMenuItem(props.clientId, item.itemId) }) { "Reset ${item.itemId}; it shows as shipped." }
+                                                    }
+                                                    +"Reset"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            p {
+                className = ClassName("type-hint")
+                +"Hiding or showing an item changes what is offered, not who may reach the page behind it: the section gate still decides that."
+            }
+            editError?.let { errorText("Couldn't change the menu.", it) }
+            note?.let {
+                p {
+                    className = ClassName("subtitle")
+                    +it
+                }
+            }
+        }
+    }
+}
+
+/** An audience as the Show choice names it: "everyone" for the always-condition, else the expression as written. */
+private fun audienceText(condition: String?): String = when (condition) {
+    null, CFACT.alwaysName -> "everyone"
+    else -> condition
 }
 
 /** antd `{ label, value }` objects for a Select, from label/value pairs. */
