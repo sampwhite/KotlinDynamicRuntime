@@ -61,6 +61,21 @@ class FragmentLayerTest : StringSpec({
             .content.getValue("welcome")["title"] shouldBe "Edited title"
     }
 
+    "where a file is shown is the base's fact: the first base that says, and never an overlay (issue #933)" {
+        val shown = FragmentSource("home", isOverlay = false, client = null, origin = "a", shownOn = "the home page") { mapOf("home" to mapOf("k" to "v")) }
+        val overlay = FragmentSource("home", isOverlay = true, client = null, origin = "b", shownOn = "nowhere true") { mapOf("home" to mapOf("k" to "w")) }
+        mergeFragmentLayers("home", listOf(base, shown, overlay), client = null).shownOn shouldBe "the home page"
+        // A file no base places is not shown by this application.
+        mergeFragmentLayers("home", listOf(base, overlay), client = null).shownOn shouldBe null
+        // A file shown for one client alone is not shown for another; bases that disagree are recorded, first wins.
+        val acmeOnly = FragmentSource("home", isOverlay = false, client = null, origin = "c", shownOn = "acme's workflow", shownFor = "acme") { mapOf("home" to mapOf("k" to "v")) }
+        val merged = mergeFragmentLayers("home", listOf(acmeOnly, shown), client = null)
+        merged.shownOnFor("acme") shouldBe "acme's workflow"
+        merged.shownOnFor("globex") shouldBe null
+        merged.shownOnDeclarations shouldBe listOf("acme's workflow", "the home page")
+        mergeFragmentLayers("home", listOf(base, shown), client = null).shownOnDeclarations shouldBe listOf("the home page")
+    }
+
     "another client's overlay is not applied" {
         val acme = layer(isOverlay = true, client = "acme", content = mapOf("welcome" to mapOf("title" to "Acme title")))
         mergeFragmentLayers("home", listOf(base, acme), client = "globex")

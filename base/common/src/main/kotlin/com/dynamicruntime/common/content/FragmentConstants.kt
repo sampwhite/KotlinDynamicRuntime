@@ -66,6 +66,9 @@ object FCHK {
     /** Non-fatal observations, as messages -- notes, not findings (issue #514). */
     const val notes = "notes"
 
+    /** Where the application shows the file's copy (issue #933); absent for a file it does not show. */
+    const val shownOn = "shownOn"
+
     const val found = "found"
 
     /** Findings of every kind, not just template [issues] -- see `FragmentCheckResult.findingCount`. */

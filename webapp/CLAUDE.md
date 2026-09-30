@@ -41,6 +41,10 @@ built-in functions (`${upper(user.name)}`, `${count(items)}`, `${formatDay(order
 the browser resolves a template exactly as the backend will. A bare missing or null value still throws — say
 what should happen with `?:` rather than relying on tolerance.
 
+**Where a file is shown** is declared with it (issue #933): `fragmentFiles(HFRAG.home, shownOn = "the app bar and
+home page, …")`, carried to the fragment check and the copy editor's keys listing as `shownOn`; a file declared
+without one is *not shown by this application* and the editor says so. Declare it for every new file a page reads.
+
 **Authoring a `.md` fragment file:** `# @namespace` opens a namespace (re-declare to switch); `# +key value`
 is an inline value; `# +key` alone starts a next-line value (ends at two blank lines or the next `# ` line);
 `/- ... -/` is a comment. Reference: `base/common/src/main/resources/md-fragments/sample.md`, and
@@ -358,7 +362,10 @@ value only, **Reset** -- data cannot remove what source code or the shipped file
 overridden (its `sourceValue` shows as "was: …") and reset returns to it. **Add an override** fetches
 `/clientAdmin/client/copy/keys` (`ClientsApi.copyKeys`; every shipped key with the client's value, backend files
 included, since `mail` is never served) and offers file → namespace → key, minus what the client already sets
-(`addableCopyKeys`), with the current value as the starting text. Save posts `/clientAdmin/client/copy/set`
+(`addableCopyKeys`), with the current value as the starting text; the File choice groups the files the
+application shows first, each with where (`copyFileChoices`, `copyFileLabel`, from the keys' `shownOn`), and the
+rest under "Not shown by this application" (issue #933) -- and a Copy row of such a file is marked "(not shown
+here)", since its override is served but changes nothing anyone sees on this app. Save posts `/clientAdmin/client/copy/set`
 (`copyEditRequest`), which writes the client's stored config (the one already overlaying the file, else `copy`,
 created on first use), trial-checks it, publishes and reloads -- one call, live at once -- and the backend's
 refusal of a faulted value (a raw `%{...}` in a frontend file, an unresolved pull in a backend one) is shown in

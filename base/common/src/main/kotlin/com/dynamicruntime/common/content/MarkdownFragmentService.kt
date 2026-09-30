@@ -320,7 +320,15 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     audience = merged.audience,
                     audienceConflict = merged.audienceConflict && !(client != null && sharedConflict),
                     audienceIssues = findings.audienceIssues,
-                    notes = findings.notes,
+                    // A disagreement between bases about where the file is shown is worth a note, as an audience
+                    // disagreement is a finding: the first declaration wins, and the others should know it did.
+                    notes = findings.notes + listOfNotNull(
+                        merged.shownOnDeclarations.takeIf { it.size > 1 && client == null }?.let { places ->
+                            "The bases disagree about where the file is shown -- ${places.joinToString(" / ") { "'$it'" }}; " +
+                                "the first is what administrators are told."
+                        },
+                    ),
+                    shownOn = merged.shownOn,
                 )
             }
         }
@@ -963,6 +971,11 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
                     items { type = SCT.string }
                 }
                 property(
+                    FCHK.shownOn,
+                    "Where the application shows the file's copy, as its declaration says; absent for a file the " +
+                        "application does not show -- a fixture, or one only a deployment's own frontend reads.",
+                )
+                property(
                     FCHK.notes,
                     $$"Non-fatal observations, as messages: a backend file carrying a frontend '${@t(...)}' pull, " +
                         "whose correctness rests on the carrying element at request time and so cannot be checked " +
@@ -1032,6 +1045,8 @@ class FragmentCheckResult(
      * logged, never a boot refusal -- the file is not wrong, only resting on a human assertion worth surfacing.
      */
     val notes: List<String>,
+    /** Where the application shows the file's copy (issue #933); null for a file it does not show. */
+    val shownOn: String? = null,
 ) : JsonMappable {
     /**
      * How many **findings** this variant has -- everything a strict boot would refuse to start on, across all
@@ -1077,6 +1092,7 @@ class FragmentCheckResult(
         out[FCHK.audienceConflict] = audienceConflict
         out[FCHK.audienceIssues] = audienceIssues
         out[FCHK.notes] = notes
+        if (shownOn != null) out[FCHK.shownOn] = shownOn
         return out
     }
 }

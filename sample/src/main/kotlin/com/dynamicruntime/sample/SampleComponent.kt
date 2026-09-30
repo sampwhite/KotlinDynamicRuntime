@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlock
 import com.dynamicruntime.sample.gedra.SB
+import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.SF
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
@@ -87,12 +88,14 @@ class SampleComponent : ComponentDefinition {
      * file arrives through its Gedra config, so the file ends up with four contributors and one reader.
      */
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
+        // A fixture: nothing in the application shows it, and it says so by declaring no `shownOn` (issue #933).
         fragmentFiles(SF.content) +
             fragmentOverlayFile(SF.content) +
             // Acme's workflow copy (issue #533): a backend file, pulled by its creation workflow's labels.
-            backendFragmentFiles(SF.acmeWf) +
+            // Read by acme's configuration alone, so it is shown for acme and for nobody else (issue #933).
+            backendFragmentFiles(SF.acmeWf, shownOn = "acme's creation workflow", shownFor = SC.acme) +
             // Layout copy help (issue #605): a backend file pulled by a g-layout description's %{@t(...)}.
-            backendFragmentFiles(SF.formHelp) +
+            backendFragmentFiles(SF.formHelp, shownOn = "the sample form's layout help") +
             // In code rather than in a file, which is the case a small change should not need a resource for.
             // Applied after the overlay file above, so this is what a reader of `footer.copyright` gets.
             fragmentInline(SF.content, origin = "SampleComponent") {

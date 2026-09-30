@@ -45,6 +45,8 @@ class CopyOverride(
     val sourceValue: String?,
     /** Whether no base declares the key, so the override is not replacing anything anybody reads. */
     val orphan: Boolean,
+    /** Where the application shows the file (issue #933); null for one it does not show, so the override changes nothing seen. */
+    val shownOn: String?,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(
@@ -59,6 +61,7 @@ class CopyOverride(
         out[COV.origin] = originName(stored)
         if (sourceValue != null) out[COV.sourceValue] = sourceValue
         out[COV.orphan] = orphan
+        if (shownOn != null) out[COV.shownOn] = shownOn
         return out
     }
 }
@@ -162,6 +165,7 @@ fun copyOverrides(
                     stored = layer.stored,
                     sourceValue = if (layer.stored) sourceValue[at] else null,
                     orphan = "$ns.$key" in orphans,
+                    shownOn = effective.shownOnFor(client),
                 ),
             )
         }
