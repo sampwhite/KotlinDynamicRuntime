@@ -1368,7 +1368,10 @@ class WfDisplayBranchBuilder(private val cfacts: String?) {
 }
 
 /**
- * Task status, derived and never stored (issue #533) -- the one idea kept from the #381 engine.
+ * Task status, **derived** (issue #533) -- the one idea kept from the #381 engine: computed from the form's entries,
+ * never authored. The parts that do not depend on who is looking are stored as derived values in the form's gedra
+ * states (the CTA's status, `WFS.ctaStatus`; the survey completion entry) so a search can filter on them without
+ * recomputing; anything that depends on the acting user is computed per request.
  *
  * Completeness is **presence of an entry, not a judgment of its content**: a required trait is satisfied when
  * an entry of that trait is present with a non-null [GE.data], whatever shape that data takes. A trait whose

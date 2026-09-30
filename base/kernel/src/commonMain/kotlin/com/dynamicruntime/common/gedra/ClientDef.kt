@@ -369,7 +369,9 @@ data class ClientDef(
      */
     val staticConfig: Boolean = false,
     /**
-     * Another client whose definitions are cloned in first, with this config applied over them.
+     * Another client whose definitions are cloned in first, with this config applied over them. **Only the
+     * relationship is built so far** -- it is validated (the rules below), but nothing clones; the clone and its merge
+     * rules are issue #945.
      *
      * **One level, no chains**: the named client may not itself extend one. Usually a template (to deduplicate
      * clients), a preview variant of a client, or a test variant of a production one. From data, it may name

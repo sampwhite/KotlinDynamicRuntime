@@ -794,7 +794,8 @@ class GedraDataService : ServiceInitializer {
     /**
      * The cfacts present for [cxt] **about the form** [gedraId] (issue #599): the request-scoped cfacts unioned
      * with the form's stored-state cfacts ([formCfacts]) as `targetFacts`. This is the state→cfact bridge whole
-     * -- what a workflow-eligibility expression will evaluate against (its consumer arrives with the workflows).
+     * -- assembled in one call, for tests (`CfactCalcTest`). The workflow-eligibility path builds its own fact set
+ * (`WorkflowEligibility`), which adds what the form's other workflows contribute.
      * It cannot throw on a stale stored cfact, because [formCfacts] has already dropped any name the registry
      * does not declare -- the guarantee `assemble` needs.
      */
@@ -1346,7 +1347,8 @@ class GedraDataService : ServiceInitializer {
             ?.let { GedraDataRow.extract(gedraService, it) }
 
     /**
-     * Applies one edit to the entries held by trait, returning whether anything changed.
+     * Applies one edit to the entries held by trait, returning whether anything changed. A config patch applies
+     * the same actions by the same addressing rule in `applyConfigSlotEdits`; keep the two in step.
      *
      * The entry an edit names is its `(traitId, primary-key values)` -- the trait alone for a single-instance
      * trait, or the trait plus the key values carried in the edit's own data for a keyed one (issue #487). A

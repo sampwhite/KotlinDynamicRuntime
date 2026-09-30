@@ -158,7 +158,9 @@ are bounded this way.
 The mechanism is namespace ownership, not a separate store per client:
 
 - A **namespace belongs to exactly one owner** — `global`, or one client.
-- A config owned by client C may only `$ref` into namespaces owned by **C or `global`**.
+- A config owned by client C may only `$ref` into namespaces owned by **C or `global`**. This holds by
+  construction: C's own types sit in C's overlays, never in the global defs, and C's schema is the global defs
+  plus C's overlays, so another client's type is simply not there to resolve.
 
 Reserving `globalconfig` is the first instance of that rule rather than a special case: `global` claims it,
 and nobody else may write into it. Stating it as ownership is what makes the rule survive the arrival of a
@@ -372,8 +374,8 @@ is what gives the warning teeth.
 | The default branch, and strictness as a reader's choice | **built** |
 | Storing data gedras, and reading them back within a caller's scope | **built** — form documents, #310 |
 | Updating a stored gedra's entries | **built** — the patch, #337 |
-| Client separation across deployments | intended — nothing loads a subset of clients yet |
-| Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership and `traitsFor` |
+| Client separation across deployments | intended — nothing loads a subset of clients yet; a deployment will name the clients it loads in its own configuration, independent of its environment name |
+| Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership, `traitsFor`, and `$ref` bounded by construction (a client's schema holds only global and its own types) |
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |

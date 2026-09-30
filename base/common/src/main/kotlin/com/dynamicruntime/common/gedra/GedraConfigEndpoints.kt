@@ -573,6 +573,10 @@ private fun InputFieldsBuilder.configPatchInput() {
  *
  * It does not validate the entry data: that is `reassembleGedraConfig`'s job over the whole result, which is
  * how the patch reuses the bundle write's validation rather than duplicating it.
+ *
+ * The same three actions and the same addressing rule (the entry an edit names is its primary-key values, carried
+ * in the edit's own data) as a data patch's `GedraDataService.applyEdit` -- kept in step with it by hand, since the
+ * data side adds staleness, visibility-gate and stamping concerns a config slot does not have.
  */
 fun applyConfigSlotEdits(
     current: Map<String, List<Map<String, Any?>>>,
