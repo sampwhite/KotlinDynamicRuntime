@@ -198,6 +198,11 @@ enum class GedraIdContext(val letter: String) {
  * not stay one token the way `mkUniqueId`'s output was carefully built to. The [baseId] does, though — it is
  * held to `[A-Za-z0-9_]` for exactly that reason — and it is the piece anyone hunting a single object would
  * paste.
+ *
+ * A **sandbox** client puts a `:` in the client segment (`gd.fd.acme:sandbox.e2026…`, issue #927; see [SBX]).
+ * A colon is not unreserved, but it is legal unescaped in a URL path segment, a query and a fragment, which is
+ * everywhere an id travels; `encodeURIComponent` escapes it and every reader decodes. It is not a separator
+ * here, so parsing is unchanged.
  */
 class GedraId private constructor(
     /** What this gedra is; [storageType] follows from it. */
@@ -348,14 +353,29 @@ class GedraId private constructor(
         /**
          * A client name is a Java-variable-friendly identifier. Config objects are named by people and
          * addressed by their names, so the names have to survive being used as code identifiers.
+         *
+         * The one exception is a **sandbox** id (issue #927), `<parent>:sandbox`: the parent is held to the same
+         * rule, and the colon and role are the system's, never an author's (see [SBX]). A colon in any other
+         * form is refused, which is also what refuses a sandbox of a sandbox; so is a sandbox of the global
+         * client, which has none.
          */
         private fun checkClient(client: String) {
-            if (client.isEmpty() || !(client[0].isAsciiLetter() || client[0] == '_')) {
+            val parent = sandboxParentOf(client)
+            if (parent == null && SBX.roleSep in client) {
+                throw KdrException.mkInput(
+                    "A gedra client may hold a colon only as a sandbox id, '<parent>${SBX.suffix}'; '$client' is not one.",
+                )
+            }
+            if (parent == GID.globalClient) {
+                throw KdrException.mkInput("The '${GID.globalClient}' client has no sandbox; '$client' names one.")
+            }
+            val name = parent ?: client
+            if (name.isEmpty() || !(name[0].isAsciiLetter() || name[0] == '_')) {
                 throw KdrException.mkInput(
                     "A gedra client must start with a letter or underscore; '$client' does not.",
                 )
             }
-            checkPart(client, "client")
+            checkPart(name, "client")
         }
 
         /**

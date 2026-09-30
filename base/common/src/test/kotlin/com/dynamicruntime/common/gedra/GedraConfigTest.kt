@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
@@ -54,6 +55,20 @@ class GedraConfigTest : StringSpec({
             }
         }
         config.gedraId.fullId shouldBe "gc.cd.acme.expenseTraits"
+    }
+
+    // A sandbox runs its parent's configuration and owns none (issue #927). Every authored config -- source,
+    // stored, imported -- is built by `gedraConfig`, so refusing the sandbox as an owner, and a colon in a
+    // declared client id, there is what keeps a sandbox id something only the system makes.
+    "a sandbox can neither own a config nor be defined as a client" {
+        shouldThrow<KdrException> { gedraConfig(cxt, "expenseTraits", "acme", client = "acme:sandbox") {} }
+            .message.shouldNotBeNull() shouldContain "written to 'acme'"
+        val sandboxDef = ClientDef(
+            clientId = "acme:sandbox", name = "Acme (sandbox)", usageType = ClientUsageType.dev,
+            audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+        )
+        shouldThrow<KdrException> { gedraConfig(cxt, "acmeConfig", "acme", client = "acme") { defineClient(sandboxDef) } }
+            .message.shouldNotBeNull() shouldContain "holds a colon"
     }
 
     // A name a base id cannot spell is refused where it is declared, not at whatever later point first tried

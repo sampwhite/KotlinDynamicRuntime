@@ -477,6 +477,15 @@ class GedraConfigBuilder(
      * `GedraConfigCollector` are about how separately-authored bundles fit together.
      */
     fun defineClient(def: ClientDef) {
+        // Only a sandbox id holds a colon, and a sandbox is made by the system from its parent (issue #927), so a
+        // definition naming one is refused here, where every authored client definition -- source, stored or
+        // imported -- is declared.
+        if (SBX.roleSep in def.clientId) {
+            throw KdrException.mkConv(
+                "Client id '${def.clientId}' holds a colon, which only a sandbox id does, and a sandbox is made " +
+                    "by the system from its parent rather than defined.",
+            )
+        }
         clientDef?.let {
             throw KdrException.mkConv(
                 "This config already defines the client '${it.clientId}' and cannot also define " +
@@ -663,6 +672,14 @@ fun gedraConfig(
         throw KdrException.mkConv(
             "Config name '$name' has to start with a letter or an underscore: a config is addressed by this " +
                 "name from code, so it has to be usable as a variable name.",
+        )
+    }
+    // A sandbox owns no configuration -- it runs its parent's (issue #927) -- so nothing is filed under one. Every
+    // authored config, source, stored or imported, is built here, which makes this the one place to say so.
+    sandboxParentOf(client)?.let { parent ->
+        throw KdrException.mkConv(
+            "Config '$name' cannot be filed under the sandbox '$client': a sandbox owns no configuration and runs " +
+                "its parent's, so configuration for it is written to '$parent'.",
         )
     }
     // The name and client are handed to the builder rather than stamped onto what it produced: a contribution
