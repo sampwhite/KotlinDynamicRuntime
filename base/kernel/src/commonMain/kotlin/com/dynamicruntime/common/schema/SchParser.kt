@@ -349,9 +349,9 @@ fun parseNode(
         // Default false when the type declares properties, true when it declares none (generic map).
         additionalProperties = (map[SCH.additionalProperties] as? Boolean) ?: properties.isEmpty(),
         itemType = itemType,
-        options = parseOptions(map[SCH.options]),
+        options = parseOptions(where, map[SCH.options], jsonType, format),
         openOptions = map[SCH.openOptions] == true,
-        constValue = map[SCH.const],
+        constValue = parseConst(where, map[SCH.const], jsonType, format),
         // `true` or an object; either says the value is produced elsewhere, and only that much is read today.
         // An object's content is deliberately not kept: there is nothing to consume it, and a ride-along raw
         // map would be a field nobody reads that still has to be maintained.
@@ -596,11 +596,25 @@ fun isDateFormat(format: String?): Boolean = format == SFMT.date || format == SF
  */
 fun isBinaryFormat(format: String?): Boolean = format == SFMT.binary
 
-/** Parses the custom `options` construct: a list of `{label, value}` entries.
- *  A missing `label` defaults to the `value`. */
+/**
+ * Parses the custom `options` construct: a list of `{label, value}` entries. A missing `label` defaults to the
+ * `value`.
+ *
+ * **Only a plain string may carry one** (issue #815). A choice is a string -- its `value` is read as text -- so on
+ * any other declared type a closed list rejected every correctly typed value, and on a date or binary format it was
+ * never consulted at all, since those return before the choice check. Both are refused rather than left to
+ * misbehave. An **untyped** field may carry one: the list itself says the value is text, and it is checked as such.
+ */
 @KdrPrivate
-fun parseOptions(raw: Any?): List<SchOption>? {
+fun parseOptions(where: String, raw: Any?, jsonType: String?, format: String?): List<SchOption>? {
     if (raw !is List<*>) return null
+    if (jsonType != null && jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
+        val actual = if (jsonType == SCT.string) "a '$format' string" else "'$jsonType'"
+        throw KdrException.mkConv(
+            "$where has '${SCH.options}', which apply to a plain string, and this type is $actual. A choice is " +
+                "text, so a list here would refuse every value or check none.",
+        )
+    }
     return raw.mapNotNull { entry ->
         if (entry is Map<*, *>) {
             val value = entry[SCH.value].toOptStr() ?: return@mapNotNull null
@@ -609,6 +623,21 @@ fun parseOptions(raw: Any?): List<SchOption>? {
             null
         }
     }
+}
+
+/**
+ * Reads JSON Schema `const`, or null when absent. Refused on a date or binary format (issue #815): those fields
+ * are validated by parsing or passed through before the `const` check is reached, so it would constrain nothing.
+ */
+@KdrPrivate
+fun parseConst(where: String, raw: Any?, jsonType: String?, format: String?): Any? {
+    if (raw != null && jsonType == SCT.string && (isDateFormat(format) || isBinaryFormat(format))) {
+        throw KdrException.mkConv(
+            "$where has '${SCH.const}' on a '$format' string, which is never compared against it. It would " +
+                "constrain nothing there.",
+        )
+    }
+    return raw
 }
 
 /**

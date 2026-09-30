@@ -87,10 +87,11 @@ class ControlKindTest {
 
     @Test
     fun optionsWinOverTheBaseType() {
-        // The ordering that matters: a field carrying a choice list is a choice widget regardless of its base
-        // type -- so a boolean or an integer with `g-options` is a Choice, not a checkbox or a text box.
-        assertEquals(ControlKind.Choice, kindOf(mapOf(SCH.type to SCT.boolean, SCH.options to opts), required = true))
-        assertEquals(ControlKind.Choice, kindOf(mapOf(SCH.type to SCT.integer, SCH.options to opts)))
+        // The ordering that matters: a field carrying a choice list is a choice widget, not the text box its base
+        // type would get. A list is allowed only on a plain string or an untyped field -- the parser refuses one on
+        // a boolean or an integer (issue #815), where it would have rejected every correctly typed value.
+        assertEquals(ControlKind.Choice, kindOf(mapOf(SCH.type to SCT.string, SCH.options to opts), required = true))
+        assertEquals(ControlKind.Choice, kindOf(mapOf(SCH.options to opts)))
     }
 
     // --- typeWord: the read-only outline's "type in words", which shares controlKind's choice reading ---

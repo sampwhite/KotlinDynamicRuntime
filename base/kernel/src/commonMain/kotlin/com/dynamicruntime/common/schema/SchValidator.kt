@@ -448,18 +448,26 @@ fun validateValue(
         return value
     }
 
-    if (!matchesType(jsonType, value)) {
-        // Bounds apply to what the value BECAME, not to the string it arrived as: "5" against a minimum of 10
-        // has to fail. Coercion runs in both modes (only its result is discarded when validating), so this
-        // reports identically whether the caller asked for the coerced value or not.
-        val coerced = coerceMismatch(type, value, path, coerce, failures, opts)
-        // Edge-whitespace handling runs on the coerced string before the bounds see it, exactly as for a value
-        // that arrived as a string (below).
-        val effective = applyOuterWhitespace(type, coerced, opts.forInput, path, failures)
-        checkVisible(type, effective, path, failures)
-        checkPattern(type, effective, path, failures)
-        checkBounds(type, effective, path, failures)
-        return effective
+    // A value of the wrong type is coerced, and then held to **every** check below, exactly as if it had arrived
+    // as what it became (issue #815): "5" against a minimum of 10 has to fail, and so does "3" against a `const`
+    // of 2 or a closed option list. It once had a short list of its own -- whitespace, characters and bounds --
+    // and the `const` and `options` checks were simply never reached for it. Coercion runs in both modes (only
+    // its result is discarded when validating), so this reports identically whether the caller asked for the
+    // coerced value or not.
+    var current = value
+    if (!matchesType(jsonType, current)) {
+        val before = failures.size
+        val coerced = coerceMismatch(type, current, path, coerce, failures, opts)
+        // Nothing further to check when the coercion failed (it said why), when it produced nothing (a blank
+        // boolean), or when it produced a container: a list or map parsed from a string has been validated in
+        // full already, by the call back into here that coerceMismatch makes -- checking it again would report its
+        // bound failures twice.
+        if (failures.size != before || !matchesType(jsonType, coerced) || jsonType == SCT.array ||
+            jsonType == SCT.kObject
+        ) {
+            return coerced
+        }
+        current = coerced
     }
 
     // Edge whitespace is trimmed (or rejected) before any of the checks below, so `minLength`/`maxLength`,
@@ -467,7 +475,7 @@ fun validateValue(
     // should fail (issue #541). On the input path a plain string with no declared mode trims by default (issue
     // #765). In validate-only mode the trimmed value is what the checks see and the caller discards it, the same
     // way `allowCoerce` validates against the coerced form without emitting it.
-    val effective = applyOuterWhitespace(type, value, opts.forInput, path, failures)
+    val effective = applyOuterWhitespace(type, current, opts.forInput, path, failures)
 
     // Character rules run on every string that reached here, ahead of `const` and `options`: a value that is
     // one of the listed choices yet carries an invisible character is a broken list, and saying so beats
@@ -805,12 +813,16 @@ fun validateArray(
     // does not carry into them (issue #487). Reset here as well as at each object property, so the semantic
     // holds however the flag is placed. Normally a no-op -- `withSkipCompleteness` returns the same instance.
     val elementOpts = opts.withSkipCompleteness(false)
-    // `uniqueItems` compares the elements as validated -- `"5"` coerced to `5` equals a `5` -- so they are kept
-    // even in validate-only mode when it is on.
+    // `uniqueItems` compares the elements as validated -- `"5"` coerced to `5` equals a `5` -- so when it is on
+    // the elements are coerced even in validate-only mode, where only this comparison sees the result. Without
+    // that, an object element would come back as it arrived (validate-only builds no output map), and two that are
+    // equal only once coerced would be duplicates in one mode and not the other (issue #815). Coercing changes the
+    // output, never the failures, so the elements report the same either way.
     val seen: MutableMap<String, Int>? = if (type.uniqueItems) HashMap(list.size) else null
+    val elementCoerce = coerce || type.uniqueItems
     list.forEachIndexed { i, elem ->
         val coerced = if (itemType != null) {
-            validateValue(itemType, elem, indexPath(path, i), coerce, failures, elementOpts)
+            validateValue(itemType, elem, indexPath(path, i), elementCoerce, failures, elementOpts)
         } else {
             elem
         }

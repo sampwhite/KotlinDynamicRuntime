@@ -156,7 +156,10 @@ it extends instead.
 ## Choice lists: written down, or sourced at render time
 
 `option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects
-anything else with `invalidOption`.
+anything else with `invalidOption`. A choice is text, so a list belongs on a plain string (or an untyped field,
+which the list makes text); the parser refuses one on any other declared type or on a date or binary format
+(issue #815). A value coerced to the field's type -- `7` sent to a coercing string field -- is held to the list
+exactly as one that arrived as a string, and likewise to a `const`.
 
 `optionsSource(id)` instead names a callback registered at startup, which is handed the request context and
 the property's name and answers with the choices *this caller* should see (issue #413):
