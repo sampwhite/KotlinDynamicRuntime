@@ -448,12 +448,15 @@ private fun comparableValue(value: Any?): Any? = when (value) {
 /**
  * A task's status computed from its **working** values (issue #718), for the rail while the task holds unsaved
  * edits -- the client's projection of the verdict the server will give once they are saved, by the server's
- * own rule (`SurveyStateDeriver` and its `surveyContentFailures`) so a save does not flip the mark: presence is
- * a required trait having any data; content is the kernel's failures on the data that is there, worded as a
- * reported problem is (the author's `userMessage` first).
+ * own rule (`WfEngine.missingTraits`, `SurveyStateDeriver` and its `surveyContentFailures`) so a save does not
+ * flip the mark. Presence is an **entry being there, not its data being filled in** (issue #826): a save sends
+ * every trait of the task ([workflowSaveEntries]), an untouched one as `{}`, and a present-but-empty entry
+ * satisfies a required trait -- what a trait *requires of its content* is its schema's `required` fields. So an
+ * empty required trait is judged like any other, by its schema, rather than counted missing for being empty.
+ * Content is the kernel's failures on the data, worded as a reported problem is (the author's `userMessage` first).
  *
  * One reading differs, on purpose. The server sets a `missingRequired` failure aside, because a stored entry
- * passed its save and is present whatever it lacks. Here the data is *unsaved*: a required field emptied is
+ * passed its save and is present whatever it lacks. Here the data is *unsaved*: a required field left empty is
  * exactly the "needs information" the mark exists to show, so it makes the trait **missing** rather than
  * invalid -- and since the save refuses it, the server never sees that state and the two cannot disagree over
  * a saved form.
@@ -463,10 +466,8 @@ fun localTaskStatus(task: WfTaskView, values: Map<String, Map<String, Any?>>): W
     val problems = mutableListOf<WfProblem>()
     for (trait in task.traits) {
         val working = values[trait.traitId] ?: emptyMap()
-        if (comparableValues(working).isEmpty()) {
-            if (trait.required) missing.add(trait.traitId)
-            continue
-        }
+        // An optional trait left empty has nothing to judge. A required one is judged by its schema, empty or not.
+        if (!trait.required && comparableValues(working).isEmpty()) continue
         val failures = checkInput(trait.type, working).failures
         if (failures.any { it.code == SchFailCode.missingRequired }) missing.add(trait.traitId)
         failures.filter { it.code != SchFailCode.missingRequired }

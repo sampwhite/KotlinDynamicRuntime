@@ -136,9 +136,11 @@ class ApproveRefusal(val taskId: String, val error: DisplayError)
  *    updates the form. Saving does not gate on completeness -- an incomplete survey is recorded as state, not
  *    refused -- so a required trait left empty comes back only through the status column, not as a block here.
  *
- * A field the schema rejects is a per-trait validation failure shown against that field. A required trait left
- * empty on a **create** is the workflow's gate: the save returns `saved=false` naming the unmet traits, and each
- * named section says so.
+ * A field the schema rejects is a per-trait validation failure shown against that field. A required trait is met
+ * by an entry being **present**, even with empty data (issue #826), and this page sends one for every trait -- an
+ * untouched one as `{}` -- so from here the create gate is met whenever the save passes validation; what a trait
+ * needs of its content is its schema's required fields, which fail as validation. A create save that does omit a
+ * required trait (an API caller can) returns `saved=false` naming the unmet traits, and each named section says so.
  */
 val WorkflowForm = FC<WorkflowFormProps> { props ->
     val wf = props.view
