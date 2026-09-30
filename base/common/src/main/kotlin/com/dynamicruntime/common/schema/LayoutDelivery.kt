@@ -9,8 +9,8 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Resolves the **backend pass** over a delivered `{ typeName -> g-layout block }` map before it ships (issue
- * #605). A layout's `label` / `description` / `hint` may pull shared copy with a backend `%{@t("…")}`, and this
- * is where that pull happens: each copy string runs through [MarkdownFragmentService.layoutBackendPass] against
+ * #605). A layout's heading, each field's `label` / `description` / `hint`, and each form-level string in
+ * `strings` (issue #814) may pull shared copy with a backend `%{@t("…")}`, and this is where that pull happens: each copy string runs through [MarkdownFragmentService.layoutBackendPass] against
  * the block's `fragmentFileId`, so a `%{@t(...)}` becomes the caller's finished copy and only `${...}` (the
  * frontend's field-data substitution) is left on the wire. Backend fragment files are private and never served,
  * so this keeps a pulled string's *source* on the server and ships only the result -- the reason the backend
@@ -55,10 +55,16 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
             }
             resolved
         }
+        // The form-level strings (issue #641) are copy like the rest, and pull the same way (issue #814).
+        val strings = body[SL.strings].toJsonMapOrEmpty().mapValues { (key, value) ->
+            val text = value as? String
+            if (text != null && MarkdownFragmentService.backendPassPrefix in text) pass("string '$key'", text) else value
+        }
         buildMap {
             putAll(body)
             heading?.let { put(SL.label, it) }
             put(SL.schemaFields, fields)
+            if (strings.isNotEmpty()) put(SL.strings, strings)
         }
     }
 }
@@ -78,7 +84,8 @@ class LayoutPullHit(val fileFound: Boolean, val backend: Boolean, val keyPresent
  * carries no dependency on `MarkdownFragmentService`: a regular-phase caller supplies [resolve] against the
  * fragment registry (see `LayoutCheckService`).
  *
- * For each copy string -- the block heading and every field's `label` / `description` / `hint` -- each
+ * For each copy string -- the block heading, every field's `label` / `description` / `hint`, and every form-level
+ * string (issue #814) -- each
  * **literal, un-guarded** `%{@t(...)}` is resolved: a two-part `namespace.key` against the block's
  * `fragmentFileId`, a three-part `fileId.namespace.key` against its own file (the composition the delivery's
  * `layoutBackendPass` does). A guarded (`?:`) or computed key is skipped -- the delivery fallback handles those,
@@ -127,6 +134,9 @@ fun layoutPullProblems(
         check("${field.field}'s label", field.label)
         check("${field.field}'s description", field.description)
         check("${field.field}'s hint", field.hint)
+    }
+    for ((key, text) in layout.strings) {
+        check("string '$key'", text)
     }
     return problems
 }
