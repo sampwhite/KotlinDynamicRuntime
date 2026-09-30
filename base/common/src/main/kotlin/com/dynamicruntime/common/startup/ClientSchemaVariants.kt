@@ -18,6 +18,7 @@ import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.authoritativeLayoutProblems
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
@@ -337,8 +338,14 @@ private fun parseDroppingFaults(
 /**
  * [authored] with each `g-layout` the client **wrote** removed when it is at fault (issue #841) -- one that will not
  * parse, names a field its type lacks, or carries a malformed template -- so the type falls back to global's layout
- * (or none) rather than the variant refusing. A layout inherited from global by reference is global's to answer for
- * and is skipped, as the boot check skips it. Returns [authored] itself when nothing was dropped.
+ * (or none) rather than the variant refusing. Returns [authored] itself when nothing was dropped.
+ *
+ * A layout inherited from global by reference is global's to answer for on every count but one, and is otherwise
+ * skipped, as the boot check skips it. The one (issue #811): a client that alters a type may add to what it
+ * requires, and an **authoritative** global layout that omits a field the client's type now requires would give
+ * this client a form nobody can submit. So an inherited authoritative layout is checked against the client's type,
+ * as pruned to it; when it falls short, the client's alteration is given `g-layout: null`, so the type renders
+ * without a layout for this client -- every field shown -- rather than inheriting one it cannot use.
  */
 private fun dropFaultyLayouts(
     cxt: KdrCxt,
@@ -353,7 +360,28 @@ private fun dropFaultyLayouts(
     fun rawLayout(from: Map<String, Any?>, name: String): Any? = (from[name] as? Map<*, *>)?.get(SCH.layout)
     var out: LinkedHashMap<String, Any?>? = null
     for ((name, body) in authored) {
-        if (body !is Map<*, *> || body[SCH.layout] == null) continue
+        if (body !is Map<*, *>) continue
+        if (body[SCH.layout] == null) {
+            // Inherited (issue #811): held to the client's own required set, in the form it is delivered.
+            if (body.containsKey(SCH.layout) || rawLayout(globalDefs, name) == null) continue
+            val type = types[name] ?: continue
+            val where = "Type '$name' (client '$client')"
+            val inherited = collectLayouts(mapOf(name to defs[name])).getValue(name).prunedTo(type.properties.keys)
+            val problems = authoritativeLayoutProblems(where, inherited, type)
+            if (problems.isEmpty()) continue
+            reportConfigProblem(
+                cxt,
+                alterationIssue(
+                    collected, client, name,
+                    "${problems.joinToString(" ")} The layout is global's, and this client's alteration of the " +
+                        "type requires what it leaves out.",
+                    "Rendering '$name' without a layout for this client, so every field it requires can be filled in.",
+                ),
+                issues,
+            )
+            (out ?: LinkedHashMap(authored).also { out = it })[name] = body.toJsonMap() + (SCH.layout to null)
+            continue
+        }
         if (rawLayout(defs, name) === rawLayout(globalDefs, name)) continue
         val where = "Type '$name' (client '$client')"
         val problems = try {

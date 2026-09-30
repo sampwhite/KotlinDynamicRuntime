@@ -665,8 +665,10 @@ class SchemaService : ServiceInitializer {
      * apart on that rule.
      *
      * A variant that narrowed a type inherits global's layout **by reference** (the same object); it is skipped
-     * because its field/template checks are identical to global's, and its fragment pulls resolve identically
-     * too: a client always merges the global fragment layers plus its own, `mergeFragmentLayers` only adds or
+     * because its field/template checks are identical to global's -- save one, the required fields an
+     * authoritative layout owes, which the client's narrowing may add to and which the variant build therefore
+     * re-checks against the client's type (`dropFaultyLayouts`, issue #811) -- and its fragment pulls resolve
+     * identically too: a client always merges the global fragment layers plus its own, `mergeFragmentLayers` only adds or
      * overrides keys (never removes), and a backend file stays backend, so a pull that resolves globally
      * resolves for every client. Checking global once therefore covers the inherited case for both checks.
      */
