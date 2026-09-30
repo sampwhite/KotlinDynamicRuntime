@@ -42,6 +42,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraService
 import com.dynamicruntime.common.gedra.clientCatalogSchema
+import com.dynamicruntime.common.gedra.clientCopySchema
 import com.dynamicruntime.common.gedra.clientOverviewSchema
 import com.dynamicruntime.common.gedra.coreClients
 import com.dynamicruntime.common.gedra.coreTraits
@@ -173,6 +174,7 @@ class CommonComponent : ComponentDefinition {
         // The administrators' clients overview (issue #904): the same `clientAdmin` section, and app-only like the
         // user administration -- its counts read the user and gedra caches, which an edge does not carry.
         collector.addModule(clientOverviewSchema(cxt), appOnly)
+        collector.addModule(clientCopySchema(cxt), appOnly)
         // The cfacts an expression may name, for whoever is authoring configuration against them. In the
         // `clientAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
         // has a registry of its own to report -- see `cfactSchema`.
