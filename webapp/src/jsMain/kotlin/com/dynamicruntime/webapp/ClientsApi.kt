@@ -6,12 +6,14 @@ import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.ClientOperatorFields
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.humanizeFieldName
@@ -38,6 +40,9 @@ class ClientOverview(
     val workflowCount: Int,
     val hasSurvey: Boolean,
     val issues: List<String>,
+    /** How much of its copy and interface the client's own configuration changes (issue #917). */
+    val copyOverrides: Int,
+    val blockOverrides: Int,
 )
 
 /** The overview endpoint's items as rows; one without a client id is not a client. Pure, and covered under `jsNodeTest`. */
@@ -56,6 +61,8 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         workflowCount = int(CLD.workflowCount),
         hasSurvey = row[CLD.hasSurvey] == true,
         issues = row[CLD.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
+        copyOverrides = int(CLD.copyOverrides),
+        blockOverrides = int(CLD.blockOverrides),
     )
 }
 
@@ -107,6 +114,176 @@ fun clientFormsHref(clientId: String, acrossClients: Boolean): String =
  */
 fun clientUsersHref(clientId: String, acrossClients: Boolean): String =
     hashHref(listOf(HP.page to HMENU.pageUsers) + if (acrossClients) listOf(USF.client to clientId) else emptyList())
+
+/**
+ * How much a client customizes, as the listing's Customized column says it (issue #917): "3 copy, 2 menu", either
+ * half alone, or a dash for none. "Menu" for the interface changes because every block a client can overlay today
+ * is one. Pure, and covered under `jsNodeTest`.
+ */
+fun customizedText(copy: Int, blocks: Int): String = listOfNotNull(
+    "$copy copy".takeIf { copy > 0 },
+    "$blocks menu".takeIf { blocks > 0 },
+).joinToString(", ").ifEmpty { "\u2014" }
+
+/** One piece of copy a client's own configuration sets (issue #917): a row of `/clientAdmin/client/overrides`' `copy`. */
+class CopyOverrideView(
+    val fileId: String,
+    val namespace: String,
+    val key: String,
+    val audience: String,
+    /** What everybody else reads; null when nothing else sets the key. */
+    val baseValue: String?,
+    val value: String?,
+    val configName: String?,
+    val origin: String,
+    /** The client's source value a stored config overrides, when one does. */
+    val sourceValue: String?,
+    val orphan: Boolean,
+)
+
+/** One field of an interface item a client sets (issue #917). Values are text as the endpoint rendered them. */
+class BlockFieldView(val field: String, val baseValue: String?, val value: String?, val configName: String?, val origin: String)
+
+/** One interface item or object a client's own configuration changes (issue #917): a row of the endpoint's `blocks`. */
+class BlockOverrideView(
+    val blockId: String,
+    val path: String,
+    /** The item's key within its list; null for an object outside one, or an item added with no key. */
+    val itemId: String?,
+    val added: Boolean,
+    val hidden: Boolean,
+    val fields: List<BlockFieldView>,
+)
+
+/** What one client's own configuration changes (issue #917): the endpoint's item, parsed. */
+class ClientOverridesView(val clientId: String, val copy: List<CopyOverrideView>, val blocks: List<BlockOverrideView>)
+
+/**
+ * The overrides item as a [ClientOverridesView]. A copy row without its three-part address, or a block row without a
+ * block, is not an override. Pure, and covered under `jsNodeTest`.
+ */
+fun parseClientOverrides(item: Map<String, Any?>): ClientOverridesView = ClientOverridesView(
+    clientId = item[COV.client].toOptStr().orEmpty(),
+    copy = item[COV.copy].toJsonListOfMaps().mapNotNull { row ->
+        CopyOverrideView(
+            fileId = row[COV.fileId].toOptStr() ?: return@mapNotNull null,
+            namespace = row[COV.namespaceField].toOptStr() ?: return@mapNotNull null,
+            key = row[COV.key].toOptStr() ?: return@mapNotNull null,
+            audience = row[COV.audience].toOptStr().orEmpty(),
+            baseValue = row[COV.baseValue].toOptStr(),
+            value = row[COV.value].toOptStr(),
+            configName = row[COV.configName].toOptStr(),
+            origin = row[COV.origin].toOptStr().orEmpty(),
+            sourceValue = row[COV.sourceValue].toOptStr(),
+            orphan = row[COV.orphan] == true,
+        )
+    },
+    blocks = item[COV.blocks].toJsonListOfMaps().mapNotNull { row ->
+        BlockOverrideView(
+            blockId = row[COV.blockId].toOptStr() ?: return@mapNotNull null,
+            path = row[COV.path].toOptStr().orEmpty(),
+            itemId = row[COV.itemId].toOptStr(),
+            added = row[COV.added] == true,
+            hidden = row[COV.hidden] == true,
+            fields = row[COV.fields].toJsonListOfMaps().mapNotNull { f ->
+                BlockFieldView(
+                    field = f[COV.field].toOptStr() ?: return@mapNotNull null,
+                    baseValue = f[COV.baseValue].toOptStr(),
+                    value = f[COV.value].toOptStr(),
+                    configName = f[COV.configName].toOptStr(),
+                    origin = f[COV.origin].toOptStr().orEmpty(),
+                )
+            },
+        )
+    },
+)
+
+/** A copy row's address as the tables show it: `file: namespace.key`. */
+fun copyKeyText(row: CopyOverrideView): String = "${row.fileId}: ${row.namespace}.${row.key}"
+
+/** An interface row's address: the block and the item within it -- or its path, for an object outside a list. */
+fun blockItemText(row: BlockOverrideView): String = when {
+    row.itemId != null -> "${row.blockId}: ${row.itemId}"
+    row.added -> "${row.blockId}: (new item)"
+    row.path.isEmpty() -> row.blockId
+    else -> "${row.blockId}: ${row.path}"
+}
+
+/**
+ * What the client did to an interface item, in a word each (issue #917): added, hidden, shown (a condition set
+ * that is not `#never`), renamed (a label), reordered (a display order), and "changed" for anything else -- joined
+ * when several apply, so a rename beside a hide reads "renamed, hidden". Pure, and covered under `jsNodeTest`.
+ */
+fun menuChangeText(row: BlockOverrideView): String {
+    val fields = row.fields.map { it.field }.toSet()
+    val words = buildList {
+        if (row.added) add("added")
+        if (row.hidden) add("hidden")
+        if (!row.hidden && UIB.cfactExpression in fields) add("shown")
+        if (!row.added && "label" in fields) add("renamed")
+        if (!row.added && UIB.displayOrder in fields) add("reordered")
+        if (isEmpty() && fields.isNotEmpty()) add("changed")
+    }
+    return words.joinToString(", ")
+}
+
+/**
+ * The value an interface row shows for the client: its label when one is set, else the one field's value, else the
+ * fields as `name: value`. Pure, and covered under `jsNodeTest`.
+ */
+fun blockValueText(row: BlockOverrideView): String {
+    val label = row.fields.firstOrNull { it.field == "label" }
+    if (label != null) return label.value.orEmpty()
+    val single = row.fields.singleOrNull()
+    if (single != null) return single.value.orEmpty()
+    return row.fields.joinToString(", ") { "${it.field}: ${it.value.orEmpty()}" }
+}
+
+/**
+ * An interface row in a phrase, for a list that has no columns (issue #917): what the client did, and the label when
+ * it set one -- "renamed: Acme overview", "added: Site audits", "hidden". Pure, and covered under `jsNodeTest`.
+ */
+fun blockSummaryText(row: BlockOverrideView): String {
+    val words = menuChangeText(row)
+    val label = row.fields.firstOrNull { it.field == "label" }?.value ?: return words
+    return "$words: $label"
+}
+
+/** Which config set a value, and where that config lives: "acmeClient (source)". Pure, and covered under `jsNodeTest`. */
+fun setByText(configName: String?, origin: String): String = when {
+    configName == null -> origin
+    origin.isEmpty() -> configName
+    else -> "$configName ($origin)"
+}
+
+/** The config that set an interface row: the last field's, which is the one applied last. */
+fun blockSetByText(row: BlockOverrideView): String = row.fields.lastOrNull()?.let { setByText(it.configName, it.origin) } ?: ""
+
+/** One key as the cross-client view lists it (issue #917): who overrides it, and with what. */
+class KeyAcrossClients(val group: String, val key: String, val clients: List<Pair<String, String>>)
+
+/**
+ * Every overridden key across [byClient], grouped by file or block then key, each with the clients overriding it
+ * and their values, in the order the clients were given (issue #917). Copy keys are grouped by file; interface
+ * items by block. Pure, and covered under `jsNodeTest`.
+ */
+fun overridesAcrossClients(byClient: List<Pair<String, ClientOverridesView>>): List<KeyAcrossClients> {
+    val keys = LinkedHashMap<Pair<String, String>, MutableList<Pair<String, String>>>()
+    for ((clientId, view) in byClient) {
+        for (row in view.copy) keys.getOrPut(row.fileId to "${row.namespace}.${row.key}") { mutableListOf() }.add(clientId to row.value.orEmpty())
+        for (row in view.blocks) {
+            val item = row.itemId ?: if (row.added) "(new item)" else row.path.ifEmpty { "(block)" }
+            keys.getOrPut(row.blockId to item) { mutableListOf() }.add(clientId to blockSummaryText(row))
+        }
+    }
+    return keys.entries.sortedWith(compareBy({ it.key.first }, { it.key.second })).map { KeyAcrossClients(it.key.first, it.key.second, it.value) }
+}
+
+/** Where the Customized column leads (issue #917): the client's detail, where the Copy & menu section is. */
+fun clientOverridesHref(clientId: String): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to clientId))
+
+/** The cross-client view of the overrides (issue #917), for an administrator who sees across clients. */
+fun overridesAcrossHref(): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.overrides to "1"))
 
 /** One configuration issue as the detail lists it (issue #906): what is wrong, what was dropped, and where it came from. */
 class ConfigIssueView(val message: String, val degradedTo: String, val origin: String)
@@ -221,6 +398,10 @@ object ClientsApi {
     /** One client's definition (issue #906), through the scoped retrieve: the caller's own, or one they may name. */
     suspend fun definition(clientId: String): ClientDefinitionView =
         parseClientDefinition(Http.getApi(UADEP.clientDefinition + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
+
+    /** What one client's own configuration changes (issue #917), through the scoped retrieve. */
+    suspend fun overrides(clientId: String): ClientOverridesView =
+        parseClientOverrides(Http.getApi(UADEP.clientOverrides + queryString(mapOf(COV.client to clientId)))[EP.item].toJsonMapOrEmpty())
 
     /**
      * The stored configurations this node holds for a client (issue #906), from the listing [storedConfigsPath]
