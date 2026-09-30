@@ -14,11 +14,12 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * ### What the tests see
  *
- * Only the **form's own cfacts** -- the [GT.cfacts] state the form's derivers emit (today the survey's two facts
- * and its `cfactCalc` output). Deliberately not the request-scoped cfacts `assembleFormCfacts` adds: eligibility
- * is stored, and computed inside whatever write triggered the recompute, so a caller's cfacts would make a form's
- * stored eligibility depend on *who happened to save it* -- and a batch job (#793) has no caller at all. A fact
- * about the owner that eligibility needs arrives as a form cfact (#784, #786), where it is the form's.
+ * Only the **form's own cfacts** -- the [GT.cfacts] state the form's derivers emit (the survey's two facts and its
+ * `cfactCalc` output, plus the singleton cfacts the form's *other* engaged workflows contribute, issue #784; a
+ * workflow is never gated by its own). Deliberately not the request-scoped cfacts `assembleFormCfacts` adds:
+ * eligibility is stored, and computed inside whatever write triggered the recompute, so a caller's cfacts would
+ * make a form's stored eligibility depend on *who happened to save it* -- and a batch job (#793) has no caller at
+ * all. A fact about the owner that eligibility needs arrives as a form cfact (#784, #786), where it is the form's.
  *
  * ### Every test, every time
  *

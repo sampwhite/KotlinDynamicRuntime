@@ -57,7 +57,7 @@ fun surveyStateConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, SVY.stateBund
 /**
  * Declares the two survey cfacts (issue #657). Unlike [WFC]'s target facts, neither has a request-scoped
  * source: a form asserts them through its stored `derived` state, which `GedraDataService.assembleFormCfacts`
- * turns into target facts -- so an eligibility expression (a later phase) can gate on "the survey is done".
+ * turns into target facts -- so an eligibility test (issue #783) can gate on "the survey is done".
  * `toFrontend`, so the workflow view and the forms list can read them client-side.
  */
 fun addSurveyCFacts(collector: SchemaCollector) {
@@ -81,9 +81,10 @@ fun addSurveyCFacts(collector: SchemaCollector) {
 
 /**
  * Computes a form's `derived` survey state from its current data (issue #657). Registered as a production
- * [GedraStateDeriver] (no `featureName`, so it runs everywhere), it runs inside the create/import transaction
- * `GedraDataService` already opens -- so a form records its survey state on the creation workflow, a plain
- * `formDoc/create`, and an import alike. A form whose client has no survey produces nothing.
+ * [GedraStateDeriver] (no `featureName`, so it runs everywhere), it runs inside the write transaction of every
+ * create, patch and import (the post-write recompute, issue #675) -- so a form records its survey state on the
+ * creation workflow, a plain `formDoc/create`, and an import alike, and keeps it current as its data is edited.
+ * A form whose client has no survey produces nothing.
  *
  * It writes two entries, both form-singleton: the structured [SVY.surveyCompletion] (what the UI status and
  * CTA read) and its **contribution** to the shared [GT.cfacts] set (the two survey facts, for the eligibility
@@ -100,8 +101,9 @@ object SurveyStateDeriver : GedraStateDeriver {
     }
 
     /**
-     * The state entries a form's survey stands at, exposed apart from [derive] so the recompute-on-edit path
-     * (a later phase) and a test can compute the same projection without going through the deriver registry.
+     * The state entries a form's survey stands at, exposed apart from [derive] so a caller (a test, say) can
+     * compute the same projection without going through the deriver registry. The recompute on every write
+     * (issue #675) reaches it through [derive].
      */
     fun evaluate(cxt: KdrCxt, row: GedraDataRow, survey: WfDeclared): List<Map<String, Any?>> {
         val def = survey.def

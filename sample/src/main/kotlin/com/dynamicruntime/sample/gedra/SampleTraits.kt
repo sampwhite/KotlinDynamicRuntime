@@ -204,7 +204,7 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
         presentWhen(ST.explanation, on = ST.hasIssue, value = true)
         // The type's `g-layout` (issue #585): friendly copy for the form, kept out of the served schema and
         // delivered beside it. Names every field, `notes` included, so acme -- whose overlay drops `notes` --
-        // inherits this layout **pruned** to the three properties it kept. Delivered but not yet rendered.
+        // inherits this layout **pruned** to the three properties it kept. The friendly form renders it.
         layout(fragmentFileId = SF.formHelp, label = "%{@t(\"questionnaire.heading\")}") {
             // The block `label` is the type's **heading** override (issue #605), a backend fragment pull that
             // resolves to Markdown at delivery ("## Questionnaire" + a line under it); the workflow form renders
@@ -329,7 +329,8 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
     // A demo cfact (issue #599) declared globally, so a form's `cfacts` state may assert it and the state→cfact
     // bridge (`GedraDataService.assembleFormCfacts`) can union it into what an eligibility expression sees.
     // Nothing computes it as a request source; a form's stored state is what makes it present, which is the
-    // whole point of the bridge. The real producer is the survey (a later phase).
+    // whole point of the bridge. The real producers of a form's `cfacts` are the state derivers -- the survey's
+    // (issue #657) and the per-workflow one (issue #784).
     cfact(ST.sampleFormReady, "sampleState", "The sample form has recorded that it is ready -- a demo form-state cfact.")
 }
 

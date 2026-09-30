@@ -1,8 +1,10 @@
 # The UiBlock
 
-**Status: intent, not description. Nothing here is built** — see issue #457. Written before the code, as
-`gedra-entry.md` was, so that the term and the decisions already settled are recorded somewhere more durable
-than an issue thread.
+**Status: written as intent, now largely built.** Written before the code, as `gedra-entry.md` was, so that the
+term and the decisions already settled are recorded somewhere more durable than an issue thread. The registry, its
+overlays and merge (issue #457, `UiBlockService`), the backend's cfact resolution (`filterByCFacts`) and the
+selector (#788) exist, and a workflow task's `display` is resolved by the same walk. What is still ahead says so
+where it appears (a Map parameter, under *Deferred*).
 
 ## What it is
 

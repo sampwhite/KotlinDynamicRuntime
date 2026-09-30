@@ -63,7 +63,7 @@ class TestClientSkillExamplesTest : StringSpec({
         // Each client's own schema carries its trait -- and only its own; the reload made it live with no restart.
         schema.gedraTraitsFor("scenarioA").map { it.traitId } shouldContain "alphaTrait"
         schema.gedraTraitsFor("scenarioA").map { it.traitId } shouldNotContain "betaTrait"
-        ClientService.get(cxt).known("scenarioA").shouldNotBeNull()
+        ClientService.get(cxt).present("scenarioA").shouldNotBeNull()
 
         // A user placed in the new client lands there; its form docs, workflows and data are then isolated by
         // that client segment in their ids and the scope-to-SQL confinement -- a clean namespace, no new node.

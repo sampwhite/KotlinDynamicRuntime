@@ -32,12 +32,13 @@ object SCH {
     /**
      * Standard JSON Schema `title`: a human label for a field, as against [description]'s longer explanation.
      *
-     * Not parsed into `SchType` yet. When it is, the substitution has to be **per surface, not global**. A form
+     * Parsed into [SchType.title] (issue #408), and the substitution is **per surface, not global**. A form
      * asking a person to fill something in wants the title. A surface that documents the wire wants the *key*:
      * the endpoint catalog, where the key is the payload's real field name and what you need to write a call
      * or read an error path like `input.contacts[1].handle`; and an editor for a stored definition, where the
      * field names are themselves the contract being authored. Substituting titles there would make those
-     * surfaces worse at their job, so whoever adds label support should scope it deliberately.
+     * surfaces worse at their job, so each surface chooses deliberately: the friendly form labels with the title,
+     * the endpoint catalog keeps the key.
      */
     const val title = "title"
     const val description = "description"
@@ -99,8 +100,10 @@ object SCH {
 
     /**
      * OpenAPI's `discriminator`, sitting beside [oneOf] and naming the property that selects the branch
-     * (issue #252). Spelled **bare**, and it is the one keyword of ours that is: see [gPrefix] for the rule
-     * this breaks and why.
+     * (issue #252). Spelled **bare**, and it is the one keyword of ours that is -- the exception to [gPrefix]'s
+     * rule, because it is *borrowed from OpenAPI, used compatibly*: the prefix guards against a future JSON
+     * Schema draft colliding with a name we took, JSON Schema's answer here is `propertyDependencies`, and a
+     * collision with OpenAPI is the outcome we want.
      *
      * The reduced form only — [propertyName] and [defaultMapping]. OpenAPI's remaining machinery serves
      * deserialization into a class hierarchy rather than validation, and its own maintainers have an open
@@ -201,7 +204,7 @@ object SCH {
      * handler all see the trimmed value, closing the advertise-vs-enforce gap where `"  ab  "` slipped past a
      * `minLength: 3` the handler then stored as `"ab"`), and left untouched on the output/stored path. `"keep"`
      * is the explicit opt-out for the rare input field whose edge whitespace is content rather than a paste
-     * artifact; `"reject"` is for a code/password/identifier where silent trimming would hide a paste error;
+     * artifact (a password); `"reject"` is for a code/identifier where silent trimming would hide a paste error;
      * `"trim"` forces the strip on every path, not only input.
      *
      * One keyword for every mode because they are the same rule read different ways; separate booleans would

@@ -28,14 +28,14 @@ class ConfigReloadResult(
 
 /**
  * Reloads one client's stored configuration on a running node (issue #616) -- the mechanism the multi-node
- * sync trigger (#618) will call, and the one thing that makes the configuration "dynamic".
+ * sync trigger (#618, `ClientSyncService`) calls, and the one thing that makes the configuration "dynamic".
  *
  * ### Two phases, and the line between them
  *
  * **Phase one is reversible.** The client's current stored configs are read (through #615's cache, the latest
- * revision per class -- #617 will choose the published one under protection), reassembled, and swapped into
- * the collectors: the data-loaded configs the node holds for the client are withdrawn and the new ones added
- * through the very checks the boot runs. If any of that throws, the withdrawal is undone and nothing has
+ * revision per class, or the latest published one for a client under protection, #617), reassembled, and
+ * swapped into the collectors: the data-loaded configs the node holds for the client are withdrawn and the new
+ * ones added through the very checks the boot runs. If any of that throws, the withdrawal is undone and nothing has
  * changed -- the collectors are the *input* to everything below, so they must be right before anything is
  * rebuilt from them.
  *

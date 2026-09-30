@@ -340,8 +340,8 @@ object WFC {
 }
 
 /**
- * How a workflow is entered. A closed set, so an enum. [creation] (issue #533) and [survey] (issue #656) are
- * built; a definition declaring [normal] is refused at boot rather than accepted and inert.
+ * How a workflow is entered. A closed set, so an enum. [creation] (issue #533), [survey] (issue #656) and
+ * [normal] (issue #794) are all built.
  */
 @Suppress("EnumEntryName")
 enum class WfEntry {
@@ -1373,8 +1373,8 @@ class WfDisplayBranchBuilder(private val cfacts: String?) {
  * Completeness is **presence of an entry, not a judgment of its content**: a required trait is satisfied when
  * an entry of that trait is present with a non-null [GE.data], whatever shape that data takes. A trait whose
  * payload is legitimately empty must be able to satisfy a gate, or the save is blocked forever; judging
- * content is what validity (deferred) and review are for. Pure over plain maps, so the frontend can run the
- * identical check against a draft.
+ * content is what validity (issue #700, judged beside this in `WorkflowTaskStatus`) and review are for. Pure
+ * over plain maps, so the frontend can run the identical check against a draft.
  */
 object WfEngine {
     /** The [requiredTraitIds] no entry in [entries] satisfies, in the order given. */

@@ -81,9 +81,10 @@ object GU {
 /**
  * Builds the entry union for one gedra kind, over the traits one client can see (issue #301).
  *
- * A **function of (client, kind)** rather than a one-off, and called once today with the global scope. Per
- * client types are a later step, and writing the assembly this way now is what keeps that from being a
- * rewrite: the only thing that changes is who calls it and with what.
+ * A **function of (client, kind)** rather than a one-off: `SchemaService` calls it with the global scope, and
+ * each client's schema variant calls it again with the traits that client supports (issue #356). Writing the
+ * assembly this way is what kept per-client types from being a rewrite: the only thing that changed was who
+ * calls it and with what.
  *
  * The union is manufactured rather than authored because its branches are not known until every component
  * has contributed. It is put into the collected `$defs` before they are compiled, so it is an ordinary type

@@ -553,7 +553,7 @@ fun parseOuterWhitespace(raw: Any?, typeName: String?, jsonType: String?, format
     return mode
 }
 
-/** Whether a JSON Schema type is one of the numeric types (the [SCH.allowCoerce] default). */
+/** Whether a JSON Schema type is one of the numeric types (part of the [SCH.allowCoerce] default). */
 @KdrPrivate
 fun isNumericType(jsonType: String?): Boolean = jsonType == SCT.integer || jsonType == SCT.number
 

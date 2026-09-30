@@ -92,8 +92,8 @@ fun interface WfFragmentLookup {
  *
  * **What is checked**, per scope and per workflow -- each a thing that would otherwise fail silently or late:
  *
- * - The entry kind is one that is built. `creation` and `survey` are; a `normal` declared today would be
- *   accepted and inert, which is worse than a refusal.
+ * - The entry kind is one that is built. `creation`, `survey` and `normal` (issue #794) all are; the check
+ *   stays so a kind added to the enum ahead of its implementation is refused rather than accepted and inert.
  * - Every trait a task collects is one the scope may use: the client's supported set, or for a global
  *   workflow the traits global can see. A workflow naming a trait its client cannot store would fail at the
  *   first save, for one client, after the form had been filled in.
@@ -102,9 +102,9 @@ fun interface WfFragmentLookup {
  *   fragment service runs over files, applied to the labels a definition carries; a frontend pull (`${...}`)
  *   binds at request time and is the author's assertion, as it is everywhere.
  * - At most one workflow of each single-instance kind (creation, survey) per scope, after shadowing.
- *
- * No cfact expressions are checked, because the model carries none yet (selectors are deferred); when it does,
- * they parse here against the scope's registry, as UiBlocks' do.
+ * - Every cfact expression the definition carries -- eligibility tests, singleton-cfact rules, trait locks, a
+ *   task's display and its who-may-save rule -- parses against the scope's cfact names, as UiBlocks' do, so a
+ *   misspelled cfact refuses the workflow here rather than being a test that silently never passes.
  *
  * A problem is handed to [reportConfigProblem], judged by the origin of the workflow's own bundle (issue #839):
  * for source config a refused boot everywhere but production, for stored config only in unit tests. When

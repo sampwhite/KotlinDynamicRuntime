@@ -1,6 +1,6 @@
 # Client definitions
 
-How a client is described, what it owns, and what a deployment does with one. Written before any of it exists,
+How a client is described, what it owns, and what a deployment does with one. Written before any of it existed,
 as something to design against and argue with.
 
 It is a companion to [`gedra-config-and-data.md`](gedra-config-and-data.md), which describes how a gedra is
@@ -8,7 +8,11 @@ identified and how a deployment can be split by client — the mechanism this do
 and to [`gedra-patch.md`](gedra-patch.md), whose endpoints are the first that will need a client's own view of
 a schema.
 
-**Nothing here is built.** Issue #340 is the planning issue.
+**Much of it is now built.** Issue #340 was the planning issue. Clients are declared, validated and found
+(`ClientDef`, `ClientService`, issue #343); each present client gets its own schema variant (#356) and its own
+copies of the client-shaped endpoints (#387); and a client -- its definition included -- can be stored in the
+database, loaded, reloaded and protected at runtime (#611 and its slices). *What it means, and what it takes* is
+the plan as it was written before any of that, kept for its reasoning.
 
 ## How to read it
 
@@ -135,25 +139,27 @@ It will be typical for complex traits that they will pull in schemas using "$ref
 possible that a client will target the schema that was pulled in by the "$ref". This would leave the parent
 part of the schema alone.
 
-When the client's custom view of traits and types is implemented in code, the client will have
-its own customized version of the schema maintained by the SchemaService, reached through the context.
-Anonymous callers get the default global schema, and a client that varies nothing computes a schema equal to
-it -- which is why `public` never becomes a variant. This customized version
-is rebuilt any time there is a data update to the config, unless `staticConfig` is true and the node is in
-production, where the client takes nothing from the database and changes only with a deployment.
+The client has its own customized version of the schema, a variant maintained by the SchemaService
+(`SchemaService.storeFor`, issue #356). Anonymous callers get the default global schema, and a client that
+varies nothing computes a schema equal to it -- which is why `public` never becomes a variant. This customized
+version is rebuilt when the client's stored configuration is reloaded (issue #616, and on the other nodes by the
+sync that follows, #618), unless `staticConfig` is true and the node is in production, where the client takes
+nothing from the database and changes only with a deployment.
 
 The test fixture that allows creation of users takes a parameter to specify the client, and a similar
 option exists for creating users in internal unit tests. A self-registered user lands in `public`, the
 placeholder client for a person who has not yet been invited anywhere; the request's host will later be able
 to name a client instead (the "default client" rule the Google sign-in and registration share). An address on
-`example.com` or the env value of `KDR_ADMIN_EMAIL_DOMAIN` with **no** `+` at all grants `admin` (and, outside
-production, `allClients`) in whatever client the user is assigned to -- how a deployment's first administrator
-comes to exist. *(The `+clientId%persona` address tags that once named a client and a persona on those domains
-were retired in issue #750 -- see "Users, clients and personas" below.)*
+the env value of `KDR_ADMIN_EMAIL_DOMAIN` (or, outside production, `example.com`) with **no** `+` at all grants
+`admin` and `allClients`, and a user provisioned with them and no client named lands in `hub` rather than
+`public` (issue #799) -- how a deployment's first administrator comes to exist. *(The `+clientId%persona`
+address tags that once named a client and a persona on those domains were retired in issue #750 -- see "Users,
+clients and personas" below.)*
 
-One thing not addressed here is how clients will introduce their variants to Markdown fragments.
-Also not addressed here is the automatic creation of endpoints that are restricted down
-to the `traits` defined by the client. Both are future issues.
+Two things are not addressed here, and both have since been built as issues of their own: how clients introduce
+their variants to Markdown fragments (a client's config carries fragment overlays, `GedraConfig.fragments`), and
+the automatic creation of endpoints that are restricted down to the `traits` defined by the client (each client
+that varies something gets its own copies of the client-shaped endpoints, issue #387).
 
 
 ---
@@ -212,19 +218,21 @@ client is, and no registry that can be asked whether one exists or is enabled.
 3. **A registry** — which clients exist, which are enabled here, and what a client's attributes are. Everything
    later consults it.
 4. **User creation by client** — the fixture's explicit client and role parameters, the same for unit tests, and
-   the `+client%persona` email convention.
+   the `+client%persona` email convention (since retired, issue #750).
 5. Probably **`extendsFromClientId` for source-code clients** — clone then overlay. The largest single piece
    here, and reasonably its own step.
 
 ## What has to wait
 
 - **Organizations**, said in the specification and big enough to be several issues.
-- **The per-client compiled schema.** The assembly functions are ready; the *store* is not.
+- **The per-client compiled schema.** The assembly functions are ready; the *store* is not. (Since built,
+  issue #356.)
 - **Domain routing** (`domainPrefix`, `customDomain`), which needs a client resolved from the request rather
   than from the caller — a new trust level rather than a new lookup.
 - **`webResourcesId` packaging** and `preload`; the specification already calls the last untestable today.
   (`staticConfig` is built, issue #824.)
 - **Markdown fragment variants** and **auto-generated per-client endpoints**, both named as future issues.
+  (Both since built; the endpoints are issue #387.)
 
 ## The cut for the first slice
 
@@ -484,8 +492,9 @@ which is what makes an allowlist tolerable to change at all.
 ## Endpoints, and what path separation buys
 
 A client's own endpoints carry the **`clientId` in the path**, in a recognizable pattern, so two clients never
-define the same path with different behavior. `RequestService` still has to become client-aware, and that is
-the destabilizing part; but clean path separation pays for a good deal of it.
+define the same path with different behavior. `RequestService` had to become client-aware -- it resolves a
+client endpoint's types against that client's variant (issue #387) -- and that was the destabilizing part; but
+clean path separation paid for a good deal of it.
 
 **It dissolves the type-cache problem rather than answering it.** `RequestService` caches resolved input and
 output types keyed by endpoint path, and the worry was that two clients resolving one endpoint to different
@@ -548,8 +557,8 @@ becoming per-client endpoints. The two halves sit at different points and do not
   declared.
 
 Permissive at the edge, strict where it is stored. That is what makes "a client's variant schema is applied when
-creating and patching entries" true without pulling per-client generated endpoints forward — those remain later
-work, and are where a client gets *typed input* rather than merely validated storage.
+creating and patching entries" true without pulling per-client generated endpoints forward — those came later
+(issue #387), and are where a client gets *typed input* rather than merely validated storage.
 
 ## Inheritance between clients
 
@@ -601,8 +610,8 @@ changed rather than the size of the schema.
 **Anonymous callers get the default global schema**; they need one and have no client to take it from.
 **`public` uses the global schema exactly**, per the identity case above.
 
-**Invalidation is explicit and rare.** Today a variant cannot be invalidated at all. When live data editing
-exists, a **client admin asks for it through an endpoint** — nothing detects a write and rebuilds behind
+**Invalidation is explicit and rare.** A **client admin asks for it through an endpoint** (the config reload,
+issue #616; other nodes then follow through the sync, #618) — nothing detects a write and rebuilds behind
 anybody's back — and not for a `staticConfig` client in production, which takes nothing stored there.
 
 ---
@@ -621,6 +630,5 @@ rather than design.
 **Dynamic disabling** is a topic of its own, to be taken up when it arrives. Nothing decided here is expected
 to change because of it, so it does not need anticipating.
 
-**Sequencing the auto-admin inversion.** Under today's rule a `+` tag means *not an admin*; under the new one it
-means *this client*. Any existing plus-addressed account at a real admin domain changes meaning when this lands.
-There is probably no such deployment yet, which is exactly why the change is cheap now and expensive later.
+**Sequencing the auto-admin inversion** is no longer open: the `+client%persona` convention was retired in
+issue #750, and a `+` tag now says only that an address is not one of the deployment's own people.

@@ -1,16 +1,19 @@
 # The Gedra Patch
 
 How a stored gedra is **changed** — why it has to be a patch rather than an update, what the input looks like,
-and the family of endpoints around it. Written before any of it exists, as something to design against and
+and the family of endpoints around it. Written before any of it existed, as something to design against and
 argue with.
 
 It is a companion to [`gedra-entry.md`](gedra-entry.md), which describes the shape of a single stored entry,
 and to [`gedra-config-and-data.md`](gedra-config-and-data.md), which describes everything around one. Those two
 cover reading and creating; this one covers changing, which turns out to be where most of the difficulty is.
 
-**Nothing here is built yet.** Creating, reading, listing and deleting a form document exist (issues #310, #325,
-#326); changing one does not. Where this document claims the current code behaves some way, that was checked
-rather than remembered — but everything it proposes is a proposal.
+**Much of it is now built.** When this was written, creating, reading, listing and deleting a form document
+existed (issues #310, #325, #326) and changing one did not. Since then the generic patch (`/gedra/patch`, issue
+#337) has been built with its targets grouped by kind and its edits typed by a manufactured edit union, per-client
+endpoint copies exist (#387), and a workflow's trait locks are enforced on every edit path (#857). Where this
+document claims the current code behaves some way, that was checked rather than remembered at the time of
+writing — and what it proposes beyond that is a proposal.
 
 ## How to read it
 
@@ -556,6 +559,9 @@ work in testing and break the first partial save.
 
 # Per-client endpoint variants (future, but it constrains the shape now)
 
+*Since built (issue #387): each client that varies something gets its own copies of the client-shaped endpoints,
+at `/gedra/<client>/...` (`clientPath`), resolving their types against that client's schema variant.*
+
 The direction: alongside the general endpoints, **dynamically generated per-client variants** of everything that
 touches gedra data, with the client id in the path and visible only to that client. Those know *all* of that
 client's traits, so their forms can offer complete typed input — and they exclude admin/process traits from the
@@ -567,10 +573,10 @@ arrives on the union's default branch and its `data` is raw JSON. Not a shortfal
 
 ## Most of the affordance is already there
 
-`entryUnionDefs` was written as **a function of (client, kind)** and is called once today with the global scope;
-its own note says per-client types are a later step and that writing it this way is what keeps that from being a
-rewrite. `GedraConfigCollector.traitsFor(client)` already answers "this client's traits, plus global's". So the
-per-client variant is *calling the same function with a different set*, which is what it was shaped for.
+`entryUnionDefs` was written as **a function of (client, kind)** and was then called once, with the global scope;
+its own note said per-client types were a later step and that writing it this way is what would keep that from
+being a rewrite. `GedraConfigCollector.traitsFor(client)` already answers "this client's traits, plus global's". So
+the per-client variant is *calling the same function with a different set*, which is what it was shaped for.
 
 **The edit union should be manufactured the same way** — `entryEditUnionDefs(traits)` beside
 `entryUnionDefs(traits)`, both taking a trait collection rather than reaching for a global one. Then one
@@ -717,11 +723,11 @@ supply it. That wart is a finding rather than an annoyance: `g-derived` is a sin
 question that is **per-projection, not per-field**. `gedra-entry.md` left room for an object form of the keyword
 to say so; this does not justify inventing it.
 
-The additive route sidesteps it, and is honest about how much the shapes differ. Its prerequisite:
-**`GedraTrait` does not carry its data schema** — only `traitId`, `typeName` and `appliesTo` — so today the
-schema has to be read back out of the built defs. Worth fixing on its own account; a trait is "the definition",
-and its data shape is the most important part of it. With that field, `entryEditUnionDefs(traits)` sits beside
-`entryUnionDefs(traits)`: one source, two manufactured outputs, neither derived from the other.
+The additive route sidesteps it, and is honest about how much the shapes differ. Its prerequisite: **`GedraTrait`
+did not carry its data schema** — only `traitId`, `typeName` and `appliesTo` — so the schema had to be read back
+out of the built defs. Worth fixing on its own account, and since fixed (`GedraTrait.dataSchema`); a trait is "the
+definition", and its data shape is the most important part of it. With that field, `entryEditUnionDefs(traits)`
+sits beside `entryUnionDefs(traits)`: one source, two manufactured outputs, neither derived from the other.
 
 It composes as `gedra-entry.md`'s ordering rule says it should — **overlay, then project, then export**. A
 task-scoped edit union is the trait, overlaid by the task's narrowing, then projected to patch-input shape.

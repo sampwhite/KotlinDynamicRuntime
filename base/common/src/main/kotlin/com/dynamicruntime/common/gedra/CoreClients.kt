@@ -26,8 +26,9 @@ object CLC {
 /**
  * The clients every deployment has (issue #343).
  *
- * Two, and the pair is the whole of the client model until the sample clients arrive: [CL.hub] is ours and
- * [CL.public] is everybody's. Declared by `base/common`'s component rather than by a sample, for the reason
+ * Two, and the pair is the whole of what every deployment carries -- other clients, such as the sample
+ * module's, come from components or stored config that may not be there: [CL.hub] is ours and [CL.public] is
+ * everybody's. Declared by `base/common`'s component rather than by a sample, for the reason
  * `coreTraits` gives -- these are part of what the runtime *is*, and anything a test needs to reach has to
  * come from a component that always loads.
  *

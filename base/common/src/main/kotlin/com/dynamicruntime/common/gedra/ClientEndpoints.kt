@@ -17,12 +17,14 @@ import com.dynamicruntime.common.util.toOptStr
 /**
  * The administrative view of which clients this deployment carries (issue #343).
  *
- * One endpoint, in the **`admin`** section -- so it takes [ROLE.admin] *and* the [ROLE.allClients] capability,
- * the path prefix being the access control. Both, because the question it answers is a cross-client one:
- * a client-scoped administrator does not get a narrowed version of this listing, they get nothing, since the
- * only client they could be shown is the one they already know they are in.
+ * Three endpoints -- the client listing, one client's definition, and the cross-client summary listing (issue
+ * #672) -- plus the options provider behind `clientAttribute()`, which answers from the same set as the listing.
+ * The endpoints are in the **`admin`** section -- so they take [ROLE.admin] *and* the [ROLE.allClients]
+ * capability, the path prefix being the access control. Both, because the question each answers is a
+ * cross-client one: a client-scoped administrator does not get a narrowed version of the listing, they get
+ * nothing, since the only client they could be shown is the one they already know they are in.
  *
- * It reports what was **declared and survived**, which is the useful thing rather than the tidy one: a client
+ * The listing reports what was **declared and survived**, which is the useful thing rather than the tidy one: a client
  * whose definition was refused is simply not here, and on a production node that refusal is in the startup log
  * beside the reason (see [checkClientDefs]). This listing is not the place to explain an absence: it feeds choice
  * lists too, which a client-scoped caller reads. The full-scope summary listing is, with its `allKnown` option
@@ -56,8 +58,8 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
     //
     // Both are full-scope (the `admin` section takes `allClients`), because they answer a cross-client question:
     // an `allClients` administrator retrieves another client's rules so a formDocs surface can list, filter,
-    // edit and create in *that* client's terms. The frontend that consumes these arrives in a later slice
-    // (depends on #668); this is the backend they read from.
+    // edit and create in *that* client's terms. This is the backend those surfaces read from; the forms list's
+    // choose-a-client reads the summary listing.
     //
     // What they do NOT carry is the *resolved* trait schema. A trait's `dataSchema` is a bare `$ref` into the
     // client's `$defs` (an altered trait resolves only in that client's variant store), and the endpoint catalog

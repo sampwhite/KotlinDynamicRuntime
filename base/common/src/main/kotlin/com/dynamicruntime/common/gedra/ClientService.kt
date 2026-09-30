@@ -10,10 +10,10 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  * Which clients this deployment knows, which of them are present here, and what each one declared (issue
  * #343).
  *
- * A **startup** service, and ahead of `SchemaService` in that tier, because the direction of travel is that
- * schema compilation becomes per-client: the store gets a variant per client, and a variant cannot be built
- * before it is known which clients there are. Nothing depends on that ordering yet, which is exactly when it
- * is cheap to establish.
+ * A **startup** service, and ahead of `SchemaService` in that tier, because schema compilation is per-client:
+ * the store gets a variant per present client (issue #356), and a variant cannot be built before it is known
+ * which clients there are. `SchemaService` also forces this service's init, so the ordering is not left as an
+ * assumption.
  *
  * Two questions, deliberately kept apart:
  *
@@ -27,8 +27,10 @@ import com.dynamicruntime.common.startup.ServiceInitializer
  * The distinction is testable today without a database or a configuration reload: a client defined in source code
  * and not enabled in `unit` is precisely a client that is known and not present.
  *
- * **Nothing consults this yet except the administrative listing.** That is the point of a declaration-first
- * slice -- the refusals become easy to trust before anything depends on them.
+ * It began as a declaration-first slice, consulted only by the administrative listing, so the refusals were easy
+ * to trust before anything depended on them. Much now does, among it the per-client schema variants and endpoints, user
+ * creation and client-scoped administration (which refuse a client not present), the config endpoints and
+ * reload, workflows, and jobs.
  */
 class ClientService : ServiceInitializer {
     override val serviceName: String = ClientService.serviceName

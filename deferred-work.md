@@ -57,6 +57,10 @@ start to matter.
 
 The point at which configuration can be scoped to a client rather than only to the deployment.
 
+**This trigger has fired** (#343, #356, #611: clients are declared, each has its own schema variant, and a
+client's configuration is stored and reloaded at runtime). The values below are still resolved per deployment,
+so the item is actionable and wants promoting to an issue, as the file's own rule says.
+
 - **Per-client configuration** *(from #97 §6 and #155).* Let values currently resolved per-deployment vary per
   client. Known candidates: the error-display / obfuscation policy (`obfuscateSensitiveErrors`), the
   frontend idle-bump interval (`idleBumpIntervalMs`), and the login-cookie timeout period.
@@ -66,15 +70,19 @@ The point at which configuration can be scoped to a client rather than only to t
 The point at which "every client" stops meaning "the only client", so a grant that reads as harmless today
 starts handing out reach over somebody else's data.
 
-- **Auto-admin's scope should narrow before production** *(from #225, revised by #352).* The rule grants
-  `admin`, `operator` and `allClients` to a no-`+` address on a controlled domain — the configured
-  `KDR_ADMIN_EMAIL_DOMAIN`, or `example.com` outside production. #352 settled two thirds of the original item
-  and left this third. It **no longer re-applies on every login**, so the grant is a statement about how an
-  account was provisioned rather than a standing property of an address; and it keeps `allClients`, because
-  dropping it would leave a fresh deployment unable to reach its own admin surface by any route but the
-  `GrantRole` script. What remains is production: the design has `example.com` not working there at all, and
-  only a subset of admin-domain addresses holding `allClients`. Neither is built, and neither can be tested
-  against anything real until there is a production deployment to narrow — which is the trigger.
+**This trigger has fired**: every deployment carries `hub` and `public`, and the sample component adds more.
+The item below still waits on its own stated condition, a production deployment to narrow.
+
+- **Auto-admin's scope should narrow before production** *(from #225, revised by #352).* The rule grants `admin`
+  (which ranks above `operator` on the role ladder) and `allClients` to a no-`+` address on a controlled domain —
+  the configured `KDR_ADMIN_EMAIL_DOMAIN`, or `example.com` outside production. #352 settled two thirds of the
+  original item and left this third. It **no longer re-applies on every login**, so the grant is a statement about
+  how an account was provisioned rather than a standing property of an address; and it keeps `allClients`, because
+  dropping it would leave a fresh deployment unable to reach its own admin surface by any route but the `GrantRole`
+  script. What remains is production: the design has `example.com` not working there at all — which holds, since it
+  is a controlled domain only outside production — and only a subset of admin-domain addresses holding
+  `allClients`. That is not built, and cannot be tested against anything real until there is a production
+  deployment to narrow — which is the trigger.
 
 ## When an organization has to hide content, not just narrow it
 
@@ -140,10 +148,10 @@ it is worth doing now, since the file's own rule is that anything ready lives in
   **full-text search target** in logs (test instances log addresses where a real one would not). A **fault**
   that travels with the identity beats a per-request switch when the question spans a whole session.
 
-  This said *persona* until `client-definition.md` claimed that word for a formal concept — a named thing
-  mapping to roles and capabilities, carried after a `%` in the same part of an email address this item wants
-  to write into. Two meanings in one place is the collision; the formal one keeps the word, and *fault* is not
-  a coinage but the vocabulary #227 already uses for deliberate failure.
+  This said *persona* until `client-definition.md` claimed that word for a formal concept — a named thing mapping
+  to roles and capabilities, then carried after a `%` in the same part of an email address this item wants to write
+  into (that address convention was retired in #750). Two meanings in one place was the collision; the formal one
+  keeps the word, and *fault* is not a coinage but the vocabulary #227 already uses for deliberate failure.
 
   Note what it is *not* for. The frontend fault route in #227 needs none of it, because making the browser
   throw requires no identity — keep the two separate. This one is about the backend misbehaving for a
@@ -153,6 +161,9 @@ it is worth doing now, since the file's own rule is that anything ready lives in
 
 The point at which a node keeps the gedras it serves in memory rather than querying for each one — anticipated
 in #310 as arriving "not too long from now", and noticeable because somebody builds it.
+
+**This trigger has fired**: `GedraDataCache` holds every gedra of a client in memory. `GedraService.gedraIds` is
+still filled only as ids are created and read, so the item below is actionable and wants promoting to an issue.
 
 - **Let a gedra id cache miss mean "no such gedra"** *(from #280, #310).* `InternCache`'s second property is
   that where a cache holds *every* extant value, a miss answers an existence question without touching the
@@ -240,8 +251,9 @@ looked fragile.
 
 ## When a listener that outlives its page starts costing something
 
-`onHashChange` (in `HashRoute.kt`) registers with `window.addEventListener` and nothing ever removes it. Three
-pages now do this — `Home`, `EndpointCatalog` and, since #324, `Users` — and every one of them mounts and
+`onHashChange` (in `HashRoute.kt`) adds a page's handler to the list the one app-wide `hashchange` listener calls
+(#700), and nothing ever removes it. Five pages now do this — `EndpointCatalog`, `Users` (since #324),
+`FormsPage`, `EditFormPage` and `SurveyEditPage` — and every one of them mounts and
 unmounts on each navigation to and from it, so what accumulates over a session is one live closure per visit,
 each still running on every later hash change.
 
@@ -251,8 +263,8 @@ each still running on every later hash change.
   enough to feel N times over, or a heap that grows across a long session. Deferred because the fix is not the
   usual one-liner: this wrapper version's effect body is a **cancellable coroutine**
   (`useEffectOnce { … }` takes `suspend CoroutineScope.() -> Unit`), so cleanup means `try`/`finally` around
-  `awaitCancellation()` rather than a `cleanup { }` block, and nothing in `webapp` uses that idiom yet.
-  Introducing it for a leak with no symptom would make three working effects the place it gets learned.
+  `awaitCancellation()` rather than a `cleanup { }` block. The idiom is no longer new to `webapp` —
+  `useIdleBump` uses it — but applying it still means changing five working effects for a leak with no symptom.
   `App`'s listener is deliberately exempt either way — the root never unmounts.
 
 ## When an edge fronts a backend that allows anonymous access
@@ -288,12 +300,13 @@ The trigger is observable: the first route added for a backend whose application
   separates the people who operate a deployment from the people who use it, without either becoming a role.
   The mechanism is in place after #433: the tag exists, the catalog carries it, and it already filters on it.
 
-  **The precondition is what makes this deferred rather than a small change.** Nothing is marked `publicApi`
-  yet, so switching the default over today would show an outsider an *empty* catalog — worse than the current
-  behaviour, and precisely for the people it is meant to serve. It needs the published set curated first,
-  which is a product decision about what we will support rather than a code task. Note also that the anonymous
-  sections are anonymous for a reason: whatever the rule becomes, an unauthenticated client still has to be
-  able to find the endpoints that let it log in.
+  **The precondition is what makes this deferred rather than a small change.** Only a first set is marked
+  `publicApi` (#489: the gedra endpoints and `selfInfo`), so switching the default over today would show an
+  outsider a catalog without the endpoints that let them log in — worse than the current behavior, and precisely
+  for the people it is meant to serve. It needs the published set curated first, which is a product decision about
+  what we will support rather than a code task. Note also that the anonymous sections are anonymous for a reason:
+  whatever the rule becomes, an unauthenticated client still has to be able to find the endpoints that let it log
+  in.
 
   The acceptance test already exists: the env-auth toggle from #360 was built partly so this filter could be
   exercised by hand.

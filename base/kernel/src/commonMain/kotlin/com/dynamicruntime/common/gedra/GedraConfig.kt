@@ -149,15 +149,15 @@ enum class GedraConfigOrigin {
  * A config carries a [GedraId] whose base id is its own **code-explicit name**: `gc.cd.global.coreTraits`.
  * Deterministic rather than minted, which is the "non-random id targets a specific config entity" case from
  * #287 — and it is what lets a config defined in code and one loaded from a database sit side by side
- * without either needing to know which the other is. The revision suffix (`~3`) arrives with config storage;
- * an absent suffix will mean the active revision.
+ * without either needing to know which the other is. A stored config's revision is the id's suffix (`~3`,
+ * issue #612); an absent suffix means the active revision.
  *
  * ### The client segment is the activation scope
  *
- * The client in that id is not only ownership. It is how a deployment will decide **which configs, or which
+ * The client in that id is not only ownership. It is how a deployment decides **which configs, or which
  * pieces of them, are active for a given client** — the mechanism behind a client seeing its own view of the
- * schema and endpoints rather than everybody's. Nothing reads it that way yet, and the path is close enough
- * that the affordance is worth naming rather than rediscovering.
+ * schema and endpoints rather than everybody's: a client's schema variant is global's with the overlays of the
+ * configs filed under that client applied (issue #356).
  *
  * The consequence that matters today: a config is identified by its **full id**, never by [name] alone. Two
  * clients may each declare a `coreTraits`, and they are different configs. Anything that indexes configs by

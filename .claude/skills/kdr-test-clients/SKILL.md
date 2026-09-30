@@ -46,7 +46,7 @@ createClient("scenarioB", "betaTrait")
 val schema = SchemaService.get(cxt)
 schema.gedraTraitsFor("scenarioA").map { it.traitId } shouldContain "alphaTrait"     // its own trait
 schema.gedraTraitsFor("scenarioA").map { it.traitId } shouldNotContain "betaTrait"   // and only its own
-ClientService.get(cxt).known("scenarioA").shouldNotBeNull()                          // the client is present
+ClientService.get(cxt).present("scenarioA").shouldNotBeNull()                        // the client is present
 
 // Place a user in the new client; its form docs / workflows / data are then isolated by that client.
 val user = TestUser.create(cxt, "u@scenarioA.test", userClient = "scenarioA")
@@ -154,8 +154,9 @@ later schema rejects" test.
   - **Not `stateTrait(...)`.** State is global, declared by components (issue #873): a client's config declaring
     one is refused at write, and a client-owned source config declaring one refuses the boot outside production.
   - A `schemaDef` slot exists for plain schema types too; most schema rides in via a trait's data shape.
-- **`GedraConfigService.get(cxt).writeConfig(clientCxt, config)`** persists the bundle. `clientCxt` must be
-  bound to the client and carry a `userId` (attribution) — hence `asClient(...)`. Writing is revision-aware
+- **`GedraConfigService.get(cxt).writeConfig(clientCxt, config)`** persists the bundle. `clientCxt` carries a
+  `userId` (attribution) — hence `asClient(...)`; the write binds it to the config's own client itself, so
+  ownership stamps from the right owner whatever it was bound to. Writing is revision-aware
   (issue #611): first write is version 1; rewriting an unpublished latest edits in place; writing after a
   publish mints the next revision.
 - **`GedraConfigReload.reloadClient(cxt, client)`** is *the* thing that makes config dynamic. It withdraws the
@@ -238,8 +239,9 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   client declaring one `traitId` twice, or a namespace with two owners, fails the reload in a test (which is what
   `GedraConfigReloadTest`'s rollback case checks) but is tolerated live. Two **different** clients may each
   declare the same `traitId` (issue #807) -- each gets its own -- so scenario clients need no prefixed ids.
-- **`writeConfig` needs a client-bound context with a `userId`** — an unattributed or wrong-client context is
-  refused, and it refuses the reserved `global` client / `globalconfig` namespace outright.
+- **`writeConfig` needs a context with a `userId`** — an unattributed context is refused; one bound to another
+  client is not (the write re-binds it to the config's own client). It refuses the reserved `global` client /
+  `globalconfig` namespace outright.
 
 ## Reference implementations and docs
 
@@ -248,6 +250,6 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
 - `base/kdn/src/test/.../GedraConfigTierTest.kt` — the free/published-only/static tiers.
 - `base/common/.../gedra/GedraConfigService.kt` / `GedraConfigReload.kt` / `GedraConfigControl.kt` — the runtime.
 - Design docs (repo root, also on the home page): `gedra-config-and-data.md` (the model), `client-definition.md`
-  (the `ClientDef` spec — its "Nothing here is built" header is stale), `gedra-workflow.md`.
+  (the `ClientDef` spec), `gedra-workflow.md`.
 
 For the schema DSL used inside a `trait`, see `kdr-schema-builder`; for booting and `TestUser`, `kdr-testing`.

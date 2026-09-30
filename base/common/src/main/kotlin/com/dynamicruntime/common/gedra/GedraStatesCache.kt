@@ -25,8 +25,8 @@ object GSX {
  * every state row **whole** -- its small payloads kept in full -- where the data cache may one day trim each
  * row down to a minimum search set to fit memory (a filtering of a row's *payload*, never a dropping of rows,
  * so presence stays reliable either way). That is what turns "what state is this gedra in?" into a memory hit
- * rather than a query, and is the substrate the `withStates` read (issue #600) and the deferred batch recompute
- * both build on.
+ * rather than a query, and is the substrate the `withStates` read (issue #600) and the batch recompute (issue
+ * #793) both build on.
  *
  * Read the same way [GedraDataCache] is: the payload is the **raw stored row**, not a [GedraDataRow]. A
  * `GedraDataRow` is mutable, so a shared instance would let one caller's edit become everyone's, and extracting

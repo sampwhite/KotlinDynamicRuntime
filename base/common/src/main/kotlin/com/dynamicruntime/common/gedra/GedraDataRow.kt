@@ -48,9 +48,10 @@ class GedraDataRow(
      *
      * **Unlike [client] and [userId], this one moves.** A gedra can be reassigned between organizations
      * inside its client, so this is real mutable state rather than a stamp — see the ownership note on
-     * `gedraDataTables`. Nothing writes it back yet, because nothing updates a gedra at all; the "write" path
-     * that does has to carry it *explicitly*, since `SqlTopicUtil.prepForStdExecute` fills the column
-     * put-if-absent and would otherwise preserve whatever is already stored.
+     * `gedraDataTables`. Nothing writes a new value yet: gedras are updated now, but nothing reassigns one
+     * between organizations, and the write that does has to carry it *explicitly*, since
+     * `SqlTopicUtil.prepForStdExecute` fills the column put-if-absent and would otherwise preserve whatever is
+     * already stored.
      */
     var org: String? = null
 

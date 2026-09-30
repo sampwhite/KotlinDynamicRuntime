@@ -4,8 +4,8 @@ package com.dynamicruntime.common.gedra.workflow
  * The wire names of a form's **per-workflow** state (issue #794): the computed [workflowState], and beside it the
  * asserted [workflowEngagement] and -- since #787 -- [workflowApproval], all keyed by [WFD.workflowId].
  *
- * In `base:kernel` for the reason [SVY] is: a later slice draws these on the forms listing and the workflow
- * column, so the frontend reads them by name and a rename here breaks its compile rather than its runtime.
+ * In `base:kernel` for the reason [SVY] is: the forms listing's workflow column (issue #791) and the workflow
+ * page draw these, so the frontend reads them by name and a rename here breaks its compile rather than its runtime.
  *
  * ### Separate traits, because they are different kinds of fact
  *

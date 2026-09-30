@@ -6,9 +6,9 @@ package com.dynamicruntime.common.gedra
  *
  * A usage names a trait, a **display expression** that pulls a value out of that trait's stored data (a string
  * script -- substitution only for now, e.g. `${'$'}{name}`), a **label** for the column it drives, and a
- * **value kind**. The kind is declared now and read later: the search endpoint (issue #538) treats a `number`
- * or `date` value as a range and a `string` as text, and it is cheaper to declare the kind with the display
- * than to infer it when search arrives.
+ * **value kind**. The kind is what the search (issue #538) reads: it treats a `number` or `date` value as a
+ * range and a `string` as text ([gedraSearchParams]), and it is cheaper to declare the kind with the display
+ * than to infer it at search time.
  *
  * Pure model in `base/kernel`, beside the config that carries it; the value is *computed* on the backend (it
  * needs a row's data), so a client never authors the presented string, only the rule that makes it.

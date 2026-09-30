@@ -47,8 +47,8 @@ object PFO {
  * for the participant's name, defaulted from the owner's public name.
  *
  * Definition is data, computation is Kotlin: this class is the computation, built from validated initialization
- * data by [PrefillFromOwnerCreation]. An owner with no such attribute (or a task whose target field is already
- * filled) supplies nothing -- a default is an offer, not an override.
+ * data by [PrefillFromOwnerCreation]. An owner with no such attribute (or a target trait that already has an
+ * entry, whose defaults [runPrefillData] drops whole) supplies nothing -- a default is an offer, not an override.
  */
 class PrefillFromOwnerFn(
     override val priority: Int,
