@@ -149,6 +149,7 @@ object CLD {
     const val includedTraits = "includedTraits"
     const val testFeatures = "testFeatures"
     const val userLabels = "userLabels"
+    const val sandbox = "sandbox"
 
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"
@@ -420,6 +421,16 @@ data class ClientDef(
      * what makes a typo in a *workflow* visible, where nothing else would notice it.
      */
     val userLabels: List<String> = emptyList(),
+    /**
+     * Whether this client has a **sandbox** beside it (issue #928, the Shadow Sandbox #925): a linked client,
+     * [sandboxOf] this one's id, that runs this client's *latest* configuration with users and data of its own,
+     * where unpublished changes are seen before they are published. Read from the definition the client runs, so
+     * on a published-only client turning it on takes effect when it is published.
+     *
+     * A sandbox's own definition is never authored: it is derived from this one (see `SandboxConfigs`), and a
+     * definition whose id is a sandbox's is refused wherever one is declared (issue #927).
+     */
+    val sandbox: Boolean = false,
 ) {
     init {
         // Held to the one label rule ([normalizeUserLabels]) that a label on a *user* is held to, and refused here,
@@ -468,6 +479,7 @@ data class ClientDef(
         // (checkClientDefs), so emitting it here is safe -- the present definition it reads from has none.
         if (testFeatures.isNotEmpty()) put(CLD.testFeatures, testFeatures.toList())
         if (userLabels.isNotEmpty()) put(CLD.userLabels, userLabels)
+        if (sandbox) put(CLD.sandbox, true)
     }
 
     companion object {
@@ -495,6 +507,7 @@ data class ClientDef(
             includedTraits = m[CLD.includedTraits].toJsonListOfStrings(),
             testFeatures = m[CLD.testFeatures].toJsonListOfStrings().toSet(),
             userLabels = m[CLD.userLabels].toJsonListOfStrings(),
+            sandbox = m[CLD.sandbox] as? Boolean ?: false,
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -547,6 +560,9 @@ data class ClientDef(
                 property(CLD.userLabels, "User labels the client suggests; a label editor offers them, without binding to them.") {
                     type = SCT.array
                     items { type = SCT.string }
+                }
+                property(CLD.sandbox, "Whether the client has a sandbox beside it, running its latest configuration.") {
+                    type = SCT.boolean
                 }
             }
         }

@@ -198,6 +198,18 @@ private fun relatedProblem(
     holders: Map<String, GedraConfig>,
     configs: GedraConfigCollector,
 ): GedraConfigIssue? {
+    // A sandbox exists only beside a parent that is there (issue #928): one whose parent the checks dropped, or
+    // whose parent no longer asks for one, would be a client nobody reaches through the parent -- so it goes too.
+    sandboxParentOf(def.clientId)?.let { parentId ->
+        val parent = kept[parentId]
+        if (parent == null || !parent.sandbox) {
+            val why = if (parent == null) "which is not present" else "which does not ask for a sandbox"
+            return GedraConfigIssue(
+                "Sandbox '${def.clientId}' belongs to '$parentId', $why.",
+                "Dropping the sandbox '${def.clientId}'.",
+            )
+        }
+    }
     def.extendsFromClientId?.let { parentId ->
         val parent = kept[parentId]
             ?: return GedraConfigIssue(
@@ -260,11 +272,14 @@ private fun idFault(clientId: String): String? {
     if (clientId.isEmpty()) {
         return "is empty"
     }
-    val first = clientId[0]
+    // A sandbox's derived definition (issue #928) carries its `<parent>:sandbox` id, which only the system makes --
+    // an authored definition naming one is refused where it is declared (#927) -- so its parent is what is judged.
+    val name = sandboxParentOf(clientId) ?: clientId
+    val first = name[0]
     if (!(first in 'a'..'z' || first in 'A'..'Z' || first == '_')) {
         return "starts with '$first'"
     }
-    val bad = clientId.firstOrNull {
+    val bad = name.firstOrNull {
         !(it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '_')
     }
     return if (bad == null) null else "holds '$bad'"

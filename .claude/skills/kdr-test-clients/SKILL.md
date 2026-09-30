@@ -164,6 +164,12 @@ later schema rejects" test.
   (which is how a *newly created* client becomes `known`/`present`), the fragment/UiBlock overlays, and
   `WorkflowService.reloadClient`. A request in flight keeps the store it started with; the next request sees the
   new one. **No restart.**
+- **A sandbox reloads with its parent** (issue #928). A client whose `ClientDef` sets `sandbox = true` has a live
+  sandbox client, `sandboxOf(client)` = `<client>:sandbox`, running the parent's source config and **latest**
+  stored revisions whatever the parent's tier (copied under its id by `SandboxConfigs`), with users and data of its
+  own. `reloadClient(parent)` reloads it too and returns its result in `.sandbox` (`.all` is both); a sandbox can
+  also be reloaded on its own. A test wanting a preview client sets the flag on the parent and places a
+  `TestUser` in the sandbox (`userClient = sandboxOf(parent)`) -- `SandboxClientTest.kt` is the reference.
 
 Stored config is **added beside** the source-declared config in the same collector, keyed by the client in its
 id — downstream services can't tell a stored client from a source one.
@@ -196,7 +202,8 @@ production -- writes refused, stored config ignored -- and leaves it an ordinary
   node picks up what a peer wrote. Loading is **off for in-memory** nodes unless `KDR_LOAD_STORED_CONFIG` forces
   it — an in-memory test builds its clients with `writeConfig` + `reloadClient` in-process instead.
 - **Across a multi-node cluster:** `ClientSyncService` (issue #618) — the peers' fallback to a one-node reload. A
-  reload (or boot load) **announces** its per-client marker into a shared `ClientSyncTracking` row; every other
+  reload (or boot load) **announces** its per-client marker into a shared `ClientSyncTracking` row (after a
+  reload, `ClientSyncService.announceReload(cxt, result)`, which also announces a sandbox's own marker); every other
   node reads that row once per request (node-global throttle ~250ms, request-driven like the table caches, no
   timer) and reloads any client whose marker moved past what it last ran. So a change written and reloaded on one
   node reaches the rest without a per-node call. It is **off exactly when the boot load is off** (`loadEnabled`),
