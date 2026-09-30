@@ -37,12 +37,12 @@ import com.dynamicruntime.common.util.toJsonMap
  *
  * Endpoints and tables are **shared by reference** with the global store. `client-definition.md` settles that
  * a variant carrying tables identical to global's is harmless and that sharing them is free; endpoints are the
- * same case, and per-client generated endpoints are later work that will add to a variant rather than change
- * what this does.
+ * same case, and the per-client generated endpoints (`buildClientEndpoints`, issue #387) are added to every
+ * store's endpoint map afterward rather than changing what this does.
  *
- * What is *not* here, deliberately: the per-client entry unions, which need `supportedTraits(client)`, and
- * applying a variant to a request. This builds the stores and nothing consults them yet, which is the same
- * order #343 followed -- the refusals become trustworthy before anything depends on them.
+ * The per-client entry unions are built here too, from `supportedTraits(client)`, but only where they differ
+ * from global's (`changedUnions`). Applying a variant to a request happens elsewhere: `SchemaService.storeFor`
+ * hands it out, and a client endpoint's request resolves its types against it.
  */
 fun buildClientVariants(
     cxt: KdrCxt,

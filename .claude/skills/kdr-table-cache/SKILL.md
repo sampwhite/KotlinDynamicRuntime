@@ -5,9 +5,9 @@ description: Hold a whole database table in memory with KotlinDynamicRuntime's t
 
 # Caching a table in memory (common/sql/cache)
 
-A table small enough to fit in memory can be held there and kept current *incrementally*. `AuthUsers` is the
-cache in place today (`user/AuthUserCache.kt`), which is why every gated request no longer re-queries the
-acting user's row.
+A table small enough to fit in memory can be held there and kept current *incrementally*. `AuthUsers`
+(`user/AuthUserCache.kt`) is the reference cache, and why every gated request no longer re-queries the acting
+user's row; `AuthIdentityCache`, `GedraDataCache`, `GedraConfigCache` and `GedraStatesCache` are the others.
 
 ## First: should this table be cached at all?
 

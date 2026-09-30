@@ -310,8 +310,10 @@ fun SchTypeBuilder.clientAttribute() {
  * defines at most one client; every bundle sharing a client is read as one whole. See `client-definition.md`
  * for the reasoning behind each attribute.
  *
- * **Nothing here decides how a request is served.** This slice declares, validates, and finds a client; the
- * per-client schema, the absent-client gate, and domain routing are later work.
+ * **Nothing here decides how a request is served.** This class declares, validates, and finds a client; what
+ * its definition drives is built elsewhere -- the per-client schema variant (`SchemaService.storeFor`, issue
+ * #356) and its per-client endpoints (#387). An absent-client gate on reading a `GedraId`, and domain routing,
+ * are later work.
  */
 data class ClientDef(
     /**

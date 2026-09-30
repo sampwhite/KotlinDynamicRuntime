@@ -997,8 +997,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         )
     }
 
-    // Recomputes one form's derived state on demand (issue #794). Batch jobs (issue #793) will do this in bulk;
-    // this endpoint exists first, and is what a test uses to force a recompute even once they do.
+    // Recomputes one form's derived state on demand (issue #794). The batch job (issue #793, `stateRecomputeJob`)
+    // does this in bulk; this endpoint came first, and is what a test uses to force a recompute of one form.
     generalEndpoint(
         GEP.formDocRecomputeState,
         "Recomputes one form's derived state, its per-workflow entries included, and answers with the result.",

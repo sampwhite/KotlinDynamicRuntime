@@ -354,8 +354,10 @@ Boot checks (`layoutTemplateProblems` + `SchemaService.checkLayouts`): a **malfo
 block, a **hint** referencing a bounds param its field lacks (`${max}` with no maximum), and a **frontend**
 `${@t(...)}` (a fragment pull must use the backend `%` prefix) all fail the boot. A field-data `${…}` is not
 boot-checked (dynamic) — an unresolvable one renders **as written** with a `[kdr]` console warning. Whether a
-`%{@t}` pull actually resolves is checked at delivery for now (an unresolvable one degrades to the copy as
-written with a `[schema]` warning); a boot-time resolution check is tracked in #620.
+literal `%{@t}` pull actually resolves — its file exists, is a backend file, and holds the key — is checked at
+boot too (issue #620: `SchemaService.checkLayoutPulls`, run from `LayoutCheckService`, which holds the fragment
+registry the schema service cannot reach). Only a **computed** (`%{@t(chosenKey)}`) or guarded (`?:`) pull is
+left to delivery, where an unresolvable one degrades to the copy as written with a `[schema]` warning.
 
 **Delivery (issues #585, #835).** Both friendly surfaces carry a `fieldLayouts` map beside their `$defs` —
 the endpoint catalog under `EI.fieldLayouts`, the workflow view under `WVF.fieldLayouts` — built by one call,

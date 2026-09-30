@@ -17,15 +17,15 @@ yet enforced is still a rule worth knowing, because the code is being written to
 A **gedra** is the universal stored entity. There are two families of them:
 
 - **data** — what people entered. Form documents, workflow data, user data, file references.
-- **config** — the definitions that give data its meaning. Traits now; workflow definitions later, and the
-  definitions of the client spaces themselves.
+- **config** — the definitions that give data its meaning. Traits, workflow definitions, and the definitions of
+  the client spaces themselves.
 
 **Config stored in a database** is a gedra carrying entries, exactly like data. That is deliberate: editing,
 revisioning, auditing and permission-checking get written once and apply to both, and an administrator
 authoring a definition is doing an ordinary act rather than a special one.
 
-Entries are instances of traits, so stored config needs traits of its own — and there is no way to declare
-one yet (#316). They will be hardwired rather than contributed, since what may be stored into config is fixed
+Entries are instances of traits, so stored config needs traits of its own — declared in `coreConfigTraits`
+(#316). They are hardwired rather than contributed, since what may be stored into config is fixed
 by us, and they are a different animal from the everyday sort: one of them has to describe a JSON Schema
 document, which is checked by *parsing* the candidate rather than by describing our schema layer in schema.
 
@@ -37,7 +37,7 @@ a database unwraps the definition out of its protocol parent before it becomes o
 
 ### The bundle is an authoring unit, not an architectural one
 
-A config bundle holds a set of traits, and will hold the workflows that use them, so that `$ref`s and
+A config bundle holds a set of traits and the workflows that use them, so that `$ref`s and
 workflow-to-trait links stay mostly *inside* one object. Links between bundles remain possible and are meant
 to be few — few enough that an audit of them would be worth reading.
 
@@ -107,8 +107,8 @@ Three properties fall out of the format and are worth not breaking:
 
 ### A client is itself a defined thing
 
-*Intended; nothing defines a client today.* A client space is not a bare string that appears in ids — it is
-**config**, declared the way everything else is, in a `GedraConfig` of its own.
+*Built (issue #343; see [`client-definition.md`](client-definition.md)).* A client space is not a bare string that
+appears in ids — it is **config**, declared the way everything else is, in a `GedraConfig` of its own.
 
 That definition is **scoped to the client it defines**: the bundle declares the client id and carries that
 same id in its own `GedraId`. The apparent circularity is the point rather than a problem — an id can be
@@ -200,8 +200,8 @@ An entry looks like this:
 ```
 
 The trait's fields sit under `data` rather than beside `traitId`, and the reason is the envelope's future.
-`entryId`, `source`, `createdAt` and `updatedAt` are there today; `origin`, `lockedBy`, `createdBy` and
-`updatedBy` are coming. In a flat entry, **every one of those additions is a silent breaking change to any
+`entryId`, `source`, `createdAt`, `updatedAt`, `createdBy` and `updatedBy` are there today; `origin` and
+`lockedBy` are coming. In a flat entry, **every one of those additions is a silent breaking change to any
 trait that already used that field name** — and it would be found when a client's stored data stopped
 validating, long after the fact.
 
@@ -332,7 +332,7 @@ Only the first is worth trading for uptime.
 
 | Check | Refused |
 |---|---|
-| A `traitId` claimed by two config bundles, in any namespace, for any kind | naming both bundles |
+| A `traitId` claimed twice within one client's view — a global id reused anywhere, or a client's own id twice in that client (#807) | naming both bundles |
 | A namespace claimed by two owners | naming the owner it already has |
 | The same config bundle contributed twice | |
 
@@ -371,12 +371,12 @@ is what gives the warning teeth.
 | The environment split for those checks | **built** |
 | The default branch, and strictness as a reader's choice | **built** |
 | Storing data gedras, and reading them back within a caller's scope | **built** — form documents, #310 |
-| Updating a stored gedra's entries | intended — a patch, and its own issue |
+| Updating a stored gedra's entries | **built** — the patch, #337 |
 | Client separation across deployments | intended — nothing loads a subset of clients yet |
-| Client-authored config, and the visibility check | intended — every config today is `global`, in code |
-| Client spaces defined in config, scoped to themselves | intended — the step after entries can be stored |
-| Traits for stored config, declared separately from data traits | intended — #316 |
-| Config revisions, and an absent suffix meaning "active" | intended |
+| Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership and `traitsFor` |
+| Client spaces defined in config, scoped to themselves | **built** — #343 |
+| Traits for stored config, declared separately from data traits | **built** — #316 |
+| Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 
 Anything marked *intended* is a rule the built code is shaped to leave room for, not a promise about when it

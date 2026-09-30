@@ -234,8 +234,12 @@ in some cases, by a linking and augmentation step where additional JSON schema i
 between schemas is validated. This second phase execution will be an evaluation of all the relevantly defined 
 JSON schema as a whole. The same will be true for complex application configuration data.
 
-Besides using "$ref" constructs to do linkage, we will also allow overrides where recursive map merges can
-modify either schema or configuration.
+Besides using "$ref" constructs to do linkage, we also allow overrides. For configuration such as a UiBlock these
+are recursive map merges, with arrays merged by a declared key. A schema overlay is deliberately shallower: a key
+of the type it names replaces the base's, and `properties` is the one key with its own rule (the overlay names
+the whole set, and an empty property body inherits the base's) -- there is no deep merging (see `SchOverlay.kt`).
+So an interior structure a client may want to change is pulled out as a named type and referenced by `$ref`,
+which lets it be overlaid directly.
 
 A schema says what data *is*; how a form presents it belongs in a **field layout** (`g-layout`), kept beside the
 schema rather than inside it. A change that does not alter a schema's API semantics -- field order, copy --

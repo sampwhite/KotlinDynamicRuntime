@@ -37,10 +37,10 @@ import com.dynamicruntime.common.gedra.workflow.TraitLockCopy
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 
 /**
- * The frontend's model of a resolved creation workflow (issue #536) — the `/gedra/workflow/view` response
- * parsed into what the create page renders. **Self-contained**: each trait's schema comes from the view's own
- * `$defs`, resolved here with the same kernel `parseSchemaTypes` the endpoint catalog uses, so the page needs
- * no second fetch and a workflow that narrows a trait renders the narrowed shape.
+ * The frontend's model of a resolved workflow (issue #536) — the `/gedra/workflow/view` response parsed into what
+ * the create page, and the edit page for a survey or a normal workflow, renders. **Self-contained**: each trait's
+ * schema comes from the view's own `$defs`, resolved here with the same kernel `parseSchemaTypes` the endpoint
+ * catalog uses, so the page needs no second fetch and a workflow that narrows a trait renders the narrowed shape.
  *
  * These are pure maps-in, model-out functions with no React and no server, so they carry the `jsNodeTest`
  * coverage the issue asks for; the component that renders them is driven in a browser.
@@ -140,9 +140,9 @@ class WfApprovalView(
 )
 
 /**
- * A resolved workflow view, ready to render (issue #536, #659). It serves both the **creation** workflow (no
- * form yet) and a **survey** resolved against an existing form (each task seeded from its current [WfTaskView.entries]);
- * [entry] says which (`WfEntry.name`, e.g. `"creation"`/`"survey"`).
+ * A resolved workflow view, ready to render (issue #536, #659). It serves the **creation** workflow (no form yet),
+ * and a **survey** or a **normal** workflow (issue #791) resolved against an existing form (each task seeded from its
+ * current [WfTaskView.entries]); [entry] says which (`WfEntry.name`, e.g. `"creation"`/`"survey"`/`"normal"`).
  */
 class WorkflowView(
     val workflowId: String,

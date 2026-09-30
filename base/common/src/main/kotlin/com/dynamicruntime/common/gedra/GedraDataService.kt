@@ -79,10 +79,11 @@ object GDBG {
  *
  * ### What is not here yet
  *
- * **Enforcing locked, admin-only and process-only entries.** The patch is supposed to refuse an edit naming
- * one, and cannot: those are directives on the trait wrapper, which does not exist, so there is nowhere for a
- * trait to declare itself locked. Said here rather than left as a silence, because a patch that looks as
- * though it honors them and does not is worse than one that plainly cannot yet.
+ * **Enforcing admin-only and process-only entries.** The patch is supposed to refuse an edit naming one, and
+ * cannot: those are directives on the trait wrapper, which does not exist, so there is nowhere for a trait to
+ * declare itself either. Said here rather than left as a silence, because a patch that looks as though it
+ * honors them and does not is worse than one that plainly cannot yet. (Locked entries are enforced: a workflow
+ * declares its trait locks, and `TraitLockGuard` refuses a write to a trait locked for the writer, issue #857.)
  *
  * **Dry runs, and all-or-nothing across gedras.** See `gedra-patch.md`.
  *

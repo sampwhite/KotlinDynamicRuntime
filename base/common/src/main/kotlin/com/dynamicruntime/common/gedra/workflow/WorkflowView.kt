@@ -21,20 +21,21 @@ import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Resolves a declared workflow into the **view** the creation page renders (issue #534): tasks with their
- * traits in task-layout order, each trait a `$ref` into *this client's* schema with the workflow's required flag
- * beside it, saves with resolved labels, and the target facts about each task -- run through the same content
- * pipeline every other rendered surface uses, so the page renders JSON and never learns what a task is.
+ * Resolves a declared workflow into the **view** a workflow page renders (issue #534) -- a creation, a survey, or
+ * a normal workflow against its form (issue #794): tasks with their traits in task-layout order, each trait a
+ * `$ref` into *this client's* schema with the workflow's required flag beside it, saves with resolved labels, and
+ * the target facts about each task -- run through the same content pipeline every other rendered surface uses,
+ * so the page renders JSON and never learns what a task is.
  *
  * The resolution is the pipeline the design settled on:
  *  - **Labels** get `MarkdownFragmentService.backendPass`: a `%{...}` block resolves here -- a fragment pull
  *    with this client's overlays, a parameter, a `?:` default -- and a `${...}` block is left for the
  *    frontend, so a label can be part backend copy and part live value.
  *  - **Each task is filtered by its own cfacts** with `filterByCFacts`, the target facts about *that task*
- *    ([WfTaskFacts]) assembled beside the request's. The model carries no `cfactExpression` yet (selectors
- *    are deferred), so nothing is dropped today -- but the seam is real and per-task, which is what a
- *    single-set filter over the whole view could not be: "this shows when the task is complete" is a fact
- *    about one task, and the first row's answer must not decide the second's.
+ *    ([WfTaskFacts]) assembled beside the request's -- today what resolves a task's display selector (issue
+ *    #788) to its one applicable branch. The seam is per-task, which is what a single-set filter over the
+ *    whole view could not be: "this shows when the task is complete" is a fact about one task, and the first
+ *    row's answer must not decide the second's.
  *
  * The view is **self-contained**: each trait's `schemaRef` resolves against a `$defs` the view carries, a
  * closure of exactly the types the workflow references and their dependencies ([collectDefClosure]) -- not the

@@ -8,7 +8,7 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 /**
  * What the two Gedra services share (issue #310).
  *
- * `GedraDataService` and the config service that will join it are **not** subclasses of this, and that is the
+ * `GedraDataService` and `GedraConfigService` are **not** subclasses of this, and that is the
  * point: they store different things in different tables under different rules, and the one thing they
  * genuinely have in common is the identity space. Inheritance would put that shared piece behind a promise
  * that the rest of the two services resemble each other, which they do not. A collaborator they both hold

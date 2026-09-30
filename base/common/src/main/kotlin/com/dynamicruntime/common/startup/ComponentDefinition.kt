@@ -99,7 +99,7 @@ interface ComponentDefinition : KdrProvider {
     fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = emptyList()
 
     /**
-     * The Gedra config bundles this component defines (issue #299) -- traits now, workflows later. Collected
+     * The Gedra config bundles this component defines (issue #299) -- traits, workflows, clients. Collected
      * beside schema, and for the same reason: nothing can enumerate them, so a bundle nobody declares is a
      * bundle nothing compiles.
      *

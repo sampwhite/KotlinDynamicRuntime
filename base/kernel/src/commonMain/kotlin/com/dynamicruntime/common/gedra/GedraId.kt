@@ -115,7 +115,7 @@ enum class GedraDataType(override val idAbbrev: String) : GedraKind {
  */
 @Suppress("EnumEntryName")
 enum class GedraConfigType(override val idAbbrev: String) : GedraKind {
-    /** A bundle of definitions: traits now, workflows later. */
+    /** A bundle of definitions: traits, workflows, and optionally its client's definition ([GedraConfig]). */
     configDoc("cd");
 
     override val storageType: GedraStorageType get() = GedraStorageType.configStore

@@ -42,7 +42,7 @@ enum class WfEventType(val scope: WfEventScope) {
  *
  * A usage is turned into a runnable [WfFunction] by a **second pass** in `base:common` (once the creation
  * registry is complete), which fills the resolved store on the def/task -- the two-pass initialization
- * `kd2-design/thoughts-workflow-functions.md` describes, and the shape Cedar used for the same reason. So the
+ * `kdr-design/thoughts-workflow-functions.md` describes, and the shape Cedar used for the same reason. So the
  * usage deliberately does **not** know its [WfEventType]: which event a `fn` belongs to is a `base:common` fact,
  * settled at resolution, where the scope-matches-placement check also runs.
  */

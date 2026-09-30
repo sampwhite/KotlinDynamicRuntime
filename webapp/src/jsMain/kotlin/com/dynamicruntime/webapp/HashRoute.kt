@@ -232,13 +232,13 @@ private fun hashUrl(params: List<Pair<String, String>>): String {
  * app-bar menu link, the back/forward buttons, the address bar). Neither [replaceHash] nor [pushHash] fires
  * it, so a component's own in-page state sync never re-enters its own handler.
  *
- * **Nothing removes the listener**, and with a third page now registering one that is worth stating rather
- * than leaving to be discovered: a page here mounts and unmounts on every navigation to and from it, so what
+ * **Nothing removes the listener**, and with several pages registering one that is worth stating rather than
+ * leaving to be discovered: a page here mounts and unmounts on every navigation to and from it, so what
  * accumulates is one live closure per visit, each still running on every later hash change. They are inert —
  * React ignores a state update from an unmounted component — so this is a leak rather than a defect. Undoing
  * it means changing the effect idiom, since the wrappers' effect body is a cancellable coroutine and the
- * cleanup is therefore a `try`/`finally` around `awaitCancellation`, which nothing here does yet. Recorded in
- * `deferred-work.md`.
+ * cleanup is therefore a `try`/`finally` around `awaitCancellation` -- the idiom `useIdleBump` already uses.
+ * Recorded in `deferred-work.md`.
  */
 fun onHashChange(handler: () -> Unit) {
     ensureHashDispatcher()

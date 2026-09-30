@@ -43,11 +43,11 @@ import com.dynamicruntime.common.util.toOptStr
  * own client ([KdrCxt.client]): the config id is built from that client and the supplied name, so a caller
  * cannot read or write another client's configuration by naming it.
  *
- * ### What is not here
+ * ### What is here, and what is elsewhere
  *
- * Loading a written config at boot (#614), the two-revision cache (#615), reload (#616) and protection tiers
- * (#617). Because nothing loads a stored config yet, the end-to-end browser round trip is deferred to #614, as
- * the issue allows; these endpoints are verified by service- and HTTP-level tests.
+ * Reload (#616, [CFEP.reload]) and the protection tier (#617, [CFEP.publishedOnly]) are endpoints here too.
+ * Loading a written config at boot (#614) is `GedraConfigLoadService`, and the two-revision cache (#615) is
+ * `GedraConfigCache`.
  */
 @Suppress("DuplicatedCode")
 fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace) {
@@ -203,7 +203,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         }
     }
 
-    // The mechanism the multi-node sync trigger (#618) will call, exposed for an administrator to call by hand:
+    // The mechanism the multi-node sync trigger (#618) calls, exposed for an administrator to call by hand:
     // this node re-reads the caller's client's stored configuration and rebuilds that client's derived state
     // without a restart (issue #616). Per client only -- the caller's own, as every endpoint here is.
     generalEndpoint(
@@ -682,8 +682,8 @@ private fun dropNulls(map: Map<String, Any?>): Map<String, Any?> =
  * Every handler runs the shared body ([cfgWriteBody] and friends) on a sub-context bound to the **named** client
  * ([adminConfigCxt]), so the logic, the `testFeatures` write-refuse, and the #696 emission redactions are exactly
  * the client-scoped surface's -- one implementation under a different bound client. The whole-bundle write is the
- * "post the entire definition, replace what is there" create/update variant; the per-slot PATCH and the bulk
- * import/clone-restore paths the issue also names are later slices.
+ * "post the entire definition, replace what is there" create/update variant; the per-slot PATCH is
+ * [ACEP.bundlePatch], and the bulk import/clone/restore path is [ACEP.import] (issue #733).
  */
 @Suppress("DuplicatedCode")
 fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.namespace) {
@@ -862,7 +862,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
  * actor. The `admin` section gate has already confined the caller to `allClients`, so naming any client is theirs
  * to do; an absent client is a 400.
  *
- * [requireExisting] (the default) refuses a client that is neither present nor has any stored configuration --
+ * [requireExisting] (the default) refuses a client that is neither known -- declared anywhere, present here or
+ * not -- nor has any stored configuration --
  * so a typo'd id on the tier or reload endpoints reads as a 404 rather than writing an orphan tier row or
  * reporting a no-op reload as success (issue #685 review). The bundle write passes it `false`, since writing a
  * `clientDef` slot for a fresh id is exactly how a new client is created; a client written but not yet reloaded

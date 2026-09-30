@@ -309,12 +309,14 @@ fun errorMessageTemplateProblems(
 }
 
 /**
- * Knobs that adjust what a validation run *produces*, for a caller whose needs differ from the wire
- * protocol's -- today the interactive endpoint form (issue #191).
+ * Knobs that adjust a validation run for a caller whose needs differ from the plain reading of a schema -- the
+ * request path, on the wire and in the interactive endpoint form (issue #191), an editor, a cross-client reader.
  *
- * An option may change the coerced output or how something is reported; it may never change what a schema
- * considers **valid**, so no setting here can turn a failure into a success. This is an object rather than a
- * parameter because the list is expected to grow as the frontend asks for more.
+ * Most options change only the coerced output or how something is reported, but some do change a verdict:
+ * [forInput] reads a type as a **request**, so a `g-derived` property is not required and a plain string is
+ * trimmed before it is measured (issue #765); [skipCompleteness] defers a fragment's completeness to where it
+ * is assembled; and [allowUnknownVariant] off refuses an unknown branch the document admits. This is an object
+ * rather than a parameter because the list is expected to grow as the frontend asks for more.
  *
  * A data class so a variant is derived with `copy`, which carries every other field along. Rebuilding one field by
  * field once dropped [existingTypes] under an `optionalContents` property (issue #812), and a field added later

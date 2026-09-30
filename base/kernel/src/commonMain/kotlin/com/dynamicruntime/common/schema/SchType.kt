@@ -19,7 +19,7 @@ class SchType(
     /**
      * Custom `allowCoerce` keyword (resolved): whether a value that doesn't match
      * [jsonType] may be coerced to it during validation. Defaults to true for
-     * numeric types (integer/number), false otherwise.
+     * numeric and boolean types and for a date [format], false otherwise (`coercesByDefault`).
      */
     val allowCoerce: Boolean,
     /**

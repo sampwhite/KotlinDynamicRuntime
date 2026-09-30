@@ -691,8 +691,9 @@ fun errorContextData(
  * The problems with a layout's copy **templates** -- `label` / `description` / `hint` -- against the field they
  * annotate (issues #587, #605), the boot check for §10's frontend substitution:
  *  - a **malformed** template (an unterminated `${'$'}{...}`, an empty block) fails, on any of the three;
- *  - a **fragment pull** `${'$'}{@t("ns.key")}` fails until #605 wires fragment resolution -- it would otherwise
- *    render as raw text, exactly the "parses clean, renders wrong" the layout boot checks exist to prevent;
+ *  - a **frontend fragment pull** `${'$'}{@t("ns.key")}` fails: a layout pulls a fragment with the backend prefix
+ *    `%{@t}`, resolved at delivery (#605), and a frontend one would render as raw text, exactly the "parses
+ *    clean, renders wrong" the layout boot checks exist to prevent;
  *  - a **hint** additionally may reference only its field's bounds params: a `${'$'}{max}` on a field with no maximum
  *    fails, like a mistyped key. A `label` / `description` resolves against the field's own **dynamic** data, so
  *    its `${'$'}{...}` data paths are not checked here (no boot can enumerate them).

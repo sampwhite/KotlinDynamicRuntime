@@ -69,8 +69,9 @@ import kotlin.time.Instant
  * ### Sync awareness
  *
  * A restarted node now runs the latest stored config, so it is ahead of peers that have not reloaded. #611
- * routes that through a `ClientSyncTracking` write so other nodes learn to sync (#618). Nothing is written yet;
- * [recordRestartLoad] is the one obvious place for it.
+ * routes that through a `ClientSyncTracking` write so other nodes learn to sync (#618): [recordRestartLoad]
+ * keeps the per-client markers this boot loaded, and `ClientSyncService` announces them ([loadedMarkers]) once
+ * the node is ready.
  */
 class GedraConfigLoadService : ServiceInitializer {
     override val serviceName: String = GedraConfigLoadService.serviceName

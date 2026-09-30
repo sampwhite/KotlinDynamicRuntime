@@ -117,7 +117,7 @@ open class SchTypeBuilder(
     var format: String? by SchAttr(data, SCH.format)
 
     /** Custom `allowCoerce` keyword. When unset, the parser defaults it (true for
-     *  numeric types, false otherwise). */
+     *  numeric and boolean types and for a date `format`, false otherwise). */
     var allowCoerce: Boolean? by SchAttr(data, SCH.allowCoerce)
 
     /**
@@ -153,10 +153,11 @@ open class SchTypeBuilder(
 
     /**
      * Custom `g-visibleWhen` keyword (issue #545): a cfact expression deciding whether this property is shown to
-     * a given caller. Resolved when the catalog renders for that caller -- the property is dropped for one whose
-     * cfacts do not satisfy the expression. Trait data enforces it on every write (issue #830); a handler
-     * accepting it as an endpoint input must enforce it itself, since request validation runs against the
-     * compiled schema that still carries it. See [SCH.visibleWhen].
+     * a given caller. Evaluated on the frontend (issue #564) against the caller's delivered cfacts -- the served
+     * schema keeps it, and the field is hidden from a caller whose cfacts do not satisfy the expression. Trait
+     * data enforces it on every write (issue #830); a handler accepting it as an endpoint input must enforce it
+     * itself, since request validation runs against the compiled schema that still carries it. See
+     * [SCH.visibleWhen].
      */
     var visibleWhen: String? by SchAttr(data, SCH.visibleWhen)
 
@@ -447,8 +448,8 @@ open class SchTypeBuilder(
 
     /**
      * Refuses a value carrying leading/trailing whitespace on this string field (issue #541):
-     * `g-outerWhitespace: "reject"`. For a code, password, or identifier, where silent trimming would hide a
-     * paste error rather than fix it.
+     * `g-outerWhitespace: "reject"`. For a code or identifier, where silent trimming would hide a paste error
+     * rather than fix it.
      */
     fun noOuterWhitespace() {
         outerWhitespace = SOWS.reject
@@ -457,7 +458,8 @@ open class SchTypeBuilder(
     /**
      * Opts this string field out of the input-path trim default (issue #765): `g-outerWhitespace: "keep"`, so
      * leading/trailing whitespace survives even as endpoint input. For the rare field whose edge whitespace is
-     * content -- a free-text block, a value meant to round-trip verbatim -- rather than a paste artifact.
+     * content -- a password, a free-text block, a value meant to round-trip verbatim -- rather than a paste
+     * artifact.
      */
     fun preserveWhitespace() {
         outerWhitespace = SOWS.keep

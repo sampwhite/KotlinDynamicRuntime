@@ -124,13 +124,13 @@ A `clientShaped` per-client copy **inherits** both, so a published client-dynami
 its `/gedra/<client>/…` copies.
 
 **Query-verb gotcha.** On a GET or DELETE the input arrives as query-string *text*, and the schema layer only
-coerces numeric and date-format types by default (`allowCoerce`, see `kdr-schema-builder`). So a non-numeric
-field on such an endpoint — a `boolean`, an `array` — needs `allowCoerce = true` set on it, or `?flag=true`
-fails validation as a `wrongType`. It fails **safe** (a refused call, and a unit test through `TestHttpClient`
-catches it, since that stringifies args too), but it fails. Set it on the field:
+coerces numeric, boolean and date-format types by default (`allowCoerce`, see `kdr-schema-builder`). So any
+other typed field on such an endpoint — an `array`, an `object` — needs `allowCoerce = true` set on it, or
+`?ids=a,b` fails validation as a `wrongType`. It fails **safe** (a refused call, and a unit test through
+`TestHttpClient` catches it, since that stringifies args too), but it fails. Set it on the field:
 
 ```kotlin
-field("permanent", "…") { type = SCT.boolean; allowCoerce = true }   // GET/DELETE only
+field("ids", "…") { type = SCT.array; allowCoerce = true; items { type = SCT.string } }   // GET/DELETE only
 ```
 
 Whether the *builder* should default this on by verb, or coercion should instead happen at the dispatch
@@ -195,8 +195,11 @@ non-2xx body is a standardized envelope (issue #103), built by `RequestHandler.e
 - **`errorCode`** — the *logical* code a client branches on (e.g. a parser's `MarkdownError`), promoted to the
   top level from the exception's `extraData` under `KdrException.errorCodeKey`. **Absent** when there is none —
   most errors have no logical code.
-- **`errorMessage`** — the message (`fullMessage()`, i.e. the cause chain). Still the raw message for every
-  code today; fragment-resolved copy and 5xx redaction are later phases of #97.
+- **`errorMessage`** — the message: rendered from fragment copy when the exception carries a `KdrMsg`
+  (`KdrException.mkMsg`, issue #108), otherwise the raw `fullMessage()` (the cause chain). A `sensitive` error
+  is replaced by a generic sentence where the deployment obfuscates (`KDR_OBFUSCATE_ERRORS`, on in prod); other
+  5xx bodies are not yet redacted on the wire (`deferred-work.md`).
+- **`errorFromFragment`** — whether `errorMessage` is fragment copy rather than a raw message. Always present.
 - **`requestUri`** — as on a success response.
 - **`extraData`** — whatever remains of the exception's bag (e.g. `offset` / `line` / `lineCol`), **nested**
   under its own key so it can never shadow a protocol field. Absent when empty.
