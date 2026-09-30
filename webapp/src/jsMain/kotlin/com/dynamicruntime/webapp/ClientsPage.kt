@@ -375,8 +375,10 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
     var pickNamespace by useState<String?>(null)
     val latestKeys = useRef(0)
 
-    // A new client under the same editor: nothing of the previous one's editing state carries over.
+    // A new client under the same editor: nothing of the previous one's editing state carries over -- and a keys
+    // fetch still in flight for the previous client is disowned, so it cannot fill the new one's picker.
     useEffect(props.clientId) {
+        latestKeys.current = (latestKeys.current ?: 0) + 1
         target = null
         adding = false
         keys = null
@@ -483,12 +485,16 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
                             }
                             td { +setByText(r.configName, r.origin) }
                             td {
-                                Button {
-                                    type = "link"
-                                    size = "small"
-                                    disabled = busy
-                                    onClick = { open(r.fileId, r.namespace, r.key, r.value.orEmpty()) }
-                                    +"Edit"
+                                // An orphan has no shipped key to set, so a save of it would only be refused: reset
+                                // is what works on that row.
+                                if (!r.orphan) {
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy
+                                        onClick = { open(r.fileId, r.namespace, r.key, r.value.orEmpty()) }
+                                        +"Edit"
+                                    }
                                 }
                                 if (copyRowResettable(r)) {
                                     Button {
@@ -520,7 +526,9 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
             className = ClassName("copy-editor")
             h3 { +"${open.fileId}: ${open.namespace}.${open.key}" }
             textarea {
-                className = ClassName("json-edit copy-edit")
+                // `code` is what draws the inset well (background and border); without it the textarea keeps the
+                // browser's light default and the theme's near-white text is unreadable on it.
+                className = ClassName("code json-edit copy-edit")
                 value = draft
                 disabled = busy
                 spellCheck = true

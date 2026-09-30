@@ -12,12 +12,18 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * ### Where an edit lands
  *
- * In the client's **stored** configuration, in a `fragmentDef` entry for the file -- the entry a stored config of the
- * client's already holds for that file when there is one, else one in a config named [CPY.copyConfigName], created
- * on the first edit. Deterministic, and it keeps one stored config per file: two stored configs setting the same
- * key would be overlaid at the same step, which the merge treats as an authoring mistake rather than a composition.
- * A key the client's **source** config sets is overridden, not replaced: a stored layer is applied after a source
- * one (`overlayPrecedence`), so the edit wins, and a reset removes the stored value and the source one shows again.
+ * In the client's **stored** configuration, in a `fragmentDef` entry for the file: the stored config that already
+ * sets the **key**, else the one that already overlays the **file**, else a config named [CPY.copyConfigName],
+ * created on the first edit. Deterministic, and it keeps one stored config per key: two stored configs setting the
+ * same key would be overlaid at the same step, which the merge treats as an authoring mistake rather than a
+ * composition. A key the client's **source** config sets is overridden, not replaced: a stored layer is applied after
+ * a source one (`overlayPrecedence`), so the edit wins, and a reset removes the stored value and the source one
+ * shows again.
+ *
+ * A config with **unpublished changes** of its own is not written into -- a copy edit publishes the config it lands
+ * in, and would take somebody's half-finished draft live with it. The edit is refused, naming the config, so the
+ * draft is published or reverted first. The `copy` config is this editor's own, so a draft there is its own doing
+ * (a publish that was refused) and is simply completed.
  *
  * ### One key at a time, under the lock
  *
@@ -31,7 +37,9 @@ import com.dynamicruntime.common.util.toOptStr
  * The write is trial-checked (issue #843) -- a `%{...}` in a frontend file, an unresolved `%{@t(...)}` in a backend
  * one, a template that does not parse -- and refused with the findings. What passes is published (a published-only
  * client consumes only published configuration) and the client reloaded on this node and announced to peers, so
- * the next page load reads the new copy under a new build id.
+ * the next page load reads the new copy under a new build id. The publish has a trial of its own, judged against
+ * the client's *published* revisions, and can refuse what the write's trial passed; the write is then undone --
+ * the key put back as it was -- so a refused change is not left in a draft for the next edit to publish.
  */
 object ClientCopyEdit {
     /** One key the client's people read: its address, who the file is for, and the value this client gets. */
@@ -70,23 +78,20 @@ object ClientCopyEdit {
         requireShippedKey(cxt, fileId, namespace, key)
         val bound = cxt.mkSubContext("copyEdit", client)
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, client, fileId)
-        val written = if (holder == null) {
-            // The first edit of a file no stored config overlays: the client's `copy` config, created here with just
-            // this key -- or, when it exists already, patched like any other.
-            val existing = svc.readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
-            if (existing != null) {
-                patchKey(svc, bound, existing, fileId, namespace, key, value)
-            } else {
-                val config = gedraConfig(bound, CPY.copyConfigName, "${client}Copy", client) {
-                    fragmentOverlay(fileId, mapOf(namespace to mapOf(key to value)))
-                }
-                svc.writeConfig(bound, config, trial = true)
+        val holder = holderOf(bound, client, fileId, namespace, key)
+            ?: svc.readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        if (holder == null) {
+            // The first edit of a file no stored config overlays, with no `copy` config yet: created with just this key.
+            val config = gedraConfig(bound, CPY.copyConfigName, "${client}Copy", client) {
+                fragmentOverlay(fileId, mapOf(namespace to mapOf(key to value)))
             }
-        } else {
-            patchKey(svc, bound, holder, fileId, namespace, key, value)
+            val written = svc.writeConfig(bound, config, trial = true)
+            return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, null) })
         }
-        return goLive(cxt, bound, client, written, fileId, namespace, key)
+        requireNoForeignDraft(holder)
+        val before = storedValue(holder, fileId, namespace, key)
+        val written = patchKey(svc, bound, holder, fileId, namespace, key, value)
+        return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
     }
 
     /**
@@ -96,14 +101,27 @@ object ClientCopyEdit {
     fun reset(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String): Result {
         val bound = cxt.mkSubContext("copyEdit", client)
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, client, fileId)?.takeIf { row ->
-            fragmentEntry(row.entriesBySlot(), fileId)?.get(CCT.content).toJsonMapOrEmpty()[namespace].toJsonMapOrEmpty().containsKey(key)
-        } ?: throw KdrException.mkInput(
-            "No stored value sets '$fileId: $namespace.$key' for client '$client'; what it reads comes from source " +
-                "code or the shipped copy, which a reset cannot remove.",
-        )
+        val holder = holderOf(bound, client, fileId, namespace, key)?.takeIf { storedValue(it, fileId, namespace, key) != null }
+            ?: throw KdrException.mkInput(
+                "No stored value sets '$fileId: $namespace.$key' for client '$client'; what it reads comes from source " +
+                    "code or the shipped copy, which a reset cannot remove.",
+            )
+        requireNoForeignDraft(holder)
+        val before = storedValue(holder, fileId, namespace, key)
         val written = patchKey(svc, bound, holder, fileId, namespace, key, value = null)
-        return goLive(cxt, bound, client, written, fileId, namespace, key)
+        return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
+    }
+
+    /**
+     * Refuses to write into a config that has unpublished changes of its own -- unless it is the editor's own `copy`
+     * config, whose only drafts are this editor's (a publish that was refused). See the class note.
+     */
+    private fun requireNoForeignDraft(holder: GedraConfigRow) {
+        if (holder.isPublished || holder.configId.baseId == CPY.copyConfigName) return
+        throw KdrException.mkInput(
+            "Configuration '${holder.configId.baseId}' of client '${holder.client}' has unpublished changes, which a " +
+                "copy edit would publish with it. Publish or revert that configuration first.",
+        )
     }
 
     /** Refuses a key no shipped file declares: an overlay of it would be stored and never read (an orphan). */
@@ -118,14 +136,22 @@ object ClientCopyEdit {
         }
     }
 
-    /** The stored config of [client]'s whose `fragmentDef` slot already overlays [fileId], if any. */
-    private fun holderOf(bound: KdrCxt, client: String, fileId: String): GedraConfigRow? =
-        GedraConfigService.get(bound).listConfigs(bound)
-            .filter { it.client == client }
-            .firstOrNull { fragmentEntry(it.entriesBySlot(), fileId) != null }
+    /**
+     * The stored config of [client]'s an edit of [key] belongs in: one whose `fragmentDef` entry for [fileId] already
+     * sets the key, else one that overlays the file at all; null when none does.
+     */
+    private fun holderOf(bound: KdrCxt, client: String, fileId: String, namespace: String, key: String): GedraConfigRow? {
+        val onFile = GedraConfigService.get(bound).listConfigs(bound)
+            .filter { it.client == client && fragmentEntry(it.entriesBySlot(), fileId) != null }
+        return onFile.firstOrNull { storedValue(it, fileId, namespace, key) != null } ?: onFile.firstOrNull()
+    }
 
     private fun fragmentEntry(slots: Map<String, List<Map<String, Any?>>>, fileId: String): Map<String, Any?>? =
         slots[CCT.fragmentDef]?.firstOrNull { it[CCT.fileId].toOptStr() == fileId }
+
+    /** The value [row]'s entry for [fileId] holds for [key], or null when it does not set the key. */
+    private fun storedValue(row: GedraConfigRow, fileId: String, namespace: String, key: String): String? =
+        fragmentEntry(row.entriesBySlot(), fileId)?.get(CCT.content).toJsonMapOrEmpty()[namespace].toJsonMapOrEmpty()[key].toOptStr()
 
     /**
      * Patches [row] so its `fragmentDef` entry for [fileId] holds [key] = [value] -- or, with a null value, no longer
@@ -163,20 +189,36 @@ object ClientCopyEdit {
         out
     }
 
-    /** Publishes [written]'s config, reloads [client] on this node, announces it, and reads back what is now served. */
-    private fun goLive(cxt: KdrCxt, bound: KdrCxt, client: String, written: GedraConfigRow, fileId: String, namespace: String, key: String): Result {
+    /**
+     * Publishes [written]'s config, reloads [client] on this node, announces it, and reads back what is now served.
+     * A publish the trial refuses runs [undo] -- the key put back as it was -- before the refusal is rethrown, so
+     * the change is not left in a draft that the next edit would publish.
+     */
+    private fun goLive(
+        cxt: KdrCxt,
+        bound: KdrCxt,
+        client: String,
+        written: GedraConfigRow,
+        fileId: String,
+        namespace: String,
+        key: String,
+        undo: () -> Unit,
+    ): Result {
         val svc = GedraConfigService.get(bound)
-        svc.publish(bound, written.configId, trial = true)
+        try {
+            svc.publish(bound, written.configId, trial = true)
+        } catch (e: KdrException) {
+            undo()
+            throw e
+        }
         val reload = GedraConfigReload.reloadClient(cxt, client)
         ClientSyncService.get(cxt).announceAndMark(cxt, client, reload.marker)
         val effective = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, fileId, client)
-        val storedStill = holderOf(bound, client, fileId)?.let { row ->
-            fragmentEntry(row.entriesBySlot(), fileId)?.get(CCT.content).toJsonMapOrEmpty()[namespace].toJsonMapOrEmpty().containsKey(key)
-        } ?: false
         return Result(
             configName = written.configId.baseId,
             value = effective?.content?.get(namespace)?.get(key),
-            stored = storedStill,
+            // From the row just written, which is the one that decides it.
+            stored = storedValue(written, fileId, namespace, key) != null,
             buildId = effective?.buildId,
             issues = reload.issues,
         )

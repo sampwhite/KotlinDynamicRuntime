@@ -4,6 +4,10 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ACEP
+import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
@@ -104,8 +108,8 @@ class ClientCopyEditEndpointTest : StringSpec({
         // The bundle holds one entry for the file with all three keys.
         val bundle = admin.getItem(ACEP.bundle, mapOf(CFEP.client to SC.acme, CFEP.name to CPY.copyConfigName))
         val slots = bundle[CFEP.slots].toJsonMapOrEmpty()
-        val homeEntry = slots["fragmentDef"].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }.single { it["fileId"] == HFRAG.home }
-        homeEntry["content"].toJsonMapOrEmpty().keys shouldBe setOf("home", HFRAG.formsNs)
+        val homeEntry = slots[CCT.fragmentDef].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }.single { it[CCT.fileId] == HFRAG.home }
+        homeEntry[CCT.content].toJsonMapOrEmpty().keys shouldBe setOf("home", HFRAG.formsNs)
     }
 
     "a reset removes the stored value, so the source value shows again; nothing stored is refused" {
@@ -133,9 +137,39 @@ class ClientCopyEditEndpointTest : StringSpec({
         served(SC.acme, fileId = AFRAG.mail, ns = MCOPY.common, key = MCOPY.footer) shouldBe before
         // Nothing of it is stored either: the mail file has no entry in the copy config.
         val slots = admin.getItem(ACEP.bundle, mapOf(CFEP.client to SC.acme, CFEP.name to CPY.copyConfigName))[CFEP.slots].toJsonMapOrEmpty()
-        slots["fragmentDef"].toJsonListOrEmpty().map { it.toJsonMapOrEmpty()["fileId"] } shouldBe listOf(HFRAG.home)
+        slots[CCT.fragmentDef].toJsonListOrEmpty().map { it.toJsonMapOrEmpty()[CCT.fileId] } shouldBe listOf(HFRAG.home)
         // A key no shipped file declares would be stored and never read, so it is refused before any write.
         admin.expectError(EXC.notFound, CPY.setPath, data = address(SC.acme, "home", "noSuchKey") + mapOf(COV.value to "x"))
+    }
+
+    "an edit lands in the stored config that already sets the key, and a config with a draft of its own is refused" {
+        // Two published stored configs of globex's, each overlaying `home` with one key.
+        val svc = GedraConfigService.get(cxt)
+        val writer = cxt.mkSubContext("seed", SC.globex).also { it.userId = 9180L }
+        for ((name, key, value) in listOf(Triple("wordsA", "title", "Globex welcome"), Triple("wordsB", "intro", "Globex intro"))) {
+            val row = svc.writeConfig(writer, gedraConfig(cxt, name, "globexWords", SC.globex) { fragmentOverlay(HFRAG.home, mapOf("home" to mapOf(key to value))) })
+            svc.publish(writer, row.configId)
+        }
+        GedraConfigReload.reloadClient(cxt, SC.globex)
+        // Setting `intro` goes to wordsB, which holds it -- not wordsA, which merely overlays the file first.
+        admin.postData(CPY.setPath, address(SC.globex, "home", "intro") + mapOf(COV.value to "Globex, introduced"))[COV.configName] shouldBe "wordsB"
+        served(SC.globex, key = "intro").first shouldBe "Globex, introduced"
+        // A reset of a key the second config holds is found there.
+        admin.postData(CPY.resetPath, address(SC.globex, "home", "title"))[COV.configName] shouldBe "wordsA"
+        served(SC.globex, key = "title").first shouldBe "Welcome"
+        // Give wordsA a draft of its own through the bundle API: a new revision on top of the published head, unpublished.
+        val bundle = admin.getItem(ACEP.bundle, mapOf(CFEP.client to SC.globex, CFEP.name to "wordsA"))
+        admin.postData(
+            ACEP.bundleWrite,
+            mapOf(CFEP.client to SC.globex, CFEP.name to "wordsA", CFEP.namespaceField to bundle[CFEP.namespaceField],
+                CFEP.slots to mapOf(CCT.fragmentDef to listOf(mapOf(CCT.fileId to HFRAG.home, CCT.content to mapOf("home" to mapOf("title" to "Draft title")))))),
+        )
+        admin.getItems(ACEP.bundles, mapOf(CFEP.client to SC.globex)).single { it[CFEP.name] == "wordsA" }[CFEP.published] shouldBe false
+        // A copy edit of that key would publish the draft: refused, naming the config; the draft stays unpublished.
+        val refused = admin.expectError(EXC.badInput, CPY.setPath, data = address(SC.globex, "home", "title") + mapOf(COV.value to "Nope"))
+        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "wordsA"
+        admin.getItems(ACEP.bundles, mapOf(CFEP.client to SC.globex)).single { it[CFEP.name] == "wordsA" }[CFEP.published] shouldBe false
+        served(SC.globex, key = "title").first shouldBe "Welcome"
     }
 
     "a client-scoped administrator edits their own client and may not name another" {
