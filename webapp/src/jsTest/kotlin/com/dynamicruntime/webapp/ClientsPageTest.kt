@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientStatus
@@ -304,6 +305,58 @@ class ClientsPageTest {
         assertEquals(listOf("globex" to "Sent by Globex."), keys.first { it.key == "common.footer" }.clients)
         assertEquals(listOf("acme" to "renamed: Acme overview"), keys.first { it.key == "overview" }.clients)
         assertEquals(emptyList<KeyAcrossClients>(), overridesAcrossClients(emptyList()))
+    }
+
+    // --- editing the copy (issue #918) ---------------------------------------------------------------------
+
+    @Test
+    fun theCopyKeysParseAndTheAddablesLeaveOutWhatIsAlreadyOverridden() {
+        val keys = parseCopyKeys(
+            listOf(
+                mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "brand", COV.audience to "frontend", COV.value to "ACME KDR"),
+                mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "title", COV.audience to "frontend", COV.value to "Welcome"),
+                mapOf(COV.fileId to "mail", COV.namespaceField to "common", COV.key to "footer", COV.audience to "backend", COV.value to "Sent by KDR."),
+                // No key: not a key.
+                mapOf(COV.fileId to "home", COV.namespaceField to "home"),
+            ),
+        )
+        assertEquals(listOf("home:home.brand", "home:home.title", "mail:common.footer"), keys.map { "${it.fileId}:${it.namespace}.${it.key}" })
+        assertEquals("backend", keys[2].audience)
+        // acme already overrides home.brand: the picker offers the rest.
+        val addable = addableCopyKeys(keys, acmeOverrides().copy)
+        assertEquals(listOf("home:home.title", "mail:common.footer"), addable.map { "${it.fileId}:${it.namespace}.${it.key}" })
+    }
+
+    @Test
+    fun aSetOrResetRequestCarriesTheAddressAndTheValueOnlyWhenSetting() {
+        assertEquals(
+            mapOf(COV.client to "acme", COV.fileId to "home", COV.namespaceField to "home", COV.key to "brand", COV.value to "Acme Co"),
+            copyEditRequest("acme", "home", "home", "brand", "Acme Co"),
+        )
+        // An empty value is a value; only null means "no value" (a reset).
+        assertEquals("", copyEditRequest("acme", "home", "home", "brand", "")[COV.value])
+        assertEquals(false, copyEditRequest("acme", "home", "home", "brand", null).containsKey(COV.value))
+    }
+
+    @Test
+    fun onlyAStoredValueOffersAReset() {
+        val rows = acmeOverrides().copy
+        assertEquals(true, copyRowResettable(rows[0]))   // stored over source
+        assertEquals(false, copyRowResettable(rows[1]))  // set in source: overridable, not removable
+    }
+
+    @Test
+    fun theEditResultParses() {
+        val result = parseCopyEditResult(
+            mapOf(COV.configName to "copy", COV.value to "Acme Co", CPY.stored to true, CPY.issues to listOf(mapOf(GCI.message to "m"))),
+        )
+        assertEquals("copy", result.configName)
+        assertEquals("Acme Co", result.value)
+        assertEquals(true, result.stored)
+        assertEquals(listOf("m"), result.issues)
+        val reset = parseCopyEditResult(mapOf(COV.configName to "copy", CPY.stored to false))
+        assertEquals(null, reset.value)
+        assertEquals(false, reset.stored)
     }
 
     @Test

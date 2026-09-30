@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.ClientOperatorFields
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
@@ -308,6 +309,56 @@ fun clientOverridesHref(clientId: String): String = hashHref(listOf(HP.page to H
 /** The cross-client view of the overrides (issue #917), for an administrator who sees across clients. */
 fun overridesAcrossHref(): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.overrides to "1"))
 
+/** One key an administrator may override for a client (issue #918): a row of `/clientAdmin/client/copy/keys`. */
+class CopyKeyView(val fileId: String, val namespace: String, val key: String, val audience: String, val value: String)
+
+/** The keys listing's items as [CopyKeyView]s; one without its address is not a key. Pure, and covered under `jsNodeTest`. */
+fun parseCopyKeys(items: List<Map<String, Any?>>): List<CopyKeyView> = items.mapNotNull { row ->
+    CopyKeyView(
+        fileId = row[COV.fileId].toOptStr() ?: return@mapNotNull null,
+        namespace = row[COV.namespaceField].toOptStr() ?: return@mapNotNull null,
+        key = row[COV.key].toOptStr() ?: return@mapNotNull null,
+        audience = row[COV.audience].toOptStr().orEmpty(),
+        value = row[COV.value].toOptStr().orEmpty(),
+    )
+}
+
+/** What a set or reset did (issue #918): where it landed, and what the client now reads. */
+class CopyEditResult(val configName: String, val value: String?, val stored: Boolean, val issues: List<String>)
+
+/** The set/reset result as a [CopyEditResult]. Pure, and covered under `jsNodeTest`. */
+fun parseCopyEditResult(results: Map<String, Any?>): CopyEditResult = CopyEditResult(
+    configName = results[COV.configName].toOptStr().orEmpty(),
+    value = results[COV.value].toOptStr(),
+    stored = results[CPY.stored] == true,
+    issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
+)
+
+/**
+ * The request that sets or resets one key for a client (issue #918): its address, the client, and -- for a set -- the
+ * value. Pure, and covered under `jsNodeTest`.
+ */
+fun copyEditRequest(clientId: String, fileId: String, namespace: String, key: String, value: String?): Map<String, Any?> =
+    linkedMapOf<String, Any?>(COV.client to clientId, COV.fileId to fileId, COV.namespaceField to namespace, COV.key to key)
+        .also { if (value != null) it[COV.value] = value }
+
+/**
+ * Whether a copy row offers a reset (issue #918): only a **stored** value is data's to remove. A row set in source
+ * shows its value and can be overridden, and once overridden the stored value resets to the source one -- the
+ * report's `sourceValue`. Pure, and covered under `jsNodeTest`.
+ */
+fun copyRowResettable(row: CopyOverrideView): Boolean = row.origin == GedraConfigOrigin.stored.name
+
+/**
+ * The keys not yet overridden for the client, as an "add an override" picker offers them (issue #918): every
+ * shipped key minus the ones the client already sets, grouped by file then namespace in listing order. Pure, and
+ * covered under `jsNodeTest`.
+ */
+fun addableCopyKeys(keys: List<CopyKeyView>, overridden: List<CopyOverrideView>): List<CopyKeyView> {
+    val taken = overridden.map { Triple(it.fileId, it.namespace, it.key) }.toSet()
+    return keys.filterNot { Triple(it.fileId, it.namespace, it.key) in taken }
+}
+
 /** One configuration issue as the detail lists it (issue #906): what is wrong, what was dropped, and where it came from. */
 class ConfigIssueView(val message: String, val degradedTo: String, val origin: String)
 
@@ -421,6 +472,18 @@ object ClientsApi {
     /** One client's definition (issue #906), through the scoped retrieve: the caller's own, or one they may name. */
     suspend fun definition(clientId: String): ClientDefinitionView =
         parseClientDefinition(Http.getApi(UADEP.clientDefinition + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
+
+    /** Every key an administrator may override for a client, with the client's value (issue #918). */
+    suspend fun copyKeys(clientId: String): List<CopyKeyView> =
+        parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())
+
+    /** Sets one key's value for a client and makes it live (issue #918); the backend refuses a value its trial faults. */
+    suspend fun setCopy(clientId: String, fileId: String, namespace: String, key: String, value: String): CopyEditResult =
+        parseCopyEditResult(Http.sendApi("POST", CPY.setPath, copyEditRequest(clientId, fileId, namespace, key, value))[EP.results].toJsonMapOrEmpty())
+
+    /** Removes a client's stored value for one key and makes that live (issue #918). */
+    suspend fun resetCopy(clientId: String, fileId: String, namespace: String, key: String): CopyEditResult =
+        parseCopyEditResult(Http.sendApi("POST", CPY.resetPath, copyEditRequest(clientId, fileId, namespace, key, null))[EP.results].toJsonMapOrEmpty())
 
     /** What one client's own configuration changes (issue #917), through the scoped retrieve. */
     suspend fun overrides(clientId: String): ClientOverridesView =

@@ -19,11 +19,13 @@ import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
+import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.li
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
 import react.dom.html.ReactHTML.tbody
+import react.dom.html.ReactHTML.textarea
 import react.dom.html.ReactHTML.td
 import react.dom.html.ReactHTML.th
 import react.dom.html.ReactHTML.thead
@@ -61,6 +63,9 @@ val ClientsPage = FC<Props> {
     // The endpoint's refusal (a 403), in its words: a designed answer, drawn as the permission panel.
     var refusal by useState<String?>(null)
     val generation = useRefreshGeneration()
+    // A copy edit that went live bumps the generation (issue #918): this page re-reads the client, and the shell
+    // re-reads its config and copy, so a changed wordmark shows in the app bar without a reload.
+    val bump = useRefreshBump()
     // The open client's detail (issue #906): read on its own, keyed on the id the hash names.
     val openId = hashParams()[HP.client]
     var definition by useState<ClientDefinitionView?>(null)
@@ -205,6 +210,7 @@ val ClientsPage = FC<Props> {
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
             detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
+            onChanged = bump,
         )
         // The view across clients is the allClients administrator's; anyone else lands on their listing.
         acrossView && current.canSeeAllClients -> overridesAcross(rows, acrossRows, loadError, acrossError)
@@ -230,6 +236,8 @@ private fun ChildrenBuilder.clientDetail(
     overridesError: DisplayError?,
     overridesRefused: Boolean,
     acrossClients: Boolean,
+    /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
+    onChanged: () -> Unit,
 ) {
     div {
         className = ClassName("card wide")
@@ -314,12 +322,19 @@ private fun ChildrenBuilder.clientDetail(
                 className = ClassName("subtitle")
                 +"Loading…"
             }
-            overrides.copy.isEmpty() && overrides.blocks.isEmpty() -> p {
-                className = ClassName("subtitle")
-                +"This client uses the shipped copy and menu."
-            }
             else -> {
-                if (overrides.copy.isNotEmpty()) copyOverridesTable(overrides.copy)
+                if (overrides.copy.isEmpty() && overrides.blocks.isEmpty()) {
+                    p {
+                        className = ClassName("subtitle")
+                        +"This client uses the shipped copy and menu."
+                    }
+                }
+                // The copy rows and their editor (issue #918): edit or reset a key, or add an override of any shipped one.
+                CopyEditor {
+                    this.clientId = clientId
+                    rows = overrides.copy
+                    this.onChanged = onChanged
+                }
                 if (overrides.blocks.isNotEmpty()) blockOverridesTable(overrides.blocks)
             }
         }
@@ -327,56 +342,302 @@ private fun ChildrenBuilder.clientDetail(
     }
 }
 
-/** The copy a client rewords: each key with what everybody else reads, what the client reads, and who set it. */
-private fun ChildrenBuilder.copyOverridesTable(rows: List<CopyOverrideView>) {
-    div {
-        className = ClassName("op-table-scroll")
-        table {
-            className = ClassName("op-table")
-            thead {
-                tr {
-                    th { +"Copy" }
-                    th { +"Shipped" }
-                    th { +"This client" }
-                    th { +"Set by" }
-                }
+/** The address of the key an editor is open on, and the text it started from. */
+private class CopyEditTarget(val fileId: String, val namespace: String, val key: String, val startValue: String)
+
+external interface CopyEditorProps : Props {
+    var clientId: String
+    var rows: List<CopyOverrideView>
+    var onChanged: () -> Unit
+}
+
+/**
+ * The copy a client rewords, and its editor (issue #918). The table: each key with what everybody else reads, what
+ * the client reads, who set it, and its actions -- **Edit** opens the editor on that key, **Reset** (a stored value
+ * only: data cannot take away what source code or the shipped file says) removes the client's value. **Add an
+ * override** offers every shipped key the client does not yet set -- file, then namespace, then key, each a choice
+ * -- with the value the client reads today as the starting text; the keys are fetched the first time it is opened.
+ *
+ * A save sets the key and makes it live in one call; the backend refuses a value whose trial finds a problem, and
+ * the refusal is shown in its words under the editor. Once live, [CopyEditorProps.onChanged] re-reads the page.
+ */
+private val CopyEditor = FC<CopyEditorProps> { props ->
+    var target by useState<CopyEditTarget?>(null)
+    var draft by useState("")
+    var busy by useState(false)
+    var editError by useState<DisplayError?>(null)
+    var note by useState<String?>(null)
+    // The "add an override" picker: the shipped keys (read on first open), and the choice so far.
+    var adding by useState(false)
+    var keys by useState<List<CopyKeyView>?>(null)
+    var keysError by useState<DisplayError?>(null)
+    var pickFile by useState<String?>(null)
+    var pickNamespace by useState<String?>(null)
+    val latestKeys = useRef(0)
+
+    // A new client under the same editor: nothing of the previous one's editing state carries over -- and a keys
+    // fetch still in flight for the previous client is disowned, so it cannot fill the new one's picker.
+    useEffect(props.clientId) {
+        latestKeys.current = (latestKeys.current ?: 0) + 1
+        target = null
+        adding = false
+        keys = null
+        keysError = null
+        pickFile = null
+        pickNamespace = null
+        editError = null
+        note = null
+    }
+
+    fun open(fileId: String, namespace: String, key: String, startValue: String) {
+        target = CopyEditTarget(fileId, namespace, key, startValue)
+        draft = startValue
+        adding = false
+        editError = null
+        note = null
+    }
+
+    fun close() {
+        target = null
+        editError = null
+    }
+
+    fun run(action: suspend () -> CopyEditResult, done: (CopyEditResult) -> String) {
+        busy = true
+        editError = null
+        clientsScope.launch {
+            try {
+                val result = action()
+                note = done(result)
+                target = null
+                props.onChanged()
+            } catch (e: Throwable) {
+                editError = userFacingError(e)
+            } finally {
+                busy = false
             }
-            tbody {
-                rows.forEach { r ->
+        }
+    }
+
+    fun openAdd() {
+        adding = true
+        target = null
+        editError = null
+        note = null
+        if (keys != null) return
+        val token = (latestKeys.current ?: 0) + 1
+        latestKeys.current = token
+        clientsScope.launch {
+            try {
+                val loaded = ClientsApi.copyKeys(props.clientId)
+                if (latestKeys.current == token) {
+                    keys = loaded
+                    keysError = null
+                }
+            } catch (e: Throwable) {
+                if (latestKeys.current == token) keysError = userFacingError(e)
+            }
+        }
+    }
+
+    if (props.rows.isNotEmpty()) {
+        div {
+            className = ClassName("op-table-scroll")
+            table {
+                className = ClassName("op-table")
+                thead {
                     tr {
-                        key = copyKeyText(r).unsafeCast<Key>()
-                        td {
-                            +copyKeyText(r)
-                            // An orphan replaces nothing anybody reads -- usually a renamed key -- and silently
-                            // reverts to the shipped copy, which is exactly why it is said here.
-                            if (r.orphan) {
-                                +" "
-                                span {
-                                    className = ClassName("subtitle")
-                                    title = "No shipped copy declares this key, so this value is not read."
-                                    +"(orphan)"
+                        th { +"Copy" }
+                        th { +"Shipped" }
+                        th { +"This client" }
+                        th { +"Set by" }
+                        th { +"" }
+                    }
+                }
+                tbody {
+                    props.rows.forEach { r ->
+                        tr {
+                            key = copyKeyText(r).unsafeCast<Key>()
+                            td {
+                                +copyKeyText(r)
+                                // An orphan replaces nothing anybody reads -- usually a renamed key -- and silently
+                                // reverts to the shipped copy, which is exactly why it is said here.
+                                if (r.orphan) {
+                                    +" "
+                                    span {
+                                        className = ClassName("subtitle")
+                                        title = "No shipped copy declares this key, so this value is not read."
+                                        +"(orphan)"
+                                    }
+                                }
+                            }
+                            td { valueCell(r.baseValue) }
+                            td {
+                                valueCell(r.value)
+                                // The client's own source value a stored change overrides: what a reset returns to.
+                                r.sourceValue?.let {
+                                    div {
+                                        className = ClassName("subtitle cell-clamp")
+                                        title = it
+                                        +"was: $it"
+                                    }
+                                }
+                            }
+                            td { +setByText(r.configName, r.origin) }
+                            td {
+                                // An orphan has no shipped key to set, so a save of it would only be refused: reset
+                                // is what works on that row.
+                                if (!r.orphan) {
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy
+                                        onClick = { open(r.fileId, r.namespace, r.key, r.value.orEmpty()) }
+                                        +"Edit"
+                                    }
+                                }
+                                if (copyRowResettable(r)) {
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy
+                                        onClick = {
+                                            // What it reads now may be the client's source value, not the shipped
+                                            // one, so the note says the value rather than guessing its origin.
+                                            run({ ClientsApi.resetCopy(props.clientId, r.fileId, r.namespace, r.key) }) {
+                                                "Reset ${r.fileId}: ${r.namespace}.${r.key}; it now reads " +
+                                                    (if (it.value == null) "nothing." else "\"${it.value}\".")
+                                            }
+                                        }
+                                        +"Reset"
+                                    }
                                 }
                             }
                         }
-                        td { valueCell(r.baseValue) }
-                        td {
-                            valueCell(r.value)
-                            // The client's own source value a stored change overrides: what a reset would return to.
-                            r.sourceValue?.let {
-                                div {
-                                    className = ClassName("subtitle cell-clamp")
-                                    title = it
-                                    +"was: $it"
-                                }
-                            }
-                        }
-                        td { +setByText(r.configName, r.origin) }
                     }
                 }
             }
         }
     }
+
+    val open = target
+    if (open != null) {
+        div {
+            className = ClassName("copy-editor")
+            h3 { +"${open.fileId}: ${open.namespace}.${open.key}" }
+            textarea {
+                // `code` is what draws the inset well (background and border); without it the textarea keeps the
+                // browser's light default and the theme's near-white text is unreadable on it.
+                className = ClassName("code json-edit copy-edit")
+                value = draft
+                disabled = busy
+                spellCheck = true
+                onChange = { e -> draft = e.target.value }
+            }
+            p {
+                className = ClassName("type-hint")
+                +"Markdown. Saving makes it live for this client at once; a value the checks fault is refused and nothing changes."
+            }
+            editError?.let { errorText("Couldn't save the copy.", it) }
+            div {
+                className = ClassName("row")
+                Button {
+                    type = "primary"
+                    loading = busy
+                    disabled = draft == open.startValue
+                    onClick = {
+                        run({ ClientsApi.setCopy(props.clientId, open.fileId, open.namespace, open.key, draft) }) {
+                            "Saved ${open.fileId}: ${open.namespace}.${open.key} to ${it.configName}."
+                        }
+                    }
+                    +"Save"
+                }
+                Button {
+                    type = "link"
+                    disabled = busy
+                    onClick = { close() }
+                    +"Cancel"
+                }
+            }
+        }
+    } else if (adding) {
+        div {
+            className = ClassName("copy-editor")
+            h3 { +"Add an override" }
+            when {
+                keysError != null -> errorText("Couldn't load the copy keys.", keysError!!)
+                keys == null -> p {
+                    className = ClassName("subtitle")
+                    +"Loading…"
+                }
+                else -> {
+                    val addable = addableCopyKeys(keys!!, props.rows)
+                    val files = addable.map { it.fileId }.distinct()
+                    val namespaces = addable.filter { it.fileId == pickFile }.map { it.namespace }.distinct()
+                    val choices = addable.filter { it.fileId == pickFile && it.namespace == pickNamespace }
+                    div {
+                        className = ClassName("row")
+                        Select {
+                            value = pickFile
+                            placeholder = "File"
+                            options = choiceOptions(files.map { it to it })
+                            style = js("({ minWidth: 160 })")
+                            onChange = { v -> pickFile = v as? String; pickNamespace = null }
+                        }
+                        Select {
+                            value = pickNamespace
+                            placeholder = "Namespace"
+                            disabled = pickFile == null
+                            options = choiceOptions(namespaces.map { it to it })
+                            style = js("({ minWidth: 160 })")
+                            onChange = { v -> pickNamespace = v as? String }
+                        }
+                        Select {
+                            value = null
+                            placeholder = "Key"
+                            disabled = pickNamespace == null
+                            options = choiceOptions(choices.map { it.key to it.key })
+                            style = js("({ minWidth: 200 })")
+                            onChange = { v ->
+                                choices.firstOrNull { it.key == v as? String }?.let { open(it.fileId, it.namespace, it.key, it.value) }
+                            }
+                        }
+                        Button {
+                            type = "link"
+                            onClick = { adding = false }
+                            +"Cancel"
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        div {
+            className = ClassName("row")
+            Button {
+                disabled = busy
+                onClick = { openAdd() }
+                +"Add an override"
+            }
+        }
+        note?.let {
+            p {
+                className = ClassName("subtitle")
+                +it
+            }
+        }
+        // A reset's refusal lands here, since no editor is open for it.
+        editError?.let { errorText("Couldn't change the copy.", it) }
+    }
 }
+
+/** antd `{ label, value }` objects for a Select, from label/value pairs. */
+private fun choiceOptions(pairs: List<Pair<String, String>>): Array<dynamic> = pairs.map { (label, value) ->
+    val obj: dynamic = js("({})")
+    obj.label = label
+    obj.value = value
+    obj
+}.toTypedArray()
 
 /** The interface items a client changes: what it did, the base label, the client's, and who set it. */
 private fun ChildrenBuilder.blockOverridesTable(rows: List<BlockOverrideView>) {

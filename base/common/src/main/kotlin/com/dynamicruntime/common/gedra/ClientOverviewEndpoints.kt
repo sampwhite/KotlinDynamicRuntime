@@ -219,7 +219,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
  * The client a scoped retrieve is about: [named], or the caller's own when absent. Only an administrator who may see
  * every client may name another; a `public` self-administrator (issue #805) oversees no client at all.
  */
-private fun overseenClient(cxt: KdrCxt, named: String?): String {
+internal fun overseenClient(cxt: KdrCxt, named: String?): String {
     AdminRules.requireClientAdministrator(cxt)
     val own = cxt.userProfile.client
     val clientId = named ?: own

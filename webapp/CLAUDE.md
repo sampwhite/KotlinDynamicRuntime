@@ -353,6 +353,19 @@ administrator also gets **Copy & menu across clients** (`ov=1` on the same route
 retrieve per listed client, grouped by the pure `overridesAcrossClients` into file-or-block → key → the clients
 overriding it. A scoped administrator has one client and is never shown that view, whatever the hash says.
 
+**Editing the copy** (issue #918, `CopyEditor` in `ClientsPage.kt`): each copy row has **Edit** and, for a stored
+value only, **Reset** -- data cannot remove what source code or the shipped file says, so a source-set key is
+overridden (its `sourceValue` shows as "was: …") and reset returns to it. **Add an override** fetches
+`/clientAdmin/client/copy/keys` (`ClientsApi.copyKeys`; every shipped key with the client's value, backend files
+included, since `mail` is never served) and offers file → namespace → key, minus what the client already sets
+(`addableCopyKeys`), with the current value as the starting text. Save posts `/clientAdmin/client/copy/set`
+(`copyEditRequest`), which writes the client's stored config (the one already overlaying the file, else `copy`,
+created on first use), trial-checks it, publishes and reloads -- one call, live at once -- and the backend's
+refusal of a faulted value (a raw `%{...}` in a frontend file, an unresolved pull in a backend one) is shown in
+its words under the editor. A success bumps the refresh generation, so the page re-reads the client and the
+shell re-reads its copy: a changed `home.brand` appears in the app bar without a reload. Wire names: `COV`
+(addresses) and `CPY` (paths, `stored`, `buildId`, `issues`), both in the kernel.
+
 Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
 not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,
 who administers only their own users (#805) -- is shown as it came, through `LoadStateCard`'s `errorLead`. The

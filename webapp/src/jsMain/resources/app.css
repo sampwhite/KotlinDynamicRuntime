@@ -895,6 +895,12 @@ textarea.json-edit:focus {
     outline: none;
     border-color: var(--accent-bright);
 }
+/* A piece of copy being edited (the Clients page, issue #918): the same well (`.code .json-edit`, both classes --
+   `.code` is what draws it), in the page's own face rather than monospace, since the value is prose -- Markdown
+   someone reads -- not code. */
+textarea.copy-edit { font-family: inherit; min-height: 5rem; }
+.copy-editor { margin-top: 14px; }
+.copy-editor > h3 { margin: 0 0 8px; font-size: 1rem; }
 /* Unapplied edits: the well is visibly pending until the change is loaded into the form. */
 textarea.json-edit.edited { border-color: var(--accent-bright); }
 /* The same well inside a form row (issue #251). A free-form map field is usually a handful of keys, so it
