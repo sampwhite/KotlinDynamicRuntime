@@ -9,7 +9,7 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
  * A sandbox owns no configuration of its own. It runs its parent's: the parent's source configuration and the
  * parent's **latest** stored revisions, whatever tier the parent consumes at, each copied under the sandbox's id
  * ([sandboxOf]). The copies then go through the very collector, client checks and reload phases every client's
- * configuration does, so the schema variant, endpoint copies, cfacts, overlays and workflows a sandbox serves are
+ * configuration does, so the schema variant, endpoint copies, cfacts, overlays, and workflows a sandbox serves are
  * built by the existing machinery rather than a second path beside it.
  *
  * A copy keeps what it rebinds to a minimum: its id's client, the client of its fragment and UiBlock overlays
