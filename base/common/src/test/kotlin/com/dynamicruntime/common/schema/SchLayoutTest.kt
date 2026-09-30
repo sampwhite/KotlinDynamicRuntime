@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.startup.layoutBackendBlockProblems
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -464,6 +465,22 @@ class SchLayoutTest : StringSpec({
         problems.size shouldBe 1
         problems.single() shouldContain "topic"
         problems.single() shouldContain "q.topicHelp"
+    }
+
+    // The form-level strings (issue #641) pull like any other layout copy, so both boot checks cover them (#814).
+    "the pull and malformed-block checks cover the form-level strings" {
+        val layout = SchLayout(
+            "help", null, listOf(SchLayoutField("a", null, null, null)),
+            strings = mapOf(LAYSTR.formErrorHint to """%{@t("q.missing")}""", LAYSTR.formErrorSummary to "Plain"),
+        )
+        fun resolve(@Suppress("unused") fileId: String, nsKey: String): LayoutPullHit =
+            LayoutPullHit(fileFound = true, backend = true, keyPresent = nsKey != "q.missing")
+        val problems = layoutPullProblems("Type 'X'", layout, ::resolve)
+        problems.single() shouldContain "string '${LAYSTR.formErrorHint}'"
+        problems.single() shouldContain "q.missing"
+
+        val malformed = SchLayout(null, null, emptyList(), strings = mapOf(LAYSTR.formErrorHint to "Broken %{oops"))
+        layoutBackendBlockProblems("Type 'X'", malformed).single() shouldContain "string '${LAYSTR.formErrorHint}'"
     }
 
     "layoutPullProblems tells a missing file from a frontend-file pull" {
