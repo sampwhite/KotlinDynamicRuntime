@@ -6,7 +6,6 @@ import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.util.evalTemplate
-import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.await
 import kotlin.js.Promise
