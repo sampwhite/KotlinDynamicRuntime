@@ -355,7 +355,7 @@ class GedraConfigBuilder(
 
     /** [this] layer stamped with the config's name and origin (issue #916), which the DSL builders do not take. */
     private fun FragmentSource.stampedByConfig(): FragmentSource =
-        FragmentSource(fileId, isOverlay, client, origin, audience, stampName, isStored, load)
+        FragmentSource(fileId, isOverlay, client, origin, audience, shownOn, stampName, isStored, load)
 
     private fun UiBlockSource.stampedByConfig(): UiBlockSource =
         UiBlockSource(blockId, isOverlay, client, origin, content, arrayKeys, stampName, isStored)

@@ -235,14 +235,19 @@ class CommonComponent : ComponentDefinition {
         listOf(coreTraits(cxt), surveyStateConfig(cxt), workflowStateConfig(cxt)) + coreClients(cxt)
 
     /**
-     * The fragment files `base/common` ships. `errors` and `sample` are here as much as the widget-group
-     * files: `errors` is reached through the error-message path rather than a UI-config, so nothing else
-     * names it, and an unchecked error fragment is exactly the one you find out about during an incident.
+     * The fragment files `base/common` ships, each saying where the application shows it (issue #933). `errors`
+     * and `sample` are here as much as the widget-group files: `errors` is reached through the error-message path
+     * rather than a UI-config, so nothing else names it, and an unchecked error fragment is exactly the one you
+     * find out about during an incident. `sample` is the reference syntax file, shown nowhere, and declared so.
      */
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
-        fragmentFiles(AFRAG.auth, AFRAG.profile, HFRAG.home, FRAG.errors, FRAG.sample) +
+        fragmentFiles(AFRAG.auth, shownOn = "the sign-in, register and claim pages") +
+            fragmentFiles(AFRAG.profile, shownOn = "the profile page") +
+            fragmentFiles(HFRAG.home, shownOn = "the app bar and home page, the forms listing and the Documents page") +
+            fragmentFiles(FRAG.errors, shownOn = "error messages") +
+            fragmentFiles(FRAG.sample) +
             // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.
-            backendFragmentFiles(AFRAG.mail)
+            backendFragmentFiles(AFRAG.mail, shownOn = "the mails the sign-in and invitation flows send")
 
     /**
      * Startup services -- fully initialized before regular services. [GedraConfigLoadService] leads (issue

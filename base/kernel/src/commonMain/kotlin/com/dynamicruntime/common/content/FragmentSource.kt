@@ -87,6 +87,14 @@ class FragmentSource(
      */
     val audience: FragmentAudience = FragmentAudience.frontend,
     /**
+     * Where the application shows this file's copy (issue #933), as the declaration says it -- "the home page and
+     * app bar" -- so an editor can tell a key somebody reads from one nothing displays. A fact about the **file**,
+     * like [audience], so it is the **base** that declares it; an overlay's is ignored. Null means the file is not
+     * shown by this application: a fixture, or one only a deployment's own frontend reads by URL. Kept with the
+     * declaration rather than derived from the code that reads the file, so it cannot drift from it.
+     */
+    val shownOn: String? = null,
+    /**
      * The name of the client config this layer came from, or null for a component's (issue #916). Kept beside
      * the free-text [origin] because a report of what a client customized has to name the config that set a
      * value -- to show it, and later to write to it -- rather than a diagnostic phrase about it.
@@ -146,10 +154,11 @@ fun fragmentInline(
     isOverlay: Boolean = true,
     client: String? = null,
     audience: FragmentAudience = FragmentAudience.frontend,
+    shownOn: String? = null,
     build: FragmentMapBuilder.() -> Unit,
 ): FragmentSource {
     val content = FragmentMapBuilder().apply(build).build()
-    return FragmentSource(fileId, isOverlay, client, origin, audience, load = { content })
+    return FragmentSource(fileId, isOverlay, client, origin, audience, shownOn, load = { content })
 }
 
 /**

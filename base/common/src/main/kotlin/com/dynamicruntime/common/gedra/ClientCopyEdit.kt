@@ -45,7 +45,15 @@ import com.dynamicruntime.common.util.toOptStr
  */
 object ClientCopyEdit {
     /** One key the client's people read: its address, who the file is for, and the value this client gets. */
-    class CopyKey(val fileId: String, val namespace: String, val key: String, val audience: String, val value: String)
+    class CopyKey(
+        val fileId: String,
+        val namespace: String,
+        val key: String,
+        val audience: String,
+        val value: String,
+        /** Where the application shows the file (issue #933); null for one it does not show. */
+        val shownOn: String?,
+    )
 
     /**
      * Every key of every fragment file that has a base, with its value **for [client]** -- what an editor offers to
@@ -58,7 +66,7 @@ object ClientCopyEdit {
         return fileIds.flatMap { fileId ->
             val effective = fragments.effectiveFragmentsFor(cxt, fileId, client) ?: return@flatMap emptyList()
             effective.content.flatMap { (ns, keys) ->
-                keys.map { (key, value) -> CopyKey(fileId, ns, key, effective.audience.name, value) }
+                keys.map { (key, value) -> CopyKey(fileId, ns, key, effective.audience.name, value, effective.shownOn) }
             }
         }
     }

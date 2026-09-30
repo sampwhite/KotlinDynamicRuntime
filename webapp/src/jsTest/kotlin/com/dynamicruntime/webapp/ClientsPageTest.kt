@@ -170,10 +170,11 @@ class ClientsPageTest {
 
     // --- the overrides (issue #917) -------------------------------------------------------------------------
 
-    private fun copyRow(file: String, ns: String, key: String, base: String?, value: String, config: String, origin: String, source: String? = null, orphan: Boolean = false) =
+    private fun copyRow(file: String, ns: String, key: String, base: String?, value: String, config: String, origin: String, source: String? = null, orphan: Boolean = false, shownOn: String? = "the home page") =
         mapOf(
             COV.fileId to file, COV.namespaceField to ns, COV.key to key, COV.audience to "frontend", COV.baseValue to base,
             COV.value to value, COV.configName to config, COV.origin to origin, COV.sourceValue to source, COV.orphan to orphan,
+            COV.shownOn to shownOn,
         )
 
     private fun field(name: String, base: String?, value: String, config: String = "acmeClient", origin: String = "source") =
@@ -314,18 +315,25 @@ class ClientsPageTest {
     fun theCopyKeysParseAndTheAddablesLeaveOutWhatIsAlreadyOverridden() {
         val keys = parseCopyKeys(
             listOf(
-                mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "brand", COV.audience to "frontend", COV.value to "ACME KDR"),
-                mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "title", COV.audience to "frontend", COV.value to "Welcome"),
-                mapOf(COV.fileId to "mail", COV.namespaceField to "common", COV.key to "footer", COV.audience to "backend", COV.value to "Sent by KDR."),
+                mapOf(COV.fileId to "sampleContent", COV.namespaceField to "welcome", COV.key to "title", COV.audience to "frontend", COV.value to "Welcome"),
+                mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "brand", COV.audience to "frontend", COV.value to "ACME KDR", COV.shownOn to "the app bar"),
+                mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "title", COV.audience to "frontend", COV.value to "Welcome", COV.shownOn to "the app bar"),
+                mapOf(COV.fileId to "mail", COV.namespaceField to "common", COV.key to "footer", COV.audience to "backend", COV.value to "Sent by KDR.", COV.shownOn to "the mails"),
                 // No key: not a key.
                 mapOf(COV.fileId to "home", COV.namespaceField to "home"),
             ),
         )
-        assertEquals(listOf("home:home.brand", "home:home.title", "mail:common.footer"), keys.map { "${it.fileId}:${it.namespace}.${it.key}" })
-        assertEquals("backend", keys[2].audience)
+        assertEquals(listOf("sampleContent:welcome.title", "home:home.brand", "home:home.title", "mail:common.footer"), keys.map { "${it.fileId}:${it.namespace}.${it.key}" })
+        assertEquals("backend", keys[3].audience)
+        assertEquals(null, keys[0].shownOn)
         // acme already overrides home.brand: the picker offers the rest.
         val addable = addableCopyKeys(keys, acmeOverrides().copy)
-        assertEquals(listOf("home:home.title", "mail:common.footer"), addable.map { "${it.fileId}:${it.namespace}.${it.key}" })
+        assertEquals(listOf("sampleContent:welcome.title", "home:home.title", "mail:common.footer"), addable.map { "${it.fileId}:${it.namespace}.${it.key}" })
+        // The files the picker offers: shown ones first, each saying where; the fixture last, with nothing (issue #933).
+        val files = copyFileChoices(addable)
+        assertEquals(listOf("home", "mail", "sampleContent"), files.map { it.fileId })
+        assertEquals(listOf("home \u2014 the app bar", "mail \u2014 the mails", "sampleContent"), files.map { copyFileLabel(it) })
+        assertEquals(null, files[2].shownOn)
     }
 
     @Test

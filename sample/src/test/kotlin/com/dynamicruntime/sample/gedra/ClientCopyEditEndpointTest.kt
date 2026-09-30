@@ -64,6 +64,14 @@ class ClientCopyEditEndpointTest : StringSpec({
         keys.getValue("${HFRAG.home}:home.brand")[COV.value] shouldBe "ACME KDR"
         keys.getValue("${HFRAG.home}:home.brand")[COV.audience] shouldBe "frontend"
         keys.getValue("${AFRAG.mail}:${MCOPY.common}.${MCOPY.footer}")[COV.audience] shouldBe "backend"
+        // Where each is shown, as the declaration says (issue #933); a fixture nobody shows says nothing.
+        keys.getValue("${HFRAG.home}:home.brand")[COV.shownOn].toOptStr().orEmpty() shouldContain "app bar"
+        keys.getValue("${AFRAG.mail}:${MCOPY.common}.${MCOPY.footer}")[COV.shownOn].toOptStr() shouldNotBe null
+        keys.getValue("${SF.content}:${SF.welcome}.${SF.title}").containsKey(COV.shownOn) shouldBe false
+        // The fragment check reports it too.
+        val checked = fragments.checkFragments(cxt).filter { it.client == null }.associateBy { it.fileId }
+        checked.getValue(HFRAG.home).shownOn.orEmpty() shouldContain "app bar"
+        checked.getValue(SF.content).shownOn shouldBe null
         // Another client's value is its own.
         admin.getItems(CPY.keysPath, mapOf(COV.client to SC.globex))
             .first { it[COV.fileId] == HFRAG.home && it[COV.key] == "brand" }[COV.value] shouldBe "KDR"
@@ -95,6 +103,9 @@ class ClientCopyEditEndpointTest : StringSpec({
         val row = copyRow(SC.acme, "home", "brand")!!
         row[COV.origin] shouldBe GedraConfigOrigin.stored.name
         row[COV.sourceValue] shouldBe "ACME KDR"
+        row[COV.shownOn].toOptStr().orEmpty() shouldContain "app bar"
+        // acme's source override of the fixture is reported with no place it is shown.
+        copyRow(SC.acme, SF.welcome, SF.title, fileId = SF.content)!!.containsKey(COV.shownOn) shouldBe false
     }
 
     "a second key of the same file joins the same config; a key of another file, too, when nothing else overlays it" {

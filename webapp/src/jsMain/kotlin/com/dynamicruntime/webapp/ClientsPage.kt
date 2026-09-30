@@ -476,6 +476,17 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
                             key = copyKeyText(r).unsafeCast<Key>()
                             td {
                                 +copyKeyText(r)
+                                // A file the application does not show (issue #933): the override is stored and
+                                // served, and changes nothing anyone sees here -- said, so a change that seems to
+                                // do nothing is explained.
+                                if (r.shownOn == null) {
+                                    +" "
+                                    span {
+                                        className = ClassName("subtitle")
+                                        title = "$notShownNote: a deployment's own frontend may read it by URL, but no page here does."
+                                        +"(not shown here)"
+                                    }
+                                }
                                 // An orphan replaces nothing anybody reads -- usually a renamed key -- and silently
                                 // reverts to the shipped copy, which is exactly why it is said here.
                                 if (r.orphan) {
@@ -588,7 +599,8 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
                 }
                 else -> {
                     val addable = addableCopyKeys(keys!!, props.rows)
-                    val files = addable.map { it.fileId }.distinct()
+                    // The files the application shows first, each saying where; the rest set apart (issue #933).
+                    val files = copyFileChoices(addable)
                     val namespaces = addable.filter { it.fileId == pickFile }.map { it.namespace }.distinct()
                     val choices = addable.filter { it.fileId == pickFile && it.namespace == pickNamespace }
                     div {
@@ -596,8 +608,11 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
                         Select {
                             value = pickFile
                             placeholder = "File"
-                            options = choiceOptions(files.map { it to it })
-                            style = js("({ minWidth: 160 })")
+                            options = groupedOptions(
+                                "Shown by this application" to files.filter { it.shownOn != null }.map { copyFileLabel(it) to it.fileId },
+                                notShownNote to files.filter { it.shownOn == null }.map { it.fileId to it.fileId },
+                            )
+                            style = js("({ minWidth: 260 })")
                             onChange = { v -> pickFile = v as? String; pickNamespace = null }
                         }
                         Select {
@@ -911,6 +926,16 @@ private fun audienceText(condition: String?): String = when (condition) {
     null, CFACT.alwaysName -> "everyone"
     else -> condition
 }
+
+/** antd option groups for a Select: `{ label, options: [{ label, value }] }` per non-empty group, in the order given. */
+private fun groupedOptions(vararg groups: Pair<String, List<Pair<String, String>>>): Array<dynamic> = groups
+    .filter { it.second.isNotEmpty() }
+    .map { (title, pairs) ->
+        val obj: dynamic = js("({})")
+        obj.label = title
+        obj.options = choiceOptions(pairs)
+        obj
+    }.toTypedArray()
 
 /** antd `{ label, value }` objects for a Select, from label/value pairs. */
 private fun choiceOptions(pairs: List<Pair<String, String>>): Array<dynamic> = pairs.map { (label, value) ->

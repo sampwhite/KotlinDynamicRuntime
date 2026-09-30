@@ -107,6 +107,8 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             "when one does.")
         property(COV.orphan, "Whether no shipped copy declares the key, so the override replaces nothing anybody " +
             "reads -- usually a renamed key.", required = true) { type = SCT.boolean }
+        property(COV.shownOn, "Where the application shows the file's copy; absent for a file it does not show, so " +
+            "the override changes nothing anyone sees here.")
     }
     type(COV.blockFieldTypeName) {
         type = SCT.kObject

@@ -42,6 +42,13 @@ object COV {
     /** A key no base declares -- usually a renamed base key, which leaves the override silently unused. */
     const val orphan = "orphan"
 
+    /**
+     * Where the application shows the file's copy, as its declaration says (issue #933) -- "the home page and app
+     * bar". Absent when the file is not shown by this application: a fixture, or one only a deployment's own
+     * frontend reads by URL.
+     */
+    const val shownOn = "shownOn"
+
     const val blockId = "blockId"
 
     /** The dotted path to the keyed array holding [itemId], or to the object whose fields changed ("" for the root). */

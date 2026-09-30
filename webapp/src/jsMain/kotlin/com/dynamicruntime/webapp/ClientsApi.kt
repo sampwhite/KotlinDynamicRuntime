@@ -143,6 +143,8 @@ class CopyOverrideView(
     /** The client's source value a stored config overrides, when one does. */
     val sourceValue: String?,
     val orphan: Boolean,
+    /** Where the application shows the file (issue #933); null for one it does not show. */
+    val shownOn: String?,
 )
 
 /** One field of an interface item a client sets (issue #917). Values are text as the endpoint rendered them. */
@@ -182,6 +184,7 @@ fun parseClientOverrides(item: Map<String, Any?>): ClientOverridesView = ClientO
             origin = row[COV.origin].toOptStr().orEmpty(),
             sourceValue = row[COV.sourceValue].toOptStr(),
             orphan = row[COV.orphan] == true,
+            shownOn = row[COV.shownOn].toOptStr(),
         )
     },
     blocks = item[COV.blocks].toJsonListOfMaps().mapNotNull { row ->
@@ -311,7 +314,15 @@ fun clientOverridesHref(clientId: String): String = hashHref(listOf(HP.page to H
 fun overridesAcrossHref(): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.overrides to "1"))
 
 /** One key an administrator may override for a client (issue #918): a row of `/clientAdmin/client/copy/keys`. */
-class CopyKeyView(val fileId: String, val namespace: String, val key: String, val audience: String, val value: String)
+class CopyKeyView(
+    val fileId: String,
+    val namespace: String,
+    val key: String,
+    val audience: String,
+    val value: String,
+    /** Where the application shows the file (issue #933); null for one it does not show. */
+    val shownOn: String?,
+)
 
 /** The keys listing's items as [CopyKeyView]s; one without its address is not a key. Pure, and covered under `jsNodeTest`. */
 fun parseCopyKeys(items: List<Map<String, Any?>>): List<CopyKeyView> = items.mapNotNull { row ->
@@ -321,8 +332,30 @@ fun parseCopyKeys(items: List<Map<String, Any?>>): List<CopyKeyView> = items.map
         key = row[COV.key].toOptStr() ?: return@mapNotNull null,
         audience = row[COV.audience].toOptStr().orEmpty(),
         value = row[COV.value].toOptStr().orEmpty(),
+        shownOn = row[COV.shownOn].toOptStr(),
     )
 }
+
+/** What the picker says of a file the application does not show (issue #933). */
+const val notShownNote = "Not shown by this application"
+
+/** One file as the picker offers it: its id and where it is shown, null for a file the application does not show. */
+class CopyFileChoice(val fileId: String, val shownOn: String?)
+
+/**
+ * The files the picker offers, from the keys it may add (issue #933): the ones the application shows first, each
+ * with where, then the ones it does not -- offered still, since a deployment's own frontend may read a file by
+ * URL, but set apart under [notShownNote]. Pure, and covered under `jsNodeTest`.
+ */
+fun copyFileChoices(keys: List<CopyKeyView>): List<CopyFileChoice> {
+    val byFile = LinkedHashMap<String, String?>()
+    for (k in keys) if (k.fileId !in byFile) byFile[k.fileId] = k.shownOn
+    val (shown, unshown) = byFile.entries.partition { it.value != null }
+    return (shown + unshown).map { CopyFileChoice(it.key, it.value) }
+}
+
+/** How the picker labels a file: the id and where it is shown -- "home — the app bar and home page". */
+fun copyFileLabel(choice: CopyFileChoice): String = choice.shownOn?.let { "${choice.fileId} \u2014 $it" } ?: choice.fileId
 
 /** What a set or reset did (issue #918): where it landed, and what the client now reads. */
 class CopyEditResult(val configName: String, val value: String?, val stored: Boolean, val issues: List<String>)

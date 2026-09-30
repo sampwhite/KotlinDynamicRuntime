@@ -30,6 +30,8 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         }
         // `emptyIsAbsent = false`: an empty value is a value the file declares, not a missing one.
         property(COV.value, "The value this client reads, every layer applied.", required = true) { emptyIsAbsent = false }
+        property(COV.shownOn, "Where the application shows the file's copy, as its declaration says; absent for a file " +
+            "the application does not show -- a fixture, or one only a deployment's own frontend reads by URL.")
     }
     type(CPY.resultTypeName) {
         type = SCT.kObject
@@ -62,7 +64,11 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
     ) { c, request ->
         val client = overseenClient(c, request[COV.client].toOptStr())
         ClientCopyEdit.keysFor(c, client).map {
-            mapOf(COV.fileId to it.fileId, COV.namespaceField to it.namespace, COV.key to it.key, COV.audience to it.audience, COV.value to it.value)
+            val out = linkedMapOf<String, Any?>(
+                COV.fileId to it.fileId, COV.namespaceField to it.namespace, COV.key to it.key, COV.audience to it.audience, COV.value to it.value,
+            )
+            it.shownOn?.let { where -> out[COV.shownOn] = where }
+            out
         }
     }
 

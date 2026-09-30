@@ -36,6 +36,8 @@ class EffectiveFragments(
      * The boot check turns this into a finding, so the flip is reported where it was caused.
      */
     val audienceConflict: Boolean,
+    /** Where the application shows this file's copy, as the first base declaring it says (issue #933); null when nowhere. */
+    val shownOn: String? = null,
 )
 
 /**
@@ -100,6 +102,8 @@ fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: S
         orphans = orphanedOverlayKeys(baseKeys, overlaid),
         audience = audience,
         audienceConflict = backendBases > 0 && backendBases < bases.size,
+        // The base's fact, like the audience: the first base that says where the file is shown.
+        shownOn = bases.firstNotNullOfOrNull { it.shownOn },
     )
 }
 
