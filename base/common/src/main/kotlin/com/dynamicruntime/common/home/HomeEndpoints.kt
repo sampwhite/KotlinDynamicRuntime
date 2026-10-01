@@ -6,7 +6,6 @@ import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
-import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UIB
@@ -219,24 +218,24 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // boot role alone, so it shows to any app caller -- logged in or anonymous -- and always has at least
         // one surviving child (a caller is one or the other), so it never renders bare. The children keep
         // their own loggedIn/anonymous gates, so the group shows Profile+Log out or Log in+Register.
-        menuItem(HMENU.account, "Account", cfactExpression = BOOT.app)
+        menuItem(HMENU.account, "Account", cfactExpression = CFACTS.app)
         menuItem(HMENU.profile, "Profile", UiRoute(HMENU.pageProfile),
-            cfactExpression = "${CFACTS.loggedIn},${BOOT.app}", parentId = HMENU.account)
+            cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}", parentId = HMENU.account)
         menuItem(HMENU.logout, "Log out", UiCall(HACT.logout),
-            cfactExpression = "${CFACTS.loggedIn},${BOOT.app}", parentId = HMENU.account)
+            cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}", parentId = HMENU.account)
         menuItem(HMENU.login, "Log in", UiRoute(HMENU.pageLogin),
-            cfactExpression = "${CFACTS.anonymous},${BOOT.app}", parentId = HMENU.account)
+            cfactExpression = "${CFACTS.anonymous},${CFACTS.app}", parentId = HMENU.account)
         menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister),
-            cfactExpression = "${CFACTS.anonymous},${BOOT.app}", parentId = HMENU.account)
+            cfactExpression = "${CFACTS.anonymous},${CFACTS.app}", parentId = HMENU.account)
 
         menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
         // The documents page (issue #554). App-only: an edge serves no documents (its `links` are empty), so
         // offering the listing there would be an entry that opens onto nothing.
-        menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = BOOT.app)
-        menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${BOOT.app}")
+        menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = CFACTS.app)
+        menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
         // The clients an administrator oversees (issue #905): gated as Users is. A `public` self-administrator is
         // offered it and refused on the page, the shape Users has -- the endpoint is the authority (#805).
-        menuItem(HMENU.clients, "Clients", UiRoute(HMENU.pageClients), cfactExpression = "${CFACTS.hasAdminLevel},${BOOT.app}")
+        menuItem(HMENU.clients, "Clients", UiRoute(HMENU.pageClients), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
         // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact
         // (isDeploymentOperator), so a non-operator sees neither the header nor an orphaned child, and the
@@ -275,13 +274,13 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // section admits, asked as a cfact so the menu offer and the gate cannot drift.
         menuItem(
             HMENU.cfactReference, "Client facts", UiRoute(HMENU.pageCfacts),
-            cfactExpression = "${CFACTS.isClientOperator},${BOOT.app}",
+            cfactExpression = "${CFACTS.isClientOperator},${CFACTS.app}",
         )
         // Forms are login-gated only (the `gedra` section), so every signed-in caller is offered the list; how
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
-        menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
+        menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}")
         // The workflow pages (issue #792): off by default -- a client with normal workflows turns it on by overlaying
         // this item with a real condition (the sample's acme does), the way an overlay turns an item off.
         menuItem(HMENU.workflows, "Workflows", UiRoute(HMENU.pageWorkflows), cfactExpression = CFACT.neverName)
@@ -291,12 +290,12 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // pages (which list the usable tools), and the switch back off. The two "Debug" entries are mutually
         // exclusive by cfact, so only ever one shows.
         menuItem(HMENU.debugEnable, "Debug", UiCall(HACT.setEnvDebug, listOf("true")),
-            cfactExpression = "${CFACTS.canEnableDebug},${BOOT.app}")
-        menuItem(HMENU.debug, "Debug", cfactExpression = "${CFACTS.isEnvDebug},${BOOT.app}")
+            cfactExpression = "${CFACTS.canEnableDebug},${CFACTS.app}")
+        menuItem(HMENU.debug, "Debug", cfactExpression = "${CFACTS.isEnvDebug},${CFACTS.app}")
         menuItem(HMENU.debugPages, "Debug pages", UiRoute(HMENU.pageDebug),
-            cfactExpression = "${CFACTS.isEnvDebug},${BOOT.app}", parentId = HMENU.debug)
+            cfactExpression = "${CFACTS.isEnvDebug},${CFACTS.app}", parentId = HMENU.debug)
         menuItem(HMENU.debugOff, "Turn off debug", UiCall(HACT.setEnvDebug, listOf("false")),
-            cfactExpression = "${CFACTS.isEnvDebug},${BOOT.app}", parentId = HMENU.debug)
+            cfactExpression = "${CFACTS.isEnvDebug},${CFACTS.app}", parentId = HMENU.debug)
     }
 }
 
@@ -339,7 +338,7 @@ private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { doc ->
  */
 private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
     val registry = SchemaService.get(cxt).cfactsFor(null)
-    val onAnonymousEdgeLanding = registry.parse("${CFACTS.anonymous},${BOOT.edge}").matches(registry.assemble(cxt))
+    val onAnonymousEdgeLanding = registry.parse("${CFACTS.anonymous},${CFACTS.edge}").matches(registry.assemble(cxt))
     return if (onAnonymousEdgeLanding) emptyList() else homeLinks()
 }
 

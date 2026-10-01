@@ -532,7 +532,7 @@ class GedraConfigCollector {
             )
         }
         // A client's own names are bare (issue #921): a colon means a reference to another owner's definition, and
-        // the rest of each name is held to its kind's rule. A global config's trait ids are judged below (#951).
+        // the rest of each name is held to its kind's rule. A global config's are judged below (#951, #952).
         if (config.gedraId.client != GID.globalClient) {
             clientNamesProblem(config)?.let { why ->
                 return config.issue(
@@ -542,13 +542,14 @@ class GedraConfigCollector {
                 )
             }
         }
-        // A global config's trait ids are rooted (issue #951), with the root its namespace is under -- whoever owns
-        // `abc` owns every `abc:` trait, data, state and config traits alike. Judged before the uniqueness check
-        // below, which is what keeps that check's cross-owner arm unreachable.
+        // A global config's trait ids and cfacts are rooted (issues #951, #952), with the root its namespace is
+        // under -- whoever owns `abc` owns every `abc:` trait, data, state and config traits alike, and every `abc:`
+        // cfact. Judged before the uniqueness check below, which is what keeps that check's cross-owner arm
+        // unreachable.
         if (config.gedraId.client == GID.globalClient) {
-            globalTraitIdProblem(config, config.traits.keys + stateTraits.keys + configTraits.keys)?.let { why ->
+            globalNamesProblem(config, config.traits.keys + stateTraits.keys + configTraits.keys)?.let { why ->
                 return config.issue(
-                    "Gedra config '${config.gedraId}' declares a global trait id it may not. $why",
+                    "Gedra config '${config.gedraId}' declares a global name it may not. $why",
                     "Dropping '${config.gedraId}' and its $traitCount trait(s).",
                     GCEL.config, config.gedraId.fullId,
                 )
@@ -608,11 +609,11 @@ class GedraConfigCollector {
 
     /**
      * The first name a client's [config] declares that its client may not use (issue #921), or null: a trait id,
-     * cfact, workflow id, or a task id in one of its workflows -- each bare, and following its kind's rule.
+     * workflow id, or a task id in one of its workflows -- each bare, and following its kind's rule. Not a cfact:
+     * a cfact costs only itself (issue #841), so the cfact registry build drops just that declaration (#952).
      */
     private fun clientNamesProblem(config: GedraConfig): String? {
         val names = config.traits.keys.map { OwnedNameKind.trait to it } +
-            config.cfacts.map { OwnedNameKind.cfact to it.name } +
             config.workflows.values.flatMap { wf ->
                 listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
             }
@@ -620,16 +621,17 @@ class GedraConfigCollector {
     }
 
     /**
-     * The first of a global [config]'s [traitIds] that is not a rooted trait id under the config's own root (issue
-     * #951), as a reason, or null.
+     * The first of a global [config]'s [traitIds] and cfact names that is not rooted under the config's own root
+     * (issues #951, #952), as a reason, or null.
      */
-    private fun globalTraitIdProblem(config: GedraConfig, traitIds: Collection<String>): String? {
+    private fun globalNamesProblem(config: GedraConfig, traitIds: Collection<String>): String? {
         val root = namespaceRoot(config.namespace)
-        for (traitId in traitIds) {
-            rootedNameProblem(OwnedNameKind.trait, traitId)?.let { return it }
-            val traitRoot = traitId.substringBefore(OWNR.rootSep)
-            if (traitRoot != root) {
-                return "'$traitId' is under the root '$traitRoot', not '$root', the root of the config's namespace " +
+        val names = traitIds.map { OwnedNameKind.trait to it } + config.cfacts.map { OwnedNameKind.cfact to it.name }
+        for ((kind, name) in names) {
+            rootedNameProblem(kind, name)?.let { return it }
+            val nameRoot = name.substringBefore(OWNR.rootSep)
+            if (nameRoot != root) {
+                return "'$name' is under the root '$nameRoot', not '$root', the root of the config's namespace " +
                     "'${config.namespace}'."
             }
         }

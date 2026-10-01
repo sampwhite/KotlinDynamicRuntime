@@ -438,7 +438,7 @@ private const val maxDisplayDepth = 10
  * The first thing wrong with a task [display] (issue #788), or null: a selector, at any depth, that is not a
  * non-empty list of branches; a leaf branch naming a mode there is not, or a text branch with no text; or a
  * condition anywhere in it that does not parse against [allowed] -- the scope's cfact names, which include the task
- * facts (`wfIsCta`, `wfReviewer`, an approval's cfact) since those are declared too.
+ * facts (`kdr:isCta`, `kdr:reviewer`, an approval's cfact) since those are declared too.
  */
 fun displayProblem(display: Map<String, Any?>, allowed: Set<String>): String? {
     selectorShapeProblem(display, 0)?.let { return it }

@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.cfact.CFactParser
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
@@ -133,8 +134,9 @@ private fun ResolutionScope.grantsReviewer(task: WfTask, resolved: List<WfFuncti
  */
 private fun ResolutionScope.checkSaveRuleViewerFacts(def: WfDef, task: WfTask, resolved: List<WfFunction>) {
     val rule = task.saveWhen ?: return
-    val named = Regex("[A-Za-z_][A-Za-z0-9_]*").findAll(rule).map { it.value }.toSet()
-    if (WFC.reviewer !in named) return
+    // The names as the cfact grammar reads them, registered or not -- not a word scan, which would split a rooted
+    // name like `kdr:reviewer` at its colon (issue #952).
+    if (WFC.reviewer !in CFactParser.analyze(rule, emptySet()).names) return
     if (!grantsReviewer(task, resolved)) {
         reportConfigProblem(
             cxt,

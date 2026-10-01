@@ -150,6 +150,18 @@ class CFactParserTest : StringSpec({
         matches(" ( ab , cd ) | ef ", "ef") shouldBe true
     }
 
+    // A global cfact is rooted (issue #952): the colon is part of the name, so it binds inside an atom and is no
+    // operator here -- `~kdr:edge,kdr:loggedIn` is a negation and a conjunction of two rooted names.
+    "a rooted name is one atom, beside bare ones and under every operator" {
+        val rooted = CFactParser.parse("~kdr:edge,(kdr:loggedIn|acmeFlag)", setOf("kdr:edge", "kdr:loggedIn", "acmeFlag"))
+        rooted.matches(setOf("kdr:loggedIn")) shouldBe true
+        rooted.matches(setOf("kdr:edge", "kdr:loggedIn")) shouldBe false
+        rooted.render() shouldBe "~kdr:edge,(kdr:loggedIn|acmeFlag)"
+        rooted.referencedNames() shouldBe setOf("kdr:edge", "kdr:loggedIn", "acmeFlag")
+        // The bare local part is a different name: one undeclared here.
+        shouldThrow<KdrException> { CFactParser.parse("loggedIn", setOf("kdr:loggedIn")) }
+    }
+
     // Rendering exists for diagnostics; a round trip is the cheapest check that the tree is the shape meant.
     "a parsed expression renders back to an equivalent form" {
         parse("app").render() shouldBe "app"

@@ -342,7 +342,8 @@ Only the first is worth trading for uptime.
 | Check | Refused |
 |---|---|
 | A `traitId` claimed twice within one owner — a global id twice, or a client's own id twice in that client (#807, #951) | naming both bundles |
-| A global config's trait id that is not `<root>:<name>` under its namespace's root (#951) — a global id and a client's can then never be the same | naming the rule |
+| A global config's trait id or cfact that is not `<root>:<name>` under its namespace's root (#951, #952) — a global name and a client's can then never be the same | naming the rule |
+| A component's own cfact (declared in code) that is not `<root>:<name>` under the component's owner root, or under the root its `contributesTo` names; never under `client` (#952) | naming the component and the rule |
 | A namespace claimed by two owners — a backstop since #949/#950, reached only when production forgave a component namespace under `client` | naming the owner it already has |
 | A component namespace off its owner root without `contributesTo`, under `client`, or with no root; a declared type outside its contribution's root; a type name declared twice (#950) | naming the component and the rule |
 | A client config declaring outside its own `client.<clientId>` namespace, or a new type declared into another owner's (#949) | naming the client's namespace |

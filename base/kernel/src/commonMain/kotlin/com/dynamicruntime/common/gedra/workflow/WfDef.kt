@@ -216,7 +216,7 @@ object WVF {
     /** On the view's top level: whether a page shows the task list (more than one task); see [WfDef.showTaskList]. */
     const val showTaskList = "showTaskList"
 
-    /** Beside a trait ref: the target facts assembled about the task (`wfTaskComplete`, `wfTaskAvailable`). */
+    /** Beside a trait ref: the target facts assembled about the task (`kdr:taskComplete`, `kdr:taskAvailable`). */
     const val facts = "facts"
 
     /**
@@ -313,32 +313,33 @@ object WSF {
  * is additive, so a name costs nothing once something produces it, while a declared name nothing produces
  * reads as a capability the deployment does not have.
  *
- * Every value carries the `wf` prefix: these are declared globally, and a global name is one no client may
- * declare for itself, so the prefix keeps the plain words (`reviewer`, `current`) free for clients.
+ * Every value is under core's root, `kdr` (issue #952): these are declared globally, and a global name is rooted
+ * while a client's is bare, so the plain words (`reviewer`, `current`) stay free for clients by construction. The
+ * root retired the `wf` prefix that once did the same job by convention.
  */
 @Suppress("ConstPropertyName")
 object WFC {
     /** The task's required traits are all present. */
-    const val taskComplete = "wfTaskComplete"
+    const val taskComplete = "kdr:taskComplete"
 
     /** The task may be worked on now. **Always present today** -- availability rules are a later step. */
-    const val taskAvailable = "wfTaskAvailable"
+    const val taskAvailable = "kdr:taskAvailable"
 
     /**
      * The task is the workflow's **CTA** (call to action, issue #785): the earliest task in the list that is not
      * both complete and valid -- where a person's next piece of work is. What a layout tests to draw a task as
      * current, or a later one as waiting on it.
      */
-    const val isCta = "wfIsCta"
+    const val isCta = "kdr:isCta"
 
     /**
      * The person viewing the task may review it (issue #786): the framework's name for the approval authority a
      * `viewerCfacts` function concludes -- typically `userHasLabel` over a `reviewer` *label*. **Hardwired**, since
      * the approve endpoint (#787) asks for exactly this cfact -- as the needsReview listing will -- though a workflow
      * may still emit other cfacts of its own choosing.
-     * Prefixed like its neighbours, so a client remains free to declare a cfact called plain `reviewer`.
+     * Rooted like its neighbors, so a client remains free to declare a cfact called plain `reviewer`.
      */
-    const val reviewer = "wfReviewer"
+    const val reviewer = "kdr:reviewer"
 }
 
 /**
@@ -1301,7 +1302,7 @@ class WfTaskBuilder(private val id: String, private val label: String) {
 
     /**
      * Who may save the task (issue #856): [cfacts], a cfact expression over the caller's task facts and viewer facts
-     * -- `wfReviewer` from a `userHasLabel` function on this task, say. The save endpoint refuses anyone it does not
+     * -- `kdr:reviewer` from a `userHasLabel` function on this task, say. The save endpoint refuses anyone it does not
      * admit, and the view tells the page whether the caller may, so the page offers Save only where it can succeed.
      * A normal workflow's task only.
      */
@@ -1454,7 +1455,7 @@ object WDSP {
  * (issue #787): it collects no traits, so trait presence would call it complete before anyone approved it --
  * its completion is the approval, which lives in the form's state. An approved approval task also carries its
  * **own approval cfact** (issue #788), so a display selector can say `acmeAuditApproved` rather than the
- * generic `wfTaskComplete`.
+ * generic `kdr:taskComplete`.
  */
 object WfTaskFacts {
     fun of(task: WfTask, entries: List<Map<String, Any?>>, isCta: Boolean = false, approved: Boolean = false): Set<String> {

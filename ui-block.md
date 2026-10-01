@@ -90,8 +90,8 @@ condition failed.
 ```json
 {"display": {"select": [
   {"cfactExpression": "acmeAuditApproved", "mode": "text", "text": "Approved by ${approvedByName}."},
-  {"cfactExpression": "~wfIsCta", "mode": "text", "text": "Not yet.", "disabled": true},
-  {"cfactExpression": "wfReviewer", "mode": "default"},
+  {"cfactExpression": "~kdr:isCta", "mode": "text", "text": "Not yet.", "disabled": true},
+  {"cfactExpression": "kdr:reviewer", "mode": "default"},
   {"mode": "text", "text": "You must wait for a reviewer."}
 ]}}
 ```
@@ -100,7 +100,7 @@ It is resolved by the same recursive walk as the plain condition (`filterByCFact
 menu, a home block, a workflow task's `display` -- without the resolver knowing what it is choosing. The same
 rule applies: only the chosen branch travels, never the others or their conditions. Order is the author's to
 get right; in the example "approved" comes first because an approved step is no longer the CTA, so the
-`~wfIsCta` branch would otherwise claim it. Every branch condition is reached by the boot check's walk, so a
+`~kdr:isCta` branch would otherwise claim it. Every branch condition is reached by the boot check's walk, so a
 misspelled cfact in any branch refuses the boot like any other.
 
 ## Invoking frontend functionality: named registries

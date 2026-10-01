@@ -11,33 +11,33 @@ import kotlin.test.assertTrue
 class CfactGateTest {
 
     // The delivered vocabulary: every frontend cfact, present or not. hasAdminLevel present, hasEnvAuth not.
-    private val cfacts = mapOf("hasAdminLevel" to true, "hasEnvAuth" to false)
+    private val cfacts = mapOf("kdr:hasAdminLevel" to true, "kdr:hasEnvAuth" to false)
     private val gate = buildCfactGate(cfacts)
 
     @Test
     fun aPresentCfactShowsTheFieldAndAnAbsentOneHidesIt() {
-        assertTrue(gate("hasAdminLevel"))
-        assertFalse(gate("hasEnvAuth"))
+        assertTrue(gate("kdr:hasAdminLevel"))
+        assertFalse(gate("kdr:hasEnvAuth"))
     }
 
     @Test
     fun negationReadsAnAbsentCfactAsTrue() {
         // The case a present-only list could not express: the name is in the vocabulary as absent, so `~` of it
         // is true rather than a parse error on an unknown name.
-        assertTrue(gate("~hasEnvAuth"))
-        assertFalse(gate("~hasAdminLevel"))
+        assertTrue(gate("~kdr:hasEnvAuth"))
+        assertFalse(gate("~kdr:hasAdminLevel"))
     }
 
     @Test
     fun compoundExpressionsCombineTheFacts() {
-        assertFalse(gate("hasAdminLevel,hasEnvAuth")) // and: hasEnvAuth is absent
-        assertTrue(gate("hasAdminLevel|hasEnvAuth")) // or: hasAdminLevel is present
+        assertFalse(gate("kdr:hasAdminLevel,kdr:hasEnvAuth")) // and: hasEnvAuth is absent
+        assertTrue(gate("kdr:hasAdminLevel|kdr:hasEnvAuth")) // or: hasAdminLevel is present
     }
 
     @Test
     fun noCfactsMeansNoGating() {
         val open = buildCfactGate(null)
-        assertTrue(open("hasAdminLevel"))
+        assertTrue(open("kdr:hasAdminLevel"))
         assertTrue(open("~anything"))
     }
 

@@ -108,7 +108,7 @@ class WfTaskView(
     val display: WfTaskDisplay? = null,
     /** An approval task's approval (issue #787), as the view resolved it; null on any other task. */
     val approval: WfApprovalView? = null,
-    /** The task's facts for this caller (issues #786, #788) -- `wfReviewer` for a reviewer, `wfIsCta`, and so on. */
+    /** The task's facts for this caller (issues #786, #788) -- `kdr:reviewer` for a reviewer, `kdr:isCta`, and so on. */
     val facts: Set<String> = emptySet(),
 ) {
     /** Whether this caller is a reviewer of the task (issue #787): what an approval's button is shown to. */

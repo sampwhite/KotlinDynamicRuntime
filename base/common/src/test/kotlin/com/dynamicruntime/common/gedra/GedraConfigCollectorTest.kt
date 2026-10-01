@@ -252,7 +252,9 @@ class GedraConfigCollectorTest : StringSpec({
 
     // A client's own names are bare: a colon would read as another owner's definition, and it is what global names
     // are rooted with -- so refusing it on the client's side is what keeps the two disjoint by construction.
-    "a client config declaring a rooted name is refused, whatever the kind" {
+    // A cfact is the exception, and costs only itself (#841): the registry build drops that one declaration, so its
+    // case is in CFactRegistryTest.
+    "a client config declaring a rooted trait or task name is refused" {
         fun clientConfig(build: GedraConfigBuilder.() -> Unit) = gedraConfig(devCxt, "acmeMain", "client.acme", "acme") {
             trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
             build()
@@ -261,7 +263,6 @@ class GedraConfigCollectorTest : StringSpec({
             "trait id" to clientConfig {
                 trait("KdrNoteEntry", "kdr:note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
             },
-            "cfact name" to clientConfig { cfact("kdr:ready", "acme", "When acme is set up") },
             "task id" to clientConfig {
                 workflow("acmeWf", WfEntry.survey) { task("kdr:first", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
             },
@@ -307,6 +308,16 @@ class GedraConfigCollectorTest : StringSpec({
         }
         shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, stateOnly) }.fullMessage() shouldContain
             "'bareState' is not a rooted trait id"
+    }
+
+    // So are its cfacts (issue #952): a global cfact is rooted under the config's namespace root, like its trait ids.
+    "a global config's cfact is rooted, under its namespace's root" {
+        fun facts(name: String) = gedraConfig(devCxt, "factConfig", GCFG.globalNamespace) { cfact(name, "test", "A fact.") }
+        GedraConfigCollector().add(devCxt, facts("kdr:ready")) shouldBe true
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, facts("ready")) }
+            .fullMessage() shouldContain "'ready' is not a rooted cfact name"
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, facts("abc:ready")) }
+            .fullMessage() shouldContain "'abc:ready' is under the root 'abc', not 'kdr'"
     }
 
     // A config trait is a slot of the config store, global as state is (issue #951): a client's would land in the one

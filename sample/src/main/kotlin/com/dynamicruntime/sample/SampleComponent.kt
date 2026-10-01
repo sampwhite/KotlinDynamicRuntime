@@ -15,7 +15,6 @@ import com.dynamicruntime.common.content.backendFragmentFiles
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.content.fragmentOverlayFile
-import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.sample.file.SampleFileService
@@ -122,7 +121,7 @@ class SampleComponent : ComponentDefinition {
                 item { set(SB.id, SB.users); set(SB.label, "Users"); set(UIB.cfactExpression, CFACTS.hasAdminLevel) }
                 // The boot role as a cfact: this application never matches it, and an edge would -- one set of
                 // data serving both, with nothing removed for either.
-                item { set(SB.id, SB.perimeter); set(SB.label, "Perimeter"); set(UIB.cfactExpression, BOOT.edge) }
+                item { set(SB.id, SB.perimeter); set(SB.label, "Perimeter"); set(UIB.cfactExpression, CFACTS.edge) }
                 // Still in the list, and never shown. `#never` is how something is taken away without merging
                 // learning to delete: the item is here to be read, which is what answers "why is this gone?"
                 item { set(SB.id, SB.retired); set(SB.label, "Retired"); set(UIB.cfactExpression, CFACT.neverName) }

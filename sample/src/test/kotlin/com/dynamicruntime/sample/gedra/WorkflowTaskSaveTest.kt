@@ -25,7 +25,7 @@ import io.kotest.matchers.string.shouldContain
  * save endpoint and reported by the view, so the two agree; and a task is saved only on a form engaged with its
  * workflow.
  *
- * Acme's "Record the audit" is the reviewers' (`saveWhen(wfReviewer)` beside a `userHasLabel`); its site follow-up's
+ * Acme's "Record the audit" is the reviewers' (`saveWhen(kdr:reviewer)` beside a `userHasLabel`); its site follow-up's
  * tasks say nothing, so anyone who can see the form may save them -- once the form is in the follow-up.
  */
 class WorkflowTaskSaveTest : StringSpec({

@@ -69,6 +69,20 @@ class CFactRegistryTest : StringSpec({
         e.fullMessage() shouldContain "never redefine"
     }
 
+    // Since #952 the redefinition above is written with a root, as every global name is now: refused as a client
+    // name of the wrong form, and -- like every problem here -- dropping only that declaration when forgiven.
+    "a client may not declare a rooted name, the form every global one takes" {
+        val problems = mutableListOf<String>()
+        val registries = buildCFactRegistries(
+            global = mapOf("kdr:loggedIn" to def("kdr:loggedIn", "Caller")),
+            sources = emptyMap(),
+            perClient = mapOf("acme" to listOf(def("kdr:loggedIn", "Acme"), def("acmeReady", "Acme"))),
+        ) { _, _, message -> problems.add(message) }
+        problems.single() shouldContain "A client's own cfact name may not hold ':'"
+        registries.forClient("acme").defs.getValue("kdr:loggedIn").group shouldBe "Caller"
+        registries.forClient("acme").names shouldBe setOf("kdr:loggedIn", "acmeReady")
+    }
+
     "two clients may take the same name, and that is deliberate" {
         // Refusing this would fail one client's boot because of what *another* client declared, which leaks:
         // a client could learn what its neighbors are building by trying names until one was refused. The two
