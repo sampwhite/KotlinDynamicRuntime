@@ -98,14 +98,7 @@ object SandboxConfigs {
         configs.configs.mapNotNull { it.client }.filter { it.sandbox && !isSandboxClient(it.clientId) }
             .map { it.clientId }.distinct()
 
-    private fun FragmentSource.reboundTo(sandbox: String): FragmentSource = FragmentSource(
-        fileId = fileId, isOverlay = isOverlay, client = client?.let { sandbox }, origin = origin,
-        audience = audience, shownOn = shownOn, shownFor = shownFor, configName = configName, stored = stored,
-        inheritedFrom = inheritedFrom, load = load,
-    )
+    private fun FragmentSource.reboundTo(sandbox: String): FragmentSource = refiled(client = client?.let { sandbox })
 
-    private fun UiBlockSource.reboundTo(sandbox: String): UiBlockSource = UiBlockSource(
-        blockId = blockId, isOverlay = isOverlay, client = client?.let { sandbox }, origin = origin,
-        content = content, arrayKeys = arrayKeys, configName = configName, stored = stored, inheritedFrom = inheritedFrom,
-    )
+    private fun UiBlockSource.reboundTo(sandbox: String): UiBlockSource = refiled(client = client?.let { sandbox })
 }

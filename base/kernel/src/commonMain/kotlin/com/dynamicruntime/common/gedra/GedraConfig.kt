@@ -366,11 +366,9 @@ class GedraConfigBuilder(
     private val isStored: Boolean get() = loadedFrom == GedraConfigOrigin.stored
 
     /** [this] layer stamped with the config's name and origin (issue #916), which the DSL builders do not take. */
-    private fun FragmentSource.stampedByConfig(): FragmentSource =
-        FragmentSource(fileId, isOverlay, client, origin, audience, shownOn, shownFor, stampName, isStored, inheritedFrom, load)
+    private fun FragmentSource.stampedByConfig(): FragmentSource = refiled(configName = stampName, stored = isStored)
 
-    private fun UiBlockSource.stampedByConfig(): UiBlockSource =
-        UiBlockSource(blockId, isOverlay, client, origin, content, arrayKeys, stampName, isStored)
+    private fun UiBlockSource.stampedByConfig(): UiBlockSource = refiled(configName = stampName, stored = isStored)
 
     /** The UiBlock overlays declared in this block; see [uiBlockOverlay]. */
     @Suppress("MemberVisibilityCanBePrivate")

@@ -121,7 +121,10 @@ class BlockOverride(
 private fun originName(stored: Boolean): String =
     (if (stored) GedraConfigOrigin.stored else GedraConfigOrigin.source).name
 
-/** [client]'s own fragment overlays among [sources], in the order they are applied -- source, then stored. */
+/**
+ * [client]'s fragment overlays among [sources], in the order they are applied: what it inherited from its template
+ * (issue #945), then its source, then its stored.
+ */
 fun clientFragmentLayers(sources: List<FragmentSource>, client: String): List<FragmentSource> =
     sources.filter { it.isOverlay && it.client == client }.sortedBy { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null) }
 
@@ -129,9 +132,13 @@ fun clientFragmentLayers(sources: List<FragmentSource>, client: String): List<Fr
 fun clientUiBlockLayers(sources: List<UiBlockSource>, client: String): List<UiBlockSource> =
     sources.filter { it.isOverlay && it.client == client }.sortedBy { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null) }
 
-/** How many fragment keys [client]'s layers set -- the overview's count, from the layers alone, with no merge. */
+/**
+ * How many fragment keys [client]'s layers set -- the overview's count, from the layers alone, with no merge. Only the
+ * client's **own** layers: the count is how much this client customized, and what it inherited from its template
+ * (issue #945) is the template's doing, listed in the detail under the template's name.
+ */
 fun countCopyOverrides(sources: List<FragmentSource>, client: String): Int =
-    clientFragmentLayers(sources, client)
+    clientFragmentLayers(sources, client).filter { it.inheritedFrom == null }
         .flatMap { layer -> layer.load().orEmpty().flatMap { (ns, keys) -> keys.keys.map { "${layer.fileId}|$ns|$it" } } }
         .toSet().size
 
@@ -239,7 +246,8 @@ private const val maxBlockDepth = 20
 
 /** How many items and objects [client]'s layers change, over every block -- the overview's count, with no merge. */
 fun countBlockOverrides(sources: List<UiBlockSource>, client: String): Int =
-    clientUiBlockLayers(sources, client).groupBy { it.blockId }.entries.sumOf { (blockId, layers) ->
+    // The client's own layers only, as [countCopyOverrides] counts them.
+    clientUiBlockLayers(sources, client).filter { it.inheritedFrom == null }.groupBy { it.blockId }.entries.sumOf { (blockId, layers) ->
         blockTouches(layers, baseArrayKeys(sources, blockId)).size
     }
 

@@ -9,7 +9,11 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.exception.KdrException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.maps.shouldBeEmpty
@@ -53,7 +57,7 @@ class ClientExtensionTest : StringSpec({
     "with nothing of the client's own, the copy is the template's, under the client, without its definition" {
         val copy = copyOf(emptyList())
         copy.gedraId.client shouldBe kid
-        copy.name shouldBe "from_tpl_base"
+        copy.name shouldBe "${CEXT.clonePrefix}tpl_base"
         copy.namespace shouldBe "tplconfig"
         copy.inheritedFrom shouldBe tpl
         copy.client shouldBe null
@@ -107,6 +111,27 @@ class ClientExtensionTest : StringSpec({
         val mine = FragmentSource("home", true, kid, "kid", configName = "own") { mapOf("home" to mapOf("title" to "Kid title")) }
         val merged = mergeFragmentLayers("home", listOf(base, mine) + copyOf(emptyList()).fragments, kid)
         merged.content["home"] shouldBe mapOf("title" to "Kid title", "brand" to "TPL", "intro" to "Hi")
+    }
+
+    "the Customized counts are the client's own changes, not what it inherited" {
+        val inherited = copyOf(emptyList()).fragments
+        countCopyOverrides(inherited, kid) shouldBe 0
+        val mine = FragmentSource("home", true, kid, "kid", configName = "own") { mapOf("home" to mapOf("title" to "Kid title")) }
+        countCopyOverrides(inherited + mine, kid) shouldBe 1
+    }
+
+    // The merge is made only with a base a client may extend, so a refused base is reported as itself: here a
+    // functional group the stored-only base includes would otherwise refuse the customer's production client first.
+    "a base the client may not extend is reported as itself, not through the merge" {
+        val base = gedraConfig(cxt, "base", "storedbaseconfig", "storedbase", GedraConfigOrigin.stored) {
+            defineClient(def("storedbase").copy(includedTraits = listOf(CLD.allGlobal)))
+        }
+        val child = gedraConfig(cxt, "own", "custconfig", "cust") {
+            defineClient(def("cust", "storedbase").copy(audience = ClientAudience.customer, usageType = ClientUsageType.production))
+        }
+        val collector = GedraConfigCollector().apply { add(cxt, base); add(cxt, child) }
+        val message = shouldThrow<KdrException> { checkClientDefs(cxt, collector) }.message.shouldNotBeNull()
+        message shouldContain "defined only in stored configuration"
     }
 
     "the definition takes the template's defaults and keeps its own" {

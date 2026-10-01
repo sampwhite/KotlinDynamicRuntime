@@ -118,6 +118,17 @@ class UiBlockSource(
         }
     }
 
+    /** This layer filed again; see `FragmentSource.refiled`, which this mirrors for the same reason. */
+    fun refiled(
+        client: String? = this.client,
+        configName: String? = this.configName,
+        stored: Boolean = this.stored,
+        inheritedFrom: String? = this.inheritedFrom,
+    ): UiBlockSource = UiBlockSource(
+        blockId = blockId, isOverlay = isOverlay, client = client, origin = origin, content = content,
+        arrayKeys = arrayKeys, configName = configName, stored = stored, inheritedFrom = inheritedFrom,
+    )
+
     override fun toString(): String = "$blockId <- $origin" + (client?.let { " ($it)" } ?: "")
 }
 

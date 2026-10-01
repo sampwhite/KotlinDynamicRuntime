@@ -5,7 +5,9 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.CEXT
 import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientExtension
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -78,7 +80,7 @@ class ClientExtensionTest : StringSpec({
         title(kid) shouldBe "Kid title"
         // The template's copies are filed under the client, keep the template's namespace, and are the loader's.
         val copies = GedraConfigLoadService.get(cxt).loadedFor(kid).filter { it.inheritedFrom == tpl }
-        copies.map { it.name } shouldContainExactly listOf("from_${tpl}_base")
+        copies.map { it.name } shouldContainExactly listOf(ClientExtension.cloneName(tpl, "base"))
         copies.single().namespace shouldBe "tplbaseconfig"
     }
 
@@ -119,7 +121,7 @@ class ClientExtensionTest : StringSpec({
         val loaded = GedraConfigLoadService.get(cxt).loadedFor(sandbox)
         // One copy of the template, its own; the parent's copy is not among the rebound configs.
         loaded.count { it.inheritedFrom == tpl } shouldBe 1
-        loaded.none { it.name.startsWith("from_") && it.inheritedFrom == null } shouldBe true
+        loaded.none { it.name.startsWith(CEXT.clonePrefix) && it.inheritedFrom == null } shouldBe true
         ClientService.get(cxt).present(sandbox)?.extendsFromClientId shouldBe tpl
     }
 
@@ -128,7 +130,8 @@ class ClientExtensionTest : StringSpec({
         store(client) {
             trait("DataNoteEntry", "tplNote", setOf(GedraDataType.formDoc), "The client's note.") { property("memo", "A memo.") }
         }
-        GedraConfigReload.reloadClient(cxt, client)
+        // `loaded` counts what the client stores, not the template's copy beside it.
+        GedraConfigReload.reloadClient(cxt, client).loaded shouldBe 1
         typeOf(client, "tplNote") shouldBe "${client}mainconfig.DataNoteEntry"
         typeOf(client, "tplScore") shouldBe "tplbaseconfig.TplScoreEntry"
         brand(client) shouldBe "TPL"
@@ -165,6 +168,24 @@ class ClientExtensionTest : StringSpec({
         // Strict in unit tests: the reload refuses, naming both declarations.
         val message = shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, client) }.message.shouldNotBeNull()
         message shouldContain "Trait 'tplNote' is declared by both"
+    }
+
+    // Last, since it gives the template a stored layer: only the template's source is ever cloned, so a stored edit
+    // of the template reaches the template and no client built on it, however the client is rebuilt.
+    "a template's stored configuration is never cloned" {
+        store(tpl, name = "edits", define = false) {
+            trait("TplStoredEntry", "tplStored", setOf(GedraDataType.formDoc), "Stored on the template.") { property("s", "S.") }
+        }
+        GedraConfigReload.reloadClient(cxt, tpl)
+        traitIds(tpl) shouldContain "tplStored"
+        GedraConfigReload.reloadClient(cxt, kid)
+        traitIds(kid) shouldNotContain "tplStored"
+        traitIds(kid) shouldContain "tplNote"
+        val client = "tplafter"
+        store(client)
+        GedraConfigReload.reloadClient(cxt, client)
+        traitIds(client) shouldNotContain "tplStored"
+        traitIds(client) shouldContain "tplNote"
     }
 
     "a client may not author into the template's namespace" {

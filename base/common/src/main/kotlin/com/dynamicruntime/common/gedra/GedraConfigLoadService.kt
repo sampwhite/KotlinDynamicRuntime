@@ -143,17 +143,20 @@ class GedraConfigLoadService : ServiceInitializer {
 
     /** Clones each extending client's template into [collector] at boot (issue #945); see [addTemplateClones]. */
     private fun addExtensions(cxt: KdrCxt, collector: SchemaCollector) {
-        val clients = collector.gedraConfigs.configs.map { it.gedraId.client }.filter { it != GID.globalClient }.distinct()
+        // Only the clients whose definition names a base, found in one pass, rather than every client scanning the
+        // collector for its own configs.
+        val clients = collector.gedraConfigs.configs
+            .mapNotNull { c -> c.client?.takeIf { it.extendsFromClientId != null }?.let { c.gedraId.client } }.distinct()
         for (client in clients) {
-            val taken = addTemplateClones(cxt, collector, client)
+            val taken = addTemplateClones(cxt, collector, client, boot = true)
             if (taken.isNotEmpty()) recordLoaded(client, loadedFor(client) + taken)
         }
     }
 
     /**
      * Clones [client]'s template into [collector] (issue #945) and answers the copies it took. A copy is added
-     * through the ordinary checks, so one the collector refuses costs only itself; its overlays are appended to the
-     * registries only by the boot -- a reload and a trial hand them to the overlay services themselves.
+     * through the ordinary checks, so one the collector refuses costs only itself. With [boot] its overlays are
+     * appended to the registries; a reload and a trial pass false, handing them to the overlay services themselves.
      *
      * Called once the client's own configuration is in [collector] -- its source configs, and the stored ones just
      * taken -- since the copies are cut to what the client does not define (see [ClientExtension]). The client's
@@ -166,7 +169,7 @@ class GedraConfigLoadService : ServiceInitializer {
      * them with the rest -- what the client redefines can change with any revision of its own -- and a sandbox's
      * copy of its parent leaves them out, being made of the parent's *source*.
      */
-    fun addTemplateClones(cxt: KdrCxt, collector: SchemaCollector, client: String, boot: Boolean = true): List<GedraConfig> {
+    fun addTemplateClones(cxt: KdrCxt, collector: SchemaCollector, client: String, boot: Boolean): List<GedraConfig> {
         val held = collector.gedraConfigs.configs.filter { it.gedraId.client == client && it.inheritedFrom == null }
         val definer = held.firstOrNull { it.client?.clientId == client } ?: return emptyList()
         val template = definer.client?.extendsFromClientId ?: return emptyList()

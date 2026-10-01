@@ -163,7 +163,8 @@ object GedraConfigReload {
             "Reloaded client '$client': ${taken.size - inherited} stored configuration(s)$copies, ${typeKeys.size} type-cache entries dropped."
         }
         val issues = ClientConfigIssues.get(cxt).issuesFor(client)
-        return ConfigReloadResult(client, taken.size, typeKeys.size, issues, marker)
+        // `loaded` is what the client stores and runs: the template's copies are source, so they are not counted.
+        return ConfigReloadResult(client, taken.size - inherited, typeKeys.size, issues, marker)
     }
     /**
      * The stored configs [client] now consumes, reassembled and judged, with its marker: the ordinary client's half

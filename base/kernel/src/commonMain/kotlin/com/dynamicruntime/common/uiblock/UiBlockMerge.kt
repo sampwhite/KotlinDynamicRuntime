@@ -26,7 +26,8 @@ import com.dynamicruntime.common.content.overlayPrecedence
 fun mergeUiBlock(blockId: String, sources: List<UiBlockSource>, client: String?): MergedUiBlock {
     val applicable = sources.filter { it.blockId == blockId && (it.client == null || it.client == client) }
     val bases = applicable.filter { !it.isOverlay }
-    // A component's, then the client's from source, then from stored config -- see `overlayPrecedence`.
+    // A component's, then what the client inherited from its template (issue #945), then the client's from source,
+    // then from stored config -- see `overlayPrecedence`.
     val overlays = applicable.filter { it.isOverlay }.sortedBy { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null) }
     // Declared by the base alone, so several bases (unusual, but not refused) contribute rules in order.
     val arrayKeys = bases.fold(emptyMap<String, String>()) { acc, s -> acc + s.arrayKeys }

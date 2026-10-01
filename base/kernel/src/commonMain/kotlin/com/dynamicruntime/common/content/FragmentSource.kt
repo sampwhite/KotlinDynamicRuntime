@@ -125,6 +125,23 @@ class FragmentSource(
      */
     val load: () -> Map<String, Map<String, String>>?,
 ) {
+    /**
+     * This layer filed again: the same content under a different [client], [configName], [stored] or [inheritedFrom].
+     * The one place every field is copied, so a field added to this class cannot be dropped by one of the paths that
+     * re-file a layer -- a config stamping its name (issue #916), a sandbox rebinding its parent's (#928), an
+     * extending client cloning its template's (#945).
+     */
+    fun refiled(
+        client: String? = this.client,
+        configName: String? = this.configName,
+        stored: Boolean = this.stored,
+        inheritedFrom: String? = this.inheritedFrom,
+    ): FragmentSource = FragmentSource(
+        fileId = fileId, isOverlay = isOverlay, client = client, origin = origin, audience = audience,
+        shownOn = shownOn, shownFor = shownFor, configName = configName, stored = stored,
+        inheritedFrom = inheritedFrom, load = load,
+    )
+
     override fun toString(): String = "$fileId <- $origin" + (client?.let { " ($it)" } ?: "")
 }
 

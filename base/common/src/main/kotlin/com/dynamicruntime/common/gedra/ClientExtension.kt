@@ -48,6 +48,13 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
  * resolves. The template keeps owning it: the copy claims it for the template, as a sandbox's copies claim theirs
  * for the parent, so the client cannot author into it.
  */
+/** Client extension's constants (issue #945). */
+@Suppress("ConstPropertyName")
+object CEXT {
+    /** What a clone's name starts with, so a listing can tell a copy from the client's own by name alone. */
+    const val clonePrefix = "from_"
+}
+
 object ClientExtension {
     /**
      * The copies of [templateConfigs] -- [template]'s source configs -- that [client] runs, given [own], the configs
@@ -66,7 +73,7 @@ object ClientExtension {
         val ownCfacts = own.flatMap { c -> c.cfacts.map { it.name } }.toSet()
         val ownWorkflows = own.flatMap { it.workflows.values }
         val ownWorkflowIds = ownWorkflows.map { it.workflowId }.toSet()
-        val ownSingletonKinds = ownWorkflows.map { it.entry }.filter { it in singletonKinds }.toSet()
+        val ownSingletonKinds = ownWorkflows.map { it.entry }.filter { it in WfEntry.singletons }.toSet()
         val ownUsages = own.any { it.usages.isNotEmpty() }
         return templateConfigs.map { config ->
             GedraConfig(
@@ -103,23 +110,12 @@ object ClientExtension {
      * config of the same name -- two clients built from one template often name theirs alike -- never collides with
      * the copy. Base-id characters only (`[A-Za-z0-9_]`), as every config name is.
      */
-    fun cloneName(template: String, name: String): String = "${clonePrefix}${template}_$name"
+    fun cloneName(template: String, name: String): String = "${CEXT.clonePrefix}${template}_$name"
 
-    /** What a clone's name starts with, so a listing can tell a copy from the client's own by name alone. */
-    @Suppress("ConstPropertyName")
-    const val clonePrefix = "from_"
 
-    /** The kinds of workflow a scope has exactly one of (`WorkflowRegistry`'s singleton rule). */
-    private val singletonKinds = setOf(WfEntry.creation, WfEntry.survey)
+    private fun FragmentSource.inheritedBy(client: String, template: String): FragmentSource =
+        refiled(client = this.client?.let { client }, inheritedFrom = template)
 
-    private fun FragmentSource.inheritedBy(client: String, template: String): FragmentSource = FragmentSource(
-        fileId = fileId, isOverlay = isOverlay, client = this.client?.let { client }, origin = origin,
-        audience = audience, shownOn = shownOn, shownFor = shownFor, configName = configName, stored = stored,
-        inheritedFrom = template, load = load,
-    )
-
-    private fun UiBlockSource.inheritedBy(client: String, template: String): UiBlockSource = UiBlockSource(
-        blockId = blockId, isOverlay = isOverlay, client = this.client?.let { client }, origin = origin,
-        content = content, arrayKeys = arrayKeys, configName = configName, stored = stored, inheritedFrom = template,
-    )
+    private fun UiBlockSource.inheritedBy(client: String, template: String): UiBlockSource =
+        refiled(client = this.client?.let { client }, inheritedFrom = template)
 }

@@ -362,6 +362,16 @@ enum class WfEntry {
      * exists. A task may offer no save at all -- an approval task advances through its own endpoint.
      */
     normal,
+    ;
+
+    companion object {
+        /**
+         * The kinds a scope has exactly one of: how a form is created, and how it is surveyed, each have one answer
+         * per client. Shared by the workflow registry, which shadows by kind, and a template's clone (issue #945),
+         * which leaves out the template's workflow of a kind the client declares.
+         */
+        val singletons: Set<WfEntry> = setOf(creation, survey)
+    }
 }
 
 /**

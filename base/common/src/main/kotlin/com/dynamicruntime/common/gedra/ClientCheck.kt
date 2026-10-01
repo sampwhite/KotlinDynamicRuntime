@@ -44,11 +44,16 @@ fun checkClientDefs(
     // A client built on another takes its defaults from it (issue #945, `ClientExtension.mergeDef`) before anything
     // is judged, so every rule below sees the definition the client will run -- a functional group a template
     // includes is refused in a customer's production client exactly as one written there would be. Merged with the
-    // first declaration of the base; a base the checks then refuse drops the client too (`relatedProblem`).
-    val firstDefs = raw.map { it.second }.distinctBy { it.clientId }.associateBy { it.clientId }
+    // first declaration of the base, and only with one a client may extend -- a source definition, not a sandbox,
+    // not extending another -- so a base `relatedProblem` refuses is reported as itself, not as a fault the merge
+    // brought in. A base the checks refuse for anything else drops the client too.
+    val firstDecl = raw.distinctBy { it.second.clientId }.associateBy { it.second.clientId }
     val declared = raw.map { (config, def) ->
-        val base = def.extendsFromClientId?.let { firstDefs[it] }
-            ?.takeIf { it.clientId != def.clientId && it.extendsFromClientId == null }
+        val base = def.extendsFromClientId?.let { firstDecl[it] }
+            ?.takeIf { (baseConfig, baseDef) ->
+                baseDef.clientId != def.clientId && baseDef.extendsFromClientId == null && !baseConfig.isStored &&
+                    !isSandboxClient(baseDef.clientId)
+            }?.second
         config to (base?.let { ClientExtension.mergeDef(def, it) } ?: def)
     }
 
