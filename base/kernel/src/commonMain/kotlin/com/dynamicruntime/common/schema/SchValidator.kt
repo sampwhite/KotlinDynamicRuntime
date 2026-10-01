@@ -4,7 +4,6 @@ import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.analyzeTemplate
-import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.deepClone
@@ -198,11 +197,9 @@ private fun SchType.resolvedUserMessage(
         return template
     }
     val field = path.substringAfterLast('.').substringBefore('[')
-    return try {
-        template.evalTemplate(errorContextData(code, this, field, value, options))
-    } catch (_: KdrException) {
-        template
-    }
+    // Copy whose substitution fails (a placeholder the context does not supply) is shown as written.
+    return template.analyzeTemplate(evaluateWith = errorContextData(code, this, field, value, options)).value
+        ?: template
 }
 
 /**

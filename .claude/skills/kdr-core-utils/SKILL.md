@@ -120,8 +120,14 @@ code guide's "When not to throw".
   is a string and adds when neither is; `- * / %` read a numeric string; a bare missing/null value still
   throws (`?:` and a ternary condition are the only places absence is tolerated). Errors carry a `ScriptError`
   code plus the block's offset/line/column.
-- `ScriptCheck` — checks a template without evaluating it. `analyzeTemplate()` returns both the syntax
-  problems (`TemplateIssue`, with `ScriptError` code and position) and what the template asks of its data:
+- `ScriptCheck` / `ScriptTemplate` — one parse of a template serves both checking and evaluating (issue #909).
+  `analyzeTemplate()` checks without evaluating; `analyzeTemplate(evaluateWith = data, resolver = …)` also
+  renders, returning the text in `.value` -- or null, with **every** problem at its block in `.issues` -- and
+  never throws for a fault in the template or its data. Reach for it, not a `try { evalTemplate(…) }`, wherever a
+  template that fails should degrade (show the copy as written, blank a cell); `evalTemplate` is the throwing form
+  over the same parse and raises the first problem in document order. `analyzeTemplate()` returns both the problems
+  (`TemplateIssue`, with `ScriptError` code and position; `.problems` gives them as the shared `Problem`) and what
+  the template asks of its data:
   `paths.required` versus `paths.optional`, the latter being reads the template already guards with `?:`, a
   ternary condition or a `== null` test. `paths.missingFrom(data)` answers which required paths a map fails to
   supply — the missing-key half of a render failure, with no evaluation. Reported per fragment entry by

@@ -117,14 +117,13 @@ fun evalFragment(state: ScriptState, data: Map<String, Any?>, node: FragmentNode
         // Parsing refuses a duplicate name, so building the map cannot silently drop a binding here.
         node.bindings.associate { (name, expr) -> name to evalNode(state, data, expr, tolerant, depth) }
     }
-    if (!tolerant) {
-        return evalFragmentText(state, key, text, scope)
-    }
-    return try {
-        evalFragmentText(state, key, text, scope)
-    } catch (e: KdrException) {
-        if (e.extraData[KdrException.errorCodeKey] in absenceErrors) null else throw e
-    }
+    val render = renderFragmentText(state, key, text, scope)
+    render.value?.let { return it }
+    // The pulled fragment's own problem: under a guard, an absent value it read is absorbed; anything else -- the
+    // template wrong, not the data missing -- is re-reported, labeled with the fragment it came from.
+    val problem = render.errors.first()
+    if (tolerant && problem.extraData[KdrException.errorCodeKey] in absenceErrors) return null
+    throw mkFragmentContext(key, problem)
 }
 
 /**

@@ -72,11 +72,8 @@ object WorkflowEligibility {
         val fragments = MarkdownFragmentService.get(cxt)
         return failureIds.mapNotNull { id ->
             val test = byId[id] ?: return@mapNotNull null
-            try {
-                fragments.backendPass(cxt, test.explanation)
-            } catch (_: KdrException) {
-                test.explanation
-            }
+            // An explanation whose pull does not resolve is shown as written rather than dropped.
+            fragments.backendPassReport(cxt, test.explanation).value ?: test.explanation
         }
     }
 }

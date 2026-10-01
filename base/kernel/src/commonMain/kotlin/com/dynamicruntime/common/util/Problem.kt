@@ -24,10 +24,14 @@ class Problem(
     val location: ProblemLocation? = null,
     val severity: ProblemSeverity = ProblemSeverity.error,
 ) : JsonMappable {
-    /** This problem as a [KdrException] from [factory], with its code and location in the standard extra data. */
+    /**
+     * This problem as a [KdrException] from [factory], with its code and location in the standard extra data. The
+     * code goes in as the code itself (the enum entry), as the template engine and the Markdown reader have always
+     * put theirs, so a caller compares it with `==` against its parser's enum.
+     */
     fun toException(factory: (String) -> KdrException = { KdrException.mkConv(it) }): KdrException =
         factory(message).also { ex ->
-            ex.extraData[KdrException.errorCodeKey] = code.name
+            ex.extraData[KdrException.errorCodeKey] = code
             location?.offset?.let { ex.extraData[KdrException.offsetKey] = it }
             location?.line?.let { ex.extraData[KdrException.lineKey] = it }
             location?.col?.let { ex.extraData[KdrException.lineColKey] = it }

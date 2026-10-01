@@ -2,7 +2,6 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -71,13 +70,8 @@ object FormWorkflowSummary {
 fun copyResolver(cxt: KdrCxt, client: String): (String) -> String {
     val clientCxt = if (client == cxt.client) cxt else cxt.mkSubContext("workflowCopy", client)
     val fragments = MarkdownFragmentService.get(clientCxt)
-    return { text ->
-        try {
-            fragments.backendPass(clientCxt, text)
-        } catch (_: KdrException) {
-            text
-        }
-    }
+    // Copy whose pull does not resolve is shown as written.
+    return { text -> fragments.backendPassReport(clientCxt, text).value ?: text }
 }
 
 /** A workflow's name for a listing: its label resolved by [resolve], or its id when it declares none. */
