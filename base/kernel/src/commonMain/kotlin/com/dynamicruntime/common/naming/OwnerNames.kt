@@ -18,7 +18,7 @@ import com.dynamicruntime.common.util.isVariableName
  *   `client.acme.ExpenseReport` for a client's -- a client's namespace is always under the reserved root
  *   `client`, so a client id itself needs no reservation. A dot, because a type name becomes a `$defs` key
  *   and an OpenAPI component key, which may not hold a colon.
- * - **Traits, cfacts, workflows and tasks** are rooted with a colon, `kdr:expenseReport`, because those names end
+ * - **Traits, cfacts, workflows, and tasks** are rooted with a colon, `kdr:expenseReport`, because those names end
  *   up in data, where a dot is read as a path. A client's are bare, and a colon in a client's configuration only
  *   ever *refers* to another owner's definition.
  *
@@ -32,6 +32,7 @@ object OWNR {
 }
 
 /** The kinds of name that are rooted with a colon, each with the rule its local part is held to. */
+@Suppress("EnumEntryName")
 enum class OwnedNameKind(val label: String) {
     /**
      * A trait id: letters, digits and `_`. **No dot**: a trait id becomes a field name in flattened and indexed data,
@@ -42,7 +43,7 @@ enum class OwnedNameKind(val label: String) {
     /** A cfact name: letters, digits, `_` and `.` -- the cfact grammar's name characters, less the colon. */
     cfact("cfact name"),
 
-    /** A workflow id: a variable name, since a workflow is addressed by it from code, data and stored references. */
+    /** A workflow id: a variable name, since a workflow is addressed by it from code, data, and stored references. */
     workflow("workflow id"),
 
     /** A task id: a variable name, as a workflow id is. */
