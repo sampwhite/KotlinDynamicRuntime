@@ -2,6 +2,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -32,53 +33,70 @@ import com.dynamicruntime.common.util.toOptDouble
 fun parseSchemaTypes(
     defs: Map<String, Any?>,
     existingTypes: Map<String, SchType> = emptyMap(),
+): Map<String, SchType> = parseSchemaTypesInto(SchParseState(), defs, existingTypes)
+
+/**
+ * The parse behind [parseSchemaTypes] and [analyzeSchemaTypes], recording in [state] where it is, so a fault it
+ * throws can be located.
+ */
+@KdrPrivate
+fun parseSchemaTypesInto(
+    state: SchParseState,
+    defs: Map<String, Any?>,
+    existingTypes: Map<String, SchType>,
 ): Map<String, SchType> {
-    val pendingRefs = mutableListOf<SchProperty>()
-    val pendingItemRefs = mutableListOf<PendingItemRef>()
-    val pendingBranchRefs = mutableListOf<PendingBranchRef>()
     val parsed = LinkedHashMap<String, SchType>()
     for ((name, raw) in defs) {
         if (raw is Map<*, *>) {
-            parsed[name] = parseNode(name, raw.toJsonMap(), pendingRefs, pendingItemRefs, pendingBranchRefs)
+            state.enter(name)
+            parsed[name] = parseNode(name, raw.toJsonMap(), state)
+            state.exit()
         }
     }
     // Resolve $refs against the existing types plus the just-parsed ones.
     val registry = HashMap(existingTypes)
     registry.putAll(parsed)
-    for (prop in pendingRefs) {
-        val refName = prop.refName ?: continue
-        prop.valueType = registry[refName]
-            ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$$refName'.")
+    for (pending in state.pendingRefs) {
+        val refName = pending.prop.refName ?: continue
+        state.at(pending.path)
+        pending.prop.valueType = registry[refName]
+            ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$$refName'.")
     }
     // Bind array element types whose `items` was a $ref (deferred the same way as property refs, so a target
     // parsed later -- or a self-reference via items -- resolves without expanding during parsing).
-    for (item in pendingItemRefs) {
+    for (item in state.pendingItemRefs) {
+        state.at(item.path)
         item.array.itemType = registry[item.refName]
-            ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$${item.refName}'.")
+            ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$${item.refName}'.")
     }
     // Bind a union's branches for the same reason: a branch is normally a $ref, and one of them may refer
     // back to the union itself. Done a whole union at a time so the branches land in the order the document
     // declared them, mixed inline and $ref included -- "branch 3" in a boot-check message has to be the
     // reader's third branch, or the diagnostic sends them to the wrong place.
-    for (union in pendingBranchRefs) {
+    for (union in state.pendingBranchRefs) {
+        state.at(union.path)
         for (source in union.sources) {
             union.variants.branches.add(
                 source.inline ?: registry[source.refName]
-                    ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$${source.refName}'."),
+                    ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$${source.refName}'."),
             )
         }
         union.defaultRef?.let { ref ->
             union.variants.defaultBranch = registry[ref]
-                ?: throw KdrException.mkConv($$"Schema $ref to unknown type '$$ref'.")
+                ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$$ref'.")
         }
         indexVariants(union.owner, union.variants)
     }
     return parsed
 }
 
+/** A property whose value is a `$ref`, awaiting binding in the resolution pass; [path] is where it was read. */
+@KdrPrivate
+class PendingRef(val prop: SchProperty, val path: String)
+
 /** An array [SchType] whose `items` is a `$ref` ([refName]), awaiting binding in the resolution pass. */
 @KdrPrivate
-class PendingItemRef(val array: SchType, val refName: String)
+class PendingItemRef(val array: SchType, val refName: String, val path: String)
 
 /** One declared branch: parsed in place ([inline]) or named for the resolution pass ([refName]). */
 @KdrPrivate
@@ -94,6 +112,7 @@ class PendingBranchRef(
     val sources: List<BranchSource>,
     val defaultRef: String?,
     var owner: SchType?,
+    val path: String,
 )
 
 /**
@@ -114,19 +133,22 @@ fun indexVariants(owner: SchType?, variants: SchVariants) {
     val byValue = LinkedHashMap<String, SchType>(variants.branches.size)
     variants.branches.forEachIndexed { index, branch ->
         val prop = branch.properties[variants.discriminator]
-            ?: throw KdrException.mkConv(
+            ?: throw schemaFault(
+                SchemaError.badUnion,
                 "Branch ${index + 1}$where declares no '${variants.discriminator}' property, so nothing " +
                     "selects it. Every branch of a discriminated union must declare the discriminator with a " +
                     "'${SCH.const}'.",
             )
         val declared = prop.valueType.constValue.toOptStr()
-            ?: throw KdrException.mkConv(
+            ?: throw schemaFault(
+                SchemaError.badUnion,
                 "Branch ${index + 1}$where has no '${SCH.const}' for '${variants.discriminator}', so nothing " +
                     "selects it.",
             )
         val clash = byValue.put(declared, branch)
         if (clash != null) {
-            throw KdrException.mkConv(
+            throw schemaFault(
+                SchemaError.badUnion,
                 "Branch ${index + 1}$where repeats the '${variants.discriminator}' value '$declared'; each " +
                     "branch must claim its own.",
             )
@@ -146,49 +168,41 @@ fun indexVariants(owner: SchType?, variants: SchVariants) {
  * would recreate exactly the silence this issue exists to end.
  */
 @KdrPrivate
-fun parseVariants(
-    name: String?,
-    map: Map<String, Any?>,
-    pendingRefs: MutableList<SchProperty>,
-    pendingItemRefs: MutableList<PendingItemRef>,
-    pendingBranchRefs: MutableList<PendingBranchRef>,
-    depth: Int,
-): SchVariants? {
+fun parseVariants(name: String?, map: Map<String, Any?>, state: SchParseState, depth: Int): SchVariants? {
     val rawBranches = map[SCH.oneOf] as? List<*> ?: return null
     val where = name?.let { " on '$it'" } ?: ""
     val rawDiscriminator = map[SCH.discriminator]
     if (rawDiscriminator !is Map<*, *>) {
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.badUnion,
             "'${SCH.oneOf}'$where has no '${SCH.discriminator}'. A union has to say which property selects " +
                 "the branch, so a failure can be reported against the branch that was meant.",
         )
     }
     val discriminator = rawDiscriminator.toJsonMap()[SCH.propertyName].toOptStr()
-        ?: throw KdrException.mkConv(
-            "'${SCH.discriminator}'$where has no '${SCH.propertyName}'.",
-        )
+        ?: throw schemaFault(SchemaError.badUnion, "'${SCH.discriminator}'$where has no '${SCH.propertyName}'.")
     if (rawBranches.isEmpty()) {
-        throw KdrException.mkConv("'${SCH.oneOf}'$where declares no branches.")
+        throw schemaFault(SchemaError.badUnion, "'${SCH.oneOf}'$where declares no branches.")
     }
-    val sources = rawBranches.mapNotNull { raw ->
-        val branchMap = (raw as? Map<*, *>)?.toJsonMap() ?: return@mapNotNull null
+    val unionPath = state.path().orEmpty()
+    val sources = rawBranches.mapIndexedNotNull { i, raw ->
+        val branchMap = (raw as? Map<*, *>)?.toJsonMap() ?: return@mapIndexedNotNull null
         val ref = branchMap[SCH.dRef].toOptStr()
         if (ref != null) {
             BranchSource(null, refTargetName(ref))
         } else {
-            BranchSource(
-                parseNode(null, branchMap, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1),
-                null,
-            )
+            state.enter("${SCH.oneOf}[$i]")
+            BranchSource(parseNode(null, branchMap, state, depth + 1), null).also { state.exit() }
         }
     }
     val variants = SchVariants(discriminator, mutableListOf(), null)
-    pendingBranchRefs.add(
+    state.pendingBranchRefs.add(
         PendingBranchRef(
             variants,
             sources,
             rawDiscriminator.toJsonMap()[SCH.defaultMapping].toOptStr()?.let { refTargetName(it) },
             owner = null,
+            path = unionPath,
         ),
     )
     return variants
@@ -220,31 +234,37 @@ fun parseCondition(name: String?, map: Map<String, Any?>): SchCondition? {
     val rawElse = map[SCH.kElse]
     if (rawIf == null) {
         if (rawThen != null || rawElse != null) {
-            throw KdrException.mkConv(
+            throw schemaFault(
+                SchemaError.badCondition,
                 "'${SCH.kThen}'/'${SCH.kElse}'$where without an '${SCH.kIf}' decides nothing.",
             )
         }
         return null
     }
     if (rawThen == null && rawElse == null) {
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.badCondition,
             "'${SCH.kIf}'$where has no '${SCH.kThen}' or '${SCH.kElse}', so it constrains nothing.",
         )
     }
     val ifMap = (rawIf as? Map<*, *>)?.toJsonMap()
-        ?: throw KdrException.mkConv("'${SCH.kIf}'$where must be a schema object.")
+        ?: throw schemaFault(SchemaError.badCondition, "'${SCH.kIf}'$where must be a schema object.")
     val tested = ifMap[SCH.properties].toJsonMapOrEmpty()
     if (tested.size != 1) {
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.badCondition,
             "'${SCH.kIf}'$where must test exactly one property with a '${SCH.const}'; this layer reads that " +
                 "shape only. Anything more general is not supported, and is refused rather than half-applied.",
         )
     }
     val (property, rawTest) = tested.entries.first()
     val test = (rawTest as? Map<*, *>)?.toJsonMap()
-        ?: throw KdrException.mkConv("'${SCH.kIf}'$where must test '$property' with a '${SCH.const}'.")
+        ?: throw schemaFault(
+            SchemaError.badCondition, "'${SCH.kIf}'$where must test '$property' with a '${SCH.const}'.",
+        )
     if (SCH.const !in test) {
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.badCondition,
             "'${SCH.kIf}'$where tests '$property' with something other than a '${SCH.const}'; only a " +
                 "constant comparison is supported.",
         )
@@ -263,19 +283,20 @@ private fun parseClause(keyword: String, raw: Any?, where: String): Pair<Set<Str
         return emptySet<String>() to emptySet()
     }
     val clause = (raw as? Map<*, *>)?.toJsonMap()
-        ?: throw KdrException.mkConv("'$keyword'$where must be a schema object.")
+        ?: throw schemaFault(SchemaError.badCondition, "'$keyword'$where must be a schema object.")
     val required = parseRequired(clause[SCH.required])
     val forbidden = parseRequired(clause[SCH.not].toJsonMapOrEmpty()[SCH.required])
     val understood = setOf(SCH.required, SCH.not)
     val extra = clause.keys.filter { it !in understood }
     if (extra.isNotEmpty()) {
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.badCondition,
             "'$keyword'$where carries ${extra.joinToString(", ") { "'$it'" }}; only '${SCH.required}' and " +
                 "'${SCH.not}: {${SCH.required}: [...]}' are supported.",
         )
     }
     if (required.isEmpty() && forbidden.isEmpty()) {
-        throw KdrException.mkConv("'$keyword'$where names no properties, so it constrains nothing.")
+        throw schemaFault(SchemaError.badCondition, "'$keyword'$where names no properties, so it constrains nothing.")
     }
     return required to forbidden
 }
@@ -284,9 +305,7 @@ private fun parseClause(keyword: String, raw: Any?, where: String): Pair<Set<Str
 fun parseNode(
     name: String?,
     map: Map<String, Any?>,
-    pendingRefs: MutableList<SchProperty>,
-    pendingItemRefs: MutableList<PendingItemRef>,
-    pendingBranchRefs: MutableList<PendingBranchRef>,
+    state: SchParseState,
     depth: Int = 0,
     // What a refusal names: the type, or -- for a property's inline body -- the property.
     where: String = name?.let { "Type '$it'" } ?: "A schema",
@@ -294,20 +313,21 @@ fun parseNode(
     // Guard against runaway recursion -- e.g., a raw schema Map that references itself (see JsonUtil for the
     // same nesting guard on formatting). A legitimate schema never nests anywhere near this deep.
     if (depth > 20) {
-        throw KdrException.mkConv("Schema is nested too deeply (over 20 levels); it may contain a self-reference.")
+        throw schemaFault(
+            SchemaError.tooDeep, "Schema is nested too deeply (over 20 levels); it may contain a self-reference.",
+        )
     }
     // Our own keywords are strict (issue #822): an unknown `g-` key, or one of ours with a value of the wrong shape,
     // fails the parse rather than being read leniently.
-    SchGKeywords.problems(where, map).firstOrNull()?.let { throw KdrException.mkConv(it) }
-    refusedKeywordProblem(where, map)?.let { throw KdrException.mkConv(it) }
+    SchGKeywords.problems(where, map).firstOrNull()?.let { throw it.toException() }
+    refusedKeywordProblem(where, map)?.let { throw it.toException() }
     val properties = LinkedHashMap<String, SchProperty>()
     val rawProps = map[SCH.properties]
     if (rawProps is Map<*, *>) {
         for ((k, v) in rawProps) {
             val pName = k.toOptStr() ?: continue
             if (v is Map<*, *>) {
-                properties[pName] =
-                    parseProperty(pName, v.toJsonMap(), pendingRefs, pendingItemRefs, pendingBranchRefs, depth)
+                properties[pName] = parseProperty(pName, v.toJsonMap(), state, depth)
             }
         }
     }
@@ -322,12 +342,14 @@ fun parseNode(
         if (itemRef != null) {
             itemRefName = refTargetName(itemRef)
         } else {
-            itemType = parseNode(null, itemsMap, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1)
+            state.enter(SCH.items)
+            itemType = parseNode(null, itemsMap, state, depth + 1)
+            state.exit()
         }
     }
     val jsonType = map[SCH.type].toOptStr()
     val format = map[SCH.format].toOptStr()
-    val variants = parseVariants(name, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth)
+    val variants = parseVariants(name, map, state, depth)
     val (minBound, minExclusive) = parseBound(where, map, jsonType, lower = true)
     val (maxBound, maxExclusive) = parseBound(where, map, jsonType, lower = false)
     val schType = SchType(
@@ -372,12 +394,12 @@ fun parseNode(
         presentation = map[SCH.presentation].toOptStr(),
     )
     if (itemRefName != null) {
-        pendingItemRefs.add(PendingItemRef(schType, itemRefName))
+        state.pendingItemRefs.add(PendingItemRef(schType, itemRefName, childPath(state.path().orEmpty(), SCH.items)))
     }
     // The union was parsed before the type that owns it existed; give the boot check the name to complain
     // about now that it does.
     if (variants != null) {
-        pendingBranchRefs.lastOrNull { it.variants === variants }?.owner = schType
+        state.pendingBranchRefs.lastOrNull { it.variants === variants }?.owner = schType
     }
     return schType
 }
@@ -428,7 +450,8 @@ fun parseBound(where: String, map: Map<String, Any?>, jsonType: String?, lower: 
     val keyword = if (lower) SCH.exclusiveMinimum else SCH.exclusiveMaximum
     val raw = map[keyword] ?: return inclusive to false
     val exclusive = (raw as? Number)?.toDouble()
-        ?: throw KdrException.mkConv(
+        ?: throw schemaFault(
+            SchemaError.badValue,
             "$where sets '$keyword' to ${if (raw is String) "'$raw'" else raw}; it must be a number (the bound " +
                 "itself, as JSON Schema 2020-12 has it, not draft 4's true/false beside '${
                     if (lower) SCH.minimum else SCH.maximum
@@ -448,15 +471,16 @@ fun parseBound(where: String, map: Map<String, Any?>, jsonType: String?, lower: 
 fun parsePattern(where: String, raw: Any?, jsonType: String?, format: String?): SchPattern? {
     if (raw == null) return null
     val source = raw as? String
-        ?: throw KdrException.mkConv("$where sets '${SCH.pattern}' to something other than text.")
+        ?: throw schemaFault(SchemaError.badValue, "$where sets '${SCH.pattern}' to something other than text.")
     if (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
         val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.notApplicable,
             "$where has '${SCH.pattern}', which applies to a plain string, and this type is $actual. It would " +
                 "constrain nothing there.",
         )
     }
-    return SchPattern.compile(where, source)
+    return SchPattern.compileResult(where, source).orThrow()
 }
 
 /** Reads JSON Schema `uniqueItems` (issue #823): absent is false, and anything but true or false is refused. */
@@ -464,7 +488,9 @@ fun parsePattern(where: String, raw: Any?, jsonType: String?, format: String?): 
 fun parseUniqueItems(where: String, raw: Any?): Boolean {
     if (raw == null) return false
     return raw as? Boolean
-        ?: throw KdrException.mkConv("$where sets '${SCH.uniqueItems}' to $raw; it must be true or false.")
+        ?: throw schemaFault(
+            SchemaError.badValue, "$where sets '${SCH.uniqueItems}' to $raw; it must be true or false.",
+        )
 }
 
 /**
@@ -485,11 +511,17 @@ val refusedKeywords: Map<String, String> = linkedMapOf(
         "another's value.",
 )
 
-/** The first keyword of [map] in [refusedKeywords], as a message naming it and [where]; null when there is none. */
+/**
+ * The first keyword of [map] in [refusedKeywords], as a [SchemaError.refusedKeyword] problem naming it and
+ * [where]; null when there is none.
+ */
 @KdrPrivate
-fun refusedKeywordProblem(where: String, map: Map<String, Any?>): String? {
+fun refusedKeywordProblem(where: String, map: Map<String, Any?>): Problem? {
     val keyword = refusedKeywords.keys.firstOrNull { it in map } ?: return null
-    return "$where uses '$keyword', which is not supported. ${refusedKeywords.getValue(keyword)}"
+    return Problem(
+        SchemaError.refusedKeyword,
+        "$where uses '$keyword', which is not supported. ${refusedKeywords.getValue(keyword)}",
+    )
 }
 
 /**
@@ -508,10 +540,11 @@ fun parseVisibleOnly(raw: Any?, typeName: String?, jsonType: String?, format: St
     if (raw == null) return false
     val where = typeName?.let { " on '$it'" } ?: ""
     val on = raw as? Boolean
-        ?: throw KdrException.mkConv("'${SCH.visibleOnly}'$where must be true or false, not '$raw'.")
+        ?: throw schemaFault(SchemaError.badValue, "'${SCH.visibleOnly}'$where must be true or false, not '$raw'.")
     if (on && (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format))) {
         val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.notApplicable,
             "'${SCH.visibleOnly}'$where applies to a plain string, and this type is $actual. It would " +
                 "constrain nothing there."
         )
@@ -539,13 +572,15 @@ fun parseOuterWhitespace(raw: Any?, typeName: String?, jsonType: String?, format
         SOWS.trim -> SchOuterWhitespace.trim
         SOWS.reject -> SchOuterWhitespace.reject
         SOWS.keep -> SchOuterWhitespace.keep
-        else -> throw KdrException.mkConv(
+        else -> throw schemaFault(
+            SchemaError.badValue,
             "'${SCH.outerWhitespace}'$where must be '${SOWS.trim}', '${SOWS.reject}' or '${SOWS.keep}', not '$raw'."
         )
     }
     if (jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
         val actual = if (jsonType == SCT.string) "a '$format' string" else "'${jsonType ?: "untyped"}'"
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.notApplicable,
             "'${SCH.outerWhitespace}'$where applies to a plain string, and this type is $actual. It would " +
                 "constrain nothing there."
         )
@@ -613,7 +648,8 @@ fun parseOptions(where: String, raw: Any?, jsonType: String?, format: String?): 
     if (raw !is List<*>) return null
     if (jsonType != null && jsonType != SCT.string || isDateFormat(format) || isBinaryFormat(format)) {
         val actual = if (jsonType == SCT.string) "a '$format' string" else "'$jsonType'"
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.notApplicable,
             "$where has '${SCH.options}', which apply to a plain string, and this type is $actual. A choice is " +
                 "text, so a list here would refuse every value or check none.",
         )
@@ -623,7 +659,8 @@ fun parseOptions(where: String, raw: Any?, jsonType: String?, format: String?): 
             is Map<*, *> -> entry[SCH.value].takeIf { it is String || it is Number || it is Boolean }.toOptStr()
             is String, is Number, is Boolean -> entry.toOptStr()
             else -> null
-        } ?: throw KdrException.mkConv(
+        } ?: throw schemaFault(
+            SchemaError.badValue,
             "$where has '${SCH.options}' entry ${i + 1}, which is neither a value nor a " +
                 "{'${SCH.value}', '${SCH.label}'} object with a '${SCH.value}'.",
         )
@@ -638,7 +675,8 @@ fun parseOptions(where: String, raw: Any?, jsonType: String?, format: String?): 
 @KdrPrivate
 fun parseConst(where: String, raw: Any?, jsonType: String?, format: String?): Any? {
     if (raw != null && jsonType == SCT.string && (isDateFormat(format) || isBinaryFormat(format))) {
-        throw KdrException.mkConv(
+        throw schemaFault(
+            SchemaError.notApplicable,
             "$where has '${SCH.const}' on a '$format' string, which is never compared against it. It would " +
                 "constrain nothing there.",
         )
@@ -668,10 +706,11 @@ fun parseErrorMessages(raw: Any?, typeName: String?): Map<String, String> {
         val key = k.toOptStr() ?: continue
         if (key != SCH.errorDefault && SchFailCode.entries.none { it.name == key }) {
             val valid = (SchFailCode.entries.map { it.name } + SCH.errorDefault).joinToString(", ")
-            throw KdrException(
+            throw schemaFault(
+                SchemaError.badValue,
                 "'${SCH.errors}'${typeName?.let { " on '$it'" } ?: ""} names '$key', which is not a failure " +
-                    "code. Valid keys: $valid."
-            )
+                    "code. Valid keys: $valid.",
+            ) { KdrException(it) }
         }
         v.toOptStr()?.let { out[key] = it }
     }
@@ -679,18 +718,12 @@ fun parseErrorMessages(raw: Any?, typeName: String?): Map<String, String> {
 }
 
 @KdrPrivate
-fun parseProperty(
-    name: String,
-    map: Map<String, Any?>,
-    pendingRefs: MutableList<SchProperty>,
-    pendingItemRefs: MutableList<PendingItemRef>,
-    pendingBranchRefs: MutableList<PendingBranchRef>,
-    depth: Int,
-): SchProperty {
+fun parseProperty(name: String, map: Map<String, Any?>, state: SchParseState, depth: Int): SchProperty {
+    state.enter("${SCH.properties}.$name")
     // The keywords on the property itself, which a `$ref` property's target never sees (issue #822).
-    SchGKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw KdrException.mkConv(it) }
+    SchGKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw it.toException() }
     // And the refused standard ones (issue #823), which would otherwise be ignored beside a `$ref`.
-    refusedKeywordProblem("Property '$name'", map)?.let { throw KdrException.mkConv(it) }
+    refusedKeywordProblem("Property '$name'", map)?.let { throw it.toException() }
     val description = map[SCH.description].toOptStr()
     // On the property, not only its value type -- see [SchProperty.title] for why a `$ref` field needs its own.
     val title = map[SCH.title].toOptStr()
@@ -704,15 +737,16 @@ fun parseProperty(
     val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
         val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation, visibleWhen)
-        pendingRefs.add(prop) // valueType bound in the resolution pass
+        state.pendingRefs.add(PendingRef(prop, state.path().orEmpty())) // valueType bound in the resolution pass
+        state.exit()
         return prop
     }
     val prop = SchProperty(
         name, description, refName = null, title = title, optionalContents = optionalContents,
         presentation = presentation, visibleWhen = visibleWhen,
     )
-    prop.valueType =
-        parseNode(null, map, pendingRefs, pendingItemRefs, pendingBranchRefs, depth + 1, where = "Property '$name'")
+    prop.valueType = parseNode(null, map, state, depth + 1, where = "Property '$name'")
+    state.exit()
     return prop
 }
 
