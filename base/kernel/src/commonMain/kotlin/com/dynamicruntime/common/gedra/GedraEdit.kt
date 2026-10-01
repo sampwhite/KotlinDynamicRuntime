@@ -44,7 +44,7 @@ enum class GedraEditAction {
  * What one edit does to the entry it addresses (issue #909, phase D): the shared core of a data patch
  * (`GedraDataService.applyEdit`) and a config patch (`applyConfigSlotEdits`), which apply the same three actions
  * by the same addressing rule. Each side keeps its own concerns around it -- the data side its `entryId` staleness
- * check, its `g-visibleWhen` gate, unchanged-is-no-op and stamps; the config side its slots.
+ * check, its `g-visibleWhen` gate, unchanged-is-no-op, and stamps; the config side its slots.
  */
 sealed interface KeyedEdit {
     /** A delete of an entry that is not there: nothing to do, and not an error. */
@@ -95,7 +95,7 @@ fun addressesEntry(pkFields: List<String>, entryData: Map<String, Any?>, data: M
  *
  * - **`entryId` absent** means "the entry this trait (and key) names, or a new one". A gedra holds at most one
  *   entry per trait -- or per primary-key value, for a trait with a `g-primaryKey` (issue #487) -- so the entry
- *   an edit names is `(traitId, data[primaryKey])`, which the edit's own data carries. `entryId`, when sent,
+ *   an edit names is `(traitId, data[<primaryKey>])`, which the edit's own data carries. `entryId`, when sent,
  *   stays a staleness check: it has to match the entry that address resolves to.
  * - **`data` absent** is what a [GedraEditAction.deleteOrNoOp] sends. One branch cannot say "required unless
  *   the action is a delete", so the schema permits it, and the service refuses data-less adds — which is also
