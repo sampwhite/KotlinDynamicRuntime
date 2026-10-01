@@ -5,7 +5,7 @@ import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailure
-import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.analyzeTemplate
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.await
 import kotlin.js.Promise
@@ -252,7 +252,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     fun prefillSummaryText(task: WfTaskView, count: Int): String {
         val override = task.traits.firstNotNullOfOrNull { it.fieldLayout?.strings?.get(LAYSTR.prefillSummary) }
         if (override != null) {
-            return try { override.evalTemplate(mapOf("count" to count)) } catch (_: Throwable) { override }
+            return override.analyzeTemplate(evaluateWith = mapOf("count" to count)).value ?: override
         }
         val lead = if (count == 1) "1 field was" else "$count fields were"
         return "$lead filled in from your account — review and save to keep them."

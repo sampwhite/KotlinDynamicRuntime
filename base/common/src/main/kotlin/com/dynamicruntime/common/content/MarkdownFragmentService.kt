@@ -23,6 +23,7 @@ import com.dynamicruntime.common.schema.PSTAT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.common.util.ScriptError
+import com.dynamicruntime.common.util.TemplateAnalysis
 import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.TemplatePaths
 import com.dynamicruntime.common.util.findReferenceCycles
@@ -768,6 +769,14 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         text.evalTemplate(data, prefix = backendPassPrefix, resolver = backendResolver(cxt))
 
     /**
+     * [backendPass] as a report (issue #909): the rendered text in [TemplateAnalysis.value], or -- for a pull that
+     * does not resolve, or a block that is malformed -- the problems, each at its block. Never throws for one; a
+     * caller that degrades to the text as written reads [TemplateAnalysis.value] and reports the first issue.
+     */
+    fun backendPassReport(cxt: KdrCxt, text: String, data: Map<String, Any?> = emptyMap()): TemplateAnalysis =
+        text.analyzeTemplate(backendPassPrefix, evaluateWith = data, resolver = backendResolver(cxt))
+
+    /**
      * Backend-passes a **layout** copy string (issue #605): resolves its `%{@t(...)}` fragment pulls against
      * [cxt]'s fragments, treating a **two-part** `namespace.key` as [defaultFileId]`.namespace.key` -- the layout
      * block's `fragmentFileId`, so a pull need not repeat the file -- and a three-part `fileId.namespace.key`
@@ -776,13 +785,22 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
      * [backendResolver] runs. Throws on an unresolvable literal pull, like [backendPass] -- the delivery site
      * degrades gracefully rather than letting it fault the whole response.
      */
-    fun layoutBackendPass(cxt: KdrCxt, text: String, defaultFileId: String?): String {
+    fun layoutBackendPass(cxt: KdrCxt, text: String, defaultFileId: String?): String =
+        text.evalTemplate(emptyMap(), prefix = backendPassPrefix, resolver = layoutResolver(cxt, defaultFileId))
+
+    /** [layoutBackendPass] as a report (issue #909); see [backendPassReport]. */
+    fun layoutBackendPassReport(cxt: KdrCxt, text: String, defaultFileId: String?): TemplateAnalysis =
+        text.analyzeTemplate(
+            backendPassPrefix, evaluateWith = emptyMap(), resolver = layoutResolver(cxt, defaultFileId),
+        )
+
+    /** [backendResolver], with a two-part `namespace.key` read as [defaultFileId]`.namespace.key`. */
+    private fun layoutResolver(cxt: KdrCxt, defaultFileId: String?): FragmentResolver {
         val base = backendResolver(cxt)
-        val resolver = FragmentResolver { key ->
+        return FragmentResolver { key ->
             val full = if (defaultFileId != null && key.count { it == '.' } == 1) "$defaultFileId.$key" else key
             base.resolve(full)
         }
-        return text.evalTemplate(emptyMap(), prefix = backendPassPrefix, resolver = resolver)
     }
 
     @Suppress("ConstPropertyName")

@@ -24,7 +24,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.refName
-import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.formatDayPart
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -327,7 +327,7 @@ fun parseApproval(raw: Any?): WfApprovalView? {
 
 /**
  * The text a task shows in place of its own rendering (issue #788), or null when its display is not a text branch.
- * `%{…}` arrived resolved; `${'$'}{…}` is filled here by the kernel's `evalTemplate` from the task's own view data -- its
+ * `%{…}` arrived resolved; `${'$'}{…}` is filled here by the kernel's `analyzeTemplate` from the task's own view data -- its
  * approval block, so "approved by `${'$'}{approvedByName}`" names the approver. The approver's name is not always there
  * (their account since removed), so it reads "a reviewer" when absent; and a placeholder nothing can fill is dropped,
  * never shown as template syntax, rather than failing the page. Pure, and covered under `jsNodeTest`.
@@ -336,7 +336,7 @@ fun displayTextOf(task: WfTaskView): String? {
     val display = task.display?.takeIf { it.mode == WDSP.textMode } ?: return null
     val text = display.text ?: return null
     val data = mapOf<String, Any?>(WVF.approvedByName to "a reviewer") + (task.approval?.data ?: emptyMap()).filterValues { it != null }
-    return try { text.evalTemplate(data) } catch (_: Throwable) { text.replace(unfilledPlaceholder, "") }
+    return text.analyzeTemplate(evaluateWith = data).value ?: text.replace(unfilledPlaceholder, "")
 }
 
 /** A `${'$'}{…}` block, for dropping one [displayTextOf] could not fill. */

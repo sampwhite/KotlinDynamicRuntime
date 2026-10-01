@@ -6,7 +6,8 @@ import com.dynamicruntime.common.schema.JsonMappable
 
 /**
  * One problem found in a template, positioned in the source. Plain data over primitives, so it crosses the
- * wire as a map and reads the same in a browser as on the server.
+ * wire as a map and reads the same in a browser as on the server. Its wire form is flat and stays so (the
+ * fragment check serves it); [toProblem] is the same problem as the shared `Problem` type (issue #909).
  */
 class TemplateIssue(
     val code: ScriptError,
@@ -22,6 +23,9 @@ class TemplateIssue(
         TISS.line to line,
         TISS.col to col,
     )
+
+    /** This issue as the shared [Problem]: its code, message, and text position. */
+    fun toProblem(): Problem = Problem(code, message, ProblemLocation(offset = offset, line = line, col = col))
 }
 
 /** Field names for [TemplateIssue.toJsonMap]; each name matches its value. */
@@ -86,8 +90,12 @@ class TemplateRef(
     val col: Int,
 )
 
-/** A template's problems, its data requirements, and its literal `@t` references, from one parse. */
+/**
+ * A template's report (issue #909): its problems, its data requirements, its literal `@t` references, and --
+ * when it was evaluated -- its [value], all from one parse.
+ */
 class TemplateAnalysis(
+    /** Every problem, in document order: the template's own (syntax), and when evaluated, the data's too. */
     val issues: List<TemplateIssue>,
     val paths: TemplatePaths,
     val refs: List<TemplateRef> = emptyList(),
@@ -98,69 +106,66 @@ class TemplateAnalysis(
      * other's blocks. A doubled `prefix` escape and a lone `prefix` are not blocks and are not counted.
      */
     val blockCount: Int = 0,
-)
+    /**
+     * The rendered text, when the template was evaluated (`evaluateWith`) and every block rendered; null when it
+     * was only analyzed, or when evaluation found a problem (which [issues] then holds).
+     */
+    val value: String? = null,
+) {
+    /** [issues] as the shared [Problem] type. */
+    val problems: List<Problem> get() = issues.map { it.toProblem() }
+}
 
 /**
- * Parses every block once, collecting both what is wrong with the template and what it asks of its data.
- * Single-pass because the two answers come from the same syntax tree, and parsing twice would let them
- * disagree about a template that only half-parses.
+ * Parses every block once, collecting what is wrong with the template, what it asks of its data, and its literal
+ * `@t` references -- and, given [evaluateWith], renders it as well (issue #909), so one parse serves the check and
+ * the evaluation. Structure only by default; with data, [TemplateAnalysis.value] is the rendered text, and every
+ * block is attempted, so a problem in one block does not hide another's. [resolver] supplies `@t` fragments to an
+ * evaluation, as it does to [evalTemplate]. Never throws for a fault in the template or its data: each comes back
+ * as an issue at its block.
+ *
+ * Without evaluation it is parse-only, and that bounds what it can find: everything wrong about the *template*
+ * (an unterminated block or string, a stray character, a malformed expression, one nested past the depth cap),
+ * not a missing key or a type mismatch, which are facts about the data -- see [TemplatePaths.missingFrom] for
+ * the first without evaluating. With data, those are found too.
  */
-fun String.analyzeTemplate(prefix: Char = '$'): TemplateAnalysis {
-    val issues = mutableListOf<TemplateIssue>()
+fun String.analyzeTemplate(
+    prefix: Char = '$',
+    evaluateWith: Map<String, Any?>? = null,
+    resolver: FragmentResolver? = null,
+): TemplateAnalysis {
+    val state = ScriptState(this, prefix, resolver)
+    val parsed = parseTemplate(state)
     val required = mutableSetOf<String>()
     val optional = mutableSetOf<String>()
     val refs = mutableListOf<TemplateRef>()
-    var blocks = 0
-    val state = ScriptState(this, prefix)
-    while (state.offset < state.end) {
-        val ch = this[state.offset]
-        if (ch != prefix) {
-            state.advance(ch)
-            continue
-        }
-        val next = if (state.offset + 1 < state.end) this[state.offset + 1] else ' '
-        when (next) {
-            '{' -> {
-                blocks++
-                state.captureBlockStart()
-                state.advance(ch)
-                state.advance(this[state.offset])
-                val expr = try {
-                    readExpression(state)
-                } catch (e: KdrException) {
-                    // The block never closed: the rest of the document cannot be trusted to be text.
-                    issues.add(issueOf(e, state))
-                    return TemplateAnalysis(issues, mkPaths(required, optional), refs, blocks)
-                }
-                if (expr.isBlank()) {
-                    issues.add(
-                        TemplateIssue(
-                            ScriptError.emptyExpression, "Empty '$prefix{}' expression.",
-                            state.blockOffset, state.blockLine + 1, state.blockCol + 1,
-                        ),
-                    )
-                    continue
-                }
-                try {
-                    val node = ScriptParser(state, tokenize(state, expr)).parseAll()
-                    collectPaths(node, tolerant = false, required = required, optional = optional, depth = 0)
-                    collectFragmentRefs(
-                        node, refs, tolerant = false,
-                        offset = state.blockOffset, line = state.blockLine + 1, col = state.blockCol + 1,
-                        depth = 0,
-                    )
-                } catch (e: KdrException) {
-                    issues.add(issueOf(e, state))
-                }
-            }
-            prefix -> {
-                state.advance(ch)
-                state.advance(this[state.offset])
-            }
-            else -> state.advance(ch)
+    for (block in parsed.pieces.filterIsInstance<ParsedBlock>()) {
+        collectPaths(block.node, tolerant = false, required = required, optional = optional, depth = 0)
+        collectFragmentRefs(
+            block.node, refs, tolerant = false,
+            offset = block.offset, line = block.line + 1, col = block.col + 1, depth = 0,
+        )
+    }
+    val paths = mkPaths(required, optional)
+    if (evaluateWith == null) {
+        val issues = parsed.pieces.filterIsInstance<FailedBlock>().map { it.issue }
+        return TemplateAnalysis(issues, paths, refs, parsed.blockCount)
+    }
+    // Rendered in document order, every block attempted. A block that failed to parse keeps the issue the parse
+    // gave it; an evaluation problem takes its code and message from what the evaluator raised, and its position
+    // from the block -- a problem inside a pulled fragment carries a position in the fragment's text, not this one.
+    val render = renderTemplate(state, parsed, evaluateWith, collectAll = true)
+    val issues = render.failures.map { failure ->
+        when (val block = failure.block) {
+            is FailedBlock -> block.issue
+            is ParsedBlock -> TemplateIssue(
+                failure.error.extraData[KdrException.errorCodeKey] as? ScriptError ?: ScriptError.syntaxError,
+                failure.error.message ?: "Template expression is not valid.",
+                block.offset, block.line + 1, block.col + 1,
+            )
         }
     }
-    return TemplateAnalysis(issues, mkPaths(required, optional), refs, blocks)
+    return TemplateAnalysis(issues, paths, refs, parsed.blockCount, render.value)
 }
 
 /** A path read in both a guarded and an unguarded place is required: the unguarded read is what decides. */
@@ -291,15 +296,6 @@ fun TemplatePaths.missingFrom(data: Map<String, Any?>): List<String> = required.
     }
     current == null
 }.sorted()
-
-/** Reads a thrown template error back into a [TemplateIssue], keeping its code and position. */
-private fun issueOf(e: KdrException, state: ScriptState): TemplateIssue = TemplateIssue(
-    e.extraData[KdrException.errorCodeKey] as? ScriptError ?: ScriptError.syntaxError,
-    e.message ?: "Template expression is not valid.",
-    e.extraData[KdrException.offsetKey] as? Int ?: state.blockOffset,
-    e.extraData[KdrException.lineKey] as? Int ?: (state.blockLine + 1),
-    e.extraData[KdrException.lineColKey] as? Int ?: (state.blockCol + 1),
-)
 
 /** One fragment entry's data requirements, named by its `namespace.key` so a report can point at it. */
 class FragmentEntryPaths(val entry: String, val paths: TemplatePaths)

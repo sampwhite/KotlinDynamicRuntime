@@ -12,9 +12,10 @@ import com.dynamicruntime.common.exception.SRC
  * `"Your code is 1234."`. It replaces the third-party templating (FreeMarker) the prior-art `dn` used, so we
  * own the behavior end to end -- most importantly the error reporting.
  *
- * Design mirrors [String.json]: a single-pass, character-by-character state engine ([ScriptState]) building
- * its output in a [StringBuilder]. This is the harder approach, but it is fast (one pass), fully under our
- * control, and -- crucially -- it is where we grow a small script language over time.
+ * Design mirrors [String.json]: a character-by-character state engine ([ScriptState]), fully under our control,
+ * and -- crucially -- where we grow a small script language over time. A template is scanned **once** into its
+ * pieces ([parseTemplate]) and then rendered ([renderTemplate]); evaluating it, analyzing it, and analyzing it
+ * while evaluating ([analyzeTemplate]) all share that one parse (issue #909).
  *
  * This file owns the *document* scan: what is literal text, what opens a block, and where a block ends. The
  * grammar **inside** a block -- literals, arithmetic, comparison, `&&`/`||`, `cond ? a : b`, `a ?: b`, and
@@ -38,8 +39,8 @@ import com.dynamicruntime.common.exception.SRC
  */
 fun String.evalTemplate(data: Map<String, Any?>, prefix: Char = '$', resolver: FragmentResolver? = null): String {
     val state = ScriptState(this, prefix, resolver)
-    runTemplate(state, data)
-    return state.sb.toString()
+    val render = renderTemplate(state, parseTemplate(state), data, collectAll = false)
+    return render.value ?: throw render.errors.first()
 }
 
 /**
@@ -58,18 +59,19 @@ fun interface FragmentResolver {
 }
 
 /**
- * Evaluates [text] -- the fragment [key] pulled by `@t` -- as its own template, one include level deeper than
- * [parent] (issue #505). Carries [parent]'s prefix and resolver so a pulled fragment can pull further.
+ * Renders [text] -- the fragment [key] pulled by `@t` -- as its own template, one include level deeper than
+ * [parent] (issue #505). Carries [parent]'s prefix and resolver so a pulled fragment can pull further. A problem
+ * *inside* the fragment comes back in the render, for the caller to judge (a guarded pull absorbs an absent
+ * value; see `ScriptEval.evalFragment`) and re-report with [mkFragmentContext]. A cycle or an include chain too
+ * deep is the pull's own fault, and throws.
  *
  * **A cycle is ancestry, not a visited set** ([ScriptState.includeChain]): a key inside its own chain is a
  * cycle, while one pulled from two different branches is reuse, and a set would refuse that second, correct
  * case. [SEXP.maxIncludeDepth] then bounds a chain that is long without repeating. The two report separately,
  * because "pulls itself" and "nests too far" call for different fixes.
- *
- * Errors from inside are re-reported by [mkFragmentContext].
  */
 @KdrPrivate
-fun evalFragmentText(parent: ScriptState, key: String, text: String, data: Map<String, Any?>): String {
+fun renderFragmentText(parent: ScriptState, key: String, text: String, data: Map<String, Any?>): TemplateRender {
     if (parent.includeChain.contains(key)) {
         val path = (parent.includeChain + key).joinToString(" -> ")
         throw mkScriptException(
@@ -85,12 +87,7 @@ fun evalFragmentText(parent: ScriptState, key: String, text: String, data: Map<S
         )
     }
     val sub = ScriptState(text, parent.prefix, parent.resolver, parent.includeChain + key)
-    try {
-        runTemplate(sub, data)
-    } catch (e: KdrException) {
-        throw mkFragmentContext(key, e)
-    }
-    return sub.sb.toString()
+    return renderTemplate(sub, parseTemplate(sub), data, collectAll = false)
 }
 
 /**
@@ -116,7 +113,7 @@ fun mkFragmentContext(key: String, cause: KdrException): KdrException {
 
 /** Error codes reported by [evalTemplate], carried in [KdrException.extraData] under [KdrException.errorCodeKey]. */
 @Suppress("EnumEntryName")
-enum class ScriptError {
+enum class ScriptError : ProblemCode {
     /** A `${` (or the configured prefix) opened an expression that never reached a closing `}`. */
     unterminatedExpression,
 
@@ -162,10 +159,10 @@ enum class ScriptError {
 }
 
 /**
- * The single-pass parse state, analogous to JSON's `PState`: the input, the running position (character
- * [offset], and [line]/[lineOffset] for line/column reporting), and the [sb] output being built. It also
- * remembers where the current `${...}` block began ([blockOffset]/[blockLine]/[blockCol]) so an error points
- * at the block's start rather than wherever parsing happened to stop.
+ * The parse state, analogous to JSON's `PState`: the input and the running position (character [offset], and
+ * [line]/[lineOffset] for line/column reporting). It also remembers where the current `${...}` block began
+ * ([blockOffset]/[blockLine]/[blockCol]) so an error points at the block's start rather than wherever parsing
+ * happened to stop -- and rendering sets the same three to each block as it evaluates it.
  */
 @KdrPrivate
 class ScriptState(
@@ -185,7 +182,6 @@ class ScriptState(
     var offset: Int = 0
     var line: Int = 0
     var lineOffset: Int = 0
-    val sb: StringBuilder = StringBuilder()
 
     /**
      * When true, a missing key or null value resolves to an empty string instead of throwing, for every block
@@ -218,42 +214,6 @@ class ScriptState(
         blockOffset = offset
         blockLine = line
         blockCol = lineOffset
-    }
-}
-
-@KdrPrivate
-fun runTemplate(state: ScriptState, data: Map<String, Any?>) {
-    val str = state.str
-    val prefix = state.prefix
-    while (state.offset < state.end) {
-        val ch = str[state.offset]
-        if (ch != prefix) {
-            state.sb.append(ch)
-            state.advance(ch)
-            continue
-        }
-        // Saw the prefix; decide what it introduces by looking one character ahead.
-        val next = if (state.offset + 1 < state.end) str[state.offset + 1] else ' '
-        when (next) {
-            '{' -> {
-                state.captureBlockStart() // Remember the prefix position for error reporting.
-                state.advance(ch) // consume prefix
-                state.advance(str[state.offset]) // consume '{'
-                val expr = readExpression(state)
-                appendResolved(state, data, expr)
-            }
-            prefix -> {
-                // A doubled prefix is an escape for a single literal prefix (e.g. "$$" -> "$").
-                state.sb.append(prefix)
-                state.advance(ch)
-                state.advance(str[state.offset]) // consume the second prefix
-            }
-            else -> {
-                // A lone prefix (not opening a block, not escaped) is literal text.
-                state.sb.append(ch)
-                state.advance(ch)
-            }
-        }
     }
 }
 
@@ -298,33 +258,6 @@ fun readExpression(state: ScriptState): String {
         state, ScriptError.unterminatedExpression,
         "Template has an unterminated '${state.prefix}{' expression.",
     )
-}
-
-/**
- * Parses [expr] as an expression, evaluates it against [data], and appends the result.
- *
- * The whole-document [ScriptState.allowMissingOrNull] switch is applied here, at the outermost evaluation, so
- * it keeps meaning "an absent value prints as nothing". It is separate from the per-expression tolerance that
- * `?:` and a ternary condition apply to their own operands (see `ScriptEval.kt`).
- */
-@KdrPrivate
-fun appendResolved(state: ScriptState, data: Map<String, Any?>, expr: String) {
-    if (expr.isBlank()) {
-        throw mkScriptException(
-            state, ScriptError.emptyExpression,
-            "Template has an empty '${state.prefix}{}' expression.",
-        )
-    }
-    val tokens = tokenize(state, expr)
-    val node = ScriptParser(state, tokens).parseAll()
-    val value = if (state.allowMissingOrNull) {
-        evalNode(state, data, node, tolerant = true, depth = 0)
-    } else {
-        evalNode(state, data, node, tolerant = false, depth = 0)
-    }
-    // A null survives to here only under the tolerant switch, or from an explicit `null` / a `?:` whose right
-    // side is null. Printing "null" into a document is never what was meant, so it contributes nothing.
-    if (value != null) state.sb.append(value.fmt())
 }
 
 /**

@@ -2,7 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.SchemaService
-import com.dynamicruntime.common.util.evalTemplate
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -32,9 +32,9 @@ fun computeDisplayValues(
     val applies = row.client == usageClient || SchemaService.get(cxt).isGlobalTrait(usage.traitId)
     val data = row.entries.takeIf { applies }?.firstOrNull { it[GE.traitId].toOptStr() == usage.traitId }
         ?.let { it[GE.data].toJsonMapOrEmpty() }
-    // Substitution only (this issue): the expression pulls a field out of the trait's data. A missing field
-    // throws in the evaluator, which for a *presentation* value is not a fault -- it is a blank cell.
-    val value = if (data == null) "" else runCatching { usage.display.evalTemplate(data) }.getOrDefault("")
+    // Substitution only (this issue): the expression pulls a field out of the trait's data. A missing field is a
+    // problem the report carries, and for a *presentation* value it is not a fault -- it is a blank cell.
+    val value = if (data == null) "" else usage.display.analyzeTemplate(evaluateWith = data).value ?: ""
     linkedMapOf<String, Any?>(
         UF.traitId to usage.traitId,
         UF.label to usage.label,

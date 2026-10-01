@@ -10,8 +10,9 @@ import com.dynamicruntime.common.util.toOptStr
 /**
  * Resolves the **backend pass** over a delivered `{ typeName -> g-layout block }` map before it ships (issue
  * #605). A layout's heading, each field's `label` / `description` / `hint`, and each form-level string in
- * `strings` (issue #814) may pull shared copy with a backend `%{@t("…")}`, and this is where that pull happens: each copy string runs through [MarkdownFragmentService.layoutBackendPass] against
- * the block's `fragmentFileId`, so a `%{@t(...)}` becomes the caller's finished copy and only `${...}` (the
+ * `strings` (issue #814) may pull shared copy with a backend `%{@t("…")}`, and this is where that pull happens:
+ * each copy string runs through [MarkdownFragmentService.layoutBackendPassReport] against the block's
+ * `fragmentFileId`, so a `%{@t(...)}` becomes the caller's finished copy and only `${...}` (the
  * frontend's field-data substitution) is left on the wire. Backend fragment files are private and never served,
  * so this keeps a pulled string's *source* on the server and ships only the result -- the reason the backend
  * pass exists (the same one task labels use).
@@ -33,13 +34,14 @@ fun resolveDeliveredLayouts(cxt: KdrCxt, layouts: Map<String, Any?>): Map<String
     return layouts.mapValues { (typeName, block) ->
         val body = block.toJsonMapOrEmpty()
         val fileId = body[SL.fragmentFileId].toOptStr()
-        fun pass(what: String, text: String): String = try {
-            svc.layoutBackendPass(cxt, text, fileId)
-        } catch (e: Throwable) {
-            LogSchema.warn(cxt) {
-                "Layout '$typeName' $what has an unresolvable backend pull; delivering it as written. ${e.message}"
+        fun pass(what: String, text: String): String {
+            val report = svc.layoutBackendPassReport(cxt, text, fileId)
+            return report.value ?: text.also {
+                LogSchema.warn(cxt) {
+                    "Layout '$typeName' $what has an unresolvable backend pull; delivering it as written. " +
+                        report.issues.first().message
+                }
             }
-            text
         }
         val heading = (body[SL.label] as? String)?.let { if (MarkdownFragmentService.backendPassPrefix in it) pass("heading", it) else it }
         val fields = body[SL.schemaFields].toJsonListOfMaps().map { field ->

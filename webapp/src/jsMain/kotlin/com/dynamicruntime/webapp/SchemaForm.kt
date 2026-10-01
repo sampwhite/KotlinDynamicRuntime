@@ -24,6 +24,7 @@ import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.schema.isPathAtOrBelow
 import com.dynamicruntime.common.schema.orderedFieldNames
+import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.toJsonStr
@@ -205,11 +206,10 @@ class LayoutCopy(
  */
 private fun resolveLayoutTemplate(text: String, data: Map<String, Any?>): String {
     if ('$' !in text) return text
-    return try {
-        text.evalTemplate(data)
-    } catch (e: Throwable) {
-        console.warn("$errorLogPrefix could not resolve a layout template, showing it as written: \"$text\" (${e.message})")
-        text
+    val report = text.analyzeTemplate(evaluateWith = data)
+    return report.value ?: text.also {
+        val why = report.issues.first().message
+        console.warn("$errorLogPrefix could not resolve a layout template, showing it as written: \"$text\" ($why)")
     }
 }
 
