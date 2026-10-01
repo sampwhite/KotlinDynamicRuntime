@@ -2,7 +2,9 @@ package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.util.ConvProblem
 import com.dynamicruntime.common.util.isVariableName
+import com.dynamicruntime.common.util.Parsed
 
 /**
  * A reference to one workflow definition: the **bundle** it lives in and its name within it (issue #533).
@@ -32,19 +34,30 @@ class WfRef(val bundleId: GedraId, val workflowId: String) {
 
     companion object {
         /** Reads a reference back from [text]; throws when it is not one. */
-        fun parse(text: String): WfRef {
+        fun parse(text: String): WfRef = parseResult(text).orThrow()
+
+        /** [parse], or null when [text] is null or not a reference -- for reading a stored value leniently. */
+        fun parseOrNull(text: String?): WfRef? = text?.let { parseResult(it).valueOrNull() }
+
+        /** [parse]'s outcome as a value (issue #909): the reference, or what is wrong with [text]. Never throws. */
+        fun parseResult(text: String): Parsed<WfRef> {
             val at = text.indexOf(WFD.refSep)
             if (at <= 0 || at == text.length - 1) {
-                throw KdrException.mkConv(
+                return Parsed.failed(
+                    ConvProblem.badFormat,
                     "'$text' is not a workflow reference: it needs a bundle id and a workflow id joined by " +
                         "'${WFD.refSep}'.",
                 )
             }
-            return WfRef(GedraId.parse(text.substring(0, at)), text.substring(at + 1))
+            val workflowId = text.substring(at + 1)
+            // Checked here as well as in `init`, so a bad id is a result rather than the constructor's throw.
+            if (!workflowId.isVariableName()) {
+                return Parsed.failed(ConvProblem.badFormat, "'$workflowId' cannot be a workflow id in a reference.")
+            }
+            return when (val bundle = GedraId.parseResult(text.substring(0, at))) {
+                is Parsed.Ok -> Parsed.Ok(WfRef(bundle.value, workflowId))
+                is Parsed.Failed -> bundle
+            }
         }
-
-        /** [parse], or null when [text] is null or not a reference -- for reading a stored value leniently. */
-        fun parseOrNull(text: String?): WfRef? =
-            text?.let { runCatching { parse(it) }.getOrNull() }
     }
 }

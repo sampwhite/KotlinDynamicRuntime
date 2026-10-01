@@ -26,7 +26,7 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.formatDayPart
-import com.dynamicruntime.common.util.parseDate
+import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -347,7 +347,7 @@ private val unfilledPlaceholder = Regex("""\$\{[^}]*\}""")
  * as the view says. Pure, and covered under `jsNodeTest`.
  */
 fun approvedLine(approval: WfApprovalView): String {
-    val day = approval.approvedAt?.let { runCatching { it.parseDate().formatDayPart() }.getOrNull() }
+    val day = approval.approvedAt?.let { it.parseDateOrNull()?.formatDayPart() }
     return "Approved" + (approval.approvedByName?.let { " by $it" } ?: "") + (day?.let { " on $it" } ?: "") + "."
 }
 

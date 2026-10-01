@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.RID
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.jsonMapOrNull
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
 import kotlin.js.Promise
@@ -236,7 +237,7 @@ object Http {
             // context-root 404, or a fragment 404 that `MarkdownFragmentService` serves as `text/plain` -- is
             // not, and `jsonMap()` **throws** on it rather than returning null (issue #469: that throw used to
             // escape and hide the 404 the stale-fragment recovery keys off). Catch it here, once.
-            val env = runCatching { text.jsonMap() }.getOrNull()
+            val env = text.jsonMapOrNull()
             redirectToEnvAuthLogin(env)?.let { throw it }
             // Carry the whole error envelope up as a structured error (issue #111), so a display site can decide
             // how to present it -- designed fragment copy vs. a raw/internal message -- rather than seeing only a

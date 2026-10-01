@@ -7,7 +7,7 @@ import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptInstantOrNull
 import kotlin.time.Instant
 
 /**
@@ -63,7 +63,7 @@ object ClientSyncTracking {
         val stored = row?.get(CSY.syncState).toJsonMapOrEmpty()
         val out = LinkedHashMap<String, Instant>(stored.size)
         for ((client, value) in stored) {
-            val date = runCatching { value.toOptInstant() }.getOrNull() ?: continue
+            val date = value.toOptInstantOrNull() ?: continue
             out[client] = date
         }
         return out

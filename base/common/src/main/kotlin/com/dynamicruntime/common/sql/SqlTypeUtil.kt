@@ -6,14 +6,18 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.util.fmt
-import com.dynamicruntime.common.util.jsonArray
-import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.jsonArrayResult
+import com.dynamicruntime.common.util.jsonMapResult
+import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
 import com.dynamicruntime.common.util.toOptDouble
+import com.dynamicruntime.common.util.toOptDoubleOrNull
 import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptLongOrNull
 import com.dynamicruntime.common.util.toOptStr
 import java.sql.PreparedStatement
 import java.sql.Timestamp
@@ -130,11 +134,13 @@ object SqlTypeUtil {
                 return null
             }
             return if (col.listElementsCanHaveCommas()) {
-                try {
-                    s.jsonArray()
-                } catch (e: KdrException) {
-                    LogSql.error(cxt, "Suppressing failed conversion of $s into a list.", e)
-                    null
+                when (val parsed = s.jsonArrayResult()) {
+                    is Parsed.Ok -> parsed.value
+                    is Parsed.Failed -> {
+                        val problem = parsed.problems.first()
+                        LogSql.error(cxt, "Suppressing failed conversion of $s into a list: $problem")
+                        null
+                    }
                 }
             } else {
                 s.splitComma().map { item ->
@@ -145,17 +151,19 @@ object SqlTypeUtil {
 
         return when (col.storeType) {
             StoreType.boolean -> toBool(obj)
-            StoreType.integer -> runCatching { obj.toOptLong() }.getOrNull()
-            StoreType.float -> runCatching { obj.toOptDouble() }.getOrNull()
-            StoreType.date -> runCatching { obj.toDbInstant() }.getOrNull()
+            StoreType.integer -> obj.toOptLongOrNull()
+            StoreType.float -> obj.toOptDoubleOrNull()
+            StoreType.date -> obj.toDbInstantOrNull()
             StoreType.map -> {
                 val s = obj.toString().trim()
                 if (s.startsWith("{")) {
-                    try {
-                        s.jsonMap()
-                    } catch (e: KdrException) {
-                        LogSql.error(cxt, "Suppressing failed conversion of $s into a map.", e)
-                        null
+                    when (val parsed = s.jsonMapResult()) {
+                        is Parsed.Ok -> parsed.value
+                        is Parsed.Failed -> {
+                            val problem = parsed.problems.first()
+                            LogSql.error(cxt, "Suppressing failed conversion of $s into a map: $problem")
+                            null
+                        }
                     }
                 } else {
                     null
@@ -200,4 +208,8 @@ object SqlTypeUtil {
      */
     private fun Any?.toDbInstant(): Instant? =
         if (this is java.util.Date) Instant.fromEpochMilliseconds(this.time) else toOptInstant()
+
+    /** [toDbInstant], but a malformed value is null rather than thrown (issue #909). */
+    private fun Any?.toDbInstantOrNull(): Instant? =
+        if (this is java.util.Date) Instant.fromEpochMilliseconds(this.time) else toOptInstantOrNull()
 }

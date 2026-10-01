@@ -8,11 +8,12 @@ import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.fmt
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.deepClone
-import com.dynamicruntime.common.util.jsonArray
-import com.dynamicruntime.common.util.jsonMap
-import com.dynamicruntime.common.util.parseDate
-import com.dynamicruntime.common.util.parseDay
-import com.dynamicruntime.common.util.parseDayLenient
+import com.dynamicruntime.common.util.jsonArrayResult
+import com.dynamicruntime.common.util.jsonMapResult
+import com.dynamicruntime.common.util.Parsed
+import com.dynamicruntime.common.util.parseDateResult
+import com.dynamicruntime.common.util.parseDayLenientResult
+import com.dynamicruntime.common.util.parseDayResult
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toOptBool
@@ -1010,11 +1011,15 @@ fun coerceStringToArray(
         return value
     }
     val list: List<Any?> = if (s.firstOrNull { it > ' ' } == '[') {
-        try {
-            s.jsonArray() ?: emptyList()
-        } catch (e: KdrException) {
-            failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON array.", cause = e, value = s))
-            return value
+        when (val parsed = s.jsonArrayResult()) {
+            is Parsed.Ok -> parsed.value ?: emptyList()
+            is Parsed.Failed -> {
+                // The parse problem rides as the failure's cause, located, as a failed parse always has.
+                val cause = parsed.problems.first().toException()
+                val message = "The value is not a valid JSON array."
+                failures.add(type.failure(path, SchFailCode.badValue, message, cause = cause, value = s))
+                return value
+            }
         }
     } else {
         s.splitComma()
@@ -1033,11 +1038,14 @@ fun coerceStringToObject(
         failures.add(type.failure(path, SchFailCode.wrongType, wrongTypeMsg(type), value = value))
         return value
     }
-    val map = try {
-        s.jsonMap()
-    } catch (e: KdrException) {
-        failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object.", cause = e, value = s))
-        return value
+    val map = when (val parsed = s.jsonMapResult()) {
+        is Parsed.Ok -> parsed.value
+        is Parsed.Failed -> {
+            val cause = parsed.problems.first().toException()
+            val message = "The value is not a valid JSON object."
+            failures.add(type.failure(path, SchFailCode.badValue, message, cause = cause, value = s))
+            return value
+        }
     }
     if (map == null) {
         failures.add(type.failure(path, SchFailCode.badValue, "The value is not a valid JSON object.", value = s))
@@ -1120,28 +1128,33 @@ fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, fail
         return value
     }
 
-    val parsed = try {
-        when (value) {
-            is String ->
-                if (!dayOnly) value.parseDate()
-                else if (lenient) value.parseDayLenient()
-                else value.parseDay()
-            is LocalDate -> if (lenient) value.toStartOfDay() else {
-                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a timestamp, not a day.", value = value))
-                return value
-            }
-            is Instant -> if (lenient) value.toDay() else {
-                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a day, not a timestamp.", value = value))
-                return value
-            }
-            else -> {
-                failures.add(type.failure(path, SchFailCode.wrongType, "This must be a date string.", value = value))
-                return value
+    val parsed: Any = when (value) {
+        is String -> {
+            val result = if (!dayOnly) value.parseDateResult()
+                else if (lenient) value.parseDayLenientResult()
+                else value.parseDayResult()
+            when (result) {
+                is Parsed.Ok -> result.value
+                is Parsed.Failed -> {
+                    val cause = result.problems.first().toException()
+                    val message = "'$value' is not a valid date."
+                    failures.add(type.failure(path, SchFailCode.badValue, message, cause = cause, value = value))
+                    return value
+                }
             }
         }
-    } catch (e: KdrException) {
-        failures.add(type.failure(path, SchFailCode.badValue, "'$value' is not a valid date.", cause = e, value = value))
-        return value
+        is LocalDate -> if (lenient) value.toStartOfDay() else {
+            failures.add(type.failure(path, SchFailCode.wrongType, "This must be a timestamp, not a day.", value = value))
+            return value
+        }
+        is Instant -> if (lenient) value.toDay() else {
+            failures.add(type.failure(path, SchFailCode.wrongType, "This must be a day, not a timestamp.", value = value))
+            return value
+        }
+        else -> {
+            failures.add(type.failure(path, SchFailCode.wrongType, "This must be a date string.", value = value))
+            return value
+        }
     }
     return if (coerce && type.allowCoerce) parsed else value
 }

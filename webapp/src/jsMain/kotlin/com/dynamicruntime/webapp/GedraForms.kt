@@ -28,6 +28,7 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.formStatusOf
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.util.Parsed
 import react.ChildrenBuilder
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
@@ -70,7 +71,7 @@ fun pathAfterSection(path: String): String = "/" + path.removePrefix("/").substr
  * id exactly as the backend does. Pure, and covered under `jsNodeTest`.
  */
 fun formClientOf(gedraId: String?): String? =
-    gedraId?.ifBlank { null }?.let { runCatching { GedraId.parse(it).client }.getOrNull() }
+    gedraId?.ifBlank { null }?.let { GedraId.parseOrNull(it)?.client }
 
 /**
  * The one way a form page fetches one of its endpoints (issue #714): the **bare** [barePath] resolved on the

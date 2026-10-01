@@ -2,7 +2,6 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SchFailure
@@ -10,7 +9,9 @@ import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.clearedAt
 import com.dynamicruntime.common.schema.coerceAndValidate
-import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.jsonMapOrNull
+import com.dynamicruntime.common.util.jsonMapResult
+import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.toJsonStr
 import kotlin.math.roundToInt
 import kotlinx.coroutines.MainScope
@@ -783,21 +784,23 @@ fun parseRawPayload(text: String, what: String = "request"): RawParse {
     if (!text.trim().startsWith("{")) {
         return RawParse(null, "The $what has to be a JSON object — one starting with '{'.")
     }
-    val parsed = try {
-        text.jsonMap()
-    } catch (e: KdrException) {
-        // The parser records where it gave up; passing that through turns "invalid JSON" into something a
-        // person can act on when the payload is fifty lines long.
-        val line = e.extraData[KdrException.lineKey]
-        val col = e.extraData[KdrException.lineColKey]
-        val where = if (line != null) " (line $line, column ${col ?: "?"})" else ""
-        // The parser's message ends by restating the position as a raw offset, which is the wrong unit for
-        // someone looking at a text box -- line and column are already stated above. Dropping the sentence is
-        // cosmetic: if that wording ever changes, the tail simply stays, it does not break.
-        val detail = (e.message ?: "could not be parsed").substringBefore(" Error originates at offset")
-        // The character offset comes back too: a message can say where the parse broke, but putting the caret
-        // there is what actually saves someone hunting for it in a long payload.
-        return RawParse(null, "Invalid JSON$where: $detail", e.extraData[KdrException.offsetKey] as? Int)
+    val parsed = when (val result = text.jsonMapResult()) {
+        is Parsed.Ok -> result.value
+        is Parsed.Failed -> {
+            // The parser records where it gave up; passing that through turns "invalid JSON" into something a
+            // person can act on when the payload is fifty lines long.
+            val problem = result.problems.first()
+            val location = problem.location
+            val where = if (location?.line != null) " (line ${location.line}, column ${location.col ?: "?"})" else ""
+            // The parser's message ends by restating the position as a raw offset, which is the wrong unit for
+            // someone looking at a text box -- line and column are already stated above. Dropping the sentence is
+            // cosmetic: if that wording ever changes, the tail simply stays, it does not break.
+            val detail = problem.message.ifEmpty { "could not be parsed" }
+                .substringBefore(" Error originates at offset")
+            // The character offset comes back too: a message can say where the parse broke, but putting the caret
+            // there is what actually saves someone hunting for it in a long payload.
+            return RawParse(null, "Invalid JSON$where: $detail", location?.offset)
+        }
     }
         ?: return RawParse(null, "The $what has to be a JSON object — one starting with '{'.")
     return RawParse(parsed, null)
@@ -816,7 +819,7 @@ private fun readHash(): HashState? {
     val params = hashParams()
     val method = params[HP.method] ?: return null
     val path = params[HP.path] ?: return null
-    val values = params[HP.values]?.let { runCatching { it.jsonMap() }.getOrNull() } ?: emptyMap()
+    val values = params[HP.values]?.let { it.jsonMapOrNull() } ?: emptyMap()
     return HashState(method, path, values)
 }
 

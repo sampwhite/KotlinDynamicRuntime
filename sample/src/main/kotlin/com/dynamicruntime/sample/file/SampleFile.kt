@@ -5,10 +5,10 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.context.AppPaths
+import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.RandomUtil
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.jsonMap
-import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.toJsonStr
 import java.io.File
 import kotlin.time.Clock
@@ -125,7 +125,7 @@ class SampleFileStore(val dir: File) {
             fileName = map[SF.fileName] as? String ?: id,
             mimeType = map[SF.mimeType] as? String ?: "application/octet-stream",
             size = (map[SF.size] as? Number)?.toLong() ?: 0L,
-            uploaded = (map[SF.uploaded] as? String)?.let { runCatching { it.parseDate() }.getOrNull() }
+            uploaded = (map[SF.uploaded] as? String)?.let { it.parseDateOrNull() }
                 ?: Clock.System.now(),
         )
     }

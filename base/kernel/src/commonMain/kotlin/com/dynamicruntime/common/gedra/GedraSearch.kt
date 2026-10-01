@@ -6,7 +6,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.qualifyTypeName
-import com.dynamicruntime.common.util.parseDate
+import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
@@ -256,8 +256,8 @@ private fun compareBound(value: String, kind: UsageKind, query: String): Int? = 
         if (v == null || q == null) null else v.compareTo(q)
     }
     UsageKind.date -> {
-        val v = runCatching { value.trim().parseDate() }.getOrNull()
-        val q = runCatching { query.trim().parseDate() }.getOrNull()
+        val v = value.parseDateOrNull()
+        val q = query.parseDateOrNull()
         if (v == null || q == null) null else v.compareTo(q)
     }
     // A string is never a bound; guarded by construction (a string usage makes no min/max param), null here.
@@ -327,8 +327,8 @@ object GSORT {
 fun compareForSort(a: String, b: String, kind: UsageKind, descending: Boolean): Int = when (kind) {
     UsageKind.number -> nullsLastForSort(a.trim().toDoubleOrNull(), b.trim().toDoubleOrNull(), descending)
     UsageKind.date -> nullsLastForSort(
-        runCatching { a.trim().parseDate() }.getOrNull(),
-        runCatching { b.trim().parseDate() }.getOrNull(),
+        a.parseDateOrNull(),
+        b.parseDateOrNull(),
         descending,
     )
     UsageKind.string -> nullsLastForSort(a.trim().lowercase().ifEmpty { null }, b.trim().lowercase().ifEmpty { null }, descending)
