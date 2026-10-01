@@ -9,7 +9,7 @@ import com.dynamicruntime.common.http.request.SECT
  */
 @Suppress("ConstPropertyName")
 object CPY {
-    const val namespace = "clientCopy"
+    const val namespace = "kdr.clientCopy"
 
     /** Every key an administrator may override for a client, with its value for that client. */
     const val keysPath = "/${SECT.clientAdmin}/client/copy/keys"

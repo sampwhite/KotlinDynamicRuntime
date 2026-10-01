@@ -1,10 +1,12 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLC
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -24,6 +26,7 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.ints.shouldBeLessThan
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -210,13 +213,15 @@ class GedraConfigEndpointTest : StringSpec({
         )
     }
 
-    "authoring into the reserved globalconfig namespace is refused" {
-        val u = admin()
-        u.expectError(
+    // The runtime's own namespace is out of reach the way every other owner's is (issues #949, #950): a client's
+    // config declares into its own `client.<clientId>`, and nowhere else.
+    "authoring into core's namespace is refused" {
+        val refused = admin().expectError(
             EXC.badInput,
             CFEP.bundleWrite,
-            mapOf(CFEP.name to "bad", CFEP.namespaceField to "globalconfig", CFEP.slots to emptyMap<String, Any?>()),
+            mapOf(CFEP.name to "bad", CFEP.namespaceField to GCFG.globalNamespace, CFEP.slots to emptyMap<String, Any?>()),
         )
+        refused[EP.errorMessage].toString() shouldContain "its own namespace"
     }
 
     "reading a configuration that does not exist is a 404" {

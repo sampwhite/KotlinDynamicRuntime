@@ -232,7 +232,7 @@ class GedraConfigService : ServiceInitializer {
 
     /**
      * The write-time guards a stored config must pass (#292, #696): its types are not in the reserved
-     * `globalconfig` namespace and not owned by the `global` client, it authors only into its own
+     * `kdr.core` namespace and not owned by the `global` client, it authors only into its own
      * `client.<clientId>` namespace (#949), and it carries no `testFeatures` on a non-test node (an explicit write that set them is refused rather than
      * silently stripped -- a bulk clone/restore, #685, strips and logs instead). Run before a write and, for a
      * patch, on the reassembled result.

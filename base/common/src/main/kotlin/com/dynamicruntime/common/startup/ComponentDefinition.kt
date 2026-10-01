@@ -35,6 +35,23 @@ interface ComponentDefinition : KdrProvider {
     fun presence(cxt: KdrCxt): Presence = Presence.anywhere
 
     /**
+     * The owner root this component's global names live under (issue #950): every namespace its schema modules and
+     * global configs declare types in is `<ownerRoot>` or `<ownerRoot>.<more>`. Core's components declare `kdr`, and
+     * nothing else does by accident; any other owner chooses a root of its own.
+     *
+     * A component may still extend another owner's root -- `kdr` included -- one contribution at a time: a schema
+     * module or config whose namespace is under a different root says so with `contributesTo`, so one component can
+     * both add behavior of its own and extend an existing owner's without being split in two. What the boot refuses
+     * is the accident: a namespace under neither, the reserved `client` root, or a declared type outside its
+     * contribution's root.
+     *
+     * Null for a component that contributes no global names; one that does, without declaring a root, fails the
+     * boot outside production. Core cannot see who is downstream, so this keeps an owner from colliding with
+     * another by mistake, not one owner from deliberately claiming another's root.
+     */
+    val ownerRoot: String? get() = null
+
+    /**
      * Whether this component contributes its schema to the application. Receives the startup [cxt] so the
      * decision can read instance config and environment (e.g., a demo component that loads only in developer
      * environments, as the `sample` module's `SampleComponent` does).

@@ -194,32 +194,32 @@ A `Trait`'s entry type is one branch of a `oneOf`, selected by a declared discri
 ```json
 {
   "$defs": {
-    "gedra.GedraEntry": {
+    "kdr.gedra.GedraEntry": {
       "description": "One schema-defined unit stored in a Gedra.",
       "oneOf": [
-        { "$ref": "#/$defs/gedra.ExpenseReportEntry" },
-        { "$ref": "#/$defs/gedra.ApprovalChoiceEntry" }
+        { "$ref": "#/$defs/kdr.gedra.ExpenseReportEntry" },
+        { "$ref": "#/$defs/kdr.gedra.ApprovalChoiceEntry" }
       ],
       "discriminator": {
         "propertyName": "traitId",
-        "defaultMapping": "#/$defs/gedra.OpaqueEntry"
+        "defaultMapping": "#/$defs/kdr.gedra.OpaqueEntry"
       }
     },
 
-    "gedra.ExpenseReportEntry": {
+    "kdr.gedra.ExpenseReportEntry": {
       "type": "object",
       "additionalProperties": false,
       "required": ["traitId", "data", "source"],
       "properties": {
         "traitId": { "type": "string", "const": "expenseReport",
                      "description": "Identifies which trait this entry carries." },
-        "data":    { "$ref": "#/$defs/gedra.ExpenseReportData" },
+        "data":    { "$ref": "#/$defs/kdr.gedra.ExpenseReportData" },
         "source":  { "type": "string", "description": "Who is accountable for the current value." },
-        "origin":  { "$ref": "#/$defs/gedra.Origin" }
+        "origin":  { "$ref": "#/$defs/kdr.gedra.Origin" }
       }
     },
 
-    "gedra.ExpenseReportData": {
+    "kdr.gedra.ExpenseReportData": {
       "type": "object",
       "additionalProperties": false,
       "required": ["year", "totalAmount"],
@@ -247,7 +247,7 @@ Which makes this a valid `entries` array — two entries sharing a `traitId`, on
 ```
 
 `ApprovalChoiceEntry` is omitted above: it repeats the same envelope, with `data` pointing at
-`gedra.OptionalChoice` from [Conditional presence](#conditional-presence).
+`kdr.gedra.OptionalChoice` from [Conditional presence](#conditional-presence).
 
 The envelope fields repeat in every branch. Branches are **flattened, not composed with `allOf`**: each branch
 is a complete closed object, so `additionalProperties: false` behaves (it famously does not under `allOf`) and
@@ -295,7 +295,7 @@ heading.
 
 A discriminator cannot express a value whose presence depends on a boolean, because the discriminated property
 must be a string and the branches must be named schemas. That is `if`/`then`/`else`, and it is the most common
-shape a trait's data takes. The `gedra.OptionalChoice` type:
+shape a trait's data takes. The `kdr.gedra.OptionalChoice` type:
 
 ```json
 {

@@ -43,7 +43,7 @@ object VEP {
  * spinner in a real browser. Enablement is the deployment's own config choice, and a real environment refuses to
  * boot with scenarios set.
  */
-fun variantSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "fixture") {
+fun variantSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fixture") {
     type(VEP.stateType) {
         type = SCT.kObject
         // Optional: absent means no scenario is active (after a clear, or when none was ever selected) -- an

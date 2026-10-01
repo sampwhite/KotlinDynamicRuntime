@@ -24,7 +24,7 @@ import com.dynamicruntime.common.schema.SCT
  * The `profile` section is login-gated (see `RequestService.userSections`), so these endpoints run with a real
  * authenticated user. Registered by the `common` component.
  */
-fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "profile") {
+fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {
     // UserInfo (declared with UserProfile) is reused for the config state and the clear-password response.
     UserProfile.defineInfoType(this)
 

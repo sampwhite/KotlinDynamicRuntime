@@ -103,14 +103,14 @@ class WorkflowViewTest : StringSpec({
         // page resolves the ref without a second fetch. The schemaRef names exactly that key.
         val g = creationView(globex, SC.globex)
         val gDefs = g[SCH.dDefs].toJsonMapOrEmpty()
-        gDefs.keys shouldContain "globalconfig.NameData"
+        gDefs.keys shouldContain "kdr.core.NameData"
         val gRef = g[WFD.tasks].toJsonListOfMaps().single()[WFD.traits].toJsonListOfMaps().single()[WVF.schemaRef] as String
         gDefs.keys.any { gRef.endsWith(it) } shouldBe true
 
         // acme: exactly the two data types its workflow collects -- and NOT a type it merely supports but its
         // workflow does not touch (SiteVisit / SiteAddress), which is the point of a closure over the catalog.
         val aDefs = creationView(acme, SC.acme)[SCH.dDefs].toJsonMapOrEmpty()
-        aDefs.keys shouldContainAll listOf("sampleconfig.ExpenseReportData", "sampleconfig.QuestionnaireData")
+        aDefs.keys shouldContainAll listOf("sample.traits.ExpenseReportData", "sample.traits.QuestionnaireData")
         aDefs.keys.any { it.contains("SiteVisit") || it.contains("SiteAddress") } shouldBe false
     }
 

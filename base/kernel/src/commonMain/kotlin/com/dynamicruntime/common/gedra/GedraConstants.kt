@@ -25,11 +25,16 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
 @Suppress("ConstPropertyName")
 object GEP {
     /**
-     * The section (and schema namespace) the gedra endpoints and their types live in -- every endpoint here is
-     * client-shaped, so the whole section is copied per client (issue #387). Named once so the endpoint module,
-     * the per-client copier, and the search-type key ([formDocsQueryDefName]) cannot disagree about it.
+     * The schema namespace the gedra endpoints' types live in (issue #950: under core's `kdr` root). Named once so
+     * the endpoint module and the search-type key ([formDocsQueryDefName]) cannot disagree about it.
      */
-    const val gedraNamespace = "gedra"
+    const val gedraNamespace = "kdr.gedra"
+
+    /**
+     * The section the gedra endpoints live in -- every endpoint here is client-shaped, so the whole section is
+     * copied per client (issue #387). Was the namespace too, until the namespace took core's root (issue #950).
+     */
+    const val gedraSection = "gedra"
 
     const val formDocCreate = "/gedra/formDoc/create"
     const val formDoc = "/gedra/formDoc"

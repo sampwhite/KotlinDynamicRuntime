@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  * model out; the fetch that produces the map is not under test here.
  */
 class CatalogModelTest {
-    private val questionnaire = "sampleconfig.QuestionnaireData"
+    private val questionnaire = "sample.traits.QuestionnaireData"
 
     private fun results(): Map<String, Any?> = mapOf(
         EI.endpoints to listOf(
@@ -29,7 +29,7 @@ class CatalogModelTest {
                 SCH.type to SCT.kObject,
                 SCH.properties to mapOf("topic" to mapOf(SCH.type to SCT.string), "notes" to mapOf(SCH.type to SCT.string)),
             ),
-            "sampleconfig.Plain" to mapOf(SCH.type to SCT.kObject),
+            "sample.traits.Plain" to mapOf(SCH.type to SCT.kObject),
         ),
         EI.filtersAvailable to false,
         EI.cfacts to mapOf("hasAdminLevel" to false),
@@ -58,7 +58,7 @@ class CatalogModelTest {
         assertEquals(listOf("topic", "notes"), layout.fieldNames)
         assertEquals("Anything else?", layout.fields[1].label)
         // A type with no layout has no entry -- absent, not empty.
-        assertNull(catalog.fieldLayouts["sampleconfig.Plain"])
+        assertNull(catalog.fieldLayouts["sample.traits.Plain"])
         // The served schema carries no layout keyword: the closure is the only place a layout travels.
         assertTrue(!(catalog.defs[questionnaire] as Map<*, *>).containsKey(SCH.layout))
     }

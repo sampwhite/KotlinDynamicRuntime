@@ -32,7 +32,7 @@ private const val appUiConfigType = "AppUiConfig"
  * for the idle-bump interval (issue #146) -- a tuning value the frontend re-arms its refresh timer from.
  * `fragments`/`state` arrive if the app config later grows "shell" copy or dynamic state.
  */
-fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "app") {
+fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
     type(appUiConfigType) {
         type = SCT.kObject
         property(UIC.features, "Deployment-wide policy flags visible to the whole frontend.", required = true) {

@@ -67,7 +67,7 @@ fun buildClientEndpoints(
  * answers with a registry a client's own config may have added to, so it is client-shaped while the rest of its
  * section is not.
  */
-private const val CLIENT_SHAPED_SECTION = GEP.gedraNamespace
+private const val CLIENT_SHAPED_SECTION = GEP.gedraSection
 
 /** [endpoint] under [client]'s path, bound to that client, with the shared handler untouched. */
 private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {

@@ -28,7 +28,7 @@ class SchemaSkillExamplesTest : StringSpec({
     val cxt = KdrCxt.mkSimpleCxt("test")
 
     // Transcribed from the skill's "The DSL" section.
-    fun example(): Map<String, Any?> = schemaDefs(cxt, "core") {
+    fun example(): Map<String, Any?> = schemaDefs(cxt, "abc.people") {
         val name = property("name", "A name")
         val active = property("active", "Active flag") { type = SCT.boolean }
 
@@ -45,12 +45,12 @@ class SchemaSkillExamplesTest : StringSpec({
     }
 
     $$"the skill's example builds the $defs it says it does" {
-        // "returns the $defs contents keyed by fully-qualified namespace.Name (here core.Count, core.Person)"
-        example().keys shouldContainExactlyInAnyOrder listOf("core.Count", "core.Person")
+        // "returns the $defs contents keyed by fully-qualified namespace.Name (here abc.people.Count, abc.people.Person)"
+        example().keys shouldContainExactlyInAnyOrder listOf("abc.people.Count", "abc.people.Person")
     }
 
     "required is on the side, not per field" {
-        val person = example()["core.Person"].toJsonMapOrEmpty()
+        val person = example()["abc.people.Person"].toJsonMapOrEmpty()
         (person[SCH.required] as List<*>) shouldContain "name"
         // The field itself carries no required flag.
         person[SCH.properties].toJsonMapOrEmpty()["name"].toJsonMapOrEmpty().keys shouldContain SCH.description
@@ -58,26 +58,26 @@ class SchemaSkillExamplesTest : StringSpec({
     }
 
     "a field defaults to string unless the block sets a type or a ref" {
-        val props = example()["core.Person"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+        val props = example()["abc.people.Person"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
         props["nickname"].toJsonMapOrEmpty()[SCH.type] shouldBe SCT.string
         props["age"].toJsonMapOrEmpty()[SCH.type] shouldBe SCT.integer
     }
 
-    $$"ref(\"Count\") points at #/$defs/core.Count" {
-        val props = example()["core.Person"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
-        props["count"].toJsonMapOrEmpty()[SCH.dRef] shouldBe $$"#/$defs/core.Count"
+    $$"ref(\"Count\") points at #/$defs/abc.people.Count" {
+        val props = example()["abc.people.Person"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+        props["count"].toJsonMapOrEmpty()[SCH.dRef] shouldBe $$"#/$defs/abc.people.Count"
     }
 
     "a reused property is cloned per use, so mutating one does not touch the other" {
-        val props = example()["core.Person"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+        val props = example()["abc.people.Person"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
         // The skill's example clones `active` and overrides its description.
         props["active"].toJsonMapOrEmpty()[SCH.description] shouldBe "Currently active"
         // ... while the template it came from kept its own (built fresh here, same declaration).
-        val fresh = schemaDefs(cxt, "core") {
+        val fresh = schemaDefs(cxt, "abc.people") {
             val active = property("active", "Active flag") { type = SCT.boolean }
             type("Other") { type = SCT.kObject; property(active) }
         }
-        fresh["core.Other"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()["active"].toJsonMapOrEmpty()[SCH.description] shouldBe
+        fresh["abc.people.Other"].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()["active"].toJsonMapOrEmpty()[SCH.description] shouldBe
             "Active flag"
     }
 
@@ -171,7 +171,7 @@ class SchemaSkillExamplesTest : StringSpec({
     }
     // Transcribed from the skill's "Standard constraints" section (issue #823).
     "the standard constraints example validates as the skill says" {
-        val defs = schemaDefs(cxt, "core") {
+        val defs = schemaDefs(cxt, "abc.people") {
             type("Order") {
                 type = SCT.kObject
                 property("postcode", "A five-digit postal code.") {
@@ -182,7 +182,7 @@ class SchemaSkillExamplesTest : StringSpec({
                 property("tags", "Distinct tags.") { type = SCT.array; uniqueItems = true; items { type = SCT.string } }
             }
         }
-        val order = parseSchemaTypes(defs).getValue("core.Order")
+        val order = parseSchemaTypes(defs).getValue("abc.people.Order")
         val failures = validate(order, mapOf("postcode" to "1234", "price" to 0, "tags" to listOf("a", "b", "a")))
         failures.map { it.code } shouldContainExactlyInAnyOrder
             listOf(SchFailCode.patternMismatch, SchFailCode.belowMinimum, SchFailCode.duplicateItem)

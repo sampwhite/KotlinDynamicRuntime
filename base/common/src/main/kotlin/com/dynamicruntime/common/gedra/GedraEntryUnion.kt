@@ -69,8 +69,8 @@ object GU {
     fun unknownEditBranchName(kind: GedraDataType): String = editUnionName(kind) + "Unknown"
 
     /**
-     * One trait's edit branch, named from the entry type it edits: `globalconfig.NameEntry` becomes
-     * `globalconfig.NameEntryEdit`.
+     * One trait's edit branch, named from the entry type it edits: `kdr.core.NameEntry` becomes
+     * `kdr.core.NameEntryEdit`.
      *
      * Qualified already, so a branch lands in the namespace of the config that declared the trait rather than
      * in the union's — exactly as the entry types do. A client's trait keeps its own namespace here too.

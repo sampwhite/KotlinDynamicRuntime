@@ -48,6 +48,9 @@ import com.dynamicruntime.common.startup.service
 class SampleComponent : ComponentDefinition {
     override val providerName: String = "sample"
 
+    /** This component's own root (issue #950); its global names live under it. */
+    override val ownerRoot: String = "sample"
+
     /**
      * Loads the demo file endpoints only in developer environments (`local`/`dev`), never in
      * `prod`/`integration`; an explicit `KDR_LOAD_SAMPLE=true|false` overrides that (and lets tests force it on

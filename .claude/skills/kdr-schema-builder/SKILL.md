@@ -18,7 +18,7 @@ runs — so the two cannot disagree about what a schema means. Keep it plain Kot
 ## The DSL
 
 ```kotlin
-val defs = schemaDefs(cxt, "core") {                 // namespace named ONCE
+val defs = schemaDefs(cxt, "abc.people") {           // namespace named ONCE
     // Reusable properties (declared in the scope's namespace):
     val name = property("name", "A name")            // description MANDATORY for fields
     val active = property("active", "Active flag") { type = SCT.boolean }
@@ -31,13 +31,13 @@ val defs = schemaDefs(cxt, "core") {                 // namespace named ONCE
         property(active) { description = "Currently active" } // clone + mutate
         property("age", "Age in years") { type = SCT.integer }
         property("nickname", "Informal name")        // defaults to type=string
-        property("count", "How many") { ref("Count") } // $ref -> #/$defs/core.Count
+        property("count", "How many") { ref("Count") } // $ref -> #/$defs/abc.people.Count
     }
 }
 ```
 
 `schemaDefs(...)` returns the **`$defs` contents** keyed by fully-qualified
-`namespace.Name` (here `core.Count`, `core.Person`). Wrap with
+`namespace.Name` (here `abc.people.Count`, `abc.people.Person`). Wrap with
 `mapOf(SCH.dDefs to defs)` for a standalone document.
 
 ## Conventions (important)
@@ -47,11 +47,17 @@ val defs = schemaDefs(cxt, "core") {                 // namespace named ONCE
 - **Field descriptions are MANDATORY** (`property(name, description, ...)`); a
   type's `description` is optional.
 - **Fields default to `string`** unless the build block sets a `type` or a `$ref`.
-- **Namespace once.** `schemaDefs(cxt, "core")` defaults the namespace for both
+- **Namespace once.** `schemaDefs(cxt, "abc.people")` defaults the namespace for both
   `type(...)` and `property(...)`. Override per entity: `property(..., namespace = "ext")`,
   or a dotted name like `type("other.Foo")` / `ref("other.Foo")`.
+- **Which namespace** (issues #949, #950). A component's types live under the **owner root** it declares
+  (`ComponentDefinition.ownerRoot`): core's are `kdr.<area>` (`kdr.core`, `kdr.gedra`), another owner's
+  `<root>.<area>` -- the `abc` above. A client's live under `client.<clientId>`. The boot refuses a component
+  namespace off its owner's root unless the module or config opts in by name (`contributesTo = "kdr"`), a type
+  declared outside its contribution's root, and a type name declared twice. A plain `schemaDefs` is not judged --
+  it is a document, not a contribution -- so a test may use any namespace it likes.
 - **`$ref` / `$defs`** are flat, dotted, and JSON-Pointer based:
-  `ref("Count")` → `{"$ref": "#/$defs/core.Count"}`; a dotted name passes through.
+  `ref("Count")` → `{"$ref": "#/$defs/abc.people.Count"}`; a dotted name passes through.
 - **Reusable properties** (`schemaProperty` / the scope's `property(...)`) are
   deep-cloned (depth-capped `Map.deepClone()`) on each use, so the template is
   never mutated.
@@ -399,7 +405,7 @@ Parse the built `$defs` map into resolved types, then validate/coerce data:
 
 ```kotlin
 val types = parseSchemaTypes(defs, existingTypes = emptyMap()) // resolves $refs; unknown -> KdrException
-val type  = types["core.Person"]!!
+val type  = types["abc.people.Person"]!!
 val failures: List<SchFailure> = validate(type, data)          // collects ALL failures, no transform
 val result: SchResult          = coerceAndValidate(type, data) // .value (coerced) + .failures; input never mutated
 ```

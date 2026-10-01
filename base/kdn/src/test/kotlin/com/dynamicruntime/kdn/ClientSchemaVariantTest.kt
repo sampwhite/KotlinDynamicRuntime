@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
@@ -102,7 +103,7 @@ class ClientSchemaVariantTest : StringSpec({
     "a client supporting no traits gets a union that recognizes none, for every entry kind" {
         val service = schema(boot("variantTest"))
         GU.entryKinds.forEach { kind ->
-            val unionName = "globalconfig." + GU.unionName(kind)
+            val unionName = "${GCFG.globalNamespace}." + GU.unionName(kind)
             // Global selects between its traits by branch...
             service.storeFor(null).types.getValue(unionName).variants.shouldNotBeNull()
             // ...and a client supporting none has nothing to select between, so every entry lands on the open
@@ -117,6 +118,9 @@ class ClientSchemaVariantTest : StringSpec({
 /** Contributes a global type and a `hub`-owned alteration of it, so a boot has a variant to build. */
 class VariantFixtureComponent : ComponentDefinition {
     override val providerName: String = "variantFixture"
+
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = baseNamespace
 
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
@@ -174,6 +178,9 @@ class VariantFixtureComponent : ComponentDefinition {
 /** Contributes an alteration that adds a property, which widens and must be refused. */
 class WideningFixtureComponent : ComponentDefinition {
     override val providerName: String = "wideningFixture"
+
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = baseNamespace
 
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 

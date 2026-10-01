@@ -170,7 +170,7 @@ class SqlTopicService : ServiceInitializer {
          * something to hand any anonymous caller. Unlike `/schema/endpoints`, which filters by what the caller
          * may call, this filters nothing, so the section gate is the whole of its protection.
          */
-        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "sql") {
+        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.sql") {
             // The TableInfo type is owned by KdrTable, alongside its serialization (toJsonMap).
             KdrTable.defineInfoType(this)
             listEndpoint(

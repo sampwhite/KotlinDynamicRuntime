@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.gedra.GCFG
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.collections.shouldContain
 import com.dynamicruntime.common.schema.SCH
@@ -84,7 +85,7 @@ class ClientVariantTest : StringSpec({
     "a client's narrowing reaches workflow data, not only form documents" {
         val service = SchemaService.get(cxt).also { it.checkInit(cxt) }
         GU.entryKinds.forEach { kind ->
-            val unionName = "globalconfig." + GU.unionName(kind)
+            val unionName = "${GCFG.globalNamespace}." + GU.unionName(kind)
             // Global carries `name` on both kinds...
             service.storeFor(null).types.getValue(unionName).variants
                 .shouldNotBeNull().isKnown(GT.name) shouldBe true

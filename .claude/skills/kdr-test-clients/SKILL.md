@@ -65,7 +65,8 @@ Every gedra's id is `<storage>.<kind>.<client>.<baseId>` (`GedraId`), and each d
 off the authenticated user's client. So a form doc, workflow-data row, or user in `scenarioA` cannot be seen
 from `scenarioB`, even by an `allClients` admin on a client-scoped endpoint. That is what lets one instance hold
 many scenarios without bleed — no new node, no teardown. `global` is the reserved owner of shared/app-level data;
-you never author into it (`writeConfig` refuses the `global` client and the `globalconfig` namespace).
+you never author into it (`writeConfig` refuses the `global` client, and any namespace but the client's own --
+core's `kdr.*` included).
 
 **The service write does not trial; the endpoints do** (issue #843). `GedraConfigService.writeConfig` stores what
 it is given (after the namespace/owner guards), so a test can store a deliberately flawed config to exercise the
@@ -251,8 +252,8 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   `GedraConfigReloadTest`'s rollback case checks) but is tolerated live. Two **different** clients may each
   declare the same `traitId` (issue #807) -- each gets its own -- so scenario clients need no prefixed ids.
 - **`writeConfig` binds to the config's client** — a context bound to another client is not refused (the write
-  re-binds it), and a `userId` is not required. It refuses the reserved `global` client / `globalconfig`
-  namespace outright.
+  re-binds it), and a `userId` is not required. It refuses the reserved `global` client, and any namespace but
+  `client.<clientId>`, outright.
 
 ## Reference implementations and docs
 

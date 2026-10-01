@@ -54,11 +54,11 @@ object GFX {
  */
 object GedraFixtureEndpoints {
     /**
-     * The fixture's endpoints, in the `gedraFixture` namespace, referring to the manufactured
-     * `globalconfig.FormDocEntry` by its qualified name — it does not exist when this module is built, and is
+     * The fixture's endpoints, in the `sample.gedraFixture` namespace, referring to the manufactured
+     * `kdr.core.FormDocEntry` by its qualified name — it does not exist when this module is built, and is
      * an ordinary type by the time anything resolves the reference.
      */
-    fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "gedraFixture") {
+    fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "sample.gedraFixture") {
         val unionRef = "${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"
 
         listEndpoint(

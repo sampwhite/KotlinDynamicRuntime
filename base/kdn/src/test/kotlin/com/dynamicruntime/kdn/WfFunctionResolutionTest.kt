@@ -25,6 +25,7 @@ import com.dynamicruntime.common.gedra.workflow.WfFunctionUsage
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
+import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
@@ -123,6 +124,9 @@ private object TestBadCfactCreation : WfFunctionCreation {
 private class WfFnFixture : ComponentDefinition {
     override val providerName: String = "wfFnFixture"
 
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = "wffnfixture"
+
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
@@ -143,7 +147,8 @@ private class WfFnFixture : ComponentDefinition {
 
     /** A global normal workflow naming a label no client suggests -- allowed, since there is no one list to check. */
     private fun global(cxt: KdrCxt): GedraConfig =
-        gedraConfig(cxt, "wfFnGlobal", GCFG.globalNamespace) {
+        // Core's own namespace, which this fixture extends deliberately, by name (issue #950).
+        gedraConfig(cxt, "wfFnGlobal", GCFG.globalNamespace, contributesTo = OWNR.kdrRoot) {
             workflow("globalReview", WfEntry.normal) {
                 task("review", "Review") {
                     trait(GT.name)

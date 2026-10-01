@@ -27,7 +27,7 @@ class GedraConfigTest : StringSpec({
 
     val cxt = KdrCxt.mkSimpleCxt("gedraConfig")
 
-    fun coreTraits() = gedraConfig(cxt, "coreTraits", "globalconfig") {
+    fun coreTraits() = gedraConfig(cxt, "coreTraits", "kdr.core") {
         trait("NameEntry", "name", setOf(GedraDataType.formDoc), "What somebody called this document.") {
             property("name", "What to call it.", required = true) { maxLength = 128 }
         }
@@ -76,18 +76,18 @@ class GedraConfigTest : StringSpec({
     // digit (fine for a minted id), while a config is addressed by name from code and so has to be a legal
     // identifier as well.
     "a config name has to be one an id can carry, and a variable name besides" {
-        shouldThrow<KdrException> { gedraConfig(cxt, "core traits", "globalconfig") {} }
+        shouldThrow<KdrException> { gedraConfig(cxt, "core traits", "kdr.core") {} }
             .message.shouldNotBeNull() shouldContain "letters, digits and underscores"
-        shouldThrow<KdrException> { gedraConfig(cxt, "9core", "globalconfig") {} }
+        shouldThrow<KdrException> { gedraConfig(cxt, "9core", "kdr.core") {} }
             .message.shouldNotBeNull() shouldContain "usable as a variable name"
-        gedraConfig(cxt, "_internal", "globalconfig") {}.name shouldBe "_internal"
+        gedraConfig(cxt, "_internal", "kdr.core") {}.name shouldBe "_internal"
     }
 
     // Both authoring styles, and the point of having both: a shared data shape declared once and pointed at,
     // beside one written where it is used. The config builder is a schema builder, which is what makes the
     // shared type declarable in the same block.
     "a trait's data can be inlined or referenced, in the same config" {
-        val config = gedraConfig(cxt, "coreTraits", "globalconfig") {
+        val config = gedraConfig(cxt, "coreTraits", "kdr.core") {
             type("NameData") {
                 type = SCT.kObject
                 property("name", "What to call it.", required = true)
@@ -98,9 +98,9 @@ class GedraConfigTest : StringSpec({
             }
         }
         val types = parseSchemaTypes(config.defs)
-        types.getValue("globalconfig.NameEntry").properties.getValue(GE.data).refName shouldBe
-            "globalconfig.NameData"
-        types.getValue("globalconfig.NoteEntry").properties.getValue(GE.data)
+        types.getValue("kdr.core.NameEntry").properties.getValue(GE.data).refName shouldBe
+            "kdr.core.NameData"
+        types.getValue("kdr.core.NoteEntry").properties.getValue(GE.data)
             .valueType.properties.keys.toList() shouldContainExactly listOf("text")
         config.traits.keys.toList() shouldContainExactly listOf("name", "note")
 
@@ -109,23 +109,23 @@ class GedraConfigTest : StringSpec({
         // a property off it. Since #379 both authoring styles reach it **as a reference**: a trait's data is
         // always a named type, so that a client can narrow it without restating the generated envelope around
         // it. An author who named their own keeps that name; one who inlined gets the derived one.
-        config.traits.getValue("name").dataSchema[SCH.dRef] shouldBe $$"#/$defs/globalconfig.NameData"
-        config.traits.getValue("note").dataSchema[SCH.dRef] shouldBe $$"#/$defs/globalconfig.NoteData"
+        config.traits.getValue("name").dataSchema[SCH.dRef] shouldBe $$"#/$defs/kdr.core.NameData"
+        config.traits.getValue("note").dataSchema[SCH.dRef] shouldBe $$"#/$defs/kdr.core.NoteData"
         // ...and the derived type carries the shape that was written inline.
-        types.getValue("globalconfig.NoteData").properties.keys.toList() shouldContainExactly listOf("text")
+        types.getValue("kdr.core.NoteData").properties.keys.toList() shouldContainExactly listOf("text")
     }
 
     // The multi-kind case the set exists for. `name` means the same thing on a form document and on workflow
     // data, so it is one trait rather than a `name` and a `wfDataName` -- and the generated type says so.
     "one trait can apply to several kinds" {
-        val config = gedraConfig(cxt, "coreTraits", "globalconfig") {
+        val config = gedraConfig(cxt, "coreTraits", "kdr.core") {
             trait("NameEntry", "name", setOf(GedraDataType.formDoc, GedraDataType.wfData)) {
                 property("name", "What to call it.", required = true)
             }
         }
         config.traits.getValue("name").appliesTo shouldContainExactly
             listOf(GedraDataType.formDoc, GedraDataType.wfData)
-        config.defs.getValue("globalconfig.NameEntry").toJsonMapOrEmpty()[GE.appliesTo] shouldBe
+        config.defs.getValue("kdr.core.NameEntry").toJsonMapOrEmpty()[GE.appliesTo] shouldBe
             listOf("formDoc", "wfData")
     }
 
@@ -136,7 +136,7 @@ class GedraConfigTest : StringSpec({
     // reported as one.
     "a trait id cannot be declared twice in one config" {
         shouldThrow<KdrException> {
-            gedraConfig(cxt, "coreTraits", "globalconfig") {
+            gedraConfig(cxt, "coreTraits", "kdr.core") {
                 trait("NameEntry", "name", setOf(GedraDataType.formDoc)) { property("name", "One.") }
                 trait("OtherEntry", "name", setOf(GedraDataType.wfData)) { property("name", "Two.") }
             }
@@ -148,7 +148,7 @@ class GedraConfigTest : StringSpec({
     // its own.
     "two traits cannot generate the same type" {
         shouldThrow<KdrException> {
-            gedraConfig(cxt, "coreTraits", "globalconfig") {
+            gedraConfig(cxt, "coreTraits", "kdr.core") {
                 trait("NameEntry", "name", setOf(GedraDataType.formDoc)) { property("name", "One.") }
                 trait("NameEntry", "title", setOf(GedraDataType.formDoc)) { property("title", "Two.") }
             }
@@ -160,7 +160,7 @@ class GedraConfigTest : StringSpec({
     // A config trait is a sibling of a data trait, not a widening: it binds to config kinds, and it is filed
     // where the data unions and the patch keying -- every consumer of `traits` -- will never see it.
     "a config trait binds to config kinds and stays out of the data traits" {
-        val config = gedraConfig(cxt, "storedConfig", "globalconfig") {
+        val config = gedraConfig(cxt, "storedConfig", "kdr.core") {
             trait("NameEntry", "name", setOf(GedraDataType.formDoc)) {
                 property("name", "The name.", required = true)
             }
@@ -174,25 +174,25 @@ class GedraConfigTest : StringSpec({
         config.configTraits.getValue("clientDef").appliesTo shouldBe setOf(GedraConfigType.configDoc)
         // The generated entry type says which config kind may carry it, the way a data trait's names its data
         // kinds -- the one place the two bindings meet, as names on a keyword.
-        config.defs.getValue("globalconfig.ClientDefEntry").toJsonMapOrEmpty()[GE.appliesTo] shouldBe listOf("configDoc")
+        config.defs.getValue("kdr.core.ClientDefEntry").toJsonMapOrEmpty()[GE.appliesTo] shouldBe listOf("configDoc")
         // And it is built by the same machinery: a named data type the entry refers to.
         val types = parseSchemaTypes(config.defs)
-        types.getValue("globalconfig.ClientDefEntry").properties.getValue(GE.data).refName shouldBe
-            "globalconfig.ClientDefData"
+        types.getValue("kdr.core.ClientDefEntry").properties.getValue(GE.data).refName shouldBe
+            "kdr.core.ClientDefData"
     }
 
     // One global id space and one namespace of generated types across data, state and config traits, so the
     // refusals a data trait gets, a config trait gets too -- in either order.
     "a config trait cannot reuse a data trait's id, or its generated type, in one config" {
         val byId = shouldThrow<KdrException> {
-            gedraConfig(cxt, "c", "globalconfig") {
+            gedraConfig(cxt, "c", "kdr.core") {
                 trait("NameEntry", "name", setOf(GedraDataType.formDoc)) { property("name", "N.", required = true) }
                 configTrait("NameCfgEntry", "name", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
             }
         }
         (byId.message ?: "") shouldContain "declared twice"
         val byType = shouldThrow<KdrException> {
-            gedraConfig(cxt, "c", "globalconfig") {
+            gedraConfig(cxt, "c", "kdr.core") {
                 configTrait("SameEntry", "one", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
                 trait("SameEntry", "two", setOf(GedraDataType.formDoc)) { property("y", "Y.") }
             }
@@ -202,7 +202,7 @@ class GedraConfigTest : StringSpec({
 
     "a config trait has to apply to some config kind" {
         val ex = shouldThrow<KdrException> {
-            gedraConfig(cxt, "c", "globalconfig") {
+            gedraConfig(cxt, "c", "kdr.core") {
                 configTrait("LostEntry", "lost", emptySet()) { property("x", "X.") }
             }
         }
@@ -240,12 +240,12 @@ class GedraConfigTest : StringSpec({
             WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
         )
         val types = parseSchemaTypes(config.defs, existingTypes = canonical)
-        types.getValue("globalconfig.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.infoTypeQualified
+        types.getValue("kdr.core.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.infoTypeQualified
         // A trait declaration stores its data shape as a parsed schema document (the trait-vs-schema line), not
         // the entry types it generates -- and #316's schema slot does the same for a directly-declared type.
-        val traitData = types.getValue("globalconfig.TraitDefEntry").properties.getValue(GE.data).valueType
+        val traitData = types.getValue("kdr.core.TraitDefEntry").properties.getValue(GE.data).valueType
         traitData.properties.getValue(CCT.dataSchema).valueType.schemaDocument shouldBe true
-        val schemaData = types.getValue("globalconfig.SchemaDefEntry").properties.getValue(GE.data).valueType
+        val schemaData = types.getValue("kdr.core.SchemaDefEntry").properties.getValue(GE.data).valueType
         schemaData.properties.getValue(CCT.schema).valueType.schemaDocument shouldBe true
     }
 
@@ -257,7 +257,7 @@ class GedraConfigTest : StringSpec({
             WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
         )
         val traitData = parseSchemaTypes(config.defs, existingTypes = canonical)
-            .getValue("globalconfig.TraitDefEntry").properties.getValue(GE.data).valueType
+            .getValue("kdr.core.TraitDefEntry").properties.getValue(GE.data).valueType
         traitData.properties.keys.toList() shouldContainExactly
             listOf(CCT.traitId, CCT.typeName, CCT.appliesTo, CCT.primaryKey, CCT.description, CCT.dataSchema)
         // `appliesTo` is an array bounded to the data-kind names -- a stored trait cannot apply to a kind that
@@ -275,7 +275,7 @@ class GedraConfigTest : StringSpec({
                 WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
             ),
         )
-        fun slotData(entryType: String) = types.getValue("globalconfig.$entryType").properties.getValue(GE.data).valueType
+        fun slotData(entryType: String) = types.getValue("kdr.core.$entryType").properties.getValue(GE.data).valueType
 
         slotData("UsageDefEntry").properties.getValue(CCT.kind).valueType
             .options.shouldNotBeNull().map { it.value } shouldContainExactly UsageKind.entries.map { it.name }

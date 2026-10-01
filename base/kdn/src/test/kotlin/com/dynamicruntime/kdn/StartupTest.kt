@@ -42,8 +42,8 @@ class StartupTest : StringSpec({
 
         val schema = cxt.getSchema()
         // Types contributed by BOTH the common (via NodeService) and kdn components are present.
-        schema.types shouldContainKey "node.Health"
-        schema.types shouldContainKey "kdn.RuntimeInfo"
+        schema.types shouldContainKey "kdr.node.Health"
+        schema.types shouldContainKey "kdr.kdn.RuntimeInfo"
         // The health endpoint contributed by NodeService is indexed by its collation key (path:method).
         schema.endpoints shouldContainKey "/health:GET"
         // The store the context exposes is the one the service compiled.

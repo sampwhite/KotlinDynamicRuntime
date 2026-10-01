@@ -31,6 +31,9 @@ object OWNR {
     /** Separates a rooted name's root from its local part: `kdr:expenseReport`. */
     const val rootSep = ':'
 
+    /** Core's one root (issue #950). It never takes another, which is what keeps an upgrade from colliding. */
+    const val kdrRoot = "kdr"
+
     /** The reserved root every client namespace sits under (issue #949): `client.acme`. */
     const val clientRoot = "client"
 
@@ -134,6 +137,49 @@ fun clientNamespaceProblem(namespace: String, client: String): String? =
         "A client's configuration declares its types in its own namespace, '${clientNamespace(client)}' or beneath " +
             "it; '$namespace' is not."
     }
+
+/** The root of [namespace]: its first segment (`kdr` of `kdr.core`). */
+fun namespaceRoot(namespace: String): String = namespace.substringBefore(OWNR.namespaceSep)
+
+/**
+ * What is wrong with [namespace] as the namespace of a **component's** contribution -- a schema module or a global
+ * config -- or null (issue #950). Its root must be an owner root, never the reserved [OWNR.clientRoot], and either
+ * the component's own [ownerRoot] or the root the contribution explicitly opts into with [contributesTo]. Naming the
+ * root a second time is what makes extending another owner's root deliberate rather than an accident of typing.
+ */
+fun componentNamespaceProblem(namespace: String, ownerRoot: String?, contributesTo: String?): String? {
+    val root = namespaceRoot(namespace)
+    return when {
+        !isOwnerRoot(root) ->
+            "'$namespace' has no owner root: its first segment, '$root', has to be letters and digits, starting with a letter."
+        root == OWNR.clientRoot ->
+            "'$namespace' is under the reserved '${OWNR.clientRoot}' root, which holds clients' own namespaces only."
+        contributesTo != null && contributesTo != root ->
+            "'$namespace' says it contributes to the root '$contributesTo', but it is under '$root'."
+        contributesTo != null -> null
+        ownerRoot == null ->
+            "'$namespace' is contributed by a component that declares no owner root; a component's global names " +
+                "live under the root it declares (ownerRoot)."
+        root != ownerRoot ->
+            "'$namespace' is under '$root', not the component's own root '$ownerRoot'. A contribution to another " +
+                "owner's root says so on its declaration: contributesTo = \"$root\"."
+        else -> null
+    }
+}
+
+/**
+ * What is wrong with [typeName], a type a contribution in [namespace] **declares**, or null (issue #950): it sits
+ * under the contribution's own root. A dotted name is taken as written -- right for a reference, wrong for a
+ * declaration -- so this is what keeps a declaration from landing under somebody else's root.
+ */
+fun declaredTypeProblem(typeName: String, namespace: String): String? {
+    val root = namespaceRoot(namespace)
+    return if (namespaceRoot(typeName) == root) {
+        null
+    } else {
+        "The type '$typeName' is declared in '$namespace' but is not under its root '$root'."
+    }
+}
 
 private fun Char.isAsciiLetter() = this in 'a'..'z' || this in 'A'..'Z'
 

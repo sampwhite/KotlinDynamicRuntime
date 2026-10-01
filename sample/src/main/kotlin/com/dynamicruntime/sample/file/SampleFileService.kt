@@ -42,7 +42,7 @@ class SampleFileService : ServiceInitializer {
          * `results`. `download` returns the file itself as the response body, with no envelope. `list` is an
          * ordinary list endpoint over the metadata, so the catalog can find something to download.
          */
-        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "file") {
+        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "sample.file") {
             type("FileInfo") {
                 type = SCT.kObject
                 property(SF.id, "Unique id of the stored file; use it to download.", required = true)

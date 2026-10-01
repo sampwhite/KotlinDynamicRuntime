@@ -66,6 +66,9 @@ class SourceSchemaForgivenessTest : StringSpec({
 class SourceFaultComponent : ComponentDefinition {
     override val providerName: String = "sourceFaultFixture"
 
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = namespace
+
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
         gedraConfig(cxt, "sourceFault", namespace, GID.globalClient) {
             type("Faulty") {

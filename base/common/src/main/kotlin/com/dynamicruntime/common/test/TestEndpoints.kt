@@ -37,7 +37,7 @@ import kotlin.time.Instant
  * `user` package's `TestUser` wraps exactly that: it calls this endpoint through a `TestHttpClient` (whose
  * cookie jar captures the session) and hands back an authenticated client.
  */
-fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "test") {
+fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
     // The endpoint returns the acting user's info, so the shared UserInfo type is pulled into this module.
     UserProfile.defineInfoType(this)
 

@@ -8,7 +8,7 @@ import com.dynamicruntime.common.http.request.SECT
  */
 @Suppress("ConstPropertyName")
 object MNU {
-    const val namespace = "clientMenu"
+    const val namespace = "kdr.clientMenu"
 
     /** The home menu's items for a client: shipped and effective label and condition, and what the client changed. */
     const val itemsPath = "/${SECT.clientAdmin}/client/menu/items"

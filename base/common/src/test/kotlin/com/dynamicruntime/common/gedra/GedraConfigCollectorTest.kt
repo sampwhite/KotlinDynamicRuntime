@@ -49,7 +49,7 @@ class GedraConfigCollectorTest : StringSpec({
         collector.add(devCxt, nameConfig()) shouldBe true
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
         collector.globalTraits() shouldContainKey "name"
-        collector.defs().keys shouldContain "globalconfig.NameEntry"
+        collector.defs().keys shouldContain "kdr.core.NameEntry"
         collector.issues.shouldBeEmpty()
     }
 
@@ -112,7 +112,7 @@ class GedraConfigCollectorTest : StringSpec({
         // First wins, deterministically -- component load order is loadPriority then registration, so the
         // winner is the same across restarts rather than whichever config happened to arrive first today.
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
-        collector.globalTraits().getValue("name").typeName shouldBe "globalconfig.NameEntry"
+        collector.globalTraits().getValue("name").typeName shouldBe "kdr.core.NameEntry"
 
         // And the node can say what it dropped, which is what stops a degraded boot from being silent.
         collector.issues.size shouldBe 1
@@ -190,7 +190,7 @@ class GedraConfigCollectorTest : StringSpec({
         issue.client shouldBe GID.globalClient
         issue.elementKind shouldBe GCEL.config
         // The source config keeps the trait; the stored one never displaced it.
-        collector.globalTraits().getValue("name").typeName shouldBe "globalconfig.NameEntry"
+        collector.globalTraits().getValue("name").typeName shouldBe "kdr.core.NameEntry"
 
         shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "other")) }
             .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name

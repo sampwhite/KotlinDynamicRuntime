@@ -35,7 +35,7 @@ object SVY {
     /** The friendly group the two survey cfacts present under. */
     const val group = "Survey"
 
-    /** The `surveyCompletion` state trait's entry type: `globalconfig.SurveyCompletionEntry`. */
+    /** The `surveyCompletion` state trait's entry type: `kdr.core.SurveyCompletionEntry`. */
     const val surveyCompletionEntry = "SurveyCompletionEntry"
 
     /** The `surveyCompletion` state trait id -- a derived, form-singleton (unkeyed) projection. */

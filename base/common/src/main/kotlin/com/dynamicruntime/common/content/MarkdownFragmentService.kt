@@ -885,7 +885,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
          *
          * Under `operator` rather than open: a fragment issue names files, line numbers, and copy internals.
          */
-        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "fragmentCheck") {
+        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fragmentCheck") {
             // Described rather than a bare object: `required` and `optional` are a distinction a caller has to
             // understand to read the report, and an untyped map made them look like one undifferentiated list.
             type(entryTypeName) {

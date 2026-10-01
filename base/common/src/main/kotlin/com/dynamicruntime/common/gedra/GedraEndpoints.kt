@@ -1413,7 +1413,7 @@ private fun adminStateGedra(c: KdrCxt, request: Map<String, Any?>): GedraDataRow
         ?: throw KdrException("No gedra '$fullId'.", code = EXC.notFound)
 }
 
-fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "adminGedra") {
+fun gedraStateAdminSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.adminGedra") {
     val stateRef = "${GCFG.globalNamespace}.${GU.stateUnionName}"
     type(GEP.gedraStateDoc) {
         type = SCT.kObject

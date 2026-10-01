@@ -30,7 +30,7 @@ import kotlin.time.Instant
 @Suppress("ConstPropertyName")
 object WFD {
     /** The namespace the definition schema's types live in. */
-    const val namespace = "wfdef"
+    const val namespace = "kdr.wfdef"
 
     const val defType = "WfDef"
     const val taskType = "WfTask"

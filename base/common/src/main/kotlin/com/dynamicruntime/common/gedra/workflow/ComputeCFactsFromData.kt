@@ -39,7 +39,7 @@ object CFD {
     const val cfact = "cfact"
 
     /** The schema namespace and type names for this function's initialization data. */
-    const val namespace = "wffncfd"
+    const val namespace = "kdr.wffncfd"
     const val initDataType = "ComputeCFactsFromData"
     const val mappingType = "CFDMapping"
 }

@@ -8,6 +8,10 @@ import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
+import com.dynamicruntime.common.gedra.GedraConfigIssue
+import com.dynamicruntime.common.gedra.reportConfigProblem
+import com.dynamicruntime.common.naming.componentNamespaceProblem
+import com.dynamicruntime.common.naming.declaredTypeProblem
 import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
@@ -228,8 +232,67 @@ class SchemaCollector(
         }
     }
 
+    /**
+     * The component whose contributions are being collected, while the boot has one in hand (issue #950): its
+     * name, for a message, and its owner root, which every namespace it contributes is judged by.
+     */
+    private class Contributor(val cxt: KdrCxt, val name: String, val ownerRoot: String?)
+
+    private var contributor: Contributor? = null
+
+    /**
+     * Runs [block] -- [component]'s schema and config contributions -- with the component in hand, so each module and
+     * global config it adds is held to its owner root and to "a type is declared once" (issue #950). Outside this,
+     * as in a test building a collector by hand, nothing is attributed to a component and neither is checked.
+     */
+    fun <T> contributingAs(cxt: KdrCxt, component: ComponentDefinition, block: () -> T): T {
+        val prior = contributor
+        contributor = Contributor(cxt, component.providerName, component.ownerRoot)
+        try {
+            return block()
+        } finally {
+            contributor = prior
+        }
+    }
+
+    /**
+     * Holds a contribution in [namespace] to its component's owner root (issue #950): the namespace itself, and every
+     * type it [declared]. A problem is a source-config problem -- it refuses the boot outside production, and is
+     * logged and the contribution taken as declared in production.
+     */
+    private fun checkOwnership(namespace: String, contributesTo: String?, declared: Collection<String>, what: String) {
+        val c = contributor ?: return
+        val problems = listOfNotNull(componentNamespaceProblem(namespace, c.ownerRoot, contributesTo)) +
+            declared.mapNotNull { declaredTypeProblem(it, namespace) }
+        for (problem in problems) {
+            reportConfigProblem(
+                c.cxt,
+                GedraConfigIssue("Component '${c.name}' contributes $what: $problem", "Taking it as declared.", client = GID.globalClient),
+                gedraConfigs.issues,
+            )
+        }
+    }
+
+    /**
+     * Refuses a type [declared] again by [what] (issue #950). Declarations **add**: a second one of a name would
+     * otherwise replace the first by load order, which nobody chose. Refused outright, as a cfact or an options
+     * provider declared twice is. Only within a component's contributions, which is where the boot adds them.
+     */
+    private fun refuseRedeclared(declared: Collection<String>, what: String) {
+        val c = contributor ?: return
+        val twice = declared.firstOrNull { it in defs } ?: return
+        throw KdrException(
+            "The type '$twice' is declared twice: again by $what, from component '${c.name}'. A type name is unique " +
+                "across every component on this node -- declarations add, and none replaces another.",
+        )
+    }
+
     /** Folds a module's types, endpoints, and options providers into the collector. */
     fun addModule(module: SchModule) {
+        module.namespace?.let { ns ->
+            refuseRedeclared(module.defs.keys, "the module '$ns'")
+            checkOwnership(ns, module.contributesTo, module.defs.keys, "the module '$ns'")
+        }
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)
         // Through the checked add, so a duplicate is refused whichever route a provider arrives by.
@@ -284,6 +347,10 @@ class SchemaCollector(
     }
 
     fun addGedraConfig(cxt: KdrCxt, config: GedraConfig): Boolean {
+        if (config.gedraId.client == GID.globalClient) {
+            refuseRedeclared(config.defs.keys, "the config '${config.gedraId}'")
+            checkOwnership(config.namespace, config.contributesTo, config.defs.keys, "the config '${config.gedraId}'")
+        }
         if (!gedraConfigs.add(cxt, config)) {
             return false
         }

@@ -20,7 +20,7 @@ object ULH {
     const val cfact = "cfact"
 
     /** The schema namespace and type name for this function's initialization data. */
-    const val namespace = "wffnulh"
+    const val namespace = "kdr.wffnulh"
     const val initDataType = "UserHasLabel"
 }
 

@@ -155,7 +155,7 @@ object CLD {
     const val infoTypeName = "ClientInfo"
 
     /** The namespace `clientCatalogSchema` declares [infoTypeName] in; its value is that name. */
-    const val catalogNamespace = "clientCatalog"
+    const val catalogNamespace = "kdr.clientCatalog"
 
     /** [infoTypeName] qualified by [catalogNamespace] -- the canonical `ClientInfo`, for a cross-namespace `$ref`. */
     const val infoTypeQualified = "$catalogNamespace.$infoTypeName"
@@ -238,7 +238,7 @@ object CLD {
     const val overviewTypeName = "ClientOverview"
 
     /** The namespace the overview module declares [overviewTypeName] in; its value is that name. */
-    const val overviewNamespace = "clientOverview"
+    const val overviewNamespace = "kdr.clientOverview"
 
     /** [definitionTypeName] qualified by [catalogNamespace], for the scoped retrieve's cross-namespace `$ref`. */
     const val definitionTypeQualified = "$catalogNamespace.$definitionTypeName"

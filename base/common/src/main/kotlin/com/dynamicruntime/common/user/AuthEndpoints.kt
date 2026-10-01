@@ -27,7 +27,7 @@ import com.dynamicruntime.common.util.normalizeLoginId
  * feature flags, and type names come from the kernel auth constants ([AEP]/[AFLD]/[AFEAT]/[ATYPE]/[AFRAG]) so
  * the frontend references the same strings; see also [profileSchema].
  */
-fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "user") {
+fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
     type(ATYPE.formToken) {
         type = SCT.kObject
         property(AFLD.formAuthToken, "The encrypted, timeout-bounded form token to include in auth requests.", required = true)

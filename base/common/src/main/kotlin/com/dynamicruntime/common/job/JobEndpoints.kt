@@ -22,6 +22,9 @@ import kotlin.time.Duration.Companion.milliseconds
 /** Paths and type names of the batch-job operator surface (issue #869). */
 @Suppress("ConstPropertyName")
 object JOBEP {
+    /** The schema namespace the job endpoints and the exception entry type are declared in (issue #950). */
+    const val namespace = "kdr.job"
+
     const val launch = "/operator/job/launch"
     const val status = "/operator/job/status"
     const val abort = "/operator/job/abort"
@@ -67,7 +70,7 @@ object JOBF {
  * A launch from here is always an **endpoint** launch -- scheduled launches are the scheduler's -- and it runs
  * asynchronously unless it asks for `sync`, which only a job able to count its tasks may do, within its cap.
  */
-fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "job") {
+fun jobOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOBEP.namespace) {
     // A closed choice in the UI. The list takes no part in validation (a sourced list never does); an unknown job
     // type is refused by the handler, as a 404.
     optionsProvider(JOBEP.jobTypeOptions) { c, _ ->

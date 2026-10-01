@@ -275,6 +275,12 @@ class GedraConfig(
      * client's own configuration. See `ClientExtension`.
      */
     val inheritedFrom: String? = null,
+    /**
+     * The root a **global** config contributes to when it is not its component's own (issue #950) -- the explicit,
+     * per-config opt-in that lets a component extend another owner's root, `kdr` included. Null for the ordinary
+     * case, and always for a client's config, whose namespace is its client's (#949).
+     */
+    val contributesTo: String? = null,
 ) {
     /** Whether this config was read back from the database rather than declared in source code. */
     val isStored: Boolean get() = origin == GedraConfigOrigin.stored
@@ -655,7 +661,7 @@ class GedraConfigBuilder(
  * Declares a config bundle and its traits.
  *
  * ```kotlin
- * gedraConfig(cxt, "coreTraits", "globalconfig") {
+ * gedraConfig(cxt, "coreTraits", "kdr.core") {
  *     trait("NameEntry", "name", setOf(GedraDataType.formDoc)) {
  *         property("name", "What to call it.", required = true) { maxLength = 128 }
  *     }
@@ -673,6 +679,8 @@ fun gedraConfig(
     namespace: String,
     client: String = GID.globalClient,
     origin: GedraConfigOrigin = GedraConfigOrigin.source,
+    /** The root a global config contributes to when it is not its component's own (issue #950). */
+    contributesTo: String? = null,
     build: GedraConfigBuilder.() -> Unit,
 ): GedraConfig {
     // A config is addressed by name in code and in scripts, so the name has to be a legal identifier. The
@@ -712,5 +720,6 @@ fun gedraConfig(
         workflows = builder.workflows.toMap(),
         usages = builder.usages.toList(),
         origin = origin,
+        contributesTo = contributesTo,
     )
 }
