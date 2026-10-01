@@ -145,10 +145,20 @@ class CopyOverrideView(
     val orphan: Boolean,
     /** Where the application shows the file (issue #933); null for one it does not show. */
     val shownOn: String?,
+    /** The template whose configuration set the value, when the client's own did not (issue #945). */
+    val template: String? = null,
 )
 
 /** One field of an interface item a client sets (issue #917). Values are text as the endpoint rendered them. */
-class BlockFieldView(val field: String, val baseValue: String?, val value: String?, val configName: String?, val origin: String)
+class BlockFieldView(
+    val field: String,
+    val baseValue: String?,
+    val value: String?,
+    val configName: String?,
+    val origin: String,
+    /** The template whose configuration set the field, when the client's own did not (issue #945). */
+    val template: String? = null,
+)
 
 /** One interface item or object a client's own configuration changes (issue #917): a row of the endpoint's `blocks`. */
 class BlockOverrideView(
@@ -185,6 +195,7 @@ fun parseClientOverrides(item: Map<String, Any?>): ClientOverridesView = ClientO
             sourceValue = row[COV.sourceValue].toOptStr(),
             orphan = row[COV.orphan] == true,
             shownOn = row[COV.shownOn].toOptStr(),
+            template = row[COV.template].toOptStr(),
         )
     },
     blocks = item[COV.blocks].toJsonListOfMaps().mapNotNull { row ->
@@ -202,6 +213,7 @@ fun parseClientOverrides(item: Map<String, Any?>): ClientOverridesView = ClientO
                     value = f[COV.value].toOptStr(),
                     configName = f[COV.configName].toOptStr(),
                     origin = f[COV.origin].toOptStr().orEmpty(),
+                    template = f[COV.template].toOptStr(),
                 )
             },
         )
@@ -274,11 +286,18 @@ fun blockSummaryText(row: BlockOverrideView): String {
     return "$words: $label"
 }
 
-/** Which config set a value, and where that config lives: "acmeClient (source)". Pure, and covered under `jsNodeTest`. */
-fun setByText(configName: String?, origin: String): String = when {
-    configName == null -> origin
-    origin.isEmpty() -> configName
-    else -> "$configName ($origin)"
+/**
+ * Which config set a value, and where that config lives: "acmeClient (source)". A value the client inherited from the
+ * template it extends (issue #945) names the template instead of the origin -- "starterCopy (template starter)" --
+ * since its config is the template's, not the client's. Pure, and covered under `jsNodeTest`.
+ */
+fun setByText(configName: String?, origin: String, template: String? = null): String {
+    val where = if (template != null) "template $template" else origin
+    return when {
+        configName == null -> where
+        where.isEmpty() -> configName
+        else -> "$configName ($where)"
+    }
 }
 
 /**
@@ -288,7 +307,7 @@ fun setByText(configName: String?, origin: String): String = when {
  */
 fun blockSetByText(row: BlockOverrideView): String = row.fields
     .sortedByDescending { it.origin == GedraConfigOrigin.stored.name }
-    .map { setByText(it.configName, it.origin) }.distinct().joinToString(", ")
+    .map { setByText(it.configName, it.origin, it.template) }.distinct().joinToString(", ")
 
 /** One key as the cross-client view lists it (issue #917): who overrides it, and with what. */
 class KeyAcrossClients(val group: String, val key: String, val clients: List<Pair<String, String>>)

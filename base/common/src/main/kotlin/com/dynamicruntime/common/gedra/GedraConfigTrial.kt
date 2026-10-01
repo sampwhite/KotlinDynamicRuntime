@@ -113,6 +113,9 @@ object GedraConfigTrial {
             loader.unknownSlotsIssue(row)?.let { reportConfigProblem(tcxt, it, ignored) }
             if (scratch.addGedraConfig(tcxt, config)) taken.add(config)
         }
+        // The template's copy, remade as the reload remakes it (issue #945): a trial keeping the copy the client runs
+        // now would refuse a revision that newly redefines a template trait, as a second definition beside the copy.
+        taken.addAll(loader.addTemplateClones(tcxt, scratch, client, boot = false))
 
         // Phase two's, in the reload's order: the client's definition, the schema, the overlays, the workflows.
         // The client's definition before its schema, as a reload now orders them (issue #819): a variant is built only

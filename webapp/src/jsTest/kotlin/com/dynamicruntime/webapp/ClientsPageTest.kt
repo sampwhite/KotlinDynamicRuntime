@@ -268,6 +268,26 @@ class ClientsPageTest {
         assertEquals("edits (stored)", setByText("edits", "stored"))
         assertEquals("source", setByText(null, "source"))
         assertEquals("acmeClient", setByText("acmeClient", ""))
+        // A value inherited from the template the client extends (issue #945) names the template, not the origin.
+        assertEquals("base (template starter)", setByText("base", "source", "starter"))
+        assertEquals("template starter", setByText(null, "source", "starter"))
+        val inherited = parseClientOverrides(
+            mapOf(
+                COV.client to "kid",
+                COV.copy to listOf(
+                    mapOf(COV.fileId to "home", COV.namespaceField to "home", COV.key to "brand", COV.value to "TPL",
+                        COV.configName to "base", COV.origin to "source", COV.template to "starter"),
+                ),
+                COV.blocks to listOf(
+                    mapOf(COV.blockId to "m", COV.path to "items", COV.itemId to "x", COV.fields to listOf(
+                        mapOf(COV.field to HFLD.label, COV.value to "X", COV.configName to "base", COV.origin to "source",
+                            COV.template to "starter"),
+                    )),
+                ),
+            ),
+        )
+        assertEquals("starter", inherited.copy.single().template)
+        assertEquals("base (template starter)", blockSetByText(inherited.blocks.single()))
         assertEquals("acmeClient (source)", blockSetByText(acmeOverrides().blocks[2]))
         // A row two configs set names both, the stored one first: applied last, its values are the ones that win.
         val mixed = BlockOverrideView("m", "items", "x", added = false, hidden = false, baseLabel = "A", fields = listOf(

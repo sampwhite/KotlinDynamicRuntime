@@ -99,10 +99,12 @@ For the client configuration itself, the client has the following attributes.
  for three reasons. One, to build on a template to deduplicate the definitions of the clients. The other is
  to create a slightly variant client that previews new feature behavior that will eventually be put into
  the base client and formally released. The third, to create a test variant of a prod client for focused testing.
- If this value is present, it will also default the `webResourceId` to the `webResourceId` of the pulled in client
- and also pull in the same `organizations`. Note, this key can only cross-reference to a client that is
- defined in source code and will pull in only the source code definition. Any database data overlays that may be
- present will be ignored.
+ If this value is present, it will also default the `webResourceId` to the `webResourceId` of the pulled in client,
+ and the client includes the pulled-in client's `includedTraits` and `userLabels` ahead of its own. It will also
+ pull in the same `organizations` once organizations are built (they are not yet). Note, this key can only
+ cross-reference to a client that is defined in source code and will pull in only the source code definition. Any
+ database data overlays that may be present will be ignored. How the clone and the overlay combine is described
+ under "Inheritance between clients" below.
 * `domainPrefix` - If the client is given its own domain by prefixing a core domain by a prefix string, then
  this is that prefix. If a user acccesses the application through that domain, then the web resources
  identified by `webResourceId` should be applied to the anonymous view of the application and any
@@ -220,7 +222,7 @@ client is, and no registry that can be asked whether one exists or is enabled.
 4. **User creation by client** — the fixture's explicit client and role parameters, the same for unit tests, and
    the `+client%persona` email convention (since retired, issue #750).
 5. Probably **`extendsFromClientId` for source-code clients** — clone then overlay. The largest single piece
-   here, and reasonably its own step.
+   here, and reasonably its own step. (Since built, issue #945.)
 
 ## What has to wait
 
@@ -563,7 +565,37 @@ creating and patching entries" true without pulling per-client generated endpoin
 ## Inheritance between clients
 
 **`extendsFromClientId` does not need to support chains.** One level: a client extends a template, and that is
-all. *(The relationship is validated, but nothing clones yet; the clone and its merge rules are issue #945.)*
+all.
+
+**How a client is built on another** (issue #945). Each of the base client's *source* configs is **cloned** under
+the extending client's id, and the extending client's own configuration is applied over the clone. Cloning rather
+than referencing is what makes the base's definitions the client's own: the client's schema variant, cfacts,
+workflows and listing columns include them with no knowledge of extension, and an entry the client stores against
+a base trait resolves against the client. The clone keeps the base's namespace, which the base goes on owning, so no
+type is renamed and every `$ref` inside the base still resolves; the extending client cannot author into it.
+
+The merge is **by rule, per kind of definition**, and only two kinds look inside a definition:
+
+| Definition | When the client defines the same one |
+| --- | --- |
+| Trait, by trait id | The client's replaces the base's, whole. It is an override, not a conflict. |
+| Schema type, by qualified name | The client's replaces the base's, whole. |
+| Cfact, by name | The client's replaces the base's. |
+| Workflow, by workflow id | The client's replaces the base's, whole. Its tasks are not merged; that waits on task ids having a root (#921). |
+| Creation or survey workflow | The client's replaces the base's of that kind, whatever its id. |
+| Trait usages (listing columns) | The client's list replaces the base's list. |
+| Fragment copy | Merged key by key: two levels, string values. The base's layer sits below the client's own. |
+| UiBlock | The UiBlock merge (keyed arrays, recursive), the base's layer below the client's own. |
+| Client definition | The client's own fields stand; see `extendsFromClientId` above for what is defaulted. |
+
+So the built client holds each definition **once**. A redefinition takes the base's definition out of the clone
+rather than sitting beside it; two of the client's *own* configs defining one id remain the collision they always
+were, reported and the second dropped. The base's state and config traits are not cloned, since both are global.
+
+The clone is rebuilt whenever the client's configuration is: at boot, on every reload, and in the trial a write
+runs, so a revision that starts or stops redefining a base trait changes the clone with it. A **sandbox** of an
+extending client does not carry its parent's clone. It keeps `extendsFromClientId` and is cloned against its own
+configuration, which is its parent's drafts.
 
 **Overlays do compose**, though: an alter or extend can be applied on top of another. Which raises whether a
 narrowing check runs against the schema immediately below it or against the base of the stack — and the two

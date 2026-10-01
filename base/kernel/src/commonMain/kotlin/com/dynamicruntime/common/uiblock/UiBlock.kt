@@ -105,6 +105,8 @@ class UiBlockSource(
     val configName: String? = null,
     /** Whether this came from a stored client config (issue #916); see `overlayPrecedence`. */
     val stored: Boolean = false,
+    /** The template this layer was cloned from (issue #945), or null; see `FragmentSource.inheritedFrom`. */
+    val inheritedFrom: String? = null,
 ) {
     init {
         if (isOverlay && arrayKeys.isNotEmpty()) {
@@ -115,6 +117,17 @@ class UiBlockSource(
             )
         }
     }
+
+    /** This layer filed again; see `FragmentSource.refiled`, which this mirrors for the same reason. */
+    fun refiled(
+        client: String? = this.client,
+        configName: String? = this.configName,
+        stored: Boolean = this.stored,
+        inheritedFrom: String? = this.inheritedFrom,
+    ): UiBlockSource = UiBlockSource(
+        blockId = blockId, isOverlay = isOverlay, client = client, origin = origin, content = content,
+        arrayKeys = arrayKeys, configName = configName, stored = stored, inheritedFrom = inheritedFrom,
+    )
 
     override fun toString(): String = "$blockId <- $origin" + (client?.let { " ($it)" } ?: "")
 }

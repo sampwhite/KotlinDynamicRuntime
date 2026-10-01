@@ -84,9 +84,10 @@ class EffectiveFragments(
 fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: String?): EffectiveFragments {
     val applicable = sources.filter { it.fileId == fileId && (it.client == null || it.client == client) }
     val bases = applicable.filter { !it.isOverlay }
-    // A component's overlays before this client's, and the client's source ones before its stored ones, which
-    // is the whole of the precedence decision above. A stable sort, so declaration order settles the rest.
-    val overlays = applicable.filter { it.isOverlay }.sortedBy { overlayPrecedence(it.client, it.stored) }
+    // A component's overlays before this client's, what the client inherited from its template (issue #945) before
+    // its own, and its own source ones before its stored ones, which is the whole of the precedence decision above.
+    // A stable sort, so declaration order settles the rest.
+    val overlays = applicable.filter { it.isOverlay }.sortedBy { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null) }
 
     val merged = LinkedHashMap<String, LinkedHashMap<String, String>>()
     var found = false

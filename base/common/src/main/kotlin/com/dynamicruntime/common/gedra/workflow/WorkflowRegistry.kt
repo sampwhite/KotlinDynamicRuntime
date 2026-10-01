@@ -143,7 +143,7 @@ fun buildWorkflowRegistries(
     val builtEntries = setOf(WfEntry.creation, WfEntry.survey, WfEntry.normal)
     // The entry kinds a scope has at most one of: declaring one takes over that kind, and a second is refused.
     // `normal` is many-per-form, so it is deliberately not here now that it is built.
-    val singletonEntries = setOf(WfEntry.creation, WfEntry.survey)
+    val singletonEntries = WfEntry.singletons
 
     fun declaredIn(owner: String): List<WfDeclared> = configs.configs
         .filter { it.gedraId.client == owner }

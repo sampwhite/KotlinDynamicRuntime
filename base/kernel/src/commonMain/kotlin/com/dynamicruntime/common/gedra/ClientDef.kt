@@ -369,14 +369,17 @@ data class ClientDef(
      */
     val staticConfig: Boolean = false,
     /**
-     * Another client whose definitions are cloned in first, with this config applied over them. **Only the
-     * relationship is built so far** -- it is validated (the rules below), but nothing clones; the clone and its merge
-     * rules are issue #945.
+     * Another client whose definitions are cloned in first, with this client's own configuration applied over them
+     * (issue #945). Each of the named client's **source** configs is copied under this client's id; whatever this
+     * client defines itself replaces the copy's definition of the same id whole -- a trait, a type, a cfact, a
+     * workflow, its creation or survey workflow, its listing columns -- while copy and interface overlays merge key
+     * by key, the template's below this client's. Its own definition takes the template's `webResourcesId` when it
+     * sets none, and the template's `includedTraits` and `userLabels` ahead of its own. See `ClientExtension`.
      *
      * **One level, no chains**: the named client may not itself extend one. Usually a template (to deduplicate
      * clients), a preview variant of a client, or a test variant of a production one. From data, it may name
      * only a template; in either case only the *source-code* definition is pulled in, and any database overlay
-     * on the extended client is ignored.
+     * on the extended client is ignored. A sandbox is never a base.
      */
     val extendsFromClientId: String? = null,
     /**

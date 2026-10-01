@@ -124,6 +124,10 @@ object GedraConfigReload {
             for (config in fresh) {
                 if (collector.addGedraConfig(cxt, config)) taken.add(config)
             }
+            // The client's copy of its template (issue #945), made against what it now holds, so a revision that
+            // starts or stops redefining a template trait changes the copy with it. Its overlays reach the
+            // services through `taken`, below, like the client's own.
+            taken.addAll(loader.addTemplateClones(cxt, collector, client, boot = false))
         } catch (e: Exception) {
             taken.forEach { collector.removeGedraConfig(it) }
             previous.forEach { collector.addGedraConfig(cxt, it) }
@@ -153,9 +157,14 @@ object GedraConfigReload {
         UiBlockService.get(cxt).reloadClient(cxt, client, previous.flatMap { it.uiBlocks }, taken.flatMap { it.uiBlocks })
         WorkflowService.get(cxt).reloadClient(cxt, client)
 
-        LogStartup.info(cxt) { "Reloaded client '$client': ${taken.size} stored configuration(s), ${typeKeys.size} type-cache entries dropped." }
+        val inherited = taken.count { it.inheritedFrom != null }
+        val copies = if (inherited == 0) "" else ", $inherited from its template"
+        LogStartup.info(cxt) {
+            "Reloaded client '$client': ${taken.size - inherited} stored configuration(s)$copies, ${typeKeys.size} type-cache entries dropped."
+        }
         val issues = ClientConfigIssues.get(cxt).issuesFor(client)
-        return ConfigReloadResult(client, taken.size, typeKeys.size, issues, marker)
+        // `loaded` is what the client stores and runs: the template's copies are source, so they are not counted.
+        return ConfigReloadResult(client, taken.size - inherited, typeKeys.size, issues, marker)
     }
     /**
      * The stored configs [client] now consumes, reassembled and judged, with its marker: the ordinary client's half

@@ -510,7 +510,7 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
                                     }
                                 }
                             }
-                            td { +setByText(r.configName, r.origin) }
+                            td { +setByText(r.configName, r.origin, r.template) }
                             td {
                                 // An orphan has no shipped key to set, so a save of it would only be refused: reset
                                 // is what works on that row.

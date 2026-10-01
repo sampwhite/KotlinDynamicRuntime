@@ -558,9 +558,12 @@ class GedraConfigCollector {
      * Who a config claims its namespace for: its client, or -- for a sandbox's copy of its parent's configuration
      * (issue #928) -- the parent. A sandbox shares its parent's namespaces and never holds one of its own, so the
      * parent's configuration may later declare into a namespace its sandbox's copy used first, and the write
-     * path's owner check (`namespaceOwner`) answers with the parent either way.
+     * path's owner check (`namespaceOwner`) answers with the parent either way. A client's copy of its template
+     * (issue #945) claims for the template the same way: the copy keeps the template's namespace, which the template
+     * goes on owning, so every client built on it shares the namespace and none may author into it.
      */
-    private val GedraConfig.namespaceClaimant: String get() = sandboxParentOf(gedraId.client) ?: gedraId.client
+    private val GedraConfig.namespaceClaimant: String
+        get() = inheritedFrom ?: sandboxParentOf(gedraId.client) ?: gedraId.client
 
     /**
      * The first name a client's [config] declares that its client may not use (issue #921), or null: a trait id,

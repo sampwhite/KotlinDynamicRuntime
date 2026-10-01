@@ -39,6 +39,12 @@ object COV {
     const val configName = "configName"
     const val origin = "origin"
 
+    /**
+     * The template the client extends whose configuration set the value, when the client's own did not (issue
+     * #945). Its config is source code, so [origin] says `source`, and [configName] names the template's config.
+     */
+    const val template = "template"
+
     /** A key no base declares -- usually a renamed base key, which leaves the override silently unused. */
     const val orphan = "orphan"
 
