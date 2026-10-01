@@ -284,6 +284,40 @@ fun String.jsonArray(): MutableList<Any?>? {
     return result.toOptT()
 }
 
+// The non-throwing forms (issue #909). The reader fails deep inside its recursion, so it keeps its internal throw
+// -- the one place #909 tolerates one -- and these catch it exactly once, here, turning it into a [Problem] located
+// at the offset, line and column the reader recorded. Only the reader's own `KdrException` is caught: anything
+// else thrown in there is a fault, not malformed input, and propagates.
+
+/** [json]'s outcome as a value: the parsed value, or the problem with the text, located. */
+fun String.jsonResult(): Parsed<Any?> = jsonOutcome { json() }
+
+/** [jsonMap]'s outcome as a value: the object (null for JSON `null`), or the problem with the text, located. */
+fun String.jsonMapResult(): Parsed<MutableMap<String, Any?>?> = jsonOutcome { jsonMap() }
+
+/** [jsonArray]'s outcome as a value: the array (null for JSON `null`), or the problem with the text, located. */
+fun String.jsonArrayResult(): Parsed<MutableList<Any?>?> = jsonOutcome { jsonArray() }
+
+/** [json], or null for text that is not JSON. */
+fun String.jsonOrNull(): Any? = jsonResult().valueOrNull()
+
+/** [jsonMap], or null for text that is not a JSON object (or is JSON `null`). */
+fun String.jsonMapOrNull(): MutableMap<String, Any?>? = jsonMapResult().valueOrNull()
+
+/** [jsonArray], or null for text that is not a JSON array (or is JSON `null`). */
+fun String.jsonArrayOrNull(): MutableList<Any?>? = jsonArrayResult().valueOrNull()
+
+private inline fun <T> jsonOutcome(parse: () -> T): Parsed<T> = try {
+    Parsed.Ok(parse())
+} catch (e: KdrException) {
+    val location = ProblemLocation(
+        offset = e.extraData[KdrException.offsetKey] as? Int,
+        line = e.extraData[KdrException.lineKey] as? Int,
+        col = e.extraData[KdrException.lineColKey] as? Int,
+    )
+    Parsed.Failed(Problem(ConvProblem.badFormat, e.message.orEmpty(), location))
+}
+
 /**
  * After the top-level value has been parsed, rejects any non-whitespace content that follows it (e.g.
  * `{"a":1} garbage`). Trailing whitespace is always allowed. Honors [PState.forgiveTrailingContent] for

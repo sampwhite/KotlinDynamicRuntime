@@ -80,9 +80,8 @@ private fun textArg(state: ScriptState, fn: String, v: Any?): String =
 
 private fun instantArg(state: ScriptState, fn: String, v: Any?): Instant = when (v) {
     is Instant -> v
-    // `parseDate` throws its own KdrException on a malformed date; rethrown here as a function type error so
-    // the message names the function the author actually wrote.
-    is String -> runCatching { v.parseDate() }.getOrElse { throw mkFuncTypeError(state, fn, v, "a date") }
+    // A malformed date is reported as a function type error, so the message names the function the author wrote.
+    is String -> v.parseDateOrNull() ?: throw mkFuncTypeError(state, fn, v, "a date")
     else -> throw mkFuncTypeError(state, fn, v, "a date")
 }
 

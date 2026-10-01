@@ -427,6 +427,27 @@ In general, we will groom our error handling so that if you look at the full sta
 get a good sense of where the error occurred and precisely the source of the issue. In some cases, errors
 will be caught, wrappered, and rethrown just so additional information can be injected in the error stack.
 
+#### When not to throw
+
+An exception is for the **unexpected**. A failure the caller expects and forgives on the spot -- a value that
+is not a date, a string that is not JSON, an id that does not parse -- comes back as a **result** instead
+(issue #909). Calling something that throws, catching it at once and treating the exception as a return value
+(`runCatching { … }.getOrNull()`, a catch that turns `e.message` into a problem string) hides bugs: it catches
+everything, so a real fault inside the parser reads as "not a date" and is swallowed.
+
+- **A simple value** offers an `…OrNull` form (`parseDateOrNull`, `jsonMapOrNull`, `toOptLongOrNull`,
+  `GedraId.parseOrNull`) beside its throwing one, and a `…Result` form returning a `Parsed` -- `Ok` with the
+  value, or `Failed` with the `Problem`s -- for a caller that reports what was wrong.
+- **A structured input** (a template, an expression, a schema document, a Markdown page) returns a **report**
+  of located, enum-coded `Problem`s, and the caller decides what each becomes: an exception, an issue, a
+  warning, or a dropped keyword.
+- **The throwing form is built on the non-throwing one**, never the reverse, so a non-throwing call creates
+  and discards no exception inside. Whatever is still thrown is a fault, and is handled as one.
+
+An operation with many internal failure points that catches **once, at its boundary** -- loading a stored
+config row, running a job task, handling a request -- is not this pattern; that boundary catch is what
+exceptions are for.
+
 ### Universal Context
 
 We will define a context object whose class is named `KdrCxt`. We will use this as an alternative to scoped

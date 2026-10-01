@@ -89,55 +89,65 @@ val serverTimeZone: TimeZone = UtcOffset(hours = -8).asTimeZone()
 /**
  * Parses a date string in the system formats: a full timestamp `yyyy-MM-dd'T'HH:mm:ss[.SSS]'Z'` (the
  * trailing `Z` is optional) or a date-only `yyyy-MM-dd` (interpreted as the start of that day in the
- * [serverTimeZone]). Throws [KdrException] if the string does not match a recognized format.
+ * [serverTimeZone]). Throws [KdrException] if the string does not match a recognized format; see
+ * [parseDateOrNull] and [parseDateResult] for the forms that do not throw.
  */
-fun String.parseDate(): Instant {
+fun String.parseDate(): Instant = parseDateResult().orThrow()
+
+/** [parseDate], or null for a string that is not a date in a recognized format (issue #909). */
+fun String.parseDateOrNull(): Instant? = parseDateResult().valueOrNull()
+
+/**
+ * [parseDate]'s outcome as a value (issue #909): the instant, or the problem with the string. Never throws for
+ * a malformed date -- the parse beneath is `parseOrNull`, not a caught exception -- so a caller expecting bad
+ * input pays for no exception and cannot mistake a bug for one.
+ */
+fun String.parseDateResult(): Parsed<Instant> {
     var str = this.trim()
     if (str.isEmpty()) {
-        throw KdrException.mkConv("Date string to be parsed was null or empty.")
+        return Parsed.failed(ConvProblem.blank, "Date string to be parsed was null or empty.")
     }
 
     // Inspect the string for the different possible formats.
     val firstDash = str.indexOf('-')
     val secondDash = if (firstDash == 4) str.indexOf('-', 5) else 0
     if (secondDash != 7 || str.length < 10) {
-        throw KdrException.mkConv("Date string '$this' does not follow a recognizable date format.")
+        return Parsed.failed(ConvProblem.badFormat, "Date string '$this' does not follow a recognizable date format.")
     }
-    try {
-        if (str.length == 10) {
-            return LocalDate.parse(str).atStartOfDayIn(serverTimeZone)
-        }
-        val dotIndex = str.indexOf('.', 10)
-        if (dotIndex >= 0 && dotIndex != 19) {
-            throw KdrException.mkConv("Date string '$this' does not have a '.' at the correct location.")
-        }
-        if (str.last() != 'Z') {
-            str += "Z"
-        }
-        return Instant.parse(str)
-    } catch (e: IllegalArgumentException) {
-        throw KdrException.mkConv("Date string '$this' failed to parse.", e)
+    if (str.length == 10) {
+        return LocalDate.Formats.ISO.parseOrNull(str)?.let { Parsed.Ok(it.atStartOfDayIn(serverTimeZone)) }
+            ?: Parsed.failed(ConvProblem.badFormat, "Date string '$this' failed to parse.")
     }
+    val dotIndex = str.indexOf('.', 10)
+    if (dotIndex >= 0 && dotIndex != 19) {
+        return Parsed.failed(ConvProblem.badFormat, "Date string '$this' does not have a '.' at the correct location.")
+    }
+    if (str.last() != 'Z') {
+        str += "Z"
+    }
+    return Instant.parseOrNull(str)?.let { Parsed.Ok(it) }
+        ?: Parsed.failed(ConvProblem.badFormat, "Date string '$this' failed to parse.")
 }
 
 /**
  * Parses a day-only string (`yyyy-MM-dd`) into a [LocalDate], with **no timezone involved** — which is what
  * keeps the value identical on the way back out. Strict: a full timestamp is rejected, not silently truncated.
- * Throws [KdrException] on anything that is not exactly a day.
+ * Throws [KdrException] on anything that is not exactly a day; see [parseDayOrNull] and [parseDayResult].
  *
  * Strict is the plain-named default here, deliberately, because this direction *discards* information. Going
  * the other way ([parseDate] accepting a day and widening it to midnight) only adds a convention; going this
  * way throws away a time of day, and doing that unasked is how a value quietly stops meaning what it said.
  * The forgiving variant is [parseDayLenient], and callers reach for it on purpose.
  */
-fun String.parseDay(): LocalDate {
-    val str = this.trim()
-    try {
-        return LocalDate.parse(str)
-    } catch (e: IllegalArgumentException) {
-        throw KdrException.mkConv("Date string '$this' failed to parse as a day (expected yyyy-MM-dd).", e)
-    }
-}
+fun String.parseDay(): LocalDate = parseDayResult().orThrow()
+
+/** [parseDay], or null for a string that is not exactly a day (issue #909). */
+fun String.parseDayOrNull(): LocalDate? = parseDayResult().valueOrNull()
+
+/** [parseDay]'s outcome as a value (issue #909); never throws for a malformed day. */
+fun String.parseDayResult(): Parsed<LocalDate> =
+    LocalDate.Formats.ISO.parseOrNull(this.trim())?.let { Parsed.Ok(it) }
+        ?: Parsed.failed(ConvProblem.badFormat, "Date string '$this' failed to parse as a day (expected yyyy-MM-dd).")
 
 /**
  * Parses a day-only string like [parseDay], but additionally accepts a full timestamp and narrows it to its
@@ -147,10 +157,21 @@ fun String.parseDay(): LocalDate {
  * That forgiveness is a coercion, which is why the schema layer only uses this when the field's `allowCoerce`
  * is on; a strict day-only field takes only a day.
  */
-fun String.parseDayLenient(): LocalDate {
+fun String.parseDayLenient(): LocalDate = parseDayLenientResult().orThrow()
+
+/** [parseDayLenient]'s outcome as a value (issue #909); never throws for a malformed date. */
+fun String.parseDayLenientResult(): Parsed<LocalDate> {
     val str = this.trim()
-    return if (str.length == 10) str.parseDay() else str.parseDate().toDay()
+    return if (str.length == 10) {
+        str.parseDayResult()
+    } else {
+        when (val instant = str.parseDateResult()) {
+            is Parsed.Ok -> Parsed.Ok(instant.value.toDay())
+            is Parsed.Failed -> instant
+        }
+    }
 }
+
 
 /** Formats this instant as a full system timestamp (ISO-8601, UTC, milliseconds). */
 fun Instant.formatDate(): String = this.toLocalDateTime(TimeZone.UTC).format(systemFormat) + "Z"

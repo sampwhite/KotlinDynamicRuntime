@@ -204,7 +204,7 @@ object JobExceptionRows {
 
     /** The owner of the gedra [gedraId] names, or null when it is not a gedra id or the gedra is gone. */
     private fun ownerOf(cxt: KdrCxt, gedraId: String): Owner? {
-        val id = runCatching { GedraId.parse(gedraId) }.getOrNull() ?: return null
+        val id = GedraId.parseOrNull(gedraId) ?: return null
         val kind = id.dataType ?: return null
         val row = GedraDataService.get(cxt).queryGedra(cxt, id.fullId, kind, ReadScope.unrestricted) ?: return null
         return Owner(id.fullId, row.client, row.userId, row.org)

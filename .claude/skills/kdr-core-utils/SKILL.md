@@ -85,6 +85,31 @@ Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toOp
 beside `getOptStr`, `toT` is the *required* half: a null there is a broken invariant, not a value. Reach for the
 `…OrEmpty` variants when reading a wire value that may be absent, rather than a cast plus an elvis.
 
+## When a failure is expected: `…OrNull` and `…Result` (issue #909)
+
+Don't wrap a parse in `runCatching { … }.getOrNull()` or a catch-to-null: that catches *everything*, so a bug in
+the parser reads as "malformed input" and is swallowed. Each simple-value parser has a non-throwing form, and its
+throwing form is built on it:
+
+```kotlin
+"2026-10-01".parseDateOrNull()        // Instant?  (also parseDayOrNull)
+s.jsonMapOrNull(); s.jsonArrayOrNull(); s.jsonOrNull()
+value.toOptLongOrNull()               // null when absent OR malformed (toOptLong throws on malformed)
+value.toOptDoubleOrNull(); value.toOptInstantOrNull(); value.toOptLocalDateOrNull()
+GedraId.parseOrNull(id); WfRef.parseOrNull(text)
+
+// When the caller reports what was wrong, the …Result form returns a Parsed:
+when (val r = s.jsonMapResult()) {    // also parseDateResult, parseDayResult, toOptLongResult, GedraId.parseResult, ...
+    is Parsed.Ok -> r.value
+    is Parsed.Failed -> r.problems.first()   // a Problem: code (ConvProblem), message, location (JSON: offset/line/col)
+}
+r.valueOrNull(); r.orThrow()          // orThrow takes the exception factory (default KdrException.mkConv)
+```
+
+`Problem` / `ProblemCode` / `ProblemLocation` / `Parsed` (`util/Problem.kt`) are the shared shapes; a structured
+input's richer report (templates, expressions, schema, Markdown) builds on them in later phases of #909. See the
+code guide's "When not to throw".
+
 ## Also in the kernel's util package
 
 - `ScriptUtil` / `ScriptExpr` / `ScriptEval` / `ScriptFunc` — `String.evalTemplate(data)`, resolving `${...}`

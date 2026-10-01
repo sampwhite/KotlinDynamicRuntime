@@ -251,7 +251,7 @@ class GedraConfigLoadService : ServiceInitializer {
                 // (issue #839) -- forgiven everywhere but unit tests, since it is data nobody can fix from a
                 // node that will not start.
                 val rowId = row[GC.gedraId].toOptStr() ?: "?"
-                val parsedId = try { GedraId.parse(rowId) } catch (_: KdrException) { null }
+                val parsedId = GedraId.parseOrNull(rowId)
                 val configId = parsedId?.revisionClass()?.fullId ?: rowId
                 reportConfigProblem(cxt, unloadableIssue(configId, parsedId?.client, e), issues)
                 continue

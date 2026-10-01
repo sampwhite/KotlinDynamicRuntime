@@ -2,6 +2,8 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.intern.Internable
+import com.dynamicruntime.common.util.ConvProblem
+import com.dynamicruntime.common.util.Parsed
 
 /**
  * The pieces of a [GedraId]'s text form that are fixed by the format rather than supplied (issue #287).
@@ -200,7 +202,7 @@ enum class GedraIdContext(val letter: String) {
  * paste.
  *
  * A **sandbox** client puts a `:` in the client segment (`gd.fd.acme:sandbox.e2026…`, issue #927; see [SBX]).
- * A colon is not unreserved, but it is legal unescaped in a URL path segment, a query and a fragment, which is
+ * A colon is not unreserved, but it is legal unescaped in a URL path segment, a query, and a fragment, which is
  * everywhere an id travels; `encodeURIComponent` escapes it and every reader decodes. It is not a separator
  * here, so parsing is unchanged.
  */
@@ -301,23 +303,29 @@ class GedraId private constructor(
          * The supplied string becomes [fullId] unchanged rather than being rebuilt: every segment has been
          * validated, so re-assembling them could only produce the same characters back.
          */
-        fun parse(fullId: String): GedraId {
+        fun parse(fullId: String): GedraId = parseResult(fullId).orThrow { KdrException.mkInput(it) }
+
+        /** [parse], or null for a string that is not a well-formed gedra id (issue #909). */
+        fun parseOrNull(fullId: String): GedraId? = parseResult(fullId).valueOrNull()
+
+        /** [parse]'s outcome as a value (issue #909): the id, or what is wrong with the string. Never throws. */
+        fun parseResult(fullId: String): Parsed<GedraId> {
             // limit = 4: the base id is opaque and the suffix is split off afterward, so anything past the
             // third separator belongs to the caller's own construction and is not ours to divide further.
             val parts = fullId.split(GID.partSep, limit = 4)
             if (parts.size != 4) {
-                throw mkBad(fullId, "it needs four '${GID.partSep}'-separated parts")
+                return bad(fullId, "it needs four '${GID.partSep}'-separated parts")
             }
             val storageType = GedraStorageType.entries.firstOrNull { it.idAbbrev == parts[0] }
-                ?: throw mkBad(fullId, "'${parts[0]}' is not a storage type (${abbrevList()})")
+                ?: return bad(fullId, "'${parts[0]}' is not a storage type (${abbrevList()})")
             val kinds = kindsOf(storageType)
             // Reachable only for a storage type declared before its kinds are -- which `configStore` itself
             // was between #287 and #297, so it is a real state rather than a hypothetical one.
             if (kinds.isEmpty()) {
-                throw mkBad(fullId, "'${parts[0]}' ids are not supported yet")
+                return bad(fullId, "'${parts[0]}' ids are not supported yet")
             }
             val kind = kinds.firstOrNull { it.idAbbrev == parts[1] }
-                ?: throw mkBad(
+                ?: return bad(
                     fullId,
                     "'${parts[1]}' is not a '${parts[0]}' kind (${kinds.joinToString(", ") { it.idAbbrev }})",
                 )
@@ -326,10 +334,9 @@ class GedraId private constructor(
             val at = tail.indexOf(GID.suffixSep)
             val baseId = if (at < 0) tail else tail.substring(0, at)
             val suffix = if (at < 0) null else tail.substring(at + 1)
-            checkClient(client)
-            checkPart(baseId, "base id")
-            suffix?.let { checkSuffix(kind, it) }
-            return GedraId(kind, client, baseId, suffix, fullId)
+            (clientProblem(client) ?: partProblem(baseId, "base id") ?: suffix?.let { suffixProblem(kind, it) })
+                ?.let { return Parsed.failed(ConvProblem.badFormat, it) }
+            return Parsed.Ok(GedraId(kind, client, baseId, suffix, fullId))
         }
 
         /** The kinds belonging to [storageType]; empty for a storage type with no kinds defined yet. */
@@ -360,22 +367,24 @@ class GedraId private constructor(
          * client, which has none.
          */
         private fun checkClient(client: String) {
+            clientProblem(client)?.let { throw KdrException.mkInput(it) }
+        }
+
+        /** What is wrong with [client] as an id's client segment, or null when nothing is; see [checkClient]. */
+        private fun clientProblem(client: String): String? {
             val parent = sandboxParentOf(client)
             if (parent == null && SBX.roleSep in client) {
-                throw KdrException.mkInput(
-                    "A gedra client may hold a colon only as a sandbox id, '<parent>${SBX.suffix}'; '$client' is not one.",
-                )
+                return "A gedra client may hold a colon only as a sandbox id, '<parent>${SBX.suffix}'; " +
+                    "'$client' is not one."
             }
             if (parent == GID.globalClient) {
-                throw KdrException.mkInput("The '${GID.globalClient}' client has no sandbox; '$client' names one.")
+                return "The '${GID.globalClient}' client has no sandbox; '$client' names one."
             }
             val name = parent ?: client
             if (name.isEmpty() || !(name[0].isAsciiLetter() || name[0] == '_')) {
-                throw KdrException.mkInput(
-                    "A gedra client must start with a letter or underscore; '$client' does not.",
-                )
+                return "A gedra client must start with a letter or underscore; '$client' does not."
             }
-            checkPart(name, "client")
+            return partProblem(name, "client")
         }
 
         /**
@@ -385,18 +394,22 @@ class GedraId private constructor(
          * tightening it would refuse ids already stored.
          */
         private fun checkSuffix(kind: GedraKind, suffix: String) {
-            checkPart(suffix, "suffix")
+            suffixProblem(kind, suffix)?.let { throw KdrException.mkInput(it) }
+        }
+
+        /** What is wrong with [suffix] for an id of [kind], or null when nothing is; see [checkSuffix]. */
+        private fun suffixProblem(kind: GedraKind, suffix: String): String? {
+            partProblem(suffix, "suffix")?.let { return it }
             if (kind.storageType == GedraStorageType.configStore) {
-                // `checkPart` has already refused any non-`[A-Za-z0-9_]` character, so the sign is gone and a
+                // `partProblem` has already refused any non-`[A-Za-z0-9_]` character, so the sign is gone and a
                 // parse can only be a non-negative integer; the toString round-trip is what rejects a leading
                 // zero (`03`), and a null is overflow past Int.
                 val n = suffix.toIntOrNull()
                 if (n == null || n.toString() != suffix) {
-                    throw KdrException.mkInput(
-                        "A config gedra's suffix is its revision and has to be a whole number, not '$suffix'.",
-                    )
+                    return "A config gedra's suffix is its revision and has to be a whole number, not '$suffix'."
                 }
             }
+            return null
         }
 
         /**
@@ -405,19 +418,23 @@ class GedraId private constructor(
          * separators out, which is what makes the format unambiguous to parse.
          */
         private fun checkPart(part: String, what: String) {
+            partProblem(part, what)?.let { throw KdrException.mkInput(it) }
+        }
+
+        /** What is wrong with [part] as an id segment named [what], or null when nothing is; see [checkPart]. */
+        private fun partProblem(part: String, what: String): String? {
             if (part.isEmpty()) {
-                throw KdrException.mkInput("A gedra $what may not be empty.")
+                return "A gedra $what may not be empty."
             }
             val bad = part.firstOrNull { !(it.isAsciiLetter() || it.isAsciiDigit() || it == '_') }
             if (bad != null) {
-                throw KdrException.mkInput(
-                    "A gedra $what may hold only letters, digits and underscores; '$part' holds '$bad'.",
-                )
+                return "A gedra $what may hold only letters, digits and underscores; '$part' holds '$bad'."
             }
+            return null
         }
 
-        private fun mkBad(fullId: String, why: String): KdrException =
-            KdrException.mkInput("'$fullId' is not a gedra id: $why.")
+        private fun bad(fullId: String, why: String): Parsed.Failed =
+            Parsed.failed(ConvProblem.badFormat, "'$fullId' is not a gedra id: $why.")
 
         // Spelled out rather than using isLetterOrDigit(), which is Unicode-aware: an id is ASCII by
         // construction, and a base id that admitted Cyrillic lookalikes would be a way to mint two ids that

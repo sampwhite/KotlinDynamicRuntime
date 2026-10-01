@@ -113,73 +113,115 @@ fun String.toOptBool(): Boolean? {
  * numeric string is parsed (tolerating a fractional part, which is truncated). A non-numeric string or an
  * otherwise unconvertible value throws [KdrException.mkConv] -- unlike [toOptStr]/[toOptBool], a malformed
  * number is surfaced rather than silently dropped, since it usually signals bad stored data or a bad bind.
+ * [toOptLongOrNull] is the form that reads a malformed value as null too.
  */
-fun Any?.toOptLong(): Long? = when (this) {
-    null -> null
-    is Long -> this
-    is Number -> this.toLong()
+fun Any?.toOptLong(): Long? = toOptLongResult().orThrow()
+
+/** [toOptLong], but a malformed or unconvertible value is null as well as an absent one (issue #909). */
+fun Any?.toOptLongOrNull(): Long? = toOptLongResult().valueOrNull()
+
+/** [toOptLong]'s outcome as a value (issue #909): the number (null when absent), or the problem with it. */
+fun Any?.toOptLongResult(): Parsed<Long?> = when (this) {
+    null -> Parsed.Ok(null)
+    is Long -> Parsed.Ok(this)
+    is Number -> Parsed.Ok(this.toLong())
     is CharSequence -> {
-        val s = this.trim()
-        if (s.isEmpty()) null
-        else s.toString().toLongOrNull() ?: s.toString().toDoubleOrNull()?.toLong()
-            ?: throw KdrException.mkConv("Cannot convert '$s' to an integer.")
+        val s = this.trim().toString()
+        if (s.isEmpty()) {
+            Parsed.Ok(null)
+        } else {
+            (s.toLongOrNull() ?: s.toDoubleOrNull()?.toLong())?.let { Parsed.Ok(it) }
+                ?: Parsed.failed(ConvProblem.badFormat, "Cannot convert '$s' to an integer.")
+        }
     }
-    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to an integer.")
+    else -> Parsed.failed(
+        ConvProblem.wrongType, "Cannot convert value of type ${this::class.simpleName} to an integer.",
+    )
 }
 
 /** Loosely coerces this value to a [Double]; see [toOptLong] for the null/parse/throw semantics. */
-fun Any?.toOptDouble(): Double? = when (this) {
-    null -> null
-    is Double -> this
-    is Number -> this.toDouble()
+fun Any?.toOptDouble(): Double? = toOptDoubleResult().orThrow()
+
+/** [toOptDouble], but a malformed or unconvertible value is null as well as an absent one (issue #909). */
+fun Any?.toOptDoubleOrNull(): Double? = toOptDoubleResult().valueOrNull()
+
+/** [toOptDouble]'s outcome as a value (issue #909): the number (null when absent), or the problem with it. */
+fun Any?.toOptDoubleResult(): Parsed<Double?> = when (this) {
+    null -> Parsed.Ok(null)
+    is Double -> Parsed.Ok(this)
+    is Number -> Parsed.Ok(this.toDouble())
     is CharSequence -> {
-        val s = this.trim()
-        if (s.isEmpty()) null
-        else s.toString().toDoubleOrNull() ?: throw KdrException.mkConv("Cannot convert '$s' to a number.")
+        val s = this.trim().toString()
+        if (s.isEmpty()) {
+            Parsed.Ok(null)
+        } else {
+            s.toDoubleOrNull()?.let { Parsed.Ok(it) }
+                ?: Parsed.failed(ConvProblem.badFormat, "Cannot convert '$s' to a number.")
+        }
     }
-    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a number.")
+    else -> Parsed.failed(
+        ConvProblem.wrongType, "Cannot convert value of type ${this::class.simpleName} to a number.",
+    )
 }
 
 /**
  * Loosely coerces this value to an [Instant]: null (and a blank string) yield null; an [Instant] passes
  * through; an epoch-millis [Number] is converted at millisecond precision; a string is parsed via
- * [parseDate]. Anything else throws [KdrException.mkConv].
+ * [parseDate]. Anything else throws [KdrException.mkConv]; [toOptInstantOrNull] reads it as null instead.
  *
  * Deliberately KMP-safe: it knows nothing about JVM/JDBC date types. The only place a `java.util.Date` /
  * `java.sql.Timestamp` enters the runtime is the JDBC boundary, so the SQL layer's `toDbInstant` layers
  * those on top of this shared coercer rather than burdening it (and every transpile target) with them.
  */
-fun Any?.toOptInstant(): Instant? = when (this) {
-    null -> null
-    is Instant -> this
+fun Any?.toOptInstant(): Instant? = toOptInstantResult().orThrow()
+
+/** [toOptInstant], but a malformed or unconvertible value is null as well as an absent one (issue #909). */
+fun Any?.toOptInstantOrNull(): Instant? = toOptInstantResult().valueOrNull()
+
+/** [toOptInstant]'s outcome as a value (issue #909): the instant (null when absent), or the problem with it. */
+fun Any?.toOptInstantResult(): Parsed<Instant?> = when (this) {
+    null -> Parsed.Ok(null)
+    is Instant -> Parsed.Ok(this)
     // A day has no instant of its own; this is the caller explicitly asking for one (issue #189).
-    is LocalDate -> this.toStartOfDay()
-    is Number -> Instant.fromEpochMilliseconds(this.toLong())
+    is LocalDate -> Parsed.Ok(this.toStartOfDay())
+    is Number -> Parsed.Ok(Instant.fromEpochMilliseconds(this.toLong()))
     is CharSequence -> {
-        val s = this.trim()
-        if (s.isEmpty()) null else s.toString().parseDate()
+        val s = this.trim().toString()
+        if (s.isEmpty()) Parsed.Ok(null) else s.parseDateResult()
     }
-    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a date.")
+    else -> Parsed.failed(
+        ConvProblem.wrongType, "Cannot convert value of type ${this::class.simpleName} to a date.",
+    )
 }
 
 /**
  * Loosely coerces this value to a [LocalDate] — the day-only counterpart of [toOptInstant]: null (and a blank
  * string) yield null; a [LocalDate] passes through; an [Instant] is narrowed to its day in the server zone; a
- * string is parsed via [parseDay]. Anything else throws [KdrException.mkConv].
+ * string is parsed via [parseDay]. Anything else throws [KdrException.mkConv]; [toOptLocalDateOrNull] reads it
+ * as null instead.
  *
  * This is the accessor for a `format: "date"` field, whose coerced value is a [LocalDate] rather than an
  * instant precisely so the day cannot drift.
  */
-fun Any?.toOptLocalDate(): LocalDate? = when (this) {
-    null -> null
-    is LocalDate -> this
-    is Instant -> this.toDay()
+fun Any?.toOptLocalDate(): LocalDate? = toOptLocalDateResult().orThrow()
+
+/** [toOptLocalDate], but a malformed or unconvertible value is null as well as an absent one (issue #909). */
+fun Any?.toOptLocalDateOrNull(): LocalDate? = toOptLocalDateResult().valueOrNull()
+
+/** [toOptLocalDate]'s outcome as a value (issue #909): the day (null when absent), or the problem with it. */
+fun Any?.toOptLocalDateResult(): Parsed<LocalDate?> = when (this) {
+    null -> Parsed.Ok(null)
+    is LocalDate -> Parsed.Ok(this)
+    is Instant -> Parsed.Ok(this.toDay())
     is CharSequence -> {
-        val s = this.trim()
-        if (s.isEmpty()) null else s.toString().parseDay()
+        val s = this.trim().toString()
+        if (s.isEmpty()) Parsed.Ok(null) else s.parseDayResult()
     }
-    else -> throw KdrException.mkConv("Cannot convert value of type ${this::class.simpleName} to a day.")
+    else -> Parsed.failed(
+        ConvProblem.wrongType, "Cannot convert value of type ${this::class.simpleName} to a day.",
+    )
 }
+
 
 // --- map-field accessors (a required/optional value at a key) ---------------------------------------------
 

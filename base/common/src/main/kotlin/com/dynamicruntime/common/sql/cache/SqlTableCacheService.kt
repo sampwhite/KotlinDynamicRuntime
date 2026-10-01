@@ -21,7 +21,7 @@ import com.dynamicruntime.common.operator.TCI
 import com.dynamicruntime.common.operator.TCS
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptInstantOrNull
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import java.util.concurrent.ConcurrentHashMap
@@ -374,7 +374,7 @@ class SqlTableCacheService : ServiceInitializer {
         for ((key, value) in stored) {
             // The column is a free-form map, so an entry that is not a date is skipped rather than fatal: a
             // future use of this row for something else must not be able to stop the caches refreshing.
-            val date = runCatching { value.toOptInstant() }.getOrNull() ?: continue
+            val date = value.toOptInstantOrNull() ?: continue
             result[key] = date
         }
         return result
@@ -398,7 +398,7 @@ class SqlTableCacheService : ServiceInitializer {
      * on it and [refreshState] describes it, so a check and the read after it cannot disagree.
      *
      * On the hot path (every cached read reaches it), so it allocates nothing: the branches read volatile
-     * fields, one map entry and a short-circuiting scan of the caches.
+     * fields, one map entry, and a short-circuiting scan of the caches.
      */
     fun refreshNeed(cxt: KdrCxt): SqlCacheRefreshNeed {
         val memo = cxt.locals[TCH.refreshedKey] as? RefreshMemo
