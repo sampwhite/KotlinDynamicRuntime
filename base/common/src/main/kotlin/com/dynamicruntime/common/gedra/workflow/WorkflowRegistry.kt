@@ -109,7 +109,7 @@ fun interface WfFragmentLookup {
  *   binds at request time and is the author's assertion, as it is everywhere.
  * - At most one workflow of each single-instance kind (creation, survey) per scope, after shadowing.
  * - Every cfact expression the definition carries -- eligibility tests, singleton-cfact rules, trait locks, a
- *   task's display and its who-may-save rule -- parses against the scope's cfact names, as UiBlocks' do, so a
+ *   task's display, and its who-may-save rule -- parses against the scope's cfact names, as UiBlocks' do, so a
  *   misspelled cfact refuses the workflow here rather than being a test that silently never passes.
  *
  * A problem is handed to [reportConfigProblem], judged by the origin of the workflow's own bundle (issue #839):
