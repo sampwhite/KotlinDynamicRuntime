@@ -193,7 +193,7 @@ val AppBar = FC<AppBarProps> { props ->
     useEffect(generation) {
         genRef.current = generation
         appBarScope.launch {
-            val cfg = runCatching { HomeApi.fetchConfig() }.getOrNull()
+            val cfg = apiResult { HomeApi.fetchConfig() }.valueOrNull()
             if (genRef.current != generation) return@launch // a newer generation is already in charge
             if (cfg == null) {
                 // Config failed: Failed on a first load, but keep any wordmark already shown on a refresh.
@@ -204,17 +204,17 @@ val AppBar = FC<AppBarProps> { props ->
             config = cfg
             // The wordmark is a client's to change (issue #456), so it is re-read when the caller changes, not
             // only on mount. A stale build id (a rolling deploy) recovers silently via the shared retry.
-            val loaded = runCatching {
-                fetchCopyWithRetry(cfg.fragment) { runCatching { HomeApi.fetchConfig().fragment }.getOrNull() }
+            val loaded = apiResult {
+                fetchCopyWithRetry(cfg.fragment) { apiResult { HomeApi.fetchConfig().fragment }.valueOrNull() }
             }
             if (genRef.current != generation) return@launch
-            val copy = loaded.getOrNull()
+            val copy = loaded.valueOrNull()
             if (copy != null) {
                 everLoaded.current = true
             } else {
                 // Never swallow (webapp/CLAUDE.md): the chrome does not *show* an outage, but a Failed that
                 // renders nothing must at least reach the console, or a browser test cannot assert its absence.
-                loaded.exceptionOrNull()?.let {
+                loaded.failureOrNull()?.let {
                     console.error("$errorLogPrefix could not load app-bar copy: ${it.message}")
                 }
             }
@@ -226,7 +226,7 @@ val AppBar = FC<AppBarProps> { props ->
     fun logoutAction() {
         open = false
         appBarScope.launch {
-            runCatching { AuthApi.logout() }
+            apiResult { AuthApi.logout() }
             navigateHash(emptyList())
             // Bump so the menu (and every config consumer) re-reads even when we were already home -- setting
             // the same hash fires no hashchange, which is why the direct re-read used to be needed here.
@@ -242,8 +242,8 @@ val AppBar = FC<AppBarProps> { props ->
     fun switchUserAction(userId: Long) {
         userMenuOpen = false
         appBarScope.launch {
-            val switched = runCatching { AuthApi.switchUser(userId) }
-            switched.exceptionOrNull()?.let {
+            val switched = apiResult { AuthApi.switchUser(userId) }
+            switched.failureOrNull()?.let {
                 console.error("$errorLogPrefix could not switch user: ${it.message}")
                 return@launch
             }
@@ -262,7 +262,7 @@ val AppBar = FC<AppBarProps> { props ->
         val logoutPath = args.getOrNull(0) ?: return
         val landingUrl = args.getOrNull(1) ?: return
         appBarScope.launch {
-            runCatching { Http.getApi(logoutPath) }
+            apiResult { Http.getApi(logoutPath) }
             leaveAppTo(landingUrl)
         }
     }

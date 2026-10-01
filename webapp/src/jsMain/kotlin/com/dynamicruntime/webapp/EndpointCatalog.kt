@@ -134,9 +134,9 @@ val EndpointCatalog = FC<Props> {
     // failure leaves it hidden rather than erroring: the client is not why anyone came to the catalog.
     useEffectOnce {
         catalogScope.launch {
-            val cfg = runCatching { HomeApi.fetchConfig() }.getOrNull()
+            val cfg = apiResult { HomeApi.fetchConfig() }.valueOrNull()
             if (cfg?.user?.roles?.contains(ROLE.allClients) == true) {
-                clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+                clientChoices = apiResult { AdminApi.listClients() }.valueOr(emptyList())
             }
         }
     }
@@ -147,7 +147,7 @@ val EndpointCatalog = FC<Props> {
     useEffect(selectedClient) {
         if (restored) {
             catalogScope.launch {
-                runCatching { SchemaCatalogApi.fetchCatalog(client = selectedClient) }.getOrNull()?.let { fetched ->
+                apiResult { SchemaCatalogApi.fetchCatalog(client = selectedClient) }.valueOrNull()?.let { fetched ->
                     catalog = fetched
                     selected = null
                     values = emptyMap()

@@ -399,7 +399,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             // Whether the caller administers other users (issue #562) and across clients (issue #668): a failure
             // to learn them leaves the administrative controls off, which is the safe reading -- the list itself
             // still loads. One config fetch answers both.
-            val homeConfig = runCatching { HomeApi.fetchConfig() }.getOrNull()
+            val homeConfig = apiResult { HomeApi.fetchConfig() }.valueOrNull()
             val canManage = homeConfig?.canManageUsers == true
             canManageUsers = canManage
             // The freshly-read local, not the state set just above: that setter has not landed yet, so the
@@ -410,15 +410,15 @@ val FormsPage = FC<FormsPageProps> { props ->
             // The workflow column's empty-cell copy (issue #791), from the home fragment file a client overlays.
             // Copy only decorates the column, so a failure to fetch it leaves the dash rather than failing the list.
             emptyWorkflowsCopy = homeConfig?.let { cfg ->
-                runCatching {
-                    fetchCopyWithRetry(cfg.fragment) { runCatching { HomeApi.fetchConfig().fragment }.getOrNull() }
+                apiResult {
+                    fetchCopyWithRetry(cfg.fragment) { apiResult { HomeApi.fetchConfig().fragment }.valueOrNull() }
                         .opt(HFRAG.formsNs, HFRAG.noWorkflows)
-                }.getOrNull()
+                }.valueOrNull()
             }?.ifBlank { null }
             // The clients to offer in the filter, for a cross-client caller (issue #668) -- with each one's
             // `hasSurvey` (issue #695), so the survey-status filter can follow the chosen client.
             if (seeAllClients) {
-                clientChoices = runCatching { AdminApi.listClientSummaries() }.getOrDefault(emptyList())
+                clientChoices = apiResult { AdminApi.listClientSummaries() }.valueOr(emptyList())
             }
             // The surface to load: a client the hash carries (a bookmarked or shared chosen-client listing,
             // issue #714) when the caller may see across clients, else the caller's own. The search and sort ride
@@ -814,10 +814,10 @@ val FormsPage = FC<FormsPageProps> { props ->
                         fetchUsers = { term, cb ->
                             formsScope.launch {
                                 cb(
-                                    runCatching {
+                                    apiResult {
                                         AdminApi.searchUsers(UserSearchQuery(anyText = term), limit = maxUserSuggestions).users
                                             .map { UserPick(userPickLabel(it.name, it.username, it.primaryId), it.primaryId) }
-                                    }.getOrDefault(emptyList()),
+                                    }.valueOr(emptyList()),
                                 )
                             }
                         }
@@ -903,7 +903,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                             { traitId, prefix, cb ->
                                 formsScope.launch {
                                     cb(
-                                        runCatching {
+                                        apiResult {
                                             val resp = SchemaCatalogApi.invoke(
                                                 ve,
                                                 buildMap {
@@ -913,7 +913,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                                 },
                                             )
                                             resp[EP.items].toJsonListOrEmpty().mapNotNull { it.toJsonMapOrEmpty()[UF.value] as? String }
-                                        }.getOrDefault(emptyList()),
+                                        }.valueOr(emptyList()),
                                     )
                                 }
                             }

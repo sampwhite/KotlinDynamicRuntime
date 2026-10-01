@@ -58,13 +58,14 @@ val Profile = FC<Props> {
     /** Loads (or reloads) the config; the page re-reads it after a password change, so the copy follows. */
     fun loadConfig(onLoaded: (ProfileConfig) -> Unit = {}) {
         profileScope.launch {
-            try {
-                val c = ProfileApi.fetchConfig()
-                config = c
-                onLoaded(c)
-            } catch (_: Throwable) {
-                // The config is login-required, so the overwhelmingly likely failure is "not logged in".
-                navigateHash(listOf("page" to "login"))
+            when (val loaded = apiResult { ProfileApi.fetchConfig() }) {
+                is ApiResult.Ok -> {
+                    config = loaded.value
+                    onLoaded(loaded.value)
+                }
+                // The config is login-required, so the overwhelmingly likely failure is "not logged in" -- and with
+                // no answer at all there is nothing here to show either.
+                else -> navigateHash(listOf("page" to "login"))
             }
         }
     }
@@ -74,14 +75,14 @@ val Profile = FC<Props> {
     useEffect(config) { draftName = config?.user?.name ?: "" }
 
     useEffect(generation) {
-        profileScope.launch { myUsers = runCatching { AuthApi.fetchUsers() }.getOrDefault(emptyList()) }
+        profileScope.launch { myUsers = apiResult { AuthApi.fetchUsers() }.valueOr(emptyList()) }
         loadConfig { c ->
             profileScope.launch {
                 // Recover a stale build id (a rolling deploy) via the shared retry, rather than silently
                 // falling back to Copy.empty and showing every label's hardcoded default forever (#469).
-                copy = runCatching {
-                    fetchCopyWithRetry(c.fragment) { runCatching { ProfileApi.fetchConfig().fragment }.getOrNull() }
-                }.getOrDefault(Copy.empty)
+                copy = apiResult {
+                    fetchCopyWithRetry(c.fragment) { apiResult { ProfileApi.fetchConfig().fragment }.valueOrNull() }
+                }.valueOr(Copy.empty)
             }
         }
     }

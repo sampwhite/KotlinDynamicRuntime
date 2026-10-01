@@ -6,8 +6,6 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
-import kotlinx.coroutines.await
-import kotlin.js.Promise
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -20,10 +18,6 @@ private val schemaBase: String get() = apiContextRoot + "/schema"
 
 /** The API context root every runtime endpoint is served under (proxied to :7070 in dev). */
 private val apiRoot: String get() = apiContextRoot
-
-/** Binding to the browser's global `fetch` (named to avoid clashing with any wrapper `fetch`). */
-@JsName("fetch")
-private external fun browserFetch(input: String, init: dynamic = definedExternally): Promise<dynamic>
 
 /**
  * The `limit` [SchemaCatalogApi.fetchCatalog] asks for: the whole catalog, not a page of it. The catalog is a
@@ -104,7 +98,7 @@ object SchemaCatalogApi {
             val headers: dynamic = js("({})")
             traceId = applyRequestHeaders(headers)
             init.headers = headers
-            browserFetch(url + queryString(body), init).await()
+            fetchCompleted(endpoint.method, url + queryString(body), init).orThrow()
         } else {
             val init: dynamic = js("({})")
             init.method = endpoint.method
@@ -121,18 +115,18 @@ object SchemaCatalogApi {
                 init.headers = headers
                 init.body = body.toJsonStr(compact = true)
             }
-            browserFetch(url, init).await()
+            fetchCompleted(endpoint.method, url, init).orThrow()
         }
-        val map = readJson(response)
-        if (!(response.ok as Boolean)) {
+        val map = jsonBody(endpoint.method, url, response.text).orThrow()
+        if (!(response.response.ok as Boolean)) {
             // Carry the error up as a structured ApiError (issue #111), the same as `Http` does, so a display
             // site (`userFacingError`) shows the real message -- a 400 with "no such user in your access" reads
             // as that, not as the "server could not be reached" that a bare throwable is treated as.
             throw ApiError(
                 message = map[EP.errorMessage] as? String
-                    ?: "${endpoint.method} $url failed with status ${response.status}",
+                    ?: "${endpoint.method} $url failed with status ${response.response.status}",
                 fromFragment = map[EP.errorFromFragment] == true,
-                status = (map[EP.status] as? Number)?.toInt() ?: (response.status as? Number)?.toInt(),
+                status = (map[EP.status] as? Number)?.toInt() ?: (response.response.status as? Number)?.toInt(),
                 errorCode = map[EP.errorCode] as? String,
                 traceId = traceId,
             )
@@ -170,19 +164,19 @@ object SchemaCatalogApi {
         // env-debug `_debug` tag exactly as `Http` does -- the two tags this box is most useful for reach here.
         applyRequestHeaders(headers)
         init.headers = headers
-        val response = browserFetch(url, init).await()
-        if (!(response.ok as Boolean)) {
-            error("GET $url failed with status ${response.status}")
+        val fetched = fetchCompleted("GET", url, init).orThrow()
+        if (!(fetched.response.ok as Boolean)) {
+            // An ApiError carrying the status, never a bare error(): a display site reads a bare throwable as "the
+            // server could not be reached" (see webapp/CLAUDE.md), which a 403 or a 404 is not.
+            throw ApiError(
+                message = "GET $url failed with status ${fetched.response.status}",
+                fromFragment = false,
+                status = (fetched.response.status as? Number)?.toInt(),
+                errorCode = null,
+                traceId = null,
+            )
         }
-        return readJson(response)
-    }
-
-    /** Reads a fetch [response]'s body as JSON via the kernel parser (plain Kotlin Map/List/values). */
-    private suspend fun readJson(response: dynamic): Map<String, Any?> {
-        // `response` is dynamic, so `response.text()` is too; cast to a typed Promise so `.await()` resolves via
-        // the Kotlin coroutines extension. The kernel's JSON parser then produces plain Kotlin Map/List/values.
-        val text = (response.text() as Promise<String>).await()
-        return text.jsonMap() ?: emptyMap()
+        return jsonBody("GET", url, fetched.text).orThrow()
     }
 
 }

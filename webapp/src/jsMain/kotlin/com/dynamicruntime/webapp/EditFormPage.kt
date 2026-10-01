@@ -147,7 +147,7 @@ val EditFormPage = FC<Props> {
                 val getFetch = async { fetchFormEndpoint(HttpMethod.GET.name, GEP.formDoc, formClient) }
                 // The home config carries `canSeeAllClients` (issue #667). Read defensively: a failure here must
                 // not block editing, only leave free-form trait entry off.
-                val homeFetch = async { runCatching { HomeApi.fetchConfig().canSeeAllClients }.getOrDefault(false) }
+                val homeFetch = async { apiResult { HomeApi.fetchConfig().canSeeAllClients }.valueOr(false) }
                 // Does the form's client have a survey (issue #726)? The same resolution the survey page makes:
                 // the workflow view's copy on the form's client, or the shared endpoint for a client that varies
                 // nothing, then the view itself -- `null` is "no survey". Its own coroutine, never awaited here
@@ -157,13 +157,13 @@ val EditFormPage = FC<Props> {
                     // The locks (issue #857), likewise never awaited: they only decorate the editor, and the backend
                     // refuses a locked change whatever is drawn.
                     editScope.launch {
-                        locks = runCatching { WorkflowApi.fetchLocks(id) }.getOrDefault(emptyList())
+                        locks = apiResult { WorkflowApi.fetchLocks(id) }.valueOr(emptyList())
                     }
                     editScope.launch {
-                        hasSurvey = runCatching {
+                        hasSurvey = apiResult {
                             val viewPath = fetchFormEndpoint(HttpMethod.GET.name, GEP.workflowView, formClient).endpoints.firstOrNull()?.path
                             WorkflowApi.fetchSurveyView(id, clientOfResolvedPath(viewPath, GEP.workflowView, formClient)) != null
-                        }.getOrDefault(false)
+                        }.valueOr(false)
                     }
                 }
                 val cat = patchFetch.await()
@@ -414,7 +414,7 @@ val EditFormPage = FC<Props> {
                                         // a form engaged (issue #857 review) -- so they are asked again, never awaited.
                                         val before = locks
                                         editScope.launch {
-                                            locks = id?.let { runCatching { WorkflowApi.fetchLocks(it) }.getOrNull() } ?: before
+                                            locks = id?.let { apiResult { WorkflowApi.fetchLocks(it) }.valueOrNull() } ?: before
                                         }
                                     }
                                 }

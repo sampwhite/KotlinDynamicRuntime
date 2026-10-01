@@ -23,6 +23,7 @@ import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
+import kotlin.coroutines.cancellation.CancellationException
 
 // The frontend's debug pages (issue #227): a small area that exists only where the deployment permits it,
 // holding things useful for diagnosing the app itself rather than for using it. The first tenant makes the app
@@ -259,12 +260,14 @@ val DebugFragment = FC<Props> {
                 // Recover a stale build id the way every other copy fetch does (issue #469): a rolling deploy
                 // leaves this ref one deploy old, which 404s -- re-fetch the element for a fresh ref and retry
                 // once, rather than reporting the misleading "is the runtime running" below.
-                val copy = fetchCopyWithRetry(refOf(el)) { runCatching { refOf(element()) }.getOrNull() }
+                val copy = fetchCopyWithRetry(refOf(el)) { apiResult { refOf(element()) }.valueOrNull() }
                 // The fragment pull resolves against the file's copy; `demoVar` shows a plain substitution too.
                 fileId = fid
                 rawText = text
                 resolved = text.evalTemplate(mapOf(TEP.demoVar to "42"), resolver = copy.fragmentResolver())
                 error = null
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 error = "Could not render the fragment demo — is the runtime running with test endpoints? (${e.message})"
             }

@@ -46,7 +46,7 @@ val InvitePage = FC<Props> {
         inviteScope.launch {
             try {
                 val c = AuthApi.fetchConfig()
-                copy = fetchCopyWithRetry(c.fragment) { runCatching { AuthApi.fetchConfig().fragment }.getOrNull() }
+                copy = fetchCopyWithRetry(c.fragment) { apiResult { AuthApi.fetchConfig().fragment }.valueOrNull() }
                 if (token != null) info = AuthApi.previewInvitation(token)
             } catch (e: Throwable) {
                 error = userFacingError(e)

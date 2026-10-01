@@ -78,9 +78,9 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 val c = AuthApi.fetchConfig()
                 config = c
                 // Recover a stale build id (a rolling deploy) rather than erroring on a healthy runtime (#469).
-                copy = fetchCopyWithRetry(c.fragment) { runCatching { AuthApi.fetchConfig().fragment }.getOrNull() }
+                copy = fetchCopyWithRetry(c.fragment) { apiResult { AuthApi.fetchConfig().fragment }.valueOrNull() }
                 if (register && c.user.roles.contains(ROLE.allClients)) {
-                    clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+                    clientChoices = apiResult { AdminApi.listClients() }.valueOr(emptyList())
                 }
             } catch (e: Throwable) {
                 error = userFacingError(e)

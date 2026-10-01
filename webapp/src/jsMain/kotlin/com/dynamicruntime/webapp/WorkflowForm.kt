@@ -323,8 +323,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                     // user may have typed on during the two round trips, and that must survive. A field of the saved
                     // task takes its stored value only while it still holds what was sent.
                     val refresh = props.refreshView
-                    val refreshed = refresh?.let { runCatching { it(task.id).await() } }
-                    val fresh = refreshed?.getOrNull()
+                    val refreshed = refresh?.let { apiResult { it(task.id).await() } }
+                    val fresh = refreshed?.valueOrNull()
                     if (fresh != null) {
                         val storedNow = seedValuesOf(fresh)
                         updateStored { storedNow }
@@ -336,7 +336,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                         // task reads as saved. When a re-read was asked and failed, the note beside the save says
                         // the rest of the page may be behind; with none wired there is nothing to report.
                         if (refreshed != null) {
-                            refreshError = refreshed.exceptionOrNull()?.let { userFacingError(it) }
+                            refreshError = refreshed.failureOrNull()?.let { userFacingError(it) }
                                 ?: DisplayError.expected("The form no longer resolves.")
                         }
                         updateStored { it + sent }

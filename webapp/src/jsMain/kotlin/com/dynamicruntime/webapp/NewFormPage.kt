@@ -67,7 +67,7 @@ val NewFormPage = FC<Props> {
         // Whether to offer the create-for-user picker (issue #727): its own coroutine, never awaited before the
         // form loads (issue #727 review) -- it only decides whether a picker is drawn, so neither its latency nor
         // a stall may hold the create on "Loading…". The picker appears when the answer lands; a failure hides it.
-        formScope.launch { canManageUsers = runCatching { HomeApi.fetchConfig().canManageUsers }.getOrDefault(false) }
+        formScope.launch { canManageUsers = apiResult { HomeApi.fetchConfig().canManageUsers }.valueOr(false) }
         formScope.launch {
             try {
                 // Just this one endpoint's closure, resolved to the caller's own client-scoped copy of the bare

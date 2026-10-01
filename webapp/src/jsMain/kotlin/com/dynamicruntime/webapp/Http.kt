@@ -3,10 +3,13 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.RID
+import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.jsonMapOrNull
+import com.dynamicruntime.common.util.jsonMapResult
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.js.Promise
 
 /**
@@ -106,6 +109,40 @@ val apiContextRoot: String get() = apiRoot
 @JsName("fetch")
 private external fun browserFetch(input: String, init: dynamic = definedExternally): Promise<dynamic>
 
+/** A request the browser completed: its [response] (any status) and the body read as [text]. */
+internal class Fetched(val response: dynamic, val text: String)
+
+/**
+ * Runs the browser's `fetch` of [url] with [init] and reads the body (issue #967) -- the **one** transport
+ * boundary every API request goes through, [Http]'s and the catalog's own. The browser rejects the `fetch` (or
+ * the body read) when there is no answer -- offline, a reset connection, a blocked request -- and that is a
+ * value here, [ApiResult.Failed], not a fault. A completed request is [ApiResult.Ok] whatever its status; what a
+ * non-2xx means is the caller's to read. A coroutine's cancellation is not a failure of the request and is never
+ * caught.
+ */
+internal suspend fun fetchCompleted(method: String, url: String, init: dynamic): ApiResult<Fetched> =
+    try {
+        val response = browserFetch(url, init).await()
+        ApiResult.Ok(Fetched(response, (response.text() as Promise<String>).await()))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        ApiResult.Failed(ApiFailure("$method $url could not be completed: ${e.message}", e))
+    }
+
+/**
+ * A successful response's [text] as its JSON map (empty for an empty body), or -- when it is not JSON, because the
+ * server or something in front of it sent the wrong thing -- no usable answer, [ApiResult.Failed], with the
+ * parser's own account of where.
+ */
+internal fun jsonBody(method: String, url: String, text: String): ApiResult<Map<String, Any?>> =
+    when (val parsed = text.jsonMapResult()) {
+        is Parsed.Ok -> ApiResult.Ok(parsed.value ?: emptyMap())
+        is Parsed.Failed -> ApiResult.Failed(
+            ApiFailure("$method $url answered with a body that is not JSON: ${parsed.problems.first().message}"),
+        )
+    }
+
 /** The browser's `navigator.language` (e.g. `en-US`), or empty when unavailable. */
 private fun navigatorLanguage(): String = js("(navigator && navigator.language) || ''") as String
 
@@ -148,11 +185,21 @@ object Http {
         if (locale.isEmpty()) "kdr" else "kdr.$locale"
     }
 
-    /** GET a runtime API endpoint (under the `kda` root) and return its parsed JSON envelope. */
-    suspend fun getApi(path: String): Map<String, Any?> = requestJson("GET", apiRoot + path, null)
+    /**
+     * GET a runtime API endpoint (under the `kda` root) and return its parsed JSON envelope. Throws the server's
+     * refusal as an [ApiError] and no usable answer as an [ApiFailure]; [getApiResult] returns them instead.
+     */
+    suspend fun getApi(path: String): Map<String, Any?> = getApiResult(path).orThrow()
+
+    /** [getApi] as an [ApiResult] (issue #967). */
+    suspend fun getApiResult(path: String): ApiResult<Map<String, Any?>> = requestJson("GET", apiRoot + path, null)
 
     /** POST/PUT [body] as JSON to an API endpoint; returns the parsed envelope. */
     suspend fun sendApi(method: String, path: String, body: Map<String, Any?>): Map<String, Any?> =
+        sendApiResult(method, path, body).orThrow()
+
+    /** [sendApi] as an [ApiResult] (issue #967). */
+    suspend fun sendApiResult(method: String, path: String, body: Map<String, Any?>): ApiResult<Map<String, Any?>> =
         requestJson(method, apiRoot + path, body)
 
     /**
@@ -162,23 +209,39 @@ object Http {
      * [queryString], so no caller has to reason about which of its values are safe to concatenate raw.
      */
     suspend fun deleteApi(path: String, args: Map<String, Any?> = emptyMap()): Map<String, Any?> =
-        requestJson("DELETE", apiRoot + path + queryString(args), null)
+        requestJson("DELETE", apiRoot + path + queryString(args), null).orThrow()
 
     /** GET a Markdown *fragment* file (`/st/<appId>/md/<fileId:buildId>`) as its `namespace -> key -> value` map. */
     suspend fun getFragments(fileId: String, buildId: String): Map<String, Any?> =
-        requestJson("GET", "$staticRoot/$appId/${CMK.md}/$fileId:$buildId", null)
+        requestJson("GET", "$staticRoot/$appId/${CMK.md}/$fileId:$buildId", null).orThrow()
 
     /** GET a whole Markdown *document* (`/st/<appId>/doc/<docId:buildId>`) verbatim as text. */
     suspend fun getDoc(docId: String, buildId: String): String =
-        requestText("GET", "$staticRoot/$appId/${CMK.doc}/$docId:$buildId", null)
+        requestText("GET", "$staticRoot/$appId/${CMK.doc}/$docId:$buildId", null).orThrow()
 
-    /** Runs a request and parses the JSON body; a non-2xx raises the runtime's [EP.errorMessage]. */
-    private suspend fun requestJson(method: String, url: String, body: Map<String, Any?>?): Map<String, Any?> {
-        val map = requestText(method, url, body).jsonMap() ?: emptyMap()
+    /**
+     * Runs a request and parses the JSON body. A success whose body is not JSON is no usable answer -- the server
+     * or something in front of it sent the wrong thing -- so it comes back [ApiResult.Failed], located as the
+     * parser located it, rather than as a throw from inside the parser.
+     */
+    private suspend fun requestJson(
+        method: String,
+        url: String,
+        body: Map<String, Any?>?,
+    ): ApiResult<Map<String, Any?>> {
+        val text = when (val sent = requestText(method, url, body)) {
+            is ApiResult.Ok -> sent.value
+            is ApiResult.Refused -> return sent
+            is ApiResult.Failed -> return sent
+        }
+        val map = when (val parsed = jsonBody(method, url, text)) {
+            is ApiResult.Ok -> parsed.value
+            else -> return parsed
+        }
         // Notice when a newer web app has been deployed than the one running (issue #136): every endpoint
         // envelope carries the deployed bundle hash. A no-op for non-envelope responses (fragment/doc) and dev.
         observeWebAppHash(map[EP.webAppHash] as? String)
-        return map
+        return ApiResult.Ok(map)
     }
 
     /**
@@ -210,7 +273,11 @@ object Http {
         )
     }
 
-    private suspend fun requestText(method: String, url: String, body: Map<String, Any?>?): String {
+    /**
+     * Runs a request (issue #967): the body of a 2xx, the server's refusal of anything else, or [ApiResult.Failed]
+     * when the browser could not complete the request at all.
+     */
+    private suspend fun requestText(method: String, url: String, body: Map<String, Any?>?): ApiResult<String> {
         val init: dynamic = js("({})")
         init.method = method
         // Same-origin credentials so the session cookie is sent and stored (the API and the app share an origin).
@@ -224,8 +291,13 @@ object Http {
             headers["Content-Type"] = "application/json"
             init.body = body.toJsonStr(compact = true)
         }
-        val response = browserFetch(url, init).await()
-        val text = (response.text() as Promise<String>).await()
+        val fetched = when (val done = fetchCompleted(method, url, init)) {
+            is ApiResult.Ok -> done.value
+            is ApiResult.Refused -> return done
+            is ApiResult.Failed -> return done
+        }
+        val response = fetched.response
+        val text = fetched.text
         if (!(response.ok as Boolean)) {
             // An edge in front of this deployment saying nobody is signed in any more (issue #419). It is not
             // an error this app can show its way out of: every later call will fail the same way, and the only
@@ -238,11 +310,11 @@ object Http {
             // not, and `jsonMap()` **throws** on it rather than returning null (issue #469: that throw used to
             // escape and hide the 404 the stale-fragment recovery keys off). Catch it here, once.
             val env = text.jsonMapOrNull()
-            redirectToEnvAuthLogin(env)?.let { throw it }
+            redirectToEnvAuthLogin(env)?.let { return ApiResult.Refused(it) }
             // Carry the whole error envelope up as a structured error (issue #111), so a display site can decide
             // how to present it -- designed fragment copy vs. a raw/internal message -- rather than seeing only a
             // string.
-            throw ApiError(
+            return ApiResult.Refused(ApiError(
                 message = env?.get(EP.errorMessage) as? String ?: "$method $url failed with status ${response.status}",
                 fromFragment = env?.get(EP.errorFromFragment) == true,
                 // The envelope's status when present, else the transport status -- so a non-envelope error (a
@@ -250,8 +322,8 @@ object Http {
                 status = (env?.get(EP.status) as? Number)?.toInt() ?: (response.status as? Number)?.toInt(),
                 errorCode = env?.get(EP.errorCode) as? String,
                 traceId = traceId,
-            )
+            ))
         }
-        return text
+        return ApiResult.Ok(text)
     }
 }
