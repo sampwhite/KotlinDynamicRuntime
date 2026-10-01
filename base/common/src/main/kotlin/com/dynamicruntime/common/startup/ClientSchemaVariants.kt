@@ -2,7 +2,6 @@ package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GU
@@ -24,8 +23,6 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.authoritativeLayoutProblems
 import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.analyzeSchemaTypes
-import com.dynamicruntime.common.schema.layoutFieldProblems
-import com.dynamicruntime.common.schema.layoutTemplateProblems
 import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
 import com.dynamicruntime.common.schema.parseSchemaTypes
@@ -249,7 +246,8 @@ private fun keepWhatNarrows(
             cxt,
             alterationIssue(
                 collected, client, name,
-                "Client '$client' alters '$name' in a way that does not narrow it. " + problems.joinToString(" "),
+                "Client '$client' alters '$name' in a way that does not narrow it. " +
+                    problems.joinToString(" ") { it.message },
                 "Dropping the alteration; '$name' stays as the global document declares it.",
             ),
             issues,
@@ -386,8 +384,8 @@ private fun dropFaultyLayouts(
                 cxt,
                 alterationIssue(
                     collected, client, name,
-                    "${problems.joinToString(" ")} The layout is global's, and this client's alteration of the " +
-                        "type requires what it leaves out.",
+                    problems.joinToString(" ") { it.message } + " The layout is global's, and this client's " +
+                        "alteration of the type requires what it leaves out.",
                     "Rendering '$name' without a layout for this client, so every field it requires can be filled in.",
                 ),
                 issues,
@@ -397,18 +395,12 @@ private fun dropFaultyLayouts(
         }
         if (rawLayout(defs, name) === rawLayout(globalDefs, name)) continue
         val where = "Type '$name' (client '$client')"
-        val problems = try {
-            val layout = collectLayouts(mapOf(name to defs[name])).getValue(name)
-            layoutFieldProblems(where, layout, types[name]) + layoutTemplateProblems(where, layout, types[name]) +
-                layoutBackendBlockProblems(where, layout)
-        } catch (e: KdrException) {
-            listOf(e.message.orEmpty())
-        }
+        val problems = (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty()
         if (problems.isEmpty()) continue
         reportConfigProblem(
             cxt,
             alterationIssue(
-                collected, client, name, problems.joinToString(" "),
+                collected, client, name, problems.joinToString(" ") { it.message },
                 "Dropping the client's '${SCH.layout}' on '$name'; the type renders with global's layout, or none.",
             ),
             issues,

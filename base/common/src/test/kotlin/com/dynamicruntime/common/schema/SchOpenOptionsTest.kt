@@ -87,7 +87,7 @@ class SchOpenOptionsTest : StringSpec({
         narrowingProblems("t.Visit", body(open = true, "inspection"), body(open = true, "audit")).shouldBeEmpty()
 
         narrowingProblems("t.Visit", body(open = false, "inspection"), body(open = false, "audit"))
-            .single() shouldContain "audit"
+            .single().message shouldContain "audit"
     }
 
     "a client may close an open list but may not open a closed one" {
@@ -102,7 +102,7 @@ class SchOpenOptionsTest : StringSpec({
         // **Opening is refused** -- values the base rejects would become storable here and invalid to
         // everybody else, which is the cross-client breakage the whole rule exists to prevent.
         narrowingProblems("t.Visit", body(open = false, "inspection"), body(open = true, "inspection"))
-            .single() shouldContain SCH.openOptions
+            .single().message shouldContain SCH.openOptions
     }
 
     "closing an open list may bound it to choices the base never listed" {

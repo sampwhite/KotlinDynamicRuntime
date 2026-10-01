@@ -2,6 +2,8 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.util.Problem
+import com.dynamicruntime.common.util.ProblemLocation
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -97,9 +99,9 @@ fun layoutPullProblems(
     where: String,
     layout: SchLayout,
     resolve: (fileId: String, nsKey: String) -> LayoutPullHit,
-): List<String> {
-    val problems = mutableListOf<String>()
-    fun check(what: String, text: String?) {
+): List<Problem> {
+    val problems = mutableListOf<Problem>()
+    fun check(what: String, at: String, text: String?) {
         if (text == null || MarkdownFragmentService.backendPassPrefix !in text) {
             return
         }
@@ -114,31 +116,43 @@ fun layoutPullProblems(
                 ref.key
             }
             val dot = full.indexOf('.')
+            fun add(code: LayoutError, message: String) =
+                problems.add(Problem(code, message, ProblemLocation(at, ref.offset, ref.line, ref.col)))
             if (dot <= 0 || dot >= full.length - 1) {
-                problems.add("$where: the '${SCH.layout}' $what pull '%{@t(\"${ref.key}\")}' is not a fileId.namespace.key reference.")
+                add(
+                    LayoutError.badPullKey,
+                    "$where: the '${SCH.layout}' $what pull '%{@t(\"${ref.key}\")}' is not a fileId.namespace.key reference.",
+                )
                 continue
             }
             val fileId = full.substring(0, dot)
             val nsKey = full.substring(dot + 1)
             val hit = resolve(fileId, nsKey)
             when {
-                !hit.fileFound ->
-                    problems.add("$where: the '${SCH.layout}' $what pulls %{@t(\"${ref.key}\")}, but no fragment file '$fileId' is declared here.")
-                !hit.backend ->
-                    problems.add("$where: the '${SCH.layout}' $what pulls from '$fileId', a frontend file; a layout pull must name a backend file.")
-                !hit.keyPresent ->
-                    problems.add("$where: the '${SCH.layout}' $what pulls %{@t(\"${ref.key}\")}, but '$fileId' has no fragment '$nsKey'.")
+                !hit.fileFound -> add(
+                    LayoutError.pullFileMissing,
+                    "$where: the '${SCH.layout}' $what pulls %{@t(\"${ref.key}\")}, but no fragment file '$fileId' is declared here.",
+                )
+                !hit.backend -> add(
+                    LayoutError.pullFromFrontendFile,
+                    "$where: the '${SCH.layout}' $what pulls from '$fileId', a frontend file; a layout pull must name a backend file.",
+                )
+                !hit.keyPresent -> add(
+                    LayoutError.pullKeyMissing,
+                    "$where: the '${SCH.layout}' $what pulls %{@t(\"${ref.key}\")}, but '$fileId' has no fragment '$nsKey'.",
+                )
             }
         }
     }
-    check("heading", layout.label)
-    for (field in layout.fields) {
-        check("${field.field}'s label", field.label)
-        check("${field.field}'s description", field.description)
-        check("${field.field}'s hint", field.hint)
+    check("heading", SL.label, layout.label)
+    for ((i, field) in layout.fields.withIndex()) {
+        val at = "${SL.schemaFields}[$i]"
+        check("${field.field}'s label", "$at.${SL.label}", field.label)
+        check("${field.field}'s description", "$at.${SL.description}", field.description)
+        check("${field.field}'s hint", "$at.${SL.hint}", field.hint)
     }
     for ((key, text) in layout.strings) {
-        check("string '$key'", text)
+        check("string '$key'", "${SL.strings}.$key", text)
     }
     return problems
 }

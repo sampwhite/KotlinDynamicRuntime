@@ -491,13 +491,7 @@ class SchemaService : ServiceInitializer {
         for ((name, body) in collected.defs.toList()) {
             if (body !is Map<*, *> || body[SCH.layout] == null) continue
             val where = "Type '$name'"
-            val problems = try {
-                val layout = collectLayouts(mapOf(name to body)).getValue(name)
-                layoutFieldProblems(where, layout, types[name]) + layoutTemplateProblems(where, layout, types[name]) +
-                    layoutBackendBlockProblems(where, layout)
-            } catch (e: KdrException) {
-                listOf(e.message.orEmpty())
-            }
+            val problems = layoutProblems(name, where, body, types[name]).map { it.message }
             if (problems.isEmpty()) continue
             reportConfigProblem(
                 cxt,
@@ -698,9 +692,8 @@ class SchemaService : ServiceInitializer {
     ) {
         val problems = LinkedHashSet<String>()
         forEachLayoutToCheck(onlyClient) { where, _, _, layout, type ->
-            problems.addAll(layoutFieldProblems(where, layout, type))
-            problems.addAll(layoutTemplateProblems(where, layout, type))
-            problems.addAll(layoutBackendBlockProblems(where, layout))
+            (layoutFieldProblems(where, layout, type) + layoutTemplateProblems(where, layout, type) +
+                layoutBackendBlockProblems(where, layout)).mapTo(problems) { it.message }
         }
         if (problems.isNotEmpty()) {
             throw KdrException(
@@ -732,7 +725,7 @@ class SchemaService : ServiceInitializer {
         val faults = mutableListOf<LayoutPullFault>()
         forEachLayoutToCheck { where, name, client, layout, _ ->
             layoutPullProblems(where, layout) { fileId, nsKey -> resolve(client, fileId, nsKey) }
-                .forEach { faults.add(LayoutPullFault(client, name, it)) }
+                .forEach { faults.add(LayoutPullFault(client, name, it.message)) }
         }
         return faults
     }

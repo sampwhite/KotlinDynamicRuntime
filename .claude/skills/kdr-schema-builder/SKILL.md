@@ -416,6 +416,12 @@ with `.problems` holding the first fault, coded (`SchemaError`) and located at i
 (`acme.Q.properties.topic.items`; a `pattern` fault adds its offset). The message is the throwing form's, word for
 word. `SchGKeywords.problem` and `refusedKeywordProblem` return the same `Problem`.
 
+Layouts and narrowing report the same way: `parseSchLayoutResult` / `parseTypeLayout` collect every problem with a
+`g-layout` block, and the boot checks (`layoutFieldProblems`, `layoutTemplateProblems`, `layoutPullProblems`,
+`layoutBackendBlockProblems`, `narrowingProblems`) return `Problem`s coded by `LayoutError` / `NarrowingError`,
+located within the block (`schemaFields[2].hint`, plus the template offset) or the type
+(`acme.Q.properties.kind.g-options`). Their messages are unchanged; a caller joining them reads `.message`.
+
 `allowCoerce` (a kd2 keyword, so `g-allowCoerce` on the wire; default **true** for numeric,
 **boolean** and date-format types, **false** otherwise — see `coercesByDefault`) governs coercion
 of a mismatched value — and changes
