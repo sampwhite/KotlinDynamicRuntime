@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.util.toOptLong
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -35,7 +36,7 @@ class GedraConfigCacheTest : StringSpec({
 
     fun write(desc: String) = service().writeConfig(
         asClient(),
-        gedraConfig(cxt, name, "${client}config", client) { cfact("ready", "grp", desc) },
+        gedraConfig(cxt, name, clientNamespace(client), client) { cfact("ready", "grp", desc) },
     )
 
     fun revisions() = run {
@@ -107,7 +108,7 @@ class GedraConfigCacheTest : StringSpec({
         cxt.instanceConfig.clock.freeze()
         try {
             for (n in listOf("tieZulu", "tieAlpha")) {
-                svc.writeConfig(asClient(), gedraConfig(cxt, n, "${client}config", client) { cfact("t", "grp", n) })
+                svc.writeConfig(asClient(), gedraConfig(cxt, n, clientNamespace(client), client) { cfact("t", "grp", n) })
             }
             val viaCache = svc.listConfigs(asClient()).map { it.gedraId.fullId }
             val held = svc.configCache

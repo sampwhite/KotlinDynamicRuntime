@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.TestUser
@@ -35,12 +36,14 @@ import kotlin.time.Duration.Companion.seconds
  */
 class GedraConfigEndpointTest : StringSpec({
     val cxt: KdrCxt = Startup.mkTestBootCxt("gedraCfgEp", "gedraCfgEpTest")
-    val namespace = "cfgepns"
 
     // A client-scoped administrator (ROLE.admin, no allClients): the config surface's intended caller. No
     // explicit client -- an unregistered client id fails authentication -- so the user takes the default and
     // the config is written under whatever client that is.
     fun admin(): TestUser = TestUser.create(cxt, "cfgadmin@example.com", level = ROLE.admin)
+
+    // That client's own namespace (issue #949), which is where a client's configuration declares its types.
+    val namespace: String by lazy { clientNamespace(admin().selfClient()!!) }
 
     // The cfact config [name] declares. Named for the config because every bundle here goes to the one client, and
     // the write judges it together with the client's others (issue #843): two declaring one cfact would conflict.
@@ -269,7 +272,7 @@ class GedraConfigEndpointTest : StringSpec({
             CFEP.bundleWrite,
             mapOf(
                 CFEP.name to "hijack",
-                CFEP.namespaceField to CLC.namespaceOf(CL.public),
+                CFEP.namespaceField to clientNamespace(CL.public),
                 CFEP.slots to mapOf(
                     CCT.cfactDef to listOf(mapOf(CCT.name to "x", CCT.group to "g", CCT.description to "d")),
                 ),

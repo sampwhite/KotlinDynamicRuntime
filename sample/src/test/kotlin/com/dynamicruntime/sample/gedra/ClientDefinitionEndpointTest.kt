@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
@@ -152,7 +153,7 @@ class RetiredClientComponent : ComponentDefinition {
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "retiredClient", "retiredconfig", clientId) {
+        gedraConfig(cxt, "retiredClient", clientNamespace(clientId), clientId) {
             defineClient(
                 ClientDef(
                     clientId = clientId,

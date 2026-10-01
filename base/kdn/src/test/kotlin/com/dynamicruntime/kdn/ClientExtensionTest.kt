@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
@@ -63,7 +64,7 @@ class ClientExtensionTest : StringSpec({
     )
 
     fun store(client: String, name: String = "main", define: Boolean = true, trial: Boolean = false, build: GedraConfigBuilder.() -> Unit = {}) {
-        val config = gedraConfig(cxt, name, "${client}${name}config", client) {
+        val config = gedraConfig(cxt, name, "${clientNamespace(client)}.$name", client) {
             if (define) defineClient(dataDef(client))
             build()
         }
@@ -72,7 +73,7 @@ class ClientExtensionTest : StringSpec({
 
     "a source client gets its template's traits, types, cfacts, workflows and copy" {
         traitIds(kid) shouldContain "tplNote"
-        SchemaService.get(cxt).storeFor(kid).types shouldContainKey "tplbaseconfig.Shared"
+        SchemaService.get(cxt).storeFor(kid).types shouldContainKey "client.tplbase.Shared"
         SchemaService.get(cxt).cfactsFor(kid).defs shouldContainKey "tplFlag"
         WorkflowService.get(cxt).forClient(kid).workflow("tplFlow").shouldNotBeNull()
         // A key only the template sets reads the template's; one the client sets reads the client's.
@@ -81,14 +82,14 @@ class ClientExtensionTest : StringSpec({
         // The template's copies are filed under the client, keep the template's namespace, and are the loader's.
         val copies = GedraConfigLoadService.get(cxt).loadedFor(kid).filter { it.inheritedFrom == tpl }
         copies.map { it.name } shouldContainExactly listOf(ClientExtension.cloneName(tpl, "base"))
-        copies.single().namespace shouldBe "tplbaseconfig"
+        copies.single().namespace shouldBe "client.tplbase"
     }
 
     "a trait the client redefines replaces the template's and appears once" {
         traitIds(kid).count { it == "tplScore" } shouldBe 1
-        typeOf(kid, "tplScore") shouldBe "tplkidconfig.KidScoreEntry"
+        typeOf(kid, "tplScore") shouldBe "client.tplkid.KidScoreEntry"
         // The template still has its own.
-        typeOf(tpl, "tplScore") shouldBe "tplbaseconfig.TplScoreEntry"
+        typeOf(tpl, "tplScore") shouldBe "client.tplbase.TplScoreEntry"
     }
 
     "the client's definition takes the template's defaults" {
@@ -100,7 +101,7 @@ class ClientExtensionTest : StringSpec({
 
     "nothing reaches a client that does not extend the template" {
         traitIds(CL.hub) shouldNotContain "tplNote"
-        SchemaService.get(cxt).storeFor(CL.hub).types shouldNotContainKey "tplbaseconfig.Shared"
+        SchemaService.get(cxt).storeFor(CL.hub).types shouldNotContainKey "client.tplbase.Shared"
         brand(CL.hub) shouldBe "KDR"
     }
 
@@ -117,7 +118,7 @@ class ClientExtensionTest : StringSpec({
     "the sandbox of an extending client is extended itself rather than carrying its parent's copy" {
         val sandbox = sandboxOf(kid)
         traitIds(sandbox) shouldContain "tplNote"
-        typeOf(sandbox, "tplScore") shouldBe "tplkidconfig.KidScoreEntry"
+        typeOf(sandbox, "tplScore") shouldBe "client.tplkid.KidScoreEntry"
         val loaded = GedraConfigLoadService.get(cxt).loadedFor(sandbox)
         // One copy of the template, its own; the parent's copy is not among the rebound configs.
         loaded.count { it.inheritedFrom == tpl } shouldBe 1
@@ -132,15 +133,15 @@ class ClientExtensionTest : StringSpec({
         }
         // `loaded` counts what the client stores, not the template's copy beside it.
         GedraConfigReload.reloadClient(cxt, client).loaded shouldBe 1
-        typeOf(client, "tplNote") shouldBe "${client}mainconfig.DataNoteEntry"
-        typeOf(client, "tplScore") shouldBe "tplbaseconfig.TplScoreEntry"
+        typeOf(client, "tplNote") shouldBe "${clientNamespace(client)}.main.DataNoteEntry"
+        typeOf(client, "tplScore") shouldBe "client.tplbase.TplScoreEntry"
         brand(client) shouldBe "TPL"
         ClientService.get(cxt).present(client)?.webResourcesId shouldBe "tplres"
 
         // The next revision drops the redefinition: the copy is rebuilt with the template's trait back in it.
         store(client)
         GedraConfigReload.reloadClient(cxt, client)
-        typeOf(client, "tplNote") shouldBe "tplbaseconfig.TplNoteEntry"
+        typeOf(client, "tplNote") shouldBe "client.tplbase.TplNoteEntry"
         traitIds(client).count { it == "tplNote" } shouldBe 1
     }
 
@@ -148,13 +149,13 @@ class ClientExtensionTest : StringSpec({
         val client = "tpltrial"
         store(client, trial = true)
         GedraConfigReload.reloadClient(cxt, client)
-        typeOf(client, "tplScore") shouldBe "tplbaseconfig.TplScoreEntry"
+        typeOf(client, "tplScore") shouldBe "client.tplbase.TplScoreEntry"
         // The trial remakes the copy without `tplScore`, rather than judging the revision beside the copy holding it.
         store(client, trial = true) {
             trait("TrialScoreEntry", "tplScore", setOf(GedraDataType.formDoc), "The client's score.") { property("grade", "A grade.") }
         }
         GedraConfigReload.reloadClient(cxt, client)
-        typeOf(client, "tplScore") shouldBe "${client}mainconfig.TrialScoreEntry"
+        typeOf(client, "tplScore") shouldBe "${clientNamespace(client)}.main.TrialScoreEntry"
     }
 
     "two of the client's own configs redefining one template trait are still a collision" {
@@ -190,12 +191,12 @@ class ClientExtensionTest : StringSpec({
 
     "a client may not author into the template's namespace" {
         val client = "tplns"
-        val config = gedraConfig(cxt, "main", "tplbaseconfig", client) {
+        val config = gedraConfig(cxt, "main", "client.tplbase", client) {
             defineClient(dataDef(client))
             type("Mine") { type = SCT.kObject; property("x", "X.") }
         }
         shouldThrow<KdrException> { GedraConfigService.get(cxt).writeConfig(writer(client), config, trial = true) }
-            .message.shouldNotBeNull() shouldContain "tplbaseconfig"
+            .message.shouldNotBeNull() shouldContain "client.tplbase"
     }
 })
 
@@ -204,7 +205,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
     override val providerName: String = "extensionTemplateFixture"
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "base", "tplbaseconfig", template) {
+        gedraConfig(cxt, "base", "client.tplbase", template) {
             defineClient(
                 ClientDef(
                     clientId = template, name = "Template", usageType = ClientUsageType.template,
@@ -226,7 +227,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
                 }
             }
         },
-        gedraConfig(cxt, "kid", "tplkidconfig", child) {
+        gedraConfig(cxt, "kid", "client.tplkid", child) {
             defineClient(
                 ClientDef(
                     clientId = child, name = "Kid", usageType = ClientUsageType.dev,

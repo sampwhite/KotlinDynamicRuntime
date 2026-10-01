@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.naming
 
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.util.isVariableName
 
 /**
@@ -29,6 +30,12 @@ import com.dynamicruntime.common.util.isVariableName
 object OWNR {
     /** Separates a rooted name's root from its local part: `kdr:expenseReport`. */
     const val rootSep = ':'
+
+    /** The reserved root every client namespace sits under (issue #949): `client.acme`. */
+    const val clientRoot = "client"
+
+    /** Separates a namespace's segments, and a qualified type name's namespace from its name: `client.acme.Form`. */
+    const val namespaceSep = '.'
 }
 
 /** The kinds of name that are rooted with a colon, each with the rule its local part is held to. */
@@ -103,6 +110,30 @@ fun rootedNameProblem(kind: OwnedNameKind, name: String): String? {
 /** Whether [name] is well formed as a [kind] name, bare or rooted. What a parser or a constructor can check. */
 fun isOwnedName(kind: OwnedNameKind, name: String): Boolean =
     if (OWNR.rootSep in name) rootedNameProblem(kind, name) == null else kind.isLocalPart(name)
+
+/**
+ * The namespace [client]'s own types live under (issue #949): `client.<clientId>`. A sandbox has none of its own --
+ * it runs, and shows, its parent's (issue #928) -- so for a sandbox this is its parent's.
+ */
+fun clientNamespace(client: String): String = "${OWNR.clientRoot}${OWNR.namespaceSep}${sandboxParentOf(client) ?: client}"
+
+/** Whether [namespace] is [client]'s own: [clientNamespace] itself, or beneath it (`client.acme.forms`). */
+fun isClientNamespace(namespace: String, client: String): Boolean {
+    val own = clientNamespace(client)
+    return namespace == own || namespace.startsWith("$own${OWNR.namespaceSep}")
+}
+
+/**
+ * What is wrong with [namespace] as [client]'s config namespace, or null (issue #949): a client authors only into
+ * its own, so its types can never land where a global name -- or another client's -- lives.
+ */
+fun clientNamespaceProblem(namespace: String, client: String): String? =
+    if (isClientNamespace(namespace, client)) {
+        null
+    } else {
+        "A client's configuration declares its types in its own namespace, '${clientNamespace(client)}' or beneath " +
+            "it; '$namespace' is not."
+    }
 
 private fun Char.isAsciiLetter() = this in 'a'..'z' || this in 'A'..'Z'
 

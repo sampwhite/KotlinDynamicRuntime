@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.job.JobLaunchOutcome
 import com.dynamicruntime.common.job.JobRunMode
 import com.dynamicruntime.common.job.JobService
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toOptStr
@@ -50,7 +51,7 @@ class SandboxClientTest : StringSpec({
 
     /** Writes [client]'s one config, defining it -- with a sandbox unless [sandbox] is false -- and the named traits. */
     fun write(client: String, vararg traits: String, sandbox: Boolean = true) {
-        val config = gedraConfig(cxt, "main", "${client}config", client) {
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Client $client", usageType = ClientUsageType.production,
@@ -110,9 +111,9 @@ class SandboxClientTest : StringSpec({
         write(parent, "nsA")
         reload(parent)
         val store = SchemaService.get(cxt).storeFor(sandboxOf(parent))
-        store.types.keys shouldContain "${parent}config.nsAEntry"
+        store.types.keys shouldContain "${clientNamespace(parent)}.nsAEntry"
         SchemaService.get(cxt).gedraTraitsFor(sandboxOf(parent)).single { it.traitId == "nsA" }.typeName shouldBe
-            "${parent}config.nsAEntry"
+            "${clientNamespace(parent)}.nsAEntry"
     }
 
     "the sandbox's definition is derived from the parent's, never authored" {

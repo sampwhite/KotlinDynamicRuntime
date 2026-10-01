@@ -20,6 +20,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
@@ -62,7 +63,7 @@ class ClientConfigIssuesTest : StringSpec({
      * dropping the parameter while keeping the client -- a forgiven problem on a client that stays present.
      */
     fun config(client: String, reservedTrait: String? = null, extraEnv: String? = null): GedraConfig =
-        gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             defineClient(clientDef(client, extraEnv))
             trait("${client}Entry", "${client}Trait", setOf(GedraDataType.formDoc), "A trait of $client.") {
                 property("text", "A value.")

@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
@@ -42,7 +43,7 @@ class ClientTraitIdScopeTest : StringSpec({
     fun writer(client: String): KdrCxt = cxt.mkSubContext("idScope", client).also { it.userId = 8070L }
 
     fun store(client: String, name: String = "main", withDef: Boolean = true, build: GedraConfigBuilder.() -> Unit) {
-        val config = gedraConfig(cxt, name, "${client}config", client) {
+        val config = gedraConfig(cxt, name, clientNamespace(client), client) {
             if (withDef) {
                 defineClient(
                     ClientDef(
@@ -76,8 +77,8 @@ class ClientTraitIdScopeTest : StringSpec({
 
     "two clients each declaring one trait id both load, each with its own definition" {
         val schema = SchemaService.get(cxt)
-        schema.gedraTraitsFor(alpha).single { it.traitId == "survey1" }.typeName shouldBe "${alpha}config.Survey1Entry"
-        schema.gedraTraitsFor(beta).single { it.traitId == "survey1" }.typeName shouldBe "${beta}config.Survey1Entry"
+        schema.gedraTraitsFor(alpha).single { it.traitId == "survey1" }.typeName shouldBe "${clientNamespace(alpha)}.Survey1Entry"
+        schema.gedraTraitsFor(beta).single { it.traitId == "survey1" }.typeName shouldBe "${clientNamespace(beta)}.Survey1Entry"
         schema.isGlobalTrait("survey1") shouldBe false
     }
 

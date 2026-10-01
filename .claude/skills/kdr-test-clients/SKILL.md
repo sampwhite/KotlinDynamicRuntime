@@ -26,7 +26,7 @@ fun asClient(client: String): KdrCxt = cxt.mkSubContext("setup", client).also { 
 
 // Create a client dynamically: define it, give it a trait, persist the bundle, and reload it live.
 fun createClient(client: String, trait: String) {
-    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
                 clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -95,7 +95,7 @@ value valid at capture is rejected once the reload lands. Transcribed and compil
 ```kotlin
 val client = "narrowcap"
 fun writeClient(vararg topics: String) {
-    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(ClientDef(clientId = client, name = client, usageType = ClientUsageType.dev,
             audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local)))
         trait("QEntry", "q", setOf(GedraDataType.formDoc), "The q trait.") {
@@ -124,7 +124,9 @@ later schema rejects" test.
 ## The building blocks
 
 - **`gedraConfig(cxt, name, namespace, client) { … }`** (`base/kernel/.../gedra/GedraConfig.kt`) builds one
-  config **bundle** for one client. Inside the block:
+  config **bundle** for one client. A client's **namespace** is `clientNamespace(client)` -- `client.<clientId>`,
+  or beneath it (`client.acme.forms`) -- and nothing else is accepted (issue #949): the write refuses another,
+  the load drops it, and a source config using one fails the boot outside production. Inside the block:
   - **`defineClient(ClientDef(...))`** — exactly one per bundle (a second throws). `ClientDef` needs
     `clientId`, `name`, `usageType` (`ClientUsageType`), `audience` (`ClientAudience`), and
     `enabledEnvironments` (include `ENV.unit` and `ENV.local` so a test node loads it). `staticConfig = true`
@@ -245,7 +247,7 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   — whose stored config accumulates across the spec's cases; prefer placing users in your own client. A scoped
   admin and the users it administers must share a client, so place both.
 - **Collisions are strict in `unit`/`local`, degraded in production:** a client reusing a **global** trait's id, a
-  client declaring one `traitId` twice, or a namespace with two owners, fails the reload in a test (which is what
+  client declaring one `traitId` twice, or a config outside its own `client.<clientId>` namespace, fails the reload in a test (which is what
   `GedraConfigReloadTest`'s rollback case checks) but is tolerated live. Two **different** clients may each
   declare the same `traitId` (issue #807) -- each gets its own -- so scenario clients need no prefixed ids.
 - **`writeConfig` binds to the config's client** — a context bound to another client is not refused (the write

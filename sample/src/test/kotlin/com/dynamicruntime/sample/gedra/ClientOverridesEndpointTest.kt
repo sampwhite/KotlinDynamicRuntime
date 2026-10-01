@@ -16,6 +16,7 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MCOPY
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
@@ -115,7 +116,7 @@ class ClientOverridesEndpointTest : StringSpec({
 
     // Last: it changes acme's configuration for the rest of the boot.
     "a stored config's value wins over acme's source one, and the row keeps the source value" {
-        val edits = gedraConfig(cxt, "edits916", "acmeEdits916", SC.acme) {
+        val edits = gedraConfig(cxt, "edits916", clientNamespace(SC.acme), SC.acme) {
             fragmentOverlay(HFRAG.home) { namespace("home") { key("brand", "Acme Co") } }
             uiBlockOverlay(HMENU.block) { items(HFLD.menu) { menuItem(HMENU.cfactReference, "Acme facts") } }
         }

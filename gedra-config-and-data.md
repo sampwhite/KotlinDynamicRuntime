@@ -157,7 +157,9 @@ are bounded this way.
 
 The mechanism is namespace ownership, not a separate store per client:
 
-- A **namespace belongs to exactly one owner** — `global`, or one client.
+- A **namespace belongs to exactly one owner** — `global`, or one client. A client's is fixed by its id: its
+  config declares into `client.<clientId>` or beneath it, and nowhere else (#949), so no client's types can land
+  where a global name or another client's lives. A sandbox (#928) declares into its parent's.
 - A config owned by client C may only `$ref` into namespaces owned by **C or `global`**. This holds by
   construction: C's own types sit in C's overlays, never in the global defs, and C's schema is the global defs
   plus C's overlays, so another client's type is simply not there to resolve.
@@ -336,6 +338,7 @@ Only the first is worth trading for uptime.
 |---|---|
 | A `traitId` claimed twice within one client's view — a global id reused anywhere, or a client's own id twice in that client (#807) | naming both bundles |
 | A namespace claimed by two owners | naming the owner it already has |
+| A client config declaring outside its own `client.<clientId>` namespace, or a new type declared into another owner's (#949) | naming the client's namespace |
 | The same config bundle contributed twice | |
 | A client's own trait id, cfact, workflow id or task id holding `:`, or breaking its kind's rule (#921) — a colon is the rooted form global names use, and a trait id may not hold a dot | naming the rule |
 

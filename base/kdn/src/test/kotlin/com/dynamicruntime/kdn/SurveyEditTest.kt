@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -51,7 +52,7 @@ class SurveyEditTest : StringSpec({
 
     fun asClient(): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }
 
-    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
                 clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -158,7 +159,7 @@ class SurveyEditTest : StringSpec({
         // Its own client: narrowing the shared client's schema would break the sibling tests' longer values.
         val nClient = "svyinvalid700"
         fun writeN(maxLen: Int?) {
-            val config = gedraConfig(cxt, "${nClient}cfg", "${nClient}config", nClient) {
+            val config = gedraConfig(cxt, "${nClient}cfg", clientNamespace(nClient), nClient) {
                 defineClient(
                     ClientDef(
                         clientId = nClient, name = nClient, usageType = ClientUsageType.dev,
@@ -317,7 +318,7 @@ class SurveyEditTest : StringSpec({
     "a first state write from a non-owner patch is owned by the form's owner, not the patcher (#687)" {
         val obClient = "ownbind687"
         fun writeOb(withSurvey: Boolean) {
-            val config = gedraConfig(cxt, "${obClient}cfg", "${obClient}config", obClient) {
+            val config = gedraConfig(cxt, "${obClient}cfg", clientNamespace(obClient), obClient) {
                 defineClient(
                     ClientDef(
                         clientId = obClient, name = obClient, usageType = ClientUsageType.dev,

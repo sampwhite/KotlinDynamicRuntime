@@ -15,6 +15,7 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.mail.MailCopy
 import com.dynamicruntime.common.mail.MailService
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.test.TSE
 import com.dynamicruntime.common.user.ADEP
@@ -52,7 +53,7 @@ class MailCopyTest : StringSpec({
     // A client of its own that rewords the invitation and signs the footer as itself. Written through the
     // config path a client's administrator would use, and reloaded, so this is the overlay as deployed.
     val overlayClient = "mailco"
-    val config = gedraConfig(cxt, "${overlayClient}cfg", "${overlayClient}config", overlayClient) {
+    val config = gedraConfig(cxt, "${overlayClient}cfg", clientNamespace(overlayClient), overlayClient) {
         defineClient(
             ClientDef(
                 clientId = overlayClient, name = "Mail Co", usageType = ClientUsageType.dev,

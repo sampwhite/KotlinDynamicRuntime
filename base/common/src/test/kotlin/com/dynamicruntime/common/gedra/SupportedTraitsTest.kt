@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -19,7 +20,7 @@ class SupportedTraitsTest : StringSpec({
     val cxt = KdrCxt("traits", KdrInstanceConfig("supported", ENV.local, ENV.liveSource))
 
     fun traitConfig(client: String, name: String, vararg traitIds: String): GedraConfig =
-        gedraConfig(cxt, name, "${client}ns", client) {
+        gedraConfig(cxt, name, clientNamespace(client), client) {
             for (id in traitIds) {
                 trait("${id.replaceFirstChar { it.uppercase() }}Entry", id, setOf(GedraDataType.formDoc)) {
                     property(id, "Something.", required = true)

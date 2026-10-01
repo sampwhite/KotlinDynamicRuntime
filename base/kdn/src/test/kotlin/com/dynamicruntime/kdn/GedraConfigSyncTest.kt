@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -44,7 +45,7 @@ class GedraConfigSyncTest : StringSpec({
     fun traitsOn(node: KdrCxt): List<String> = SchemaService.get(node).gedraTraitsFor(client).map { it.traitId }
 
     fun writeAndAnnounceOn(node: KdrCxt, vararg traits: String) {
-        val config = gedraConfig(node, "${client}cfg", "${client}config", client) {
+        val config = gedraConfig(node, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -91,7 +92,7 @@ class GedraConfigSyncTest : StringSpec({
         fun tcClient(node: KdrCxt) = node.mkSubContext("tiersync", tc).also { it.userId = 16000L }
         fun tcTraits(node: KdrCxt) = SchemaService.get(node).gedraTraitsFor(tc).map { it.traitId }
         fun writeTc(node: KdrCxt, vararg traits: String) {
-            val config = gedraConfig(node, "${tc}cfg", "${tc}config", tc) {
+            val config = gedraConfig(node, "${tc}cfg", clientNamespace(tc), tc) {
                 defineClient(
                     ClientDef(
                         clientId = tc, name = tc, usageType = ClientUsageType.dev,
@@ -148,7 +149,7 @@ class GedraConfigSyncTest : StringSpec({
         // dispatcher now does on a lookup miss, and which checkSync effects here directly.
         val nc = "arrivalco"
         fun ncClient(node: KdrCxt) = node.mkSubContext("arrival", nc).also { it.userId = 17000L }
-        val config = gedraConfig(nodeA, "${nc}cfg", "${nc}config", nc) {
+        val config = gedraConfig(nodeA, "${nc}cfg", clientNamespace(nc), nc) {
             defineClient(
                 ClientDef(
                     clientId = nc, name = nc, usageType = ClientUsageType.dev,

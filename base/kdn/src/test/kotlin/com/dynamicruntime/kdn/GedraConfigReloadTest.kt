@@ -18,6 +18,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import io.kotest.assertions.throwables.shouldThrow
@@ -40,7 +41,7 @@ class GedraConfigReloadTest : StringSpec({
 
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("reload", client).also { it.userId = 9000L }
     fun schema() = SchemaService.get(cxt)
-    fun ns(client: String) = "${client}config"
+    fun ns(client: String) = clientNamespace(client)
 
     /** Stores a config for [client] defining it and declaring the named traits, then reloads the client. */
     fun storeAndReload(client: String, vararg traits: String) {

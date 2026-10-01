@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -101,7 +102,7 @@ class ClientsOverviewEndpointTest : StringSpec({
 
     // Last: it changes acme's configuration for the rest of the boot.
     "a client defined in source keeps that origin under stored overlays, which the count says are loaded" {
-        val overlay = gedraConfig(cxt, "main", "acmeOverlay904", SC.acme) {
+        val overlay = gedraConfig(cxt, "main", clientNamespace(SC.acme), SC.acme) {
             trait("OverlayEntry", "acmeOverlay904", setOf(GedraDataType.formDoc), "A trait acme's administrator added.") {
                 property("text", "Text.")
             }

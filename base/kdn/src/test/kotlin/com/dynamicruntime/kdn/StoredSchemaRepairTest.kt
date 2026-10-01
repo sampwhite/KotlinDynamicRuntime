@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
@@ -50,7 +51,7 @@ class StoredSchemaRepairTest : StringSpec({
 
     /** Stores a config defining [client] plus whatever [build] declares, then reloads it on [on]. */
     fun storeAndReload(on: KdrCxt, client: String, build: GedraConfigBuilder.() -> Unit): ConfigReloadResult {
-        val config = gedraConfig(on, "${client}cfg", "${client}config", client) {
+        val config = gedraConfig(on, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client,
@@ -84,9 +85,9 @@ class StoredSchemaRepairTest : StringSpec({
         val issue = result.issues.single()
         issue.message shouldContain "noSuchOptionsSource841"
         issue.elementKind shouldBe GCEL.type
-        issue.elementId shouldBe "${client}config.Pick"
+        issue.elementId shouldBe "${clientNamespace(client)}.Pick"
         issue.origin shouldBe GedraConfigOrigin.stored
-        propertyOf(defOf(cxt, client, "${client}config.Pick"), "pick").containsKey(SCH.optionsSource) shouldBe false
+        propertyOf(defOf(cxt, client, "${clientNamespace(client)}.Pick"), "pick").containsKey(SCH.optionsSource) shouldBe false
         ClientService.get(cxt).present(client).shouldNotBeNull()
     }
 
@@ -99,7 +100,7 @@ class StoredSchemaRepairTest : StringSpec({
             }
         }
         result.issues.single().message shouldContain "does not parse"
-        propertyOf(defOf(cxt, client, "${client}config.Gated"), "secret").containsKey(SCH.visibleWhen) shouldBe false
+        propertyOf(defOf(cxt, client, "${clientNamespace(client)}.Gated"), "secret").containsKey(SCH.visibleWhen) shouldBe false
     }
 
     "a g-errors message that cannot render is dropped, and the rest stay" {
@@ -116,7 +117,7 @@ class StoredSchemaRepairTest : StringSpec({
             }
         }
         result.issues.single().message shouldContain "nosuchparam"
-        val errors = propertyOf(defOf(cxt, client, "${client}config.Worded"), "word")[SCH.errors].toJsonMapOrEmpty()
+        val errors = propertyOf(defOf(cxt, client, "${clientNamespace(client)}.Worded"), "word")[SCH.errors].toJsonMapOrEmpty()
         errors.containsKey("badValue") shouldBe false
         errors.containsKey("wrongType") shouldBe true
     }
@@ -137,7 +138,7 @@ class StoredSchemaRepairTest : StringSpec({
             messages.any { "'g-allowCoerse'" in it } shouldBe true
             messages.any { "'${SCH.allowCoerce}'" in it } shouldBe true
         }
-        val def = defOf(cxt, client, "${client}config.Keyed")
+        val def = defOf(cxt, client, "${clientNamespace(client)}.Keyed")
         propertyOf(def, "typo").containsKey("g-allowCoerse") shouldBe false
         propertyOf(def, "lax").containsKey(SCH.allowCoerce) shouldBe false
         propertyOf(def, "lax")[SCH.type] shouldBe SCT.string
@@ -153,7 +154,7 @@ class StoredSchemaRepairTest : StringSpec({
             }
         }
         result.issues.single().message shouldContain "noSuchField841"
-        val def = defOf(cxt, client, "${client}config.Laid")
+        val def = defOf(cxt, client, "${clientNamespace(client)}.Laid")
         def.containsKey(SCH.layout) shouldBe false
         propertyOf(def, "topic").containsKey(SCH.type) shouldBe true
     }
@@ -172,10 +173,10 @@ class StoredSchemaRepairTest : StringSpec({
         }
         val issue = result.issues.single()
         issue.message shouldContain "does not compile"
-        issue.elementId shouldBe "${client}config.Broken"
+        issue.elementId shouldBe "${clientNamespace(client)}.Broken"
         val store = SchemaService.get(cxt).storeFor(client)
-        store.defs.containsKey("${client}config.Broken") shouldBe false
-        store.types.containsKey("${client}config.Fine") shouldBe true
+        store.defs.containsKey("${clientNamespace(client)}.Broken") shouldBe false
+        store.types.containsKey("${clientNamespace(client)}.Fine") shouldBe true
     }
 
     // A trait whose own type will not compile goes with it (part 3 of #841): the unions and every supported-traits
@@ -197,14 +198,14 @@ class StoredSchemaRepairTest : StringSpec({
                 }
             }
         }
-        val badEntry = result.issues.single { it.elementId == "${client}config.BadEntry" }
+        val badEntry = result.issues.single { it.elementId == "${clientNamespace(client)}.BadEntry" }
         badEntry.message shouldContain "does not compile"
         result.issues.any { it.elementKind == GCEL.workflow && it.elementId == "collectBad" } shouldBe true
         val supported = SchemaService.get(cxt).supportedGedraTraitsFor(client, ClientService.get(cxt).present(client)!!)
             .map { it.traitId }
         supported.contains("${client}Good") shouldBe true
         supported.contains("${client}Bad") shouldBe false
-        SchemaService.get(cxt).storeFor(client).types.containsKey("${client}config.GoodEntry") shouldBe true
+        SchemaService.get(cxt).storeFor(client).types.containsKey("${clientNamespace(client)}.GoodEntry") shouldBe true
     }
 
     "a client cfact redeclaring a global one is dropped, and the client stands" {
@@ -236,7 +237,7 @@ class StoredSchemaRepairTest : StringSpec({
 
         val restarted = Startup.mkTestBootCxt("storedRepair2", "storedSchemaRepair2", db + warn)
         ClientService.get(restarted).present(client).shouldNotBeNull()
-        val pick = propertyOf(defOf(restarted, client, "${client}config.Pick"), "pick")
+        val pick = propertyOf(defOf(restarted, client, "${clientNamespace(client)}.Pick"), "pick")
         pick.containsKey(SCH.optionsSource) shouldBe false
 
         shouldThrow<KdrException> { Startup.mkTestBootCxt("storedRepair3", "storedSchemaRepair3", db) }

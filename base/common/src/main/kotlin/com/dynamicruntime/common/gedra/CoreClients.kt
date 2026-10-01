@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.naming.clientNamespace
 
 /** The names the clients `base/common` defines are addressed by (issue #343). */
 @Suppress("ConstPropertyName")
@@ -12,15 +13,6 @@ object CLC {
 
     /** The config bundle defining [CL.public]: `gc.cd.public.publicClient`. */
     const val publicConfig = "publicClient"
-
-    /**
-     * The namespace each of those bundles owns, `<clientId>config`, echoing `globalconfig`.
-     *
-     * Neither declares a type today. A namespace is claimed anyway, because namespace ownership is how one
-     * client's definitions stay invisible to another, and a client that acquires its first type should not
-     * have to also acquire a namespace at that moment -- the claim is the cheap half.
-     */
-    fun namespaceOf(clientId: String): String = "${clientId}config"
 }
 
 /**
@@ -49,7 +41,7 @@ fun coreClients(cxt: KdrCxt): List<GedraConfig> = listOf(hubClient(cxt), publicC
  * was absent would be one where internal work had nowhere to happen.
  */
 fun hubClient(cxt: KdrCxt): GedraConfig =
-    gedraConfig(cxt, CLC.hubConfig, CLC.namespaceOf(CL.hub), client = CL.hub) {
+    gedraConfig(cxt, CLC.hubConfig, clientNamespace(CL.hub), client = CL.hub) {
         defineClient(
             ClientDef(
                 clientId = CL.hub,
@@ -76,7 +68,7 @@ fun hubClient(cxt: KdrCxt): GedraConfig =
  * being absent means; the packaging that would let it name a set of its own is later work.
  */
 fun publicClient(cxt: KdrCxt): GedraConfig =
-    gedraConfig(cxt, CLC.publicConfig, CLC.namespaceOf(CL.public), client = CL.public) {
+    gedraConfig(cxt, CLC.publicConfig, clientNamespace(CL.public), client = CL.public) {
         defineClient(
             ClientDef(
                 clientId = CL.public,

@@ -69,25 +69,26 @@ class GedraConfigCollectorTest : StringSpec({
         message shouldContain "'name'"
     }
 
-    // The generalized form of reserving `globalconfig`: an owner claims a namespace, and nobody else writes
-    // into it. Stated this way because it is the check that has to hold when clients define their own config
-    // -- reaching into somebody else's namespace is how one owner's definitions become visible to another.
-    "a namespace has exactly one owner" {
-        val collector = GedraConfigCollector()
+    // A client declares into its own namespace (issue #949), `client.<clientId>` or beneath it, so its types can
+    // never land where a global name -- or another client's -- lives. That is what replaced "who claimed it first".
+    "a client config declaring outside its own namespace is refused" {
         val message = shouldThrow<KdrException> {
-            collector.add(devCxt, nameConfig(client = "acme"))
-        }.message
-        message.shouldNotBeNull() shouldContain GCFG.globalNamespace
-        message shouldContain "belongs to 'global'"
+            GedraConfigCollector().add(devCxt, nameConfig(client = "acme"))
+        }.fullMessage()
+        message shouldContain "declares its types in '${GCFG.globalNamespace}'"
+        message shouldContain "its own namespace, 'client.acme'"
+        // Another client's is no better than a global one.
+        shouldThrow<KdrException> {
+            GedraConfigCollector().add(devCxt, nameConfig(configName = "betaTraits", traitId = "budget", namespace = "client.acme", client = "beta"))
+        }.fullMessage() shouldContain "'client.beta'"
     }
 
-    "a client may own a namespace of its own" {
+    "a client declares into its own namespace, or beneath it" {
         val collector = GedraConfigCollector()
-        collector.add(devCxt, nameConfig(configName = "acmeTraits", traitId = "costCentre", namespace = "acme", client = "acme")) shouldBe true
-        // And nobody else may then write into it.
-        shouldThrow<KdrException> {
-            collector.add(devCxt, nameConfig(configName = "betaTraits", traitId = "budget", namespace = "acme", client = "beta"))
-        }
+        collector.add(devCxt, nameConfig(configName = "acmeTraits", traitId = "costCentre", namespace = "client.acme", client = "acme")) shouldBe true
+        collector.add(devCxt, nameConfig(configName = "acmeForms", traitId = "formNote", namespace = "client.acme.forms", client = "acme")) shouldBe true
+        // A sandbox's copy declares into its parent's.
+        collector.add(devCxt, SandboxConfigs.rebind(nameConfig(configName = "acmeMore", traitId = "more", namespace = "client.acme", client = "acme"))) shouldBe true
     }
 
     "the same config contributed twice is refused" {
@@ -250,7 +251,7 @@ class GedraConfigCollectorTest : StringSpec({
     // A client's own names are bare: a colon would read as another owner's definition, and it is what global names
     // are rooted with -- so refusing it on the client's side is what keeps the two disjoint by construction.
     "a client config declaring a rooted name is refused, whatever the kind" {
-        fun clientConfig(build: GedraConfigBuilder.() -> Unit) = gedraConfig(devCxt, "acmeMain", "acmeconfig", "acme") {
+        fun clientConfig(build: GedraConfigBuilder.() -> Unit) = gedraConfig(devCxt, "acmeMain", "client.acme", "acme") {
             trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
             build()
         }
@@ -274,7 +275,7 @@ class GedraConfigCollectorTest : StringSpec({
     }
 
     "a client trait id is held to letters, digits and underscores" {
-        val config = gedraConfig(devCxt, "acmeMain", "acmeconfig", "acme") {
+        val config = gedraConfig(devCxt, "acmeMain", "client.acme", "acme") {
             trait("AcmeNoteEntry", "acme.note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
         }
         shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, config) }.fullMessage() shouldContain
@@ -285,7 +286,7 @@ class GedraConfigCollectorTest : StringSpec({
     // workflow id, refused as the workflow is built.
     "a task id has to be a variable name" {
         shouldThrow<KdrException> {
-            gedraConfig(devCxt, "acmeMain", "acmeconfig", "acme") {
+            gedraConfig(devCxt, "acmeMain", "client.acme", "acme") {
                 trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
                 workflow("acmeWf", WfEntry.survey) { task("review-1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
             }

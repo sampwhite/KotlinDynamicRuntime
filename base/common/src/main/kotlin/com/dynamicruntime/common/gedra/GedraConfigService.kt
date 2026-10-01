@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlCxt
@@ -231,8 +232,8 @@ class GedraConfigService : ServiceInitializer {
 
     /**
      * The write-time guards a stored config must pass (#292, #696): its types are not in the reserved
-     * `globalconfig` namespace and not owned by the `global` client, it authors only into a namespace it owns,
-     * and it carries no `testFeatures` on a non-test node (an explicit write that set them is refused rather than
+     * `globalconfig` namespace and not owned by the `global` client, it authors only into its own
+     * `client.<clientId>` namespace (#949), and it carries no `testFeatures` on a non-test node (an explicit write that set them is refused rather than
      * silently stripped -- a bulk clone/restore, #685, strips and logs instead). Run before a write and, for a
      * patch, on the reassembled result.
      */
@@ -246,12 +247,10 @@ class GedraConfigService : ServiceInitializer {
                     "client takes nothing from the database in production.",
             )
         }
-        val nsOwner = SchemaService.get(cxt).gedraNamespaceOwner(config.namespace)
-        if (nsOwner != null && nsOwner != config.gedraId.client) {
-            throw KdrException.mkInput(
-                "Config '${config.gedraId}' declares its types in namespace '${config.namespace}', which belongs " +
-                    "to '$nsOwner'. A client may only author into a namespace it owns.",
-            )
+        // A client authors only into its own namespace (issue #949), which no other owner can hold -- so the rule
+        // replaces asking who already claimed the namespace.
+        clientNamespaceProblem(config.namespace, config.gedraId.client)?.let {
+            throw KdrException.mkInput("Config '${config.gedraId}' cannot be written: $it")
         }
         val testFeatures = config.client?.testFeatures.orEmpty()
         if (!cxt.instanceConfig.isTestInstance && testFeatures.isNotEmpty()) {

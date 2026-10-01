@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import io.kotest.core.spec.style.StringSpec
@@ -41,7 +42,7 @@ class TestClientSkillExamplesTest : StringSpec({
 
     // Create a client dynamically: define it, give it a trait, persist the bundle, and reload it live.
     fun createClient(client: String, trait: String) {
-        val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -80,7 +81,7 @@ class TestClientSkillExamplesTest : StringSpec({
 
         // Author the client's `topic` field with the given options, and reload it live.
         fun writeClient(vararg topics: String) {
-            val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+            val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
                 defineClient(
                     ClientDef(
                         clientId = client, name = client, usageType = ClientUsageType.dev,

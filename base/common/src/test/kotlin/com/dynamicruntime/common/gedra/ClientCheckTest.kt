@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
@@ -47,7 +48,7 @@ class ClientCheckTest : StringSpec({
         included: List<String> = emptyList(),
         configName: String = "${clientId}Client",
         origin: GedraConfigOrigin = GedraConfigOrigin.source,
-    ): GedraConfig = gedraConfig(devCxt, configName, "${clientId}config", clientId, origin) {
+    ): GedraConfig = gedraConfig(devCxt, configName, clientNamespace(clientId), clientId, origin) {
         defineClient(
             ClientDef(
                 clientId = declaredId,
@@ -215,7 +216,7 @@ class ClientCheckTest : StringSpec({
 
     /** A source config defining [clientId] with a sandbox unless [sandbox] is false. */
     fun sandboxParent(clientId: String, sandbox: Boolean = true): GedraConfig =
-        gedraConfig(devCxt, "${clientId}Client", "${clientId}config", clientId) {
+        gedraConfig(devCxt, "${clientId}Client", clientNamespace(clientId), clientId) {
             defineClient(
                 ClientDef(
                     clientId = clientId, name = clientId, usageType = ClientUsageType.dev,
@@ -374,7 +375,7 @@ class ClientCheckTest : StringSpec({
             audience = ClientAudience.internal,
         )
         val message = shouldThrow<KdrException> {
-            gedraConfig(devCxt, "twoClients", "twoconfig", "acme") {
+            gedraConfig(devCxt, "twoClients", clientNamespace("acme"), "acme") {
                 defineClient(def("acme"))
                 defineClient(def("beta"))
             }

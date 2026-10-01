@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
@@ -50,7 +51,7 @@ class GedraConfigBootLoadTest : StringSpec({
 
         // Boot 1: write a config that defines a client and one trait.
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1a", "cfgBootLoad1a", db)
-        val config: GedraConfig = gedraConfig(cxt1, "bootcfg", "bootclientconfig", client) {
+        val config: GedraConfig = gedraConfig(cxt1, "bootcfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Boot Client",
@@ -81,7 +82,7 @@ class GedraConfigBootLoadTest : StringSpec({
 
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1b", "cfgBootLoad1b", db)
         // `hub` is a source client, but a production one, not a template -- so a data config may not extend it.
-        val config = gedraConfig(cxt1, "extcfg", "extclientconfig", client) {
+        val config = gedraConfig(cxt1, "extcfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Extending Client",
@@ -110,7 +111,7 @@ class GedraConfigBootLoadTest : StringSpec({
         val client = "forgiveclient"
 
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1d", "cfgBootLoad1d", db)
-        val config = gedraConfig(cxt1, "forgivecfg", "forgiveclientconfig", client) {
+        val config = gedraConfig(cxt1, "forgivecfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Forgiven Client",
@@ -148,7 +149,7 @@ class GedraConfigBootLoadTest : StringSpec({
         val client = "holderclient"
 
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1e", "cfgBootLoad1e", db)
-        val config = gedraConfig(cxt1, "holdercfg", "holderclientconfig", client) {
+        val config = gedraConfig(cxt1, "holdercfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Holder Client",
@@ -182,7 +183,7 @@ class GedraConfigBootLoadTest : StringSpec({
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1c", "cfgBootLoad1c", db)
         // A config that overlays the shipped `home` fragment for its own client (`home.title` exists in the
         // base file, so the overlay is not orphaned) and defines the client so the overlay has a variant.
-        val config = gedraConfig(cxt1, "fragcfg", "fragclientconfig", client) {
+        val config = gedraConfig(cxt1, "fragcfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Frag Client",

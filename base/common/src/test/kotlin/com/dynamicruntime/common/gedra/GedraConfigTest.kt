@@ -49,7 +49,7 @@ class GedraConfigTest : StringSpec({
     // config is global, and config a client authored will be theirs -- which is exactly the scoping that
     // makes a client's trait collisions their own business (see the discussion on #292).
     "a config can belong to a client rather than to the deployment" {
-        val config = gedraConfig(cxt, "expenseTraits", "acme", client = "acme") {
+        val config = gedraConfig(cxt, "expenseTraits", "client.acme", client = "acme") {
             trait("CostCentreEntry", "costCentre", setOf(GedraDataType.formDoc)) {
                 property("code", "Which cost centre.", required = true)
             }

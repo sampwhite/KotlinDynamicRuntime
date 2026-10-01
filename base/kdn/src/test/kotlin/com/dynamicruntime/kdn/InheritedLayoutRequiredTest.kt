@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.layout
@@ -74,7 +75,7 @@ class InheritedLayoutFixture : ComponentDefinition {
                 layout(mode = SchLayoutMode.authoritative) { field("name", label = "Name") }
             }
         },
-        gedraConfig(cxt, "inheritedLayoutClient", "${client}config", client) {
+        gedraConfig(cxt, "inheritedLayoutClient", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = "Inherited layout", usageType = ClientUsageType.dev,

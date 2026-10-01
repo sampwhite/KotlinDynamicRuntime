@@ -33,7 +33,7 @@ class ClientExtensionTest : StringSpec({
         enabledEnvironments = setOf(ENV.unit, ENV.local), extendsFromClientId = extends,
     )
 
-    val template = gedraConfig(cxt, "base", "tplconfig", tpl) {
+    val template = gedraConfig(cxt, "base", "client.tpl", tpl) {
         defineClient(def(tpl))
         type("Shared") { type = SCT.kObject; property("code", "A code.") }
         type("Other") { type = SCT.kObject; property("x", "X.") }
@@ -58,7 +58,7 @@ class ClientExtensionTest : StringSpec({
         val copy = copyOf(emptyList())
         copy.gedraId.client shouldBe kid
         copy.name shouldBe "${CEXT.clonePrefix}tpl_base"
-        copy.namespace shouldBe "tplconfig"
+        copy.namespace shouldBe "client.tpl"
         copy.inheritedFrom shouldBe tpl
         copy.client shouldBe null
         copy.traits.keys shouldContainExactly setOf("note", "score")
@@ -71,9 +71,9 @@ class ClientExtensionTest : StringSpec({
     }
 
     "each kind the client defines replaces the template's of the same id, whole" {
-        val own = gedraConfig(cxt, "own", "kidconfig", kid) {
+        val own = gedraConfig(cxt, "own", "client.kid", kid) {
             defineClient(def(kid, tpl))
-            type("tplconfig.Shared") { type = SCT.kObject; property("code", "The client's code.") }
+            type("client.tpl.Shared") { type = SCT.kObject; property("code", "The client's code.") }
             trait("KidScoreEntry", "score", setOf(GedraDataType.formDoc), "The client's score.") { property("stars", "Stars.") }
             cfact("flagB", "kid", "The client's B.")
             workflow("review", WfEntry.normal) { task("t", "T") { trait("note"); save("s", "Save", WfSaveKind.edit) } }
@@ -81,9 +81,9 @@ class ClientExtensionTest : StringSpec({
         }
         val copy = copyOf(listOf(own))
         copy.traits.keys shouldContainExactly setOf("note")
-        // The client's `tplconfig.Shared` replaces the template's; the template's other types stay.
-        ("tplconfig.Shared" in copy.defs) shouldBe false
-        ("tplconfig.Other" in copy.defs) shouldBe true
+        // The client's `client.tpl.Shared` replaces the template's; the template's other types stay.
+        ("client.tpl.Shared" in copy.defs) shouldBe false
+        ("client.tpl.Other" in copy.defs) shouldBe true
         copy.cfacts.map { it.name } shouldContainExactly listOf("flagA")
         copy.workflows.keys shouldContainExactly setOf("audit", "tplCreate")
         // Usages are a set: a client that declares any declares all of them.
@@ -91,7 +91,7 @@ class ClientExtensionTest : StringSpec({
     }
 
     "a creation workflow of the client's own replaces the template's whatever its id" {
-        val own = gedraConfig(cxt, "own", "kidconfig", kid) {
+        val own = gedraConfig(cxt, "own", "client.kid", kid) {
             workflow("kidCreate", WfEntry.creation) { task("t", "T") { trait("note"); save("s", "Create") } }
         }
         copyOf(listOf(own)).workflows.keys shouldContainExactly setOf("audit", "review")
@@ -123,10 +123,10 @@ class ClientExtensionTest : StringSpec({
     // The merge is made only with a base a client may extend, so a refused base is reported as itself: here a
     // functional group the stored-only base includes would otherwise refuse the customer's production client first.
     "a base the client may not extend is reported as itself, not through the merge" {
-        val base = gedraConfig(cxt, "base", "storedbaseconfig", "storedbase", GedraConfigOrigin.stored) {
+        val base = gedraConfig(cxt, "base", "client.storedbase", "storedbase", GedraConfigOrigin.stored) {
             defineClient(def("storedbase").copy(includedTraits = listOf(CLD.allGlobal)))
         }
-        val child = gedraConfig(cxt, "own", "custconfig", "cust") {
+        val child = gedraConfig(cxt, "own", "client.cust", "cust") {
             defineClient(def("cust", "storedbase").copy(audience = ClientAudience.customer, usageType = ClientUsageType.production))
         }
         val collector = GedraConfigCollector().apply { add(cxt, base); add(cxt, child) }

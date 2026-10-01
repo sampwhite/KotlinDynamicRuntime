@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.prefillFromOwner
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
@@ -50,7 +51,7 @@ class PrefillDataTest : StringSpec({
 
     // A survey whose task requires `participant` (with a `fullName` field) and prefills it from the owner's
     // public name; `note` is an optional trait, so a form can exist without a participant entry.
-    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
                 clientId = client, name = client, usageType = ClientUsageType.dev,

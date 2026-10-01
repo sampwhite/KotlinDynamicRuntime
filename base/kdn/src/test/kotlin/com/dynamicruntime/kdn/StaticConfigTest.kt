@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -52,7 +53,7 @@ class StaticConfigTest : StringSpec({
     fun bound(cxt: KdrCxt): KdrCxt = cxt.mkSubContext("static", client).also { it.userId = 8240L }
 
     /** A stored config for the static client adding one trait -- the kind of edit made outside production. */
-    fun edit(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, "edits", "staticedits", client) {
+    fun edit(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, "edits", clientNamespace(client), client) {
         trait("StaticEditEntry", "staticEdit", setOf(GedraDataType.formDoc), "An edit made in the database.") {
             property("text", "Text.")
         }
@@ -100,7 +101,7 @@ class StaticConfigTest : StringSpec({
     "a stored client definition setting staticConfig is refused" {
         val unit = bootUnit("staticStored")
         val other = "staticclaim"
-        val claim = gedraConfig(unit, "main", "${other}config", other) {
+        val claim = gedraConfig(unit, "main", clientNamespace(other), other) {
             defineClient(
                 ClientDef(
                     clientId = other, name = other, usageType = ClientUsageType.dev, audience = ClientAudience.internal,

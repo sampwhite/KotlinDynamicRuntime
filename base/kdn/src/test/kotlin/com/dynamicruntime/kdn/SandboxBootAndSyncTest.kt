@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
@@ -40,7 +41,7 @@ class SandboxBootAndSyncTest : StringSpec({
 
     /** Stores [client]'s config with the named traits; defining it, with a sandbox, unless [define] is false. */
     fun write(node: KdrCxt, client: String, vararg traits: String, define: Boolean = true) {
-        val config = gedraConfig(node, "stored", "${client}stored", client) {
+        val config = gedraConfig(node, "stored", clientNamespace(client), client) {
             if (define) {
                 defineClient(
                     ClientDef(
@@ -138,7 +139,7 @@ class SandboxBootAndSyncTest : StringSpec({
 class SandboxParentComponent : ComponentDefinition {
     override val providerName: String = "sandboxParentFixture"
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "source", "${clientId}source", clientId) {
+        gedraConfig(cxt, "source", clientNamespace(clientId), clientId) {
             defineClient(
                 ClientDef(
                     clientId = clientId, name = "Source parent", usageType = ClientUsageType.dev,

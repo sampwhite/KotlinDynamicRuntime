@@ -13,6 +13,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
@@ -134,7 +135,7 @@ class VariantFixtureComponent : ComponentDefinition {
         },
         // A client that declares no `includedTraits` at all: it supports nothing, which is an ordinary state
         // for a client nobody has finished setting up, and one the union has to be able to say.
-        gedraConfig(cxt, "narrowClient", "${narrowClient}config", narrowClient) {
+        gedraConfig(cxt, "narrowClient", clientNamespace(narrowClient), narrowClient) {
             defineClient(
                 ClientDef(
                     clientId = narrowClient,
@@ -146,7 +147,7 @@ class VariantFixtureComponent : ComponentDefinition {
             )
         },
         // `hub`'s own: the same name, which makes it an alteration of that type for `hub` alone.
-        gedraConfig(cxt, "variantOverlay", "${baseNamespace}hub", CL.hub) {
+        gedraConfig(cxt, "variantOverlay", clientNamespace(CL.hub), CL.hub) {
             // Qualified through the companion, not "$namespace.Sample": inside a builder block `namespace`
             // is the *builder's* own, so that template would name a type in this config's namespace and
             // quietly declare a new type instead of altering the global one.
@@ -183,7 +184,7 @@ class WideningFixtureComponent : ComponentDefinition {
                 property("keep", "Kept.", required = true)
             }
         },
-        gedraConfig(cxt, "wideningOverlay", "${baseNamespace}hub", CL.hub) {
+        gedraConfig(cxt, "wideningOverlay", clientNamespace(CL.hub), CL.hub) {
             type("$baseNamespace.Sample") {
                 type = SCT.kObject
                 property("keep", "Kept.", required = true)

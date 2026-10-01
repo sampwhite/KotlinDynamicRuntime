@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
@@ -98,7 +99,7 @@ class OffsiteClientComponent : ComponentDefinition {
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "offsiteClient", "offsiteconfig", clientId) {
+        gedraConfig(cxt, "offsiteClient", clientNamespace(clientId), clientId) {
             defineClient(
                 ClientDef(
                     clientId = clientId,

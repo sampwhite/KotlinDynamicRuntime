@@ -14,6 +14,7 @@ import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MailService
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
@@ -111,7 +112,7 @@ class PublicAdminTest : StringSpec({
             EXC.notAuthorized, CFEP.bundleWrite,
             data = mapOf(
                 CFEP.name to "hijack",
-                CFEP.namespaceField to CLC.namespaceOf(CL.public),
+                CFEP.namespaceField to clientNamespace(CL.public),
                 CFEP.slots to mapOf(
                     CCT.cfactDef to listOf(mapOf(CCT.name to "x", CCT.group to "g", CCT.description to "d")),
                 ),

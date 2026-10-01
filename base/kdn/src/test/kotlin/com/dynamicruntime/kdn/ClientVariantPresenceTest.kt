@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaService
@@ -31,7 +32,7 @@ class ClientVariantPresenceTest : StringSpec({
     )
 
     fun store(client: String, def: ClientDef) {
-        val config = gedraConfig(cxt, "main", "${client}config", client) {
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
             defineClient(def)
             type("Own") {
                 type = SCT.kObject
@@ -52,7 +53,7 @@ class ClientVariantPresenceTest : StringSpec({
         enabledEnvironments = envs, includedTraits = includedTraits,
     )
 
-    fun hasVariant(client: String): Boolean = "${client}config.Own" in SchemaService.get(cxt).storeFor(client).defs
+    fun hasVariant(client: String): Boolean = "${clientNamespace(client)}.Own" in SchemaService.get(cxt).storeFor(client).defs
 
     "a present client gets its variant" {
         store("presentok819", def("presentok819"))

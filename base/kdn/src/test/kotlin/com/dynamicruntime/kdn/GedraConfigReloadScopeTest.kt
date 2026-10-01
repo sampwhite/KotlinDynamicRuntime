@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
@@ -37,7 +38,7 @@ class GedraConfigReloadScopeTest : StringSpec({
     fun writer(cxt: KdrCxt, client: String): KdrCxt = cxt.mkSubContext("scopeWrite", client).also { it.userId = 8420L }
 
     fun storeAndReload(cxt: KdrCxt, client: String, extraEnv: String? = null): ConfigReloadResult {
-        val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
