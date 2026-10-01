@@ -35,7 +35,8 @@ class TestClientSkillExamplesTest : StringSpec({
     // One shared instance for the whole spec -- the technique is to create a client per scenario, not a node.
     val cxt = Startup.mkTestBootCxt("skillTestClients", "skillTestClients")
 
-    // A write is attributed, so bind a sub-context to the client with a userId before writing its config.
+    // A sub-context in the client, with a userId so the write names who made it (optional: unset, it is the
+    // system user).
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }
 
     // Create a client dynamically: define it, give it a trait, persist the bundle, and reload it live.

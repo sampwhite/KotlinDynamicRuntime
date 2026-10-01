@@ -41,8 +41,9 @@ const val pageEditForm = "editForm"
  * schema-driven [SchemaForm] the create page uses -- so each entry becomes an editable section with a real
  * sub-form for its data. Saving sends the edits as a patch and reports what changed.
  *
- * The one genuinely new capability of the forms redesign. Its own route off the read-only view for now (reached
- * by an Edit button there); a later slice folds create/view/edit into a list-centric hub. The gedra-form helpers
+ * The one genuinely new capability of the forms redesign. Its own route, reached from a row's Edit action on the
+ * forms listing ([FormsPage]), which it returns to (`HP.from`): the listing is the hub, and create, view and edit
+ * stay separate routes launched from it. The gedra-form helpers
  * it shares -- endpoint discovery, the patch shaping, [summarizeForm] -- live in `GedraForms.kt`.
  *
  * Editing works in the endpoint's own terms (the edit union): each section carries an **action** (replace the

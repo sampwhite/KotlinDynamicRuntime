@@ -45,12 +45,11 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  * refs resolve at boot, where every component's `$defs` are compiled together (`clientCatalogSchema` and the
  * workflow schema are always present).
  *
- * ### Declared, not yet contributed
+ * ### The storage vocabulary
  *
- * Nothing registers this config with a component: the entries these slots describe are stored by #613 and
- * loaded by #614, and until a row can hold one, contributing these types would put entry types into every
- * catalog that nothing writes or reads. The slots are the storage **vocabulary**; the exact serialization to
- * and from them is #613's, and it conforms to these shapes.
+ * These slots are how a client's configuration is stored in a database row: each entry of a stored config is one
+ * slot, stored by #613 and loaded by #614. The exact serialization to and from them is #613's, and it conforms to
+ * these shapes.
  */
 fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.configName, GCFG.globalNamespace) {
     configTrait(

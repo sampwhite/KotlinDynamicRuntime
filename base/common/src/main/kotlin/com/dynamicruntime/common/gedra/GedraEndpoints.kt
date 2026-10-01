@@ -615,9 +615,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // a branch, so for `edits` to be typed per kind at all the kind has to be a token the schema can see. The
     // service refuses a row whose id disagrees with its group.
     //
-    // Only `formDoc` today, because it is the only kind with an edit union -- which is the only kind anything
-    // can store. A kind appears here when it appears in the union assembly, which is the right amount of
-    // friction for a decision about what may exist.
+    // Only `formDoc` is offered: it is the only kind anything creates (every create, import and workflow save makes
+    // a `formDoc`). `wfData` still has an edit union (`GU.entryKinds`) and the handler takes any kind it is given,
+    // so offering it here is one property -- worth adding only once something can create a `wfData` gedra.
     type(GEP.patchTargets) {
         type = SCT.kObject
         description = "The gedras a patch touches, grouped by kind."

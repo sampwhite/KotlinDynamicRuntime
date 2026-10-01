@@ -45,10 +45,10 @@ class DisplayError(val text: String, val kind: Kind) {
  * `RequestHandler`).
  *
  * The one thing still withheld is an **internal (5xx) message under an obfuscating deployment** ([obfuscate]):
- * those are not yet redacted server-side (a later phase of #97), so a raw 500 could carry a stack detail. A 4xx
- * -- bad input, not found, not authorized -- is the caller's own fault and safe to show, obfuscating or not. A
- * throwable that is not an [ApiError] (a network failure, a client-side bug) has no status, so it is treated as
- * internal and withheld under obfuscation too.
+ * those are not yet redacted server-side (recorded in `deferred-work.md`, "5xx wire redaction"), so a raw 500
+ * could carry a stack detail. A 4xx -- bad input, not found, not authorized -- is the caller's own fault and safe
+ * to show, obfuscating or not. A throwable that is not an [ApiError] (a network failure, a client-side bug) has
+ * no status, so it is treated as internal and withheld under obfuscation too.
  *
  * Either way the raw detail is logged to the browser console with the trace id, so a developer can diagnose it
  * even when the user is shown only the generic stand-in.
@@ -71,7 +71,7 @@ fun userFacingError(e: Throwable, obfuscate: Boolean = appConfig().obfuscateSens
     if (!isInternal) {
         return DisplayError(api.message + ref, DisplayError.Kind.message)
     }
-    // An internal (5xx) message is not yet redacted server-side (a later phase of #97). Where the deployment
+    // An internal (5xx) message is not yet redacted server-side (see `deferred-work.md`). Where the deployment
     // obfuscates, withhold it behind a generic apology; otherwise (dev) show the raw detail, set apart as a fault.
     return if (obfuscate) {
         DisplayError("Something went wrong. Please try again.$ref", DisplayError.Kind.message)

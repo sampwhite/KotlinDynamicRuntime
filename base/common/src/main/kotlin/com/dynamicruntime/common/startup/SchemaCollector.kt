@@ -91,8 +91,7 @@ class SchemaCollector(
      *
      * Two maps rather than one because they come from two places: a **component** declares a name and the
      * Kotlin that makes it true, while a **client** declares only a name -- its config is data, and data has
-     * nowhere to put a computation. So sources are global by construction, and a client-declared cfact is
-     * one nothing yet produces, which is exactly what "declare up front what your workflow will need" means.
+     * nowhere to put a computation. So sources are global by construction.
      */
     val cfacts: MutableMap<String, CFactDef> = LinkedHashMap()
 

@@ -20,7 +20,8 @@ so a signature change breaks the build rather than staling this. Keep the two in
 // One shared instance for the whole spec -- create a client per scenario, not a node.
 val cxt = Startup.mkTestBootCxt("skillTestClients", "skillTestClients")
 
-// A write is attributed, so bind a sub-context to the client with a userId before writing its config.
+// A sub-context in the client, with a userId so the write names who made it (optional: unset, it is the
+// system user).
 fun asClient(client: String): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }
 
 // Create a client dynamically: define it, give it a trait, persist the bundle, and reload it live.
@@ -154,11 +155,12 @@ later schema rejects" test.
   - **Not `stateTrait(...)`.** State is global, declared by components (issue #873): a client's config declaring
     one is refused at write, and a client-owned source config declaring one refuses the boot outside production.
   - A `schemaDef` slot exists for plain schema types too; most schema rides in via a trait's data shape.
-- **`GedraConfigService.get(cxt).writeConfig(clientCxt, config)`** persists the bundle. `clientCxt` carries a
-  `userId` (attribution) — hence `asClient(...)`; the write binds it to the config's own client itself, so
-  ownership stamps from the right owner whatever it was bound to. Writing is revision-aware
-  (issue #611): first write is version 1; rewriting an unpublished latest edits in place; writing after a
-  publish mints the next revision.
+- **`GedraConfigService.get(cxt).writeConfig(clientCxt, config)`** persists the bundle. What must be named is
+  the **client** -- the config names its own, and the write binds the context to it whatever it was bound to, so
+  ownership stamps from the right owner. A `userId` is optional (attribution; unset, it is the system user);
+  `asClient(...)` sets one because acting as a user in the client is the usual way a test picks its client.
+  Writing is revision-aware (issue #611): first write is version 1; rewriting an unpublished latest edits in place;
+  writing after a publish mints the next revision.
 - **`GedraConfigReload.reloadClient(cxt, client)`** is *the* thing that makes config dynamic. It withdraws the
   client's previously-loaded stored config, adds the new through the same boot checks (rolling back on any
   throw), then swaps each service's derived state — `SchemaService.reloadClient`, `ClientService.recheck`
@@ -246,9 +248,9 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   client declaring one `traitId` twice, or a namespace with two owners, fails the reload in a test (which is what
   `GedraConfigReloadTest`'s rollback case checks) but is tolerated live. Two **different** clients may each
   declare the same `traitId` (issue #807) -- each gets its own -- so scenario clients need no prefixed ids.
-- **`writeConfig` needs a context with a `userId`** — an unattributed context is refused; one bound to another
-  client is not (the write re-binds it to the config's own client). It refuses the reserved `global` client /
-  `globalconfig` namespace outright.
+- **`writeConfig` binds to the config's client** — a context bound to another client is not refused (the write
+  re-binds it), and a `userId` is not required. It refuses the reserved `global` client / `globalconfig`
+  namespace outright.
 
 ## Reference implementations and docs
 

@@ -563,7 +563,7 @@ creating and patching entries" true without pulling per-client generated endpoin
 ## Inheritance between clients
 
 **`extendsFromClientId` does not need to support chains.** One level: a client extends a template, and that is
-all.
+all. *(The relationship is validated, but nothing clones yet; the clone and its merge rules are issue #945.)*
 
 **Overlays do compose**, though: an alter or extend can be applied on top of another. Which raises whether a
 narrowing check runs against the schema immediately below it or against the base of the stack — and the two
@@ -603,9 +603,10 @@ user. Those conveniences are administrative, and `public` grants no administrato
 
 ## The per-client schema
 
-Fetching the current schema becomes a **method on the context**, and the `SchemaService` holds a variant of the
-schema stack per client, with cloning limited to what a client actually modified so a variant costs what it
-changed rather than the size of the schema.
+Fetching the current schema becomes a **method on the context** (not yet: `cxt.getSchema()` returns the global
+store and a variant comes from `SchemaService.storeFor(client)`; issue #946), and the `SchemaService` holds a
+variant of the schema stack per client, with cloning limited to what a client actually modified so a variant
+costs what it changed rather than the size of the schema.
 
 **Anonymous callers get the default global schema**; they need one and have no client to take it from.
 **`public` uses the global schema exactly**, per the identity case above.

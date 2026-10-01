@@ -166,8 +166,10 @@ enum class GedraConfigOrigin {
  *
  * The same segment bounds **visibility**: a config owned by a client may reference definitions owned by that
  * client or by `global`, and no others. That is why two clients defining one trait id is harmless — neither
- * can see the other's — and it is the half of the rule that has to be enforced when a second owner appears,
- * since `$ref` resolution over one compiled map would otherwise reach anywhere.
+ * can see the other's. For `$ref` it holds **by construction**: a client's own types (its stored config, or a
+ * component's config filed under that client) go into that client's overlays, never the global defs, and a
+ * client's schema is the global defs plus its own overlays -- so a `$ref` to another client's type has nothing
+ * to resolve against and is refused. A source type filed under no client is global, and anyone may name it.
  */
 class GedraConfig(
     /** This config's identity; its base id is [name]. */
