@@ -1348,7 +1348,8 @@ class GedraDataService : ServiceInitializer {
 
     /**
      * Applies one edit to the entries held by trait, returning whether anything changed. A config patch applies
-     * the same actions by the same addressing rule in `applyConfigSlotEdits`; keep the two in step.
+     * the same actions by the same addressing rule in `applyConfigSlotEdits`; the two share their core -- the
+     * actions ([applyTo]) and the key an edit must carry ([missingKeyFields]) -- in the kernel (issue #909).
      *
      * The entry an edit names is its `(traitId, primary-key values)` -- the trait alone for a single-instance
      * trait, or the trait plus the key values carried in the edit's own data for a keyed one (issue #487). A
@@ -1368,13 +1369,15 @@ class GedraDataService : ServiceInitializer {
         // The entry an edit names: its trait, plus its primary-key values when the trait declares a key (issue
         // #487). The key rides in the edit's own data -- a delete of a keyed trait carries a minimal `{key:
         // value}` -- so one addressing rule covers every action. An edit that omits a key field names no entry.
-        val pkValues = pkFields.map { field ->
-            edit.data?.get(field) ?: throw KdrException.mkInput(
+        missingKeyFields(pkFields, edit.data).firstOrNull()?.let { field ->
+            throw KdrException.mkInput(
                 "The edit to '${edit.traitId}' targets a trait keyed by '$field', but supplies no value for it, " +
                     "so it names no entry.",
             )
         }
-        val key = entryKey(edit.traitId, pkValues)
+        // The map key [entryKey] mints from the key values is the data side's form of `addressesEntry`: the same
+        // values compared the same way ([canonicalKey]), looked up rather than scanned for.
+        val key = entryKey(edit.traitId, pkFields.map { edit.data?.get(it) })
         val existing = byKey[key]
         val existingId = existing?.get(GE.entryId).toOptStr()
         if (edit.entryId != null && edit.entryId != existingId) {
@@ -1387,32 +1390,29 @@ class GedraDataService : ServiceInitializer {
                     ". The copy this edit was written against is out of date.",
             )
         }
-        if (edit.action == GedraEditAction.deleteOrNoOp) {
-            if (existing == null) {
-                return false
-            }
-            // Deleting the entry would take a value the caller's gate hides with it (issue #830).
-            gate.checkRemoval(edit.traitId, existing[GE.data].toJsonMapOrEmpty())
-            byKey.remove(key)
-            return true
-        }
-        val supplied = edit.data
-            ?: throw KdrException.mkInput(
+        val supplied = edit.data ?: if (edit.action == GedraEditAction.deleteOrNoOp) {
+            emptyMap()
+        } else {
+            throw KdrException.mkInput(
                 "The ${edit.action.name} of '${edit.traitId}' carries no data. Only a " +
                     "${GedraEditAction.deleteOrNoOp.name} may leave it out.",
             )
-        // A merge folds the supplied keys over what is stored; a "replace" takes the supplied data whole. Keys
-        // rather than a deep merge, which is what the questionnaire case wants: a page owns the answers it
-        // shows and says nothing about the rest.
-        val assembled = if (edit.action == GedraEditAction.addOrMerge) {
-            existing?.get(GE.data).toJsonMapOrEmpty() + supplied
-        } else {
-            supplied
+        }
+        val existingData = existing?.get(GE.data)?.toJsonMapOrEmpty()
+        val assembled = when (val result = edit.action.applyTo(existingData, supplied)) {
+            KeyedEdit.NoOp -> return false
+            KeyedEdit.Remove -> {
+                // Deleting the entry would take a value the caller's gate hides with it (issue #830).
+                gate.checkRemoval(edit.traitId, existingData.orEmpty())
+                byKey.remove(key)
+                return true
+            }
+            is KeyedEdit.Put -> result.data
         }
         // A field the caller's gate hides keeps its stored value (issue #830): left out by a replace from a form that
         // hid it, or sent back unchanged, it stays as it was; a change to it refuses the patch. Before the diff, so an
         // edit that differs only there reads as no change.
-        val data = gate.write(edit.traitId, existing?.get(GE.data)?.toJsonMapOrEmpty(), assembled)
+        val data = gate.write(edit.traitId, existingData, assembled)
         // Diff before stamp (issue #626): an update whose data equals what is stored changes nothing, so the
         // entry -- and its `updated` stamps -- is left as it is, and the edit reports not-applied. Covers a
         // `replace` with identical data and a `merge` that resolves to it. `GedraEditOutcome.applied` then means

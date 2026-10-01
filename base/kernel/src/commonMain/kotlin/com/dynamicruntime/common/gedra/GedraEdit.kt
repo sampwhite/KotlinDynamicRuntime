@@ -41,6 +41,51 @@ enum class GedraEditAction {
 }
 
 /**
+ * What one edit does to the entry it addresses (issue #909, phase D): the shared core of a data patch
+ * (`GedraDataService.applyEdit`) and a config patch (`applyConfigSlotEdits`), which apply the same three actions
+ * by the same addressing rule. Each side keeps its own concerns around it -- the data side its `entryId` staleness
+ * check, its `g-visibleWhen` gate, unchanged-is-no-op and stamps; the config side its slots.
+ */
+sealed interface KeyedEdit {
+    /** A delete of an entry that is not there: nothing to do, and not an error. */
+    data object NoOp : KeyedEdit
+
+    /** Remove the entry. */
+    data object Remove : KeyedEdit
+
+    /** Store [data] as the entry's data, creating it when there was none. */
+    class Put(val data: Map<String, Any?>) : KeyedEdit
+}
+
+/**
+ * This action applied to the entry an edit addresses: [existing] is that entry's **data** (null when there is
+ * none), [supplied] the edit's. A merge folds the supplied keys over what is stored -- keys, not a deep merge,
+ * since a page owns the answers it shows and says nothing about the rest; a replace takes the supplied data
+ * whole; a delete removes what is there.
+ */
+fun GedraEditAction.applyTo(existing: Map<String, Any?>?, supplied: Map<String, Any?>): KeyedEdit = when (this) {
+    GedraEditAction.deleteOrNoOp -> if (existing == null) KeyedEdit.NoOp else KeyedEdit.Remove
+    GedraEditAction.addOrReplace -> KeyedEdit.Put(supplied)
+    GedraEditAction.addOrMerge -> KeyedEdit.Put(existing.orEmpty() + supplied)
+}
+
+/**
+ * The fields of the key [pkFields] that an edit's [data] does not supply. The entry an edit names is its
+ * primary-key values, carried in its own data -- so an edit missing any of them names no entry, and must be
+ * refused rather than silently no-op a delete or add a keyless entry. Empty for an unkeyed trait or slot.
+ */
+fun missingKeyFields(pkFields: List<String>, data: Map<String, Any?>?): List<String> =
+    pkFields.filter { data?.get(it) == null }
+
+/**
+ * Whether [entryData] is the entry an edit carrying [data] addresses: every field of [pkFields] equal, compared
+ * as [canonicalKey] does, so a year keyed as `2024` is the one an edit naming `2024.0` means. An empty key -- a
+ * single-instance trait or slot -- addresses the one entry there is.
+ */
+fun addressesEntry(pkFields: List<String>, entryData: Map<String, Any?>, data: Map<String, Any?>): Boolean =
+    pkFields.all { canonicalKey(entryData[it]) == canonicalKey(data[it]) }
+
+/**
  * The fields every edit carries whatever its trait: the verb, and which entry is meant.
  *
  * Declared once so a manufactured branch cannot end up with a different envelope from its siblings — the same
