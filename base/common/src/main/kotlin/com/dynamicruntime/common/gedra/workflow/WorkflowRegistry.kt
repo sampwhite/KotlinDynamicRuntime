@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.gedra.workflow
 
-import com.dynamicruntime.common.cfact.parseCFactOrAlways
+import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
@@ -191,12 +191,10 @@ fun buildWorkflowRegistries(
         if (w.def.eligibility.isNotEmpty()) {
             val allowed = cfactNames(scope)
             for (e in w.def.eligibility) {
-                try {
-                    parseCFactOrAlways(e.test, allowed)
-                } catch (ex: KdrException) {
+                analyzeCFactOrAlways(e.test, allowed).problems.firstOrNull()?.let {
                     reportConfigProblem(
                         cxt,
-                        problem(scope, w, "has an eligibility test '${e.id}' whose cfact test does not parse: ${ex.message}"),
+                        problem(scope, w, "has an eligibility test '${e.id}' whose cfact test does not parse: ${it.message}"),
                         issues,
                     )
                     return false
@@ -210,12 +208,10 @@ fun buildWorkflowRegistries(
         // Singleton-cfact rules (issue #784): the condition parses against the scope's cfacts, like a test. The
         // emitted name itself was held to the framework list when the definition was built.
         for (r in w.def.singletons) {
-            try {
-                parseCFactOrAlways(r.whenExpr, cfactNames(scope))
-            } catch (ex: KdrException) {
+            analyzeCFactOrAlways(r.whenExpr, cfactNames(scope)).problems.firstOrNull()?.let {
                 reportConfigProblem(
                     cxt,
-                    problem(scope, w, "has a '${r.cfact}' singleton rule whose condition does not parse: ${ex.message}"),
+                    problem(scope, w, "has a '${r.cfact}' singleton rule whose condition does not parse: ${it.message}"),
                     issues,
                 )
                 return false
@@ -225,12 +221,10 @@ fun buildWorkflowRegistries(
         // parse would refuse every write, or none, and the first person to find out would be the one locked out.
         for (lock in w.def.locks) {
             for ((what, expr) in listOfNotNull("condition" to lock.whenExpr, lock.overrideWhen?.let { "override rule" to it })) {
-                try {
-                    parseCFactOrAlways(expr, cfactNames(scope))
-                } catch (ex: KdrException) {
+                analyzeCFactOrAlways(expr, cfactNames(scope)).problems.firstOrNull()?.let {
                     reportConfigProblem(
                         cxt,
-                        problem(scope, w, "has a lock on trait '${lock.traitId}' whose $what does not parse: ${ex.message}"),
+                        problem(scope, w, "has a lock on trait '${lock.traitId}' whose $what does not parse: ${it.message}"),
                         issues,
                     )
                     return false
@@ -273,11 +267,9 @@ fun buildWorkflowRegistries(
             // Who may save the task (issue #856): its rule parses against this scope's cfacts, like a display's
             // conditions -- a rule that failed to parse would refuse every save, found by the first person refused.
             task.saveWhen?.let { rule ->
-                try {
-                    parseCFactOrAlways(rule, cfactNames(scope))
-                } catch (ex: KdrException) {
+                analyzeCFactOrAlways(rule, cfactNames(scope)).problems.firstOrNull()?.let {
                     reportConfigProblem(
-                        cxt, problem(scope, w, "has a rule for who may save task '${task.id}' that does not parse: ${ex.message}"),
+                        cxt, problem(scope, w, "has a rule for who may save task '${task.id}' that does not parse: ${it.message}"),
                         issues,
                     )
                     return false
@@ -465,10 +457,8 @@ fun displayProblem(display: Map<String, Any?>, allowed: Set<String>): String? {
         }
     }
     for (expression in collectExpressions(display)) {
-        try {
-            parseCFactOrAlways(expression, allowed)
-        } catch (e: KdrException) {
-            return "has a condition that does not parse: ${e.message}"
+        analyzeCFactOrAlways(expression, allowed).problems.firstOrNull()?.let {
+            return "has a condition that does not parse: ${it.message}"
         }
     }
     return null

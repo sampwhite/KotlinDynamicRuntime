@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.uiblock
 
 import com.dynamicruntime.common.cfact.CFactPredicate
+import com.dynamicruntime.common.cfact.analyzeCFactOrAlways
 import com.dynamicruntime.common.cfact.parseCFactOrAlways
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
@@ -258,7 +259,7 @@ fun uiBlockFaults(sources: List<UiBlockSource>, allowedFor: (String?) -> Set<Str
             val allowed = allowedFor(client)
             val found = mutableListOf<String>()
             collectExpressions(merged.content).forEach { expression ->
-                runCatching { parseCFactOrAlways(expression, allowed) }.exceptionOrNull()?.let {
+                analyzeCFactOrAlways(expression, allowed).problems.firstOrNull()?.let {
                     val where = blockId + (client?.let { c -> " (client '$c')" } ?: "")
                     found.add("UiBlock '$where': ${it.message}")
                 }

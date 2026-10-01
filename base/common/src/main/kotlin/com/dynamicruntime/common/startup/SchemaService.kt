@@ -441,11 +441,8 @@ class SchemaService : ServiceInitializer {
      * [checkVisibleWhen] and the repair of a client's own definitions (issue #841).
      */
     private fun visibleWhenExpressionProblem(expression: String, registry: CFactRegistry = cfactsFor(null)): String? {
-        val predicate = try {
-            registry.parse(expression)
-        } catch (e: KdrException) {
-            return "does not parse: ${e.message}"
-        }
+        val report = registry.analyze(expression)
+        val predicate = report.predicate ?: return "does not parse: ${report.problems.first().message}"
         val notDelivered = predicate.referencedNames().filterNot { registry.defs[it]?.toFrontend == true }.sorted()
         return if (notDelivered.isEmpty()) {
             null

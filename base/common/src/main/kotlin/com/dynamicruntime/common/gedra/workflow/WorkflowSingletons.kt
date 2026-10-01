@@ -1,7 +1,6 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.cfact.CFactRegistry
-import com.dynamicruntime.common.exception.KdrException
 
 /**
  * Evaluating a normal workflow's **singleton-cfact rules** (issue #784): which of the framework's singleton
@@ -16,11 +15,6 @@ import com.dynamicruntime.common.exception.KdrException
 object WorkflowSingletons {
     /** The singleton cfacts [def]'s rules emit over [facts], in rule order. */
     fun emitted(registry: CFactRegistry, def: WfDef, facts: Set<String>): List<String> =
-        def.singletons.filter { rule ->
-            try {
-                registry.parse(rule.whenExpr).matches(facts)
-            } catch (_: KdrException) {
-                false
-            }
-        }.map { it.cfact }
+        def.singletons.filter { rule -> registry.analyze(rule.whenExpr, evaluateWith = facts).value ?: false }
+            .map { it.cfact }
 }
