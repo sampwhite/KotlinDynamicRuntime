@@ -45,7 +45,7 @@ import com.dynamicruntime.common.user.refreshActingRoles
  * Anonymous (no `userSections` gate): the home page is the shell a logged-out visitor lands on.
  * Registered by the `common` component.
  */
-fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "home") {
+fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
     // One navigable document: a display label plus the versioned id the frontend fetches it by.
     type(HTYPE.homeLink) {
         type = SCT.kObject

@@ -64,6 +64,9 @@ class InheritedLayoutRequiredTest : StringSpec({
 class InheritedLayoutFixture : ComponentDefinition {
     override val providerName: String = "inheritedLayoutFixture"
 
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = baseNamespace
+
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(

@@ -4,7 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.schema.SCT
 
 /**
- * The traits every deployment has, in the reserved `globalconfig` namespace (issue #300).
+ * The traits every deployment has, in the reserved `kdr.core` namespace (issue #300).
  *
  * Declared by `base/common`'s component rather than by a sample or a fixture, because these are part of what
  * the runtime *is* — and because anything a test needs to reach has to come from a component that always

@@ -10,7 +10,7 @@ package com.dynamicruntime.common.schema
  * type (the reachable body is then the workflow's, not the client catalog's), and what spares it fetching a
  * catalog of hundreds of unrelated endpoints to resolve a few fields.
  *
- * [seeds] are **qualified type names** (`globalconfig.NameData`), not `$ref` strings; use [refName] to turn a
+ * [seeds] are **qualified type names** (`kdr.core.NameData`), not `$ref` strings; use [refName] to turn a
  * `#/$defs/x` pointer into one. A seed absent from [defs] is skipped rather than faulted -- a dangling `$ref`
  * is a boot-time concern the schema build already owns, not this walk's to relitigate. The result is keyed
  * the same way [defs] is, so it drops under a [SCH.dDefs] key unchanged.

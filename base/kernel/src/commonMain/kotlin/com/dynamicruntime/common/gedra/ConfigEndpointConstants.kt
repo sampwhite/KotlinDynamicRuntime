@@ -11,7 +11,7 @@ import com.dynamicruntime.common.http.request.SECT
 @Suppress("ConstPropertyName")
 object CFEP {
     /** The schema namespace the config-endpoint types live in (distinct from the `clientAdmin` section path). */
-    const val namespace = "clientAdminConfig"
+    const val namespace = "kdr.clientAdminConfig"
 
     // --- paths (all in the `clientAdmin` section, so the section gate is the path prefix) ---
     const val bundles = "/${SECT.clientAdmin}/config/bundles"
@@ -60,7 +60,7 @@ object CFEP {
 @Suppress("ConstPropertyName")
 object ACEP {
     /** The schema namespace the admin config-endpoint types live in (distinct from the `admin` section path). */
-    const val namespace = "adminClientConfig"
+    const val namespace = "kdr.adminClientConfig"
 
     const val bundles = "/${SECT.admin}/client/config/bundles"
     const val bundle = "/${SECT.admin}/client/config/bundle"

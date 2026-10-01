@@ -234,6 +234,13 @@ class SchModule(
     val endpoints: List<KdrEndpoint>,
     /** Options providers declared in the same block, keyed by id (issue #413). Usually empty. */
     val optionsProviders: Map<String, SchOptionsProvider> = emptyMap(),
+    /** The namespace the block declares its types in, which its owning component's root is judged by (issue #950). */
+    val namespace: String? = null,
+    /**
+     * The root this module contributes to when it is not its component's own (issue #950) -- the explicit opt-in
+     * that lets a component extend another owner's root, `kdr` included. Null for the ordinary case.
+     */
+    val contributesTo: String? = null,
 )
 
 /**
@@ -564,9 +571,15 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
 }
 
 /** Builds a namespace's types and endpoints together, realizing every endpoint schema immediately. */
-fun schemaModule(cxt: KdrCxt, namespace: String, build: SchModuleBuilder.() -> Unit): SchModule {
+fun schemaModule(
+    cxt: KdrCxt,
+    namespace: String,
+    /** The root this module contributes to when it is not its component's own (issue #950); see [SchModule.contributesTo]. */
+    contributesTo: String? = null,
+    build: SchModuleBuilder.() -> Unit,
+): SchModule {
     val b = SchModuleBuilder(cxt, namespace).apply(build)
-    return SchModule(b.defs, b.endpoints, b.optionsProviders)
+    return SchModule(b.defs, b.endpoints, b.optionsProviders, namespace, contributesTo)
 }
 
 /**

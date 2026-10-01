@@ -38,12 +38,12 @@ class WorkflowModelTest {
         WVF.cfacts to mapOf("hasAdminLevel" to true, "hasEnvAuth" to false),
         // The per-type layouts (issue #585), keyed like `$defs`: the one type here declares a label override.
         WVF.fieldLayouts to mapOf(
-            "globalconfig.NameData" to mapOf(
+            "kdr.core.NameData" to mapOf(
                 SL.schemaFields to listOf(mapOf(SL.field to "name", SL.label to "What is it called?")),
             ),
         ),
         SCH.dDefs to mapOf(
-            "globalconfig.NameData" to mapOf(
+            "kdr.core.NameData" to mapOf(
                 SCH.type to SCT.kObject,
                 SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string)),
             ),
@@ -53,7 +53,7 @@ class WorkflowModelTest {
                 WFD.id to "identify",
                 WFD.label to "Name it",
                 WFD.traits to listOf(
-                    mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/globalconfig.NameData"),
+                    mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/kdr.core.NameData"),
                 ),
                 WFD.saves to listOf(mapOf(WFD.id to "create", WFD.label to "Create form", WFD.kind to "create")),
             ),
@@ -208,9 +208,9 @@ class WorkflowModelTest {
         // joined by the very name its schemaRef resolved under.
         val wf = parseWorkflowView(view())!!
         val trait = wf.tasks.single().traits.single()
-        assertEquals("globalconfig.NameData", trait.typeName)
+        assertEquals("kdr.core.NameData", trait.typeName)
         assertEquals("What is it called?", trait.fieldLayout?.fields?.single()?.label)
-        assertEquals(setOf("globalconfig.NameData"), wf.fieldLayouts.keys)
+        assertEquals(setOf("kdr.core.NameData"), wf.fieldLayouts.keys)
         // A view with no `fieldLayouts` key parses to no layout on the trait, not a failure -- the type renders alone.
         val bare = parseWorkflowView(view() - WVF.fieldLayouts)!!
         assertNull(bare.tasks.single().traits.single().fieldLayout)
@@ -256,7 +256,7 @@ class WorkflowModelTest {
                         WFD.id to "only",
                         WFD.label to "Review",
                         WFD.traits to listOf(
-                            mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/globalconfig.NameData"),
+                            mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/kdr.core.NameData"),
                         ),
                         WFD.saves to listOf(mapOf(WFD.id to "save", WFD.label to "Save changes", WFD.kind to "edit")),
                         // The form's current entry for this task -- the seed source.
@@ -319,7 +319,7 @@ class WorkflowModelTest {
         fun task(id: String, st: Map<String, Any?>?): Map<String, Any?> = buildMap {
             put(WFD.id, id)
             put(WFD.label, id.uppercase())
-            put(WFD.traits, listOf(mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/globalconfig.NameData")))
+            put(WFD.traits, listOf(mapOf(WFD.traitId to "name", WFD.required to true, WVF.schemaRef to "#/${SCH.dDefs}/kdr.core.NameData")))
             put(WFD.saves, listOf(mapOf(WFD.id to "save", WFD.label to "Save", WFD.kind to "edit")))
             st?.let { put(WVF.status, it) }
         }
@@ -462,7 +462,7 @@ class WorkflowModelTest {
             put(
                 SCH.dDefs,
                 mapOf(
-                    "globalconfig.NameData" to mapOf(
+                    "kdr.core.NameData" to mapOf(
                         SCH.type to SCT.kObject,
                         SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string)),
                         SCH.required to listOf("name"),

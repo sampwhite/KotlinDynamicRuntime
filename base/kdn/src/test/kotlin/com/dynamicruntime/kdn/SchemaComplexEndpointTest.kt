@@ -262,19 +262,19 @@ class SchemaComplexEndpointTest : StringSpec({
         // appended limit.
         val inputProps = complex[EI.inputSchema]!!.toJsonMap()[SCH.properties]!!.toJsonMap()
         inputProps.keys shouldContainAll listOf(CX.input, CX.mode, CX.sinceDate, EP.limit)
-        inputProps[CX.input]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("ComplexInput", "schema")
+        inputProps[CX.input]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("ComplexInput", "kdr.schema")
 
         // The shared $defs closes over the whole reference graph -- including the self-referential TreeNode,
         // returned once (the cyclic walk terminated), and Contact, which is only ever reached *through an
         // array's items*.
         val defs = results[SCH.dDefs]!!.toJsonMap()
         defs.keys shouldContainAll
-            listOf("schema.ComplexInput", "schema.Address", "schema.GeoPoint", "schema.TreeNode", "schema.Contact")
+            listOf("kdr.schema.ComplexInput", "kdr.schema.Address", "kdr.schema.GeoPoint", "kdr.schema.TreeNode", "kdr.schema.Contact")
 
         // And the array field keeps its element `$ref` intact, which is what tells a client (the frontend form
         // engine included) that this is a list of objects rather than a list of scalars.
-        val contactsProp = defs["schema.ComplexInput"]!!.toJsonMap()[SCH.properties]!!.toJsonMap()[CX.contacts]!!.toJsonMap()
+        val contactsProp = defs["kdr.schema.ComplexInput"]!!.toJsonMap()[SCH.properties]!!.toJsonMap()[CX.contacts]!!.toJsonMap()
         contactsProp[SCH.type] shouldBe SCT.array
-        contactsProp[SCH.items]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("Contact", "schema")
+        contactsProp[SCH.items]!!.toJsonMap()[SCH.dRef] shouldBe typeRefPath("Contact", "kdr.schema")
     }
 })

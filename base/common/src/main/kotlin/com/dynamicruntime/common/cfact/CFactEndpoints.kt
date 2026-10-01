@@ -25,7 +25,7 @@ import com.dynamicruntime.common.schema.SCT
  * not about topic, and that module is about administering users -- and it is contributed application-only,
  * where this belongs on every node, since an edge has a registry of its own to report.
  */
-fun cfactSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "cfact") {
+fun cfactSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.cfact") {
     type(CFD.referenceType) {
         type = SCT.kObject
         property(CFD.markdown, "The assembled cfact reference, as Markdown.", required = true)

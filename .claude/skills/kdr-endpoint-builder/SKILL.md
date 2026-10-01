@@ -13,7 +13,11 @@ layer — see the `kdr-schema-builder` skill.
 
 ## The DSL
 
-Declare types and endpoints together for a namespace with `schemaModule`:
+Declare types and endpoints together for a namespace with `schemaModule`. In a component, the namespace sits
+under the component's owner root -- core's modules are `kdr.<area>` (`kdr.home`, `kdr.job`) -- and a module
+extending another owner's root names it: `schemaModule(cxt, "kdr.extra", contributesTo = OWNR.kdrRoot) { ... }`
+(issue #950). A type name is declared once across every component; a second declaration fails the boot. The
+example below uses a bare `users` for brevity:
 
 ```kotlin
 val module = schemaModule(cxt, "users") {

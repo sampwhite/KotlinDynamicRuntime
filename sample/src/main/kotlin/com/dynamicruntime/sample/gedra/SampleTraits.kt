@@ -28,7 +28,7 @@ object ST {
     const val sampleTraits = "sampleTraits"
 
     /** The namespace the sample's own definitions live in. */
-    const val namespace = "sampleconfig"
+    const val namespace = "sample.traits"
 
     // --- the expense trait, which exercises a derived value ---
     const val expenseReport = "expenseReport"
@@ -120,14 +120,14 @@ object ST {
  * Two of them, deliberately, because **one trait does not test a union.** With a single branch there is
  * nothing for a discriminator to select between, no way for a failure to be attributed to the wrong branch,
  * and no payload carrying several shapes at once. The manufactured `FormDocEntry` union picks these up
- * alongside `globalconfig`'s `name`, so the fixture drives a union with three branches and a default.
+ * alongside core's `name`, so the fixture drives a union with three branches and a default.
  *
  * Between them, they carry every schema construct an entry can: a discriminated branch, a conditional inside
  * `data`, a derived value, and bounds. The conditional is the one worth having on purpose — pushing a trait's
  * fields under `data` moved conditionals one level deeper, and the form had a bug of exactly that shape in
  * #253.
  *
- * Their namespace is their own. `globalconfig` belongs to the runtime's real definitions, and a sample
+ * Their namespace is their own. Core's (`kdr.core`) belongs to the runtime's real definitions, and a sample
  * writing into it would be the namespace-ownership rule being broken by the first thing to test it.
  */
 fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, ST.namespace) {

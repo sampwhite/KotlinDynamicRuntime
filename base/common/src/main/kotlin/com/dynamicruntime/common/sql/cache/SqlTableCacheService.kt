@@ -522,7 +522,7 @@ class SqlTableCacheService : ServiceInitializer {
          * has never completed a load (no [TCI.queryFromDate]), a reload stuck pending ([TCI.pendingReload]),
          * row counts, and this node's dates against the shared row the whole cluster reads.
          */
-        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "cache") {
+        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.cache") {
             // The per-cache type is owned by SqlTableCache, alongside its serialization (toJsonMap).
             SqlTableCache.defineInfoType(this)
             type(reportTypeName) {

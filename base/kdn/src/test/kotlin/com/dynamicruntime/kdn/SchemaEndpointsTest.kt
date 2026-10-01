@@ -61,7 +61,7 @@ class SchemaEndpointsTest : StringSpec({
         val health = eps.first { it[EI.path] == "/health" }
         health.keys shouldContainAll
             listOf(EI.path, EI.method, EI.kind, EI.namespace, EI.description, EI.inputSchema, EI.outputSchema)
-        health[EI.namespace] shouldBe "node"
+        health[EI.namespace] shouldBe "kdr.node"
         health[EI.method] shouldBe "GET"
         // /health takes no parameters: its rendered input schema is a closed, empty object.
         health[EI.inputSchema]!!.toJsonMap()[SCH.additionalProperties] shouldBe false
@@ -70,9 +70,9 @@ class SchemaEndpointsTest : StringSpec({
         // /health's output refs node.Health; /demo/schema/sample's input flattens SampleQuery, whose `filter` refs
         // SampleFilter, and its output refs SampleItem, which refs SampleDetails.
         val defs = results(resp)[SCH.dDefs]!!.toJsonMap()
-        defs.keys shouldContainAll listOf("node.Health", "schema.SampleFilter", "schema.SampleItem", "schema.SampleDetails")
+        defs.keys shouldContainAll listOf("kdr.node.Health", "kdr.schema.SampleFilter", "kdr.schema.SampleItem", "kdr.schema.SampleDetails")
         // SampleQuery itself is dissolved into flat input fields, so it is NOT a returned def.
-        defs.keys shouldNotContain "schema.SampleQuery"
+        defs.keys shouldNotContain "kdr.schema.SampleQuery"
     }
 
     "/schema/endpoints filters by namespace, method, and path regex" {
@@ -81,7 +81,7 @@ class SchemaEndpointsTest : StringSpec({
         fun paths(params: Map<String, Any?>): List<Any?> =
             catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", params)).map { it[EI.path] }
 
-        paths(mapOf(EI.namespace to "node")) shouldBe listOf("/health")
+        paths(mapOf(EI.namespace to "kdr.node")) shouldBe listOf("/health")
         // The method filter returns only POST endpoints (which include /demo/schema/sample).
         val posts = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
         posts.map { it[EI.path] } shouldContain "/demo/schema/sample"
@@ -105,7 +105,7 @@ class SchemaEndpointsTest : StringSpec({
         val eps = catalogEndpoints(resp)
         eps.map { it[EI.path] } shouldBe listOf("/health")
         eps.single()[EI.method] shouldBe "GET"
-        (results(resp)[SCH.dDefs]!!.toJsonMap()).keys shouldContain "node.Health"
+        (results(resp)[SCH.dDefs]!!.toJsonMap()).keys shouldContain "kdr.node.Health"
     }
 
     "/schema/endpoint returns an empty list (not a 404) when nothing matches" {

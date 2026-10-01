@@ -49,7 +49,7 @@ import kotlin.time.Instant
  * - **Which revision**: the latest (most recent) enabled revision of each class. The published-only gating for
  *   a client in a protected state is #617; until then, latest.
  * - **Reserved namespace / trait collisions / degrade-vs-refuse**: all come free through
- *   [SchemaCollector.addGedraConfig] -> [GedraConfigCollector.add], which refuses a config in the `globalconfig`
+ *   [SchemaCollector.addGedraConfig] -> [GedraConfigCollector.add], which refuses a config in the `kdr.core`
  *   namespace (owned by `global`, not the client) and one colliding with a kept trait, and does so as
  *   [storedConfigCheckMode] says (issue #839) -- refuse the boot only in `unit`, and elsewhere degrade (log,
  *   skip), since stored data refusing a boot leaves nothing with which to repair it.
@@ -579,15 +579,14 @@ class SandboxBuild(val configs: List<GedraConfig>, val marker: Instant?)
 
 /**
  * Why [config] may not be **stored** as it is owned, or null (issues #292, #873): not by the runtime's `global`
- * client, and not in the reserved `globalconfig` namespace -- both belong to the runtime, and a stored config is
- * always a real client's. The one rule, asked by the write (`GedraConfigService`), which refuses such a config,
- * and by every load, which drops a row that got past it (a restore, a hand edit) rather than folding it into the
- * configuration every client shares.
+ * client, which is the runtime's -- a stored config is always a real client's. The one rule, asked by the write
+ * (`GedraConfigService`), which refuses such a config, and by every load, which drops a row that got past it (a
+ * restore, a hand edit) rather than folding it into the configuration every client shares.
+ *
+ * Its namespace is not judged here: a client's config declares into its own `client.<clientId>` namespace (#949),
+ * which keeps it out of the runtime's (`kdr.core` and every other `kdr` one, #950) at the write and at the load.
  */
 fun storedOwnershipProblem(config: GedraConfig): String? = when {
-    config.namespace == GCFG.globalNamespace ->
-        "Config '${config.gedraId}' declares its types in the reserved '${GCFG.globalNamespace}' namespace, " +
-            "which belongs to the runtime. A client's config must use its own namespace."
     config.gedraId.client == GID.globalClient ->
         "Config '${config.gedraId}' is owned by the '${GID.globalClient}' client, which is the runtime's. A stored " +
             "config belongs to a real client."

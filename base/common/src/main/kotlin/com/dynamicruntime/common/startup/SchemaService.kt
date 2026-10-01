@@ -962,7 +962,7 @@ class SchemaService : ServiceInitializer {
          * and a sample endpoint that exercises the schema surface. Follows the convention of defining a
          * service's endpoints with the service.
          */
-        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "schema") {
+        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.schema") {
             // ---- GET /schema/endpoints: introspect the registered endpoints ----
             // A general (not list) endpoint: its result carries two entries -- the endpoint renderings and a
             // shared `$defs` bag the renderings' `$ref`s bind to -- which the `items` envelope has no room for.

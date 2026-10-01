@@ -172,7 +172,7 @@ class NodeService : ServiceInitializer {
          * here with the service (the newer convention for small service files) rather than in a separate
          * endpoints file. The handler resolves the live [NodeService] at request time via [get].
          */
-        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "node") {
+        fun schema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.node") {
             type("Health") {
                 type = SCT.kObject
                 property(ND.nodeStartTime, "When this node's VM started.", required = true)

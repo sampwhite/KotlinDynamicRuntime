@@ -118,7 +118,7 @@ private const val systemInfoType = "SystemInfo"
  * editing a type every time a bean gains a field, and the catalog would advertise a contract the endpoint
  * cannot really promise. Every *other* endpoint should declare its output type.
  */
-fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, SECT.operator) {
+fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.operator}") {
     type(systemInfoType) {
         // No properties on purpose: this is the free-form diagnostic map described above.
         type = SCT.kObject

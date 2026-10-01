@@ -19,7 +19,7 @@ object GT {
      */
     const val name = "name"
 
-    /** The entry type the [name] trait generates: `globalconfig.NameEntry`. */
+    /** The entry type the [name] trait generates: `kdr.core.NameEntry`. */
     const val nameEntry = "NameEntry"
 
     /**
@@ -39,7 +39,7 @@ object GT {
      */
     const val cfacts = "cfacts"
 
-    /** The entry type the [cfacts] state trait generates: `globalconfig.CFactsEntry`. */
+    /** The entry type the [cfacts] state trait generates: `kdr.core.CFactsEntry`. */
     const val cfactsEntry = "CFactsEntry"
 
     /** Under a [cfacts] entry: the declared cfact names this gedra's state asserts. */

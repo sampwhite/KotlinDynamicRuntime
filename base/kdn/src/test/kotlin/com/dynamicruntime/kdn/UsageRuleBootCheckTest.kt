@@ -79,6 +79,9 @@ class UsageRuleBootCheckTest : StringSpec({
 class DuplicateUsageComponent : ComponentDefinition {
     override val providerName: String = "duplicateUsageFixture"
 
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = namespace
+
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
@@ -109,6 +112,9 @@ class DuplicateUsageComponent : ComponentDefinition {
 /** Contributes a global config whose usage mints a search parameter colliding with a reserved field (#538). */
 class ReservedFieldUsageComponent : ComponentDefinition {
     override val providerName: String = "reservedFieldUsageFixture"
+
+    /** The fixture's own owner root (issue #950). */
+    override val ownerRoot: String = namespace
 
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 

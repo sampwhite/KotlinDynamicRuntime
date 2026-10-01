@@ -12,6 +12,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.http.request.ContextRoot
+import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.Presence
@@ -31,6 +32,9 @@ import com.dynamicruntime.common.uiblock.uiBlockOverlay
  */
 class EdgeComponent : ComponentDefinition {
     override val providerName: String = name
+
+    /** Core's root (issue #950). */
+    override val ownerRoot: String = OWNR.kdrRoot
 
     /**
      * Present only on a node booted in the [BOOT.edge] role.

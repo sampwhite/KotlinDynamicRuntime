@@ -40,6 +40,9 @@ object MNT {
 class MultiNodeTestComponent : ComponentDefinition {
     override val providerName: String = "multiNodeTest"
 
+    /** This component's own root (issue #950); its global names live under it. */
+    override val ownerRoot: String = "multiNode"
+
     override fun isLoaded(cxt: KdrCxt): Boolean {
         if (!enabled(cxt)) return false
         if (cxt.instanceConfig.env == ENV.prod) {

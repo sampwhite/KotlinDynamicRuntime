@@ -24,6 +24,7 @@ import com.dynamicruntime.common.job.JobService
 import com.dynamicruntime.common.job.jobExceptionTables
 import com.dynamicruntime.common.job.jobOperatorSchema
 import com.dynamicruntime.common.job.jobTables
+import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
@@ -94,6 +95,9 @@ import com.dynamicruntime.common.startup.service
  */
 class CommonComponent : ComponentDefinition {
     override val providerName: String = "common"
+
+    /** Core's root (issue #950). */
+    override val ownerRoot: String = OWNR.kdrRoot
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         // The surface that belongs to an application and not to a perimeter (issues #432, #433). An edge is
@@ -226,7 +230,7 @@ class CommonComponent : ComponentDefinition {
     override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(homeMenuBlock())
 
     /**
-     * The Gedra configs this module defines: the traits every deployment has, in the reserved `globalconfig`
+     * The Gedra configs this module defines: the traits every deployment has, in the reserved `kdr.core`
      * namespace (issue #300), and the two clients every deployment has (issue #343). Declared here rather
      * than in a sample, because these are part of what the runtime is -- and because anything a test needs to
      * reach has to come from a component that always loads.

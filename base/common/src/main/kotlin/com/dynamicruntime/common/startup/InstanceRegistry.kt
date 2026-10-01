@@ -112,18 +112,21 @@ object InstanceRegistry {
             val fragmentSources = mutableListOf<FragmentSource>()
             val uiBlockSources = mutableListOf<UiBlockSource>()
             for (component in loaded) {
-                component.addSchema(cxt, collector)
-                fragmentSources.addAll(component.fragments(cxt))
-                uiBlockSources.addAll(component.uiBlocks(cxt))
-                // Same loop, so every config is present before any service binds -- which is what lets
-                // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
-                for (config in component.gedraConfigs(cxt)) {
-                    // A config's fragment overlays travel with the config, so they are taken only when it is
-                    // (issue #456) -- a bundle whose checks just failed must not still change what its
-                    // client's people read.
-                    if (collector.addGedraConfig(cxt, config)) {
-                        fragmentSources.addAll(config.fragments)
-                        uiBlockSources.addAll(config.uiBlocks)
+                // With the component in hand, so what it contributes is held to its owner root (issue #950).
+                collector.contributingAs(cxt, component) {
+                    component.addSchema(cxt, collector)
+                    fragmentSources.addAll(component.fragments(cxt))
+                    uiBlockSources.addAll(component.uiBlocks(cxt))
+                    // Same loop, so every config is present before any service binds -- which is what lets
+                    // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
+                    for (config in component.gedraConfigs(cxt)) {
+                        // A config's fragment overlays travel with the config, so they are taken only when it is
+                        // (issue #456) -- a bundle whose checks just failed must not still change what its
+                        // client's people read.
+                        if (collector.addGedraConfig(cxt, config)) {
+                            fragmentSources.addAll(config.fragments)
+                            uiBlockSources.addAll(config.uiBlocks)
+                        }
                     }
                 }
             }

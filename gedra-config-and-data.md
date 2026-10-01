@@ -164,9 +164,11 @@ The mechanism is namespace ownership, not a separate store per client:
   construction: C's own types sit in C's overlays, never in the global defs, and C's schema is the global defs
   plus C's overlays, so another client's type is simply not there to resolve.
 
-Reserving `globalconfig` is the first instance of that rule rather than a special case: `global` claims it,
-and nobody else may write into it. Stating it as ownership is what makes the rule survive the arrival of a
-second owner; stating it as one reserved name would not.
+Global names are owned by **root** (#950): every component declares the owner root its namespaces live under --
+core's one root is `kdr` (`kdr.core`, `kdr.gedra`, ...) -- and a module or config under another owner's root says
+so by name (`contributesTo`), config by config. `client` is a reserved root, holding only clients' own
+namespaces. Stating it as ownership is what makes the rule survive the arrival of more owners; stating it as a
+list of reserved names would not.
 
 Visibility is also *why* two clients may define the same trait id harmlessly — neither can see the other's
 (issue #807). Each gets its own trait, and it stops nothing working. It does have to be resolved before either
@@ -337,7 +339,8 @@ Only the first is worth trading for uptime.
 | Check | Refused |
 |---|---|
 | A `traitId` claimed twice within one client's view — a global id reused anywhere, or a client's own id twice in that client (#807) | naming both bundles |
-| A namespace claimed by two owners | naming the owner it already has |
+| A namespace claimed by two owners — a backstop since #949/#950, reached only when production forgave a component namespace under `client` | naming the owner it already has |
+| A component namespace off its owner root without `contributesTo`, under `client`, or with no root; a declared type outside its contribution's root; a type name declared twice (#950) | naming the component and the rule |
 | A client config declaring outside its own `client.<clientId>` namespace, or a new type declared into another owner's (#949) | naming the client's namespace |
 | The same config bundle contributed twice | |
 | A client's own trait id, cfact, workflow id or task id holding `:`, or breaking its kind's rule (#921) — a colon is the rooted form global names use, and a trait id may not hold a dot | naming the rule |

@@ -26,7 +26,7 @@ object GCFG {
      * owner, and a config owned by client C may only reach into namespaces owned by C or by `global`. This is
      * simply the first claim.
      */
-    const val globalNamespace = "globalconfig"
+    const val globalNamespace = "kdr.core"
 
     /** Overrides what a config problem does at startup; see [gedraConfigCheckMode]. */
     val checkEnvVar = EnvVarDef(
@@ -492,6 +492,11 @@ class GedraConfigCollector {
                 )
             }
         }
+        // A backstop now, not the rule (issue #950): a client config is held to its own namespace above, and a
+        // component's namespace to its owner root -- never the reserved `client` one -- as it is contributed. The one
+        // way here is a component namespace under `client` that a production boot forgave and took; refusing the
+        // config then still keeps another owner's definitions out of a client's namespace. Not an assertion, since
+        // the forgiving path that leads here is meant to keep the node up.
         val owner = namespaceOwners[config.namespace]
         if (owner != null && owner != config.namespaceClaimant) {
             return config.issue(

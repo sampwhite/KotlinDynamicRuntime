@@ -64,7 +64,7 @@ class UserAdminPaths(
 
 /** The **full-scope** surface: the `admin` section, which requires [ROLE.allClients]. */
 fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, SECT.admin,
+    cxt, "kdr.${SECT.admin}",
     UserAdminPaths(
         ADEP.users, ADEP.userSearch, ADEP.userCreate, ADEP.userSetRoles, ADEP.userSetEnabled, ADEP.userSetOrg,
         ADEP.userSetName, ADEP.userInvite, ADEP.userDelete, ADEP.userSetLabels, ADEP.userLabelSuggestions,
@@ -82,7 +82,7 @@ fun adminSchema(cxt: KdrCxt): SchModule = userAdminModule(
  * mean two implementations of the same rules, and the copy is the one that would miss a fix.
  */
 fun scopedUserAdminSchema(cxt: KdrCxt): SchModule = userAdminModule(
-    cxt, SECT.clientAdmin,
+    cxt, "kdr.${SECT.clientAdmin}",
     UserAdminPaths(
         UADEP.users, UADEP.userSearch, UADEP.userCreate, UADEP.userSetRoles, UADEP.userSetEnabled, UADEP.userSetOrg,
         UADEP.userSetName, UADEP.userInvite, UADEP.userDelete, UADEP.userSetLabels, UADEP.userLabelSuggestions,

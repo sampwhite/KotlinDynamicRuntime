@@ -63,7 +63,7 @@ object EAEP {
  * the JWT and posts it here. That is why there is no client secret, no registered redirect URI, no `state`,
  * and no callback endpoint, and why a plain server-rendered page is enough to log somebody in.
  */
-fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "auth") {
+fun envAuthSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.edgeAuth") {
     type(EAEP.sessionType) {
         type = SCT.kObject
         property(EAEP.email, "The address now signed in for this session.", required = true)

@@ -37,7 +37,7 @@ object PFO {
     val ownerAttributes: List<String> = listOf(publicName, name, email)
 
     /** The schema namespace and type name for this function's initialization data. */
-    const val namespace = "wffnpfo"
+    const val namespace = "kdr.wffnpfo"
     const val initDataType = "PrefillFromOwner"
 }
 
