@@ -194,7 +194,7 @@ class ClientsPageTest {
             ),
             COV.blocks to listOf(
                 blockRow("homeMenu", "cfactReference", false, true, field(UIB.cfactExpression, null, "#never"), baseLabel = "Client facts"),
-                blockRow("homeMenu", "workflows", false, false, field(UIB.cfactExpression, "#never", "loggedIn,app"), baseLabel = "Workflows"),
+                blockRow("homeMenu", "workflows", false, false, field(UIB.cfactExpression, "#never", "kdr:loggedIn,kdr:app"), baseLabel = "Workflows"),
                 blockRow("sampleNav", "overview", false, false, field("label", "Overview", "Acme overview")),
                 blockRow("sampleNav", "siteAudits", true, false, field("label", null, "Site audits"), field(UIB.displayOrder, null, "150")),
                 blockRow("homeMenu", null, true, false, field("label", null, "Stray")),
@@ -242,7 +242,7 @@ class ClientsPageTest {
         // (which #916 does not call hidden) -- is a change to the condition, not "shown".
         fun condition(base: String?, value: String) = BlockOverrideView("m", "items", "x", added = false, hidden = false, baseLabel = "A",
             fields = listOf(BlockFieldView(UIB.cfactExpression, base, value, "c", "source")))
-        assertEquals("condition changed", menuChangeText(condition("loggedIn", "hasAdminLevel")))
+        assertEquals("condition changed", menuChangeText(condition("kdr:loggedIn", "kdr:hasAdminLevel")))
         assertEquals("condition changed", menuChangeText(condition("#never", "#never")))
         assertEquals("shown", menuChangeText(condition("#never", "#always")))
         // The client's value: the label when set; nothing for a hide or a show (the condition is not a value anybody
@@ -250,7 +250,7 @@ class ClientsPageTest {
         assertEquals("Acme overview", blockValueText(b[2]))
         assertEquals("", blockValueText(b[0]))
         assertEquals("", blockValueText(b[1]))
-        assertEquals("hasAdminLevel", blockValueText(condition("loggedIn", "hasAdminLevel")))
+        assertEquals("kdr:hasAdminLevel", blockValueText(condition("kdr:loggedIn", "kdr:hasAdminLevel")))
         assertEquals("b", blockValueText(other))
         assertEquals("Site audits", blockValueText(b[3]))
         assertEquals("icon: a, ${UIB.displayOrder}: 1", blockValueText(BlockOverrideView("m", "items", "x", added = true, hidden = false, baseLabel = null, fields = listOf(
@@ -291,7 +291,7 @@ class ClientsPageTest {
         assertEquals("acmeClient (source)", blockSetByText(acmeOverrides().blocks[2]))
         // A row two configs set names both, the stored one first: applied last, its values are the ones that win.
         val mixed = BlockOverrideView("m", "items", "x", added = false, hidden = false, baseLabel = "A", fields = listOf(
-            BlockFieldView(HFLD.label, "A", "B", "edits", "stored"), BlockFieldView(UIB.cfactExpression, null, "loggedIn", "acmeClient", "source"),
+            BlockFieldView(HFLD.label, "A", "B", "edits", "stored"), BlockFieldView(UIB.cfactExpression, null, "kdr:loggedIn", "acmeClient", "source"),
             BlockFieldView(UIB.displayOrder, null, "5", "acmeClient", "source"),
         ))
         assertEquals("edits (stored), acmeClient (source)", blockSetByText(mixed))
@@ -395,11 +395,11 @@ class ClientsPageTest {
 
     private fun sampleMenu() = parseMenuItems(
         listOf(
-            menuRow("account", "Account", "Account", "app", "app"),
-            menuRow("profile", "Profile", "My account", "loggedIn,app", "loggedIn,app", stored = true, parent = "account"),
+            menuRow("account", "Account", "Account", "kdr:app", "kdr:app"),
+            menuRow("profile", "Profile", "My account", "kdr:loggedIn,kdr:app", "kdr:loggedIn,kdr:app", stored = true, parent = "account"),
             menuRow("catalog", "Endpoint catalog", "Endpoint catalog", null, null),
-            menuRow("docs", "Documents", "Documents", "app", "#never", stored = true),
-            menuRow("workflows", "Workflows", "Workflows", "#never", "loggedIn,app"),
+            menuRow("docs", "Documents", "Documents", "kdr:app", "#never", stored = true),
+            menuRow("workflows", "Workflows", "Workflows", "#never", "kdr:loggedIn,kdr:app"),
             mapOf(MNU.label to "no id"),
         ),
     )
@@ -410,13 +410,13 @@ class ClientsPageTest {
         assertEquals(listOf("account", "profile", "catalog", "docs", "workflows"), items.map { it.itemId })
         assertEquals("account", items[1].parentId)
         assertEquals(true, items[1].stored)
-        assertEquals("app", menuVisibilityText(items[0]))
+        assertEquals("kdr:app", menuVisibilityText(items[0]))
         assertEquals("everyone", menuVisibilityText(items[2]))
-        assertEquals("hidden (shipped: app)", menuVisibilityText(items[3]))
-        assertEquals("loggedIn,app (shipped: hidden)", menuVisibilityText(items[4]))
+        assertEquals("hidden (shipped: kdr:app)", menuVisibilityText(items[3]))
+        assertEquals("kdr:loggedIn,kdr:app (shipped: hidden)", menuVisibilityText(items[4]))
         assertEquals(listOf(false, false, false, true, false), items.map { menuItemHidden(it) })
         // The audiences a client may show an item to: everyone, then each condition the shipped menu draws for, once.
-        assertEquals(listOf("#always", "app", "loggedIn,app"), menuAudiences(items))
+        assertEquals(listOf("#always", "kdr:app", "kdr:loggedIn,kdr:app"), menuAudiences(items))
         // The groups: what some other item sits under; those get no Hide.
         assertEquals(setOf("account"), menuGroups(items))
     }
@@ -426,8 +426,8 @@ class ClientsPageTest {
         assertEquals(mapOf(COV.client to "acme", COV.itemId to "profile", MNU.label to "Me"), menuEditRequest("acme", "profile", "Me", null, null))
         assertEquals(mapOf(COV.client to "acme", COV.itemId to "docs", MNU.visibility to MNU.hide), menuEditRequest("acme", "docs", null, MNU.hide, null))
         assertEquals(
-            mapOf(COV.client to "acme", COV.itemId to "workflows", MNU.visibility to MNU.show, MNU.condition to "loggedIn,app"),
-            menuEditRequest("acme", "workflows", null, MNU.show, "loggedIn,app"),
+            mapOf(COV.client to "acme", COV.itemId to "workflows", MNU.visibility to MNU.show, MNU.condition to "kdr:loggedIn,kdr:app"),
+            menuEditRequest("acme", "workflows", null, MNU.show, "kdr:loggedIn,kdr:app"),
         )
         val result = parseMenuEditResult(mapOf(COV.configName to "copy", MNU.label to "Me", MNU.condition to "#never", CPY.stored to true))
         assertEquals("copy" to "Me", result.configName to result.label)

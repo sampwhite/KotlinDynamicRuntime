@@ -3,7 +3,6 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.cfact.CFD
 import com.dynamicruntime.common.cfact.CFGRP
-import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
@@ -37,8 +36,8 @@ class CFactRegistryEndpointTest : StringSpec({
         // Both boot roles, on either kind of node: an edge does not *remove* the application's items, it
         // fails to match them -- so `edge` has to be a name an application knows even though it is never
         // present there.
-        doc shouldContain BOOT.app
-        doc shouldContain BOOT.edge
+        doc shouldContain CFACTS.app
+        doc shouldContain CFACTS.edge
         doc shouldContain CFACTS.loggedIn
         doc shouldContain CFACTS.anonymous
         doc shouldContain CFACTS.hasOperatorLevel
@@ -54,7 +53,7 @@ class CFactRegistryEndpointTest : StringSpec({
         // `hasAdminLevel` fires, `edge` does not, and the document says so beside each name.
         val doc = reference(TestUser.create(cxt, "cfact-present@example.com", level = ROLE.admin))
         doc shouldContain "`${CFACTS.hasAdminLevel}`\n\n**For you now:** present"
-        doc shouldContain "`${BOOT.edge}`\n\n**For you now:** absent"
+        doc shouldContain "`${CFACTS.edge}`\n\n**For you now:** absent"
     }
 
     "what a node assembles says which node it is" {
@@ -64,8 +63,8 @@ class CFactRegistryEndpointTest : StringSpec({
         val anonymous = cxt.mkSubContext("cfactAnon")
         anonymous.userProfile = UserProfile()
         val present = registry.assemble(anonymous)
-        present shouldContain BOOT.app
-        present shouldNotContain BOOT.edge
+        present shouldContain CFACTS.app
+        present shouldNotContain CFACTS.edge
         // ...and this caller has no identity, so the positive form of "not logged in" is the one that fires.
         present shouldContain CFACTS.anonymous
         present shouldNotContain CFACTS.loggedIn
@@ -89,7 +88,7 @@ class CFactRegistryEndpointTest : StringSpec({
         // Moved from `clientAdmin` to `clientOperator` (issue #488): an operator now reads it, which the
         // admin-only listing refused, while a plain user still cannot. The change of who is admitted is the
         // point of the move, so both halves are asserted.
-        reference(TestUser.create(cxt, "cfact-op@example.com", level = ROLE.operator)) shouldContain BOOT.app
+        reference(TestUser.create(cxt, "cfact-op@example.com", level = ROLE.operator)) shouldContain CFACTS.app
         TestUser.create(cxt, "cfact-user@example.com").expectError(EXC.notAuthorized, CFD.cfactsPath)
     }
 })

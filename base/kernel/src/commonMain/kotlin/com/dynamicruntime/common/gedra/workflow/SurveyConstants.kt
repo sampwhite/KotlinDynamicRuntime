@@ -27,10 +27,10 @@ object SVY {
      * with no computed state yet carries neither survey fact, which reads correctly as "not ready" rather than
      * -- as a negated `surveyIncomplete` would -- falsely reading as complete. See the survey design doc.
      */
-    const val surveyComplete = "surveyComplete"
+    const val surveyComplete = "kdr:surveyComplete"
 
     /** A form's present survey-trait data passes its schema, ignoring missing required values. Positive, as [surveyComplete]. */
-    const val surveyValid = "surveyValid"
+    const val surveyValid = "kdr:surveyValid"
 
     /** The friendly group the two survey cfacts present under. */
     const val group = "Survey"
@@ -77,11 +77,15 @@ object SVYS {
     /** Present data fails its schema, whether or not something is also missing. */
     const val invalid = "invalid"
 
-    /** Valid, and a workflow the form is engaged with is waiting on a review (issue #789). */
-    const val needsReview = WSC.needsReview
+    /**
+     * Valid, and a workflow the form is engaged with is waiting on a review (issue #789) -- the status the
+     * [WSC.needsReview] cfact reads as. A status, so bare like its neighbors: the cfact is rooted (issue #952), and
+     * [formStatusOf] maps one onto the other.
+     */
+    const val needsReview = "needsReview"
 
-    /** Valid, and a workflow the form is engaged with has finished (issue #789). */
-    const val finished = WSC.finished
+    /** Valid, and a workflow the form is engaged with has finished (issue #789) -- what [WSC.finished] reads as. */
+    const val finished = "finished"
 }
 
 /**

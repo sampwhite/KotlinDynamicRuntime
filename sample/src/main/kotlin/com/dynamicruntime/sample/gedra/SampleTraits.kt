@@ -106,7 +106,7 @@ object ST {
     const val captureTraitPresenceByYear = "captureTraitPresenceByYear"
 
     /** A demo cfact a form's stored state can assert, exercising the state→cfact bridge (issue #599). */
-    const val sampleFormReady = "sampleFormReady"
+    const val sampleFormReady = "sample:sampleFormReady"
 }
 
 /**

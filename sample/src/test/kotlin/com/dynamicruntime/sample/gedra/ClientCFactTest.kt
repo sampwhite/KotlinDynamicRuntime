@@ -2,7 +2,6 @@ package com.dynamicruntime.sample.gedra
 
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.cfact.CFD
-import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
@@ -107,7 +106,7 @@ class ClientCFactTest : StringSpec({
         // The whole purpose of a per-client vocabulary: acme may author data naming `acmeUnderAudit`, and the
         // same string in shared data would refuse to parse rather than quietly meaning nothing.
         val acme = SchemaService.get(cxt).cfactsFor(SC.acme)
-        acme.parse("${BOOT.app},${SC.underAudit}").render() shouldBe "${BOOT.app},${SC.underAudit}"
+        acme.parse("${CFACTS.app},${SC.underAudit}").render() shouldBe "${CFACTS.app},${SC.underAudit}"
         runCatching { SchemaService.get(cxt).cfactsFor(null).parse(SC.underAudit) }.isFailure shouldBe true
     }
 })

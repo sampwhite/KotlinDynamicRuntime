@@ -21,7 +21,7 @@ import com.dynamicruntime.common.util.toOptStr
  * that task's status (`ctaStatus`) -- plus what can be asked of the **caller** without the form: their request
  * cfacts and the task's `viewerCfacts` functions (a reviewer is decided by the viewer's labels). That is enough to
  * resolve the CTA task's display for this caller, since the facts a display chooses on are exactly these: it is the
- * CTA (so `wfIsCta`), it is not yet approved (a CTA never is), whether it is complete (stored), and the viewer's
+ * CTA (so `kdr:isCta`), it is not yet approved (a CTA never is), whether it is complete (stored), and the viewer's
  * own. The acting user is the whole reason the text is fetched from the backend rather than read off the listing.
  */
 object SingletonWorkflows {

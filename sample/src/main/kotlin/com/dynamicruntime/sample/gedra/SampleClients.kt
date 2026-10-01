@@ -11,7 +11,6 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.cfact.CFACTS
-import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.mail.MCOPY
 import com.dynamicruntime.common.user.AFRAG
@@ -359,7 +358,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 menuItem(HMENU.cfactReference, cfactExpression = CFACT.neverName)
                 // ...and turns one on (issue #792): the workflow pages are off in the base menu, and acme, whose users
                 // work in its audit review and site follow-up, offers them to anyone signed in to the app.
-                menuItem(HMENU.workflows, cfactExpression = "${CFACTS.loggedIn},${BOOT.app}")
+                menuItem(HMENU.workflows, cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}")
             }
         }
 
@@ -474,7 +473,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             // who and when, and gives the workflow the `acmeAuditApproved` cfact...
             task(SW.approveAudit, "Approve the audit") {
                 approval(SC.auditApproved, "Read the recorded audit, then approve it.", "Approve the audit")
-                // ...and a reviewer is whoever carries acme's `reviewer` label (issue #786): the `wfReviewer` cfact
+                // ...and a reviewer is whoever carries acme's `reviewer` label (issue #786): the `kdr:reviewer` cfact
                 // on this task's view, which the approve endpoint asks for too.
                 function(userHasLabel { label = SC.reviewerLabel })
                 // How the step shows, per viewer and per moment (issue #788) -- tried in order, the first that
@@ -516,7 +515,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 trait(SC.siteFollowUpTrait)
                 // Recorded by whoever makes the visit -- a site lead, by acme's `siteLead` label (issue #856) -- not by
                 // the form's owner, who only confirms the contact above. `userHasLabel` grants the framework's one
-                // viewer fact, named `wfReviewer` whatever the label, so "may save" reads "carries siteLead" here.
+                // viewer fact, named `kdr:reviewer` whatever the label, so "may save" reads "carries siteLead" here.
                 function(userHasLabel { label = SC.siteLeadLabel })
                 saveWhen(WFC.reviewer)
                 save(SW.saveFollowUp, "Save the follow-up", WfSaveKind.edit)

@@ -200,7 +200,7 @@ class WorkflowRegistryTest : StringSpec({
         }
         build(devCxt, listOf(globalTraits(devCxt), ruled("acmeOnly"))).second.shouldBeEmpty()
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), ruled("acmeOnlee"))) }
-        e.message shouldContain "'needsReview' singleton rule"
+        e.message shouldContain "'${WSC.needsReview}' singleton rule"
     }
 
     // Approval tasks (issue #787): the cfact an approval emits must be declared in the scope, and its copy rides

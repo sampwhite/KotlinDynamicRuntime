@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.cfact
 
+import com.dynamicruntime.common.naming.OwnedNameKind
+import com.dynamicruntime.common.naming.clientNameProblem
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 
@@ -152,6 +154,16 @@ fun buildCFactRegistries(
     for ((client, declared) in perClient) {
         val own = LinkedHashMap<String, CFactDef>()
         for (def in declared) {
+            // A client's own name is bare (issues #921, #952): a rooted one is another owner's, which is how a
+            // redeclaration of a global cfact is written now that every global one is rooted. Dropped here, the
+            // smallest drop, rather than with the config that holds it.
+            val unfit = clientNameProblem(OwnedNameKind.cfact, def.name)
+            if (unfit != null) {
+                val message = "Client '$client' declares the cfact '${def.name}', which it may not: $unfit"
+                if (onProblem != null) onProblem(client, def, message) else problems.add(message)
+                continue
+            }
+            // A backstop since #952, with every global name rooted and every client's bare.
             val existing = globalDefs[def.name]
             if (existing != null) {
                 // Additive-only, and this is the failure it prevents: an expression in component-owned data

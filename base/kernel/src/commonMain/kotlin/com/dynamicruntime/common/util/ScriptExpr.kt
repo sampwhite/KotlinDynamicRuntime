@@ -36,6 +36,11 @@ import com.dynamicruntime.common.annotation.KdrPrivate
  * there: the **left side of `?:`**, the **condition of `? :`** (an absent flag is simply falsy), and either
  * side of a **comparison against `null`** (which is the presence test itself). Nowhere else, so `${a + 1}`
  * with no `a` still reports [ScriptError.missingKey] against the block's position.
+ *
+ * **An owner-rooted name is never an identifier here** (issue #952). A global cfact, trait, workflow or task name is
+ * `<root>:<name>` -- `kdr:finished` -- and `:` is this grammar's ternary separator, so `${kdr:finished}` would not
+ * name the cfact but misparse as half a conditional. Such a name enters a template only as a **string**: a future
+ * test of a cfact goes through a function taking one (`hasCfact("kdr:finished")`), never a bare path.
  */
 @Suppress("ConstPropertyName")
 object SEXP {

@@ -105,10 +105,10 @@ fun resolveWorkflowView(
     }
 
     // Each task's status (issues #700, #785), from the one computation the stored CTA also uses
-    // (`WorkflowTaskStatus`), so the rail, `focusTask`, the `wfIsCta` fact and the forms list cannot disagree.
+    // (`WorkflowTaskStatus`), so the rail, `focusTask`, the `kdr:isCta` fact and the forms list cannot disagree.
     val statusById = judge.statusById
     // The CTA (issue #785): the earliest task not both complete and valid. The rail opens on it when the URL names
-    // no task (`focusTask`, issue #700), and its task carries the `wfIsCta` fact a selector can choose on.
+    // no task (`focusTask`, issue #700), and its task carries the `kdr:isCta` fact a selector can choose on.
     val ctaTaskId = judge.ctaTaskId
 
     // The task's status for the task rail: complete/valid in the survey's words, plus each problem as the

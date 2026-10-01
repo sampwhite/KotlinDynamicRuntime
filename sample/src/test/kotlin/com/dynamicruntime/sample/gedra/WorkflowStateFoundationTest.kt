@@ -327,7 +327,7 @@ class WorkflowStateFoundationTest : StringSpec({
         followUp[WFS.tasksDone].shouldBeNull()
     }
 
-    "the workflow view agrees with the stored CTA: its focus task, and the wfIsCta fact on that task alone" {
+    "the workflow view agrees with the stored CTA: its focus task, and the kdr:isCta fact on that task alone" {
         val user = TestUser.create(cxt, "wfs-ctaview@acme.test", userClient = SC.acme)
         val gid = user.postItem(
             create,

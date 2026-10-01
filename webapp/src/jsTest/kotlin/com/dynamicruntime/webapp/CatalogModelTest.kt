@@ -32,7 +32,7 @@ class CatalogModelTest {
             "sample.traits.Plain" to mapOf(SCH.type to SCT.kObject),
         ),
         EI.filtersAvailable to false,
-        EI.cfacts to mapOf("hasAdminLevel" to false),
+        EI.cfacts to mapOf("kdr:hasAdminLevel" to false),
         // The layouts closure (issue #585): only the type that declares one has an entry.
         EI.fieldLayouts to mapOf(
             questionnaire to mapOf(
@@ -50,7 +50,7 @@ class CatalogModelTest {
         val catalog = parseCatalog(results())
         assertEquals(1, catalog.endpoints.size)
         assertTrue(!catalog.filtersAvailable)
-        assertEquals(false, catalog.cfacts["hasAdminLevel"])
+        assertEquals(false, catalog.cfacts["kdr:hasAdminLevel"])
         // The layout is joined to the type by the same key `$defs` and `defTypes` use.
         assertTrue(catalog.defTypes.containsKey(questionnaire))
         val layout = catalog.fieldLayouts[questionnaire]!!

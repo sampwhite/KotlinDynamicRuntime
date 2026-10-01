@@ -30,7 +30,7 @@ class WfTaskStatus(
 
 /**
  * The **one** computation of task status and of a workflow's **CTA** (call to action, issue #785) -- shared by
- * the per-workflow deriver that stores it, the workflow view's task rail and `focusTask`, and the `wfIsCta` task
+ * the per-workflow deriver that stores it, the workflow view's task rail and `focusTask`, and the `kdr:isCta` task
  * cfact, so none of them can disagree about where a person's next piece of work is.
  *
  * Presence from the same engine every completeness check uses ([WfEngine]); content from the survey's one

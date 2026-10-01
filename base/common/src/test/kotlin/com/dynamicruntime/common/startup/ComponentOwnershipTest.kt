@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -93,6 +94,22 @@ class ComponentOwnershipTest : StringSpec({
         refusal { addGedraConfig(devCxt, config("kdr.notes")) } shouldContain "contributesTo = \"kdr\""
         contribute(abc) { addGedraConfig(devCxt, config("kdr.notes", contributesTo = OWNR.kdrRoot)) shouldBe true }
         contribute(abc) { addGedraConfig(devCxt, config("abc.notes")) shouldBe true }
+    }
+
+    // A component's cfact is a global name (issue #952): rooted, under the component's own root -- or under another
+    // owner's when the declaration says so, as provisional code meant for core does.
+    "a component's cfact is rooted under its owner root, or the root it names" {
+        fun fact(name: String) = CFactDef(name, "abc", "A fact.")
+        contribute(abc) { addCFact(fact("abc:ready")) }.cfacts.keys shouldBe setOf("abc:ready")
+        refusal { addCFact(fact("ready")) } shouldContain "'ready' is not a rooted cfact name"
+        refusal { addCFact(fact("kdr:ready")) } shouldContain "contributesTo = \"kdr\""
+        contribute(abc) { addCFact(fact("kdr:ready"), contributesTo = OWNR.kdrRoot) }.cfacts.keys shouldBe setOf("kdr:ready")
+        // The opt-in names the root the cfact is under, and never the client root.
+        refusal { addCFact(fact("kdr:ready"), contributesTo = "xyz") } shouldContain "says it contributes to the root 'xyz'"
+        refusal { addCFact(fact("client:ready"), contributesTo = OWNR.clientRoot) } shouldContain "reserved 'client' root"
+        // A global config's cfacts take its namespace's root instead, as its trait ids do -- judged with the config.
+        val config = gedraConfig(devCxt, "abcFacts", "abc.facts") { cfact("ready", "abc", "Bare.") }
+        refusal { addGedraConfig(devCxt, config) } shouldContain "'ready' is not a rooted cfact name"
     }
 
     // Source config is strict outside production and forgiven in it: logged, recorded, and taken as declared.

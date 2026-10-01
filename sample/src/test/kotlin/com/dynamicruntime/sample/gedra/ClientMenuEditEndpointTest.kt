@@ -15,7 +15,6 @@ import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -64,7 +63,7 @@ class ClientMenuEditEndpointTest : StringSpec({
         acme.getValue(HMENU.profile)[CPY.stored] shouldBe false
         // acme's source config shows Workflows and hides Client facts: the effective condition says so, and neither is stored.
         acme.getValue(HMENU.workflows)[MNU.baseCondition] shouldBe CFACT.neverName
-        acme.getValue(HMENU.workflows)[MNU.condition] shouldBe "${CFACTS.loggedIn},${BOOT.app}"
+        acme.getValue(HMENU.workflows)[MNU.condition] shouldBe "${CFACTS.loggedIn},${CFACTS.app}"
         acme.getValue(HMENU.cfactReference)[MNU.condition] shouldBe CFACT.neverName
         acme.getValue(HMENU.cfactReference)[CPY.stored] shouldBe false
         items(SC.globex).getValue(HMENU.workflows)[MNU.condition] shouldBe CFACT.neverName
@@ -87,7 +86,7 @@ class ClientMenuEditEndpointTest : StringSpec({
         // Both changes in one config, one item each; the rename kept nothing else of the item.
         val acme = items(SC.acme)
         acme.getValue(HMENU.profile)[CPY.stored] shouldBe true
-        acme.getValue(HMENU.docs)[MNU.baseCondition] shouldBe BOOT.app
+        acme.getValue(HMENU.docs)[MNU.baseCondition] shouldBe CFACTS.app
         admin.getItems(ACEP.bundles, mapOf(CFEP.client to SC.acme)).single { it[CFEP.name] == CPY.copyConfigName }[CFEP.published] shouldBe true
         // The overrides report now lists both as the client's.
         val blocks = admin.getItem(UADEP.clientOverrides, mapOf(COV.client to SC.acme))[COV.blocks].toJsonListOrEmpty()
@@ -108,7 +107,7 @@ class ClientMenuEditEndpointTest : StringSpec({
         refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "not a condition the shipped menu draws for"
         servedMenu(globexUser).keys shouldNotContain HMENU.workflows
 
-        edit(SC.globex, HMENU.workflows, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.loggedIn},${BOOT.app}")[MNU.condition] shouldBe "${CFACTS.loggedIn},${BOOT.app}"
+        edit(SC.globex, HMENU.workflows, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.loggedIn},${CFACTS.app}")[MNU.condition] shouldBe "${CFACTS.loggedIn},${CFACTS.app}"
         servedMenu(globexUser).keys shouldContain HMENU.workflows
         // A show needs its condition; an edit that asks for nothing is refused too.
         admin.expectError(EXC.badInput, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.docs, MNU.visibility to MNU.show))
@@ -137,7 +136,7 @@ class ClientMenuEditEndpointTest : StringSpec({
     "a reset restores the shipped item; one with nothing stored is refused" {
         val reset = admin.postData(MNU.resetPath, mapOf(COV.client to SC.acme, COV.itemId to HMENU.docs))
         reset[CPY.stored] shouldBe false
-        reset[MNU.condition] shouldBe BOOT.app
+        reset[MNU.condition] shouldBe CFACTS.app
         servedMenu(acmeUser).keys shouldContain HMENU.docs
         // The rename in the same entry survived the reset of the other item.
         servedMenu(acmeUser)[HMENU.profile] shouldBe "My account"

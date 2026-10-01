@@ -168,6 +168,32 @@ fun componentNamespaceProblem(namespace: String, ownerRoot: String?, contributes
 }
 
 /**
+ * What is wrong with [name] as a [kind] name a **component** declares directly -- a cfact in code, which has no
+ * namespace to carry its root -- or null (issue #952). It is rooted, never under [OWNR.clientRoot], and under the
+ * component's own [ownerRoot] or the root the declaration explicitly opts into with [contributesTo]: the same rule
+ * [componentNamespaceProblem] applies to a namespace, so provisional code headed for core can name `kdr` per
+ * declaration and keep the name when it moves.
+ */
+fun componentNameProblem(kind: OwnedNameKind, name: String, ownerRoot: String?, contributesTo: String?): String? {
+    rootedNameProblem(kind, name)?.let { return it }
+    val root = name.substringBefore(OWNR.rootSep)
+    return when {
+        root == OWNR.clientRoot ->
+            "'$name' is under the reserved '${OWNR.clientRoot}' root, which holds clients' own names only."
+        contributesTo != null && contributesTo != root ->
+            "'$name' says it contributes to the root '$contributesTo', but it is under '$root'."
+        contributesTo != null -> null
+        ownerRoot == null ->
+            "'$name' is declared by a component that declares no owner root; a component's global names live under " +
+                "the root it declares (ownerRoot)."
+        root != ownerRoot ->
+            "'$name' is under '$root', not the component's own root '$ownerRoot'. A declaration under another " +
+                "owner's root says so: contributesTo = \"$root\"."
+        else -> null
+    }
+}
+
+/**
  * What is wrong with [typeName], a type a contribution in [namespace] **declares**, or null (issue #950): it sits
  * under the contribution's own root. A dotted name is taken as written -- right for a reference, wrong for a
  * declaration -- so this is what keeps a declaration from landing under somebody else's root.

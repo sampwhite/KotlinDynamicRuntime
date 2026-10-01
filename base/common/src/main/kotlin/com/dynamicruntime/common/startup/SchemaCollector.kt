@@ -12,6 +12,8 @@ import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.naming.componentNamespaceProblem
 import com.dynamicruntime.common.naming.declaredTypeProblem
+import com.dynamicruntime.common.naming.OwnedNameKind
+import com.dynamicruntime.common.naming.componentNameProblem
 import com.dynamicruntime.common.gedra.GedraDataDeriver
 import com.dynamicruntime.common.gedra.GedraPrepForSaveFn
 import com.dynamicruntime.common.gedra.GedraStateDeriver
@@ -192,8 +194,31 @@ class SchemaCollector(
      * Refused rather than overwritten for the reason [addOptionsProvider] gives, and one more: a cfact is
      * matched by *name*, so a second declaration would not shadow the first, it would silently answer for it
      * everywhere the first is written -- visible only as something shown to the wrong people.
+     *
+     * A component's cfact is a global name, so it is rooted under the component's owner root (issue #952) -- core's
+     * `kdr:loggedIn` -- and a client's own, always bare, can never take it. A cfact under another owner's root names
+     * that root in [contributesTo], declaration by declaration: provisional code meant for core declares `kdr:` names
+     * with `contributesTo = OWNR.kdrRoot`, and keeps them when it is promoted. Judged like a namespace (issue #950):
+     * a problem refuses the boot outside production, and is logged and the cfact taken as declared in production.
      */
-    fun addCFact(def: CFactDef, source: CFactSource? = null) {
+    fun addCFact(def: CFactDef, contributesTo: String? = null, source: CFactSource? = null) {
+        contributor?.let { c ->
+            componentNameProblem(OwnedNameKind.cfact, def.name, c.ownerRoot, contributesTo)?.let { problem ->
+                reportConfigProblem(
+                    c.cxt,
+                    GedraConfigIssue(
+                        "Component '${c.name}' declares the cfact '${def.name}': $problem", "Taking it as declared.",
+                        client = GID.globalClient,
+                    ),
+                    gedraConfigs.issues,
+                )
+            }
+        }
+        putCFact(def, source)
+    }
+
+    /** Declares [def] with no owner check: a global config's cfacts, judged with the rest of the config. */
+    private fun putCFact(def: CFactDef, source: CFactSource? = null) {
         val existing = cfacts[def.name]
         if (existing != null) {
             throw KdrException(
@@ -359,7 +384,7 @@ class SchemaCollector(
             defs.putAll(config.defs)
             // A global config's cfacts are declarations like a component's, and go through the same checked
             // add -- a name is unique whichever route it arrives by.
-            config.cfacts.forEach { addCFact(it) }
+            config.cfacts.forEach { putCFact(it) }
         } else {
             clientOverlays.getOrPut(client) { LinkedHashMap() }.putAll(config.defs)
             // Collected, not checked: whether a client may take this name depends on what every other

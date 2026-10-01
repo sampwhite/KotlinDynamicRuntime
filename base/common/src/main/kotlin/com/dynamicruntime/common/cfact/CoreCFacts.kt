@@ -18,33 +18,40 @@ object CFGRP {
 }
 
 /**
- * The built-in cfacts' names (issue #455). The boot-role ones are absent on purpose: they **are**
- * [BOOT.app] and [BOOT.edge], and a second spelling of a role's name is a thing that can come to disagree
- * with the first.
+ * The built-in cfacts' names (issue #455), each under core's root, `kdr` (issue #952): a global name is rooted, so
+ * a client's own cfacts -- always bare -- can never take one. The boot-role ones are the role's name under that
+ * root, **built from** [BOOT.app] and [BOOT.edge] rather than spelled again, so the role and its cfact cannot come
+ * to disagree.
  */
 @Suppress("ConstPropertyName")
 object CFACTS {
-    const val loggedIn = "loggedIn"
-    const val anonymous = "anonymous"
+    /** The node is an ordinary application node: the [BOOT.app] role. */
+    const val app = "kdr:${BOOT.app}"
+
+    /** The node is an edge: the [BOOT.edge] role. */
+    const val edge = "kdr:${BOOT.edge}"
+
+    const val loggedIn = "kdr:loggedIn"
+    const val anonymous = "kdr:anonymous"
     /** The caller ranks at `operator` or above on the ladder. **Level only** -- see the naming note. */
-    const val hasOperatorLevel = "hasOperatorLevel"
+    const val hasOperatorLevel = "kdr:hasOperatorLevel"
 
     /** The caller ranks at `admin`. **Level only**: it is not "may reach `/admin`", which also takes scope. */
-    const val hasAdminLevel = "hasAdminLevel"
+    const val hasAdminLevel = "kdr:hasAdminLevel"
 
     /** The caller may reach the `operator` section -- level **and** deployment-wide scope. */
-    const val isDeploymentOperator = "isDeploymentOperator"
+    const val isDeploymentOperator = "kdr:isDeploymentOperator"
 
     /** The caller may reach the `clientOperator` section -- operator level, confined to their own scope (#488). */
-    const val isClientOperator = "isClientOperator"
+    const val isClientOperator = "kdr:isClientOperator"
 
     /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
-    const val hasEnvAuth = "hasEnvAuth"
+    const val hasEnvAuth = "kdr:hasEnvAuth"
 
-    const val isEnvDebug = "isEnvDebug"
+    const val isEnvDebug = "kdr:isEnvDebug"
 
     /** The session may **turn debug on**: env auth is effective and debug is not already on (issue #517). */
-    const val canEnableDebug = "canEnableDebug"
+    const val canEnableDebug = "kdr:canEnableDebug"
 }
 
 /**
@@ -64,8 +71,8 @@ object CFACTS {
  *
  * ### Naming
  *
- * A boot-role cfact is the role's own name (`app`, `edge`), because there is exactly one boot role and nothing
- * else the bare word could mean.
+ * A boot-role cfact is the role's own name under the root (`kdr:app`, `kdr:edge`), because there is exactly one
+ * boot role and nothing else the word could mean.
  *
  * A caller cfact says which of the **two axes** it tests, because the bare word does not. Level and scope are
  * separate (see `AdminRules` and `ReadScopeRules`), and the sections are their four combinations:
@@ -103,14 +110,14 @@ fun addCoreCFacts(collector: SchemaCollector) {
     val role = collector.node.role
     collector.addCFact(
         CFactDef(
-            BOOT.app, CFGRP.node,
+            CFACTS.app, CFGRP.node,
             "True on an ordinary application node -- the boot role a node has when it declares none. " +
                 "Exactly one boot-role cfact is present on any node.",
         ),
     ) { role == BOOT.app }
     collector.addCFact(
         CFactDef(
-            BOOT.edge, CFGRP.node,
+            CFACTS.edge, CFGRP.node,
             "True on an edge node: the perimeter that fronts other servers, booted by `StartEdge`.",
         ),
     ) { role == BOOT.edge }
@@ -125,7 +132,7 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.anonymous, CFGRP.caller,
-            "True when the request carries no authenticated identity. The positive form of `~loggedIn`, and " +
+            "True when the request carries no authenticated identity. The positive form of `~${CFACTS.loggedIn}`, and " +
                 "preferred over it: an expression written by exclusion admits every state invented later.",
         ),
     ) { !it.userProfile.isLoggedIn }

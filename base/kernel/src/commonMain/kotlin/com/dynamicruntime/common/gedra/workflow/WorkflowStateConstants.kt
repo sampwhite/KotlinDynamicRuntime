@@ -198,10 +198,10 @@ object WFS {
 @Suppress("ConstPropertyName")
 object WSC {
     /** Some workflow the form is engaged with is waiting on a review. Drives the `Needs Review` chip (#789). */
-    const val needsReview = "needsReview"
+    const val needsReview = "kdr:needsReview"
 
     /** Some workflow the form is engaged with has finished. Drives the `Finished` chip (#789). */
-    const val finished = "finished"
+    const val finished = "kdr:finished"
 
     /** The friendly group these present under in the cfact catalog. */
     const val group = "Workflow"
@@ -226,6 +226,6 @@ object SWF {
      */
     const val actionText = "actionText"
 
-    /** On a workflow: whether the caller is a reviewer of its current task (`wfReviewer` from its functions). */
+    /** On a workflow: whether the caller is a reviewer of its current task (`WFC.reviewer` from its functions). */
     const val isReviewer = "isReviewer"
 }
