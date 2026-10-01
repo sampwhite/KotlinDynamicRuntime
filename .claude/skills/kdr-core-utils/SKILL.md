@@ -136,7 +136,10 @@ code guide's "When not to throw".
 - `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML; `renderMarkdownText()` for plain text; Pandoc-style `[x]{.role}` spans and `![a](s){width=…}` images (issue #795), with `MarkdownHooks` for link resolution and role rendering. Frontend and backend render the same. It
   takes an optional `resolveUrl: ((String) -> String)?` applied to each link target before the URL safety check
   (null = use links as written); a served **document** passes one so its repo-relative interior links resolve
-  from inside the app.
+  from inside the app. `String.analyzeMarkdown(hooks)` renders the same HTML and reports the document's structure
+  (headings with slugs, links and images with how they resolved, fenced code blocks) and what it delivered degraded,
+  each a `MarkdownIssue` warning at its line: raw HTML, a setext heading, an indented list item, a reference link,
+  an inert or unresolved link, a broken `#anchor`, a ragged table row (issue #909).
 - `DocLinkUtil` — `resolveDocLink(...)`, that resolver for a document (issue #492): a repo-relative link becomes
   an in-app document link or a source-repo link, per the doc registry and configured repo base.
 - `CollectionUtil` — `Map.deepClone()` (depth-capped).

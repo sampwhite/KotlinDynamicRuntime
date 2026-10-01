@@ -44,6 +44,18 @@ interface MarkdownSink {
     fun rule(): String
     fun table(header: List<String>, aligns: List<String?>, rows: List<List<String>>): String
     fun document(blocks: List<String>): String
+
+    /**
+     * Told the 0-based [line] each block starts on, before it is rendered (issue #909) -- for a sink that reports
+     * where things are ([analyzeMarkdown]'s). The renderings themselves ignore it.
+     */
+    fun block(line: Int) {}
+
+    /**
+     * Told of a construct the renderer delivered degraded, at 0-based [line] (issue #909): rendered rather than
+     * refused, so the renderings ignore it and only a reporting sink keeps it.
+     */
+    fun note(code: MarkdownIssue, message: String, line: Int) {}
 }
 
 /** The HTML rendering; see [renderMarkdown] for what it guarantees. */
@@ -228,6 +240,7 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
+        if (!isBlankLine(line)) sink.block(i)
         i = when {
             isBlankLine(line) -> i + 1
             fenceMarker(line) != null -> renderFencedCode(blocks, lines, i, sink)
@@ -514,6 +527,14 @@ fun renderTable(blocks: MutableList<String>, lines: List<String>, start: Int, si
     var i = start + 2
     while (i < lines.size && lines[i].contains('|') && !startsBlock(lines[i])) {
         val cells = splitTableRow(lines[i])
+        if (cells.size != cols) {
+            sink.note(
+                MarkdownIssue.raggedRow,
+                "A table row has ${cells.size} cell(s) where the header has $cols; it is " +
+                    (if (cells.size < cols) "padded" else "cut") + " to fit.",
+                i,
+            )
+        }
         rows.add((0 until cols).map { c -> renderInline(cells.getOrElse(c) { "" }, 0, sink) })
         i++
     }
@@ -536,7 +557,10 @@ private const val maxInlineDepth = 20
 @KdrPrivate
 fun renderInline(text: String, depth: Int, sink: MarkdownSink): String {
     if (depth > maxInlineDepth) {
-        throw KdrException.mkConv("Markdown inline nesting exceeded $maxInlineDepth levels.")
+        // Thrown from deep in the recursion; `analyzeMarkdown` catches it by its code, once, as the one true error.
+        throw KdrException.mkConv("Markdown inline nesting exceeded $maxInlineDepth levels.").also {
+            it.extraData[KdrException.errorCodeKey] = MarkdownIssue.tooDeep
+        }
     }
     val sb = StringBuilder()
     var i = 0

@@ -105,7 +105,7 @@ fun String.parseMarkdownFragments(): Map<String, Map<String, String>> {
 
 /** Error codes reported by [parseMarkdownFragments], carried under [KdrException.errorCodeKey]. */
 @Suppress("EnumEntryName")
-enum class MarkdownError {
+enum class MarkdownError : ProblemCode {
     /** A `/-` comment was opened but never closed with `-/`. */
     unterminatedComment,
 
