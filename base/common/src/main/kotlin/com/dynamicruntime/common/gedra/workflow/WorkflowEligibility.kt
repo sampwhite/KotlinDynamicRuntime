@@ -3,7 +3,6 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -46,13 +45,7 @@ object WorkflowEligibility {
      * for rather than letting it in.
      */
     fun failures(registry: CFactRegistry, def: WfDef, facts: Set<String>): List<String> =
-        def.eligibility.filterNot { test ->
-            try {
-                registry.parse(test.test).matches(facts)
-            } catch (_: KdrException) {
-                false
-            }
-        }.map { it.id }
+        def.eligibility.filterNot { test -> registry.analyze(test.test, evaluateWith = facts).value ?: false }.map { it.id }
 
     /**
      * The stored form of [failureIds] (issue #783): each a [WFS.workflowEligibilityFailure] naming its test by id,

@@ -492,13 +492,7 @@ internal fun buildCfactGate(cfacts: Map<String, Boolean>?): (String) -> Boolean 
     val present = cfacts.filterValues { it }.keys
     val cache = HashMap<String, Boolean>()
     return { expression ->
-        cache.getOrPut(expression) {
-            try {
-                CFactParser.parse(expression, allowed).matches(present)
-            } catch (_: Throwable) {
-                true
-            }
-        }
+        cache.getOrPut(expression) { CFactParser.analyze(expression, allowed, evaluateWith = present).value ?: true }
     }
 }
 

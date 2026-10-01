@@ -1,6 +1,9 @@
 package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.Problem
+import com.dynamicruntime.common.util.ProblemCode
+import com.dynamicruntime.common.util.ProblemLocation
 
 /**
  * Parses a cfact expression into a [CFactPredicate] tree (issue #454).
@@ -21,7 +24,8 @@ import com.dynamicruntime.common.exception.KdrException
  */
 object CFactParser {
     /**
-     * Parses [expression] against the cfact names [allowed] permits.
+     * Parses [expression] against the cfact names [allowed] permits, throwing on the first problem -- the
+     * throwing form of [analyze], for a caller that has nothing to do with a malformed expression but fail.
      *
      * An unregistered name is refused here rather than ignored at evaluation, which is the whole reason
      * [allowed] is an argument: an unknown name evaluates to "absent", so a mistyped negation would be
@@ -33,41 +37,74 @@ object CFactParser {
      * those as "show this to everyone" fails in the permissive direction. Omission is structural and
      * deliberate; blankness is usually an accident.
      */
-    fun parse(expression: String, allowed: Set<String>): CFactPredicate {
+    fun parse(expression: String, allowed: Set<String>): CFactPredicate = analyze(expression, allowed).orThrow()
+
+    /**
+     * Parses [expression] against [allowed] as a report (issue #909): the [CFactAnalysis.predicate] when it
+     * parses, the names it reads, and -- given [evaluateWith], the cfacts present -- whether it matches. A
+     * malformed expression is never thrown for; it comes back as [CFactAnalysis.problems], each coded
+     * ([CFactError]) and located at its position in [expression].
+     *
+     * An unregistered name does not stop the parse -- the grammar is intact around it -- so every one is
+     * reported, in order; anything else wrong with the syntax is the last problem, since nothing after it can be
+     * read with confidence.
+     */
+    fun analyze(expression: String, allowed: Set<String>, evaluateWith: Set<String>? = null): CFactAnalysis {
         val text = expression.trim()
         if (text.isEmpty()) {
-            throw KdrException.mkInput(
+            val problem = Problem(
+                CFactError.blank,
                 "A cfact expression is blank. Omit it entirely for a condition that always matches, or write " +
                     "'${CFACT.alwaysName}' to say so explicitly.",
+                ProblemLocation(offset = 0, line = 1, col = 1),
             )
+            return CFactAnalysis(null, emptySet(), listOf(problem), null)
         }
-        val state = Cursor(text, allowed)
-        val result = state.readExpr()
-        state.skipSpace()
-        if (!state.atEnd()) {
-            state.fail("unexpected '${state.peek()}'")
+        val state = Cursor(text, allowed, lead = expression.indexOf(text[0]))
+        var result = state.readExpr()
+        if (result != null) {
+            state.skipSpace()
+            if (!state.atEnd()) {
+                result = state.fail(CFactError.unexpectedCharacter, "unexpected '${state.peek()}'")
+            }
         }
-        return result
+        val predicate = result.takeIf { state.problems.isEmpty() }
+        val value = if (predicate != null && evaluateWith != null) predicate.matches(evaluateWith) else null
+        return CFactAnalysis(predicate, state.names, state.problems, value)
     }
 
-    /** Position-carrying reader. A class rather than threading an index, so an error can say where it was. */
-    private class Cursor(val text: String, val allowed: Set<String>) {
+    /**
+     * Position-carrying reader. A class rather than threading an index, so a problem can say where it was. A
+     * read that fails records its problem and returns null, which every caller passes straight up: the grammar
+     * is small enough that unwinding by hand is clearer than a throw caught at the top.
+     */
+    private class Cursor(val text: String, val allowed: Set<String>, val lead: Int) {
         var at: Int = 0
+        val problems = mutableListOf<Problem>()
+        val names = LinkedHashSet<String>()
 
         fun atEnd(): Boolean = at >= text.length
         fun peek(): Char = text[at]
         fun skipSpace() { while (!atEnd() && peek() == ' ') at++ }
 
-        fun fail(why: String): Nothing = throw KdrException.mkInput(
-            "Could not parse the cfact expression '$text' at position $at: $why.",
-        )
+        /** Records a problem at the current position; always null, so a failing read can return it. */
+        fun fail(code: CFactError, why: String): CFactPredicate? {
+            problems.add(
+                Problem(
+                    code,
+                    "Could not parse the cfact expression '$text' at position $at: $why.",
+                    ProblemLocation(offset = lead + at, line = 1, col = lead + at + 1),
+                ),
+            )
+            return null
+        }
 
         /**
          * Operands joined by one operator. Mixing is refused *here*, where both operators have been seen, so
          * the message can name them rather than reporting a generic syntax error somewhere later.
          */
-        fun readExpr(): CFactPredicate {
-            val parts = mutableListOf(readOperand())
+        fun readExpr(): CFactPredicate? {
+            val parts = mutableListOf(readOperand() ?: return null)
             var op: String? = null
             while (true) {
                 skipSpace()
@@ -75,14 +112,15 @@ object CFactParser {
                 val ch = peek().toString()
                 if (ch != CFACT.and && ch != CFACT.or) break
                 if (op != null && ch != op) {
-                    fail(
+                    return fail(
+                        CFactError.mixedOperators,
                         "'${CFACT.and}' and '${CFACT.or}' are mixed without parentheses -- write " +
                             "'(a${CFACT.and}b)${CFACT.or}c' or 'a${CFACT.and}(b${CFACT.or}c)' to say which is meant",
                     )
                 }
                 op = ch
                 at++
-                parts.add(readOperand())
+                parts.add(readOperand() ?: return null)
             }
             return when {
                 parts.size == 1 -> parts[0]
@@ -91,18 +129,20 @@ object CFactParser {
             }
         }
 
-        fun readOperand(): CFactPredicate {
+        fun readOperand(): CFactPredicate? {
             skipSpace()
-            if (atEnd()) fail("an operand is missing")
+            if (atEnd()) return fail(CFactError.missingOperand, "an operand is missing")
             if (peek().toString() == CFACT.not) {
                 at++
-                return CFactNot(readOperand())
+                return CFactNot(readOperand() ?: return null)
             }
             if (peek().toString() == CFACT.open) {
                 at++
-                val inner = readExpr()
+                val inner = readExpr() ?: return null
                 skipSpace()
-                if (atEnd() || peek().toString() != CFACT.close) fail("a '${CFACT.close}' is missing")
+                if (atEnd() || peek().toString() != CFACT.close) {
+                    return fail(CFactError.missingClose, "a '${CFACT.close}' is missing")
+                }
                 at++
                 return inner
             }
@@ -110,7 +150,7 @@ object CFactParser {
         }
 
         /** A literal (`#`-prefixed) or a registered cfact name; the sigil is what tells them apart. */
-        fun readAtom(): CFactPredicate {
+        fun readAtom(): CFactPredicate? {
             if (peek().toString() == CFACT.literal) {
                 val start = at
                 at++
@@ -120,27 +160,76 @@ object CFactParser {
                     CFACT.alwaysName -> CFACT.always
                     // Reported as a bad *literal*, not a missing registration -- the sigil said which it is,
                     // so sending the reader to look for a component that registers it would misdirect them.
-                    else -> fail(
-                        "'$word' is not a known literal (${CFACT.alwaysName}, ${CFACT.neverName})",
-                    )
+                    else -> {
+                        at = start
+                        fail(
+                            CFactError.unknownLiteral,
+                            "'$word' is not a known literal (${CFACT.alwaysName}, ${CFACT.neverName})",
+                        )
+                    }
                 }
             }
-            return CFactAtom(readName())
-        }
-
-        fun readName(): String {
             val start = at
             while (!atEnd() && isCFactNameChar(peek())) at++
-            if (at == start) fail("a cfact name was expected")
+            if (at == start) return fail(CFactError.nameExpected, "a cfact name was expected")
             val name = text.substring(start, at)
+            names.add(name)
             if (name !in allowed) {
                 // Named, and the alternatives listed, because the common cause is a typo and the reader is
-                // usually looking at the right word spelled wrong.
-                fail("'$name' is not a registered cfact here (registered: ${allowed.sorted()})")
+                // usually looking at the right word spelled wrong. The grammar around it is intact, so reading
+                // goes on: a second unknown name is reported too, rather than found on the next attempt.
+                val end = at
+                at = start
+                fail(CFactError.unknownName, "'$name' is not a registered cfact here (registered: ${allowed.sorted()})")
+                at = end
             }
-            return name
+            return CFactAtom(name)
         }
     }
+}
+
+/**
+ * A cfact expression's report (issue #909): the [predicate] when it parsed cleanly, the cfact [names] it reads
+ * (registered or not -- an editor shows both), the [problems] when it did not, and the [value] when it was
+ * evaluated ([CFactParser.analyze]'s `evaluateWith`) and parsed.
+ */
+class CFactAnalysis(
+    val predicate: CFactPredicate?,
+    val names: Set<String>,
+    val problems: List<Problem>,
+    val value: Boolean?,
+) {
+    /** The predicate, or the first problem thrown as the bad input it always was. */
+    fun orThrow(): CFactPredicate =
+        predicate ?: throw problems.first().toException { KdrException.mkInput(it) }
+}
+
+/** What can be wrong with a cfact expression (issue #909); the [CFactAnalysis] problem codes. */
+@Suppress("EnumEntryName")
+enum class CFactError : ProblemCode {
+    /** Empty or only spaces -- an absent condition is written by omitting it, not by leaving it blank. */
+    blank,
+
+    /** A name that is not registered in the scope the expression belongs to. */
+    unknownName,
+
+    /** A `#` literal that is not `#always` or `#never`. */
+    unknownLiteral,
+
+    /** `,` and `|` at one level, which would need a precedence rule nobody remembers. */
+    mixedOperators,
+
+    /** An operator, `~` or `(` with nothing after it. */
+    missingOperand,
+
+    /** A `(` with no matching `)`. */
+    missingClose,
+
+    /** A character where a cfact name had to be. */
+    nameExpected,
+
+    /** Something left over once the expression was read. */
+    unexpectedCharacter,
 }
 
 /**
@@ -152,3 +241,14 @@ object CFactParser {
  */
 fun parseCFactOrAlways(expression: String?, allowed: Set<String>): CFactPredicate =
     if (expression == null) CFACT.always else CFactParser.parse(expression, allowed)
+
+/**
+ * [CFactParser.analyze], treating **absence** as "always matches", like [parseCFactOrAlways]: a null
+ * [expression] is the always predicate, with no names and no problems.
+ */
+fun analyzeCFactOrAlways(expression: String?, allowed: Set<String>, evaluateWith: Set<String>? = null): CFactAnalysis =
+    if (expression == null) {
+        CFactAnalysis(CFACT.always, emptySet(), emptyList(), evaluateWith?.let { true })
+    } else {
+        CFactParser.analyze(expression, allowed, evaluateWith)
+    }

@@ -43,6 +43,13 @@ class CFactRegistry(
     fun parse(expression: String?): CFactPredicate = parseCFactOrAlways(expression, names)
 
     /**
+     * [parse] as a report (issue #909): problems instead of a throw, and -- given [evaluateWith], the cfacts
+     * present -- whether it matches. See [analyzeCFactOrAlways].
+     */
+    fun analyze(expression: String?, evaluateWith: Set<String>? = null): CFactAnalysis =
+        analyzeCFactOrAlways(expression, names, evaluateWith)
+
+    /**
      * The cfacts present for [cxt], optionally about one thing being rendered ([targetFacts]).
      *
      * **The set is per (request, target), never per request.** `loggedIn` is a fact about the request, but
