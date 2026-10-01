@@ -542,10 +542,9 @@ class GedraConfigCollector {
                 )
             }
         }
-        // A global config's trait ids and cfacts are rooted (issues #951, #952), with the root its namespace is
-        // under -- whoever owns `abc` owns every `abc:` trait, data, state and config traits alike, and every `abc:`
-        // cfact. Judged before the uniqueness check below, which is what keeps that check's cross-owner arm
-        // unreachable.
+        // A global config's trait ids, cfacts, workflow ids and task ids are rooted (issues #951-#953), with the root
+        // its namespace is under -- whoever owns `abc` owns every `abc:` name of every kind. Judged before the
+        // uniqueness check below, which is what keeps that check's cross-owner arm unreachable.
         if (config.gedraId.client == GID.globalClient) {
             globalNamesProblem(config, config.traits.keys + stateTraits.keys + configTraits.keys)?.let { why ->
                 return config.issue(
@@ -621,12 +620,19 @@ class GedraConfigCollector {
     }
 
     /**
-     * The first of a global [config]'s [traitIds] and cfact names that is not rooted under the config's own root
-     * (issues #951, #952), as a reason, or null.
+     * The first of a global [config]'s [traitIds], cfact names, workflow ids and task ids that is not rooted under
+     * the config's own root (issues #951-#953), as a reason, or null.
+     *
+     * A task id is rooted because a global workflow is a container clients will add tasks to by overlay (#921 rule
+     * 6): a client's bare task added to one must never meet a task a later release adds under the same name. Every
+     * global workflow is held to it, since the overlay is keyed by task id from a workflow's first version.
      */
     private fun globalNamesProblem(config: GedraConfig, traitIds: Collection<String>): String? {
         val root = namespaceRoot(config.namespace)
-        val names = traitIds.map { OwnedNameKind.trait to it } + config.cfacts.map { OwnedNameKind.cfact to it.name }
+        val names = traitIds.map { OwnedNameKind.trait to it } + config.cfacts.map { OwnedNameKind.cfact to it.name } +
+            config.workflows.values.flatMap { wf ->
+                listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
+            }
         for ((kind, name) in names) {
             rootedNameProblem(kind, name)?.let { return it }
             val nameRoot = name.substringBefore(OWNR.rootSep)

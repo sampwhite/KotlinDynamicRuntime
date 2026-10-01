@@ -222,6 +222,18 @@ fun loanConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, "loanConfig", "acme"
 assets step is wrong"), not in the definition — the definition only says this transition is the kind that sends
 steps back. `submit`/`resubmit` name the tasks they require complete.
 
+**Names follow the owner rules** (issue #921, slice #953). A client's own workflow and its tasks are bare
+(`loanReview`, `income`), as above. A **global** workflow — one a component ships for every client — is
+`<root>:<name>` (`kdr:loanReview`), and so is every task in it (`kdr:income`), because a global workflow is a
+container clients will add tasks to by overlay, and a bare task of core's could one day meet one of theirs. The
+local part is a variable name either way. There is **no shadowing by id**: a client's `loanReview` beside a global
+`kdr:loanReview` is two workflows. A client means to change a global one by *overlaying* it — naming
+`kdr:loanReview` and merging its task list by task id — which is not built yet; a client wanting its own defines a
+bare one. Only the single-instance kinds (creation, survey) still shadow, **by kind**. Since a rooted id is not a
+variable name, every place that uses a workflow id as an identifier takes it as a string: the `WfRef` text
+(`gc.cd.global.loans~1#kdr:loanReview`), stored state keys, query parameters, hash routes, fragment namespaces
+(pulled by string, `%{@t("loanCopy.kdr:loanReview.title")}`, never a bare `${...}` path).
+
 The definition is compiled into a **kernel-shared model** (`base/kernel`, beside `GedraConfig`) so the
 **frontend runs the same state machine** the backend enforces — the pattern `CLAUDE.md` names as the point of
 `base/kernel`: the UI computes "which transitions can I take from here?" with the identical rule the gate

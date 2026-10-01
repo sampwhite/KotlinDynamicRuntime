@@ -320,6 +320,22 @@ class GedraConfigCollectorTest : StringSpec({
             .fullMessage() shouldContain "'abc:ready' is under the root 'abc', not 'kdr'"
     }
 
+    // And its workflows (issue #953): a global workflow id is rooted, and so is every task in it -- a global workflow
+    // is a container clients will add tasks to by overlay, where a bare task of core's could meet one of theirs.
+    "a global config's workflow id and its tasks are rooted, under its namespace's root" {
+        fun flow(workflowId: String, taskId: String) = gedraConfig(devCxt, "flowConfig", GCFG.globalNamespace) {
+            trait("NoteEntry", "kdr:note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
+            workflow(workflowId, WfEntry.normal) { task(taskId, "First") { trait("kdr:note"); save("s", "Save", WfSaveKind.edit) } }
+        }
+        GedraConfigCollector().add(devCxt, flow("kdr:review", "kdr:first")) shouldBe true
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("review", "kdr:first")) }
+            .fullMessage() shouldContain "'review' is not a rooted workflow id"
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("kdr:review", "first")) }
+            .fullMessage() shouldContain "'first' is not a rooted task id"
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("abc:review", "abc:first")) }
+            .fullMessage() shouldContain "'abc:review' is under the root 'abc', not 'kdr'"
+    }
+
     // A config trait is a slot of the config store, global as state is (issue #951): a client's would land in the one
     // global registry under an id no owner rule judges, where a later client's same-named data trait would meet it.
     "a client config's config trait is refused, and in production dropped while the rest stands" {

@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.naming.namespaceRoot
 import com.dynamicruntime.common.startup.SchemaCollector
@@ -12,9 +13,9 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 
 /**
  * Over a node booted with core's components alone: every global name core declares carries core's one root, `kdr`
- * -- its namespaces (issue #950), trait ids (#951) and cfacts (#952). The boot already refuses a component
- * namespace off its owner's root; this pins that core's owner is `kdr` for every one of them, so a name added later
- * without it fails here rather than shipping.
+ * -- its namespaces (issue #950), trait ids (#951), cfacts (#952), and workflow and task ids (#953). The boot already
+ * refuses a component namespace off its owner's root; this pins that core's owner is `kdr` for every one of them, so
+ * a name added later without it fails here rather than shipping.
  */
 class CoreRootRegistryTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("coreRoots", "coreRootRegistryTest")
@@ -39,5 +40,12 @@ class CoreRootRegistryTest : StringSpec({
         names.shouldNotBeEmpty()
         names.filterNot { it.startsWith("${OWNR.kdrRoot}${OWNR.rootSep}") }.shouldBeEmpty()
         names.filter { it.substringAfter(OWNR.rootSep).startsWith("wf") }.shouldBeEmpty()
+    }
+
+    // Issue #953: and its workflows and their tasks. Vacuous today -- core ships no workflow -- and here for the first.
+    "no global workflow or task id in core lacks the kdr root" {
+        val workflows = WorkflowService.get(cxt).forClient(null).workflows.values.map { it.def }
+        val ids = workflows.map { it.workflowId } + workflows.flatMap { wf -> wf.tasks.map { it.id } }
+        ids.filterNot { it.startsWith("${OWNR.kdrRoot}${OWNR.rootSep}") }.shouldBeEmpty()
     }
 })

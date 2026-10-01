@@ -612,10 +612,12 @@ class WfDef(
     var resolvedFunctions: List<WfFunction> = emptyList()
 
     init {
-        if (!workflowId.isVariableName()) {
+        // Bare for a client's own, `<root>:<name>` for a global one (issue #953) -- the local part a variable name
+        // either way. Which form is the owner's is the collector's to judge, since it knows the owner.
+        if (!isOwnedName(OwnedNameKind.workflow, workflowId)) {
             throw KdrException.mkConv(
-                "'$workflowId' cannot be a workflow id: it has to be usable as a variable name, since a " +
-                    "workflow is addressed by this name from code, from data and from a stored reference.",
+                "'$workflowId' cannot be a workflow id: it has to be a variable name, or '<root>:<name>' with one, " +
+                    "since a workflow is addressed by this name from code, from data and from a stored reference.",
             )
         }
         if (tasks.isEmpty()) {

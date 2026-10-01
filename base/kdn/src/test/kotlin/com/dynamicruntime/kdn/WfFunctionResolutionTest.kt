@@ -82,9 +82,9 @@ class WfFunctionResolutionTest : StringSpec({
         // The exemption the label check documents: a null suggestion list means "no list to check against", not
         // an empty one -- which would drop every global workflow's userHasLabel at boot in strict mode.
         val cxt = boot()
-        val task = WorkflowService.get(cxt).forClient(null).workflow("globalReview").shouldNotBeNull().def.tasks.single()
+        val task = WorkflowService.get(cxt).forClient(null).workflow("kdr:globalReview").shouldNotBeNull().def.tasks.single()
         task.resolvedFunctions.map { it.fn } shouldContainExactly listOf(ULH.fn)
-        WorkflowService.get(cxt).issues.none { it.message.contains("globalReview") } shouldBe true
+        WorkflowService.get(cxt).issues.none { it.message.contains("kdr:globalReview") } shouldBe true
     }
 })
 
@@ -147,10 +147,11 @@ private class WfFnFixture : ComponentDefinition {
 
     /** A global normal workflow naming a label no client suggests -- allowed, since there is no one list to check. */
     private fun global(cxt: KdrCxt): GedraConfig =
-        // Core's own namespace, which this fixture extends deliberately, by name (issue #950).
+        // Core's own namespace, which this fixture extends deliberately, by name (issue #950). Its workflow and
+        // task ids carry the root like every global one (issue #953).
         gedraConfig(cxt, "wfFnGlobal", GCFG.globalNamespace, contributesTo = OWNR.kdrRoot) {
-            workflow("globalReview", WfEntry.normal) {
-                task("review", "Review") {
+            workflow("kdr:globalReview", WfEntry.normal) {
+                task("kdr:review", "Review") {
                     trait(GT.name)
                     function(userHasLabel { label = "anyLabelAtAll" })
                     save("save", "Save", WfSaveKind.edit)
