@@ -38,7 +38,7 @@ class YearlyTraitTest : StringSpec({
     fun yearly(year: Int, note: String? = null): Map<String, Any?> =
         mapOf(GE.traitId to ST.yearly, GE.data to buildMap { put(ST.year, year); if (note != null) put(ST.note, note) })
 
-    fun nameEntry(name: String) = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))
+    fun nameEntry(name: String) = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
 
     fun edit(action: GedraEditAction, traitId: String, data: Map<String, Any?>? = null): Map<String, Any?> =
         buildMap {
@@ -125,7 +125,7 @@ class YearlyTraitTest : StringSpec({
                 ),
             ),
         )
-        env[EP.errorMessage].toOptStr().orEmpty() shouldContain "same 'yearly' entry"
+        env[EP.errorMessage].toOptStr().orEmpty() shouldContain "same '${ST.yearly}' entry"
     }
 
     "a trait with no primary key still holds only one entry" {

@@ -171,17 +171,20 @@ namespaces. Stating it as ownership is what makes the rule survive the arrival o
 list of reserved names would not.
 
 Visibility is also *why* two clients may define the same trait id harmlessly — neither can see the other's
-(issue #807). Each gets its own trait, and it stops nothing working. It does have to be resolved before either
-config can be promoted into source code as a global one, since a global id is one no client may use.
+(issue #807). Each gets its own trait, and it stops nothing working. Promoting one into source code as a global
+trait gives it a rooted id (`kdr:…`, or its component's root), so it can never collide with either.
 
 ## Two uniqueness rules that only look contradictory
 
-- **`traitId` is unique within a client's view** (issue #807) — a client's own traits and the global ones it sees
-  never share an id. A **global** trait's id is unique across every client and every gedra kind, and no client
-  may reuse one; a client's **own** trait's id is unique within that client, and another client may declare
-  the same id and get its own. This is what lets stored data carry a bare trait id and nothing else: the gedra
-  holding an entry names its client, so the id resolves among that client's own traits and the global ones,
-  with never two answers. An entry met *outside* its gedra -- in a log line, an export, a queue message -- is
+- **`traitId` is unique within a client's view** (issues #807, #951) — a client's own traits and the global ones
+  it sees never share an id, **by construction**: a global trait's id is rooted with its owner's root
+  (`kdr:name`, `sample:expenseReport`) and a client's is bare (`survey1`), so the two can never meet, and no
+  release adding a global trait can take an id a client already uses. A global id is unique across every client
+  and gedra kind; a client's own id within that client, and another client may declare the same one and get its
+  own. This is what lets stored data carry a trait id and nothing else: the gedra holding an entry names its
+  client, so the id resolves among that client's own traits and the global ones, with never two answers. (A
+  string usage's search parameter is named for the trait, so a global trait's carries its root too:
+  `kdr:name`, `kdr:nameContains`.) An entry met *outside* its gedra -- in a log line, an export, a queue message -- is
   unambiguous only beside the gedra's id (or its client), so anything carrying entries out carries that too.
 - **Type names are namespaced** — so two config bundles may each generate a `NameEntry` without colliding.
 
@@ -338,7 +341,8 @@ Only the first is worth trading for uptime.
 
 | Check | Refused |
 |---|---|
-| A `traitId` claimed twice within one client's view — a global id reused anywhere, or a client's own id twice in that client (#807) | naming both bundles |
+| A `traitId` claimed twice within one owner — a global id twice, or a client's own id twice in that client (#807, #951) | naming both bundles |
+| A global config's trait id that is not `<root>:<name>` under its namespace's root (#951) — a global id and a client's can then never be the same | naming the rule |
 | A namespace claimed by two owners — a backstop since #949/#950, reached only when production forgave a component namespace under `client` | naming the owner it already has |
 | A component namespace off its owner root without `contributesTo`, under `client`, or with no root; a declared type outside its contribution's root; a type name declared twice (#950) | naming the component and the rule |
 | A client config declaring outside its own `client.<clientId>` namespace, or a new type declared into another owner's (#949) | naming the client's namespace |

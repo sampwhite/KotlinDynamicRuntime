@@ -1,16 +1,21 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -104,22 +109,28 @@ class DuplicateUsageComponent : ComponentDefinition {
             description = "Test-only flag that loads the duplicate-usage fixture component regardless of environment.",
         )
         const val namespace = "duplicateusagefixture"
-        const val dupeTrait = "dupeYearly"
+        const val dupeTrait = "$namespace:dupeYearly"
         const val dupeEntry = "DupeYearlyEntry"
     }
 }
 
-/** Contributes a global config whose usage mints a search parameter colliding with a reserved field (#538). */
+/**
+ * Contributes a client's config whose usage mints a search parameter colliding with a reserved field (#538). A
+ * client's, because only a client's trait id is bare (issue #951), so only it can be named exactly like the field.
+ */
 class ReservedFieldUsageComponent : ComponentDefinition {
     override val providerName: String = "reservedFieldUsageFixture"
-
-    /** The fixture's own owner root (issue #950). */
-    override val ownerRoot: String = namespace
 
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "reservedUsageConfig", namespace, GID.globalClient) {
+        gedraConfig(cxt, "reservedUsageConfig", clientNamespace(reservedClient), reservedClient) {
+            defineClient(
+                ClientDef(
+                    clientId = reservedClient, name = reservedClient, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
             trait(reservedEntry, reservedTrait, setOf(GedraDataType.formDoc), "A trait named like a reserved field.") {
                 property("value", "A value.")
             }
@@ -135,11 +146,11 @@ class ReservedFieldUsageComponent : ComponentDefinition {
             "KDR_LOAD_RESERVED_USAGE_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
             description = "Test-only flag that loads the reserved-field-usage fixture component regardless of environment.",
         )
-        const val namespace = "reservedusagefixture"
         // The offset paging field's name -- a usage on a trait so named collides with it. Referencing the
         // constant keeps the collision a compile-time fact: rename EP.offset and this fixture stops compiling
         // rather than silently declaring a trait that collides with nothing.
         const val reservedTrait = EP.offset
         const val reservedEntry = "ReservedUsageEntry"
+        const val reservedClient = "reservedusageclient"
     }
 }

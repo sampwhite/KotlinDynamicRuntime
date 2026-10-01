@@ -50,7 +50,7 @@ class JobExceptionsTest : StringSpec({
     fun form(inClient: String = client, owner: Long = ownerId): String =
         GedraDataService.get(cxt).createGedra(
             cxt.mkSubContext("jx", inClient).also { it.userId = owner }, GedraDataType.formDoc,
-            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "A form"))),
+            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "A form"))),
         ).gedraId.fullId
 
     fun entries(gedraId: String, scope: ReadScope = ReadScope.unrestricted) = JobExceptionRows.read(cxt, gedraId, scope)

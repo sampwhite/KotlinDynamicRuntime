@@ -31,7 +31,7 @@ object ST {
     const val namespace = "sample.traits"
 
     // --- the expense trait, which exercises a derived value ---
-    const val expenseReport = "expenseReport"
+    const val expenseReport = "sample:expenseReport"
     const val expenseReportEntry = "ExpenseReportEntry"
     const val year = "year"
     const val perItemAmount = "perItemAmount"
@@ -40,7 +40,7 @@ object ST {
     const val reviewerNote = "reviewerNote"
 
     // --- the questionnaire trait, which exercises a merge ---
-    const val questionnaire = "questionnaire"
+    const val questionnaire = "sample:questionnaire"
     const val questionnaireEntry = "QuestionnaireEntry"
     const val topic = "topic"
     const val notes = "notes"
@@ -60,7 +60,7 @@ object ST {
     const val siteAddress = "SiteAddress"
     const val country = "country"
     const val postcode = "postcode"
-    const val siteVisit = "siteVisit"
+    const val siteVisit = "sample:siteVisit"
     const val siteVisitEntry = "SiteVisitEntry"
     const val visitedOn = "visitedOn"
     const val address = "address"
@@ -79,24 +79,24 @@ object ST {
     /** The countries the global schema admits; a client may offer fewer, and one does. */
     val countries: List<String> = listOf("gb", "ie", "fr", "de")
 
-    const val managerApproval = "managerApproval"
+    const val managerApproval = "sample:managerApproval"
     const val approvalEntry = "ApprovalEntry"
     const val approved = "approved"
     const val decidedBy = "decidedBy"
     const val rejectionReason = "rejectionReason"
 
     // --- the yearly trait, which exercises a primary key (issue #487): several entries told apart by `year` ---
-    const val yearly = "yearly"
+    const val yearly = "sample:yearly"
     const val yearlyEntry = "YearlyEntry"
     const val note = "note"
 
     // --- a state trait (issue #597): derived, keyed by year -- the phase-B declaration; the derivation is phase D ---
-    const val traitPresenceByYear = "traitPresenceByYear"
+    const val traitPresenceByYear = "sample:traitPresenceByYear"
     const val traitPresenceByYearEntry = "TraitPresenceByYearEntry"
     const val presentTraits = "presentTraits"
 
     // --- a cross-kind state trait (issue #597): an id from a third-party sync, applies to more than one kind ---
-    const val externalId = "externalId"
+    const val externalId = "sample:externalId"
     const val externalIdEntry = "ExternalIdEntry"
     const val externalSource = "externalSource"
     const val externalRef = "externalRef"

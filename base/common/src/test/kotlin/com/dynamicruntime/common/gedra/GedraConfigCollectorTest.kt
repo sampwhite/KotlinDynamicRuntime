@@ -37,10 +37,12 @@ class GedraConfigCollectorTest : StringSpec({
 
     val devCxt = cxtIn(ENV.local)
 
-    fun nameConfig(configName: String = "coreTraits", traitId: String = "name", namespace: String = GCFG.globalNamespace, client: String = GID.globalClient) =
+    /** A config of one trait; a global one's id is rooted (issue #951), so its type and field take the local part. */
+    fun nameConfig(configName: String = "coreTraits", traitId: String = "kdr:name", namespace: String = GCFG.globalNamespace, client: String = GID.globalClient) =
         gedraConfig(devCxt, configName, namespace, client) {
-            trait("${traitId.replaceFirstChar { it.uppercase() }}Entry", traitId, setOf(GedraDataType.formDoc)) {
-                property(traitId, "Something.", required = true)
+            val local = traitId.substringAfter(':')
+            trait("${local.replaceFirstChar { it.uppercase() }}Entry", traitId, setOf(GedraDataType.formDoc)) {
+                property(local, "Something.", required = true)
             }
         }
 
@@ -48,7 +50,7 @@ class GedraConfigCollectorTest : StringSpec({
         val collector = GedraConfigCollector()
         collector.add(devCxt, nameConfig()) shouldBe true
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
-        collector.globalTraits() shouldContainKey "name"
+        collector.globalTraits() shouldContainKey "kdr:name"
         collector.defs().keys shouldContain "kdr.core.NameEntry"
         collector.issues.shouldBeEmpty()
     }
@@ -61,12 +63,12 @@ class GedraConfigCollectorTest : StringSpec({
         val collector = GedraConfigCollector()
         collector.add(devCxt, nameConfig())
         val message = shouldThrow<KdrException> {
-            collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "other"))
+            collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "kdr.other"))
         }.message
         // Both sides named, so the reader does not have to go looking for the other half.
         message.shouldNotBeNull() shouldContain "gc.cd.global.coreTraits"
         message shouldContain "gc.cd.global.extraTraits"
-        message shouldContain "'name'"
+        message shouldContain "'kdr:name'"
     }
 
     // A client declares into its own namespace (issue #949), `client.<clientId>` or beneath it, so its types can
@@ -107,16 +109,16 @@ class GedraConfigCollectorTest : StringSpec({
         val prodCxt = cxtIn(ENV.prod)
         val collector = GedraConfigCollector()
         collector.add(prodCxt, nameConfig()) shouldBe true
-        collector.add(prodCxt, nameConfig(configName = "extraTraits", namespace = "other")) shouldBe false
+        collector.add(prodCxt, nameConfig(configName = "extraTraits", namespace = "kdr.other")) shouldBe false
 
         // First wins, deterministically -- component load order is loadPriority then registration, so the
         // winner is the same across restarts rather than whichever config happened to arrive first today.
         collector.configs.map { it.name } shouldContainExactly listOf("coreTraits")
-        collector.globalTraits().getValue("name").typeName shouldBe "kdr.core.NameEntry"
+        collector.globalTraits().getValue("kdr:name").typeName shouldBe "kdr.core.NameEntry"
 
         // And the node can say what it dropped, which is what stops a degraded boot from being silent.
         collector.issues.size shouldBe 1
-        collector.issues.first().message shouldContain "Trait 'name' is declared by both"
+        collector.issues.first().message shouldContain "Trait 'kdr:name' is declared by both"
         collector.issues.first().degradedTo shouldContain "dropping"
     }
 
@@ -146,7 +148,7 @@ class GedraConfigCollectorTest : StringSpec({
     "strict mode names the way past itself" {
         val collector = GedraConfigCollector()
         collector.add(devCxt, nameConfig())
-        shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "other")) }
+        shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "kdr.other")) }
             .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
     }
 
@@ -175,7 +177,7 @@ class GedraConfigCollectorTest : StringSpec({
 
     fun storedNameConfig(configName: String, namespace: String) =
         gedraConfig(devCxt, configName, namespace, GID.globalClient, GedraConfigOrigin.stored) {
-            trait("NameEntry", "name", setOf(GedraDataType.formDoc)) { property("name", "Something.", required = true) }
+            trait("NameEntry", "kdr:name", setOf(GedraDataType.formDoc)) { property("name", "Something.", required = true) }
         }
 
     // The arriving config is the one refused, so its origin decides: a stored config colliding with a source one
@@ -183,16 +185,16 @@ class GedraConfigCollectorTest : StringSpec({
     "a problem is judged by the origin of the config that holds it" {
         val collector = GedraConfigCollector()
         collector.add(devCxt, nameConfig())
-        collector.add(devCxt, storedNameConfig("storedTraits", "storedns")) shouldBe false
+        collector.add(devCxt, storedNameConfig("storedTraits", "kdr.stored")) shouldBe false
         val issue = collector.issues.single()
         issue.origin shouldBe GedraConfigOrigin.stored
         issue.storedConfigId.shouldNotBeNull() shouldContain "storedTraits"
         issue.client shouldBe GID.globalClient
         issue.elementKind shouldBe GCEL.config
         // The source config keeps the trait; the stored one never displaced it.
-        collector.globalTraits().getValue("name").typeName shouldBe "kdr.core.NameEntry"
+        collector.globalTraits().getValue("kdr:name").typeName shouldBe "kdr.core.NameEntry"
 
-        shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "other")) }
+        shouldThrow<KdrException> { collector.add(devCxt, nameConfig(configName = "extraTraits", namespace = "kdr.other")) }
             .message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
     }
 
@@ -200,7 +202,7 @@ class GedraConfigCollectorTest : StringSpec({
         val unitCxt = KdrCxt("collect", KdrInstanceConfig("stored-unit", ENV.unit, ENV.liveSource))
         val collector = GedraConfigCollector()
         collector.add(unitCxt, nameConfig())
-        val message = shouldThrow<KdrException> { collector.add(unitCxt, storedNameConfig("storedTraits", "storedns")) }
+        val message = shouldThrow<KdrException> { collector.add(unitCxt, storedNameConfig("storedTraits", "kdr.stored")) }
             .message.shouldNotBeNull()
         message shouldContain GCFG.storedCheckEnvVar.name
         message shouldContain "storedTraits"
@@ -210,9 +212,9 @@ class GedraConfigCollectorTest : StringSpec({
         val offCxt = cxtIn(ENV.local, BootCheckMode.off.name)
         val collector = GedraConfigCollector()
         collector.add(offCxt, nameConfig()) shouldBe true
-        collector.add(offCxt, nameConfig(configName = "extraTraits", namespace = "other")) shouldBe true
+        collector.add(offCxt, nameConfig(configName = "extraTraits", namespace = "kdr.other")) shouldBe true
         // The later claim wins under `off`, which is what "no checking" means rather than a second policy.
-        collector.globalTraits().getValue("name").typeName shouldBe "other.NameEntry"
+        collector.globalTraits().getValue("kdr:name").typeName shouldBe "kdr.other.NameEntry"
         collector.issues.shouldBeEmpty()
     }
 
@@ -223,14 +225,14 @@ class GedraConfigCollectorTest : StringSpec({
     "the collector keeps config traits out of the data and state accessors" {
         val collector = GedraConfigCollector()
         val mixed = gedraConfig(devCxt, "mixed", GCFG.globalNamespace) {
-            trait("DName", "dname", setOf(GedraDataType.formDoc)) { property("dname", "D.", required = true) }
-            stateTrait("SName", "sname", setOf(GedraDataType.formDoc), StateTraitClass.asserted) { property("sname", "S.") }
-            configTrait("CName", "cname", setOf(GedraConfigType.configDoc)) { property("cname", "C.") }
+            trait("DName", "kdr:dname", setOf(GedraDataType.formDoc)) { property("dname", "D.", required = true) }
+            stateTrait("SName", "kdr:sname", setOf(GedraDataType.formDoc), StateTraitClass.asserted) { property("sname", "S.") }
+            configTrait("CName", "kdr:cname", setOf(GedraConfigType.configDoc)) { property("cname", "C.") }
         }
         collector.add(devCxt, mixed) shouldBe true
-        collector.traitsFor(GID.globalClient).map { it.traitId } shouldContainExactly listOf("dname")
-        collector.stateTraits().map { it.traitId } shouldContainExactly listOf("sname")
-        collector.configTraits().map { it.traitId } shouldContainExactly listOf("cname")
+        collector.traitsFor(GID.globalClient).map { it.traitId } shouldContainExactly listOf("kdr:dname")
+        collector.stateTraits().map { it.traitId } shouldContainExactly listOf("kdr:sname")
+        collector.configTraits().map { it.traitId } shouldContainExactly listOf("kdr:cname")
     }
 
     // Config traits (issue #316) join the one global id space: a config trait may not reuse a data trait's id
@@ -239,10 +241,10 @@ class GedraConfigCollectorTest : StringSpec({
         val collector = GedraConfigCollector()
         collector.add(devCxt, nameConfig()) shouldBe true
         val clash = gedraConfig(devCxt, "storedConfig", GCFG.globalNamespace) {
-            configTrait("NameCfgEntry", "name", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
+            configTrait("NameCfgEntry", "kdr:name", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
         }
         val ex = shouldThrow<KdrException> { collector.add(devCxt, clash) }
-        (ex.message ?: "") shouldContain "Trait 'name'"
+        (ex.message ?: "") shouldContain "Trait 'kdr:name'"
         collector.configTraits().shouldBeEmpty()
     }
 
@@ -291,6 +293,39 @@ class GedraConfigCollectorTest : StringSpec({
                 workflow("acmeWf", WfEntry.survey) { task("review-1", "First") { trait("acmeNote"); save("s", "Save", WfSaveKind.edit) } }
             }
         }.fullMessage() shouldContain "'review-1' cannot be a task id"
+    }
+
+    // A global trait id is rooted (issue #951), with the root its config's namespace is under: whoever owns `kdr`
+    // owns every `kdr:` trait, data, state and config traits alike.
+    "a global config's trait id is rooted, under its namespace's root" {
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, nameConfig(configName = "bareTraits", traitId = "bare")) }
+            .fullMessage() shouldContain "'bare' is not a rooted trait id"
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, nameConfig(configName = "abcTraits", traitId = "abc:thing")) }
+            .fullMessage() shouldContain "'abc:thing' is under the root 'abc', not 'kdr'"
+        val stateOnly = gedraConfig(devCxt, "stateTraits", GCFG.globalNamespace) {
+            stateTrait("BareStateEntry", "bareState", setOf(GedraDataType.formDoc), StateTraitClass.asserted) { property("x", "X.") }
+        }
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, stateOnly) }.fullMessage() shouldContain
+            "'bareState' is not a rooted trait id"
+    }
+
+    // A config trait is a slot of the config store, global as state is (issue #951): a client's would land in the one
+    // global registry under an id no owner rule judges, where a later client's same-named data trait would meet it.
+    "a client config's config trait is refused, and in production dropped while the rest stands" {
+        val clientSlot = gedraConfig(devCxt, "acmeMain", "client.acme", "acme") {
+            trait("AcmeNoteEntry", "acmeNote", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
+            configTrait("AcmeSlotEntry", "acmeSlot", setOf(GedraConfigType.configDoc)) { property("x", "X.") }
+        }
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, clientSlot) }
+            .fullMessage() shouldContain "declares the config trait 'acmeSlot'"
+
+        val collector = GedraConfigCollector()
+        collector.add(cxtIn(ENV.prod), clientSlot) shouldBe true
+        collector.configTraits().shouldBeEmpty()
+        collector.traitsOwnedBy("acme").map { it.traitId } shouldContainExactly listOf("acmeNote")
+        collector.issues.single().degradedTo shouldContain "Dropping the config trait"
+        // The case that once reached the cross-owner assertion: another client's data trait of the same id.
+        collector.add(cxtIn(ENV.prod), nameConfig(configName = "otherMain", traitId = "acmeSlot", namespace = "client.other", client = "other")) shouldBe true
     }
 
     // The rooted form is the global side's, so a global config may already declare one; renaming core's own names

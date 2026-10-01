@@ -38,7 +38,7 @@ class GedraImportTest : StringSpec({
     val bob = TestUser.create(cxt, "bob@import.test", userClient = CL.hub)
     val ada = TestUser.create(cxt, "ada@import.test", level = ROLE.admin)
 
-    fun nameEntry(name: String): Map<String, Any?> = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))
+    fun nameEntry(name: String): Map<String, Any?> = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
     fun doc(vararg entries: Map<String, Any?>): Map<String, Any?> = mapOf(GDF.entries to entries.toList())
 
     fun importFor(tu: TestUser, body: Map<String, Any?>): Map<String, Any?> = tu.postData(GEP.formDocImport, body)
@@ -61,7 +61,7 @@ class GedraImportTest : StringSpec({
         // The stored entry carries the imported trait data, a fresh id, and source `user`.
         val entry = entriesOf(bob, newId).single()
         entry[GE.traitId] shouldBe GT.name
-        entry[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Imported for Bob"
+        entry[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Imported for Bob"
         entry[GE.source] shouldBe GSRC.user
     }
 
@@ -79,7 +79,7 @@ class GedraImportTest : StringSpec({
         newId shouldNotBe aliceDocId
         val fetched = ada.getItem(GEP.formDoc, mapOf(GDF.gedraId to newId))
         fetched[GDF.userId] shouldBe bob.userId
-        fetched[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Alice original"
+        fetched[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Alice original"
     }
 
     "an unsupported trait is forgiven by default and reported, the rest imported" {
@@ -135,7 +135,7 @@ class GedraImportTest : StringSpec({
     }
 
     "preserveEntryIds is refused without env auth and honored with it" {
-        val withId = mapOf(GE.traitId to GT.name, GE.entryId to "keep-this-id", GE.data to mapOf(GT.name to "Kept"))
+        val withId = mapOf(GE.traitId to GT.name, GE.entryId to "keep-this-id", GE.data to mapOf(GT.nameField to "Kept"))
 
         // No env auth: sending the toggle is refused (the schema hides it; the handler enforces it).
         bob.expectError(400, GEP.formDocImport, data = mapOf(GIF.preserveEntryIds to true, GIF.data to doc(withId)))

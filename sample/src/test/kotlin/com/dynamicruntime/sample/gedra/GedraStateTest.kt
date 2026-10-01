@@ -57,7 +57,7 @@ class GedraStateTest : StringSpec({
 
     fun aForm(name: String) = service().createGedra(
         asOwner(), kind,
-        listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))),
+        listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))),
     ).gedraId
 
     /** A wfData gedra (no data entries) -- a second gedra kind, to exercise the applicability guard. */

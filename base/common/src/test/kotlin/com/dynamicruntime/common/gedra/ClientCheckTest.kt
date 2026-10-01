@@ -62,11 +62,14 @@ class ClientCheckTest : StringSpec({
         )
     }
 
-    /** A global config carrying one trait, so `includedTraits` has something real to name. */
-    fun traitConfig(traitId: String): GedraConfig =
-        gedraConfig(devCxt, "${traitId}Traits", GCFG.globalNamespace, GID.globalClient) {
-            trait("${traitId.replaceFirstChar { it.uppercase() }}Entry", traitId, setOf(GedraDataType.formDoc)) {
-                property(traitId, "Something.", required = true)
+    /**
+     * A global config carrying one trait, so `includedTraits` has something real to name. The id is rooted under
+     * core's root (issue #951): [local] is its local part, which also names the config, the type and the field.
+     */
+    fun traitConfig(local: String): GedraConfig =
+        gedraConfig(devCxt, "${local}Traits", GCFG.globalNamespace, GID.globalClient) {
+            trait("${local.replaceFirstChar { it.uppercase() }}Entry", "kdr:$local", setOf(GedraDataType.formDoc)) {
+                property(local, "Something.", required = true)
             }
         }
 
@@ -285,8 +288,8 @@ class ClientCheckTest : StringSpec({
     // A client sees its own traits and global's and nobody else's, so this catches a typo, a trait that was
     // never declared, and somebody else's trait, with one check.
     "a client including a trait it cannot see is refused" {
-        val message = refusal(traitConfig("name"), clientConfig("acme", included = listOf("nmae")))
-        message shouldContain "'nmae'"
+        val message = refusal(traitConfig("name"), clientConfig("acme", included = listOf("kdr:nmae")))
+        message shouldContain "'kdr:nmae'"
         message shouldContain "is not a trait it can see"
     }
 
@@ -295,12 +298,12 @@ class ClientCheckTest : StringSpec({
     "forgiven, an unknown included entry is dropped and the client stands" {
         val prodCollector = GedraConfigCollector().apply {
             add(prodCxt, traitConfig("name"))
-            add(prodCxt, clientConfig("acme", included = listOf("name", "nmae", "#everything")))
+            add(prodCxt, clientConfig("acme", included = listOf("kdr:name", "kdr:nmae", "#everything")))
         }
         val result = checkClientDefs(prodCxt, prodCollector)
-        result.clients.getValue("acme").includedTraits shouldContainExactly listOf("name")
+        result.clients.getValue("acme").includedTraits shouldContainExactly listOf("kdr:name")
         result.issues.map { it.message }.let { messages ->
-            messages.any { "'nmae'" in it } shouldBe true
+            messages.any { "'kdr:nmae'" in it } shouldBe true
             messages.any { "'#everything'" in it } shouldBe true
         }
     }
@@ -308,9 +311,9 @@ class ClientCheckTest : StringSpec({
     "a client including a trait it can see is taken" {
         val result = checkClientDefs(
             devCxt,
-            collectorOf(traitConfig("name"), clientConfig("acme", included = listOf("name"))),
+            collectorOf(traitConfig("name"), clientConfig("acme", included = listOf("kdr:name"))),
         )
-        result.clients.getValue("acme").includedTraitIds shouldContainExactly listOf("name")
+        result.clients.getValue("acme").includedTraitIds shouldContainExactly listOf("kdr:name")
     }
 
     // Dropping a client drops the ones built on it, which is the reason the second pass runs against the

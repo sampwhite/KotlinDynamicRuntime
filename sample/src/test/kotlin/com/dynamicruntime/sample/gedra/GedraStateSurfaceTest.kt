@@ -35,7 +35,7 @@ class GedraStateSurfaceTest : StringSpec({
     fun createForm(name: String): String =
         user.postItem(
             GEP.formDocCreate,
-            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name)))),
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name)))),
         )[GDF.gedraId].toOptStr().orEmpty()
 
     fun externalId(source: String, ref: String): Map<String, Any?> =

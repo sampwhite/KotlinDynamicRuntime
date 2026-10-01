@@ -39,8 +39,8 @@ class WorkflowRegistryTest : StringSpec({
     /** Traits every scope can see: `name` and `report`, in a global bundle. */
     fun globalTraits(cxt: KdrCxt, workflows: GedraConfigBuilderBlock = {}): GedraConfig =
         gedraConfig(cxt, "wfCore", GCFG.globalNamespace) {
-            trait("NameEntry", "name", setOf(GedraDataType.formDoc)) { property("name", "Name.") }
-            trait("ReportEntry", "report", setOf(GedraDataType.formDoc)) { property("year", "Year.") }
+            trait("NameEntry", "kdr:name", setOf(GedraDataType.formDoc)) { property("name", "Name.") }
+            trait("ReportEntry", "kdr:report", setOf(GedraDataType.formDoc)) { property("year", "Year.") }
             workflows(this)
         }
 
@@ -119,7 +119,7 @@ class WorkflowRegistryTest : StringSpec({
     }
 
     "a global creation workflow is inherited by a client that supports its traits" {
-        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt, creation("createForm", "name")), client(devCxt, "acme", listOf("name"))))
+        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt, creation("createForm", "kdr:name")), client(devCxt, "acme", listOf("kdr:name"))))
         issues.shouldBeEmpty()
         regs.global.creation.shouldNotBeNull().def.workflowId shouldBe "createForm"
         // Inherits everything, so no registry of its own: absent-means-global.
@@ -128,7 +128,7 @@ class WorkflowRegistryTest : StringSpec({
     }
 
     "a client that does not support the global creation's trait does not inherit it" {
-        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt, creation("createForm", "name")), client(devCxt, "acme", listOf("report"))))
+        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt, creation("createForm", "kdr:name")), client(devCxt, "acme", listOf("kdr:report"))))
         issues.shouldBeEmpty()
         regs.forClient("acme").creation.shouldBeNull()
         regs.forClient("acme").workflows.shouldBeEmpty()
@@ -136,8 +136,8 @@ class WorkflowRegistryTest : StringSpec({
 
     "a client's creation workflow shadows the global one, whatever its id" {
         val configs = listOf(
-            globalTraits(devCxt, creation("createForm", "name")),
-            client(devCxt, "acme", listOf("name", "report"), creation("acmeCreate", "report")),
+            globalTraits(devCxt, creation("createForm", "kdr:name")),
+            client(devCxt, "acme", listOf("kdr:name", "kdr:report"), creation("acmeCreate", "kdr:report")),
         )
         val (regs, issues) = build(devCxt, configs)
         issues.shouldBeEmpty()
@@ -153,9 +153,9 @@ class WorkflowRegistryTest : StringSpec({
     "normal workflows are admitted, and a scope may declare many of them" {
         val configs = listOf(
             globalTraits(devCxt),
-            client(devCxt, "acme", listOf("name", "report")) {
-                normal("auditReview", "name")(this)
-                normal("secondReview", "report")(this)
+            client(devCxt, "acme", listOf("kdr:name", "kdr:report")) {
+                normal("auditReview", "kdr:name")(this)
+                normal("secondReview", "kdr:report")(this)
             },
         )
         val (regs, issues) = build(devCxt, configs)
@@ -166,8 +166,8 @@ class WorkflowRegistryTest : StringSpec({
 
     "a normal workflow's saves must be edits, since the form already exists" {
         val e = shouldThrow<KdrException> {
-            client(devCxt, "acme", listOf("name")) {
-                workflow("later", WfEntry.normal) { task("a", "A") { trait("name"); save("s", "S") } }
+            client(devCxt, "acme", listOf("kdr:name")) {
+                workflow("later", WfEntry.normal) { task("a", "A") { trait("kdr:name"); save("s", "S") } }
             }
         }
         e.message shouldContain "runs against an existing form"
@@ -177,10 +177,10 @@ class WorkflowRegistryTest : StringSpec({
     // the workflow at boot instead of being a test that never passes -- and a client's own cfact is usable in
     // its own workflow, where it would not parse globally.
     "an eligibility test must parse against the scope's cfacts, and may use the client's own" {
-        fun eligible(test: String): GedraConfig = client(devCxt, "acme", listOf("name")) {
+        fun eligible(test: String): GedraConfig = client(devCxt, "acme", listOf("kdr:name")) {
             workflow("auditReview", WfEntry.normal) {
                 eligibility("check", test, "Not yet.")
-                task("a", "A") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                task("a", "A") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
             }
         }
         val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt), eligible("surveyComplete, acmeOnly")))
@@ -192,10 +192,10 @@ class WorkflowRegistryTest : StringSpec({
     }
 
     "a singleton rule's condition must parse against the scope's cfacts" {
-        fun ruled(cond: String): GedraConfig = client(devCxt, "acme", listOf("name")) {
+        fun ruled(cond: String): GedraConfig = client(devCxt, "acme", listOf("kdr:name")) {
             workflow("auditReview", WfEntry.normal) {
                 singleton(WSC.needsReview, cond)
-                task("a", "A") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                task("a", "A") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
             }
         }
         build(devCxt, listOf(globalTraits(devCxt), ruled("acmeOnly"))).second.shouldBeEmpty()
@@ -206,9 +206,9 @@ class WorkflowRegistryTest : StringSpec({
     // Approval tasks (issue #787): the cfact an approval emits must be declared in the scope, and its copy rides
     // the label check -- the same two rules an eligibility test's test and explanation are held to.
     "an approval task's cfact must be declared, and its copy rides the label check" {
-        fun approving(cfact: String, prompt: String = "Approve it."): GedraConfig = client(devCxt, "acme", listOf("name")) {
+        fun approving(cfact: String, prompt: String = "Approve it."): GedraConfig = client(devCxt, "acme", listOf("kdr:name")) {
             workflow("auditReview", WfEntry.normal) {
-                task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                task("record", "Record") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
                 task("approve", "Approve") { approval(cfact, prompt, "Approve") }
             }
         }
@@ -223,9 +223,9 @@ class WorkflowRegistryTest : StringSpec({
     // A task display (issue #788): its conditions parse against the scope's cfacts, its branches name real modes,
     // and a text branch's copy rides the label check.
     "a task display's conditions, modes and copy are checked at boot" {
-        fun displaying(build: WfDisplayBuilder.() -> Unit): GedraConfig = client(devCxt, "acme", listOf("name")) {
+        fun displaying(build: WfDisplayBuilder.() -> Unit): GedraConfig = client(devCxt, "acme", listOf("kdr:name")) {
             workflow("auditReview", WfEntry.normal) {
-                task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit); display(build) }
+                task("record", "Record") { trait("kdr:name"); save("s", "S", WfSaveKind.edit); display(build) }
             }
         }
         build(devCxt, listOf(globalTraits(devCxt), displaying {
@@ -238,10 +238,10 @@ class WorkflowRegistryTest : StringSpec({
         shouldThrow<KdrException> {
             build(devCxt, listOf(globalTraits(devCxt), displaying { otherwise { text("""%{@t("wfCopy.identify.gone")}""") } }))
         }.message shouldContain "display text of task 'record'"
-        val badMode = client(devCxt, "acme", listOf("name")) {
+        val badMode = client(devCxt, "acme", listOf("kdr:name")) {
             workflowFromMap(
                 WfDefBuilder("auditReview", WfEntry.normal).apply {
-                    task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                    task("record", "Record") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
                 }.build().let { raw ->
                     val task = (raw[WFD.tasks] as List<*>).single() as Map<*, *>
                     raw + (WFD.tasks to listOf(task.entries.associate { it.key.toString() to it.value } +
@@ -253,10 +253,10 @@ class WorkflowRegistryTest : StringSpec({
 
         // A branch that is itself a selector: its own branches are held to the same checks -- the resolver can
         // choose them, so a mode or a pull the check never reached would fail on a caller's view instead.
-        fun nested(inner: Map<String, Any?>): GedraConfig = client(devCxt, "acme", listOf("name")) {
+        fun nested(inner: Map<String, Any?>): GedraConfig = client(devCxt, "acme", listOf("kdr:name")) {
             workflowFromMap(
                 WfDefBuilder("auditReview", WfEntry.normal).apply {
-                    task("record", "Record") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                    task("record", "Record") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
                 }.build().let { raw ->
                     val task = (raw[WFD.tasks] as List<*>).single() as Map<*, *>
                     raw + (WFD.tasks to listOf(task.entries.associate { it.key.toString() to it.value } +
@@ -272,10 +272,10 @@ class WorkflowRegistryTest : StringSpec({
     }
 
     "an eligibility explanation rides the label check" {
-        val bad = client(devCxt, "acme", listOf("name")) {
+        val bad = client(devCxt, "acme", listOf("kdr:name")) {
             workflow("auditReview", WfEntry.normal) {
                 eligibility("check", "surveyComplete", """%{@t("wfCopy.identify.gone")}""")
-                task("a", "A") { trait("name"); save("s", "S", WfSaveKind.edit) }
+                task("a", "A") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
             }
         }
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
@@ -285,9 +285,9 @@ class WorkflowRegistryTest : StringSpec({
     "a survey workflow is admitted, beside the creation workflow in one scope" {
         val configs = listOf(
             globalTraits(devCxt),
-            client(devCxt, "acme", listOf("name", "report")) {
-                creation("createForm", "name")(this)
-                survey("reviewForm", "report")(this)
+            client(devCxt, "acme", listOf("kdr:name", "kdr:report")) {
+                creation("createForm", "kdr:name")(this)
+                survey("reviewForm", "kdr:report")(this)
             },
         )
         val (regs, issues) = build(devCxt, configs)
@@ -298,31 +298,31 @@ class WorkflowRegistryTest : StringSpec({
     }
 
     "a second survey workflow in one scope is refused" {
-        val bad = client(devCxt, "acme", listOf("name", "report")) {
-            survey("one", "name")(this)
-            survey("two", "report")(this)
+        val bad = client(devCxt, "acme", listOf("kdr:name", "kdr:report")) {
+            survey("one", "kdr:name")(this)
+            survey("two", "kdr:report")(this)
         }
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
         e.message shouldContain "second survey workflow"
     }
 
     "a workflow collecting a trait its client does not support is refused" {
-        val bad = client(devCxt, "acme", listOf("name"), creation("createForm", "report"))
+        val bad = client(devCxt, "acme", listOf("kdr:name"), creation("createForm", "kdr:report"))
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
         e.message shouldContain "does not support"
     }
 
     "a second creation workflow in one scope is refused" {
-        val bad = client(devCxt, "acme", listOf("name", "report")) {
-            creation("one", "name")(this)
-            creation("two", "report")(this)
+        val bad = client(devCxt, "acme", listOf("kdr:name", "kdr:report")) {
+            creation("one", "kdr:name")(this)
+            creation("two", "kdr:report")(this)
         }
         val e = shouldThrow<KdrException> { build(devCxt, listOf(globalTraits(devCxt), bad)) }
         e.message shouldContain "second creation workflow"
     }
 
     "labels: a resolving backend pull is fine, a missing key, a served file and a two-part key are not" {
-        fun labelled(label: String) = client(devCxt, "acme", listOf("name"), creation("createForm", "name", label = label))
+        fun labelled(label: String) = client(devCxt, "acme", listOf("kdr:name"), creation("createForm", "kdr:name", label = label))
         build(devCxt, listOf(globalTraits(devCxt), labelled("""%{@t("wfCopy.identify.label")}"""))).second.shouldBeEmpty()
         // Guarded: left to its default, as the fragment service's own check leaves it.
         build(devCxt, listOf(globalTraits(devCxt), labelled("""%{@t("wfCopy.identify.gone") ?: "Create"}"""))).second.shouldBeEmpty()
@@ -343,12 +343,12 @@ class WorkflowRegistryTest : StringSpec({
             workflow("createForm", WfEntry.creation) {
                 this.label = label
                 task("only", "Create") {
-                    trait("name")
+                    trait("kdr:name")
                     save("go", "Create")
                 }
             }
         }
-        fun withTitle(label: String?) = listOf(globalTraits(devCxt), client(devCxt, "acme", listOf("name"), titled(label)))
+        fun withTitle(label: String?) = listOf(globalTraits(devCxt), client(devCxt, "acme", listOf("kdr:name"), titled(label)))
         // Absent, or a resolving pull: fine, and the definition carries what was written.
         build(devCxt, withTitle(null)).second.shouldBeEmpty()
         build(devCxt, withTitle("""%{@t("wfCopy.identify.label")}""")).second.shouldBeEmpty()
@@ -360,8 +360,8 @@ class WorkflowRegistryTest : StringSpec({
 
     "in production a bad workflow is dropped from its scope and the rest is kept" {
         val configs = listOf(
-            globalTraits(prodCxt, creation("createForm", "name")),
-            client(prodCxt, "acme", listOf("name"), creation("acmeCreate", "report")),
+            globalTraits(prodCxt, creation("createForm", "kdr:name")),
+            client(prodCxt, "acme", listOf("kdr:name"), creation("acmeCreate", "kdr:report")),
         )
         val (regs, issues) = build(prodCxt, configs, BootCheckMode.warn)
         issues.size shouldBe 1
@@ -372,13 +372,13 @@ class WorkflowRegistryTest : StringSpec({
 
     "with the check off, everything is taken as declared -- nothing checked, nothing dropped" {
         val configs = listOf(
-            globalTraits(devCxt, creation("createForm", "name")),
-            client(devCxt, "acme", listOf("name")) {
+            globalTraits(devCxt, creation("createForm", "kdr:name")),
+            client(devCxt, "acme", listOf("kdr:name")) {
                 // A normal workflow collecting an unsupported trait, and two creation workflows: refusals in
                 // strict mode, none here.
-                workflow("later", WfEntry.normal) { task("a", "A") { trait("report"); save("s", "S", WfSaveKind.edit) } }
-                creation("one", "name")(this)
-                creation("two", "name")(this)
+                workflow("later", WfEntry.normal) { task("a", "A") { trait("kdr:report"); save("s", "S", WfSaveKind.edit) } }
+                creation("one", "kdr:name")(this)
+                creation("two", "kdr:name")(this)
             },
         )
         val (regs, issues) = build(devCxt, configs, BootCheckMode.off)
@@ -390,13 +390,13 @@ class WorkflowRegistryTest : StringSpec({
     "the same workflow id in two bundles of one scope is a collision: refused, or first kept" {
         val configs = listOf(
             globalTraits(devCxt),
-            client(devCxt, "acme", listOf("name", "report"), creation("createForm", "name")),
-            gedraConfig(devCxt, "acmeMore", "client.acme", "acme") { creation("createForm", "report")(this) },
+            client(devCxt, "acme", listOf("kdr:name", "kdr:report"), creation("createForm", "kdr:name")),
+            gedraConfig(devCxt, "acmeMore", "client.acme", "acme") { creation("createForm", "kdr:report")(this) },
         )
         shouldThrow<KdrException> { build(devCxt, configs) }.message shouldContain "declared a second time"
         val (regs, issues) = build(devCxt, configs, BootCheckMode.warn)
         issues.single().message shouldContain "declared a second time"
-        regs.forClient("acme").creation.shouldNotBeNull().def.tasks.single().requiredTraitIds shouldBe listOf("name")
+        regs.forClient("acme").creation.shouldNotBeNull().def.tasks.single().requiredTraitIds shouldBe listOf("kdr:name")
     }
 })
 

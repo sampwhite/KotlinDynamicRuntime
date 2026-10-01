@@ -36,7 +36,7 @@ object WFS {
     const val workflowStateEntry = "WorkflowStateEntry"
 
     /** Trait id: one derived entry per workflow this form is being evaluated against. */
-    const val workflowState = "workflowState"
+    const val workflowState = "kdr:workflowState"
 
     /**
      * The workflow revision this entry was computed against, as `WfRef` text -- the same bookkeeping
@@ -101,7 +101,7 @@ object WFS {
      * Trait id: one **asserted** entry per approved approval task, keyed by workflow and task (issue #787). Apart
      * from the derived [workflowState] -- an approval is a person's act, which no recompute may compute away.
      */
-    const val workflowApproval = "workflowApproval"
+    const val workflowApproval = "kdr:workflowApproval"
 
     /** On an approval: the approval task it records; with [WFD.workflowId], the entry's primary key. */
     const val taskId = "taskId"
@@ -128,7 +128,7 @@ object WFS {
     const val workflowEngagementEntry = "WorkflowEngagementEntry"
 
     /** Trait id: one asserted entry per workflow a person has put this form into. */
-    const val workflowEngagement = "workflowEngagement"
+    const val workflowEngagement = "kdr:workflowEngagement"
 
     /**
      * Whether the form is currently engaged with the workflow. A field rather than mere entry presence, so

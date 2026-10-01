@@ -51,7 +51,7 @@ class UsageSearchTest : StringSpec({
 
     fun postName(user: TestUser, name: String) = user.postItem(
         clientPath(GEP.formDocCreate, SC.globex),
-        mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name)))),
+        mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name)))),
     )
 
     fun postAudit(user: TestUser, auditor: String) = user.postItem(

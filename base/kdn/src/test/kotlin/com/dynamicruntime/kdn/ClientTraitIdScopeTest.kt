@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -112,12 +113,27 @@ class ClientTraitIdScopeTest : StringSpec({
         rows.filter { it[GDF.client] == alpha }.map { topicOf(it) }.contains("Roads") shouldBe true
     }
 
-    "a client reusing a global trait's id is refused" {
+    // Disjoint by construction (issue #951): a global trait id is rooted (`kdr:name`) and a client's is bare, so a
+    // client's `name` and core's are two traits rather than a collision, and no release adding a global trait can
+    // take an id a client already uses.
+    "a client's bare id and a global rooted one are two traits, not a collision" {
+        val gamma = "idscopegamma"
+        store(gamma) {
+            trait("NameEntry", "name", setOf(GedraDataType.formDoc), "The client's own name.") { property("n", "N.") }
+        }
+        val schema = SchemaService.get(cxt)
+        schema.gedraTraitsFor(gamma).map { it.traitId }.let { ids ->
+            (ids.contains("name") && ids.contains(GT.name)) shouldBe true
+        }
+        schema.gedraTraitsFor(gamma).single { it.traitId == "name" }.typeName shouldBe "${clientNamespace(gamma)}.NameEntry"
+    }
+
+    "a client may not declare a rooted id: the colon is the global side's" {
         shouldThrow<KdrException> {
-            store("idscopegamma") {
-                trait("NameEntry", "name", setOf(GedraDataType.formDoc), "A second name.") { property("n", "N.") }
+            store("idscopedelta") {
+                trait("NameEntry", GT.name, setOf(GedraDataType.formDoc), "Core's name, claimed.") { property("n", "N.") }
             }
-        }.message.shouldNotBeNull() shouldContain "global trait's id"
+        }.message.shouldNotBeNull() shouldContain "A client's own trait id may not hold ':'"
     }
 
     "a client declaring one trait id in two of its configs is refused" {
@@ -125,6 +141,6 @@ class ClientTraitIdScopeTest : StringSpec({
             store(alpha, name = "second", withDef = false) {
                 trait("OtherSurveyEntry", "survey1", setOf(GedraDataType.formDoc), "Again.") { property("x", "X.") }
             }
-        }.message.shouldNotBeNull() shouldContain "unique within a client"
+        }.message.shouldNotBeNull() shouldContain "unique within its owner"
     }
 })

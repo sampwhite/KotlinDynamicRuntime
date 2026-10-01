@@ -46,7 +46,7 @@ class GedraSearchByUserTest : StringSpec({
     val ada = TestUser.create(cxt, "ada@search.test", level = ROLE.admin)
 
     fun nameEntry(name: String): Map<String, Any?> =
-        mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))
+        mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
 
     fun idsSeenBy(tu: TestUser, args: Map<String, Any?>? = null): List<String?> =
         tu.getItems(GEP.formDocs, args).map { it[GDF.gedraId].toOptStr() }
@@ -151,7 +151,7 @@ class GedraSearchByUserTest : StringSpec({
                         mapOf(
                             GDF.gedraId to docId,
                             GPF.edits to listOf(
-                                mapOf(GED.action to GedraEditAction.addOrMerge.name, GE.traitId to GT.name, GE.data to mapOf(GT.name to name)),
+                                mapOf(GED.action to GedraEditAction.addOrMerge.name, GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name)),
                             ),
                         ),
                     ),

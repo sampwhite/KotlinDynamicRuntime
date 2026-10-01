@@ -11,6 +11,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GPF
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataService
@@ -117,7 +118,7 @@ class CfactCalcTest : StringSpec({
     fun storedCfacts(gid: String): List<Any?> {
         val row = user.getItems(GEP.formDocs, mapOf(GDF.withStates to true)).first { it[GDF.gedraId] == gid }
         return row[GDF.states].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-            .first { it[GE.traitId].toOptStr() == "cfacts" }[GE.data].toJsonMapOrEmpty()["facts"].toJsonListOrEmpty()
+            .first { it[GE.traitId].toOptStr() == GT.cfacts }[GE.data].toJsonMapOrEmpty()[GT.facts].toJsonListOrEmpty()
     }
 
     fun setChoices(gid: String, vararg choices: String) = user.postItems(

@@ -10,14 +10,18 @@ object GT {
     const val coreTraits = "coreTraits"
 
     /**
-     * The `name` trait, and the single field it carries. The two being the same word is not an accident worth
-     * hiding: the trait is *about* the name, so its one field has nowhere better to be called.
+     * The `name` trait's id, rooted under `kdr` as every global trait id is (issue #951); its one field is
+     * [nameField]. The two share the word `name` deliberately: the trait is *about* the name, so its one field has
+     * nowhere better to be called.
      *
      * It is also the clearest argument for the entry envelope living one level up. Flat, this entry would be
-     * `{"traitId": "name", "name": "..."}` — and the day the envelope wants a name of its own there is
+     * `{"traitId": "kdr:name", "name": "..."}` — and the day the envelope wants a name of its own there is
      * nowhere to put it.
      */
-    const val name = "name"
+    const val name = "kdr:name"
+
+    /** The [name] trait's one field, what the name is -- bare, a field of the trait's data rather than an id. */
+    const val nameField = "name"
 
     /** The entry type the [name] trait generates: `kdr.core.NameEntry`. */
     const val nameEntry = "NameEntry"
@@ -37,7 +41,7 @@ object GT {
      * singletons (`needsReview`, `finished`) its engaged workflows emit -- folded into this one entry by the
      * recompute (`mergeCfactContributions`). Which workflow contributed what is kept on that workflow's own state.
      */
-    const val cfacts = "cfacts"
+    const val cfacts = "kdr:cfacts"
 
     /** The entry type the [cfacts] state trait generates: `kdr.core.CFactsEntry`. */
     const val cfactsEntry = "CFactsEntry"

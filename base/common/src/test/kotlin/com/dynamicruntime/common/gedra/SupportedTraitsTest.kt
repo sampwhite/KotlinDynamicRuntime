@@ -19,11 +19,13 @@ class SupportedTraitsTest : StringSpec({
 
     val cxt = KdrCxt("traits", KdrInstanceConfig("supported", ENV.local, ENV.liveSource))
 
+    /** A config of [client]'s declaring [traitIds]; a global id is rooted (issue #951), so type and field take its local part. */
     fun traitConfig(client: String, name: String, vararg traitIds: String): GedraConfig =
-        gedraConfig(cxt, name, clientNamespace(client), client) {
+        gedraConfig(cxt, name, if (client == GID.globalClient) GCFG.globalNamespace else clientNamespace(client), client) {
             for (id in traitIds) {
-                trait("${id.replaceFirstChar { it.uppercase() }}Entry", id, setOf(GedraDataType.formDoc)) {
-                    property(id, "Something.", required = true)
+                val local = id.substringAfter(':')
+                trait("${local.replaceFirstChar { it.uppercase() }}Entry", id, setOf(GedraDataType.formDoc)) {
+                    property(local, "Something.", required = true)
                 }
             }
         }
@@ -39,27 +41,27 @@ class SupportedTraitsTest : StringSpec({
         includedTraits = included.toList(),
     )
 
-    val global = traitConfig(GID.globalClient, "globalTraits", "name", "address")
+    val global = traitConfig(GID.globalClient, "globalTraits", "kdr:name", "kdr:address")
 
     fun ids(traits: List<GedraTrait>) = traits.map { it.traitId }.sorted()
 
     "a client that mentions nothing supports nothing, however much it can see" {
         val configs = collectorOf(global)
         // It can see both -- visibility is what makes `$ref`s resolve...
-        ids(configs.traitsFor("acme")) shouldContainExactly listOf("address", "name")
+        ids(configs.traitsFor("acme")) shouldContainExactly listOf("kdr:address", "kdr:name")
         // ...and supports neither.
         supportedTraits(configs, "acme", def(), emptySet()).shouldBeEmpty()
     }
 
     "naming a trait supports it, and only it" {
-        ids(supportedTraits(collectorOf(global), "acme", def("name"), emptySet())) shouldContainExactly listOf("name")
+        ids(supportedTraits(collectorOf(global), "acme", def("kdr:name"), emptySet())) shouldContainExactly listOf("kdr:name")
     }
 
     // Functional: membership computed from what is global, never written down, so it cannot fall out of step
     // the way a hand-applied tag would.
     "the global group supports everything global declares" {
         ids(supportedTraits(collectorOf(global), "acme", def(CLD.allGlobal), emptySet()))
-            .shouldContainExactly(listOf("address", "name"))
+            .shouldContainExactly(listOf("kdr:address", "kdr:name"))
     }
 
     // Supported by having been declared at all: a client does not include itself.
@@ -72,14 +74,14 @@ class SupportedTraitsTest : StringSpec({
     // make the declared list a place to forget.
     "a trait the client customized is supported without a second mention" {
         val configs = collectorOf(global)
-        val nameEntry = configs.traitsOwnedBy(GID.globalClient).single { it.traitId == "name" }.typeName
-        ids(supportedTraits(configs, "acme", def(), setOf(nameEntry))) shouldContainExactly listOf("name")
+        val nameEntry = configs.traitsOwnedBy(GID.globalClient).single { it.traitId == "kdr:name" }.typeName
+        ids(supportedTraits(configs, "acme", def(), setOf(nameEntry))) shouldContainExactly listOf("kdr:name")
     }
 
     "the group and an own trait combine rather than replacing each other" {
         val configs = collectorOf(global, traitConfig("acme", "acmeTraits", "loyalty"))
         ids(supportedTraits(configs, "acme", def(CLD.allGlobal), emptySet()))
-            .shouldContainExactly(listOf("address", "loyalty", "name"))
+            .shouldContainExactly(listOf("kdr:address", "kdr:name", "loyalty"))
     }
 
 })

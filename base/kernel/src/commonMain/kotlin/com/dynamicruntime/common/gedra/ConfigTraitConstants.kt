@@ -12,28 +12,28 @@ object CCT {
     // --- the storage slots (trait ids) ---
 
     /** The client definition itself; single-instance, since a bundle defines at most one client. */
-    const val clientDef = "clientDef"
+    const val clientDef = "kdr:clientDef"
 
     /** One data-trait **declaration** this configuration contributes, keyed by trait id (issue #625). */
-    const val traitDef = "traitDef"
+    const val traitDef = "kdr:traitDef"
 
     /** One trait-usage rule -- how a client presents a trait in a listing -- keyed by trait id (issue #625). */
-    const val usageDef = "usageDef"
+    const val usageDef = "kdr:usageDef"
 
     /** One workflow definition, keyed by its workflow id. */
-    const val workflowDef = "workflowDef"
+    const val workflowDef = "kdr:workflowDef"
 
     /** One schema type definition, keyed by the type's name. */
-    const val schemaDef = "schemaDef"
+    const val schemaDef = "kdr:schemaDef"
 
     /** One Markdown-fragment overlay, keyed by the fragment file id (issue #625). */
-    const val fragmentDef = "fragmentDef"
+    const val fragmentDef = "kdr:fragmentDef"
 
     /** One UiBlock overlay, keyed by the block id (issue #625). */
-    const val uiBlockDef = "uiBlockDef"
+    const val uiBlockDef = "kdr:uiBlockDef"
 
     /** One cfact **name declaration** (declaration only, never a production), keyed by name (issue #625). */
-    const val cfactDef = "cfactDef"
+    const val cfactDef = "kdr:cfactDef"
 
     // --- field names inside the slots' data (each matches its value) ---
 

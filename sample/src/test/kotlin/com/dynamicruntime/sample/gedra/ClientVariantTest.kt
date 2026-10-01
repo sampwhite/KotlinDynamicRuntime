@@ -275,7 +275,7 @@ class ClientVariantTest : StringSpec({
     }
 
     "a trait nobody declared is stored as supplied when asked, on patch too" {
-        val id = create(everyone, mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Doc")))
+        val id = create(everyone, mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Doc")))
         everyone.postItems(
             GEP.patch,
             mapOf(

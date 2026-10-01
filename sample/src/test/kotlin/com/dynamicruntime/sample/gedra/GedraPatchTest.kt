@@ -70,7 +70,7 @@ class GedraPatchTest : StringSpec({
         user.getItem(GEP.formDoc, mapOf(GDF.gedraId to gedraId))[GDF.entries].toJsonListOfMaps()
             .associateBy { it[GE.traitId].toOptStr().orEmpty() }
 
-    fun nameEntry(name: String) = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))
+    fun nameEntry(name: String) = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
 
     var docId = ""
 
@@ -78,7 +78,7 @@ class GedraPatchTest : StringSpec({
         docId = create(alice, nameEntry("Before"))
         val results = alice.postItems(
             GEP.patch,
-            patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "After")))),
+            patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "After")))),
         )
         results.single()[GDF.gedraId] shouldBe docId
         // Outcomes are keyed by trait rather than by position, which the one-entry-per-trait rule makes
@@ -86,7 +86,7 @@ class GedraPatchTest : StringSpec({
         val outcome = results.single()[GPF.outcomes].toJsonListOfMaps().single()
         outcome[GE.traitId] shouldBe GT.name
         outcome[GPF.applied] shouldBe true
-        entriesOf(alice, docId).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "After"
+        entriesOf(alice, docId).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "After"
     }
 
     // The envelope is where a patch differs from a "create": what already existed keeps who made it and when,
@@ -96,7 +96,7 @@ class GedraPatchTest : StringSpec({
         cxt.instanceConfig.clock.advanceBy(2.seconds)
         alice.postItems(
             GEP.patch,
-            patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Again")))),
+            patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "Again")))),
         )
         val after = entriesOf(alice, docId).getValue(GT.name)
         after[GE.entryId] shouldBe before[GE.entryId]
@@ -114,14 +114,14 @@ class GedraPatchTest : StringSpec({
         val results = alice.postItems(
             // The stored name is "Again" from the previous edit; replacing it with "Again" is a no-op.
             GEP.patch,
-            patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Again")))),
+            patch(docId to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "Again")))),
         )
         results.single()[GPF.outcomes].toJsonListOfMaps().single()[GPF.applied] shouldBe false
         val after = entriesOf(alice, docId).getValue(GT.name)
         // The whole envelope is untouched -- the update half most of all, though time moved on between saves.
         after[GE.updatedAt] shouldBe before[GE.updatedAt]
         after[GE.updatedBy] shouldBe before[GE.updatedBy]
-        after[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Again"
+        after[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Again"
     }
 
     // A merge that folds in only keys already equal to what is stored resolves to the same data, so it is a
@@ -226,11 +226,11 @@ class GedraPatchTest : StringSpec({
     "one unreachable target refuses the whole patch" {
         val mine = create(alice, nameEntry("Mine"))
         val theirs = create(bob, nameEntry("Theirs"))
-        val change = listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Changed")))
+        val change = listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "Changed")))
 
         alice.expectError(404, GEP.patch, patch(mine to change, theirs to change))
         // Alice's own document is untouched, which is what admitting everything first buys.
-        entriesOf(alice, mine).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Mine"
+        entriesOf(alice, mine).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Mine"
     }
 
     "a target sent under the wrong kind is refused" {
@@ -245,7 +245,7 @@ class GedraPatchTest : StringSpec({
             400, GEP.patch,
             patch(
                 docId to listOf(
-                    edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "One")),
+                    edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "One")),
                     edit(GedraEditAction.deleteOrNoOp, GT.name),
                 ),
             ),
@@ -276,12 +276,12 @@ class GedraPatchTest : StringSpec({
                         GED.action to GedraEditAction.addOrReplace.name,
                         GE.traitId to GT.name,
                         GE.entryId to "anEntryIdFromSomeOlderCopy",
-                        GE.data to mapOf(GT.name to "Overwritten"),
+                        GE.data to mapOf(GT.nameField to "Overwritten"),
                     ),
                 ),
             ),
         )
-        entriesOf(alice, id).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Current"
+        entriesOf(alice, id).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Current"
     }
 
     // A client's schema belongs to where the data lives, so a patch spanning two clients would apply two sets
@@ -293,12 +293,12 @@ class GedraPatchTest : StringSpec({
         val envelope = alice.expectError(
             400, GEP.patch,
             patch(
-                id to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Changed"))),
-                elsewhere to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.name to "Theirs"))),
+                id to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "Changed"))),
+                elsewhere to listOf(edit(GedraEditAction.addOrReplace, GT.name, mapOf(GT.nameField to "Theirs"))),
             ),
         )
         envelope[EP.errorMessage].toOptStr()!! shouldContain "one client at a time"
         // Nothing was applied: the refusal precedes the reads, so the patch is not half-done.
-        entriesOf(alice, id).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Mine"
+        entriesOf(alice, id).getValue(GT.name)[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Mine"
     }
 })
