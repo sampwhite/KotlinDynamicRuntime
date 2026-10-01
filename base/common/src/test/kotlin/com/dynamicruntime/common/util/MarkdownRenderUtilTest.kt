@@ -156,6 +156,23 @@ class MarkdownRenderUtilTest : StringSpec({
         "a ! b".renderMarkdownInline() shouldBe "a ! b"
     }
 
+    "a backslash escapes ASCII punctuation in both renderings, and escapeMarkdown makes a value read as written" {
+        "a \\* b \\_c\\_ \\[d\\]".renderMarkdown() shouldBe "<p>a * b _c_ [d]</p>\n"
+        "a \\* b \\_c\\_ \\[d\\]".renderMarkdownText() shouldBe "a * b _c_ [d]"
+        // A backslash before anything but punctuation is a backslash.
+        "C:\\dir and \\n".renderMarkdownText() shouldBe "C:\\dir and \\n"
+        val value = "_ops_@acme.test *now* {.code} \\"
+        value.escapeMarkdown().renderMarkdownText() shouldBe value
+        value.escapeMarkdown().renderMarkdownInline() shouldBe "_ops_@acme.test *now* {.code} \\"
+        // Inside a role span the value is still literal.
+        "[${value.escapeMarkdown()}]{.value}".renderMarkdownInline() shouldBe "<span class=\"md-value\">_ops_@acme.test *now* {.code} \\</span>"
+    }
+
+    "a role name is ASCII: any other letter makes the block literal" {
+        "[x]{.caf\u00e9}".renderMarkdownInline() shouldBe "[x]{.caf\u00e9}"
+        "[x]{.Role-2}".renderMarkdownInline() shouldBe "<span class=\"md-Role-2\">x</span>"
+    }
+
     // --- plain text (issue #795) -------------------------------------------------------------------------
 
     "renders every construct to clean plain text" {

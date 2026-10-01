@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.MarkdownHooks
+import com.dynamicruntime.common.util.escapeMarkdown
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
@@ -122,8 +123,12 @@ object MailCopy {
         val named = if (client == null || MCOPY.clientNameParam in params) params else {
             params + (MCOPY.clientNameParam to (ClientService.get(cxt).known(client)?.name ?: client))
         }
-        val safe = named.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay(MCOPY.maxParamLength) else v }
-        val subject = copy(mail, MCOPY.subject).evalTemplate(safe)
+        // Sanitized, then Markdown-escaped (issue #795): a value is substituted into copy the renderer then reads,
+        // so an address like `_ops_@acme.test` must reach both parts verbatim rather than as emphasis. The two
+        // defenses stack -- the sanitizer removes what would structure a link, the escape neutralizes the rest.
+        val sanitized = named.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay(MCOPY.maxParamLength) else v }
+        val safe = sanitized.mapValues { (_, v) -> if (v is String) v.escapeMarkdown() else v }
+        val subject = copy(mail, MCOPY.subject).evalTemplate(sanitized)
         val body = copy(mail, MCOPY.body)
         val footer = copy(MCOPY.common, MCOPY.footer)
 
@@ -132,8 +137,11 @@ object MailCopy {
         val text = (body.evalTemplate(forText) + "\n\n" + footer.evalTemplate(forText)).renderMarkdownText()
 
         // The HTML part: a URL-valued param written as a Markdown link so the renderer makes it an anchor (the
-        // text part keeps the bare URL); a role a span carries realized as the value styles below.
-        val forHtml = safe.mapValues { (_, v) -> if (v is String && isHttpUrl(v)) "[$v]($v)" else v } + (MCOPY.forHtmlParam to true)
+        // text part keeps the bare URL) -- the label escaped like any value, the target the URL itself; a role a
+        // span carries realized as the value styles below.
+        val forHtml = sanitized.mapValues { (name, v) ->
+            if (v is String && isHttpUrl(v)) "[${v.escapeMarkdown()}]($v)" else safe[name]
+        } + (MCOPY.forHtmlParam to true)
         val hooks = MarkdownHooks(decorateSpan = ::decorateValue)
         val rendered = body.evalTemplate(forHtml).renderMarkdown(hooks) +
             "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>"

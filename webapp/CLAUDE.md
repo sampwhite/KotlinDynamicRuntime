@@ -35,7 +35,9 @@ the underlying file, so two clients reading different copy never share a URL.
 span with a role, `[text]{.role}`, and an image with placement, `![alt](src){.float-right width=240}`. A role
 renders as a `md-`-prefixed class by default (`.md-value`, `.md-code` are styled in `app.css`); a surface that
 cannot use a stylesheet -- a mail -- passes `MarkdownHooks(decorateSpan = …)` and realizes the role itself. An
-attribute block holds only role names and numeric `width`/`height`; anything else makes it literal text. The
+attribute block holds only role names and numeric `width`/`height`; anything else makes it literal text. A
+backslash escapes any ASCII punctuation (`\*`), and `escapeMarkdown()` applies that to a *value* being substituted
+into copy, so an address like `_ops_@acme.test` reads as written (the mails do this to every param). The
 same source renders to plain text with `renderMarkdownText()` (emphasis and roles dropped, a link as
 `text (url)`, an image as its alt text), which is how a mail gets its text part from the one body.
 

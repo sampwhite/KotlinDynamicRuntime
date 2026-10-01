@@ -158,6 +158,22 @@ class MailCopyTest : StringSpec({
         mail.lastEmailTo(plain)!!.text shouldNotContain "Mail Co"
     }
 
+    "a value with Markdown characters reaches both parts as written" {
+        // An underscore-wrapped local part is a valid address, and `*` is legal in a client's display name; neither
+        // may read as emphasis in the HTML part or be dropped from the text part.
+        val address = "_ops_@acme.test"
+        val rendered = MailCopy.render(
+            cxt, null, MCOPY.claimCode,
+            mapOf(MCOPY.addressParam to address, MCOPY.clientParam to "acme", MCOPY.clientNameParam to "Acme *Corp*",
+                MCOPY.personaLabelParam to "Admin", MCOPY.codeParam to "123456"),
+        )
+        rendered.text shouldContain "the account $address at Acme *Corp* as Admin is 123456."
+        rendered.html shouldContain ">$address</a>"
+        rendered.html shouldContain ">Acme *Corp*</a>"
+        rendered.html shouldNotContain "<em>"
+        rendered.subject shouldNotBe ""
+    }
+
     "a param cannot carry a link or markup into a mail" {
         val planted = "[restore your account](http://evil.test) <b>now</b>"
         val rendered = MailCopy.render(
