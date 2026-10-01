@@ -575,8 +575,9 @@ private fun InputFieldsBuilder.configPatchInput() {
  * how the patch reuses the bundle write's validation rather than duplicating it.
  *
  * The same three actions and the same addressing rule (the entry an edit names is its primary-key values, carried
- * in the edit's own data) as a data patch's `GedraDataService.applyEdit` -- kept in step with it by hand, since the
- * data side adds staleness, visibility-gate and stamping concerns a config slot does not have.
+ * in the edit's own data) as a data patch's `GedraDataService.applyEdit`, shared with it through [applyTo],
+ * [missingKeyFields] and [addressesEntry] (issue #909); the data side adds staleness, visibility-gate and stamping
+ * concerns a config slot does not have.
  */
 fun applyConfigSlotEdits(
     current: Map<String, List<Map<String, Any?>>>,
@@ -597,10 +598,9 @@ fun applyConfigSlotEdits(
                 "Unknown edit action '$actionName'. The actions are ${GedraEditAction.entries.joinToString(", ") { it.name }}.",
             )
         val data = edit[GE.data].toJsonMapOrEmpty()
-        // A keyed slot's edit must carry every primary-key field, so it names one entry: without this a missing
-        // or misspelled key would silently no-op a delete or append a keyless entry instead of replacing the
-        // intended one (issue #732 review). A single-instance slot (empty pk) needs none.
-        val missingKey = pk.filter { data[it] == null }
+        // A keyed slot's edit must carry every primary-key field, so it names one entry (issue #732 review). A
+        // single-instance slot (empty pk) needs none.
+        val missingKey = missingKeyFields(pk, data)
         if (missingKey.isNotEmpty()) {
             throw KdrException.mkInput(
                 "Config edit for slot '$slot' is missing primary-key field(s) ${missingKey.joinToString(", ")}, " +
@@ -608,13 +608,11 @@ fun applyConfigSlotEdits(
             )
         }
         val list = out.getOrPut(slot) { mutableListOf() }
-        // The addressed entry: pk-fields all equal (an empty pk -- a single-instance slot -- matches the one
-        // entry there is, since `all` over no fields is true).
-        val idx = list.indexOfFirst { existing -> pk.all { existing[it] == data[it] } }
-        when (action) {
-            GedraEditAction.deleteOrNoOp -> if (idx >= 0) list.removeAt(idx)
-            GedraEditAction.addOrReplace -> if (idx >= 0) list[idx] = data else list.add(data)
-            GedraEditAction.addOrMerge -> if (idx >= 0) list[idx] = list[idx] + data else list.add(data)
+        val idx = list.indexOfFirst { existing -> addressesEntry(pk, existing, data) }
+        when (val result = action.applyTo(list.getOrNull(idx), data)) {
+            KeyedEdit.NoOp -> {}
+            KeyedEdit.Remove -> list.removeAt(idx)
+            is KeyedEdit.Put -> if (idx >= 0) list[idx] = result.data else list.add(result.data)
         }
     }
     // Drop a slot the edits emptied, so the write does not carry an empty slot array.
