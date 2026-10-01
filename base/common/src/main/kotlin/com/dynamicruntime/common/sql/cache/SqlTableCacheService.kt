@@ -398,7 +398,7 @@ class SqlTableCacheService : ServiceInitializer {
      * on it and [refreshState] describes it, so a check and the read after it cannot disagree.
      *
      * On the hot path (every cached read reaches it), so it allocates nothing: the branches read volatile
-     * fields, one map entry and a short-circuiting scan of the caches.
+     * fields, one map entry, and a short-circuiting scan of the caches.
      */
     fun refreshNeed(cxt: KdrCxt): SqlCacheRefreshNeed {
         val memo = cxt.locals[TCH.refreshedKey] as? RefreshMemo

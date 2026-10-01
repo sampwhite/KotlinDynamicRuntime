@@ -202,7 +202,7 @@ enum class GedraIdContext(val letter: String) {
  * paste.
  *
  * A **sandbox** client puts a `:` in the client segment (`gd.fd.acme:sandbox.e2026…`, issue #927; see [SBX]).
- * A colon is not unreserved, but it is legal unescaped in a URL path segment, a query and a fragment, which is
+ * A colon is not unreserved, but it is legal unescaped in a URL path segment, a query, and a fragment, which is
  * everywhere an id travels; `encodeURIComponent` escapes it and every reader decodes. It is not a separator
  * here, so parsing is unchanged.
  */

@@ -124,7 +124,7 @@ class SearchParamShape(val traitId: String, val role: SearchRole, val kind: Usag
 
 /**
  * The inverse of [gedraSearchParams]'s naming, for one property [name] with its schema [prop] among the
- * [declared] property names of the same query type: the trait, the role and the kind the parameter was
+ * [declared] property names of the same query type: the trait, the role, and the kind the parameter was
  * generated from.
  *
  * The schema decides the family and the spelling decides the role within it: a `number` type or `date` format
