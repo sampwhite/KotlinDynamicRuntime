@@ -465,6 +465,11 @@ body {
     padding: 1px 5px;
     font-size: .92em;
 }
+/* The roles a bracketed span may carry (issue #795): `[x]{.value}` a substituted value a reader copies out, set apart
+   from the prose; `[x]{.code}` a code read off and typed elsewhere. The renderer's default gives a role a `md-`
+   prefixed class, so `.code` here stays the block well below and an inline code value never picks it up. */
+.md-value { font-weight: 600; }
+.md-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; letter-spacing: .08em; }
 /* An inset block well: a rendered Markdown code block, or one the display engine builds by hand (`.code`).
    The same box either way -- they differ only in the text inside it. */
 .markdown pre, .code {

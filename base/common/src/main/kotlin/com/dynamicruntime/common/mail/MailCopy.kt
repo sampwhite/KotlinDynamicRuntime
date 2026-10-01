@@ -5,9 +5,13 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.user.AFRAG
+import com.dynamicruntime.common.util.MDR
+import com.dynamicruntime.common.util.MarkdownHooks
+import com.dynamicruntime.common.util.escapeMarkdown
 import com.dynamicruntime.common.util.evalTemplate
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
+import com.dynamicruntime.common.util.renderMarkdownText
 import com.dynamicruntime.common.util.sanitizeForDisplay
 
 /**
@@ -52,6 +56,14 @@ object MCOPY {
     const val clientNameParam = "clientName"
 
     /**
+     * Bound by every render (issue #795): `true` for the HTML part, `false` for the text part, so a body that
+     * genuinely wants different *words* in the two -- "click the button below" against "open this link" -- can
+     * branch with `${forHtml ? "…" : "…"}`. Kept rare: the text renderer covers styling, so a `forHtml` in a mail
+     * marks a real divergence.
+     */
+    const val forHtmlParam = "forHtml"
+
+    /**
      * The most a string param may be after sanitizing. Well above the UI default (an invitation link runs to
      * a few hundred characters) and still a bound: a param is a value, never a document.
      */
@@ -71,24 +83,22 @@ class RenderedMail(val subject: String, val text: String, val html: String)
  * client. A client that overlays the file rewords its mails and signs them as itself (the `common.footer`);
  * one that does not gets the shared copy, which names nobody.
  *
- * **Two parts from one source.** The body as written, with its params substituted, is the text part: the
- * copy is kept plain enough that Markdown reads as prose. The kernel's [renderMarkdown] -- shared with the
- * frontend -- gives the HTML part: paragraphs, inline styles only, no images, so it survives every mail
- * client. A param whose value is an `http(s)` URL becomes a link in the HTML part on its own, and stays the
- * bare URL in the text part, where mail clients linkify it.
+ * **Two parts from one source.** The body with its params substituted is rendered twice by the kernel's Markdown
+ * renderer, which the frontend shares: [renderMarkdown] gives the HTML part -- paragraphs, inline styles only,
+ * no stylesheet, so it survives every mail client -- and [renderMarkdownText] the text part, so the copy may
+ * carry emphasis and roles and neither part shows a mark of syntax (issue #795). A param whose value is an
+ * `http(s)` URL becomes a link in the HTML part on its own, and stays the bare URL in the text part, where
+ * mail clients linkify it.
  *
- * **Every other param is emphasized, and kept from being linkified.** A value is what a reader copies out --
- * the address, the client, the persona, the code -- so in the HTML part each one is set in bold, and the code
- * large and monospaced. The emphasis is applied here rather than written into the copy as `**...**`, so the
- * text part carries no marks at all and the phrase the code is read out of stays exactly as written. The
- * same wrap solves a second problem: Gmail's web client turns any address it finds into a `mailto:` link (and a
- * run of digits into a phone number) and offers no opt-out, which makes copying the address fiddly -- the
- * click opens a compose window. Nothing can be done in the text part (breaking the pattern with an invisible
- * character would make the pasted value fail our own address check), but Gmail does not re-linkify inside an
- * existing anchor, so each value's emphasis is an anchor with no `href` and `color: inherit; text-decoration:
- * none`: it renders as styled text and selects normally. Partial by nature (Gmail sometimes rewrites inline
- * styles), and harmless where no linkifier runs. The wrap happens through a placeholder that survives the
- * Markdown pass, so the renderer's escaping is untouched and no word of the copy can be caught by it.
+ * **A substituted value is marked in the copy, and realized here.** The copy sets a value a reader copies out
+ * -- the address, the client, the persona, the code -- in a bracketed span with a role: `[${address}]{.value}`,
+ * `[${code}]{.code}`. In the HTML part the role is realized through the renderer's span hook as bold (the
+ * code large and monospaced), inside an anchor with no `href` and `color: inherit; text-decoration: none`:
+ * Gmail's web client turns any address it finds into a `mailto:` link (and a run of digits into a phone number)
+ * and offers no opt-out, which makes copying the value fiddly -- but it does not re-linkify inside an existing
+ * anchor, so the value renders as styled text and selects normally. Partial by nature (Gmail sometimes rewrites
+ * inline styles), and harmless where no linkifier runs. In the text part the span is simply its text, so the
+ * phrase the code is read out of stays exactly as written.
  *
  * **The client's name** is supplied as a param beside its id whenever a mail has a client, so the copy can
  * say "at Acme" where the recipe has to say `acme`.
@@ -113,39 +123,41 @@ object MailCopy {
         val named = if (client == null || MCOPY.clientNameParam in params) params else {
             params + (MCOPY.clientNameParam to (ClientService.get(cxt).known(client)?.name ?: client))
         }
-        val safe = named.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay(MCOPY.maxParamLength) else v }
-        val subject = copy(mail, MCOPY.subject).evalTemplate(safe)
+        // Sanitized, then Markdown-escaped (issue #795): a value is substituted into copy the renderer then reads,
+        // so an address like `_ops_@acme.test` must reach both parts verbatim rather than as emphasis. The two
+        // defenses stack -- the sanitizer removes what would structure a link, the escape neutralizes the rest.
+        val sanitized = named.mapValues { (_, v) -> if (v is String) v.sanitizeForDisplay(MCOPY.maxParamLength) else v }
+        val safe = sanitized.mapValues { (_, v) -> if (v is String) v.escapeMarkdown() else v }
+        val subject = copy(mail, MCOPY.subject).evalTemplate(sanitized)
         val body = copy(mail, MCOPY.body)
         val footer = copy(MCOPY.common, MCOPY.footer)
-        val text = body.evalTemplate(safe) + "\n\n" + footer.evalTemplate(safe)
 
-        // The same source again for the HTML part: a URL-valued param written as a Markdown link so the
-        // renderer makes it an anchor (the text part keeps the bare URL), and every other string value replaced
-        // by a placeholder, wrapped in its plain-text anchor once the Markdown has been rendered and escaped.
-        val plain = ArrayList<Pair<String, String>>()
-        val forHtml = safe.mapValues { (name, v) ->
-            when {
-                v !is String -> v
-                isHttpUrl(v) -> "[$v]($v)"
-                else -> { plain.add(name to v); placeholder(plain.size - 1) }
-            }
-        }
-        var rendered = body.evalTemplate(forHtml).renderMarkdown() +
-            "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline() + "</p>"
-        plain.forEachIndexed { i, (name, v) ->
-            rendered = rendered.replace(placeholder(i), "<a style=\"${valueStyle(name)}\">${escapeHtml(v)}</a>")
-        }
+        // The text part: the same source, rendered to plain text (issue #795).
+        val forText = safe + (MCOPY.forHtmlParam to false)
+        val text = (body.evalTemplate(forText) + "\n\n" + footer.evalTemplate(forText)).renderMarkdownText()
+
+        // The HTML part: a URL-valued param written as a Markdown link so the renderer makes it an anchor (the
+        // text part keeps the bare URL) -- the label escaped like any value, the target the URL itself; a role a
+        // span carries realized as the value styles below.
+        val forHtml = sanitized.mapValues { (name, v) ->
+            if (v is String && isHttpUrl(v)) "[${v.escapeMarkdown()}]($v)" else safe[name]
+        } + (MCOPY.forHtmlParam to true)
+        val hooks = MarkdownHooks(decorateSpan = ::decorateValue)
+        val rendered = body.evalTemplate(forHtml).renderMarkdown(hooks) +
+            "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>"
         return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)))
     }
 
     /**
-     * Stands in for the [i]th plain value through the Markdown pass. Private-use code points, which neither the
-     * renderer nor its escaping touch, and which no copy or sanitized value contains.
+     * How a role is realized in a mail (issue #795): the [MDR.code] role as the code style, [MDR.value] as bold, each
+     * an anchor with no `href` so it is never linkified (see the class note); any other role takes the renderer's
+     * default. Receives rendered, escaped HTML and wraps it, so nothing here can re-open the escaping.
      */
-    private fun placeholder(i: Int): String = "\uE000$i\uE001"
-
-    /** How a substituted value is set in the HTML part: the code to be read off and typed, everything else bold. */
-    private fun valueStyle(param: String): String = if (param == MCOPY.codeParam) codeStyle else valueStyle
+    private fun decorateValue(roles: List<String>, innerHtml: String): String? = when {
+        MDR.code in roles -> "<a style=\"$codeStyle\">$innerHtml</a>"
+        MDR.value in roles -> "<a style=\"$valueStyle\">$innerHtml</a>"
+        else -> null
+    }
 
     /** A value's emphasis, as an anchor with no `href` so it is never linkified (see the class note). */
     private const val valueStyle = "font-weight: bold; color: inherit; text-decoration: none;"

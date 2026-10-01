@@ -1,12 +1,15 @@
 /- The mails the auth flows send (issue #773): a verification code, an invitation, and the claim page's
    answers. A backend file -- never served, read by `MailCopy` for the client of the user the mail is about --
    so a client's overlay can reword a mail and name itself in it. Each mail is one namespace holding its
-   `subject` and its `body`; the body is Markdown, sent as written for the text part and rendered for the HTML
-   part. The `${...}` params are sanitized before substitution, so a value cannot inject a link or markup.
-   In the HTML part a param holding a URL becomes a link on its own, and every other param is set in bold
-   (the code large and monospaced) inside an anchor that keeps Gmail from turning an address into a mailto
-   link -- so the copy itself carries no emphasis marks, and the text part reads clean. `clientName` is the
-   client's display name ("Acme"), supplied with `client` (its id) whenever a mail is about a client.
+   `subject` and its `body`; the body is Markdown, rendered once to plain text for the text part and once to
+   HTML for the HTML part (issue #795), so it may carry emphasis and neither part shows a mark of syntax. The
+   `${...}` params are sanitized before substitution, so a value cannot inject a link or markup. A value a
+   reader copies out is marked with a role -- `[${address}]{.value}`, `[${code}]{.code}` -- which the HTML part
+   sets in bold (the code large and monospaced) inside an anchor that keeps Gmail from turning an address into
+   a mailto link, and the text part shows as the bare value. A param holding a URL becomes a link in the HTML
+   part on its own. `clientName` is the client's display name ("Acme"), supplied with `client` (its id)
+   whenever a mail is about a client. `forHtml` is bound by every render (true for the HTML part), for a body
+   that genuinely wants different words in the two: keep it rare.
 
    The lists are what a person has to type on the claim page, one value per line, which reads as well in
    plain text as in HTML.
@@ -27,7 +30,7 @@
 # @verifyCode
 # +subject Your verification code
 # +body
-Your verification code is ${code}.
+Your verification code is [${code}]{.code}.
 
 Enter it where you asked for it. It expires in fifteen minutes.
 
@@ -35,7 +38,7 @@ Enter it where you asked for it. It expires in fifteen minutes.
 # @verifyCodePassword
 # +subject Your verification code
 # +body
-Your verification code is ${code}.
+Your verification code is [${code}]{.code}.
 
 Enter it to set or change your password. It expires in fifteen minutes.
 
@@ -46,17 +49,17 @@ Enter it to set or change your password. It expires in fifteen minutes.
 # @invitation
 # +subject You have been invited
 # +body
-An account has been created for ${address} at ${clientName}, as ${personaLabel}.
+An account has been created for [${address}]{.value} at [${clientName}]{.value}, as [${personaLabel}]{.value}.
 
 Accept it and sign in here: ${url}
 
 If the link does not work for you, go to the login page, choose "Claim an account created for you", and enter:
 
-- Email: ${address}
-- Client: ${client}
-- Persona: ${persona}
+- Email: [${address}]{.value}
+- Client: [${client}]{.value}
+- Persona: [${persona}]{.value}
 
-A code will then be sent to ${address}.
+A code will then be sent to [${address}]{.value}.
 
 The link expires in seven days.
 
@@ -67,7 +70,7 @@ The link expires in seven days.
 # @claimCode
 # +subject Claiming your account
 # +body
-Your verification code for claiming the account ${address} at ${clientName} as ${personaLabel} is ${code}.
+Your verification code for claiming the account [${address}]{.value} at [${clientName}]{.value} as [${personaLabel}]{.value} is [${code}]{.code}.
 
 Enter it on the page where you asked for it. It expires in fifteen minutes.
 
@@ -76,7 +79,7 @@ Enter it on the page where you asked for it. It expires in fifteen minutes.
 # @claimNoMatch
 # +subject Claiming your account
 # +body
-We could not find an account for ${address} matching what was entered on the claim page.
+We could not find an account for [${address}]{.value} matching what was entered on the claim page.
 
 If you were invited, enter the client and persona exactly as the invitation gave them; otherwise nothing has been created.
 
@@ -86,9 +89,9 @@ If you were invited, enter the client and persona exactly as the invitation gave
 # +body
 We could not find an account matching what was entered on the claim page:
 
-- Email: ${address}
-- Client: ${client}
-- Persona: ${persona}
+- Email: [${address}]{.value}
+- Client: [${client}]{.value}
+- Persona: [${persona}]{.value}
 
 This address does have an account in that client; check the persona (and persona suffix) against what the invitation gave you.
 
@@ -98,8 +101,8 @@ This address does have an account in that client; check the persona (and persona
 # +body
 We could not find an account matching what was entered on the claim page:
 
-- Email: ${address}
-- Client: ${client}
-- Persona: ${persona}
+- Email: [${address}]{.value}
+- Client: [${client}]{.value}
+- Persona: [${persona}]{.value}
 
 If you were invited, check these against the invitation; otherwise nothing has been created.

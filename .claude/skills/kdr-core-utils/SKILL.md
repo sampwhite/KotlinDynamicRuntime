@@ -102,7 +102,7 @@ beside `getOptStr`, `toT` is the *required* half: a null there is a broken invar
   supply — the missing-key half of a render failure, with no evaluation. Reported per fragment entry by
   `GET /operator/fragments/check`, which also takes an optional `data` JSON object.
 - `MarkdownFragmentUtil` — parses a Markdown **fragment file** into `namespace -> key -> value`.
-- `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML. Frontend and backend render the same. It
+- `MarkdownRenderUtil` — `String.renderMarkdown()`, escaping all HTML; `renderMarkdownText()` for plain text; Pandoc-style `[x]{.role}` spans and `![a](s){width=…}` images (issue #795), with `MarkdownHooks` for link resolution and role rendering. Frontend and backend render the same. It
   takes an optional `resolveUrl: ((String) -> String)?` applied to each link target before the URL safety check
   (null = use links as written); a served **document** passes one so its repo-relative interior links resolve
   from inside the app.
