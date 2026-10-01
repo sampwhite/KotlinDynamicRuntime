@@ -112,6 +112,11 @@ class FragmentSource(
      */
     val stored: Boolean = false,
     /**
+     * The template this layer was cloned from (issue #945), or null. A client extending a template gets the
+     * template's overlays as layers of its own, applied **below** the client's own -- see [overlayPrecedence].
+     */
+    val inheritedFrom: String? = null,
+    /**
      * Reads this layer's content, or null when its resource is absent.
      *
      * A function rather than a map so a classpath read stays lazy and an inline map needs no wrapper: both
@@ -124,19 +129,23 @@ class FragmentSource(
 }
 
 /**
- * Where an overlay is applied among the overlays of one merge (issue #916): a component's first, then the
- * client's from **source**, then the client's from **stored** configuration -- later wins, so a stored overlay
- * has the last word. Shared by the fragment and the UiBlock merges, which order their layers alike.
+ * Where an overlay is applied among the overlays of one merge (issue #916): a component's first, then what the
+ * client **inherited** from the template it extends (issue #945), then the client's from **source**, then the
+ * client's from **stored** configuration -- later wins, so a stored overlay has the last word. Shared by the
+ * fragment and the UiBlock merges, which order their layers alike.
  *
  * The stored-after-source half is a rule rather than an accident of load order (stored configs happen to load
  * after source ones) because editing a client's copy writes to stored configuration: an administrator's change
  * to a key the client's source config also sets has to win, and has to go on winning however the registry is
- * next assembled -- at boot, or by a reload appending a client's revised layers.
+ * next assembled -- at boot, or by a reload appending a client's revised layers. The inherited rank is the same
+ * kind of rule: a template's copy is what the client starts from, so anything the client says itself wins, and
+ * since the template's copies are added after the client's own configs, load order would say the opposite.
  */
-fun overlayPrecedence(client: String?, stored: Boolean): Int = when {
+fun overlayPrecedence(client: String?, stored: Boolean, inherited: Boolean = false): Int = when {
     client == null -> 0
-    !stored -> 1
-    else -> 2
+    inherited -> 1
+    !stored -> 2
+    else -> 3
 }
 
 /** The suffix marking a classpath fragment file as an overlay: `<fileId>_overlay.md`. */

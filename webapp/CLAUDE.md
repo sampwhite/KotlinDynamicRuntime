@@ -357,7 +357,8 @@ monotonic token, so a client this node does not carry still shows what the listi
 **Copy & menu** (issue #917): what a client's own configuration changes about what its people see, from
 `GET /clientAdmin/client/overrides` (`ClientsApi.overrides`, parsed by the pure `parseClientOverrides`; the wire
 names are the kernel's `COV`). The detail's "Copy & menu" section draws two tables: the copy the client rewords
-(`file: namespace.key`, the shipped value, the client's, "Set by" as `config (source|stored)` -- `setByText`; a
+(`file: namespace.key`, the shipped value, the client's, "Set by" as `config (source|stored)` -- `setByText` --
+or `config (template <id>)` for a value the client inherits from the template it extends, issue #945; a
 stored change over the client's own source value shows "was: …", and an orphan -- a key no shipped file declares,
 so the value is never read -- is flagged), and the interface items it changes (`menuChangeText`: added, hidden,
 shown, renamed, reordered; `blockValueText`; the shipped label rides on the row as `baseLabel`, so a row that only

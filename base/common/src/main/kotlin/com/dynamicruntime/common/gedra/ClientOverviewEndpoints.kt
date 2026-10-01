@@ -103,6 +103,8 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(COV.origin, "Whether that config is in source code or stored configuration.", required = true) {
             options(GedraConfigOrigin.entries)
         }
+        property(COV.template, "The template the client extends, when its configuration set the value rather " +
+            "than the client's own; the config is then the template's.")
         property(COV.sourceValue, "The client's source-config value that a stored config overrides; present only " +
             "when one does.")
         property(COV.orphan, "Whether no shipped copy declares the key, so the override replaces nothing anybody " +
@@ -120,6 +122,8 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(COV.origin, "Whether that config is in source code or stored configuration.", required = true) {
             options(GedraConfigOrigin.entries)
         }
+        property(COV.template, "The template the client extends, when its configuration set the field rather " +
+            "than the client's own; the config is then the template's.")
     }
     type(COV.blockTypeName) {
         type = SCT.kObject
@@ -244,7 +248,8 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         CLD.name to name,
         CLD.status to status.name,
         CLD.origin to (ClientService.get(cxt).originOf(clientId) ?: GedraConfigOrigin.stored).name,
-        CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).size,
+        // The loaded set also holds a template's copies (issue #945), which are source, not stored.
+        CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).count { it.inheritedFrom == null },
         CLD.forms to GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId),
         CLD.users to users.total,
         CLD.unclaimedUsers to users.unclaimed,

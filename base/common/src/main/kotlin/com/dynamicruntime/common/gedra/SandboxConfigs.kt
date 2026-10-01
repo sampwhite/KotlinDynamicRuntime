@@ -22,6 +22,12 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
  * The order of the layers is the order they are handed to the collector, and a later layer's definitions win:
  * the parent's source first, then the sandbox's own source overlays (issue #940, none yet), then the parent's
  * stored revisions -- every source layer below every stored one, as for any client.
+ *
+ * **A parent that extends a template** (issue #945): the parent's copies of the template are not carried over --
+ * they are the loader's, not the parent's source, so they are left out with its stored configs. The derived
+ * definition keeps `extendsFromClientId`, and the sandbox is extended like any client, its copy of the template
+ * made against **its** configuration. That matters because the sandbox runs the parent's drafts: a draft redefining
+ * a template trait the published configuration does not would otherwise sit beside a carried copy still holding it.
  */
 object SandboxConfigs {
     /**
@@ -62,6 +68,7 @@ object SandboxConfigs {
             workflows = config.workflows,
             usages = config.usages,
             origin = config.origin,
+            inheritedFrom = config.inheritedFrom,
         )
     }
 
@@ -94,11 +101,11 @@ object SandboxConfigs {
     private fun FragmentSource.reboundTo(sandbox: String): FragmentSource = FragmentSource(
         fileId = fileId, isOverlay = isOverlay, client = client?.let { sandbox }, origin = origin,
         audience = audience, shownOn = shownOn, shownFor = shownFor, configName = configName, stored = stored,
-        load = load,
+        inheritedFrom = inheritedFrom, load = load,
     )
 
     private fun UiBlockSource.reboundTo(sandbox: String): UiBlockSource = UiBlockSource(
         blockId = blockId, isOverlay = isOverlay, client = client?.let { sandbox }, origin = origin,
-        content = content, arrayKeys = arrayKeys, configName = configName, stored = stored,
+        content = content, arrayKeys = arrayKeys, configName = configName, stored = stored, inheritedFrom = inheritedFrom,
     )
 }

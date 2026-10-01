@@ -22,7 +22,10 @@ import com.dynamicruntime.common.util.toJsonStr
  *    outside one, that a client layer touches.
  *
  * Only the client's **own** layers are the subject. A component's overlays apply to everybody, so they are part of
- * the [CopyOverride.baseValue] a client departs from, not something the client did.
+ * the [CopyOverride.baseValue] a client departs from, not something the client did. A client built on a template
+ * (issue #945) holds the template's overlays as layers of its own, ranked below what it says itself, so a value only
+ * the template sets is reported too, naming the template ([CopyOverride.inheritedFrom]): it is what this client's
+ * people see in place of everybody else's.
  *
  * Pure over the layers, with the merges passed in, so the rules are testable without a booted node and the
  * endpoint can hand over the fragment service's cached merges instead of re-reading classpath files.
@@ -47,6 +50,8 @@ class CopyOverride(
     val orphan: Boolean,
     /** Where the application shows the file (issue #933); null for one it does not show, so the override changes nothing seen. */
     val shownOn: String?,
+    /** The template whose configuration set the value, when the client's own did not (issue #945). */
+    val inheritedFrom: String? = null,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(
@@ -59,6 +64,7 @@ class CopyOverride(
         if (value != null) out[COV.value] = value
         if (configName != null) out[COV.configName] = configName
         out[COV.origin] = originName(stored)
+        if (inheritedFrom != null) out[COV.template] = inheritedFrom
         if (sourceValue != null) out[COV.sourceValue] = sourceValue
         out[COV.orphan] = orphan
         if (shownOn != null) out[COV.shownOn] = shownOn
@@ -73,6 +79,8 @@ class BlockFieldOverride(
     val value: String?,
     val configName: String?,
     val stored: Boolean,
+    /** The template whose configuration set the field, when the client's own did not (issue #945). */
+    val inheritedFrom: String? = null,
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> {
         val out = linkedMapOf<String, Any?>(COV.field to field)
@@ -80,6 +88,7 @@ class BlockFieldOverride(
         if (value != null) out[COV.value] = value
         if (configName != null) out[COV.configName] = configName
         out[COV.origin] = originName(stored)
+        if (inheritedFrom != null) out[COV.template] = inheritedFrom
         return out
     }
 }
@@ -114,11 +123,11 @@ private fun originName(stored: Boolean): String =
 
 /** [client]'s own fragment overlays among [sources], in the order they are applied -- source, then stored. */
 fun clientFragmentLayers(sources: List<FragmentSource>, client: String): List<FragmentSource> =
-    sources.filter { it.isOverlay && it.client == client }.sortedBy { overlayPrecedence(it.client, it.stored) }
+    sources.filter { it.isOverlay && it.client == client }.sortedBy { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null) }
 
 /** [client]'s own UiBlock overlays among [sources], in applied order. */
 fun clientUiBlockLayers(sources: List<UiBlockSource>, client: String): List<UiBlockSource> =
-    sources.filter { it.isOverlay && it.client == client }.sortedBy { overlayPrecedence(it.client, it.stored) }
+    sources.filter { it.isOverlay && it.client == client }.sortedBy { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null) }
 
 /** How many fragment keys [client]'s layers set -- the overview's count, from the layers alone, with no merge. */
 fun countCopyOverrides(sources: List<FragmentSource>, client: String): Int =
@@ -164,6 +173,7 @@ fun copyOverrides(
                     configName = layer.configName,
                     stored = layer.stored,
                     sourceValue = if (layer.stored) sourceValue[at] else null,
+                    inheritedFrom = layer.inheritedFrom,
                     orphan = "$ns.$key" in orphans,
                     shownOn = effective.shownOnFor(client),
                 ),
@@ -270,6 +280,7 @@ fun blockOverrides(
                     fields = fields.map { (field, layer) ->
                         BlockFieldOverride(
                             field, base?.get(field).asText(), mine?.get(field).asText(), layer.configName, layer.stored,
+                            layer.inheritedFrom,
                         )
                     },
                 ),

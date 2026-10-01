@@ -105,6 +105,8 @@ class UiBlockSource(
     val configName: String? = null,
     /** Whether this came from a stored client config (issue #916); see `overlayPrecedence`. */
     val stored: Boolean = false,
+    /** The template this layer was cloned from (issue #945), or null; see `FragmentSource.inheritedFrom`. */
+    val inheritedFrom: String? = null,
 ) {
     init {
         if (isOverlay && arrayKeys.isNotEmpty()) {

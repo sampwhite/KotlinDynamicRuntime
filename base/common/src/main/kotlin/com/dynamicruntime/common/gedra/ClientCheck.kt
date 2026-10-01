@@ -40,7 +40,17 @@ fun checkClientDefs(
     /** The clients the node runs now: what an unchecked client keeps when [only] is given. */
     current: Map<String, ClientDef> = emptyMap(),
 ): ClientCheckResult {
-    val declared = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
+    val raw = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
+    // A client built on another takes its defaults from it (issue #945, `ClientExtension.mergeDef`) before anything
+    // is judged, so every rule below sees the definition the client will run -- a functional group a template
+    // includes is refused in a customer's production client exactly as one written there would be. Merged with the
+    // first declaration of the base; a base the checks then refuse drops the client too (`relatedProblem`).
+    val firstDefs = raw.map { it.second }.distinctBy { it.clientId }.associateBy { it.clientId }
+    val declared = raw.map { (config, def) ->
+        val base = def.extendsFromClientId?.let { firstDefs[it] }
+            ?.takeIf { it.clientId != def.clientId && it.extendsFromClientId == null }
+        config to (base?.let { ClientExtension.mergeDef(def, it) } ?: def)
+    }
 
     // The one place `testFeatures` is confined to a test instance (issue #696): the *present* definition a
     // non-test node holds carries none, whatever a stored row declared. Every consumer then reads the field

@@ -265,6 +265,16 @@ class GedraConfig(
      * stored data leaves nothing with which to repair it.
      */
     val origin: GedraConfigOrigin = GedraConfigOrigin.source,
+    /**
+     * The template this config was cloned from (issue #945), or null for a config authored as itself.
+     *
+     * A client that extends another (`ClientDef.extendsFromClientId`) gets a copy of each of that client's
+     * **source** configs, filed under its own id with what it redefines taken out. The copy keeps the template's
+     * namespace -- the template still owns it, so its types are not renamed -- and this says where it came from:
+     * the namespace claim, the overlay precedence, and the stored-config readers all need to tell a copy from the
+     * client's own configuration. See `ClientExtension`.
+     */
+    val inheritedFrom: String? = null,
 ) {
     /** Whether this config was read back from the database rather than declared in source code. */
     val isStored: Boolean get() = origin == GedraConfigOrigin.stored
@@ -357,7 +367,7 @@ class GedraConfigBuilder(
 
     /** [this] layer stamped with the config's name and origin (issue #916), which the DSL builders do not take. */
     private fun FragmentSource.stampedByConfig(): FragmentSource =
-        FragmentSource(fileId, isOverlay, client, origin, audience, shownOn, shownFor, stampName, isStored, load)
+        FragmentSource(fileId, isOverlay, client, origin, audience, shownOn, shownFor, stampName, isStored, inheritedFrom, load)
 
     private fun UiBlockSource.stampedByConfig(): UiBlockSource =
         UiBlockSource(blockId, isOverlay, client, origin, content, arrayKeys, stampName, isStored)

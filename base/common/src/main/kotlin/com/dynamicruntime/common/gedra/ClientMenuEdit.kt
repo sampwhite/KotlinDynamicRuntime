@@ -174,7 +174,8 @@ object ClientMenuEdit {
      */
     private fun storedItems(cxt: KdrCxt, client: String): Map<String, Map<String, Any?>> {
         val out = LinkedHashMap<String, Map<String, Any?>>()
-        for (config in GedraConfigLoadService.get(cxt).loadedFor(client)) {
+        // A template's copies (issue #945) are loaded for the client too, and are not stored: left out.
+        for (config in GedraConfigLoadService.get(cxt).loadedFor(client).filter { it.inheritedFrom == null }) {
             for (layer in config.uiBlocks.filter { it.blockId == HMENU.block }) {
                 for (item in menuItems(layer.content)) {
                     val id = item[HFLD.id].toOptStr() ?: continue
