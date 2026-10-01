@@ -17,7 +17,8 @@ class ScriptTemplateTest {
 
     @Test
     fun analyzingWithDataRendersWhatEvaluationRenders() {
-        // A plain string: the doubled-prefix escape (`$$`) is also Kotlin's multi-dollar interpolation marker.
+        // Three dollars, not the usual two: the template's doubled-prefix escape (`$$`) would itself be
+        // interpolation in a `$$"…"` string.
         val text = $$$"Hello ${name}, you owe ${n * 2}. Escaped: $${x} and a lone $ sign."
         val data = mapOf("name" to "Ada", "n" to 21L)
         val report = text.analyzeTemplate(evaluateWith = data)
