@@ -482,7 +482,8 @@ Genuine optionality within a form — a radio group the user may leave unanswere
   the inner `value` of the conditional shape.
 - **Does an entry pin a trait version?** Attractive, and the enabler for the compatible-edit rules above.
 - **How is an entry addressed?** `entries[3].data.year` is index-based and shifts on insert;
-  `entries[expenseReport:2024].data.year` survives. Validation failure paths, form-engine keys, attribute-level
+  `entries[expenseReport:2024].data.year` survives -- though since issue #951 a colon is what roots a global
+  trait id (`kdr:name`), so a settled address syntax needs another separator. Validation failure paths, form-engine keys, attribute-level
   permissions and derived-value dependencies all consume the same vocabulary, three of them deferred — which is
   the argument for settling it while only the first exists.
 - **May a trait extend more than one base, and may an extension replace an inherited pre-processor or only

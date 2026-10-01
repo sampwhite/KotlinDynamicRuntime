@@ -131,7 +131,7 @@ class CreateFormForUserTest : StringSpec({
             clientPath(GEP.workflowSave, SC.globex),
             mapOf(
                 GDF.workflowId to SW.createForm, GDF.taskId to SW.identify, GDF.saveId to SW.create,
-                GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "For Target"))),
+                GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "For Target"))),
                 EI.user to "cffu-wf-target@globex.test",
             ),
         )

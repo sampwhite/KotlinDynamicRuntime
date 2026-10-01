@@ -84,9 +84,11 @@ class ComponentOwnershipTest : StringSpec({
     }
 
     "a global config is held to the same rules as a module" {
+        // A global trait id takes the root of the namespace it is declared in (issue #951) -- a contribution to `kdr`
+        // declares `kdr:` traits.
         fun config(namespace: String, contributesTo: String? = null) =
             gedraConfig(devCxt, "abcTraits", namespace, contributesTo = contributesTo) {
-                trait("NoteEntry", "abc_note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
+                trait("NoteEntry", "${namespace.substringBefore('.')}:note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
             }
         refusal { addGedraConfig(devCxt, config("kdr.notes")) } shouldContain "contributesTo = \"kdr\""
         contribute(abc) { addGedraConfig(devCxt, config("kdr.notes", contributesTo = OWNR.kdrRoot)) shouldBe true }

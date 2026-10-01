@@ -95,7 +95,7 @@ class GedraStateDerivationTest : StringSpec({
         val scope = ReadScope.ofClient("gderivbridge")
         val gid = service().createGedra(
             ctx, GedraDataType.formDoc,
-            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Bridge form"))),
+            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Bridge form"))),
         ).gedraId
 
         // The form's state asserts the demo cfact through the core `cfacts` state trait.

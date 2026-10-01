@@ -55,7 +55,7 @@ class GedraDataExtraTest : StringSpec({
     "a data key this node does not know survives a patch untouched" {
         val id = service().createGedra(
             asOwner(), kind,
-            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Before patch"))),
+            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Before patch"))),
         ).gedraId.fullId
         val stored = service().queryGedra(cxt, id, kind, scope).shouldNotBeNull()
 
@@ -92,7 +92,7 @@ class GedraDataExtraTest : StringSpec({
         // The write half: a patch that knows only about entries must carry the key it does not know.
         val target = GedraPatchTarget(
             GedraService.get(cxt).readId(id),
-            listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "After patch"))),
+            listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.nameField to "After patch"))),
         )
         service().patchGedras(cxt, mapOf(kind to listOf(target)), scope)
 
@@ -105,7 +105,7 @@ class GedraDataExtraTest : StringSpec({
     "the creation workflow reference is promoted out of extra and carried through a patch" {
         val id = service().createGedra(
             asOwner(), kind,
-            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Made by a workflow"))),
+            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Made by a workflow"))),
         ).gedraId.fullId
         val stored = service().queryGedra(cxt, id, kind, scope).shouldNotBeNull()
         stored.creationWorkflowId.shouldBeNull()
@@ -140,7 +140,7 @@ class GedraDataExtraTest : StringSpec({
         // A patch reassembles the stored map through the row, so the promoted key rides along.
         val target = GedraPatchTarget(
             GedraService.get(cxt).readId(id),
-            listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "Renamed"))),
+            listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.nameField to "Renamed"))),
         )
         service().patchGedras(cxt, mapOf(kind to listOf(target)), scope)
         val after = service().queryGedra(cxt, id, kind, scope).shouldNotBeNull()

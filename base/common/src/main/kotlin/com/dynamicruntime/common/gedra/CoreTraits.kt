@@ -35,7 +35,7 @@ fun coreTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, GT.coreTraits, GCFG.
         setOf(GedraDataType.formDoc, GedraDataType.wfData),
         "What somebody chose to call this document or workflow.",
     ) {
-        property(GT.name, "What to call it.", required = true) { maxLength = GT.nameMaxLength }
+        property(GT.nameField, "What to call it.", required = true) { maxLength = GT.nameMaxLength }
     }
 
     // The default forms-list presentation (issue #537): a "Name" column pulled from the `name` trait, applied

@@ -33,13 +33,13 @@ class GedraSortTest : StringSpec({
 
     /** Creates a form carrying a `name`, or none when [name] is null (a row missing the sorted trait). */
     fun create(name: String?) {
-        val entries = if (name == null) emptyList() else listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name)))
+        val entries = if (name == null) emptyList() else listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name)))
         svc().createGedra(asOwner(), kind, entries)
     }
 
     /** The `name` value of a row, as the sort key reads it; "" when the row has none. */
     fun nameOf(row: GedraDataRow): String =
-        row.entries.firstOrNull { it[GE.traitId].toOptStr() == GT.name }?.get(GE.data).toJsonMapOrEmpty()[GT.name].toOptStr() ?: ""
+        row.entries.firstOrNull { it[GE.traitId].toOptStr() == GT.name }?.get(GE.data).toJsonMapOrEmpty()[GT.nameField].toOptStr() ?: ""
 
     fun sortBy(kindOf: UsageKind, descending: Boolean) =
         GedraDataService.GedraSort(kindOf, descending) { nameOf(it) }

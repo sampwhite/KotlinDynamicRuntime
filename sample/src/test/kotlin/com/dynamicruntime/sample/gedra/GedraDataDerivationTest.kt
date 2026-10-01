@@ -6,6 +6,7 @@ import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.deriveEntryData
@@ -72,7 +73,7 @@ class GedraDataDerivationTest : StringSpec({
 
     "a trait with no deriver passes through unchanged" {
         val acme = asUser(SC.acme, 91203L)
-        val entries = listOf(mapOf(GE.traitId to "name", GE.data to mapOf("name" to "No total here")))
+        val entries = listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "No total here")))
         deriveEntryData(acme, GedraDataType.formDoc, entries, SC.acme) shouldBe entries
     }
 

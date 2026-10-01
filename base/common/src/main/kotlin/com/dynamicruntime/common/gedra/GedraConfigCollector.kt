@@ -14,6 +14,9 @@ import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.clientNameProblem
 import com.dynamicruntime.common.naming.clientNamespaceProblem
+import com.dynamicruntime.common.naming.OWNR
+import com.dynamicruntime.common.naming.namespaceRoot
+import com.dynamicruntime.common.naming.rootedNameProblem
 
 /** Names and modes for the Gedra config checks (issue #299). */
 @Suppress("ConstPropertyName")
@@ -362,10 +365,13 @@ class GedraConfigCollector {
             keep(config)
             return true
         }
-        // A client's state traits cost only themselves (issue #873): the rest of the config is judged as usual,
-        // and `keep` never registers them.
+        // A client's state and config traits cost only themselves (issues #873, #951): the rest of the config is
+        // judged as usual, and `keep` never registers them.
         for (traitId in config.stateTraits.keys - keptStateTraits(config).keys) {
             reportConfigProblem(cxt, clientStateTraitIssue(config, traitId), issues)
+        }
+        for (traitId in config.configTraits.keys - keptConfigTraits(config).keys) {
+            reportConfigProblem(cxt, clientConfigTraitIssue(config, traitId), issues)
         }
         val problem = firstProblem(config)
         if (problem == null) {
@@ -415,7 +421,7 @@ class GedraConfigCollector {
                 stateTraitOwners.remove(traitId); stateTraitConfigs.remove(traitId)
             }
         }
-        for (traitId in config.configTraits.keys) {
+        for (traitId in keptConfigTraits(config).keys) {
             if (configTraitConfigs[traitId]?.gedraId == config.gedraId) {
                 configTraitOwners.remove(traitId); configTraitConfigs.remove(traitId)
             }
@@ -441,7 +447,7 @@ class GedraConfigCollector {
             stateTraitOwners[traitId] = trait
             stateTraitConfigs[traitId] = config
         }
-        for ((traitId, trait) in config.configTraits) {
+        for ((traitId, trait) in keptConfigTraits(config)) {
             configTraitOwners[traitId] = trait
             configTraitConfigs[traitId] = config
         }
@@ -465,6 +471,23 @@ class GedraConfigCollector {
     )
 
     /**
+     * The config traits [config] may contribute (issue #951): all of a `global` config's, and none of a client's.
+     * A config trait is a slot of the config store itself -- core's, the same for every client -- so a client's
+     * would add a slot to every client's, under an id no owner rule judges. As with [keptStateTraits], [add]
+     * reports each one it leaves out, and this keeps them out of the registries whatever the mode.
+     */
+    private fun keptConfigTraits(config: GedraConfig): Map<String, GedraConfigTrait> =
+        if (config.gedraId.client == GID.globalClient) config.configTraits else emptyMap()
+
+    private fun clientConfigTraitIssue(config: GedraConfig, traitId: String): GedraConfigIssue = config.issue(
+        "Gedra config '${config.gedraId}' declares the config trait '$traitId', but config traits are global -- " +
+            "the slots of the config store, declared by core -- so client '${config.gedraId.client}''s " +
+            "configuration cannot declare one.",
+        "Dropping the config trait; the rest of the config stands.",
+        GCEL.type, config.configTraits.getValue(traitId).typeName,
+    )
+
+    /**
      * The first thing wrong with [config], or null. First rather than all, because a config is taken or left
      * whole: reporting the other four problems with something already being rejected buries the one that has
      * to be fixed first.
@@ -472,7 +495,8 @@ class GedraConfigCollector {
     private fun firstProblem(config: GedraConfig): GedraConfigIssue? {
         // Dropping a config drops all of its traits, data and state alike, so the count says both (issue #597).
         val stateTraits = keptStateTraits(config)
-        val traitCount = config.traits.size + stateTraits.size + config.configTraits.size
+        val configTraits = keptConfigTraits(config)
+        val traitCount = config.traits.size + stateTraits.size + configTraits.size
         configsById[config.gedraId.fullId]?.let {
             return config.issue(
                 "Gedra config '${config.gedraId}' is contributed twice.",
@@ -508,8 +532,7 @@ class GedraConfigCollector {
             )
         }
         // A client's own names are bare (issue #921): a colon means a reference to another owner's definition, and
-        // the rest of each name is held to its kind's rule. Global names are not yet rooted, so only a client's are
-        // judged here.
+        // the rest of each name is held to its kind's rule. A global config's trait ids are judged below (#951).
         if (config.gedraId.client != GID.globalClient) {
             clientNamesProblem(config)?.let { why ->
                 return config.issue(
@@ -519,26 +542,35 @@ class GedraConfigCollector {
                 )
             }
         }
-        // Trait ids (issue #807). A global id -- a global data trait's, or any state or config trait's, all of which
-        // are global -- is unique across every gedra kind and every client, and no client may reuse one. A client's
-        // own data trait ids are unique within that client; another client may declare the same id and get its
-        // own. So one client's view (its own traits and the global ones) never holds an id twice, and a stored
-        // entry's bare trait id resolves unambiguously against the client of the gedra that holds it.
-        for (traitId in config.traits.keys + stateTraits.keys + config.configTraits.keys) {
+        // A global config's trait ids are rooted (issue #951), with the root its namespace is under -- whoever owns
+        // `abc` owns every `abc:` trait, data, state and config traits alike. Judged before the uniqueness check
+        // below, which is what keeps that check's cross-owner arm unreachable.
+        if (config.gedraId.client == GID.globalClient) {
+            globalTraitIdProblem(config, config.traits.keys + stateTraits.keys + configTraits.keys)?.let { why ->
+                return config.issue(
+                    "Gedra config '${config.gedraId}' declares a global trait id it may not. $why",
+                    "Dropping '${config.gedraId}' and its $traitCount trait(s).",
+                    GCEL.config, config.gedraId.fullId,
+                )
+            }
+        }
+        // Trait ids (issues #807, #951). A trait id is unique within its owner -- a client's within that client, a
+        // global one across every gedra kind -- and, since #951, a client's and a global one can never be the same:
+        // a client's is bare and a global one rooted, both judged above. So a stored entry's trait id resolves
+        // unambiguously against the client of the gedra that holds it, and no release adding a global trait can take
+        // an id some client already uses.
+        for (traitId in config.traits.keys + stateTraits.keys + configTraits.keys) {
             val held = traitHolder(config, traitId) ?: continue
-            val why = when (held.gedraId.client) {
-                config.gedraId.client ->
-                    "A trait id is unique within a client -- and a global one across every client and gedra kind."
-
-                GID.globalClient ->
-                    "It is a global trait's id, which no client may reuse: a client's own traits and the global " +
-                            "ones it sees must never share one, or a stored entry's bare trait id could mean either."
-
-                else -> "A global trait's id may not be one a client already uses, or that client's own traits and " +
-                        "the global ones it sees would share it."
+            if (held.gedraId.client != config.gedraId.client) {
+                // The two owners' name rules make this impossible; reaching it means one of them was bypassed.
+                throw KdrException(
+                    "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}', a global trait " +
+                        "and a client's -- which the owner-name rules (issue #951) should have made impossible.",
+                )
             }
             return config.issue(
-                "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}'. $why",
+                "Trait '$traitId' is declared by both '${held.gedraId}' and '${config.gedraId}'. A trait id is " +
+                    "unique within its owner -- a client's within that client, a global one across every gedra kind.",
                 "Keeping '${held.gedraId}''s; dropping '${config.gedraId}' and its $traitCount trait(s).",
                 GCEL.config, config.gedraId.fullId,
             )
@@ -585,6 +617,23 @@ class GedraConfigCollector {
                 listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
             }
         return names.firstNotNullOfOrNull { (kind, name) -> clientNameProblem(kind, name) }
+    }
+
+    /**
+     * The first of a global [config]'s [traitIds] that is not a rooted trait id under the config's own root (issue
+     * #951), as a reason, or null.
+     */
+    private fun globalTraitIdProblem(config: GedraConfig, traitIds: Collection<String>): String? {
+        val root = namespaceRoot(config.namespace)
+        for (traitId in traitIds) {
+            rootedNameProblem(OwnedNameKind.trait, traitId)?.let { return it }
+            val traitRoot = traitId.substringBefore(OWNR.rootSep)
+            if (traitRoot != root) {
+                return "'$traitId' is under the root '$traitRoot', not '$root', the root of the config's namespace " +
+                    "'${config.namespace}'."
+            }
+        }
+        return null
     }
 
     /** A data trait's registry key: its owning client and its id (issue #807). */

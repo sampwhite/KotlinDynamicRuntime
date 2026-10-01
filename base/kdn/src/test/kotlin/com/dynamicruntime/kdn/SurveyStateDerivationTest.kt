@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -85,7 +86,7 @@ class SurveyStateDerivationTest : StringSpec({
         completion[SVY.missingTraits].toJsonListOrEmpty().shouldBeEmpty()
 
         // The two facts are asserted into the shared cfacts state, which is what the eligibility bridge reads.
-        val facts = stateEntry(user, gid, "cfacts")["facts"].toJsonListOrEmpty()
+        val facts = stateEntry(user, gid, GT.cfacts)[GT.facts].toJsonListOrEmpty()
         facts shouldContain SVY.surveyComplete
         facts shouldContain SVY.surveyValid
     }
@@ -100,7 +101,7 @@ class SurveyStateDerivationTest : StringSpec({
         // Present data is still valid (nothing the survey collects is present to be wrong), so surveyValid stands
         // and surveyComplete does not -- absence of the good fact reads as "not ready".
         completion[SVY.valid] shouldBe true
-        val facts = stateEntry(user, gid, "cfacts")["facts"].toJsonListOrEmpty()
+        val facts = stateEntry(user, gid, GT.cfacts)[GT.facts].toJsonListOrEmpty()
         facts shouldContain SVY.surveyValid
         facts shouldNotContain SVY.surveyComplete
     }

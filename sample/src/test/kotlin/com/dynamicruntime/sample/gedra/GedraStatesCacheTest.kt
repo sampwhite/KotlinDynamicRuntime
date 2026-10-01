@@ -44,7 +44,7 @@ class GedraStatesCacheTest : StringSpec({
 
     fun aForm(userId: Long, name: String): GedraId = service().createGedra(
         asUser(userId), GedraDataType.formDoc,
-        listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))),
+        listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))),
     ).gedraId
 
     fun presence(year: Int): Map<String, Any?> =

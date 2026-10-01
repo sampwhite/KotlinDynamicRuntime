@@ -53,7 +53,7 @@ class GedraDataEndpointTest : StringSpec({
     val ada = TestUser.create(cxt, "ada@gedra.test", level = ROLE.admin)
 
     fun nameEntry(name: String): Map<String, Any?> =
-        mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))
+        mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
 
     fun idsOf(docs: List<Map<String, Any?>>) = docs.map { it[GDF.gedraId].toOptStr() }
 
@@ -83,7 +83,7 @@ class GedraDataEndpointTest : StringSpec({
         // or an entry missing any required part of it would have failed before reaching this assertion.
         val entry = doc[GDF.entries].toJsonListOfMaps().single()
         entry[GE.traitId] shouldBe GT.name
-        entry[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Alice's expenses"
+        entry[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Alice's expenses"
         entry[GE.source] shouldBe GSRC.user
         entry.keys shouldContain GE.entryId
         // Who wrote it, beside when (issue #325). On a "create" the actor and the owner are the same person, so
@@ -124,7 +124,7 @@ class GedraDataEndpointTest : StringSpec({
     "the document reads back by id, for the user who owns it" {
         val doc = alice.getItem(GEP.formDoc, mapOf(GDF.gedraId to aliceDocId))
         doc[GDF.gedraId] shouldBe aliceDocId
-        doc[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "Alice's expenses"
+        doc[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "Alice's expenses"
     }
 
     // The narrow width of ReadScopeRules, which until now had no endpoint reaching it. Both halves matter: a

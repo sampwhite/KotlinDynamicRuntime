@@ -3,6 +3,7 @@ package com.dynamicruntime.sample.gedra
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WVF
@@ -47,7 +48,7 @@ class WorkflowViewTest : StringSpec({
         val task = v[WFD.tasks].toJsonListOfMaps().single()
         task[WFD.label] shouldBe "Name the form"       // a literal is a template with no blocks
         val traits = task[WFD.traits].toJsonListOfMaps()
-        traits.single()[WFD.traitId] shouldBe "name"
+        traits.single()[WFD.traitId] shouldBe GT.name
         traits.single()[WFD.required] shouldBe true
         (traits.single()[WVF.schemaRef] as String) shouldContain "NameData"
         val save = task[WFD.saves].toJsonListOfMaps().single()

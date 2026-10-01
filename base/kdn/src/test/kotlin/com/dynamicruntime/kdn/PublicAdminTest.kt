@@ -97,7 +97,7 @@ class PublicAdminTest : StringSpec({
     "the admin role never widens what they read: another public user's forms stay theirs" {
         val theirs = stranger.postItem(
             GEP.formDocCreate,
-            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Private")))),
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Private")))),
         )[GDF.gedraId].toOptStr().shouldNotBeNull()
         me.getItems(GEP.formDocs).map { it[GDF.gedraId] } shouldNotContain theirs
         me.expectError(EXC.notFound, GEP.formDoc, args = mapOf(GDF.gedraId to theirs))

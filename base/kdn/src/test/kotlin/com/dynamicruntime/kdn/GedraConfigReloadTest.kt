@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -111,13 +112,13 @@ class GedraConfigReloadTest : StringSpec({
         storeAndReload(victim, "rlMine")
         val before = schema().gedraTraitsFor(victim).map { it.traitId }
 
-        // The victim's next revision reuses a global trait's id (`name`), which no client may (issue #807): the
-        // collector refuses it, and in the unit environment a config problem is strict, so the reload throws --
+        // The victim's next revision claims a rooted trait id (core's `kdr:name`), which no client may (issue #921):
+        // the collector refuses it, and in the unit environment a config problem is strict, so the reload throws --
         // before anything is published, and with the collector rolled back to the victim's previous configuration.
-        shouldThrow<KdrException> { storeAndReload(victim, "rlMine", "name") }
+        shouldThrow<KdrException> { storeAndReload(victim, "rlMine", GT.name) }
         schema().gedraTraitsFor(victim).map { it.traitId } shouldBe before
         GedraConfigLoadService.get(cxt).loadedFor(victim).size shouldBe 1
-        schema().isGlobalTrait("name") shouldBe true
+        schema().isGlobalTrait(GT.name) shouldBe true
     }
 
     // The case above throws from the collector, *before* the snapshot is published. A check that runs *after* the

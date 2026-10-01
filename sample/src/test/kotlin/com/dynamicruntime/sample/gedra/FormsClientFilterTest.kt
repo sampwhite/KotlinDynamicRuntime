@@ -41,7 +41,7 @@ class FormsClientFilterTest : StringSpec({
     )[GDF.gedraId].toOptStr()
     val globexDoc = globexUser.postItem(
         clientPath(GEP.formDocCreate, SC.globex),
-        mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "CF Globex")))),
+        mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "CF Globex")))),
     )[GDF.gedraId].toOptStr()
 
     val admin = TestUser.createFullAdmin(cxt, "cf-admin@example.com")

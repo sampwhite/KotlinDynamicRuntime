@@ -41,7 +41,7 @@ class WorkflowSaveTest : StringSpec({
 
     fun save(body: Map<String, Any?>): Map<String, Any?> = globex.postData(savePath, body)
 
-    fun nameEntry(name: String) = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))
+    fun nameEntry(name: String) = mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
 
     fun base(entries: List<Map<String, Any?>>): Map<String, Any?> = mapOf(
         GDF.workflowId to SW.createForm, GDF.taskId to SW.identify, GDF.saveId to SW.create, GDF.entries to entries,
@@ -53,7 +53,7 @@ class WorkflowSaveTest : StringSpec({
         val item = res[WSF.item].toJsonMapOrEmpty()
         val id = item[GDF.gedraId].toOptStr().shouldNotBeNull()
         id.contains(".${SC.globex}.") shouldBe true
-        item[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()[GT.name] shouldBe "My form"
+        item[GDF.entries].toJsonListOfMaps().single()[GE.data].toJsonMapOrEmpty()[GT.nameField] shouldBe "My form"
         // The workflow reference is stamped and derived onto the wire (g-derived), so a read-back carries it.
         (item[GDF.creationWorkflowId] as String) shouldContain "gc.cd.${SC.globex}."
         (item[GDF.creationWorkflowId] as String) shouldContain "#${SW.createForm}"
@@ -66,13 +66,13 @@ class WorkflowSaveTest : StringSpec({
     "an incomplete save is a result naming the unmet required traits, not an error" {
         val res = save(base(emptyList()))
         res[WSF.saved] shouldBe false
-        (res[WSF.unmetTraits] as List<*>).map { it.toString() } shouldContainExactly listOf("name")
+        (res[WSF.unmetTraits] as List<*>).map { it.toString() } shouldContainExactly listOf(GT.name)
     }
 
     "an entry naming a trait the task does not collect is a loud 400" {
         globex.expectError(
             EXC.badInput, savePath,
-            base(listOf(mapOf(GE.traitId to "expenseReport", GE.data to emptyMap<String, Any?>()))),
+            base(listOf(mapOf(GE.traitId to ST.expenseReport, GE.data to emptyMap<String, Any?>()))),
         )
     }
 

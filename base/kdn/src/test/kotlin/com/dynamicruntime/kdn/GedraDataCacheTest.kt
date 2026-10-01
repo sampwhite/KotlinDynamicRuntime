@@ -55,7 +55,7 @@ class GedraDataCacheTest : StringSpec({
         service().createGedra(
             asUser(userId),
             GedraDataType.formDoc,
-            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to name))),
+            listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))),
         ).gedraId.fullId
 
     var caraDocId = ""
@@ -188,7 +188,7 @@ class GedraDataCacheTest : StringSpec({
                 kind to listOf(
                     GedraPatchTarget(
                         GedraService.get(cxt).readId(caraDocId),
-                        listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "Cara's doc, edited"))),
+                        listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.nameField to "Cara's doc, edited"))),
                     ),
                 ),
             ),
@@ -310,7 +310,7 @@ class GedraDataCacheTest : StringSpec({
             // Patch the name, with the clock still frozen at the create's millisecond.
             val target = GedraPatchTarget(
                 GedraService.get(cxt).readId(id),
-                listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.name to "After patch"))),
+                listOf(GedraEdit(GedraEditAction.addOrMerge, GT.name, data = mapOf(GT.nameField to "After patch"))),
             )
             svc.patchGedras(cxt, mapOf(kind to listOf(target)), scope)
 

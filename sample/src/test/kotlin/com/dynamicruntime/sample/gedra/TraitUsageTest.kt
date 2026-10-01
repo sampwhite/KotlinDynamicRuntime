@@ -33,7 +33,7 @@ class TraitUsageTest : StringSpec({
     "globex shows the Name column it declares, beside its yearly Year column" {
         globex.postItem(
             clientPath(GEP.formDocCreate, SC.globex),
-            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Quarterly plan")))),
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Quarterly plan")))),
         )
         val row = globex.getItems(clientPath(GEP.formDocs, SC.globex)).first()
         val name = displayOf(row).first { it[UF.traitId] == GT.name }
@@ -78,7 +78,7 @@ class TraitUsageTest : StringSpec({
     "a read of one form carries the same display values as the list" {
         val id = globex.postItem(
             clientPath(GEP.formDocCreate, SC.globex),
-            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.name to "Read me")))),
+            mapOf(GDF.entries to listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "Read me")))),
         )[GDF.gedraId] as String
         val read = globex.getItem(clientPath(GEP.formDoc, SC.globex), mapOf(GDF.gedraId to id))
         displayOf(read).first { it[UF.traitId] == GT.name }[UF.value] shouldBe "Read me"

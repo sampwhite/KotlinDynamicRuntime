@@ -39,7 +39,7 @@ object SVY {
     const val surveyCompletionEntry = "SurveyCompletionEntry"
 
     /** The `surveyCompletion` state trait id -- a derived, form-singleton (unkeyed) projection. */
-    const val surveyCompletion = "surveyCompletion"
+    const val surveyCompletion = "kdr:surveyCompletion"
 
     const val complete = "complete"
     const val valid = "valid"
