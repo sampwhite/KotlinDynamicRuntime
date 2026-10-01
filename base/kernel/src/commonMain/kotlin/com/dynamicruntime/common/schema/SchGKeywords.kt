@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.util.Problem
+
 /**
  * Every `g-` keyword, and the shape its value must take (issue #822).
  *
@@ -49,20 +51,25 @@ object SchGKeywords {
 
     /**
      * What is wrong with [keyword] set to [value] on [where] (a type or property, for the message), or null when
-     * nothing is: a `g-` key that is not one of ours, or a value not of its keyword's shape. Null for any key
-     * without the prefix -- not ours to judge.
+     * nothing is: a `g-` key that is not one of ours ([SchemaError.unknownKeyword]), or a value not of its
+     * keyword's shape ([SchemaError.badValue]). Null for any key without the prefix -- not ours to judge.
      */
-    fun problem(where: String, keyword: String, value: Any?): String? {
+    fun problem(where: String, keyword: String, value: Any?): Problem? {
         if (!keyword.startsWith(SCH.gPrefix) || value == null) return null
         val shape = shapes[keyword]
-            ?: return "$where carries '$keyword', which is not one of our schema keywords " +
-                "(${keywords.sorted().joinToString(", ")}) -- check its spelling."
+            ?: return Problem(
+                SchemaError.unknownKeyword,
+                "$where carries '$keyword', which is not one of our schema keywords " +
+                    "(${keywords.sorted().joinToString(", ")}) -- check its spelling.",
+            )
         if (shape.accepts(value)) return null
-        return "$where sets '$keyword' to ${describe(value)}; it must be ${shape.described}."
+        return Problem(
+            SchemaError.badValue, "$where sets '$keyword' to ${describe(value)}; it must be ${shape.described}.",
+        )
     }
 
     /** Every problem among [map]'s own keys (not its children's), in key order. */
-    fun problems(where: String, map: Map<String, Any?>): List<String> =
+    fun problems(where: String, map: Map<String, Any?>): List<Problem> =
         map.entries.mapNotNull { (key, value) -> problem(where, key, value) }
 
     private fun describe(value: Any?): String = when (value) {

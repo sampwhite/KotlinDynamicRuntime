@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.Parsed
+import com.dynamicruntime.common.util.ProblemLocation
 
 /**
  * A string field's JSON Schema `pattern`, compiled so it means the same on the JVM and in the browser (issue #823).
@@ -45,22 +47,34 @@ class SchPattern private constructor(
     companion object {
         /**
          * [source] compiled, or a [KdrException] saying what in it is not portable or not valid, prefixed by
-         * [where] (a type or property, for the message).
+         * [where] (a type or property, for the message). The throwing form of [compileResult].
          */
-        fun compile(where: String, source: String): SchPattern {
-            val translated = try {
-                translate(source)
-            } catch (e: PatternProblem) {
-                throw KdrException.mkConv("$where has '${SCH.pattern}' '$source', which ${e.message}")
+        fun compile(where: String, source: String): SchPattern = compileResult(where, source).orThrow()
+
+        /**
+         * [source] compiled, or the problem with it (issue #909): [SchemaError.badPattern], at the offset in
+         * [source] where the translation refused it -- the start when the engine refused the whole.
+         */
+        fun compileResult(where: String, source: String): Parsed<SchPattern> {
+            val translated = translate(source)
+            translated.refusal?.let { why ->
+                return Parsed.failed(
+                    SchemaError.badPattern, "$where has '${SCH.pattern}' '$source', which $why",
+                    ProblemLocation(offset = translated.at),
+                )
             }
             val regex = try {
-                Regex(translated)
+                Regex(translated.text)
             } catch (e: Throwable) {
                 // Throwable, not Exception: under Kotlin/JS the engine's SyntaxError is a native JS error, which
-                // is not a Kotlin Exception.
-                throw KdrException.mkConv("$where has '${SCH.pattern}' '$source', which is not a valid pattern: ${e.message}")
+                // is not a Kotlin Exception. The engine is a boundary we do not own, so its refusal is caught here.
+                return Parsed.failed(
+                    SchemaError.badPattern,
+                    "$where has '${SCH.pattern}' '$source', which is not a valid pattern: ${e.message}",
+                    ProblemLocation(offset = 0),
+                )
             }
-            return SchPattern(source, regex)
+            return Parsed.Ok(SchPattern(source, regex))
         }
 
         /** ECMA-262's `\s`, as the body of a class -- the same set on both engines once written out. */
@@ -86,12 +100,14 @@ class SchPattern private constructor(
         /** What sits between the braces of a `{n}` / `{n,}` / `{n,m}` quantifier. */
         private val quantifierBody = Regex("""\d+(,\d*)?""")
 
-        private class PatternProblem(message: String) : Exception(message)
+        /** A [translate] result: the rewritten [text], or the [refusal] and the offset it was found [at]. */
+        private class Translation(val text: String, val refusal: String? = null, val at: Int = 0)
 
-        private fun refuse(message: String): Nothing = throw PatternProblem(message)
-
-        /** [source] rewritten into the syntax both engines read alike; see the class note for what changes. */
-        private fun translate(source: String): String {
+        /**
+         * [source] rewritten into the syntax both engines read alike; see the class note for what changes. A
+         * construct that cannot be written the same way for both comes back as the refusal, not a throw.
+         */
+        private fun translate(source: String): Translation {
             val out = StringBuilder(source.length + 16)
             var i = 0
             var inClass = false
@@ -102,51 +118,62 @@ class SchPattern private constructor(
             fun hexDigits(from: Int, count: Int): Boolean =
                 from + count <= n && (from until from + count).all { source[it].isHexDigit() }
 
-            /** After a quantifier: a lazy `?` is kept; a possessive `+` is Java's alone. */
-            fun afterQuantifier() {
+            fun refuse(why: String) = Translation("", why, i)
+
+            /** After a quantifier: a lazy `?` is kept; a possessive `+` is Java's alone, and refused. */
+            fun afterQuantifier(): Translation? {
                 if (i < n && source[i] == '?') {
                     out.append('?')
                     i++
                 } else if (i < n && source[i] == '+') {
-                    refuse("uses a possessive quantifier ('+' after a quantifier), which only Java has.")
+                    return refuse("uses a possessive quantifier ('+' after a quantifier), which only Java has.")
                 }
+                return null
             }
 
             while (i < n) {
                 val c = source[i]
                 if (c == '\\') {
-                    if (i + 1 >= n) refuse("ends with a lone '\\'.")
+                    if (i + 1 >= n) return refuse("ends with a lone '\\'.")
                     val e = source[i + 1]
                     i += 2
                     when {
                         e in "dDwWnrtf" -> out.append('\\').append(e)
                         e == 's' -> out.append(if (inClass) whitespace else "[$whitespace]")
                         e == 'S' -> {
-                            if (inClass) refuse("uses '\\S' inside a class, which cannot be written the same way for both engines.")
+                            if (inClass) {
+                                return refuse(
+                                    "uses '\\S' inside a class, which cannot be written the same way for both engines.",
+                                )
+                            }
                             out.append("[^$whitespace]")
                         }
                         e == 'b' || e == 'B' -> {
-                            if (inClass) refuse("uses '\\$e' inside a class, which the two engines read differently.")
+                            if (inClass) {
+                                return refuse("uses '\\$e' inside a class, which the two engines read differently.")
+                            }
                             out.append('\\').append(e)
                         }
                         e in '1'..'9' -> {
-                            if (inClass) refuse("uses a backreference inside a class.")
-                            if (i < n && source[i].isDigit()) refuse("uses a backreference of more than one digit.")
+                            if (inClass) return refuse("uses a backreference inside a class.")
+                            if (i < n && source[i].isDigit()) {
+                                return refuse("uses a backreference of more than one digit.")
+                            }
                             out.append('\\').append(e)
                         }
                         e == 'x' -> {
-                            if (!hexDigits(i, 2)) refuse("has a '\\x' escape without two hex digits.")
+                            if (!hexDigits(i, 2)) return refuse("has a '\\x' escape without two hex digits.")
                             out.append("\\x").appendRange(source, i, i + 2)
                             i += 2
                         }
                         e == 'u' -> {
-                            if (!hexDigits(i, 4)) refuse("has a '\\u' escape without four hex digits.")
+                            if (!hexDigits(i, 4)) return refuse("has a '\\u' escape without four hex digits.")
                             out.append("\\u").appendRange(source, i, i + 4)
                             i += 4
                         }
                         e == 'c' -> {
                             if (i >= n || source[i] !in 'A'..'Z' && source[i] !in 'a'..'z') {
-                                refuse("has a '\\c' escape without a letter.")
+                                return refuse("has a '\\c' escape without a letter.")
                             }
                             out.append("\\c").append(source[i])
                             i++
@@ -155,7 +182,7 @@ class SchPattern private constructor(
                             val close = source.indexOf('}', i)
                             val name = if (i < n && source[i] == '{' && close > i) source.substring(i + 1, close) else null
                             if (name == null || name !in generalCategories) {
-                                refuse(
+                                return refuse(
                                     "uses '\\$e' with ${name?.let { "'$it'" } ?: "no name"}; only a Unicode general " +
                                         "category (such as L, Lu or Nd) is named the same way by both engines.",
                                 )
@@ -165,11 +192,13 @@ class SchPattern private constructor(
                         }
                         e == 'k' -> {
                             val close = source.indexOf('>', i)
-                            if (inClass || i >= n || source[i] != '<' || close < 0) refuse("has a malformed '\\k' escape.")
+                            if (inClass || i >= n || source[i] != '<' || close < 0) {
+                                return refuse("has a malformed '\\k' escape.")
+                            }
                             out.append("\\k").appendRange(source, i, close + 1)
                             i = close + 1
                         }
-                        e.isLetterOrDigit() -> refuse("uses '\\$e', which the two engines do not read alike.")
+                        e.isLetterOrDigit() -> return refuse("uses '\\$e', which the two engines do not read alike.")
                         e == '-' -> if (inClass) out.append("\\-") else out.append('-')
                         e in syntaxChars -> out.append('\\').append(e)
                         // Any other escaped character is a literal in Java and an error under `u`. Written as a
@@ -182,13 +211,15 @@ class SchPattern private constructor(
                 if (inClass) {
                     when (c) {
                         ']' -> {
-                            if (i == classStart) refuse("has an empty class, or one that opens with ']'; escape it as '\\]'.")
+                            if (i == classStart) {
+                                return refuse("has an empty class, or one that opens with ']'; escape it as '\\]'.")
+                            }
                             inClass = false
                         }
 
-                        '[' -> refuse("has '[' inside a class, which Java reads as a union; escape it as '\\['.")
+                        '[' -> return refuse("has '[' inside a class, which Java reads as a union; escape it as '\\['.")
                         '&' if i + 1 < n && source[i + 1] == '&' ->
-                            refuse("has '&&' inside a class, which Java reads as an intersection.")
+                            return refuse("has '&&' inside a class, which Java reads as an intersection.")
                     }
                     out.append(c)
                     i++
@@ -221,7 +252,7 @@ class SchPattern private constructor(
                                     out.appendRange(source, i, close + 1)
                                     i = close + 1
                                 }
-                                else -> refuse(
+                                else -> return refuse(
                                     "opens a '(?' group that only Java has -- an inline flag such as '(?i)', or an " +
                                         "atomic group.",
                                 )
@@ -232,24 +263,26 @@ class SchPattern private constructor(
                     '.' -> out.append(anyButLineTerminator)
                     '*', '+', '?' -> {
                         out.append(c)
-                        afterQuantifier()
+                        afterQuantifier()?.let { return it }
                     }
                     '{' -> {
                         val close = source.indexOf('}', i)
                         val body = if (close > 0) source.substring(i, close) else ""
                         if (!quantifierBody.matches(body)) {
-                            refuse("has a '{' that is not a quantifier such as '{2}' or '{1,3}'; escape it as '\\{'.")
+                            return refuse(
+                                "has a '{' that is not a quantifier such as '{2}' or '{1,3}'; escape it as '\\{'.",
+                            )
                         }
                         out.append('{').append(body).append('}')
                         i = close + 1
-                        afterQuantifier()
+                        afterQuantifier()?.let { return it }
                     }
                     '}', ']' -> out.append('\\').append(c)
                     else -> out.append(c)
                 }
             }
-            if (inClass) refuse("has a class that is never closed.")
-            return out.toString()
+            if (inClass) return refuse("has a class that is never closed.")
+            return Translation(out.toString())
         }
 
         private fun Char.isHexDigit(): Boolean = this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'

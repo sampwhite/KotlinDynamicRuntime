@@ -23,6 +23,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.authoritativeLayoutProblems
 import com.dynamicruntime.common.schema.collectLayouts
+import com.dynamicruntime.common.schema.analyzeSchemaTypes
 import com.dynamicruntime.common.schema.layoutFieldProblems
 import com.dynamicruntime.common.schema.layoutTemplateProblems
 import com.dynamicruntime.common.schema.narrowingProblems
@@ -316,19 +317,10 @@ private fun parseDroppingFaults(
     compose: (Map<String, Any?>) -> Map<String, Any?>,
     issues: MutableList<GedraConfigIssue>,
 ): Pair<Map<String, Any?>, Map<String, SchType>> {
-    fun failure(from: Map<String, Any?>): String? =
-        try {
-            parseSchemaTypes(compose(from))
-            null
-        } catch (e: KdrException) {
-            e.message.orEmpty()
-        }
+    fun failure(from: Map<String, Any?>): String? = analyzeSchemaTypes(compose(from)).problems.firstOrNull()?.message
 
-    try {
-        return authored to parseSchemaTypes(compose(authored))
-    } catch (_: KdrException) {
-        // Fall through to the grow below.
-    }
+    // The common case: everything compiles, at the cost of the one parse it always took. Otherwise grow, below.
+    analyzeSchemaTypes(compose(authored)).types?.let { return authored to it }
     val kept = LinkedHashMap<String, Any?>()
     var pending = authored.keys.toList()
     while (pending.isNotEmpty()) {

@@ -410,6 +410,12 @@ val failures: List<SchFailure> = validate(type, data)          // collects ALL f
 val result: SchResult          = coerceAndValidate(type, data) // .value (coerced) + .failures; input never mutated
 ```
 
+Where a malformed document is expected, not a fault -- a client's own definitions, an editor -- read it as a report
+rather than catching the throw (issue #909): `analyzeSchemaTypes(defs, existingTypes)` returns `.types`, or null
+with `.problems` holding the first fault, coded (`SchemaError`) and located at its place in the document
+(`acme.Q.properties.topic.items`; a `pattern` fault adds its offset). The message is the throwing form's, word for
+word. `SchGKeywords.problem` and `refusedKeywordProblem` return the same `Problem`.
+
 `allowCoerce` (a kd2 keyword, so `g-allowCoerce` on the wire; default **true** for numeric,
 **boolean** and date-format types, **false** otherwise — see `coercesByDefault`) governs coercion
 of a mismatched value — and changes

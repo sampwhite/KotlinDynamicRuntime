@@ -62,7 +62,7 @@ fun repairTypeDef(
         for ((key, value) in node) {
             val problem = SchGKeywords.problem(at, key, value) ?: continue
             out.remove(key)
-            repairs.add(DefRepair(problem, "Dropping '$key'."))
+            repairs.add(DefRepair(problem.message, "Dropping '$key'."))
         }
 
         when (val source = out[SCH.optionsSource]) {
