@@ -414,7 +414,7 @@ val EditFormPage = FC<Props> {
                                         // a form engaged (issue #857 review) -- so they are asked again, never awaited.
                                         val before = locks
                                         editScope.launch {
-                                            locks = id?.let { apiResult { WorkflowApi.fetchLocks(it) }.valueOrNull() } ?: before
+                                            locks = apiResult { WorkflowApi.fetchLocks(id) }.valueOrNull() ?: before
                                         }
                                     }
                                 }

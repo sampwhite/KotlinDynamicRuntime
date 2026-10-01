@@ -26,6 +26,7 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -564,9 +565,9 @@ class GedraFormsTest {
                 SCH.properties to mapOf(GPF.targets to mapOf(SCH.dRef to "t.PatchTargets")),
             ),
         )
-        val target = formDocPatchTargetType(parseSchemaTypes(defs).getValue("t.PatchInput"))
-        assertTrue(target?.properties?.containsKey(GDF.gedraId) == true)
-        assertTrue(target?.properties?.containsKey(GPF.edits) == true)
+        val target = assertNotNull(formDocPatchTargetType(parseSchemaTypes(defs).getValue("t.PatchInput")))
+        assertTrue(target.properties.containsKey(GDF.gedraId))
+        assertTrue(target.properties.containsKey(GPF.edits))
         assertNull(formDocPatchTargetType(null))
     }
 

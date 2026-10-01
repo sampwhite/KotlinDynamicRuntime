@@ -798,7 +798,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 if (canManageUsers) {
                     FormsScopeBar {
                         value = searchDraft[EI.user] ?: ""
-                        applied = appliedSearch[EI.user]?.toString()?.ifBlank { null }
+                        applied = appliedSearch[EI.user]?.ifBlank { null }
                         onChange = { v -> searchDraft = searchDraft + (EI.user to v) }
                         onApply = { applySearch(ep, searchDraft) }
                         // Drops the user from what is *applied*, and reverts the boxes to that: a pending edit in
