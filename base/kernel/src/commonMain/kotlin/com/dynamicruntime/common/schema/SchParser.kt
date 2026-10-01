@@ -2,7 +2,9 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
+import com.dynamicruntime.common.util.ProblemLocation
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -699,22 +701,32 @@ fun parseConst(where: String, raw: Any?, jsonType: String?, format: String?): An
  * the built-in wording instead of failing to load.
  */
 @KdrPrivate
-fun parseErrorMessages(raw: Any?, typeName: String?): Map<String, String> {
-    if (raw !is Map<*, *>) return emptyMap()
+fun parseErrorMessages(raw: Any?, typeName: String?): Map<String, String> =
+    readErrorMessages(raw, typeName).orThrow { KdrException(it) }
+
+/**
+ * [parseErrorMessages] without the throw (issue #909): the messages, or the first key that names no failure code
+ * as a [SchemaError.badValue] problem located at that key -- for a layout's error override, which collects its
+ * problems rather than stopping at one.
+ */
+@KdrPrivate
+fun readErrorMessages(raw: Any?, typeName: String?): Parsed<Map<String, String>> {
+    if (raw !is Map<*, *>) return Parsed.Ok(emptyMap())
     val out = LinkedHashMap<String, String>(raw.size)
     for ((k, v) in raw) {
         val key = k.toOptStr() ?: continue
         if (key != SCH.errorDefault && SchFailCode.entries.none { it.name == key }) {
             val valid = (SchFailCode.entries.map { it.name } + SCH.errorDefault).joinToString(", ")
-            throw schemaFault(
+            return Parsed.failed(
                 SchemaError.badValue,
                 "'${SCH.errors}'${typeName?.let { " on '$it'" } ?: ""} names '$key', which is not a failure " +
                     "code. Valid keys: $valid.",
-            ) { KdrException(it) }
+                ProblemLocation(path = key),
+            )
         }
         v.toOptStr()?.let { out[key] = it }
     }
-    return out
+    return Parsed.Ok(out)
 }
 
 @KdrPrivate

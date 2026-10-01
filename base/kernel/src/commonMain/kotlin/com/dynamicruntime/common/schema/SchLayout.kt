@@ -1,6 +1,12 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.Parsed
+import com.dynamicruntime.common.util.Problem
+import com.dynamicruntime.common.util.ProblemCode
+import com.dynamicruntime.common.util.ProblemLocation
+import com.dynamicruntime.common.util.TemplateIssue
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -354,127 +360,215 @@ enum class SchLayoutMode {
 
 /**
  * Parses one `g-layout` block [raw] into a [SchLayout], throwing on a structurally bad one so a mistake fails
- * the boot rather than rendering as nothing. Strict about keys: an unknown key on the block or on a field entry
- * is refused (the same stance `g-errors` takes), because the failure it guards against is a block that parses
- * clean and does nothing -- the draft's `formFields`, a `schemaFields` written as an object, a typo. A present
- * block must list at least one field for the same reason. [where] names the type for the message.
+ * the boot rather than rendering as nothing -- the throwing form of [parseSchLayoutResult], raising its first
+ * problem. [where] names the type for the message.
  */
-fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout {
-    refuseUnknownKeys(where, "a '${SCH.layout}' block", raw.keys, SL.blockKeys)
+fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout =
+    parseSchLayoutResult(where, raw).orThrow { KdrException(it) }
+
+/**
+ * Parses one `g-layout` block [raw] (issue #909): the [SchLayout], or every problem with the block, each coded
+ * ([LayoutError]) and located within it (`schemaFields[2].defaultMode`). Strict about keys: an unknown key on the
+ * block or on a field entry is refused (the same stance `g-errors` takes), because the failure it guards against
+ * is a block that parses clean and does nothing -- the draft's `formFields`, a `schemaFields` written as an
+ * object, a typo. A present block must list at least one field for the same reason. [where] names the type for
+ * the message.
+ */
+fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayout> {
+    val problems = mutableListOf<Problem>()
+    unknownKeysProblem(where, "a '${SCH.layout}' block", raw.keys, SL.blockKeys, path = null)?.let { problems.add(it) }
     val entries = raw[SL.schemaFields]
     if (entries !is List<*> || entries.isEmpty()) {
-        throw KdrException("$where: a '${SCH.layout}' block must list at least one '${SL.schemaFields}' entry.")
+        problems.add(
+            layoutProblem(
+                LayoutError.noFields,
+                "$where: a '${SCH.layout}' block must list at least one '${SL.schemaFields}' entry.",
+                SL.schemaFields,
+            ),
+        )
     }
-    val fields = entries.toJsonListOfMaps().map { m ->
-        refuseUnknownKeys(where, "a '${SL.schemaFields}' entry", m.keys, SL.fieldKeys)
-        val field = m[SL.field].toOptStr()
-            ?: throw KdrException("$where: a '${SL.schemaFields}' entry has no '${SL.field}'.")
-        // The error override reuses `g-errors`' own parser (issue #588): the same key validation against the
+    val fields = (entries as? List<*>).toJsonListOfMaps().mapIndexedNotNull { i, m ->
+        val at = "${SL.schemaFields}[$i]"
+        unknownKeysProblem(where, "a '${SL.schemaFields}' entry", m.keys, SL.fieldKeys, at)?.let { problems.add(it) }
+        val field = m[SL.field].toOptStr() ?: run {
+            problems.add(
+                layoutProblem(
+                    LayoutError.noFieldName, "$where: a '${SL.schemaFields}' entry has no '${SL.field}'.", at,
+                ),
+            )
+            return@mapIndexedNotNull null
+        }
+        // The error override reuses `g-errors`' own reader (issue #588): the same key validation against the
         // SchFailCode enum, and the same reserved-object-form tolerance, so the two ways to key a message off a
         // failure code cannot drift on what a valid key is.
-        val errors = parseErrorMessages(m[SL.errors], "$where field '$field'")
-        val defaultMode = m[SL.defaultMode].toOptStr()?.also {
-            if (it !in SLDM.values) {
-                throw KdrException(
-                    "$where: field '$field' has '${SL.defaultMode}' '$it', not one of ${SLDM.values.sorted()}.",
-                )
+        val errors = when (val read = readErrorMessages(m[SL.errors], "$where field '$field'")) {
+            is Parsed.Ok -> read.value
+            is Parsed.Failed -> {
+                read.problems.forEach { p ->
+                    val key = p.location?.path
+                    problems.add(layoutProblem(LayoutError.badValue, p.message, "$at.${SL.errors}.$key"))
+                }
+                emptyMap()
+            }
+        }
+        val defaultMode = m[SL.defaultMode].toOptStr()?.takeIf {
+            (it in SLDM.values).also { known ->
+                if (!known) {
+                    problems.add(
+                        layoutProblem(
+                            LayoutError.badValue,
+                            "$where: field '$field' has '${SL.defaultMode}' '$it', not one of ${SLDM.values.sorted()}.",
+                            "$at.${SL.defaultMode}",
+                        ),
+                    )
+                }
             }
         }
         SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode)
     }
-    val strings = parseLayoutStrings(where, raw[SL.strings])
+    val strings = readLayoutStrings(where, raw[SL.strings], problems)
     val mode = when (val modeStr = raw[SL.mode].toOptStr()) {
         null -> SchLayoutMode.overlay
         SLM.overlay -> SchLayoutMode.overlay
         SLM.reorder -> SchLayoutMode.reorder
         SLM.authoritative -> SchLayoutMode.authoritative
-        else -> throw KdrException("$where: a '${SCH.layout}' '${SL.mode}' is '$modeStr', not one of ${SLM.values.sorted()}.")
+        else -> {
+            problems.add(
+                layoutProblem(
+                    LayoutError.badValue,
+                    "$where: a '${SCH.layout}' '${SL.mode}' is '$modeStr', not one of ${SLM.values.sorted()}.",
+                    SL.mode,
+                ),
+            )
+            SchLayoutMode.overlay
+        }
     }
-    return SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings, mode)
+    if (problems.isNotEmpty()) return Parsed.Failed(problems)
+    return Parsed.Ok(SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings, mode))
 }
 
 /**
- * Parses and validates a `g-layout` block's `strings` map (issue #641): a `{ LAYSTR-name -> copy }` object.
- * Absent parses to empty; a non-object, or a key outside [LAYSTR.keys], or a non-string value, fails the boot,
- * the same strictness the block's other keys take -- a typo'd string name would otherwise render nothing.
+ * Reads a `g-layout` block's `strings` map (issue #641): a `{ LAYSTR-name -> copy }` object, adding to [problems]
+ * what is wrong with it. Absent reads as empty; a non-object, or a key outside [LAYSTR.keys], or a non-string
+ * value, is a problem, the same strictness the block's other keys take -- a typo'd string name would otherwise
+ * render nothing.
  */
-private fun parseLayoutStrings(where: String, raw: Any?): Map<String, String> {
+private fun readLayoutStrings(where: String, raw: Any?, problems: MutableList<Problem>): Map<String, String> {
     if (raw == null) return emptyMap()
     if (raw !is Map<*, *>) {
-        throw KdrException("$where: '${SL.strings}' must be an object.")
+        problems.add(layoutProblem(LayoutError.badValue, "$where: '${SL.strings}' must be an object.", SL.strings))
+        return emptyMap()
     }
     val map = raw.toJsonMapOrEmpty()
-    refuseUnknownKeys(where, "a '${SL.strings}' block", map.keys, LAYSTR.keys)
+    unknownKeysProblem(where, "a '${SL.strings}' block", map.keys, LAYSTR.keys, SL.strings)?.let { problems.add(it) }
     val out = LinkedHashMap<String, String>()
     for ((key, value) in map) {
         // A genuine string, not a coerced one: a number or boolean here is a mistake, and silently rendering
         // "5" is the "parses clean, renders wrong" the layout checks exist to prevent.
-        out[key] = value as? String
-            ?: throw KdrException("$where: the '${SL.strings}' value for '$key' must be a string.")
+        if (value is String) {
+            out[key] = value
+        } else {
+            problems.add(
+                layoutProblem(
+                    LayoutError.badValue,
+                    "$where: the '${SL.strings}' value for '$key' must be a string.",
+                    "${SL.strings}.$key",
+                ),
+            )
+        }
     }
     return out
 }
 
-private fun refuseUnknownKeys(where: String, what: String, present: Set<String>, allowed: Set<String>) {
+private fun unknownKeysProblem(
+    where: String,
+    what: String,
+    present: Set<String>,
+    allowed: Set<String>,
+    path: String?,
+): Problem? {
     val unknown = present.filterNot { it in allowed }
-    if (unknown.isNotEmpty()) {
-        throw KdrException("$where: $what has unknown key(s) ${unknown.sorted()}; allowed: ${allowed.sorted()}.")
-    }
+    if (unknown.isEmpty()) return null
+    return layoutProblem(
+        LayoutError.unknownKey,
+        "$where: $what has unknown key(s) ${unknown.sorted()}; allowed: ${allowed.sorted()}.",
+        path,
+    )
 }
 
 /**
  * The `{ typeName -> SchLayout }` for every type in [defs] that declares a `g-layout` (issue #584). A read-only
  * pass -- [defs] is not mutated, so a body keeps its `g-layout` for the per-client overlay merge to inherit;
- * the served schema is cleaned separately by [withoutLayouts].
- *
- * Only a **named** type's own top-level `g-layout` is collected. A `g-layout` found anywhere below that -- on
- * an inline sub-object property, say -- is **refused**, not ignored: there is no name to key it by, so it could
- * be neither delivered nor checked, and the honest answer is to say so at boot ("pull the sub-object out as a
- * named type") rather than let it silently render nothing and leak into the served schema. A `g-layout` that
- * is not an object fails the boot too.
+ * the served schema is cleaned separately by [withoutLayouts]. Throws on the first type whose layout
+ * [parseTypeLayout] finds a problem with.
  */
 fun collectLayouts(defs: Map<String, Any?>): Map<String, SchLayout> {
     val out = LinkedHashMap<String, SchLayout>()
     for ((name, body) in defs) {
         if (body !is Map<*, *>) continue
-        refuseNestedLayout("Type '$name'", body, depth = 0)
-        val rawLayout = body[SCH.layout] ?: continue
-        if (rawLayout !is Map<*, *>) {
-            throw KdrException("Type '$name': '${SCH.layout}' must be an object.")
-        }
-        out[name] = parseSchLayout("Type '$name'", rawLayout.toJsonMapOrEmpty())
+        parseTypeLayout(name, body).orThrow { KdrException(it) }?.let { out[name] = it }
     }
     return out
+}
+
+/**
+ * The layout one type [name]'s [body] declares (issue #909): null when it declares none, or every problem with it.
+ *
+ * Only a **named** type's own top-level `g-layout` is collected. A `g-layout` found anywhere below that -- on
+ * an inline sub-object property, say -- is **refused**, not ignored: there is no name to key it by, so it could
+ * be neither delivered nor checked, and the honest answer is to say so at boot ("pull the sub-object out as a
+ * named type") rather than let it silently render nothing and leak into the served schema. A `g-layout` that
+ * is not an object is refused too. A nested one is located by its path in [body]; the rest within the block.
+ */
+fun parseTypeLayout(name: String, body: Map<*, *>): Parsed<SchLayout?> {
+    val where = "Type '$name'"
+    val nested = mutableListOf<Problem>()
+    findNestedLayouts(where, body, depth = 0, path = "", out = nested)
+    if (nested.isNotEmpty()) return Parsed.Failed(nested)
+    val rawLayout = body[SCH.layout] ?: return Parsed.Ok(null)
+    if (rawLayout !is Map<*, *>) {
+        return Parsed.failed(LayoutError.badValue, "$where: '${SCH.layout}' must be an object.")
+    }
+    return parseSchLayoutResult(where, rawLayout.toJsonMapOrEmpty())
 }
 
 /** The deepest a schema body is walked looking for a stray nested `g-layout`; matches the JSON nesting cap. */
 private const val maxLayoutScanDepth = 50
 
-/** Throws on a `g-layout` key found at any depth **below** the top level of [node]; [depth] guards the walk. */
-private fun refuseNestedLayout(where: String, node: Map<*, *>, depth: Int) {
+/** Adds to [out] each `g-layout` key found at any depth **below** the top level of [node]; [depth] guards the walk. */
+private fun findNestedLayouts(where: String, node: Map<*, *>, depth: Int, path: String, out: MutableList<Problem>) {
     if (depth >= maxLayoutScanDepth) return
     for ((key, value) in node) {
         // The top-level key is the one collected; anything under it is not.
         if (depth == 0 && key == SCH.layout) continue
+        val at = childPath(path, key.toString())
         when (value) {
             is Map<*, *> -> {
                 if (value.containsKey(SCH.layout)) {
-                    throw KdrException(
-                        "$where: a '${SCH.layout}' under '$key' is not on a named type, so it can be neither " +
-                            "delivered nor checked. Pull the sub-object out as a named type and put the layout there.",
+                    out.add(
+                        Problem(
+                            LayoutError.nestedLayout,
+                            "$where: a '${SCH.layout}' under '$key' is not on a named type, so it can be neither " +
+                                "delivered nor checked. Pull the sub-object out as a named type and put the layout there.",
+                            ProblemLocation(path = at),
+                        ),
                     )
                 }
-                refuseNestedLayout(where, value, depth + 1)
+                findNestedLayouts(where, value, depth + 1, at, out)
             }
-            is List<*> -> for (element in value) {
+            is List<*> -> value.forEachIndexed { i, element ->
                 if (element is Map<*, *>) {
                     if (element.containsKey(SCH.layout)) {
-                        throw KdrException(
-                            "$where: a '${SCH.layout}' inside '$key' is not on a named type, so it can be " +
-                                "neither delivered nor checked. Pull the sub-object out as a named type.",
+                        out.add(
+                            Problem(
+                                LayoutError.nestedLayout,
+                                "$where: a '${SCH.layout}' inside '$key' is not on a named type, so it can be " +
+                                    "neither delivered nor checked. Pull the sub-object out as a named type.",
+                                ProblemLocation(path = "$at[$i]"),
+                            ),
                         )
                     }
-                    refuseNestedLayout(where, element, depth + 1)
+                    findNestedLayouts(where, element, depth + 1, "$at[$i]", out)
                 }
             }
         }
@@ -499,19 +593,32 @@ fun withoutLayouts(defs: Map<String, Any?>): Map<String, Any?> = defs.mapValues 
  * than listing every field as undeclared. On an object type, each field the layout names must be a property
  * the type declares. An unresolved type is itself a problem. [where] names the type.
  */
-fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<String> {
+fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<Problem> {
     if (type == null) {
-        return listOf("$where: a '${SCH.layout}' is declared on a type that did not resolve.")
+        return listOf(
+            layoutProblem(
+                LayoutError.unresolvedType, "$where: a '${SCH.layout}' is declared on a type that did not resolve.",
+            ),
+        )
     }
     if (type.variants != null || type.jsonType == SCT.array) {
         return listOf(
-            "$where: a '${SCH.layout}' belongs on an object type; this is a " +
-                "${if (type.variants != null) "union" else "array"} -- put the layout on the branch or item type.",
+            layoutProblem(
+                LayoutError.notAnObjectType,
+                "$where: a '${SCH.layout}' belongs on an object type; this is a " +
+                    "${if (type.variants != null) "union" else "array"} -- put the layout on the branch or item type.",
+            ),
         )
     }
     val props = type.properties.keys
-    val undeclared = layout.fieldNames.filterNot { it in props }
-        .map { "$where: '${SCH.layout}' names field '$it', which the type does not declare." }
+    val undeclared = layout.fields.mapIndexedNotNull { i, f ->
+        if (f.field in props) return@mapIndexedNotNull null
+        layoutProblem(
+            LayoutError.undeclaredField,
+            "$where: '${SCH.layout}' names field '${f.field}', which the type does not declare.",
+            "${SL.schemaFields}[$i].${SL.field}",
+        )
+    }
     if (undeclared.isNotEmpty()) return undeclared
 
     return authoritativeLayoutProblems(where, layout, type)
@@ -531,7 +638,7 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
  * the required set, and an inherited layout is otherwise never checked against the client's type. That re-check is
  * the client-variant build's (`dropFaultyLayouts`), against the layout as pruned to the client's type.
  */
-fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType): List<String> {
+fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType): List<Problem> {
     if (layout.mode != SchLayoutMode.authoritative) return emptyList()
     val listed = layout.fieldNames.toSet()
     val condition = type.condition
@@ -540,8 +647,12 @@ fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType)
         .filter { it !in listed && type.properties[it]?.valueType?.derived != true }
         .map {
             val how = if (it in type.required) "" else " (conditionally, through '${SCH.kIf}')"
-            "$where: an ${SLM.authoritative} '${SCH.layout}' must list every required field, but omits '$it'$how " +
-                "-- add it, or drop it from '${SCH.required}', or use '${SLM.reorder}'."
+            layoutProblem(
+                LayoutError.omitsRequired,
+                "$where: an ${SLM.authoritative} '${SCH.layout}' must list every required field, but omits '$it'$how " +
+                    "-- add it, or drop it from '${SCH.required}', or use '${SLM.reorder}'.",
+                SL.schemaFields,
+            )
         }
 }
 
@@ -700,18 +811,22 @@ fun errorContextData(
  * [type] is the object the layout annotates; a field it does not declare is reported by [layoutFieldProblems]
  * and skipped here.
  */
-fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): List<String> {
+fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): List<Problem> {
     if (type == null) return emptyList()
-    val problems = mutableListOf<String>()
+    val problems = mutableListOf<Problem>()
+    fun malformed(at: String, message: String, issue: TemplateIssue) =
+        problems.add(layoutProblem(LayoutError.malformedTemplate, message, at, issue))
+    fun add(code: LayoutError, at: String, message: String) = problems.add(layoutProblem(code, message, at))
     // The block-level heading override (issue #605): a copy string like any other, but not a field, so it takes
     // the malformed and refuse-frontend-pull checks and not the bounds check.
     layout.label?.let { text ->
         val analysis = text.analyzeTemplate()
         for (issue in analysis.issues) {
-            problems.add("$where: the '${SCH.layout}' heading is a malformed template: ${issue.message}")
+            malformed(SL.label, "$where: the '${SCH.layout}' heading is a malformed template: ${issue.message}", issue)
         }
         if (analysis.refs.isNotEmpty()) {
-            problems.add(
+            add(
+                LayoutError.frontendPull, SL.label,
                 $$"$$where: the '$${SCH.layout}' heading uses a frontend fragment pull ('${@t}'); a layout fragment " +
                     "pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
             )
@@ -721,26 +836,34 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
     // and refuse-frontend-pull checks and no param check. A `%{@t}` backend pull is resolved at delivery (#605).
     for ((key, text) in layout.strings) {
         val analysis = text.analyzeTemplate()
+        val at = "${SL.strings}.$key"
         for (issue in analysis.issues) {
-            problems.add("$where: the '${SCH.layout}' string '$key' is a malformed template: ${issue.message}")
+            malformed(at, "$where: the '${SCH.layout}' string '$key' is a malformed template: ${issue.message}", issue)
         }
         if (analysis.refs.isNotEmpty()) {
-            problems.add(
+            add(
+                LayoutError.frontendPull, at,
                 $$"$$where: the '$${SCH.layout}' string '$$key' uses a frontend fragment pull ('${@t}'); a layout " +
                     "fragment pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
             )
         }
     }
-    for (field in layout.fields) {
+    for ((i, field) in layout.fields.withIndex()) {
         val prop = type.properties[field.field] ?: continue
         for ((kind, text) in listOf(SL.label to field.label, SL.description to field.description, SL.hint to field.hint)) {
             if (text == null) continue
+            val at = "${SL.schemaFields}[$i].$kind"
             val analysis = text.analyzeTemplate()
             for (issue in analysis.issues) {
-                problems.add("$where: the '${SCH.layout}' $kind for '${field.field}' is a malformed template: ${issue.message}")
+                malformed(
+                    at,
+                    "$where: the '${SCH.layout}' $kind for '${field.field}' is a malformed template: " + issue.message,
+                    issue,
+                )
             }
             if (analysis.refs.isNotEmpty()) {
-                problems.add(
+                add(
+                    LayoutError.frontendPull, at,
                     $$"$$where: the '$${SCH.layout}' $$kind for '$${field.field}' uses a frontend fragment pull ('${@t}'); " +
                         "a layout fragment pull uses the backend prefix '%{@t}', resolved at delivery (see #605).",
                 )
@@ -750,7 +873,8 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
                 for (path in analysis.paths.required + analysis.paths.optional) {
                     val name = path.substringBefore('.')
                     if (name !in allowed) {
-                        problems.add(
+                        add(
+                            LayoutError.unknownParam, at,
                             $$"$$where: the '$${SCH.layout}' hint for '$${field.field}' references '${$$path}', but this " +
                                 "field's bounds context provides ${if (allowed.isEmpty()) "no params (it declares no minimum or maximum)" else allowed.sorted().joinToString(", ")}.",
                         )
@@ -765,12 +889,19 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
         for ((codeKey, message) in field.errors) {
             // A valid key is a SchFailCode name or `default`; `default` (code == null) may match any failure.
             val code = SchFailCode.entries.firstOrNull { it.name == codeKey }
+            val at = "${SL.schemaFields}[$i].${SL.errors}.$codeKey"
             val analysis = message.analyzeTemplate()
             for (issue in analysis.issues) {
-                problems.add("$where: the '${SCH.layout}' error '$codeKey' for '${field.field}' is a malformed template: ${issue.message}")
+                malformed(
+                    at,
+                    "$where: the '${SCH.layout}' error '$codeKey' for '${field.field}' is a malformed template: " +
+                        issue.message,
+                    issue,
+                )
             }
             if (analysis.refs.isNotEmpty()) {
-                problems.add(
+                add(
+                    LayoutError.frontendPull, at,
                     $$"$$where: the '$${SCH.layout}' error '$$codeKey' for '$${field.field}' uses a fragment pull ('${@t}'); " +
                         "a layout error message supports only frontend parameter substitution (see #588).",
                 )
@@ -779,7 +910,8 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
             for (path in analysis.paths.required + analysis.paths.optional) {
                 val name = path.substringBefore('.')
                 if (name !in allowed) {
-                    problems.add(
+                    add(
+                        LayoutError.unknownParam, at,
                         $$"$$where: the '$${SCH.layout}' error '$$codeKey' for '$${field.field}' references '${$$path}', but a " +
                             $$"'$$codeKey' failure provides $${allowed.sorted().joinToString(", ")}.",
                     )
@@ -789,3 +921,77 @@ fun layoutTemplateProblems(where: String, layout: SchLayout, type: SchType?): Li
     }
     return problems
 }
+
+/**
+ * What can be wrong with a `g-layout` block (issue #909): the codes of its parse ([parseSchLayoutResult],
+ * [parseTypeLayout]) and of the boot checks run against it. Each problem is located within the block --
+ * `schemaFields[2].hint`, `strings.formErrorHint`, `schemaFields[0].errors.maximum` -- and a template fault adds
+ * its offset in the copy. The message is the same sentence as ever, naming the type.
+ */
+@Suppress("EnumEntryName")
+enum class LayoutError : ProblemCode {
+    /** A key the block, a field entry or `strings` does not know -- usually a typo. */
+    unknownKey,
+
+    /** A block with no `schemaFields` entries, which would parse clean and render nothing. */
+    noFields,
+
+    /** A `schemaFields` entry with no `field`. */
+    noFieldName,
+
+    /** A value of the wrong shape or outside its closed set: a `mode`, a `defaultMode`, a `strings` value. */
+    badValue,
+
+    /** A `g-layout` below a type's top level, where there is no type name to key it by. */
+    nestedLayout,
+
+    /** A layout on a type that did not resolve. */
+    unresolvedType,
+
+    /** A layout on a union or an array, which has no single property set to render. */
+    notAnObjectType,
+
+    /** A field the type does not declare. */
+    undeclaredField,
+
+    /** An authoritative layout leaving out a field the type may require, so the form could not be submitted. */
+    omitsRequired,
+
+    /** Copy whose `${'$'}{…}` or `%{…}` template does not parse. */
+    malformedTemplate,
+
+    /**
+     * A frontend `${'$'}{@t}` pull, where a layout pulls with the backend `%{@t}` -- or a pull where none is allowed.
+     */
+    frontendPull,
+
+    /** A template parameter its context does not provide: `${'$'}{max}` on a field with no maximum. */
+    unknownParam,
+
+    /** A backend `%{…}` block in error copy, which delivery does not resolve. */
+    backendBlock,
+
+    /** A backend pull whose key is not a `fileId.namespace.key` reference. */
+    badPullKey,
+
+    /** A backend pull naming a fragment file that is not declared. */
+    pullFileMissing,
+
+    /** A backend pull naming a frontend fragment file. */
+    pullFromFrontendFile,
+
+    /** A backend pull naming a key its file does not have. */
+    pullKeyMissing,
+}
+
+/**
+ * A [LayoutError] problem at [path] within the `g-layout` block (null for the block as a whole), with a template
+ * [issue]'s offset, line and column when the fault is inside copy.
+ */
+@KdrPrivate
+fun layoutProblem(code: LayoutError, message: String, path: String? = null, issue: TemplateIssue? = null): Problem =
+    Problem(
+        code,
+        message,
+        if (path == null && issue == null) null else ProblemLocation(path, issue?.offset, issue?.line, issue?.col),
+    )

@@ -1,15 +1,24 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.schema.LayoutError
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchGKeywords
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.errorContextNames
 import com.dynamicruntime.common.schema.errorMessageTemplateProblems
 import com.dynamicruntime.common.schema.isNumericType
+import com.dynamicruntime.common.schema.layoutFieldProblems
+import com.dynamicruntime.common.schema.layoutProblem
+import com.dynamicruntime.common.schema.layoutTemplateProblems
+import com.dynamicruntime.common.schema.parseTypeLayout
 import com.dynamicruntime.common.schema.maxBoundKeyword
 import com.dynamicruntime.common.schema.minBoundKeyword
+import com.dynamicruntime.common.util.Parsed
+import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.analyzeTemplate
 import com.dynamicruntime.common.util.toJsonMap
 
@@ -179,25 +188,32 @@ fun repairTypeDef(
  * misses is now refused at boot; only a *computed* or guarded pull can miss at delivery, where it degrades
  * gracefully (`resolveDeliveredLayouts`).
  */
-fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<String> {
-    val problems = mutableListOf<String>()
-    fun checkBackendBlocks(what: String, text: String?) {
+fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<Problem> {
+    val problems = mutableListOf<Problem>()
+    fun checkBackendBlocks(what: String, at: String, text: String?) {
         if (text == null || MarkdownFragmentService.backendPassPrefix !in text) {
             return
         }
         for (issue in text.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).issues) {
-            problems.add("$where: the '${SCH.layout}' $what has a malformed backend block: ${issue.message}")
+            problems.add(
+                layoutProblem(
+                    LayoutError.malformedTemplate,
+                    "$where: the '${SCH.layout}' $what has a malformed backend block: ${issue.message}",
+                    at, issue,
+                ),
+            )
         }
     }
-    checkBackendBlocks("heading", layout.label)
+    checkBackendBlocks("heading", SL.label, layout.label)
     // The form-level strings (issue #641) are delivered through the same backend pass (issue #814).
     for ((key, text) in layout.strings) {
-        checkBackendBlocks("string '$key'", text)
+        checkBackendBlocks("string '$key'", "${SL.strings}.$key", text)
     }
-    for (field in layout.fields) {
-        checkBackendBlocks("${field.field}'s label", field.label)
-        checkBackendBlocks("${field.field}'s description", field.description)
-        checkBackendBlocks("${field.field}'s hint", field.hint)
+    for ((i, field) in layout.fields.withIndex()) {
+        val at = "${SL.schemaFields}[$i]"
+        checkBackendBlocks("${field.field}'s label", "$at.${SL.label}", field.label)
+        checkBackendBlocks("${field.field}'s description", "$at.${SL.description}", field.description)
+        checkBackendBlocks("${field.field}'s hint", "$at.${SL.hint}", field.hint)
         // An error override (issue #588) is frontend `${'$'}{…}`-only; delivery does not run the backend pass
         // over it, so a `%{…}` block there would ship raw. Refuse any -- not merely a malformed one --
         // rather than let it render as literal text.
@@ -206,11 +222,30 @@ fun layoutBackendBlockProblems(where: String, layout: SchLayout): List<String> {
                 message.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).blockCount > 0
             ) {
                 problems.add(
-                    "$where: the '${SCH.layout}' error '$codeKey' for '${field.field}' uses a backend block " +
-                        "('%{…}'); a layout error message supports only frontend parameter substitution (see #588).",
+                    layoutProblem(
+                        LayoutError.backendBlock,
+                        "$where: the '${SCH.layout}' error '$codeKey' for '${field.field}' uses a backend block " +
+                            "('%{…}'); a layout error message supports only frontend parameter substitution (see #588).",
+                        "$at.${SL.errors}.$codeKey",
+                    ),
                 )
             }
         }
     }
     return problems
 }
+
+/**
+ * Everything wrong with type [name]'s `g-layout` in [body] (issue #909): the block's own parse problems when it does
+ * not parse, else what the boot checks find against [type] -- its fields, its copy templates, and its backend
+ * blocks. Empty when [body] declares no layout. [where] names the type in the checks' messages. Shared by the
+ * global boot check and the client-variant build, which each drop a layout this finds fault with.
+ */
+fun layoutProblems(name: String, where: String, body: Map<*, *>, type: SchType?): List<Problem> =
+    when (val parsed = parseTypeLayout(name, body)) {
+        is Parsed.Failed -> parsed.problems
+        is Parsed.Ok -> parsed.value?.let { layout ->
+            layoutFieldProblems(where, layout, type) + layoutTemplateProblems(where, layout, type) +
+                layoutBackendBlockProblems(where, layout)
+        }.orEmpty()
+    }

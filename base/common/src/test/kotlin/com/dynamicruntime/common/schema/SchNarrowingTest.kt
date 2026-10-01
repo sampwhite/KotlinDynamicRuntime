@@ -28,7 +28,8 @@ class SchNarrowingTest : StringSpec({
         SCH.required to listOf("name"),
     )
 
-    fun problems(overlay: Map<String, Any?>): List<String> = narrowingProblems("core.Thing", base, overlay)
+    fun problems(overlay: Map<String, Any?>): List<String> =
+        narrowingProblems("core.Thing", base, overlay).map { it.message }
 
     /**
      * An overlay's property block, with the keys this client keeps.

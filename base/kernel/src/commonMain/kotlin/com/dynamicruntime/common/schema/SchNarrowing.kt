@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.util.Problem
+import com.dynamicruntime.common.util.ProblemCode
+import com.dynamicruntime.common.util.ProblemLocation
 import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptStr
 
@@ -37,14 +40,48 @@ import com.dynamicruntime.common.util.toOptStr
  * that. Such an entry then fails validation for everybody who is not this client, which is the cross-client
  * breakage the whole rule exists to prevent. Drop the requirement globally, or extend.
  */
-fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): List<String> {
-    val problems = mutableListOf<String>()
+fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): List<Problem> {
+    val problems = mutableListOf<Problem>()
     // Compared against the **merged result**, not against the fragment the client wrote. A declared property
     // body replaces rather than merges, so the fragment says what changed only in the simplest cases; the
     // result says what this client actually accepts, which is the question.
-    compare(typeName, base, overlayType(base, overlay), problems)
+    compare(typeName, typeName, base, overlayType(base, overlay), problems)
     return problems
 }
+
+/**
+ * How a client's alteration fails to narrow a type (issue #909): the codes of [narrowingProblems]. Each problem is
+ * located at the keyword in the type, as a schema path (`acme.Q.properties.topic.options`).
+ */
+@Suppress("EnumEntryName")
+enum class NarrowingError : ProblemCode {
+    /** A keyword that takes part in validation, changed in a way that is none of the three narrowings. */
+    changesKeyword,
+
+    /** A property the type does not have. */
+    addsProperty,
+
+    /** A property the type requires, dropped -- which widens, though it reads as narrowing. */
+    dropsRequiredProperty,
+
+    /** A required property made optional. */
+    relaxesRequired,
+
+    /** A property required that the altered type does not declare. */
+    requiresUndeclared,
+
+    /** A choice list removed. */
+    removesChoices,
+
+    /** A choice the type does not offer. */
+    addsChoice,
+
+    /** A closed choice list opened. */
+    opensChoices,
+}
+
+private fun narrowed(code: NarrowingError, at: String, message: String) =
+    Problem(code, message, ProblemLocation(path = at))
 
 /**
  * Keywords a client may change freely: none of them takes part in deciding whether a value is valid.
@@ -78,23 +115,31 @@ private val presentationKeys = setOf(
 /** The keys that may differ by narrowing; every other validating key must match the base exactly. */
 private val narrowingKeys = setOf(SCH.properties, SCH.options, SCH.required, SCH.openOptions)
 
-private fun compare(path: String, base: Map<String, Any?>, variant: Map<String, Any?>, out: MutableList<String>) {
-    checkProperties(path, base, variant, out)
+/** [path] names the place in a message (`'acme.Q.topic'`); [at] is the same place as a schema location path. */
+private fun compare(
+    path: String,
+    at: String,
+    base: Map<String, Any?>,
+    variant: Map<String, Any?>,
+    out: MutableList<Problem>,
+) {
+    checkProperties(path, at, base, variant, out)
     // An **open** list bounds nothing (issue #418), so no list of choices the variant declares can widen what
     // is accepted -- everything already was. So neither the contents nor the subset rule apply while the base
     // is open: a per-client suggestion list is the obvious thing to want, and refusing it would protect
     // nothing.
     if (base[SCH.openOptions] != true) {
-        checkOptions(path, base[SCH.options], variant[SCH.options], out)
+        checkOptions(path, at, base[SCH.options], variant[SCH.options], out)
     }
-    checkOpenOptions(path, base, variant, out)
-    checkRequired(path, base, variant, out)
+    checkOpenOptions(path, at, base, variant, out)
+    checkRequired(path, at, base, variant, out)
     for (key in base.keys + variant.keys) {
         if (key in presentationKeys || key in narrowingKeys) {
             continue
         }
         if (base[key] != variant[key]) {
-            out.add(
+            out += narrowed(
+                NarrowingError.changesKeyword, "$at.$key",
                 "'$path' changes '$key' from ${show(base[key])} to ${show(variant[key])}. That takes part in " +
                     "validation and is not one of the three ways a client may narrow a type " +
                     "(${narrowingKeys.joinToString(", ")}). Extend the type instead, which creates a name of " +
@@ -127,12 +172,14 @@ private fun show(value: Any?): String = if (value == null) "absent" else "'$valu
  */
 private fun checkOpenOptions(
     path: String,
+    at: String,
     base: Map<String, Any?>,
     variant: Map<String, Any?>,
-    out: MutableList<String>,
+    out: MutableList<Problem>,
 ) {
     if (base[SCH.options] != null && base[SCH.openOptions] != true && variant[SCH.openOptions] == true) {
-        out.add(
+        out += narrowed(
+            NarrowingError.opensChoices, "$at.${SCH.openOptions}",
             "'$path' opens a choice list the type closes ('${SCH.openOptions}'), which widens what it " +
                 "accepts: values the type rejects would be storable for this client and invalid to " +
                 "everybody else. Closing an open list is allowed; opening a closed one is not. Extend the " +
@@ -144,15 +191,17 @@ private fun checkOpenOptions(
 /** Fewer properties, each still narrowing; never more, and never one the base requires. */
 private fun checkProperties(
     path: String,
+    at: String,
     base: Map<String, Any?>,
     variant: Map<String, Any?>,
-    out: MutableList<String>,
+    out: MutableList<Problem>,
 ) {
     val baseProps = (base[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: return
     val declared = (variant[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: return
     val added = declared.keys.filterNot { it in baseProps }
     if (added.isNotEmpty()) {
-        out.add(
+        out += narrowed(
+            NarrowingError.addsProperty, "$at.${SCH.properties}.${added.first()}",
             "'$path' adds the propert${if (added.size == 1) "y" else "ies"} " +
                 "${added.joinToString(", ") { "'$it'" }}, which widens what the type accepts. A client adds " +
                 "fields by extending the type, not by altering it.",
@@ -162,7 +211,8 @@ private fun checkProperties(
     val baseRequired = (base[SCH.required] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList()
     val droppedAndRequired = baseRequired.filterNot { it in declared.keys }
     if (droppedAndRequired.isNotEmpty()) {
-        out.add(
+        out += narrowed(
+            NarrowingError.dropsRequiredProperty, "$at.${SCH.properties}",
             "'$path' drops ${droppedAndRequired.joinToString(", ") { "'$it'" }}, which the type requires. " +
                 "Removing a required property widens the type rather than narrowing it: data omitting it " +
                 "would be accepted here and rejected everywhere else, so what this client stores would be " +
@@ -172,20 +222,24 @@ private fun checkProperties(
     for ((name, body) in declared) {
         val baseBody = (baseProps[name] as? Map<*, *>)?.toJsonMap() ?: continue
         val declaredBody = (body as? Map<*, *>)?.toJsonMap() ?: continue
-        compare("$path.$name", baseBody, declaredBody, out)
+        compare("$path.$name", "$at.${SCH.properties}.$name", baseBody, declaredBody, out)
     }
 }
 
 /** A shorter choice list, or a choice list where the base had none. Labels are presentation and are ignored. */
-private fun checkOptions(path: String, baseValue: Any?, value: Any?, out: MutableList<String>) {
+private fun checkOptions(path: String, at: String, baseValue: Any?, value: Any?, out: MutableList<Problem>) {
     val baseOptions = optionValues(baseValue) ?: return // the base offered no choices: applying some narrows
     val declared = optionValues(value) ?: run {
-        out.add("'$path' removes its choice list, which widens what the type accepts.")
+        out += narrowed(
+            NarrowingError.removesChoices, "$at.${SCH.options}",
+            "'$path' removes its choice list, which widens what the type accepts.",
+        )
         return
     }
     val added = declared.filterNot { it in baseOptions }
     if (added.isNotEmpty()) {
-        out.add(
+        out += narrowed(
+            NarrowingError.addsChoice, "$at.${SCH.options}",
             "'$path' offers the choice${if (added.size == 1) "" else "s"} " +
                 "${added.joinToString(", ") { "'$it'" }}, which the type does not. A client may shorten a " +
                 "choice list or apply one where there was none; adding a choice widens what is accepted.",
@@ -209,15 +263,17 @@ private fun optionValues(value: Any?): List<String>? {
 /** More required, never fewer, and never a property this type does not have. */
 private fun checkRequired(
     path: String,
+    at: String,
     base: Map<String, Any?>,
     variant: Map<String, Any?>,
-    out: MutableList<String>,
+    out: MutableList<Problem>,
 ) {
     val declared = (variant[SCH.required] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList()
     val baseRequired = (base[SCH.required] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList()
     val dropped = baseRequired.filterNot { it in declared }
     if (dropped.isNotEmpty()) {
-        out.add(
+        out += narrowed(
+            NarrowingError.relaxesRequired, "$at.${SCH.required}",
             "'$path' no longer requires ${dropped.joinToString(", ") { "'$it'" }}. Making a required " +
                 "property optional widens the type: this client would store entries that are invalid " +
                 "everywhere else.",
@@ -226,6 +282,9 @@ private fun checkRequired(
     val props = (variant[SCH.properties] as? Map<*, *>)?.toJsonMap() ?: emptyMap()
     val unknown = declared.filterNot { it in props }
     if (props.isNotEmpty() && unknown.isNotEmpty()) {
-        out.add("'$path' requires ${unknown.joinToString(", ") { "'$it'" }}, which the type does not declare.")
+        out += narrowed(
+            NarrowingError.requiresUndeclared, "$at.${SCH.required}",
+            "'$path' requires ${unknown.joinToString(", ") { "'$it'" }}, which the type does not declare.",
+        )
     }
 }

@@ -116,7 +116,7 @@ class SchLayoutTest : StringSpec({
         SchLayout(null, null, fields.map { SchLayoutField(it, null, null, null) }, mode = SchLayoutMode.authoritative)
 
     "an authoritative layout that omits a required field fails the boot" {
-        val problems = layoutFieldProblems("Type 'X'", authLayout("a", "c"), recType())
+        val problems = layoutFieldProblems("Type 'X'", authLayout("a", "c"), recType()).map { it.message }
         problems.single() shouldContain "'b'"
     }
 
@@ -144,7 +144,7 @@ class SchLayoutTest : StringSpec({
             ),
         ).getValue("t.Cond")
         for (side in listOf(SCH.kThen, SCH.kElse)) {
-            val problem = layoutFieldProblems("Type 'X'", authLayout("kind"), conditional(side)).single()
+            val problem = layoutFieldProblems("Type 'X'", authLayout("kind"), conditional(side)).single().message
             problem shouldContain "'detail'"
             problem shouldContain "conditionally"
             layoutFieldProblems("Type 'X'", authLayout("kind", "detail"), conditional(side)) shouldBe emptyList()
@@ -303,7 +303,7 @@ class SchLayoutTest : StringSpec({
             SL.label to $$"""${@t("help.heading")}""",
             SL.schemaFields to listOf(mapOf(SL.field to "topic")),
         ))
-        val problems = layoutTemplateProblems("Type 'acme.Q'", frontend, type)
+        val problems = layoutTemplateProblems("Type 'acme.Q'", frontend, type).map { it.message }
         problems.size shouldBe 1
         problems.single() shouldContain "heading"
     }
@@ -314,6 +314,7 @@ class SchLayoutTest : StringSpec({
             mapOfDefs("acme.List" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.string))),
         )["acme.List"]
         val problems = layoutFieldProblems("Type 'acme.List'", parseSchLayout("Type 'acme.List'", layoutBlock), arrayType)
+            .map { it.message }
         problems.size shouldBe 1
         problems.single() shouldContain "object type"
     }
@@ -399,7 +400,7 @@ class SchLayoutTest : StringSpec({
         val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
             mapOf(SL.field to "note", SL.hint to $$"At most ${max}."),
         )))
-        val problems = layoutTemplateProblems("Type 'acme.R'", layout, boundedType)
+        val problems = layoutTemplateProblems("Type 'acme.R'", layout, boundedType).map { it.message }
         problems.size shouldBe 1
         problems.single() shouldContain "max"
     }
@@ -424,7 +425,7 @@ class SchLayoutTest : StringSpec({
         val layout = parseSchLayout("Type 'acme.R'", mapOf(SL.schemaFields to listOf(
             mapOf(SL.field to "note", SL.description to $$"""See ${@t("acme.noteHelp")}."""),
         )))
-        val problems = layoutTemplateProblems("Type 'acme.R'", layout, boundedType)
+        val problems = layoutTemplateProblems("Type 'acme.R'", layout, boundedType).map { it.message }
         problems.size shouldBe 1
         problems.single() shouldContain "605"
     }
@@ -461,7 +462,7 @@ class SchLayoutTest : StringSpec({
             "other" if nsKey == "q.topicHelp" -> LayoutPullHit(fileFound = true, backend = true, keyPresent = false)
             else -> LayoutPullHit(fileFound = false, backend = false, keyPresent = false)
         }
-        val problems = layoutPullProblems("Type 'X'", layout, ::resolve)
+        val problems = layoutPullProblems("Type 'X'", layout, ::resolve).map { it.message }
         problems.size shouldBe 1
         problems.single() shouldContain "topic"
         problems.single() shouldContain "q.topicHelp"
@@ -475,12 +476,13 @@ class SchLayoutTest : StringSpec({
         )
         fun resolve(@Suppress("unused") fileId: String, nsKey: String): LayoutPullHit =
             LayoutPullHit(fileFound = true, backend = true, keyPresent = nsKey != "q.missing")
-        val problems = layoutPullProblems("Type 'X'", layout, ::resolve)
+        val problems = layoutPullProblems("Type 'X'", layout, ::resolve).map { it.message }
         problems.single() shouldContain "string '${LAYSTR.formErrorHint}'"
         problems.single() shouldContain "q.missing"
 
         val malformed = SchLayout(null, null, emptyList(), strings = mapOf(LAYSTR.formErrorHint to "Broken %{oops"))
-        layoutBackendBlockProblems("Type 'X'", malformed).single() shouldContain "string '${LAYSTR.formErrorHint}'"
+        layoutBackendBlockProblems("Type 'X'", malformed).single().message shouldContain
+            "string '${LAYSTR.formErrorHint}'"
     }
 
     "layoutPullProblems tells a missing file from a frontend-file pull" {
@@ -493,7 +495,7 @@ class SchLayoutTest : StringSpec({
             "frontendFile" -> LayoutPullHit(fileFound = true, backend = false, keyPresent = true) // found, not backend
             else -> LayoutPullHit(fileFound = true, backend = true, keyPresent = true)
         }
-        val problems = layoutPullProblems("Type 'Y'", layout, ::resolve)
+        val problems = layoutPullProblems("Type 'Y'", layout, ::resolve).map { it.message }
         problems.size shouldBe 2
         problems.any { it.contains("no fragment file 'nofile'") } shouldBe true
         problems.any { it.contains("frontend file") } shouldBe true
@@ -507,7 +509,7 @@ class SchLayoutTest : StringSpec({
         ))
         val problems = layoutPullProblems("Type 'Z'", layout) { _, _ ->
             error("the resolver must not be called for a malformed pull key")
-        }
+        }.map { it.message }
         problems.single() shouldContain "is not a fileId.namespace.key reference"
     }
 
@@ -555,14 +557,14 @@ class SchLayoutTest : StringSpec({
         val bad = SchLayout("acme", null, listOf(
             SchLayoutField("topic", null, null, null, mapOf(SchFailCode.invalidOption.name to $$"Up to ${max}.")),
         ))
-        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single() shouldContain "max"
+        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single().message shouldContain "max"
     }
 
     "a default error message may reference only the field name" {
         val bad = SchLayout("acme", null, listOf(
             SchLayoutField("topic", null, null, null, mapOf(SCH.errorDefault to $$"You gave ${value}.")),
         ))
-        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single() shouldContain "value"
+        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single().message shouldContain "value"
         val ok = SchLayout("acme", null, listOf(
             SchLayoutField("topic", null, null, null, mapOf(SCH.errorDefault to $$"Problem with ${field}.")),
         ))
@@ -573,7 +575,7 @@ class SchLayoutTest : StringSpec({
         val bad = SchLayout("acme", null, listOf(
             SchLayoutField("topic", null, null, null, mapOf(SchFailCode.badValue.name to $$"Bad ${value")),
         ))
-        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single() shouldContain "malformed"
+        layoutTemplateProblems("Type 'acme.Q'", bad, errType).single().message shouldContain "malformed"
     }
 
     "errorContextNames and errorContextData agree, per failure code" {
