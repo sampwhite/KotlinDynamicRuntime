@@ -198,8 +198,8 @@ More than the length of this document suggests, because several pieces were shap
 - **`GedraConfigCollector` already refuses incoherent config at boot**, with the environment split from #296 and
   #299: strict everywhere, degrading in production. A duplicate client definition is the same class of problem
   and has an obvious home.
-- **Namespace ownership is already enforced** — one owner per namespace — which is the mechanism behind a client
-  seeing global's definitions and its own and nobody else's.
+- **Namespace ownership is already enforced** — one owner per namespace, and a client's is `client.<clientId>`
+  (#949) — which is the mechanism behind a client seeing global's definitions and its own and nobody else's.
 - **`entryUnionDefs` / `entryEditUnionDefs`** are already **functions of (client, kind)**, called once today with
   the global scope. Per-client views are those functions called again with a different set.
 - **`traitsFor(client)`** answers "this client's traits, plus global's" — which is the **visibility** question.

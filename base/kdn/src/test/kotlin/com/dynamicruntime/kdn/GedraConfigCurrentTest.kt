@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigTopic
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
@@ -35,7 +36,7 @@ class GedraConfigCurrentTest : StringSpec({
     fun writer(on: KdrCxt, client: String): KdrCxt = on.mkSubContext("currentWrite", client).also { it.userId = 8750L }
 
     fun write(on: KdrCxt, client: String, desc: String) = GedraConfigService.get(on).writeConfig(
-        writer(on, client), gedraConfig(on, "main", "${client}config", client) { cfact("ready", "grp", desc) },
+        writer(on, client), gedraConfig(on, "main", clientNamespace(client), client) { cfact("ready", "grp", desc) },
     )
 
     fun publish(on: KdrCxt, client: String) =

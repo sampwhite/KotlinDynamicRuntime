@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.UADEP
@@ -54,7 +55,7 @@ class UserLabelsTest : StringSpec({
 
     fun asClient(id: String): KdrCxt = cxt.mkSubContext("setup", id).also { it.userId = 9000L }
 
-    fun labelsConfig(id: String, testedLabel: String): GedraConfig = gedraConfig(cxt, "${id}cfg", "${id}config", id) {
+    fun labelsConfig(id: String, testedLabel: String): GedraConfig = gedraConfig(cxt, "${id}cfg", clientNamespace(id), id) {
         defineClient(
             ClientDef(
                 clientId = id, name = id, usageType = ClientUsageType.dev, audience = ClientAudience.internal,

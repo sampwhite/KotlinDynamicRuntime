@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.startup.BootCheckMode
@@ -52,7 +53,7 @@ class StoredOverlayRepairTest : StringSpec({
     )
 
     fun storeAndReload(on: KdrCxt, client: String, build: GedraConfigBuilder.() -> Unit): ConfigReloadResult {
-        val config = gedraConfig(on, "${client}cfg", "${client}config", client) {
+        val config = gedraConfig(on, "${client}cfg", clientNamespace(client), client) {
             defineClient(clientDef(client))
             build()
         }
@@ -97,7 +98,7 @@ class StoredOverlayRepairTest : StringSpec({
     // it is now that config's problem alone, judged as stored config.
     "a stored config breaking the extends rule is skipped, not the reload" {
         val client = "ovl841ext"
-        val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             // `hub` is a source client, but not a template.
             defineClient(clientDef(client, extendsFrom = CL.hub))
         }
@@ -125,7 +126,7 @@ class StoredOverlayRepairTest : StringSpec({
         val restarted = Startup.mkTestBootCxt("overlayRepair2", "storedOverlayRepair2", db + warn)
         val issue = ClientConfigIssues.get(restarted).issuesFor(client).single()
         issue.message shouldContain "noSuchFile841"
-        issue.elementId shouldBe "${client}config.Pulled"
+        issue.elementId shouldBe "${clientNamespace(client)}.Pulled"
 
         shouldThrow<KdrException> { Startup.mkTestBootCxt("overlayRepair3", "storedOverlayRepair3", db) }
             .message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name

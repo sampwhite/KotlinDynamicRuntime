@@ -13,6 +13,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.clientNameProblem
+import com.dynamicruntime.common.naming.clientNamespaceProblem
 
 /** Names and modes for the Gedra config checks (issue #299). */
 @Suppress("ConstPropertyName")
@@ -309,15 +310,6 @@ class GedraConfigCollector {
     fun configTraits(): List<GedraConfigTrait> = configTraitOwners.values.toList()
 
     /**
-     * Who owns [namespace] -- the client whose config first claimed it, `global` for the reserved runtime
-     * namespaces, or null when no kept config has claimed it (issue #627). The write path consults this to
-     * refuse a client authoring into a namespace another owner holds, the same rule [firstProblem] enforces at
-     * load; a namespace no component has claimed reads null, and two data-authored configs racing for one are
-     * the load-time collision #614 resolves, not something this can see before either is stored.
-     */
-    fun namespaceOwner(namespace: String): String? = namespaceOwners[namespace]
-
-    /**
      * The traits [client] **owns** -- declared in a config of its own, rather than seen from `global`.
      *
      * The other half of [traitsFor], and kept apart from it because the two answer different questions: that
@@ -488,6 +480,18 @@ class GedraConfigCollector {
                 GCEL.config, config.gedraId.fullId,
             )
         }
+        // A client's config declares into its own namespace (issue #949) -- a sandbox's copy into its parent's, a
+        // template's copy into the template's -- so no client's types can land where a global name or another
+        // client's lives.
+        if (config.gedraId.client != GID.globalClient) {
+            clientNamespaceProblem(config.namespace, config.namespaceClaimant)?.let { why ->
+                return config.issue(
+                    "Gedra config '${config.gedraId}' declares its types in '${config.namespace}'. $why",
+                    "Dropping '${config.gedraId}' and its $traitCount trait(s).",
+                    GCEL.config, config.gedraId.fullId,
+                )
+            }
+        }
         val owner = namespaceOwners[config.namespace]
         if (owner != null && owner != config.namespaceClaimant) {
             return config.issue(
@@ -557,10 +561,10 @@ class GedraConfigCollector {
     /**
      * Who a config claims its namespace for: its client, or -- for a sandbox's copy of its parent's configuration
      * (issue #928) -- the parent. A sandbox shares its parent's namespaces and never holds one of its own, so the
-     * parent's configuration may later declare into a namespace its sandbox's copy used first, and the write
-     * path's owner check (`namespaceOwner`) answers with the parent either way. A client's copy of its template
-     * (issue #945) claims for the template the same way: the copy keeps the template's namespace, which the template
-     * goes on owning, so every client built on it shares the namespace and none may author into it.
+     * parent's configuration may later declare into a namespace its sandbox's copy used first. A client's copy of
+     * its template (issue #945) claims for the template the same way: the copy keeps the template's namespace, which
+     * the template goes on owning, so every client built on it shares the namespace and none may author into it.
+     * The same rule as `clientNamespace` (issue #949): a client config's namespace is held to its claimant's own.
      */
     private val GedraConfig.namespaceClaimant: String
         get() = inheritedFrom ?: sandboxParentOf(gedraId.client) ?: gedraId.client

@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.TestUser
@@ -46,7 +47,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
     "an allClients admin writes, reads and publishes a NAMED client's config cross-client" {
         val admin = fullAdmin()
         val target = CL.hub // not the admin's own default client -- this is the cross-client point
-        val ns = "acepns685"
+        val ns = "${clientNamespace(target)}.acep685"
         val name = "adminroundtrip"
 
         // Write a bundle filed under the named client, not the caller's own.
@@ -75,7 +76,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
     "an allClients admin patches a named client's config cross-client (issue #732)" {
         val admin = fullAdmin()
         val target = CL.hub
-        val ns = "acepns685patch"
+        val ns = "${clientNamespace(target)}.acep685patch"
         val name = "adminpatch"
         // Seed a bundle with one schemaDef entry.
         admin.postData(
@@ -107,7 +108,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
     "an allClients admin creates a brand-new client over the API" {
         val admin = fullAdmin()
         val newClient = "acep685new"
-        val ns = "${newClient}config"
+        val ns = clientNamespace(newClient)
         // The clientDef slot is the client's own definition; a valid ClientInfo is what ClientDef.toInfo() writes.
         val defInfo = ClientDef(
             clientId = newClient, name = "ACEP New", usageType = ClientUsageType.dev,
@@ -144,7 +145,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
     "a bulk import writes each client independently, isolating failures and reloading (issue #733)" {
         val admin = fullAdmin()
         val newClient = "acep733import"
-        val ns = "${newClient}config"
+        val ns = clientNamespace(newClient)
         val newDef = ClientDef(
             clientId = newClient, name = "Imported", usageType = ClientUsageType.dev,
             audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
@@ -163,7 +164,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
                     ),
                     // Bad: no name -- reported, not fatal.
                     mapOf(
-                        CFEP.client to CL.hub, CFEP.namespaceField to "acep733x",
+                        CFEP.client to CL.hub, CFEP.namespaceField to "${clientNamespace(CL.hub)}.acep733x",
                         CFEP.slots to mapOf(CCT.cfactDef to listOf(mapOf(CCT.name to "r", CCT.group to "g", CCT.description to "d"))),
                     ),
                 ),
@@ -181,7 +182,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
     "an allClients admin reverts a named client's published config, and is refused for a published-only one (issue #734)" {
         val admin = fullAdmin()
         val target = CL.hub
-        val ns = "acepns734revert"
+        val ns = "${clientNamespace(target)}.acep734revert"
         val name = "adminrevert"
         admin.postData(
             ACEP.bundleWrite,
@@ -217,7 +218,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
         scoped.expectError(
             EXC.notAuthorized,
             ACEP.bundleWrite,
-            mapOf(CFEP.client to CL.hub, CFEP.name to "x", CFEP.namespaceField to "acepns685b", CFEP.slots to emptyMap<String, Any?>()),
+            mapOf(CFEP.client to CL.hub, CFEP.name to "x", CFEP.namespaceField to "${clientNamespace(CL.hub)}.acep685b", CFEP.slots to emptyMap<String, Any?>()),
         )
     }
 

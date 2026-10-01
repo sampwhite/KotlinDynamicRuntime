@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -39,7 +40,7 @@ class TestFeaturesBoundaryTest : StringSpec({
     fun asClient(cxt: KdrCxt, client: String): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }
 
     fun clientWithTestFeatures(cxt: KdrCxt, client: String): GedraConfig =
-        gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -94,7 +95,7 @@ private class BoundaryFixture : ComponentDefinition {
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev,

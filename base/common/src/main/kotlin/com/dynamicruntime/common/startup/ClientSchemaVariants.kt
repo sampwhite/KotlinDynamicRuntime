@@ -15,6 +15,9 @@ import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
+import com.dynamicruntime.common.naming.OWNR
+import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.naming.isClientNamespace
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
@@ -213,6 +216,24 @@ private fun keepWhatNarrows(
 ): Map<String, Any?> {
     val kept = LinkedHashMap<String, Any?>(declared.size)
     for ((name, body) in declared) {
+        // A new type is the client's own, so it lives in the client's namespace (issue #949). A dotted declaration
+        // is taken as written -- right for a reference, wrong for a declaration -- so this is where one that would
+        // land in another owner's namespace is caught. An alteration keeps the global name it alters.
+        // Judged for the config that contributed the type: a template's copy (issue #945) carries the template's.
+        val owner = collected.gedraConfigs.contributorOf(client, name)?.inheritedFrom ?: client
+        if (name !in globalDefs && !isClientNamespace(name.substringBeforeLast(OWNR.namespaceSep, ""), owner)) {
+            reportConfigProblem(
+                cxt,
+                alterationIssue(
+                    collected, client, name,
+                    "Client '$client' declares the new type '$name' outside its own namespace " +
+                        "'${clientNamespace(owner)}'. A client's new types are its own, and live there.",
+                    "Dropping '$name'.",
+                ),
+                issues,
+            )
+            continue
+        }
         val base = globalDefs[name]
         if (base !is Map<*, *> || body !is Map<*, *>) {
             kept[name] = body

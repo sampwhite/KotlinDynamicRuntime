@@ -26,7 +26,7 @@ class GedraConfigSerializeTest : StringSpec({
     // A config exercising every slot, and both trait-data cases: an inline-data trait (`acmeNote`, whose
     // `AcmeNoteData` is generated) and a trait naming a shared, directly-declared type (`acmeTagged` -> the
     // `AcmeShared` a `schemaDef` keeps).
-    fun sourceConfig(): GedraConfig = gedraConfig(cxt, "acmeConfig", "acmeconfig", "acme") {
+    fun sourceConfig(): GedraConfig = gedraConfig(cxt, "acmeConfig", "client.acme", "acme") {
         defineClient(
             ClientDef(
                 clientId = "acme", name = "Acme",
@@ -70,20 +70,20 @@ class GedraConfigSerializeTest : StringSpec({
         val source = sourceConfig()
         val entries = gedraConfigToEntries(source)
         // Only the directly-declared type is a schemaDef; the entry types and the inline data type are not.
-        entries.getValue(CCT.schemaDef).map { it[CCT.typeName] } shouldContainExactly listOf("acmeconfig.AcmeShared")
+        entries.getValue(CCT.schemaDef).map { it[CCT.typeName] } shouldContainExactly listOf("client.acme.AcmeShared")
         val storedTypes = entries.getValue(CCT.schemaDef).map { it[CCT.typeName] }
-        storedTypes shouldNotContain "acmeconfig.AcmeNoteEntry"
-        storedTypes shouldNotContain "acmeconfig.AcmeNoteData"
+        storedTypes shouldNotContain "client.acme.AcmeNoteEntry"
+        storedTypes shouldNotContain "client.acme.AcmeNoteData"
         // Reassembly re-runs the declarations, so every generated type is present in the compiled defs again.
         val reassembled = reassembleGedraConfig(cxt, source.gedraId.baseId, source.namespace, source.gedraId.client, entries)
-        reassembled.defs.keys shouldContain "acmeconfig.AcmeNoteEntry"
-        reassembled.defs.keys shouldContain "acmeconfig.AcmeNoteData"
-        reassembled.defs.keys shouldContain "acmeconfig.AcmeShared"
+        reassembled.defs.keys shouldContain "client.acme.AcmeNoteEntry"
+        reassembled.defs.keys shouldContain "client.acme.AcmeNoteData"
+        reassembled.defs.keys shouldContain "client.acme.AcmeShared"
         // The inline trait's data really was carried as a body, not a bare ref, so its shape survives.
-        reassembled.defs["acmeconfig.AcmeNoteData"].toString().contains("text") shouldBe true
+        reassembled.defs["client.acme.AcmeNoteData"].toString().contains("text") shouldBe true
         // The trait's description lives on its generated entry type, and survives the round trip -- it is read
         // back from there on serialize and put back by `trait(...)` on reassembly (issue #613 review).
-        reassembled.defs["acmeconfig.AcmeNoteEntry"].toJsonMapOrEmpty()[SCH.description] shouldBe "A note on the doc."
+        reassembled.defs["client.acme.AcmeNoteEntry"].toJsonMapOrEmpty()[SCH.description] shouldBe "A note on the doc."
     }
 
     // Config traits are hardwired, never stored -- so a config carrying them (only `coreConfigTraits` does) is
@@ -96,7 +96,7 @@ class GedraConfigSerializeTest : StringSpec({
     // State is global, so a client's config has no slot for a state trait (issue #873): one carrying any is refused
     // rather than stored without it.
     "a config carrying state traits is refused, since state is global" {
-        val withState = gedraConfig(cxt, "acmeState", "acmeconfig", "acme") {
+        val withState = gedraConfig(cxt, "acmeState", "client.acme", "acme") {
             stateTrait("AcmeDoneEntry", "acmeDone", setOf(GedraDataType.formDoc), StateTraitClass.asserted) {
                 property("by", "Who marked it done.")
             }

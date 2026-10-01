@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -43,7 +44,7 @@ class SurveyStateDerivationTest : StringSpec({
 
     // One dynamic client, shared by both scenarios: two formDoc traits and a survey that requires `detail`.
     // Trait ids are unique per instance, so the two scenarios are two forms in one client, not two clients.
-    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
                 clientId = client, name = client, usageType = ClientUsageType.dev,

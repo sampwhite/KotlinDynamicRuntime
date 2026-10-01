@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
@@ -49,7 +50,7 @@ class ClientStatusListingTest : StringSpec({
     )
 
     fun store(client: String, build: GedraConfigBuilder.() -> Unit) {
-        val config = gedraConfig(cxt, "main", "${client}config", client, build = build)
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client, build = build)
         val writer = cxt.mkSubContext("status", client).also { it.userId = 8280L }
         GedraConfigService.get(cxt).writeConfig(writer, config)
         GedraConfigReload.reloadClient(cxt, client)

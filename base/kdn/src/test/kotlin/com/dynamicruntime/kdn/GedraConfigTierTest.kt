@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.TestUser
 import io.kotest.core.spec.style.StringSpec
@@ -37,7 +38,7 @@ class GedraConfigTierTest : StringSpec({
 
     /** A config for [client] declaring the named traits; `impliedDelete` default replaces the whole config. */
     fun write(client: String, vararg traits: String): GedraConfig {
-        val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
             for (t in traits) {
                 trait("${t}Entry", t, setOf(GedraDataType.formDoc), "The $t trait.") { property("v", "A value.") }
             }
@@ -116,7 +117,7 @@ class StaticClientComponent : ComponentDefinition {
     override val providerName: String = "staticClientFixture"
     override fun isLoaded(cxt: KdrCxt): Boolean = cxt.getEnvBool(loadFlag) == true
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "staticClient", "staticconfig", clientId) {
+        gedraConfig(cxt, "staticClient", clientNamespace(clientId), clientId) {
             defineClient(
                 ClientDef(
                     clientId = clientId, name = "Static", usageType = ClientUsageType.production,

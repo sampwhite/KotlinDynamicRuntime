@@ -12,6 +12,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -31,7 +32,7 @@ class ClientRefBoundaryTest : StringSpec({
     val other = "refboundaryother"
 
     fun store(client: String, build: GedraConfigBuilder.() -> Unit) {
-        val config = gedraConfig(cxt, "main", "${client}config", client) {
+        val config = gedraConfig(cxt, "main", clientNamespace(client), client) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -65,10 +66,10 @@ class ClientRefBoundaryTest : StringSpec({
         val message = shouldThrow<KdrException> {
             store(other) {
                 trait("StealEntry", "steal", setOf(GedraDataType.formDoc), "Refers to another client's type.") {
-                    property("secret", "The other client's type.") { ref("${owner}config.Secret") }
+                    property("secret", "The other client's type.") { ref("${clientNamespace(owner)}.Secret") }
                 }
             }
         }.message.shouldNotBeNull()
-        message shouldContain "${owner}config.Secret"
+        message shouldContain "${clientNamespace(owner)}.Secret"
     }
 })

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.naming.clientNamespace
 
 /**
  * What the administrators' editors of a client's presentation share (issues #918, #919): the stored config their
@@ -16,7 +17,7 @@ object ClientStoredEdit {
 
     /** Creates the editors' own config for [client] with what [build] declares, trial-checked, and returns the row. */
     fun createEditConfig(bound: KdrCxt, client: String, build: GedraConfigBuilder.() -> Unit): GedraConfigRow {
-        val config = gedraConfig(bound, CPY.copyConfigName, "${client}Copy", client, build = build)
+        val config = gedraConfig(bound, CPY.copyConfigName, clientNamespace(client), client, build = build)
         return GedraConfigService.get(bound).writeConfig(bound, config, trial = true)
     }
 

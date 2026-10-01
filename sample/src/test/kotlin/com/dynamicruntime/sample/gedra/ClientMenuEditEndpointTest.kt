@@ -16,6 +16,7 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.context.BOOT
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -124,7 +125,7 @@ class ClientMenuEditEndpointTest : StringSpec({
         // not reload: nothing the client's people see has changed, and the listing says so.
         admin.postData(
             ACEP.bundleWrite,
-            mapOf(CFEP.client to SC.globex, CFEP.name to "menuDraft", CFEP.namespaceField to "globexMenuDraft",
+            mapOf(CFEP.client to SC.globex, CFEP.name to "menuDraft", CFEP.namespaceField to clientNamespace(SC.globex),
                 CFEP.slots to mapOf(CCT.uiBlockDef to listOf(mapOf(CCT.blockId to HMENU.block, CCT.content to mapOf(HFLD.menu to listOf(mapOf(HFLD.id to HMENU.profile, HFLD.label to "Draft profile"))))))),
         )
         val profile = items(SC.globex).getValue(HMENU.profile)

@@ -61,6 +61,22 @@ class OwnerNamesTest {
         assertFalse(isOwnedName(OwnedNameKind.trait, "kdr:"))
     }
 
+    // A client's namespace is fixed by its id (issue #949), and a sandbox's is its parent's.
+    @Test
+    fun aClientNamespaceIsItsOwnOrBeneathIt() {
+        assertTrue(clientNamespace("acme") == "client.acme")
+        assertTrue(clientNamespace("acme:sandbox") == "client.acme")
+        assertTrue(isClientNamespace("client.acme", "acme"))
+        assertTrue(isClientNamespace("client.acme.forms", "acme"))
+        assertTrue(isClientNamespace("client.acme", "acme:sandbox"))
+        // A lookalike prefix is somebody else's, and so is everything outside the root.
+        assertFalse(isClientNamespace("client.acmex", "acme"))
+        assertFalse(isClientNamespace("client", "acme"))
+        assertFalse(isClientNamespace("acmeconfig", "acme"))
+        assertNull(clientNamespaceProblem("client.acme.forms", "acme"))
+        assertNotNull(clientNamespaceProblem("globalconfig", "acme"))
+    }
+
     // The cfact grammar takes a rooted name as one atom: the colon is none of its operators.
     @Test
     fun aCfactExpressionReadsARootedName() {

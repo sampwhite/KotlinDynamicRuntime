@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.uiblock.UIB
 import io.kotest.assertions.throwables.shouldThrow
@@ -44,7 +45,7 @@ class WorkflowRegistryTest : StringSpec({
         }
 
     fun client(cxt: KdrCxt, id: String, included: List<String>, workflows: GedraConfigBuilderBlock = {}): GedraConfig =
-        gedraConfig(cxt, "${id}Client", "${id}config", id) {
+        gedraConfig(cxt, "${id}Client", clientNamespace(id), id) {
             defineClient(
                 ClientDef(
                     clientId = id, name = id, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
@@ -390,7 +391,7 @@ class WorkflowRegistryTest : StringSpec({
         val configs = listOf(
             globalTraits(devCxt),
             client(devCxt, "acme", listOf("name", "report"), creation("createForm", "name")),
-            gedraConfig(devCxt, "acmeMore", "acmeconfig", "acme") { creation("createForm", "report")(this) },
+            gedraConfig(devCxt, "acmeMore", "client.acme", "acme") { creation("createForm", "report")(this) },
         )
         shouldThrow<KdrException> { build(devCxt, configs) }.message shouldContain "declared a second time"
         val (regs, issues) = build(devCxt, configs, BootCheckMode.warn)

@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MCOPY
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -161,7 +162,7 @@ class ClientCopyEditEndpointTest : StringSpec({
         val svc = GedraConfigService.get(cxt)
         val writer = cxt.mkSubContext("seed", SC.globex).also { it.userId = 9180L }
         for ((name, key, value) in listOf(Triple("wordsA", "title", "Globex welcome"), Triple("wordsB", "intro", "Globex intro"))) {
-            val row = svc.writeConfig(writer, gedraConfig(cxt, name, "globexWords", SC.globex) { fragmentOverlay(HFRAG.home, mapOf("home" to mapOf(key to value))) })
+            val row = svc.writeConfig(writer, gedraConfig(cxt, name, clientNamespace(SC.globex), SC.globex) { fragmentOverlay(HFRAG.home, mapOf("home" to mapOf(key to value))) })
             svc.publish(writer, row.configId)
         }
         GedraConfigReload.reloadClient(cxt, SC.globex)

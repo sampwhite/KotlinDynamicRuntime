@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -41,7 +42,7 @@ class WorkflowSaveRuleTest : StringSpec({
     val client = "wfsave856"
     fun asClient(c: String): KdrCxt = cxt.mkSubContext("setup", c).also { it.userId = 9000L }
 
-    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
                 clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -69,7 +70,7 @@ class WorkflowSaveRuleTest : StringSpec({
 
     "a save rule with no lock on its trait is refused before it goes live (issue #857)" {
         val unlocked = "wfsave857"
-        val bad = gedraConfig(cxt, "${unlocked}cfg", "${unlocked}config", unlocked) {
+        val bad = gedraConfig(cxt, "${unlocked}cfg", clientNamespace(unlocked), unlocked) {
             defineClient(
                 ClientDef(
                     clientId = unlocked, name = unlocked, usageType = ClientUsageType.dev,

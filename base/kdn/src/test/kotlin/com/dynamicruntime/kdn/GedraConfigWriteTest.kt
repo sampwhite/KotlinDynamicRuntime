@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GCT
 import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigTopic
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.sql.PF
@@ -51,7 +52,7 @@ class GedraConfigWriteTest : StringSpec({
     // A config exercising a multi-instance slot (cfactDef, keyed by name): `alpha` is never touched after the
     // first write, `beta`'s description varies -- so the two demonstrate untouched vs re-stamped side by side.
     fun cfg(name: String, betaDesc: String, includeBeta: Boolean = true): GedraConfig =
-        gedraConfig(cxt, name, "${name}ns", client) {
+        gedraConfig(cxt, name, clientNamespace(client), client) {
             cfact("alpha", "grp", "Alpha fact", toFrontend = false)
             if (includeBeta) cfact("beta", "grp", betaDesc, toFrontend = false)
         }
@@ -154,7 +155,7 @@ class GedraConfigWriteTest : StringSpec({
     "a config with two entries in one slot sharing a key is refused, not silently collapsed" {
         // The builder keeps cfacts as a plain list, so declaring the same name twice reaches the write path as
         // two cfactDef entries with the same key -- which the kernel refuses for data and this must for config.
-        val dup = gedraConfig(cxt, "wcfgDup", "wcfgDupns", client) {
+        val dup = gedraConfig(cxt, "wcfgDup", clientNamespace(client), client) {
             cfact("same", "grp", "First", toFrontend = false)
             cfact("same", "grp", "Second", toFrontend = false)
         }

@@ -25,6 +25,7 @@ import com.dynamicruntime.common.gedra.workflow.WfFunctionUsage
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.userHasLabel
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import io.kotest.core.spec.style.StringSpec
@@ -154,7 +155,7 @@ private class WfFnFixture : ComponentDefinition {
 
     /** One good, workflow-global `cfactCalc` usage that resolves. */
     private fun good(cxt: KdrCxt): GedraConfig =
-        gedraConfig(cxt, "wfFnGood", "wffngoodconfig", goodClient) {
+        gedraConfig(cxt, "wfFnGood", clientNamespace(goodClient), goodClient) {
             defineClient(clientDef(goodClient, "WfFnGood"))
             workflow("createForm", WfEntry.creation) {
                 function(mapOf(WFD.fn to "testPing", WFD.priority to 5))
@@ -164,7 +165,7 @@ private class WfFnFixture : ComponentDefinition {
 
     /** Every way a usage fails: unknown fn, bad init data, an undeclared cfact (all global), and a global fn on a task. */
     private fun bad(cxt: KdrCxt): GedraConfig =
-        gedraConfig(cxt, "wfFnBad", "wffnbadconfig", badClient) {
+        gedraConfig(cxt, "wfFnBad", clientNamespace(badClient), badClient) {
             defineClient(clientDef(badClient, "WfFnBad"))
             workflow("createForm", WfEntry.creation) {
                 function(mapOf(WFD.fn to "noSuchFn"))

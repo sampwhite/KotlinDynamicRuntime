@@ -28,6 +28,7 @@ import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.gedra.workflow.runCfactCalc
 import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -62,7 +63,7 @@ class CfactCalcTest : StringSpec({
 
     // The demo the design gives: a `projects` trait whose `projectChoices` list maps to per-project cfacts. The
     // survey collects `projects`, and its workflow-global cfactCalc function turns the choices into cfacts.
-    val config = gedraConfig(cxt, "${client}cfg", "${client}config", client) {
+    val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
         defineClient(
             ClientDef(
                 clientId = client, name = client, usageType = ClientUsageType.dev,
@@ -93,7 +94,7 @@ class CfactCalcTest : StringSpec({
     GedraConfigService.get(cxt).writeConfig(asClient(client), config)
     GedraConfigReload.reloadClient(cxt, client)
 
-    val strictConfig = gedraConfig(cxt, "${strictClient}cfg", "${strictClient}config", strictClient) {
+    val strictConfig = gedraConfig(cxt, "${strictClient}cfg", clientNamespace(strictClient), strictClient) {
         defineClient(
             ClientDef(
                 clientId = strictClient, name = strictClient, usageType = ClientUsageType.dev,

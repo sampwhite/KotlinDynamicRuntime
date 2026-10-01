@@ -159,7 +159,7 @@ object SC {
     const val globex = "globex"
 
     // Acme's own trait, in its own namespace, which no other client can see.
-    const val acmeNamespace = "acmeconfig"
+    const val acmeNamespace = "client.acme"
     const val siteAudit = "acmeSiteAudit"
     const val siteAuditEntry = "SiteAuditEntry"
     const val auditor = "auditor"
@@ -202,7 +202,7 @@ object SC {
     const val auditGroup = "Site audits"
 
     // Globex extends a global type rather than altering it: a new name, constraining nothing.
-    const val globexNamespace = "globexconfig"
+    const val globexNamespace = "client.globex"
     const val richAddress = "RichAddress"
     const val what3words = "what3words"
 

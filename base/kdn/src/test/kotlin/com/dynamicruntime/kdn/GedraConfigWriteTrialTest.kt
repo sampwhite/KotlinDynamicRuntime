@@ -23,11 +23,15 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -54,7 +58,7 @@ class GedraConfigWriteTrialTest : StringSpec({
     )
 
     fun config(client: String, name: String, build: GedraConfigBuilder.() -> Unit): GedraConfig =
-        gedraConfig(cxt, name, "${client}config", client, build = build)
+        gedraConfig(cxt, name, clientNamespace(client), client, build = build)
 
     /** The admin bundle-write request for [config]. */
     fun writeBody(config: GedraConfig): Map<String, Any?> = mapOf(
@@ -119,6 +123,37 @@ class GedraConfigWriteTrialTest : StringSpec({
         val refused = admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(bad))
         refused[EP.errorMessage].toString() shouldContain "A client's own trait id may not hold ':'"
         stored(client) shouldBe 0
+    }
+
+    // A client declares into its own namespace (issue #949). The write names the rule, since whoever wrote it is at
+    // the keyboard; nothing is stored.
+    "a client config declaring outside its own namespace is refused at write, naming the rule" {
+        val client = "trial949ns"
+        val bad = gedraConfig(cxt, "main", "elsewhere949", client) { defineClient(clientDef(client)) }
+        val refused = admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(bad))
+        refused[EP.errorMessage].toString() shouldContain "its own namespace, 'client.$client'"
+        stored(client) shouldBe 0
+    }
+
+    // A dotted declaration is taken as written -- right for a reference, wrong for a declaration -- so a new type
+    // could otherwise be declared into somebody else's namespace. Refused at the write by the trial; dropped, with
+    // an issue, when it is already stored.
+    "a new type declared into another owner's namespace is refused at write, and dropped when stored" {
+        val client = "trial949escape"
+        fun escaping() = config(client, "main") {
+            defineClient(clientDef(client))
+            type("Own") { type = SCT.kObject; property("x", "Kept.") }
+            type("other949.Escaped") { type = SCT.kObject; property("x", "Not this client's to place.") }
+        }
+        admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(escaping()))[EP.errorMessage].toString() shouldContain
+            "outside its own namespace"
+        // Seeded through the service, which does not trial, as a hand edit or a restore would put it there.
+        GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("seed949", client).also { it.userId = 9490L }, escaping())
+        val reload = GedraConfigReload.reloadClient(cxt, client)
+        reload.issues.single { "other949.Escaped" in it.message }.message shouldContain "outside its own namespace"
+        val types = SchemaService.get(cxt).storeFor(client).types.keys
+        types shouldContain "${clientNamespace(client)}.Own"
+        types shouldNotContain "other949.Escaped"
     }
 
     "an included trait that does not exist is refused at write (B4)" {

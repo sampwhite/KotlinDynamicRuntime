@@ -20,6 +20,7 @@ import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -47,10 +48,10 @@ class ClientOperatorFieldsTest : StringSpec({
     )
 
     fun config(clientDef: ClientDef): GedraConfig =
-        gedraConfig(cxt, "main", "${client}config", client) { defineClient(clientDef) }
+        gedraConfig(cxt, "main", clientNamespace(client), client) { defineClient(clientDef) }
 
     fun writeBody(clientDef: ClientDef): Map<String, Any?> = mapOf(
-        CFEP.name to "main", CFEP.namespaceField to "${client}config",
+        CFEP.name to "main", CFEP.namespaceField to clientNamespace(client),
         CFEP.slots to gedraConfigToEntries(config(clientDef)),
     )
 

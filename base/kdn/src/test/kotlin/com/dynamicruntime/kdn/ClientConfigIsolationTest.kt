@@ -28,6 +28,7 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.StateTraitClass
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigTopic
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
@@ -86,7 +87,7 @@ class ClientConfigIsolationTest : StringSpec({
         val refused = admin.expectError(
             EXC.badInput, ACEP.bundleWrite,
             mapOf(
-                CFEP.client to "iso873slot", CFEP.name to "main", CFEP.namespaceField to "iso873slotconfig",
+                CFEP.client to "iso873slot", CFEP.name to "main", CFEP.namespaceField to clientNamespace("iso873slot"),
                 CFEP.slots to mapOf("stateTraitDef" to listOf(mapOf("traitId" to "iso873State"))),
             ),
         )
@@ -126,7 +127,7 @@ class ClientConfigIsolationTest : StringSpec({
                 first, plantSlot,
                 mapOf(
                     GC.gedraId to main.gedraId.fullId,
-                    GC.data to mapOf(GD.entries to main.entries + stateEntry, GC.namespace to "${client}config"),
+                    GC.data to mapOf(GD.entries to main.entries + stateEntry, GC.namespace to clientNamespace(client)),
                     PF.updatedAt to SqlTopicUtil.nextUpdatedAt(first, main.updatedAt),
                 ),
             ) shouldBe 1
@@ -157,7 +158,7 @@ class ClientConfigIsolationTest : StringSpec({
 })
 
 private fun isoConfig(cxt: KdrCxt, client: String, name: String, build: GedraConfigBuilder.() -> Unit): GedraConfig =
-    gedraConfig(cxt, name, "${client}config", client, build = build)
+    gedraConfig(cxt, name, clientNamespace(client), client, build = build)
 
 /** A component contributing a client-owned config that declares a state trait beside a data trait. */
 class ClientStateComponent : ComponentDefinition {
@@ -182,7 +183,7 @@ class ClientStateComponent : ComponentDefinition {
     @Suppress("ConstPropertyName")
     companion object {
         const val client = "iso873src"
-        const val namespace = "iso873srcconfig"
+        const val namespace = "client.iso873src"
         const val stateTraitId = "iso873SrcState"
     }
 }
