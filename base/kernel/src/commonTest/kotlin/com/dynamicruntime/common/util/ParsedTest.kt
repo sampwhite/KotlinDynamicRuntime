@@ -127,7 +127,7 @@ class ParsedTest {
         val problem = Problem(ConvProblem.badFormat, "Bad.", ProblemLocation(offset = 4, line = 2, col = 3))
         val ex = problem.toException()
         assertEquals("Bad.", ex.message)
-        assertEquals<Any?>(ConvProblem.badFormat, ex.extraData[KdrException.errorCodeKey])
+        assertEquals(ConvProblem.badFormat, ex.extraData[KdrException.errorCodeKey])
         assertEquals(2, ex.extraData[KdrException.lineKey])
         assertEquals(3, ex.extraData[KdrException.lineColKey])
         assertEquals("error", problem.toJsonMap()[PRB.severity])

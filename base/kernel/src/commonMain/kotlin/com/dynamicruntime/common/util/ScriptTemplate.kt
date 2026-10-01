@@ -11,7 +11,7 @@ import com.dynamicruntime.common.exception.KdrException
  * text with their own scanner, two walks that had to agree about every escape and quote.
  *
  * A doubled prefix is already resolved to one literal prefix in a text piece; a lone prefix is plain text.
- * [blockCount] counts every block opened, well-formed or not (issue #514).
+ * [blockCount] counts every block opened, well-formed, or not (issue #514).
  */
 @KdrPrivate
 class ParsedTemplate(val pieces: List<TemplatePiece>, val blockCount: Int)
