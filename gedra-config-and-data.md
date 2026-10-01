@@ -337,6 +337,7 @@ Only the first is worth trading for uptime.
 | A `traitId` claimed twice within one client's view — a global id reused anywhere, or a client's own id twice in that client (#807) | naming both bundles |
 | A namespace claimed by two owners | naming the owner it already has |
 | The same config bundle contributed twice | |
+| A client's own trait id, cfact, workflow id or task id holding `:`, or breaking its kind's rule (#921) — a colon is the rooted form global names use, and a trait id may not hold a dot | naming the rule |
 
 Each message names both sides, so a reader is never left hunting the other half.
 

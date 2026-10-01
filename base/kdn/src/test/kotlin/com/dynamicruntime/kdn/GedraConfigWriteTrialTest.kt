@@ -106,6 +106,21 @@ class GedraConfigWriteTrialTest : StringSpec({
         stored(client) shouldBe 0
     }
 
+    // A client's own names are bare (issue #921): the rooted form is the global side's, so a client declaring one
+    // is refused at the write, where a person is at the keyboard, with the rule named.
+    "a client config declaring a rooted trait id is refused at write, naming the rule" {
+        val client = "trial921root"
+        val bad = config(client, "main") {
+            defineClient(clientDef(client))
+            trait("KdrNoteEntry", "kdr:note", setOf(GedraDataType.formDoc), "Not the client's to name.") {
+                property("text", "Text.")
+            }
+        }
+        val refused = admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(bad))
+        refused[EP.errorMessage].toString() shouldContain "A client's own trait id may not hold ':'"
+        stored(client) shouldBe 0
+    }
+
     "an included trait that does not exist is refused at write (B4)" {
         val client = "trial843inc"
         val bad = config(client, "main") { defineClient(clientDef(client, includedTraits = listOf("noSuchTrait843"))) }

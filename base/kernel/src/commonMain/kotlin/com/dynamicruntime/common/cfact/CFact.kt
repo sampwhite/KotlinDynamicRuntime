@@ -1,5 +1,9 @@
 package com.dynamicruntime.common.cfact
 
+import com.dynamicruntime.common.naming.OWNR
+import com.dynamicruntime.common.naming.OwnedNameKind
+import com.dynamicruntime.common.naming.isOwnedName
+
 /**
  * A **cfact** is a named boolean fact about the current scope: present or absent, never a value (issue #454).
  *
@@ -119,16 +123,21 @@ object CFACT {
 }
 
 /**
- * Whether [c] may appear in a cfact name: a letter, a digit, `_` or `.`.
+ * Whether [c] may appear in a cfact name: a letter, a digit, `_`, `.`, or the `:` of a rooted name
+ * (`kdr:isCta`, issue #921). A colon is unambiguous here: the grammar's operators are `,`, `|`, `~`, parentheses
+ * and the `#` literal sigil.
  *
  * Shared by the parser (which reads a name off an expression) and by [CFactDef] (which refuses a declaration
  * an expression could never spell). One rule rather than two, because the failure of two would be a name that
  * registers and then cannot be referred to -- discovered only by whoever tried to write it.
  */
-fun isCFactNameChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_' || c == '.'
+fun isCFactNameChar(c: Char): Boolean = c.isLetterOrDigit() || c == '_' || c == '.' || c == OWNR.rootSep
 
-/** Whether [name] is spellable as a cfact name: non-empty, and [isCFactNameChar] throughout. */
-fun isCFactName(name: String): Boolean = name.isNotEmpty() && name.all { isCFactNameChar(it) }
+/**
+ * Whether [name] is spellable as a cfact name: a bare local part, or a rooted `<root>:<local>` with exactly one
+ * colon (issue #921) -- the owner-name rule, which [isCFactNameChar] admits the characters of.
+ */
+fun isCFactName(name: String): Boolean = isOwnedName(OwnedNameKind.cfact, name)
 
 /**
  * Every cfact name this expression refers to -- its atoms, unfolded through the operators, with the `#always` /
