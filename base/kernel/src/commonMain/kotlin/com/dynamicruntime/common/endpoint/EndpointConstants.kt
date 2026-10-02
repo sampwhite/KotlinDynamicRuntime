@@ -290,6 +290,11 @@ object EP {
     // The cap on a `_debug` value, in one place, so the backend's validation and the frontend box's agree.
     const val debugMaxLength = 40
     const val meta = "_meta" // response: handler-injected extra structure (KdrRequest.responseMeta)
+    // request: which view of a page the caller asks for -> KdrCxt.view (issue #972). Only `DSV.design` is known, and
+    // the backend honors it only for a caller entitled to Design View. Like `_debug` it has a header alternate, so
+    // the webapp's toggle rides it on every request; an explicit query or body value wins over the header.
+    const val view = "_view"
+    const val viewHeader = "X-Kdr-View"
 }
 
 /**

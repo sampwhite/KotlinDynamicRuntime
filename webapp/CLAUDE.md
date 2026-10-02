@@ -535,6 +535,28 @@ validated — that a control renders the right choices, that an invalid choice s
 save navigates where it should. The run above used the API as the witness after every save for exactly this
 reason.
 
+## Design View: marking a form with the definitions behind it (issue #972)
+
+An administrator's switch in the app bar (`Design`) turns the workflow pages into an annotated view: each trait
+block and field is outlined on hover with its id, a click opens a side inspector (`DesignInspector.kt`) with the
+definition behind it, where it was declared, and its authored JSON, and the fields the form leaves out are drawn
+as hatched ghosts saying why. Read-only for now; editing is a later slice.
+
+- **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
+  request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
+  administrator, adding a `design` block to the workflow view -- an address and origin for every type the page
+  draws. Never infer provenance in the webapp: a definition's origin is the backend's to say.
+- **The page explains only its own decisions.** Which fields a form hides, and why, is decided in `SchemaForm` --
+  so the webapp names those reasons (`FieldHidden`). They all come from one function, `formFieldPlan`
+  (`fieldHiddenReason` per field), which both presentations follow: the ordinary form skips a field with a
+  reason, Design View draws it as a ghost. **A new rule that hides a field goes into `fieldHiddenReason`**, never
+  as a fresh `return@forEach` in the render loop -- a rule added there would hide the field from Design View too,
+  with no ghost to say so.
+- **Only the workflow form is marked.** It provides `DesignViewContext`; every other `SchemaForm` (the catalog,
+  the raw editors) sees null and draws exactly as before.
+- **Seeing it.** `kdr-probe --url http://localhost:7072 design-demo` writes the `designdemo` client -- defined in
+  data, so its definitions show as the client's own -- and prints how to sign in as its administrator.
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative

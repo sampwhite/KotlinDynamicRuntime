@@ -49,6 +49,7 @@ import com.dynamicruntime.common.gedra.clientOverviewSchema
 import com.dynamicruntime.common.gedra.coreClients
 import com.dynamicruntime.common.gedra.coreTraits
 import com.dynamicruntime.common.gedra.adminGedraConfigSchema
+import com.dynamicruntime.common.gedra.designViewSchema
 import com.dynamicruntime.common.gedra.gedraConfigSchema
 import com.dynamicruntime.common.gedra.gedraConfigTables
 import com.dynamicruntime.common.gedra.gedraDataTables
@@ -224,6 +225,8 @@ class CommonComponent : ComponentDefinition {
         // The cross-client admin config surface (issue #685): the same operations full-scope, for managing any
         // client's stored configuration (and creating a new one) over the API.
         collector.addModule(adminGedraConfigSchema(cxt), appOnly)
+        // Design View (issue #972): reading a definition by its address, for a client administrator.
+        collector.addModule(designViewSchema(cxt), appOnly)
     }
 
     /** The app-bar menu, registered as a UiBlock (issue #458) so its items can be varied without an `if`. */

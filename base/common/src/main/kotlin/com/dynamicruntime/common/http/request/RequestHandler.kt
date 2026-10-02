@@ -12,6 +12,7 @@ import com.dynamicruntime.common.endpoint.RID
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
@@ -86,6 +87,9 @@ class RequestHandler : WebRequest {
 
     /** Validated `_debug` value (a comma-separated list of variable names), or null; assigned to [KdrCxt.debug]. */
     var debug: String? = null
+
+    /** The requested view (`_view`, issue #972), when it names one the backend knows; assigned to [KdrCxt.view]. */
+    var view: String? = null
     var logRequestUri: String = ""
 
     /** Access rules for the request's section; filled in by the dispatcher. */
@@ -270,6 +274,22 @@ class RequestHandler : WebRequest {
                 if (raw.isNotBlank() && raw.length <= EP.debugMaxLength && raw.splitComma().all(String::isVariableName)) {
                     debug = raw
                 }
+            }
+        }
+
+        // The off-contract `_view` (issue #972): which view of a page the caller asks for. The same param/header
+        // duality as `_debug`, and the same rule for a bad value -- a per-request one fails, a header one is dropped.
+        // Whether the view is *honored* is not decided here: that depends on who the caller is (see `DesignView`).
+        val viewFromRequest = (queryParams[EP.view] ?: postData?.get(EP.view)) as? String
+        if (viewFromRequest != null) {
+            if (viewFromRequest !in knownViews) {
+                throw KdrException.mkInput("_view value '$viewFromRequest' is not one of ${knownViews.joinToString()}.")
+            }
+            view = viewFromRequest
+        } else {
+            getRequestHeader(EP.viewHeader)?.let { raw ->
+                addResponseHeader("Vary", EP.viewHeader)
+                if (raw in knownViews) view = raw
             }
         }
     }
@@ -617,6 +637,9 @@ class RequestHandler : WebRequest {
          * the source behind a rendered sentence. Off by default.
          */
         const val explainError = "explainError"
+
+        /** The `_view` values the backend knows (issue #972); any other is refused, or dropped from the header. */
+        val knownViews: Set<String> = setOf(DSV.design)
 
         /** The env var that defaults [ACFG.obfuscateSensitiveErrors] when the config option is unset (issue #108). */
         val obfuscateErrorsEnvVar = EnvVarDef(

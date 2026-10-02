@@ -144,6 +144,18 @@ val SurveyEditPage = FC<Props> {
         }
     }
 
+    // Design View switched while the form is open (issue #972): the view is read again in place -- the way a save's
+    // re-read is, not through the loading card -- so unsaved edits survive, and applied only while the page still
+    // shows this form.
+    useDesignViewReread {
+        if (view == null) return@useDesignViewReread
+        val form = gedraId
+        val wf = workflowId
+        val fresh = apiResult { fetchFormView(form, wf, workflowClient) }.designRereadValue()
+        val h = hashParams()
+        if (fresh != null && h[HP.page] == pageSurveyEdit && h[HP.gedra] == form && h[HP.workflow] == wf) view = fresh
+    }
+
     when {
         loading -> LoadStateCard { title = "Edit form" }
         loadError != null -> LoadStateCard {

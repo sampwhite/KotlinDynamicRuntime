@@ -40,6 +40,12 @@ val CreationPage = FC<Props> {
         }
     }
 
+    // Design View switched while the form is open (issue #972): the view is read again in place, so the form keeps
+    // what has been typed and gains (or loses) the explanation.
+    useDesignViewReread {
+        if (workflow != null) apiResult { WorkflowApi.fetchCreationView() }.designRereadValue()?.let { workflow = it }
+    }
+
     when {
         loading -> LoadStateCard { title = "New form" }
         loadError != null -> LoadStateCard {

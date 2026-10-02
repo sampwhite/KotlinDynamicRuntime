@@ -174,6 +174,15 @@ object AdminRules {
      * administrator uses on their own users, and wrong for the `public` client's own configuration, which every
      * `public` user shares. A 403 rather than a 404: the client is not a secret, the authority is what is missing.
      */
+    /**
+     * Whether the caller administers a client -- their own, or every one (issue #972): an administrator anywhere but
+     * the `public` placeholder, where an administrator reaches only their own users. The non-throwing form of
+     * [requireClientAdministrator]'s rule, for a surface that *shows* something extra to a client administrator
+     * rather than refusing everybody else (Design View).
+     */
+    fun isClientAdministrator(cxt: KdrCxt): Boolean =
+        adminScope(cxt).let { it == AdminScope.ownClient || it == AdminScope.allClients }
+
     fun requireClientAdministrator(cxt: KdrCxt) {
         if (adminScope(cxt) == AdminScope.ownIdentity) {
             throw KdrException(

@@ -6,7 +6,9 @@ import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.util.analyzeTemplate
+import kotlinx.browser.document
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.await
 import kotlin.js.Promise
 import kotlinx.coroutines.launch
@@ -208,6 +210,28 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     var refreshError by useState<DisplayError?>(null)
     // Whether a survey edit has saved since the page opened -- the "✓ Saved." beside the header's actions.
     var justSaved by useState(false)
+
+    // Design View (issue #972): on when this session asked for it and the backend answered with its block, which it
+    // does only for a client administrator. What is selected and the two display switches are the page's own state.
+    var designSelected by useState<DesignTarget?>(null)
+    var designShowAllIds by useState(false)
+    var designShowHidden by useState(true)
+    val designSession = wf.design?.takeIf { designViewRequested() }?.let {
+        DesignSession(it, designSelected, { t -> designSelected = t }, designShowAllIds, designShowHidden)
+    }
+    // The inspector is fixed to the window's right edge; the page makes room for it rather than being covered.
+    val designOpen = designSession != null
+    useEffect(designOpen) {
+        if (!designOpen) return@useEffect
+        // An effect is a coroutine React cancels when it re-runs or the page unmounts (see DebugChoicePage): the
+        // class is held for as long as this effect is, and removed in `finally`.
+        document.body?.classList?.add(designOpenClass)
+        try {
+            awaitCancellation()
+        } finally {
+            document.body?.classList?.remove(designOpenClass)
+        }
+    }
 
     // Whether any task holds unsaved edits (issue #700): reported to the page when it changes, so the page can
     // arm the leave guard while there is something to lose and disarm it once saved or reverted.
@@ -497,6 +521,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 }
             }
             task.traits.forEach { trait ->
+                designFramed(designSession, DesignTarget.Trait(trait), trait.traitId) {
                 div {
                     className = ClassName("wf-trait")
                     trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true } }
@@ -516,39 +541,44 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                             +"This is required — please fill it in."
                         }
                     }
-                    SchemaForm {
-                        type = trait.type
-                        this.values = valuesOf(trait.traitId)
-                        // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
-                        // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
-                        editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
-                        friendly = true
-                        // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
-                        // an expense report's total, computed on read -- rather than hiding them; the flag is
-                        // inert while editing, where a derived field has no control to draw. This form's root is
-                        // one trait's data type, so every derived-with-value field is content, not envelope.
-                        showDerivedValues = true
-                        derivedRootIsTraitData = true
-                        this.cfacts = wf.cfacts
-                        this.fieldLayouts = wf.fieldLayouts
-                        this.failures = shownFailures(
-                            failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
-                            trait.traitId in wholeChecked,
-                        )
-                        this.prefill = prefillFor(trait.traitId)
-                        onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
-                        onFieldEdit = { field ->
-                            if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId
-                            // First touch of a suggested default makes it the user's (issue #710); a reset can
-                            // bring it back. A nested field's path never matches a root default's name, so only
-                            // the top-level default it belongs to is un-suggested.
-                            val suggested = suggestedByTrait[trait.traitId]
-                            if (suggested != null && field in suggested) {
-                                suggestedByTrait = suggestedByTrait + (trait.traitId to (suggested - field))
+                    // Design View marks this trait's fields (issue #972); outside it the provider carries null.
+                    DesignViewContext.Provider {
+                        value = designSession?.forTrait(trait)
+                        SchemaForm {
+                            type = trait.type
+                            this.values = valuesOf(trait.traitId)
+                            // A step this caller may not save (issue #856) or that has no save of this page's kind (issue
+                            // #817), or a trait locked for them (issue #857), stays read-only while the rest is edited.
+                            editable = editing && wf.isEditable(task, isEdit) && trait.traitId !in wf.lockedTraits
+                            friendly = true
+                            // In the read-only "View Info" view, show a trait's derived data values (issue #712) --
+                            // an expense report's total, computed on read -- rather than hiding them; the flag is
+                            // inert while editing, where a derived field has no control to draw. This form's root is
+                            // one trait's data type, so every derived-with-value field is content, not envelope.
+                            showDerivedValues = true
+                            derivedRootIsTraitData = true
+                            this.cfacts = wf.cfacts
+                            this.fieldLayouts = wf.fieldLayouts
+                            this.failures = shownFailures(
+                                failuresByTrait[trait.traitId].orEmpty(), committedByTrait[trait.traitId].orEmpty(),
+                                trait.traitId in wholeChecked,
+                            )
+                            this.prefill = prefillFor(trait.traitId)
+                            onChange = { valuesByTrait = valuesByTrait + (trait.traitId to it) }
+                            onFieldEdit = { field ->
+                                if (trait.traitId in unmetTraits) unmetTraits = unmetTraits - trait.traitId
+                                // First touch of a suggested default makes it the user's (issue #710); a reset can
+                                // bring it back. A nested field's path never matches a root default's name, so only
+                                // the top-level default it belongs to is un-suggested.
+                                val suggested = suggestedByTrait[trait.traitId]
+                                if (suggested != null && field in suggested) {
+                                    suggestedByTrait = suggestedByTrait + (trait.traitId to (suggested - field))
+                                }
                             }
+                            onFieldCommit = { path -> onFieldCommit(trait, path) }
                         }
-                        onFieldCommit = { path -> onFieldCommit(trait, path) }
                     }
+                }
                 }
             }
             // The save is per task (each task's own entries), shown only while editing. Disabled while there is
@@ -645,7 +675,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // forms link, so it returns to the same filtered, sorted listing. The survey edit's actions are Edit
         // over the read-only "View Info" (with the raw editor beside it) and Done while editing, with the
         // saved note beside either.
-        formsEditorHeader(title = { MarkdownInline { source = title } }) {
+        formsEditorHeader(title = {
+            designFramed(designSession, DesignTarget.Workflow, wf.workflowId) { MarkdownInline { source = title } }
+        }) {
             if (isEdit) {
                 if (editing) {
                     Button {
@@ -761,7 +793,29 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         }
         runError?.let { errorText(if (isEdit) "Couldn't save the form." else "Couldn't create the form.", it) }
         refreshError?.let { errorText("Saved, but couldn't reload the form, so what it shows may be out of date.", it) }
+        designSession?.let { session ->
+            DesignInspector {
+                this.session = session
+                this.view = wf
+                onShowAllIds = { designShowAllIds = it }
+                onShowHidden = { designShowHidden = it }
+                onClear = { designSelected = null }
+            }
+        }
     }
+}
+
+/** The body class that makes room for Design View's inspector (issue #972); see `body.dv-open` in app.css. */
+private const val designOpenClass = "dv-open"
+
+/** [content] framed for Design View as [target] when there is a [session], else drawn as it is (issue #972). */
+private fun ChildrenBuilder.designFramed(
+    session: DesignSession?,
+    target: DesignTarget,
+    label: String,
+    content: ChildrenBuilder.() -> Unit,
+) {
+    if (session == null) content() else designTargetFrame(session, target, label, content = content)
 }
 
 /**

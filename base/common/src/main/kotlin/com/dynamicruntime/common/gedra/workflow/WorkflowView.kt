@@ -5,6 +5,8 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.DesignView
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraTrait
@@ -215,6 +217,9 @@ fun resolveWorkflowView(
         WVF.fieldLayouts to resolveDeliveredLayouts(cxt, clientStore.layoutsFor(defs)),
     )
     focusTask?.let { view[WVF.focusTask] = it }
+    // Design View (issue #972): where the workflow and each type the page draws were declared. Added beside an
+    // otherwise identical view, and only for a caller entitled to it, so an ordinary response never carries it.
+    if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs)
     if (lockedTraits.isNotEmpty()) view[WVF.lockedTraits] = lockedTraits
     if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, declared.def).name
     formFacts?.let { f ->

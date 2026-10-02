@@ -422,6 +422,28 @@ val AppBar = FC<AppBarProps> { props ->
             // Spelled out, not just colored: a hue on its own tells a colourblind user nothing, and this is
             // the cue that says "the actions available to you right now are privileged". Shares the .bar-badge
             // chip look with the env badge so the two read as siblings rather than two unrelated stickers.
+            // Design View's switch (issue #972), beside the admin cue it belongs to. Like the env badge it names the
+            // state and is the control: on, the workflow pages mark each part of a form with the definition behind
+            // it. Offered to anyone with administrative rights; the backend decides whether to answer, and a page it
+            // does not answer simply draws as usual. Flipping it bumps the refresh generation so a mounted page
+            // re-reads its view with (or without) the explanation.
+            if (elevated) {
+                val designOn = designViewRequested()
+                button {
+                    className = ClassName("bar-badge design-badge" + if (designOn) " on" else "")
+                    asDynamic()["aria-pressed"] = designOn
+                    title = if (designOn) {
+                        "Design view is on: forms show what defines each part. Click to turn it off."
+                    } else {
+                        "Turn on Design view to see what defines each part of a form."
+                    }
+                    onClick = {
+                        setDesignViewRequested(!designOn)
+                        bump()
+                    }
+                    +"Design"
+                }
+            }
             if (elevated) {
                 span {
                     className = ClassName("bar-badge admin-badge")

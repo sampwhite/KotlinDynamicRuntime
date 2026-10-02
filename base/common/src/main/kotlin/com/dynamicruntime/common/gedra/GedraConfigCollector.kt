@@ -399,6 +399,14 @@ class GedraConfigCollector {
         configsById.values.lastOrNull { it.gedraId.client == client && typeName in it.defs }
 
     /**
+     * The config that declares the data trait [traitId] as [client] sees it -- the client's own, else the global one
+     * (issue #972): the same visibility [traitsFor] applies, and, since a client's trait ids and global ones never
+     * coincide, at most one of the two exists. Null when neither does.
+     */
+    fun configOfTrait(client: String, traitId: String): GedraConfig? =
+        traitConfigs[TraitKey(client, traitId)] ?: traitConfigs[TraitKey(GID.globalClient, traitId)]
+
+    /**
      * Un-registers [config] -- the exact reverse of [keep] -- so a client's stored configuration can be
      * **replaced** on a running node (issue #616). Every claim the config made is withdrawn: its entry, its
      * trait ownerships of all three kinds, and its namespace claim, the last only if it was the claimant (a
