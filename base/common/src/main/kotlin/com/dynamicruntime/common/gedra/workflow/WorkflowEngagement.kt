@@ -112,9 +112,7 @@ object WorkflowEngagement {
         entries.any { isEngagementFor(it, workflowId) }
 
     /** Whether the state [entry] is the engagement entry for [workflowId]. */
-    fun isEngagementFor(entry: Map<String, Any?>, workflowId: String): Boolean =
-        entry[GE.traitId].toOptStr() == WFS.workflowEngagement &&
-            entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() == workflowId
+    fun isEngagementFor(entry: Map<String, Any?>, workflowId: String): Boolean = isEngagementEntryFor(entry, workflowId)
 
     /**
      * [current] with the [workflowId] engagement entry set to [engaged] and its transition recorded -- every

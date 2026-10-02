@@ -40,30 +40,15 @@ object WorkflowApprovals {
     /**
      * The approvals that **count** for [workflowId] in [entries] -- task id to the approval entry's data: none when
      * the form is not engaged with the workflow, and otherwise those given during the current engagement (see the
-     * class doc). What the recompute, the view and the approve endpoint all read, so they agree.
+     * class doc). What the recompute, the view and the approve endpoint all read, so they agree. The rule itself is
+     * the kernel's `currentApprovals`, which a report's evaluator reads too (issue #978).
      */
-    fun of(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> {
-        val engagement = entries
-            .firstOrNull { WorkflowEngagement.isEngagementFor(it, workflowId) }
-            ?.get(GE.data).toJsonMapOrEmpty()
-        if (engagement[WFS.engaged] != true) {
-            return emptyMap()
-        }
-        // An engagement written without a start (by hand, through the admin state endpoint) invalidates nothing.
-        val since = engagement[WFS.lastEngagedAt].toOptInstant()
-        return recorded(entries, workflowId).filterValues { data ->
-            val at = data[WFS.approvedAt].toOptInstant()
-            since == null || (at != null && at >= since)
-        }
-    }
+    fun of(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> =
+        currentApprovals(entries, workflowId)
 
     /** Every approval record [entries] hold for [workflowId], current or not: task id to the entry's data. */
-    fun recorded(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> = entries
-        .filter { it[GE.traitId].toOptStr() == WFS.workflowApproval }
-        .map { it[GE.data].toJsonMapOrEmpty() }
-        .filter { it[WFD.workflowId].toOptStr() == workflowId }
-        .mapNotNull { data -> data[WFS.taskId].toOptStr()?.let { it to data } }
-        .toMap()
+    fun recorded(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> =
+        recordedApprovals(entries, workflowId)
 
     /**
      * Whether the caller would be approving **their own** form -- the second-person rule the approve endpoint
