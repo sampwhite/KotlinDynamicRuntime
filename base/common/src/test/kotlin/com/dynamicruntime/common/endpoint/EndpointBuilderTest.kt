@@ -10,6 +10,7 @@ import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.typeRefPath
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.http.request.listHashPayload
+import com.dynamicruntime.common.http.request.listNextOf
 import com.dynamicruntime.common.http.request.listSummaryOf
 import com.dynamicruntime.common.startup.buildClientEndpoints
 import com.dynamicruntime.common.util.toJsonListOrEmpty
@@ -208,6 +209,95 @@ class EndpointBuilderTest : StringSpec({
         copy.path shouldBe "/thing/acme/list"
         copy.hasNumAvailable shouldBe true
         copy.hasMore shouldBe true
+    }
+
+    "a cursor-paged list endpoint takes `after`, may answer `next`, and its copies keep it (issue #976)" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            listEndpoint(
+                "/walk/list", "Cursor-paged list.", outputRef = "Out", cursorPaged = true, clientShaped = true,
+                inputFields = { field("q", "A filter.") },
+            ) { _, _ -> ListPage.cursor(emptyList(), 0, null) }
+        }
+        val ep = m.endpoints.single()
+        ep.cursorPaged shouldBe true
+        // "More remain" is the same fact as carrying a next, so the flag declares it.
+        ep.hasMore shouldBe true
+        // Input, as validated: the endpoint's own field, then the framework's two.
+        val input = resolvedInput(m, "/walk/list")
+        input.properties.keys.toList() shouldContainExactly listOf("q", EP.limit, EP.after)
+        input.required shouldBe emptySet()
+        input.properties.getValue(EP.after).valueType.jsonType shouldBe SCT.string
+        // `?after=` is the first page, not a malformed cursor.
+        input.properties.getValue(EP.after).valueType.emptyIsAbsent shouldBe true
+        // Input, as the catalog shows it.
+        field(buildEndpointInputSchema(ep, m.defs), EP.after)[SCH.type] shouldBe SCT.string
+        // Output: `next` is declared and optional -- the last page has none -- and hasMore is required.
+        field(ep.outputSchema, EP.next)[SCH.type] shouldBe SCT.string
+        val required = ep.outputSchema[SCH.required].toJsonListOrEmpty()
+        required shouldNotContain EP.next
+        required shouldContain EP.hasMore
+        // The per-client copy shares the output schema and must take the same input.
+        val copy = buildClientEndpoints(cxt, m.endpoints, listOf("acme")).single()
+        copy.cursorPaged shouldBe true
+        resolveEndpointInputType(copy, parseSchemaTypes(m.defs))!!.properties.keys shouldContain EP.after
+    }
+
+    "an endpoint that is not cursor-paged has neither `after` nor `next`" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            listEndpoint("/plain/list", "Plain list.", outputRef = "Out", hasMore = true) { _, _ -> emptyList<Any?>() }
+        }
+        val ep = m.endpoints.single()
+        resolvedInput(m, "/plain/list").properties.keys shouldNotContain EP.after
+        props(buildEndpointInputSchema(ep, m.defs)).keys shouldNotContain EP.after
+        props(ep.outputSchema).keys shouldNotContain EP.next
+    }
+
+    "a cursor-paged endpoint needs a limit, and may not declare `after` itself" {
+        shouldThrow<KdrException> {
+            schemaModule(cxt, "api") {
+                type("Out") { type = SCT.kObject; property("n", "n") }
+                listEndpoint("/bad/list", "No limit.", outputRef = "Out", cursorPaged = true, noLimit = true) { _, _ -> null }
+            }
+        }.message!!.contains("no limit") shouldBe true
+        shouldThrow<KdrException> {
+            schemaModule(cxt, "api") {
+                type("Out") { type = SCT.kObject; property("n", "n") }
+                listEndpoint(
+                    "/bad/list", "Own after.", outputRef = "Out", cursorPaged = true,
+                    inputFields = { field(EP.after, "Mine.") },
+                ) { _, _ -> null }
+            }
+        }.message!!.contains(EP.after) shouldBe true
+    }
+
+    "the executor sends a cursor-paged page's next, and faults a handler that breaks the contract" {
+        val m = schemaModule(cxt, "api") {
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            listEndpoint("/walk", "Cursor-paged.", outputRef = "Out", cursorPaged = true) { _, _ -> null }
+            listEndpoint("/plain", "Plain.", outputRef = "Out", hasMore = true) { _, _ -> null }
+        }
+        val walk = m.endpoints.single { it.path == "/walk" }
+        val plain = m.endpoints.single { it.path == "/plain" }
+        val more = ListPage.cursor(listOf(mapOf("n" to "a")), 5, "tok")
+        more.hasMore shouldBe true
+        listNextOf(walk, more, more) shouldBe "tok"
+        val last = ListPage.cursor(emptyList(), 5, null)
+        last.hasMore shouldBe false
+        listNextOf(walk, last, last) shouldBe null
+        // A plain list cannot say where the next page starts.
+        shouldThrow<KdrException> { listNextOf(walk, listOf(1), null) }.message!!.contains("ListPage") shouldBe true
+        // hasMore and next are one fact; a page built by hand that says otherwise is refused, either way round.
+        val lying = ListPage(emptyList(), 5, hasMore = true)
+        shouldThrow<KdrException> { listNextOf(walk, lying, lying) }
+        val lying2 = ListPage(emptyList(), 5, hasMore = false, next = "tok")
+        shouldThrow<KdrException> { listNextOf(walk, lying2, lying2) }
+        // An endpoint that never declared a cursor must not send one; without one it sends nothing.
+        shouldThrow<KdrException> { listNextOf(plain, more, more) }
+        val ordinary = ListPage(emptyList(), 5, hasMore = true)
+        listNextOf(plain, ordinary, ordinary) shouldBe null
+        listNextOf(plain, listOf(1), null) shouldBe null
     }
 
     "an endpoint can declare explicit input fields instead of a named type" {

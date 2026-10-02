@@ -111,5 +111,7 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         hasNumAvailable = endpoint.hasNumAvailable,
         // And the summary (issue #791), for the same reason: the shared output schema declares it.
         summaryRef = endpoint.summaryRef,
+        // And cursor paging (issue #976): the copy shares the output's `next` and must take `after` as input.
+        cursorPaged = endpoint.cursorPaged,
     )
 }

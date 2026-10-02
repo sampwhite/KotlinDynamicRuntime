@@ -201,6 +201,13 @@ object EP {
     /** A list endpoint's facts about its whole scoped set, beside [items] (issue #791); only when declared. */
     const val summary = "summary"
 
+    /**
+     * Output, cursor-paged list endpoints (issue #976): the value to send back as [after] for the next page. Absent
+     * when this page was the last, which is how an automated walk knows to stop. Opaque: a caller passes it back and
+     * never reads or builds one.
+     */
+    const val next = "next"
+
     // Output result wrappers, by endpoint kind.
     const val results = "results" // general endpoints: always a map object
     const val item = "item" // single-resource endpoints
@@ -280,6 +287,12 @@ object EP {
 
     /** Input, list endpoints: how many items to skip before the page (paging). Defaults to 0. */
     const val offset = "offset"
+
+    /**
+     * Input, cursor-paged list endpoints (issue #976): the [next] value of the previous page, or absent for the
+     * first. The alternative to [offset] for a walk that has to stay right while the set changes under it.
+     */
+    const val after = "after"
 
     // Off-contract keys (underscore-prefixed): allowed regardless of additionalProperties, kept in data.
     const val debug = "_debug" // request: comma-separated debug tags -> KdrCxt.debug

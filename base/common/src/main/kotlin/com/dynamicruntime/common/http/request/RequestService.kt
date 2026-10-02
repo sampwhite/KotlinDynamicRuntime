@@ -715,6 +715,8 @@ class RequestService : ServiceInitializer {
                 if (endpoint.hasMore) {
                     env[EP.hasMore] = page?.hasMore ?: trimmed
                 }
+                // The cursor (issue #976), on a cursor-paged listing's every page but its last.
+                listNextOf(endpoint, inner, page)?.let { env[EP.next] = it }
                 // A summary (issue #791) is sent when the handler supplies one -- it may cost a pass over everything
                 // the caller can see, so a handler computes it only when asked. One the output never declared is a
                 // fault in the handler, not something to send off-contract.
@@ -836,6 +838,34 @@ fun listSummaryOf(endpoint: KdrEndpoint, page: ListPage?): Map<String, Any?>? {
         throw KdrException("List endpoint '${endpoint.path}' returned a summary its output does not declare.")
     }
     return summary
+}
+
+/**
+ * The `next` cursor a list response sends (issue #976), or null on the last page. A cursor-paged endpoint's handler
+ * has to return a [ListPage] -- the executor trims a plain list but cannot say where the next page starts -- and an
+ * endpoint that is not cursor-paged must not send a cursor its output never declared. Either is a fault in the
+ * handler, as an undeclared summary is ([listSummaryOf]).
+ */
+fun listNextOf(endpoint: KdrEndpoint, inner: Any?, page: ListPage?): String? {
+    if (endpoint.cursorPaged) {
+        if (page == null) {
+            throw KdrException(
+                "List endpoint '${endpoint.path}' is cursor-paged and returned ${inner?.let { it::class.simpleName } ?: "nothing"}; " +
+                    "it has to return a ListPage (ListPage.cursor), which carries the next cursor.",
+            )
+        }
+        if (page.hasMore != (page.next != null)) {
+            throw KdrException(
+                "List endpoint '${endpoint.path}' returned hasMore=${page.hasMore} " +
+                    "${if (page.next == null) "without" else "with"} a next cursor; on a cursor-paged listing the two are one fact.",
+            )
+        }
+        return page.next
+    }
+    if (page?.next != null) {
+        throw KdrException("List endpoint '${endpoint.path}' returned a next cursor its output does not declare.")
+    }
+    return null
 }
 
 /**

@@ -12,6 +12,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -184,6 +185,53 @@ class EndpointSkillExamplesTest : StringSpec({
     "the file endpoints' methods default as documented" {
         endpoint(fileExample(), "/file/upload").method shouldBe HttpMethod.POST
         endpoint(fileExample(), "/file/download").method shouldBe HttpMethod.GET
+    }
+
+    // --- the Cursor paging section ------------------------------------------------------------------------
+
+    // Transcribed from the skill's "Cursor paging" section, over a stand-in `Thing` and its sorted list.
+    class Thing(val id: String) {
+        fun toJsonMap(): Map<String, Any?> = mapOf("id" to id)
+    }
+    val sortedThings = listOf(Thing("a"), Thing("b"), Thing("c"))
+    val queryId = "things"
+
+    fun cursorExample(): SchModule = schemaModule(cxt, "thing") {
+        type("Thing") { type = SCT.kObject; property("id", "The thing's id.") }
+
+        listEndpoint("/thing/list", "Every thing, in id order.", outputRef = "Thing", cursorPaged = true) { _, request ->
+            val after = CursorToken.keyOf(request[EP.after].toOptStr(), queryId)?.firstOrNull() as? String
+            val slice = cursorSlice(sortedThings, after, (request[EP.limit] as Number).toInt(), { it.id }, naturalOrder())
+            val next = if (slice.hasMore) CursorToken.encode(queryId, listOf(slice.items.last().id)) else null
+            ListPage.cursor(slice.items.map { it.toJsonMap() }, slice.numAvailable, next)
+        }
+    }
+
+    // "The framework then adds an `after` input beside `limit`, declares an optional `next` in the output, and
+    // declares `hasMore`."
+    "a cursor-paged listing takes after, and declares next and hasMore" {
+        val m = cursorExample()
+        val ep = endpoint(m, "/thing/list")
+        val input = resolveEndpointInputType(ep, parseSchemaTypes(m.defs))!!
+        input.properties.keys shouldContain EP.after
+        input.properties.keys shouldContain EP.limit
+        val out = ep.outputSchema[SCH.properties].toJsonMapOrEmpty()
+        out.keys shouldContain EP.next
+        out.keys shouldContain EP.hasMore
+    }
+
+    // "The caller sends each page's `next` back as `after` and stops when a page has none."
+    "the skill's handler walks its list to the end by next" {
+        val handler = endpoint(cursorExample(), "/thing/list").handler
+        val seen = mutableListOf<Any?>()
+        var after: String? = null
+        while (true) {
+            val page = handler(cxt, mapOf(EP.limit to 2, EP.after to after)) as ListPage
+            seen.addAll(page.items.map { it.toJsonMapOrEmpty()["id"] })
+            page.hasMore shouldBe (page.next != null)
+            after = page.next ?: break
+        }
+        seen shouldBe listOf("a", "b", "c")
     }
 
     // Transcribed from the skill's options-provider example.

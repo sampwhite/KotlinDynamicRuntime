@@ -79,7 +79,7 @@ Every JSON output also carries `requestUri` (String) and `duration` (number, ms)
 - **`generalEndpoint`** → result under **`results`** (a map object).
 - **`itemEndpoint`** → single resource under **`item`**; also takes `clientShaped`.
 - **`listEndpoint`** → payload list under **`items`**, with `numItems`; options `hasMore`,
-  `hasNumAvailable`, `noLimit`, `clientShaped`. Method **defaults to `GET`**, and note the parameter order
+  `hasNumAvailable`, `noLimit`, `clientShaped`, `cursorPaged`. Method **defaults to `GET`**, and note the parameter order
   differs: `(path, description, outputRef, method = GET, …)` against general/item's
   `(path, description, method, outputRef, …)`. See *List paging* below for `numAvailable` (on by default when
   there is a `limit`) and how a handler reports the total.
@@ -230,6 +230,39 @@ Two ways a handler supplies it, and **usually you write neither**:
   SQL query, or the table cache): the page's own values are authoritative and the executor passes them through
   verbatim. Reach for this when materializing the whole set to count it is the wrong cost; otherwise prefer the
   plain list.
+
+## Cursor paging: `after` in, `next` out (issue #976)
+
+A listing somebody walks to the end -- a report, an export, anything a script pages through -- declares
+`cursorPaged = true`. The framework then adds an **`after`** input beside `limit`, declares an optional **`next`**
+in the output, and declares `hasMore`. The caller sends each page's `next` back as `after` and stops when a page
+has none.
+
+```kotlin
+listEndpoint("/thing/list", "Every thing, in id order.", outputRef = "Thing", cursorPaged = true) { _, request ->
+    val after = CursorToken.keyOf(request[EP.after].toOptStr(), queryId)?.firstOrNull() as? String
+    val slice = cursorSlice(sortedThings, after, (request[EP.limit] as Number).toInt(), { it.id }, naturalOrder())
+    val next = if (slice.hasMore) CursorToken.encode(queryId, listOf(slice.items.last().id)) else null
+    ListPage.cursor(slice.items.map { it.toJsonMap() }, slice.numAvailable, next)
+}
+```
+
+- **Return `ListPage.cursor(items, numAvailable, next)`.** It sets `hasMore` from whether there is a `next`, so the
+  two cannot disagree. A plain `List` from a cursor-paged handler is a fault: the executor can trim a list but
+  cannot say where the next page starts.
+- **`cursorSlice(sorted, afterKey, limit, keyOf, cmp)`** (kernel, pure) cuts the page: the first `limit` items whose
+  key is *greater than* `afterKey`. So a walk resumes correctly even when the item the last page ended on is gone.
+  A `limit` below 1 is a 400.
+- **`CursorToken`** builds and reads the opaque token. `encode(queryId, key)` takes the sort key of the page's last
+  item; `keyOf(token, queryId)` gives it back, null for the first page, and a **400** for a malformed token or one
+  that belongs to a different query. `queryId` is whatever makes the query the same query -- the listing, and any
+  input that changes the set or its order.
+- **The order must be total and its key must never change for an item.** An id qualifies. A last-updated date or a
+  count does not: an edit moves the item across the cursor, and the walk skips it or returns it twice. That is the
+  whole reason to page by cursor, so an endpoint ordered by something mutable should stay on `offset`.
+- `cursorPaged` cannot be combined with `noLimit`, and the endpoint must not declare an `after` field of its own.
+  A listing whose input names come from configuration (the forms listing's trait search) has to reserve `after`
+  before turning cursor-paged.
 
 ## List summary: facts about the whole set (issue #791)
 

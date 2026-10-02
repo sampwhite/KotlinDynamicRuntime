@@ -48,7 +48,23 @@ class ListPage(
      * over the whole set and a handler computes it only when asked; refused on an endpoint that declared none.
      */
     val summary: Map<String, Any?>? = null,
-)
+    /**
+     * The cursor for the page after this one (issue #976), for an endpoint declared `cursorPaged`: what the caller
+     * sends back as `after`. Null when this page was the last. Refused on an endpoint that is not cursor-paged, and
+     * built with [cursor] rather than by hand, so `hasMore` cannot come to disagree with it.
+     */
+    val next: String? = null,
+) {
+    companion object {
+        /**
+         * A page of a **cursor-paged** listing (issue #976): [next] is the token for the following page, or null on
+         * the last, and "more remain" is exactly "there is a next". See `cursorSlice` for cutting the page and
+         * `CursorToken` for building the token.
+         */
+        fun cursor(items: List<Any?>, numAvailable: Int, next: String?, summary: Map<String, Any?>? = null): ListPage =
+            ListPage(items, numAvailable, hasMore = next != null, summary = summary, next = next)
+    }
+}
 
 /**
  * One declared input field of an endpoint -- the explicit-fields alternative to referencing a named input
@@ -172,6 +188,13 @@ class KdrEndpoint(
      * carries -- so the handler returns a [ListPage] with its [ListPage.summary] set.
      */
     val summaryRef: String? = null,
+    /**
+     * (List endpoints only.) Whether the listing pages by **cursor** (issue #976): its input takes `after`, its
+     * output may carry `next`, and its handler returns [ListPage.cursor]. The alternative to an offset for a walk
+     * that must return each item once while the set changes -- which holds only if the handler orders by a key
+     * that never changes for an item (see `cursorSlice`).
+     */
+    val cursorPaged: Boolean = false,
 ) {
     init {
         if (inputFields != null && inputTypeRef != null) {
@@ -395,17 +418,35 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
          * [ListPage]. See [KdrEndpoint.summaryRef].
          */
         summaryRef: String? = null,
+        /**
+         * Pages by cursor (issue #976): adds the `after` input and the `next` output, and declares `hasMore`. The
+         * handler returns [ListPage.cursor]. See [KdrEndpoint.cursorPaged] for what the handler's order must hold to.
+         *
+         * A reserved input name comes with it: `after`. A listing whose input takes names from configuration (the
+         * forms listing's trait search) has to reserve it before turning cursor-paged, as it reserves `limit`.
+         */
+        cursorPaged: Boolean = false,
         handler: KdrEndpointHandler,
     ) {
+        if (cursorPaged && noLimit) {
+            throw KdrException("List endpoint '$path' is cursor-paged and has no limit; a cursor pages by a page size.")
+        }
         // Default numAvailable on when there is a `limit` to trim by; a caller can still force it either way.
         val reportsNumAvailable = hasNumAvailable ?: !noLimit
-        val output = listOutput(outputRef, hasMore, reportsNumAvailable, summaryRef)
+        // A cursor-paged listing always says whether more remain: it is the same fact as carrying a `next`.
+        val reportsHasMore = hasMore || cursorPaged
+        val output = listOutput(outputRef, reportsHasMore, reportsNumAvailable, summaryRef, cursorPaged)
         val (fields, typeRef) = captureInput(inputRef, inputFields)
+        if (cursorPaged && fields?.any { it.name == EP.after } == true) {
+            throw KdrException(
+                "List endpoint '$path' is cursor-paged and declares its own '${EP.after}' field; the framework adds it.",
+            )
+        }
         endpoints.add(
             KdrEndpoint(path, method, EndpointKind.list, namespace, description, fields, typeRef, !noLimit, output,
                 forTestingOnly, handler, publicApi = publicApi, tags = tags, clientShaped = clientShaped,
-                needsClientConfig = needsClientConfig, hasMore = hasMore, hasNumAvailable = reportsNumAvailable,
-                summaryRef = summaryRef),
+                needsClientConfig = needsClientConfig, hasMore = reportsHasMore, hasNumAvailable = reportsNumAvailable,
+                summaryRef = summaryRef, cursorPaged = cursorPaged),
         )
     }
 
@@ -543,7 +584,13 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
      * whole scoped set, then the `items` list.
      */
     @KdrPrivate
-    fun listOutput(outputRef: String, hasMore: Boolean, hasNumAvailable: Boolean, summaryRef: String? = null): Map<String, Any?> {
+    fun listOutput(
+        outputRef: String,
+        hasMore: Boolean,
+        hasNumAvailable: Boolean,
+        summaryRef: String? = null,
+        cursorPaged: Boolean = false,
+    ): Map<String, Any?> {
         val b = newObject()
         b.property(EP.numItems, "Number of items returned.", required = true) { type = SCT.integer }
         b.addProtocolMeta()
@@ -556,6 +603,9 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
             b.property(EP.numAvailable, "The total number of items available to be returned.", required = true) {
                 type = SCT.integer
             }
+        }
+        if (cursorPaged) {
+            b.property(EP.next, CUR.nextDescription)
         }
         if (summaryRef != null) {
             b.property(EP.summary, "Facts about everything the query could return, not only this page; sent when the handler computed one.") {
@@ -588,7 +638,8 @@ fun schemaModule(
  * declaration forms converge here: an [KdrEndpoint.inputTypeRef] contributes the referenced type's top-level
  * properties; explicit [KdrEndpoint.inputFields] are parsed into properties (so any `$ref` inside a field
  * resolves against [types]); no declaration contributes nothing. To that base, a `limit` field is appended
- * for a list endpoint with [KdrEndpoint.includeLimit], and the result is always closed to undeclared
+ * for a list endpoint with [KdrEndpoint.includeLimit], and an `after` field for one that is
+ * [KdrEndpoint.cursorPaged] (issue #976), and the result is always closed to undeclared
  * properties (`additionalProperties = false`) -- off-contract `_`/`$` keys stay exempt (see the validator).
  *
  * The referenced type in [types] is never mutated: a fresh object type is built wrapping its (shared,
@@ -604,6 +655,9 @@ fun resolveEndpointInputType(endpoint: KdrEndpoint, types: Map<String, SchType>)
     val props = LinkedHashMap(base.properties)
     if (endpoint.includeLimit) {
         props[EP.limit] = limitInputProperty
+    }
+    if (endpoint.cursorPaged) {
+        props[EP.after] = afterInputProperty
     }
     return inputObjectType("${endpoint.path}#input", props, base.required)
 }
@@ -692,6 +746,39 @@ val limitInputProperty: SchProperty =
         )
     }
 
+/**
+ * The `after` field appended to a cursor-paged list endpoint's input during resolution (issue #976): a single
+ * shared, immutable property, as [limitInputProperty] is.
+ */
+@KdrPrivate
+val afterInputProperty: SchProperty =
+    SchProperty(EP.after, CUR.afterDescription, refName = null).also {
+        it.valueType = SchType(
+            name = null,
+            jsonType = SCT.string,
+            allowCoerce = false,
+            // `?after=` reads as no cursor, which is the first page -- what a caller with nothing to send means.
+            emptyIsAbsent = true,
+            format = null,
+            title = null,
+            description = CUR.afterDescription,
+            properties = emptyMap(),
+            required = emptySet(),
+            additionalProperties = false,
+            itemType = null,
+            options = null,
+            openOptions = false,
+            constValue = null,
+            derived = false,
+            variants = null,
+            condition = null,
+            default = null,
+            errorMessages = emptyMap(),
+            minBound = null,
+            maxBound = null,
+        )
+    }
+
 // --- /schema/endpoints catalog: render endpoints with $refs intact, plus a shared $defs bag -------------
 
 /**
@@ -716,7 +803,8 @@ fun renderEndpoint(endpoint: KdrEndpoint, defs: Map<String, Any?>): Map<String, 
 /**
  * Builds an endpoint's flat input schema as a JSON map with `$ref`s left intact: the declared fields (for an
  * [KdrEndpoint.inputFields] endpoint) or the referenced type's top-level property nodes copied verbatim (for
- * an [KdrEndpoint.inputTypeRef] endpoint), plus an appended `limit` for a list endpoint, closed to undeclared
+ * an [KdrEndpoint.inputTypeRef] endpoint), plus an appended `limit` for a list endpoint and `after` for a
+ * cursor-paged one, closed to undeclared
  * properties. A field whose value is a `$ref` keeps it; the ref binds to the catalog's `$defs`. The referenced
  * type's own nodes are read-only (shared into the result), never mutated.
  */
@@ -754,6 +842,9 @@ fun buildEndpointInputSchema(endpoint: KdrEndpoint, defs: Map<String, Any?>): Ma
             SCH.type to SCT.integer,
             SCH.default to defaultListLimit,
         )
+    }
+    if (endpoint.cursorPaged) {
+        properties[EP.after] = linkedMapOf(SCH.description to CUR.afterDescription, SCH.type to SCT.string)
     }
     val schema = linkedMapOf<String, Any?>(SCH.type to SCT.kObject, SCH.additionalProperties to false)
     if (properties.isNotEmpty()) schema[SCH.properties] = properties
