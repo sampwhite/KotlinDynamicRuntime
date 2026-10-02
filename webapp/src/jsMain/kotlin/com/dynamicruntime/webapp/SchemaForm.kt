@@ -46,6 +46,7 @@ import react.dom.html.ReactHTML.textarea
 import react.dom.html.ReactHTML.th
 import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
+import react.use
 import react.useEffect
 import web.cssom.ClassName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -139,6 +140,12 @@ class FormOpts(
      * form. Purely presentational; nothing about the element's editing changes.
      */
     val elementNote: (path: String, element: Map<String, Any?>) -> String? = { _, _ -> null },
+    /**
+     * Design View (issue #972): the session that marks this form's fields and draws the ones it hides as ghosts, or
+     * null -- no Design View, and the form draws exactly as it otherwise would. Set from [DesignViewContext], which
+     * only the workflow form provides, so no other surface is ever marked.
+     */
+    val design: DesignSession? = null,
 ) {
     /**
      * Whether a derived field at [path] holding [value] should be shown read-only rather than hidden (issue
@@ -519,6 +526,7 @@ val SchemaForm = FC<SchemaFormProps> { props ->
         derivedRootIsTraitData = props.derivedRootIsTraitData == true,
         traitDataField = props.traitDataField,
         elementNote = props.elementNote ?: { _, _ -> null },
+        design = use(DesignViewContext),
     )
     div {
         // `friendly` on the root lets the stylesheet give a data-entry / read form's field groups room to breathe
@@ -659,46 +667,22 @@ private fun ChildrenBuilder.renderProperties(
         }
     }
 
-    // The field order and candidate set come from the kernel seam (issue #777): schema order under an overlay
-    // layout (the default), the layout's order/membership under `reorder`/`authoritative`. The per-field gates
-    // below still run on top, so the layout narrows and orders but never widens past what the schema shows.
-    orderedFieldNames(type, type.name?.let { opts.fieldLayouts[it] }).forEach { name ->
-        val prop = type.properties[name] ?: return@forEach
-        if (name == skip || name in hideFields) {
-            return@forEach
-        }
-        // A field the form was told to omit, only at the root: an advanced flag an end-user form should not
-        // offer (issue #408). A same-named field deeper in the tree is a different field and stays.
-        if (path.isEmpty() && name in opts.omit) {
-            return@forEach
-        }
-        // In friendly mode a derived value is not shown at all -- it is produced by something other than the
-        // person at the form (an id, the source, the audit stamps), so it has no place on a data-entry screen.
-        // The catalog does the opposite and shows it read-only, because that surface documents the wire.
-        //
-        // The exception (issue #712): a read-only friendly form that opts in shows a derived *content* value that
-        // holds one -- an expense report's total, computed on read -- read-only, while a derived *envelope* field
-        // (an id, an entry's audit stamps) stays hidden. `revealsDerivedAt` draws that content/envelope line
-        // structurally, from the field's path. The render path below already draws a shown field read-only and
-        // never marks it required, so letting it fall through is all that is needed.
-        if (opts.friendly && prop.valueType.derived) {
-            if (!opts.revealsDerivedAt(childPath(path, name), editable, values[name])) {
-                return@forEach
+    // Which fields to draw, in what order, and why any are left out (issue #972): one decision, made by
+    // [formFieldPlan], which both presentations follow -- the ordinary form skips a field it hides, and Design View
+    // draws the same field as a ghost saying why. Two views computed apart would drift, and Design View would then
+    // misrepresent the very form it exists to explain.
+    formFieldPlan(type, values, path, editable, forbidden, opts, skip, hideFields).forEach { planned ->
+        val name = planned.name
+        val prop = planned.prop
+        planned.hidden?.let { why ->
+            if (opts.design?.showHidden == true) {
+                designMarked(type, path, name, prop, why, opts) {
+                    renderField(
+                        name, prop, false, values[name], seen, false, childPath(path, name), errors,
+                        emit = {}, omit = {}, opts = opts, copy = layoutCopy(type, name, values, opts),
+                    )
+                }
             }
-        }
-        // A field gated by g-visibleWhen (issue #564) is hidden when the caller's cfacts fail its expression --
-        // but only in an *editable* form, where the caller would be entering a value. A read-only render (the
-        // catalog documenting the wire, a stored form on display) shows the field regardless, and so does a form
-        // that supplies no cfacts. This is presentation, not access control: for trait data the backend neither
-        // refuses a gated value on write nor withholds it on read, so hiding the box is the whole of the gate.
-        // (An endpoint input may be enforced by its own handler -- the admin-only list filters are.)
-        if (editable) {
-            prop.visibleWhen?.let { if (!opts.gateAllows(it)) return@forEach }
-        }
-        // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide
-        // its failure too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown,
-        // it carries its own "not allowed" message and can be emptied.
-        if (name in forbidden && isBlankValue(values[name])) {
             return@forEach
         }
         // A derived value is produced by something other than whoever is filling this in (issue #254), so it
@@ -713,28 +697,133 @@ private fun ChildrenBuilder.renderProperties(
         // The layout's copy override for this field (issue #586), resolved against the object's own values;
         // null elements fall through to the schema's title/description at the render site.
         val copy = layoutCopy(type, name, values, opts)
-        renderField(
-            // Never marked required, derived: the asterisk means "you must supply this", and a field with no
-            // control is not something anybody can supply. It is required of the *stored* shape, which the
-            // response demonstrates by carrying it.
-            name, prop,
-            (name in type.required || name in alsoRequired) && !prop.valueType.derived,
-            values[name], seen,
-            editable && !prop.valueType.derived,
-            childPath(path, name), errors,
-            // A removal has to drop the key, not null it: a null against an object/array type fails the plain
-            // type check (they do not coerce), so "removed" would read as "present but wrong".
-            emit = { newValue -> onChange(settle(values + (name to newValue), name)) },
-            omit = { onChange(settle(values - name, name)) },
-            opts = opts,
-            copy = copy,
-            // A keyed object property whose keys were promoted above hides them within itself (issue #642).
-            hideFields = promoted[name]?.toSet() ?: emptySet(),
-            // A supplied default is presented at the top level only (issue #710) -- the presenting decision is
-            // the trait's, and a same-named field one level down is a different field, like `omit` above.
-            prefill = if (path.isEmpty()) opts.prefill[name] else null,
-        )
+        designMarked(type, path, name, prop, null, opts) {
+            renderField(
+                // Never marked required, derived: the asterisk means "you must supply this", and a field with no
+                // control is not something anybody can supply. It is required of the *stored* shape, which the
+                // response demonstrates by carrying it.
+                name, prop,
+                (name in type.required || name in alsoRequired) && !prop.valueType.derived,
+                values[name], seen,
+                editable && !prop.valueType.derived,
+                childPath(path, name), errors,
+                // A removal has to drop the key, not null it: a null against an object/array type fails the plain
+                // type check (they do not coerce), so "removed" would read as "present but wrong".
+                emit = { newValue -> onChange(settle(values + (name to newValue), name)) },
+                omit = { onChange(settle(values - name, name)) },
+                opts = opts,
+                copy = copy,
+                // A keyed object property whose keys were promoted above hides them within itself (issue #642).
+                hideFields = promoted[name]?.toSet() ?: emptySet(),
+                // A supplied default is presented at the top level only (issue #710) -- the presenting decision is
+                // the trait's, and a same-named field one level down is a different field, like `omit` above.
+                prefill = if (path.isEmpty()) opts.prefill[name] else null,
+            )
+        }
     }
+}
+
+/** One field of an object's form, in drawing order, and -- when the form leaves it out -- why (issue #972). */
+class PlannedField(val name: String, val prop: SchProperty, val hidden: FieldHidden?)
+
+/**
+ * The fields of [type] an object's form considers, in order, each with the reason it is left out or null when it is
+ * drawn (issue #972). The one decision both presentations follow: the ordinary form draws the fields with no reason,
+ * and Design View additionally draws the rest as ghosts saying why -- so "the ordinary form is Design View minus its
+ * ghosts" holds by construction, and a `jsNodeTest` pins it.
+ *
+ * The order and candidate set come from the kernel seam (issue #777): schema order under an overlay layout (the
+ * default), the layout's order and membership under `reorder`/`authoritative`. A field an authoritative layout
+ * leaves out follows at the end as [FieldHidden.notInLayout]. [skip] (a union's discriminator) and [hideFields] (a
+ * promoted primary key) are not hidden but drawn elsewhere, so they are not planned here at all.
+ */
+fun formFieldPlan(
+    type: SchType,
+    values: Map<String, Any?>,
+    path: String,
+    editable: Boolean,
+    forbidden: Set<String>,
+    opts: FormOpts,
+    skip: String? = null,
+    hideFields: Set<String> = emptySet(),
+): List<PlannedField> {
+    val ordered = orderedFieldNames(type, type.name?.let { opts.fieldLayouts[it] })
+    val drawnElsewhere = hideFields + listOfNotNull(skip)
+    val considered = ordered.filter { it !in drawnElsewhere }.mapNotNull { name ->
+        type.properties[name]?.let { PlannedField(name, it, fieldHiddenReason(name, it, path, values, editable, forbidden, opts)) }
+    }
+    val leftOut = type.properties.filterKeys { it !in ordered && it !in drawnElsewhere }
+        .map { (name, prop) -> PlannedField(name, prop, FieldHidden.notInLayout) }
+    return considered + leftOut
+}
+
+/**
+ * Why an object's form leaves field [name] out, or null when it draws it (issue #972); see [formFieldPlan]. The
+ * per-field gates, which run on top of the layout's order and membership, so a layout narrows and orders but never
+ * widens past what the schema shows.
+ */
+fun fieldHiddenReason(
+    name: String,
+    prop: SchProperty,
+    path: String,
+    values: Map<String, Any?>,
+    editable: Boolean,
+    forbidden: Set<String>,
+    opts: FormOpts,
+): FieldHidden? = when {
+    // A field the form was told to omit, only at the root: an advanced flag an end-user form should not offer (issue
+    // #408). A same-named field deeper in the tree is a different field and stays.
+    path.isEmpty() && name in opts.omit -> FieldHidden.omitted
+    // In friendly mode a derived value is not shown at all -- it is produced by something other than the person at
+    // the form (an id, the source, the audit stamps), so it has no place on a data-entry screen. The catalog does the
+    // opposite and shows it read-only, because that surface documents the wire.
+    //
+    // The exception (issue #712): a read-only friendly form that opts in shows a derived *content* value that holds
+    // one -- an expense report's total, computed on read -- read-only, while a derived *envelope* field (an id, an
+    // entry's audit stamps) stays hidden. `revealsDerivedAt` draws that content/envelope line structurally, from the
+    // field's path. The render path already draws a shown derived field read-only and never marks it required.
+    opts.friendly && prop.valueType.derived && !opts.revealsDerivedAt(childPath(path, name), editable, values[name]) ->
+        FieldHidden.derived
+    // A field gated by g-visibleWhen (issue #564) is hidden when the caller's cfacts fail its expression -- but only in
+    // an *editable* form, where the caller would be entering a value. A read-only render (the catalog documenting the
+    // wire, a stored form on display) shows the field regardless, and so does a form that supplies no cfacts. This is
+    // presentation, not access control: for trait data the backend neither refuses a gated value on write nor
+    // withholds it on read, so hiding the box is the whole of the gate. (An endpoint input may be enforced by its own
+    // handler -- the admin-only list filters are.)
+    editable && prop.visibleWhen?.let { !opts.gateAllows(it) } == true -> FieldHidden.notForViewer
+    // A forbidden field is hidden -- unless it still holds something, in which case hiding it would hide its failure
+    // too, leaving a complaint about a field with nowhere to go and no way to clear it. Shown, it carries its own "not
+    // allowed" message and can be emptied.
+    name in forbidden && isBlankValue(values[name]) -> FieldHidden.forbidden
+    else -> null
+}
+
+/**
+ * Draws [content] -- one field of [type] at [path] -- marked for Design View (issue #972): outlined, carrying its
+ * name as a badge, and selectable into the inspector; a [hidden] field is drawn as a ghost with its reason. Without
+ * a Design View session (or outside a trait, which a workflow form always supplies) it draws [content] alone, so an
+ * ordinary form is untouched.
+ */
+private fun ChildrenBuilder.designMarked(
+    type: SchType,
+    path: String,
+    name: String,
+    prop: SchProperty,
+    hidden: FieldHidden?,
+    opts: FormOpts,
+    content: ChildrenBuilder.() -> Unit,
+) {
+    val session = opts.design
+    val trait = session?.trait
+    if (session == null || trait == null) {
+        content()
+        return
+    }
+    val target = DesignTarget.Field(
+        trait, childPath(path, name), name, prop, name in type.required,
+        type.name?.let { opts.fieldLayouts[it] }?.fieldFor(name), hidden,
+    )
+    designTargetFrame(session, target, name, ghostReason = hidden?.reason, content = content)
 }
 
 /**

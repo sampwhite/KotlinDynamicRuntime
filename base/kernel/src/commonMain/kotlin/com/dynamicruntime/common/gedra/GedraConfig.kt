@@ -342,6 +342,11 @@ class GedraConfigBuilder(
      *
      * The layer is stamped with this config's client and id, so a fragment report can say *which* config set a
      * value rather than only that something did.
+     *
+     * **An overlay needs a base, which only a component declares.** A key no base declares is an orphan (reported,
+     * and refused by a config write's trial), and an overlay of a file no component declares has no base at all:
+     * its keys still resolve when pulled, but the fragment check reports the file as declared but absent and never
+     * checks the overlay's own content. So a client has no fragment file of its own today; this rewords shipped copy.
      */
     fun fragmentOverlay(fileId: String, build: FragmentMapBuilder.() -> Unit) {
         fragments.add(

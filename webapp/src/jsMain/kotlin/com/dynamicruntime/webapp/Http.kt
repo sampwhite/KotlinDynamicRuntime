@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.RID
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.jsonMapOrNull
@@ -60,29 +61,30 @@ fun debugRequestTags(): String = sessionStorageGet(debugTagsStorageKey)?.trim() 
 /** Persist the tags for this session; "" (or blank) clears them so no header is sent. */
 fun setDebugRequestTags(value: String) = sessionStorageSet(debugTagsStorageKey, value.trim())
 
-// `sessionStorage` throws in a private window or when site data is blocked. A debug convenience must never be
-// the thing that breaks a page, so a failure is caught and recovered from -- but it is *reported*, not
-// swallowed (webapp/CLAUDE.md): a quietly missing store is exactly the kind of thing a `[kdr]` console line
-// exists to make visible. The raw `js(...)` accessors let the JS exception reach a Kotlin `try`.
-private fun sessionStorageGet(key: String): String? =
+// `sessionStorage` throws in a private window or when site data is blocked. A session convenience -- the debug
+// tags, Design View's switch -- must never be the thing that breaks a page, so a failure is caught and recovered
+// from -- but it is *reported*, not swallowed (webapp/CLAUDE.md): a quietly missing store is exactly the kind of
+// thing a `[kdr]` console line exists to make visible. The raw `js(...)` accessors let the JS exception reach a Kotlin `try`.
+internal fun sessionStorageGet(key: String): String? =
     try {
         js("window.sessionStorage.getItem(key)") as? String
     } catch (e: Throwable) {
-        console.warn("$errorLogPrefix could not read debug tags from sessionStorage: ${e.message}")
+        console.warn("$errorLogPrefix could not read '$key' from sessionStorage: ${e.message}")
         null
     }
 
-private fun sessionStorageSet(key: String, value: String) {
+internal fun sessionStorageSet(key: String, value: String) {
     try {
         js("window.sessionStorage.setItem(key, value)")
     } catch (e: Throwable) {
-        console.warn("$errorLogPrefix could not persist debug tags to sessionStorage: ${e.message}")
+        console.warn("$errorLogPrefix could not persist '$key' to sessionStorage: ${e.message}")
     }
 }
 
 /**
  * Applies the headers every frontend request carries onto [headers]: the app id and a fresh trace id (issue
- * #105), and -- only while the session is in debug -- the env-debug operator's `_debug` tags (issue #517).
+ * #105); only while the session is in debug, the env-debug operator's `_debug` tags (issue #517); and the
+ * Design View request while the session has it on (issue #972).
  *
  * Shared so a caller that builds its own `fetch` (the endpoint catalog's `SchemaCatalogApi`) sends exactly what
  * [Http] does, rather than each request path deciding for itself which of these it remembers.
@@ -100,6 +102,9 @@ fun applyRequestHeaders(headers: dynamic): String {
         val debugTags = debugRequestTags()
         if (debugTags.isNotEmpty()) headers[EP.debugHeader] = debugTags
     }
+    // Design View (issue #972): asked for on every request while the session has it on. Unlike the debug tags it
+    // needs no flag of the shell's to send -- the backend honors it only for a client administrator.
+    if (designViewRequested()) headers[EP.viewHeader] = DSV.design
     return traceId
 }
 

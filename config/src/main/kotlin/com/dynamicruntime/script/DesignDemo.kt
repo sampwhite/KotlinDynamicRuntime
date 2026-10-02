@@ -27,13 +27,16 @@ import com.dynamicruntime.common.schema.layout
  * as the client's own, rather than ones compiled into a component.
  *
  * Its one form carries each case the inspector has to tell apart: copy written inline in a layout (label,
- * description, a bounds hint), a closed choice list, a field only an administrator sees (`g-visibleWhen`), a field
- * whose fields come from a shared named type (`schemaDef`), and -- beside it in the task -- the global `kdr:name`
- * trait, which no client edits in place.
+ * description, a bounds hint), a closed choice list, a field only an administrator sees and one only a requester
+ * sees (`g-visibleWhen` -- the second is a ghost to the administrator using Design View), a field asked only under
+ * one answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), and -- beside it in
+ * the task -- the global `kdr:name` trait, which no client edits in place.
  *
- * What it does not carry is copy pulled from a fragment. A client defined in data can only reword keys a shipped
- * fragment file already declares (a key it adds is an orphan, which the trial refuses), so it has no copy file of
- * its own to pull from. The sample's `acme`, declared in source, shows that case.
+ * What it does not carry is copy pulled from a fragment file of its own, because a client cannot yet declare one.
+ * Its stored configuration only *overlays* fragment files: a key it adds to a shipped file is an orphan, which the
+ * trial refuses, and an overlay of a file no component ships -- though its keys do resolve at render -- is reported
+ * by the fragment check as a declared-but-absent file, with its own content never checked. The sample's `acme`,
+ * declared in source, shows copy pulled from a shipped fragment file.
  */
 @Suppress("ConstPropertyName")
 object DesignDemo {
@@ -54,6 +57,8 @@ object DesignDemo {
     const val venue = "venue"
     const val budgetNote = "budgetNote"
     const val contact = "contact"
+    const val backupPlan = "backupPlan"
+    const val requesterNote = "requesterNote"
     const val contactName = "name"
     const val contactEmail = "email"
 }
@@ -105,11 +110,19 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt()): GedraConfig =
                 visibleWhen = CFACTS.hasAdminLevel
             }
             property(DesignDemo.contact, "Who to talk to.") { ref(DesignDemo.contactType) }
+            property(DesignDemo.backupPlan, "What happens if the weather turns.")
+            property(DesignDemo.requesterNote, "Anything the requester wants the organizers to know.") {
+                visibleWhen = "~${CFACTS.hasAdminLevel}"
+            }
+            // Asked only for an outdoor event -- so Design View shows it as a ghost until that venue is chosen.
+            presentWhen(DesignDemo.backupPlan, on = DesignDemo.venue, value = "outdoors")
             layout(label = "Event request") {
                 field(DesignDemo.title, label = "What is the event?", description = "A short name people will recognize.")
                 field(DesignDemo.attendees, label = "Expected attendees", hint = $$"Between ${min} and ${max} people.")
                 field(DesignDemo.venue, label = "Venue")
                 field(DesignDemo.budgetNote, label = "Budget note", description = "Only administrators see this field.")
+                field(DesignDemo.backupPlan, label = "Rain plan")
+                field(DesignDemo.requesterNote, label = "Anything else?", description = "Requesters see this; administrators do not.")
             }
         }
 

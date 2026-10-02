@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -184,6 +185,11 @@ class WorkflowView(
      * workflows may lock one trait; drawn read-only and left out of a save.
      */
     val lockedTraits: Map<String, List<TraitLock>> = emptyMap(),
+    /**
+     * The Design View block (issue #972): where the workflow and each type the page draws were declared. Present only
+     * when this caller asked for Design View and the backend honored it -- null on every ordinary view.
+     */
+    val design: WfDesign? = null,
 ) {
     /** A normal workflow (issue #791): one a form is put into, rather than the creation or the survey. */
     val isNormal: Boolean get() = entry == WfEntry.normal.name
@@ -297,6 +303,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         eligible = results[WVF.eligible] as? Boolean,
         lockedTraits = parseTraitLocks(results[WVF.lockedTraits]).groupBy { it.traitId },
         ineligibleReasons = results[WVF.ineligibleReasons].toJsonListOfStrings(),
+        design = parseWfDesign(results[DSV.designBlock]),
     )
 }
 

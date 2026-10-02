@@ -994,3 +994,132 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .wf-rail-item:disabled:hover { background: none; color: inherit; }
 .wf-display-text { margin: 4px 0 8px; }
 .wf-approval > .row { margin-top: 12px; }
+
+/* --- Design View (issue #972) ---------------------------------------------------------------------------------
+   An administrator's mode that marks each part of a workflow form with the definition behind it. Its own hue --
+   teal -- so it reads as neither the indigo accent (an action) nor the amber admin cue (a standing privilege): it is
+   a lens over the page, and the marks have to stay quiet enough that the form being looked at still reads as itself.
+   Outlines appear on hover, or all at once with "show all ids"; the page makes room for the inspector rather than
+   being covered by it. */
+:root {
+    --design: #2dd4bf;
+    --design-soft: rgba(45, 212, 191, .14);
+    --dv-panel-width: 380px;
+}
+
+.design-badge {
+    border-color: var(--border);
+    border-style: dashed;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+.design-badge.on {
+    border-style: solid;
+    border-color: var(--design);
+    background: var(--design-soft);
+    color: var(--design);
+}
+
+/* A selectable part of the page. The outline is drawn on the innermost part under the pointer only, so hovering a
+   field inside a section outlines the field and not the section around it as well. */
+.dv-target { position: relative; border-radius: 6px; outline: 1px dashed transparent; outline-offset: 3px;
+    transition: outline-color .12s ease; cursor: pointer; }
+.dv-target:hover:not(:has(.dv-target:hover)), .dv-target.dv-pinned { outline-color: rgba(45, 212, 191, .55); }
+.dv-target.dv-selected { outline: 2px solid var(--design); }
+/* Fields sit close together on a form; in Design View each gets a little air so outlines and badges do not collide. */
+.schema-form .dv-target { margin: 4px 0; }
+/* With every id shown, each outlined part takes more room inside and out: 3px of padding, so a part's children sit
+   clear of its own outline, and a couple of pixels more outside on every side -- every boundary, parents included --
+   so neighbouring outlines separate and a child stands off its parent's left and right walls too. A ghost keeps its
+   own, larger padding. */
+.dv-target.dv-pinned:not(.dv-ghost) { padding: 3px; }
+.dv-target.dv-pinned { margin: 11px 2px; }
+
+/* The badge naming the part: hidden until its part is hovered, focused or pinned, so the form keeps its own look. */
+.dv-badge {
+    position: absolute;
+    top: -10px;
+    right: 8px;
+    z-index: 2;
+    padding: 0 6px;
+    border: 1px solid var(--design);
+    border-radius: 8px;
+    background: var(--surface-page);
+    color: var(--design);
+    font: 600 10px/16px ui-monospace, SFMono-Regular, Menlo, monospace;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s ease;
+}
+.dv-target:hover:not(:has(.dv-target:hover)) > .dv-badge, .dv-pinned > .dv-badge, .dv-badge:focus-visible,
+.dv-selected > .dv-badge { opacity: 1; }
+.dv-selected > .dv-badge { background: var(--design); color: var(--surface-page); }
+
+/* A field the form leaves out, drawn only in Design View: hatched and dimmed, so it never reads as a disabled field
+   (which is greyed for real users) -- a ghost is something they do not see at all. */
+.dv-ghost {
+    margin: 6px 0;
+    padding: 4px 8px;
+    outline: 1px dashed var(--text-faint);
+    background-image: repeating-linear-gradient(135deg, rgba(148, 163, 184, .07) 0 6px, transparent 6px 12px);
+    opacity: .72;
+}
+.dv-ghost-reason { margin: 0 0 2px; color: var(--text-muted); font-size: 12px; font-style: italic; }
+
+/* Room for the inspector: the page narrows instead of sliding under the panel. */
+body.dv-open { --content-width: min(1400px, calc(95vw - var(--dv-panel-width))); }
+body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
+
+.dv-inspector {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 15;
+    width: var(--dv-panel-width);
+    padding: 76px 18px 24px;
+    overflow-y: auto;
+    background: var(--surface-raised);
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .3);
+    font-size: 13px;
+}
+.dv-inspector h2 { margin: 12px 0 8px; font-size: 18px; }
+.dv-inspector h3 { margin: 18px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.dv-inspector-head { display: flex; align-items: center; justify-content: space-between; }
+.dv-title { color: var(--design); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.dv-clear { border: 0; background: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
+.dv-clear:hover { color: var(--text); }
+.dv-switches { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
+.dv-fact { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 2px 0; }
+.dv-fact-name { color: var(--text-muted); }
+.dv-fact-value { overflow-wrap: anywhere; }
+.dv-inspector .mono, .dv-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.dv-address { margin: 0 0 6px; color: var(--text-dim); overflow-wrap: anywhere; }
+.dv-origin { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--text-dim); }
+.dv-pill { padding: 0 8px; border: 1px solid var(--border); border-radius: 10px; font-size: 11px; color: var(--text-muted); }
+.dv-pill-own { border-color: var(--design); color: var(--design); }
+.dv-note, .dv-caption { color: var(--text-muted); }
+.dv-caption { margin: 10px 0 4px; font-size: 12px; }
+.dv-callout { padding: 6px 10px; border-left: 3px solid var(--text-faint); background: rgba(148, 163, 184, .08); color: var(--text-dim); }
+.dv-json {
+    max-height: 320px;
+    margin: 0;
+    padding: 10px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-page);
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.dv-inspector details { margin-top: 12px; }
+.dv-inspector summary { cursor: pointer; color: var(--text-dim); }
+
+/* A narrow window cannot spare a column: the inspector becomes a sheet along the bottom instead. */
+@media (max-width: 900px) {
+    .dv-inspector { top: auto; left: 0; width: auto; height: 45vh; padding-top: 14px; border-left: 0;
+        border-top: 1px solid var(--border); }
+    body.dv-open { --content-width: min(1400px, 95vw); }
+    body.dv-open .app-content { padding-right: 16px; padding-bottom: calc(45vh + 16px); }
+}
