@@ -119,6 +119,13 @@ class KdrCxt(
     var debug: String? = null
 
     /**
+     * The view of a page the request asks for (issue #972) -- `DSV.design` for Design View -- from the off-contract
+     * `_view` request key or its `X-Kdr-View` header; null for the ordinary view. **A request, not a grant**: it is
+     * honored only for a caller entitled to it, which `DesignView.isOn` decides. Carried down to sub contexts.
+     */
+    var view: String? = null
+
+    /**
      * The client-supplied application id for this request (issue #105): the app plus its locale suffix, used
      * to select content. Null off a request or when the client sent none. Carried down to sub contexts.
      */
@@ -238,6 +245,7 @@ class KdrCxt(
         sub.envAuthSuppressed = envAuthSuppressed
         sub.envAuthDebug = envAuthDebug
         sub.debug = debug // debug tags travel with the request
+        sub.view = view // so does the requested view
         sub.appId = appId // request identity travels with the request...
         sub.traceId = traceId // ...so a sub context's log lines carry the same trace id
         sub.request = request // a sub context is part of the same request

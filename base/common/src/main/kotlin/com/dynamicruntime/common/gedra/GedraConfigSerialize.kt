@@ -127,7 +127,7 @@ private fun generatedTypeNames(config: GedraConfig): Set<String> {
  * trait's `dataSchema` is always a `$ref`; it points at the generated `<Name>Data` when the data was written
  * inline, and at a directly-declared type when the trait named one -- and only the first is generated.
  */
-private fun inlineDataTypeName(config: GedraConfig, trait: GedraTrait): String? {
+internal fun inlineDataTypeName(config: GedraConfig, trait: GedraTrait): String? {
     val generatedDataName = qualifyTypeName(traitDataTypeName(trait.typeName), config.namespace)
     val refTarget = (trait.dataSchema[SCH.dRef] as? String)?.let { refTargetName(it) }
     return generatedDataName.takeIf { it == refTarget }
@@ -137,7 +137,7 @@ private fun inlineDataTypeName(config: GedraConfig, trait: GedraTrait): String? 
  * One trait's stored declaration (issue #613): the DSL inputs, with `dataSchema` the data type's **body** when
  * the trait wrote it inline (so reassembly re-manufactures the type) or the `$ref` when it named a shared type.
  */
-private fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, Any?> = buildMap {
+internal fun traitToEntry(config: GedraConfig, trait: GedraTrait): Map<String, Any?> = buildMap {
     // The shared metadata projection (issue #702), then this path's config-only extras. `omitEmptyPrimaryKey`
     // keeps the stored form as lean as it was -- an empty key is left out rather than written as `[]`.
     putAll(trait.toMetadataMap(omitEmptyPrimaryKey = true))

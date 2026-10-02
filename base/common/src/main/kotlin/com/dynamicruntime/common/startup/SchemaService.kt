@@ -21,6 +21,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GU
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
@@ -760,6 +761,22 @@ class SchemaService : ServiceInitializer {
      * The collector is what the unions were built from, so this is the same set they select on.
      */
     fun gedraTraitsFor(client: String): List<GedraTrait> = collector?.gedraConfigs?.traitsFor(client) ?: emptyList()
+
+    /**
+     * The config declaring the data trait [traitId] as [client] sees it -- its own, else the global one -- or null
+     * (issue #972). What Design View reports a trait's provenance from.
+     */
+    fun configOfTrait(client: String, traitId: String): GedraConfig? =
+        collector?.gedraConfigs?.configOfTrait(client, traitId)
+
+    /**
+     * The config declaring the type [typeName] as [client] sees it -- the client's own (the last of its configs to
+     * declare it, the one its variant folds in last), else a global config -- or null when no config declares it,
+     * as for a type declared in a component's code (issue #972).
+     */
+    fun configOfType(client: String, typeName: String): GedraConfig? = collector?.gedraConfigs?.let {
+        it.contributorOf(client, typeName) ?: it.contributorOf(GID.globalClient, typeName)
+    }
 
     /** Whether [traitId] is a global data trait's id -- the same trait for every client (issue #807). */
     fun isGlobalTrait(traitId: String): Boolean = collector?.gedraConfigs?.isGlobalTrait(traitId) ?: false

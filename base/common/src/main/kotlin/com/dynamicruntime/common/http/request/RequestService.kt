@@ -476,6 +476,7 @@ class RequestService : ServiceInitializer {
         handler.sectionRules = sectionRulesMap[handler.section]
         handler.decodeRequestData()
         cxt.debug = handler.debug // the request's _debug tag, if any, rides on the context (and into logs)
+        cxt.view = handler.view // the requested view (issue #972); honored only where the caller is entitled to it
         // The request's client identity (appId, traceId -- issue #105) is already on cxt: it was resolved from
         // the headers / query params and set when the context was created, before dispatch.
 

@@ -65,6 +65,7 @@ object Probe {
         catalogDiffName to ::catalogDiff,
         accessMatrixName to ::accessMatrix,
         grantThenCallName to ::grantThenCall,
+        designDemoName to ::designDemo,
     )
 }
 
