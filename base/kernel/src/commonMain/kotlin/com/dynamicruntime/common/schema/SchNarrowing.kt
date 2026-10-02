@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.overlay.OverlayMergeError
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
 import com.dynamicruntime.common.util.ProblemLocation
@@ -45,7 +46,12 @@ fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<St
     // Compared against the **merged result**, not against the fragment the client wrote. A declared property
     // body replaces rather than merges, so the fragment says what changed only in the simplest cases; the
     // result says what this client actually accepts, which is the question.
-    compare(typeName, typeName, base, overlayType(base, overlay), problems)
+    val outcome = overlayTypeOutcome(typeName, base, overlay)
+    // A merge directive the type does not offer (issue #985) leaves the alteration meaning something its author did
+    // not say -- the properties restated where they asked for a merge -- so it fails the alteration like a widening.
+    // (A layout entry the merge refused is the layout's own fault, reported and dropped with the layout.)
+    problems.addAll(outcome.problems.filter { it.code == OverlayMergeError.unknownChoice })
+    compare(typeName, typeName, base, outcome.value, problems)
     return problems
 }
 

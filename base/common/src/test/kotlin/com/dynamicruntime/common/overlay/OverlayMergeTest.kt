@@ -120,14 +120,81 @@ class OverlayMergeTest : StringSpec({
         val refused = overlayTypeOutcome("T", type(layout(SLM.reorder, "a" to "A")), over)
         refused.value[SCH.layout] shouldBe layout(SLM.reorder, "a" to "A")
         refused.problems.single().location?.path shouldBe "T.g-layout.schemaFields[c]"
-        // The alteration's own mode decides when it sets one.
+        // An alteration setting its own mode restates the list rather than adding to it: under authoritative, that is
+        // the membership too.
         overlayTypeOutcome("T", type(layout(null, "a" to "A")), mapOf(SCH.layout to layout(SLM.authoritative, "c" to "Cee")))
-            .problems.single().code shouldBe OverlayMergeError.unmatchedElement
+            .value[SCH.layout] shouldBe layout(SLM.authoritative, "c" to "Cee")
     }
 
     "with no base layout the alteration's stands as written, and null drops an inherited one" {
         val written = layout(SLM.reorder, "c" to "Cee")
         overlayTypeOutcome("T", type(null), mapOf(SCH.layout to written)).value[SCH.layout] shouldBe written
         overlayTypeOutcome("T", type(layout(null, "a" to "A")), mapOf(SCH.layout to null)).value[SCH.layout] shouldBe null
+    }
+
+    // --- choosing a rule, and restating keyed lists ---
+
+    "merge removes an entry with null and keeps one named with an empty body" {
+        val out = mergeOverlay(
+            spec("m" to MergeRule.Merge),
+            mapOf("m" to mapOf("x" to mapOf("t" to 1), "y" to mapOf("t" to 2), "z" to mapOf("t" to 3))),
+            mapOf("m" to mapOf("x" to null, "y" to emptyMap<String, Any?>(), "w" to mapOf("t" to 4))),
+        ).value
+        out["m"] shouldBe mapOf("y" to mapOf("t" to 2), "z" to mapOf("t" to 3), "w" to mapOf("t" to 4))
+    }
+
+    "a restated keyed list is the overlay's, in its order, and an entry naming only its key inherits" {
+        val base = mapOf("l" to listOf(mapOf("id" to "a", "x" to 1), mapOf("id" to "b", "x" to 2), mapOf("id" to "c", "x" to 3)))
+        val out = mergeOverlay(
+            spec("l" to MergeRule.RestateKeyed("id")), base,
+            mapOf("l" to listOf(mapOf("id" to "c"), mapOf("id" to "a", "x" to 9))),
+        )
+        out.value["l"] shouldBe listOf(mapOf("id" to "c", "x" to 3), mapOf("id" to "a", "x" to 9))
+        out.problems.shouldBeEmpty()
+    }
+
+    "an overlay chooses among the rules a resource offers, and the directive is no part of the result" {
+        val choosing = MergeSpec(
+            mapOf("m" to MergeRule.Restate), directiveKey = "how",
+            choices = mapOf("m" to mapOf(MCH.restate to MergeRule.Restate, MCH.merge to MergeRule.Merge)),
+        )
+        val base = mapOf("m" to mapOf("x" to 1, "y" to 2))
+        mergeOverlay(choosing, base, mapOf("m" to mapOf("y" to 3))).value["m"] shouldBe mapOf("y" to 3)
+        val merged = mergeOverlay(choosing, base, mapOf("how" to mapOf("m" to MCH.merge), "m" to mapOf("y" to 3)))
+        merged.value shouldBe mapOf("m" to mapOf("x" to 1, "y" to 3))
+        merged.problems.shouldBeEmpty()
+    }
+
+    "a choice the resource does not offer is refused, located, and the default applies" {
+        val choosing = MergeSpec(
+            mapOf("m" to MergeRule.Restate), directiveKey = "how", choices = mapOf("m" to mapOf(MCH.merge to MergeRule.Merge)),
+        )
+        val out = mergeOverlay(choosing, mapOf("m" to mapOf("x" to 1), "n" to 1), mapOf("how" to mapOf("m" to "shuffle", "n" to MCH.merge)), "T")
+        out.problems.map { it.location?.path } shouldBe listOf("T.how.m", "T.how.n")
+        out.problems.map { it.code }.toSet() shouldBe setOf(OverlayMergeError.unknownChoice)
+    }
+
+    "a schema alteration may merge its properties: name only what changes, null removes" {
+        val base = type(null)
+        val out = overlayTypeOutcome(
+            "T", base,
+            mapOf(SCH.merge to mapOf(SCH.properties to MCH.merge), SCH.properties to mapOf("a" to mapOf(SCH.type to SCT.integer), "c" to null)),
+        )
+        out.problems.shouldBeEmpty()
+        out.value[SCH.properties] shouldBe mapOf("a" to mapOf(SCH.type to SCT.integer), "b" to mapOf(SCH.type to SCT.string))
+        out.value.containsKey(SCH.merge) shouldBe false
+    }
+
+    "a layout alteration that sets reorder or authoritative restates the list; a copy change cannot add there" {
+        val base = type(layout(null, "a" to "A", "b" to "B"))
+        val reordered = overlayTypeOutcome(
+            "T", base,
+            mapOf(SCH.layout to mapOf(SL.mode to SLM.reorder, SL.schemaFields to listOf(mapOf(SL.field to "b"), mapOf(SL.field to "a", SL.label to "Ay")))),
+        )
+        reordered.problems.shouldBeEmpty()
+        reordered.value[SCH.layout] shouldBe layout(SLM.reorder, "b" to "B", "a" to "Ay")
+        // Against a base whose order matters, a copy change for an unlisted field is refused, saying what to do.
+        val refused = overlayTypeOutcome("T", type(layout(SLM.authoritative, "a" to "A")), mapOf(SCH.layout to layout(null, "c" to "Cee")))
+        refused.problems.single().message.contains("restate the list") shouldBe true
     }
 })

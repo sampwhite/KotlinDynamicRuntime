@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.naming.isClientNamespace
+import com.dynamicruntime.common.overlay.OverlayMergeError
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
@@ -248,8 +249,12 @@ private fun keepWhatNarrows(
             cxt,
             alterationIssue(
                 collected, client, name,
-                "Client '$client' alters '$name' in a way that does not narrow it. " +
-                    problems.joinToString(" ") { it.message },
+                // A merge directive the type does not offer (issue #985) is refused here too, but is no widening.
+                (if (problems.all { it.code == OverlayMergeError.unknownChoice }) {
+                    "Client '$client' alters '$name' with a merge it cannot apply. "
+                } else {
+                    "Client '$client' alters '$name' in a way that does not narrow it. "
+                }) + problems.joinToString(" ") { it.message },
                 "Dropping the alteration; '$name' stays as the global document declares it.",
             ),
             issues,
@@ -403,6 +408,8 @@ private fun dropFaultyLayouts(
         // Said with where it is, since the merger's own words are about the list, not the type.
         val refused = (globalDefs[name] as? Map<*, *>)
             ?.let { overlayTypeOutcome(name, it.toJsonMap(), body.toJsonMap()).problems }.orEmpty()
+            // A refused merge directive is the narrowing check's to report; it has already dropped the alteration.
+            .filter { it.code != OverlayMergeError.unknownChoice }
             .map { "$where, at ${it.location?.path ?: name}: ${it.message}" }
         val problems = refused +
             (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty().map { it.message }

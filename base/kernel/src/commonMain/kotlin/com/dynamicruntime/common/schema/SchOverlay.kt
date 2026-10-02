@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.overlay.MCH
 import com.dynamicruntime.common.overlay.MergeOutcome
 import com.dynamicruntime.common.overlay.MergeRule
 import com.dynamicruntime.common.overlay.MergeSpec
@@ -50,7 +51,8 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
     // which are ordinary entries under a name of their own.
     for ((name, body) in overlays) {
         if (name !in defs) {
-            out[name] = body
+            // A merge directive means nothing on a type that alters nothing, and is not schema.
+            out[name] = if (body is Map<*, *> && SCH.merge in body) body.toJsonMap() - SCH.merge else body
         }
     }
     return out
@@ -106,11 +108,20 @@ fun overlayTypeOutcome(typeName: String, base: Map<String, Any?>, overlay: Map<S
  *    a client reordering the set has reordered the form, though order and copy belong in the type's field layout
  *    (issue #834). An alteration that does not mention `properties` keeps the base's, entire.
  *  - **[SCH.layout] is a resource of its own** ([MergeRule.Resource]), merged by [layoutMergeSpec]: an alteration
- *    states only the layout entries it changes. `g-layout: null` drops the inherited layout.
+ *    states only the layout entries it changes, or restates the list by setting a mode. `g-layout: null` drops the
+ *    inherited layout.
+ *
+ * **An alteration may merge `properties` instead** (issue #985), by saying so in [SCH.merge]:
+ * `"g-merge": { "properties": "merge" }`. Then it names only the properties it changes -- each named body replacing
+ * the base's whole, `{}` keeping it, `null` removing it -- and the rest are the base's, including any the base gains
+ * later. The default stays the restated set, which a reader of the alteration can take in at once; the merge is for
+ * the author (often an AI) who would rather state a delta. Either way the narrowing check judges the merged result.
  */
 val schemaTypeMergeSpec: MergeSpec = MergeSpec(
-    mapOf(
+    rules = mapOf(
         SCH.properties to MergeRule.Restate,
         SCH.layout to MergeRule.Resource { base, overlay -> layoutMergeSpec(base, overlay) },
     ),
+    directiveKey = SCH.merge,
+    choices = mapOf(SCH.properties to mapOf(MCH.restate to MergeRule.Restate, MCH.merge to MergeRule.Merge)),
 )

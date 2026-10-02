@@ -294,25 +294,34 @@ object SL {
  * How a type's field layout merges with an alteration of it (issue #985) -- the layout being a resource of its own,
  * keyed by its type's name, rather than a third level of the type's body.
  *
- *  - **[SL.schemaFields] is keyed by [SL.field]**: an alteration's entry replaces the inherited entry for that field
- *    whole, so a client rewording one field states that field's entry alone and every other entry is inherited.
- *  - **An entry for a field the inherited layout does not list** is appended under [SLM.overlay], where the layout
- *    only annotates and order means nothing, and refused under [SLM.reorder] or [SLM.authoritative], where it would
- *    need a place in the order -- which is what an anchor would say, and there are none yet. (The field must still
- *    be one the type declares; the layout check says so, on the merged result.) The mode is the alteration's when it
- *    sets one, else the inherited layout's.
- *  - **[SL.strings] merges by key**; every other block key (the heading [SL.label], [SL.fragmentFileId],
- *    [SL.mode]) replaces.
+ * **The alteration's own [SL.mode] says which kind of change it is.**
+ *
+ *  - **None, or [SLM.overlay]: a copy change.** [SL.schemaFields] is keyed by [SL.field], and an alteration's entry
+ *    replaces the inherited entry for that field whole -- so a client rewording one field states that field's entry
+ *    alone and every other entry is inherited. An entry for a field the inherited layout does not list is appended
+ *    where the layout only annotates (mode [SLM.overlay], the alteration's or else the inherited one's), and refused
+ *    where order matters ([SLM.reorder], [SLM.authoritative]): it would need a place, which an anchor would give, and
+ *    there are none yet -- the message says to restate the list instead.
+ *  - **[SLM.reorder] or [SLM.authoritative]: an order or membership change.** [SL.schemaFields] is **restated**
+ *    ([MergeRule.RestateKeyed]): the alteration's list is the order, and under [SLM.authoritative] the membership too;
+ *    an entry naming only its `field` keeps the inherited entry for that field.
+ *
+ * (A field must still be one the type declares; the layout check says so, on the merged result.) [SL.strings]
+ * merges by key; every other block key (the heading [SL.label], [SL.fragmentFileId], [SL.mode]) replaces.
  */
 fun layoutMergeSpec(base: Map<String, Any?>, overlay: Map<String, Any?>): MergeSpec {
-    val mode = overlay[SL.mode] as? String ?: base[SL.mode] as? String ?: SLM.overlay
-    val onNew = if (mode == SLM.overlay) OnNew.append else OnNew.refuse
-    return MergeSpec(
-        mapOf(
-            SL.schemaFields to MergeRule.Keyed(SL.field, KeyedElement.replace, onNew),
-            SL.strings to MergeRule.Merge,
-        ),
-    )
+    val ownMode = overlay[SL.mode] as? String
+    val fields = if (ownMode == SLM.reorder || ownMode == SLM.authoritative) {
+        MergeRule.RestateKeyed(SL.field)
+    } else {
+        val mode = ownMode ?: base[SL.mode] as? String ?: SLM.overlay
+        MergeRule.Keyed(
+            SL.field, KeyedElement.replace, if (mode == SLM.overlay) OnNew.append else OnNew.refuse,
+            refusalHint = "To change which fields the layout lists, or their order, set its '${SL.mode}' to " +
+                "'${SLM.reorder}' or '${SLM.authoritative}' and restate the list.",
+        )
+    }
+    return MergeSpec(mapOf(SL.schemaFields to fields, SL.strings to MergeRule.Merge))
 }
 
 /**

@@ -43,6 +43,7 @@ object SchGKeywords {
         SCH.errors to obj,
         SCH.presentation to Shape("one of ${PRES.all.sorted()}") { it is String && it in PRES.all },
         SCH.layout to obj,
+        SCH.merge to obj,
         SCH.appliesTo to textList,
     )
 

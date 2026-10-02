@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.overlay.MCH
 import com.dynamicruntime.common.schema.LAYSTR
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -88,6 +89,44 @@ class ClientLayoutMergeTest : StringSpec({
         }.fullMessage()
         message shouldContain "schemaFields[c]"
         message shouldContain "matches no entry"
+    }
+
+    "an alteration setting reorder restates the list: its order, and a field-only entry keeps the inherited copy" {
+        alter("restate985") {
+            type(LayoutMergeFixture.ordered) {
+                layout(mode = SchLayoutMode.reorder) {
+                    field("c", label = "Cee")
+                    field("a")
+                    field("b", label = "Bee")
+                }
+            }
+        }
+        val merged = layoutFor("restate985", LayoutMergeFixture.ordered).shouldNotBeNull()
+        merged.fields.map { it.field } shouldBe listOf("c", "a", "b")
+        merged.fieldFor("a")?.label shouldBe "A"
+        merged.fieldFor("b")?.label shouldBe "Bee"
+    }
+
+    "an alteration may merge its properties instead of restating them, removing one with null" {
+        alter("merge985") {
+            type(LayoutMergeFixture.card) {
+                data[SCH.merge] = mapOf(SCH.properties to MCH.merge)
+                // Insertion-ordered, as parsed JSON always is: the JSON writer keeps a null only in such a map.
+                data[SCH.properties] = linkedMapOf("b" to null)
+            }
+        }
+        SchemaService.get(cxt).storeFor("merge985").types.getValue(LayoutMergeFixture.card).properties.keys shouldBe
+            setOf("a", "c")
+    }
+
+    "a merge directive the type does not offer refuses the alteration -- outside production, at the reload" {
+        val message = shouldThrow<KdrException> {
+            alter("badMerge985") {
+                type(LayoutMergeFixture.card) { data[SCH.merge] = mapOf(SCH.properties to "shuffle") }
+            }
+        }.fullMessage()
+        message shouldContain "with a merge it cannot apply"
+        message shouldContain "In 'g-merge', 'properties' merges as one of"
     }
 
     "a null layout drops the inherited one" {
