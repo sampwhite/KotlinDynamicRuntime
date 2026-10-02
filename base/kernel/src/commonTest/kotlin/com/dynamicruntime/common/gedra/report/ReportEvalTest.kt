@@ -147,6 +147,9 @@ class ReportEvalTest {
         // Text is never read as a number against a string key.
         assertFalse(keyTextMatches("02134", "2134"))
         assertFalse(keyTextMatches("2134", "02134"))
+        // Nor is a Java-only spelling a number anywhere.
+        assertFalse(keyTextMatches(2010, "2010d"))
+        assertTrue(keyTextMatches(1000, "1e3"))
     }
 
     @Test
@@ -206,9 +209,48 @@ class ReportEvalTest {
         // "Is it engaged / finished?" still has an answer: no.
         assertEquals(false, value("workflow.neverHeardOf.engaged"))
         assertEquals(false, value("workflow.neverHeardOf.finished"))
-        // A workflow the client no longer has (no phase) is not shown, whatever state is left behind.
-        val retired = subject(states() + state(WFS.workflowState, mapOf(WFD.workflowId to "retired", WFS.eligible to true)))
-        assertNull(value("workflow.retired.category", s = retired))
+    }
+
+    /** The paths of every workflow attribute, plain and approval, for [workflowId]. */
+    private fun workflowPaths(workflowId: String): List<String> =
+        RWF.attrs.keys.map { "workflow.$workflowId.$it" } +
+            RWF.approvalAttrs.keys.map { "workflow.$workflowId.${RWF.approval}[approveAudit].$it" }
+
+    @Test
+    fun aWorkflowTheListingWouldNotShowIsBlankWhateverStateIsLeft() {
+        // The same state throughout: engaged, with an approval in the current engagement. Only the phase changes.
+        fun at(phase: WfPhase?) = subject(phaseOf = { phase })
+        // The client no longer has the workflow, or it is outside its lifetime: its state is kept, not shown.
+        for (gone in listOf(null, WfPhase.outsideLifetime)) {
+            for (path in workflowPaths("auditReview")) assertNull(value(path, s = at(gone)), "$path at $gone")
+        }
+        // Engaged, it stays shown through every phase inside the lifetime.
+        for (phase in listOf(WfPhase.lifetimeOnly, WfPhase.relevant, WfPhase.engageable)) {
+            assertEquals(true, value("workflow.auditReview.engaged", s = at(phase)), "$phase")
+            assertEquals(true, value("workflow.auditReview.approval[approveAudit].approved", s = at(phase)), "$phase")
+        }
+        // Not engaged, and closed to new engagement: ignored, eligible or not.
+        val idleClosed = subject(states(engaged = false), phaseOf = { WfPhase.relevant })
+        for (path in workflowPaths("auditReview")) assertNull(value(path, s = idleClosed), path)
+        // Not engaged, and open: the form could start it.
+        val idleOpen = subject(states(engaged = false))
+        assertEquals(true, value("workflow.auditReview.eligible", s = idleOpen))
+        assertEquals(false, value("workflow.auditReview.engaged", s = idleOpen))
+    }
+
+    @Test
+    fun everyVocabularyAttributeHasAReading() {
+        // A name the parser accepts and the evaluator cannot read would be a silently blank column; with full state
+        // every workflow and approval attribute has a value, and none throws.
+        for (path in workflowPaths("auditReview")) assertTrue(value(path) != null, path)
+        val fullOwner = RUSR.attrs.keys.associateWith<String, Any?> { "x" }
+        for (name in RUSR.attrs.keys) assertTrue(value("user.$name", ReportKind.string, s = subject(owner = fullOwner)) != null, name)
+        val fullMeta = ReportSubject(RMETA.attrs.keys.associateWith { "x" }, entries, states(), owner) { WfPhase.engageable }
+        for (name in RMETA.attrs.keys) assertTrue(value("meta.$name", ReportKind.string, s = fullMeta) != null, name)
+        for (name in RENV.attrs.keys) {
+            val withEnv = ReportSubject(meta, listOf(entry("t", emptyMap(), name to "x")), emptyList(), null) { null }
+            assertEquals("x", value("form.t.@$name", ReportKind.string, s = withEnv), name)
+        }
     }
 
     @Test
@@ -270,6 +312,16 @@ class ReportEvalTest {
         assertNull(reportNumber(Double.POSITIVE_INFINITY))
         // Past what a double holds exactly, it is left a double rather than given digits it never had.
         assertEquals(1.0e20, reportNumber(1.0e20))
+        // Only plain number text is a number: the JVM alone would read `7d`, so neither does.
+        assertEquals(1000L, coerceReportValue("1e3", ReportKind.number))
+        assertEquals(-2.5, coerceReportValue("-2.50", ReportKind.number))
+        for (notANumber in listOf("7d", "7f", "0x10", "NaN", "Infinity", "1.", ".5", "", "-", "1e", "1 2", "1,000")) {
+            assertNull(plainNumberOrNull(notANumber), notANumber)
+            assertNull(coerceReportValue(notANumber, ReportKind.number), notANumber)
+        }
+        assertEquals(0.01, plainNumberOrNull("1E-2"))
+        // Text is trimmed, as the other kinds are read.
+        assertEquals("Smith", coerceReportValue("  Smith ", ReportKind.string))
         assertNull(coerceReportValue("seven", ReportKind.number))
         assertNull(coerceReportValue(true, ReportKind.number))
         assertEquals("7", coerceReportValue(7, ReportKind.string))
@@ -342,6 +394,13 @@ class ReportEvalTest {
         assertEquals("C", combineReportValues(listOf("b", "a", "C"), ReportKind.string, ReportCombine.max))
         assertEquals(t0, combineReportValues(listOf(t1, t0, t2), ReportKind.date, ReportCombine.min))
         assertEquals(t2, combineReportValues(listOf(t1, t0, t2), ReportKind.date, ReportCombine.max))
+        // Stored with stray whitespace, one name is still one value.
+        assertEquals("Smith", combineReportValues(listOfNotNull(coerceReportValue("Smith ", ReportKind.string), coerceReportValue(" Smith", ReportKind.string)), ReportKind.string, ReportCombine.distinct).let { (it as List<*>).single() })
+        // A whole sum past what a long holds is large and inexact, never wrapped round to a negative.
+        val huge = combineReportValues(listOf<Any>(Long.MAX_VALUE, Long.MAX_VALUE), ReportKind.number, ReportCombine.sum)
+        assertTrue(huge is Double && huge > Long.MAX_VALUE.toDouble(), "$huge")
+        assertEquals(Long.MAX_VALUE, combineReportValues(listOf<Any>(Long.MAX_VALUE - 1, 1L), ReportKind.number, ReportCombine.sum))
+        assertEquals(-5L, combineReportValues(listOf<Any>(Long.MIN_VALUE + 5, Long.MAX_VALUE, -9L), ReportKind.number, ReportCombine.sum).let { it })
         // Nothing to combine is a blank -- except a count, which is then zero.
         assertNull(combineReportValues(emptyList(), ReportKind.number, ReportCombine.sum))
         assertNull(combineReportValues(emptyList(), ReportKind.string, ReportCombine.list))

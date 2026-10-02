@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra.report
 
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.canonicalKey
@@ -162,10 +163,23 @@ private fun selects(selector: KeySelector?, pkFields: List<String>, key: List<An
  * too. Text is never read as a number against a *string* key: the code `02134` matches only `02134`.
  */
 fun keyTextMatches(value: Any, text: String): Boolean =
-    canonicalKey(value) == text || (value is Number && text.toDoubleOrNull() == value.toDouble())
+    canonicalKey(value) == text || (value is Number && plainNumberOrNull(text) == value.toDouble())
 
+/**
+ * One fact about a workflow on the form. **A report says about a workflow only what the forms listing would show**:
+ * every attribute is blank for a workflow the client no longer has, one outside its lifetime, and one closed to new
+ * engagement that this form never engaged with ([WfPhase.isShown]) -- whatever state entries are left behind. The
+ * state of a retired workflow is kept, not shown, and a report that showed "engaged" and "approved" for it would be
+ * reporting work on something that is not there.
+ *
+ * Every name in `RWF.attrs` and `RWF.approvalAttrs` has a branch here. One without is a defect -- the parser
+ * accepted a name this cannot read -- and is thrown as one rather than shown as a blank column.
+ */
 private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
     val id = path.workflowId
+    val engagement = engagementDataOf(subject.states, id)
+    val engaged = engagement?.get(WFS.engaged) == true
+    if (subject.phaseOf(id)?.isShown(engaged) != true) return null
     val taskId = path.taskId
     if (taskId != null) {
         val approval = currentApprovals(subject.states, id)[taskId]
@@ -173,7 +187,7 @@ private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
             RWF.approved -> approval != null
             RWF.approvedAt -> approval?.get(WFS.approvedAt)
             RWF.approvedBy -> approval?.get(WFS.approvedBy)
-            else -> null
+            else -> throw unreadAttribute(path)
         }
     }
     val shown = subject.workflows[id]
@@ -181,13 +195,16 @@ private fun workflowValue(path: WorkflowPath, subject: ReportSubject): Any? {
         RWF.category -> shown?.category?.name
         RWF.finished -> shown?.category == WfColumnCategory.finished
         RWF.ctaTask -> shown?.ctaTask
-        RWF.engaged -> engagementDataOf(subject.states, id)?.get(WFS.engaged) == true
-        RWF.lastEngagedAt -> engagementDataOf(subject.states, id)?.get(WFS.lastEngagedAt)
+        RWF.engaged -> engaged
+        RWF.lastEngagedAt -> engagement?.get(WFS.lastEngagedAt)
         RWF.eligible -> workflowStateDataOf(subject.states, id)?.get(WFS.eligible) as? Boolean
         RWF.tasksDone -> workflowStateDataOf(subject.states, id)?.get(WFS.tasksDone) as? Boolean
-        else -> null
+        else -> throw unreadAttribute(path)
     }
 }
+
+private fun unreadAttribute(path: ReportPath): KdrException =
+    KdrException("The report path '$path' names an attribute the evaluator has no reading for.")
 
 private fun metaValue(attr: String, subject: ReportSubject): Any? = when (attr) {
     RMETA.formStatus -> formStatusOf(subject.states)
@@ -216,13 +233,14 @@ private fun flatValues(value: Any?, depth: Int = 0): List<Any?> = when {
 fun coerceReportValue(value: Any?, kind: ReportKind): Any? = when (kind) {
     ReportKind.string -> when (value) {
         null, is Map<*, *>, is List<*> -> null
-        is String -> value
+        // Trimmed, as every other kind is read: `Smith` and `Smith ` are one auditor, and must be one group.
+        is String -> value.trim()
         else -> value.fmt()
     }
     ReportKind.number -> when (value) {
         is Long -> value
         is Number -> reportNumber(value.toDouble())
-        is String -> value.trim().let { it.toLongOrNull() ?: it.toDoubleOrNull()?.let(::reportNumber) }
+        is String -> value.trim().let { it.toLongOrNull() ?: plainNumberOrNull(it)?.let(::reportNumber) }
         else -> null
     }
     ReportKind.date -> when (value) {
@@ -257,6 +275,33 @@ fun reportNumber(value: Double): Number? = when {
 private const val maxExactWhole = 9007199254740992.0
 
 /**
+ * The number [text] spells, or null when it spells none: an optional sign, digits, an optional fraction, an optional
+ * exponent, and nothing else. Narrower than `String.toDoubleOrNull` on purpose, because that function is not one
+ * function: on the JVM it also takes Java's spellings (`7d`, `7f`, a hex float) and in JS it does not, so a report
+ * built on it would read a cell as 7 on the backend and as blank in the frontend.
+ */
+fun plainNumberOrNull(text: String): Double? {
+    var i = 0
+    fun digits(): Boolean {
+        val start = i
+        while (i < text.length && text[i] in '0'..'9') i++
+        return i > start
+    }
+    if (i < text.length && (text[i] == '-' || text[i] == '+')) i++
+    if (!digits()) return null
+    if (i < text.length && text[i] == '.') {
+        i++
+        if (!digits()) return null
+    }
+    if (i < text.length && (text[i] == 'e' || text[i] == 'E')) {
+        i++
+        if (i < text.length && (text[i] == '-' || text[i] == '+')) i++
+        if (!digits()) return null
+    }
+    return if (i == text.length) text.toDoubleOrNull() else null
+}
+
+/**
  * Whether [value] is **empty** for a report (issue #978): null, a blank string, an empty list, or a list of nothing
  * but empty values. `0` and `false` are values -- a count of none and a "no" are things a report says.
  */
@@ -288,9 +333,28 @@ fun combineReportValues(values: List<Any>, kind: ReportKind, combine: ReportComb
     }
 }
 
-/** The sum of numbers: a `Long` while every one is whole, so a sum of counts is not shown with a fraction. */
-private fun sumOf(values: List<Any>): Number? =
-    if (values.all { it is Long }) values.sumOf { it as Long } else reportNumber(values.sumOf { (it as Number).toDouble() })
+/**
+ * The sum of numbers: a `Long` while every one is whole, so a sum of counts is not shown with a fraction. A whole sum
+ * past what a `Long` holds is given as a `Double` -- large and inexact, which is what it is -- rather than wrapped
+ * round to a wrong and possibly negative total.
+ */
+private fun sumOf(values: List<Any>): Number? {
+    if (values.all { it is Long }) {
+        var total = 0L
+        var overflowed = false
+        for (v in values) {
+            val next = total + (v as Long)
+            // Two's complement: the sum overflowed exactly when both operands differ in sign from the result.
+            if (((total xor next) and (v xor next)) < 0) {
+                overflowed = true
+                break
+            }
+            total = next
+        }
+        if (!overflowed) return total
+    }
+    return reportNumber(values.sumOf { (it as Number).toDouble() })
+}
 
 /** What makes two values the same value for `distinct`: a number by its canonical key, so `2` and `2.0` are one. */
 private fun distinctKey(value: Any): String = when (value) {
