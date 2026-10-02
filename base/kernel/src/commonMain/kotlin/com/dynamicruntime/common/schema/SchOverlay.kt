@@ -1,5 +1,9 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.overlay.MergeOutcome
+import com.dynamicruntime.common.overlay.MergeRule
+import com.dynamicruntime.common.overlay.MergeSpec
+import com.dynamicruntime.common.overlay.mergeOverlay
 import com.dynamicruntime.common.util.toJsonMap
 
 /**
@@ -53,7 +57,7 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
 }
 
 /**
- * One type body with [overlay] applied over it -- **at two levels only**.
+ * One type body with [overlay] applied over it -- **at two levels only**, by [schemaTypeMergeSpec] (issue #985).
  *
  * Public because the narrowing check needs it: what a client may or may not do is a question about the
  * **result**, not about the fragment they wrote, since a property body they declare replaces rather than
@@ -61,8 +65,9 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
  *
  * A key the overlay does not mention is carried across untouched; a key it does mention **replaces**. There is
  * no deep merging, and that is the design rather than a simplification: once an overlay starts defining
- * something, that definition wins completely, so what a client wrote is what a client gets. The one exception
- * is [SCH.properties], which has its own rule -- see [mergeProperties].
+ * something, that definition wins completely, so what a client wrote is what a client gets. The exceptions are
+ * declared in the spec: [SCH.properties], which is the restated set (see [schemaTypeMergeSpec]), and the type's
+ * field layout, [SCH.layout], which is a resource of its own and merges by field (see [layoutMergeSpec]).
  *
  * The consequence is worth stating, because it is what shapes how schema gets authored: **there is no way to
  * address just a nested part of a type**. An interior structure a client may want to narrow is therefore
@@ -73,54 +78,39 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
  * never mutated. That is `client-definition.md`'s sharing invariant -- *"a variant may create new nodes and
  * point at old ones; it must not write into old ones"* -- as a property of how this is written rather than a
  * discipline somebody has to keep.
+ *
+ * Whatever the merge refused (a layout entry it had nowhere to put) is left out; [overlayTypeOutcome] says what.
  */
-fun overlayType(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
-    val out = LinkedHashMap<String, Any?>(base.size + overlay.size)
-    for ((key, value) in base) {
-        val over = overlay[key]
-        out[key] = when {
-            key !in overlay -> value
-            key == SCH.properties && over is Map<*, *> && value is Map<*, *> ->
-                mergeProperties(value.toJsonMap(), over.toJsonMap())
-
-            else -> over
-        }
-    }
-    for ((key, value) in overlay) {
-        if (key !in base) {
-            out[key] = value
-        }
-    }
-    return out
-}
+fun overlayType(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> =
+    mergeOverlay(schemaTypeMergeSpec, base, overlay).value
 
 /**
- * The properties an altered type has: **exactly the ones the overlay mentions**.
- *
- * Two rules, and they are the whole authoring model:
- *
- *  - **Mentioning keys is how the set is reduced.** A property the overlay does not name is gone. That forces
- *    a client altering a type to state the complete set it offers, which was found in practice to be the right
- *    thing -- somebody reading a client's definition sees every property their users will see, rather than a
- *    fragment plus whatever the base happened to hold. The cost, accepted: a property cannot be slipped into
- *    every client at once by adding it to the underlying type.
- *  - **An empty body inherits; a non-empty one replaces.** `{"name": {}}` keeps the global definition of
- *    `name`, and anything else is this client's definition of it, entire.
- *
- * **The order is the client's.** A [LinkedHashMap] built in the overlay's own order, because `properties`
- * order is the payload order and the *default* presentation order -- the order a form shows its fields in when
- * no field layout says otherwise. A client that reorders the set while narrowing it has therefore reordered the
- * form, and that still works. It is not the recommended route, though (issue #834): a change that does not
- * alter the schema's API semantics, such as order or copy, belongs in the type's field layout (`g-layout`).
- * (`JsonUtil` keeps the order of a parsed object for the same reason; see `PState.preserveOrder`.)
+ * [overlayType] for the type [typeName], with what the merge refused, each problem located in the type
+ * (`acme.Q.g-layout.schemaFields[notes]`) -- what a client's alteration is reported by when part of it cannot apply.
  */
-private fun mergeProperties(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
-    val out = LinkedHashMap<String, Any?>(overlay.size)
-    for ((name, over) in overlay) {
-        val declared = (over as? Map<*, *>)?.toJsonMap()
-        // Empty means "as it already is", which is how a client keeps a property while reducing the set
-        // around it -- by far the common case, since most alterations change one property and keep the rest.
-        out[name] = if (declared.isNullOrEmpty()) base[name] ?: over else over
-    }
-    return out
-}
+fun overlayTypeOutcome(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): MergeOutcome =
+    mergeOverlay(schemaTypeMergeSpec, base, overlay, typeName)
+
+/**
+ * How a schema type's body merges with an alteration of it (issues #356, #985) -- the whole authoring model of an
+ * alteration, in three lines:
+ *
+ *  - **Every key replaces** unless named below: once an overlay defines something, that definition wins.
+ *  - **[SCH.properties] is the set the alteration mentions** ([MergeRule.Restate]). Two rules, and they are the
+ *    whole of it. *Mentioning keys is how the set is reduced*: a property the overlay does not name is gone, which
+ *    forces a client altering a type to state the complete set it offers -- found in practice to be the right
+ *    thing, since somebody reading a client's definition sees every property their users will see. The cost,
+ *    accepted: a property cannot be slipped into every client at once by adding it to the underlying type. And *an
+ *    empty body inherits; a non-empty one replaces*: `{"name": {}}` keeps the global definition of `name`. **The
+ *    order is the overlay's**, because `properties` order is the payload order and the default presentation order;
+ *    a client reordering the set has reordered the form, though order and copy belong in the type's field layout
+ *    (issue #834). An alteration that does not mention `properties` keeps the base's, entire.
+ *  - **[SCH.layout] is a resource of its own** ([MergeRule.Resource]), merged by [layoutMergeSpec]: an alteration
+ *    states only the layout entries it changes. `g-layout: null` drops the inherited layout.
+ */
+val schemaTypeMergeSpec: MergeSpec = MergeSpec(
+    mapOf(
+        SCH.properties to MergeRule.Restate,
+        SCH.layout to MergeRule.Resource { base, overlay -> layoutMergeSpec(base, overlay) },
+    ),
+)

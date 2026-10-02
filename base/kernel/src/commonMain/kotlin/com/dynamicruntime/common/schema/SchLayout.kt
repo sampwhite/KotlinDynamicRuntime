@@ -2,6 +2,10 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.overlay.KeyedElement
+import com.dynamicruntime.common.overlay.MergeRule
+import com.dynamicruntime.common.overlay.MergeSpec
+import com.dynamicruntime.common.overlay.OnNew
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
@@ -284,6 +288,31 @@ object SL {
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode)
+}
+
+/**
+ * How a type's field layout merges with an alteration of it (issue #985) -- the layout being a resource of its own,
+ * keyed by its type's name, rather than a third level of the type's body.
+ *
+ *  - **[SL.schemaFields] is keyed by [SL.field]**: an alteration's entry replaces the inherited entry for that field
+ *    whole, so a client rewording one field states that field's entry alone and every other entry is inherited.
+ *  - **An entry for a field the inherited layout does not list** is appended under [SLM.overlay], where the layout
+ *    only annotates and order means nothing, and refused under [SLM.reorder] or [SLM.authoritative], where it would
+ *    need a place in the order -- which is what an anchor would say, and there are none yet. (The field must still
+ *    be one the type declares; the layout check says so, on the merged result.) The mode is the alteration's when it
+ *    sets one, else the inherited layout's.
+ *  - **[SL.strings] merges by key**; every other block key (the heading [SL.label], [SL.fragmentFileId],
+ *    [SL.mode]) replaces.
+ */
+fun layoutMergeSpec(base: Map<String, Any?>, overlay: Map<String, Any?>): MergeSpec {
+    val mode = overlay[SL.mode] as? String ?: base[SL.mode] as? String ?: SLM.overlay
+    val onNew = if (mode == SLM.overlay) OnNew.append else OnNew.refuse
+    return MergeSpec(
+        mapOf(
+            SL.schemaFields to MergeRule.Keyed(SL.field, KeyedElement.replace, onNew),
+            SL.strings to MergeRule.Merge,
+        ),
+    )
 }
 
 /**

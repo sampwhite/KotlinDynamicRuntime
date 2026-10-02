@@ -338,9 +338,15 @@ is equivalent):
 - **Boot check** (`checkLayouts`): a layout naming a field its type does not declare, or sitting on a union or
   array type, refuses the boot. A client that narrows a type inherits the base layout by reference and has it
   **pruned** to the properties it kept — a sanctioned narrowing never fails the boot.
-- A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key. A layout
-  a client writes that would fail the boot check is dropped instead (the type falls back to global's layout, or
-  none) — see *A client's own definitions* below.
+- A client may overlay a type's `g-layout` freely: it is in the narrowing allowlist as a presentation key. The
+  alteration **merges with the inherited layout by field** (issue #985, `layoutMergeSpec`): it states only the
+  `schemaFields` entries it changes, each replacing the inherited entry for that field whole, and `strings` merge
+  by key — everything else is global's. An entry for a field the inherited layout does not list is appended under
+  `overlay` mode and refused under `reorder`/`authoritative` (it would need a place in the order); with no inherited
+  layout the client's stands as written, and `g-layout: null` drops the inherited one. A layout a client writes
+  that would fail the boot check, or whose merge refuses an entry, is dropped instead (the type falls back to
+  global's layout, or none) — see *A client's own definitions* below. The merge itself is the general declared
+  merger in `common/overlay/OverlayMerge.kt`; `schemaTypeMergeSpec` is the whole of how an alteration applies.
 
 **Substitution — two passes, by prefix (issues #586, #587, #605).** Layout copy (`label` / `description` /
 `hint`) carries two kinds of template block, resolved in different passes:

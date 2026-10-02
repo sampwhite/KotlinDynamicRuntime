@@ -25,6 +25,7 @@ import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.analyzeSchemaTypes
 import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
+import com.dynamicruntime.common.schema.overlayTypeOutcome
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.toJsonMap
 
@@ -144,9 +145,10 @@ fun buildClientVariants(
             types = types,
             endpoints = global.endpoints,
             tables = global.tables,
-            // The variant's own layouts (issue #584) derive from these defs: a client may overlay a type's
-            // `g-layout` (it is a presentation key the narrowing check permits), and an unmentioned one is
-            // inherited from global by reference -- then pruned to whatever properties the client kept.
+            // The variant's own layouts (issue #584) derive from these defs: a client may alter a type's
+            // `g-layout` (it is a presentation key the narrowing check permits), merged with global's by field
+            // (issue #985), and an unmentioned one is inherited from global by reference -- then pruned to
+            // whatever properties the client kept.
             defs = defs,
         )
         LogSchema.debug(cxt) {
@@ -395,12 +397,20 @@ private fun dropFaultyLayouts(
         }
         if (rawLayout(defs, name) === rawLayout(globalDefs, name)) continue
         val where = "Type '$name' (client '$client')"
-        val problems = (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty()
+        // The client's layout merges with global's by field (issue #985), so what it wrote can be refused before
+        // the result is ever checked: an entry for a field global's layout does not list, where the layout's order
+        // matters. The merge leaves such an entry out; reporting it here keeps that from passing silently.
+        // Said with where it is, since the merger's own words are about the list, not the type.
+        val refused = (globalDefs[name] as? Map<*, *>)
+            ?.let { overlayTypeOutcome(name, it.toJsonMap(), body.toJsonMap()).problems }.orEmpty()
+            .map { "$where, at ${it.location?.path ?: name}: ${it.message}" }
+        val problems = refused +
+            (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty().map { it.message }
         if (problems.isEmpty()) continue
         reportConfigProblem(
             cxt,
             alterationIssue(
-                collected, client, name, problems.joinToString(" ") { it.message },
+                collected, client, name, problems.joinToString(" "),
                 "Dropping the client's '${SCH.layout}' on '$name'; the type renders with global's layout, or none.",
             ),
             issues,
