@@ -1,8 +1,8 @@
 package com.dynamicruntime.common.gedra.report
 
-import com.dynamicruntime.common.gedra.bareKeyNumber
-import com.dynamicruntime.common.gedra.entryAddress
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.isBareKeyChar
+import com.dynamicruntime.common.gedra.keyListText
 import com.dynamicruntime.common.gedra.keyValueText
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.isOwnedName
@@ -10,7 +10,6 @@ import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
 import com.dynamicruntime.common.util.ProblemLocation
-import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.jsonMapResult
 
 /**
@@ -23,11 +22,24 @@ sealed class KeySelector {
     object All : KeySelector()
 
     /** One value per key field, in the key's declared order: `yearly[2024]`, `quarterly[2024,Q1]`. */
-    class Positional(val values: List<Any>) : KeySelector()
+    class Positional(val values: List<String>) : KeySelector()
 
-    /** Key fields by name, which may be only some of them: `quarterly[year=2024]` reads every quarter of 2024. */
-    class Named(val values: Map<String, Any>) : KeySelector()
+    /**
+     * Key fields by name, which may be only some of them: `quarterly[year=2024]` reads every quarter of 2024. Held in
+     * name order, so two selectors naming the same fields are the same selector however they were written.
+     */
+    class Named(values: Map<String, String>) : KeySelector() {
+        val values: Map<String, String> = values.entries.sortedBy { it.key }.associate { it.key to it.value }
+    }
 }
+
+/*
+ * A key value is kept as the **text** it was written as, bare or quoted alike -- the quotes only let it hold
+ * characters a bare value cannot. The parser cannot know whether a key field is a number or a string, and guessing
+ * loses what was written: `02134` read as a number is `2134`, which is not the zip code. Text needs no guess, since an
+ * entry is matched by its canonical key (`canonicalKey`), under which the text `2024` and the number 2024 are one.
+ * Whoever knows the key field's type -- the registry, binding a path to a client's trait -- may coerce it there.
+ */
 
 /**
  * A parsed **report path** (issue #977): the address of one value -- or, for a keyed trait read whole, several --
@@ -89,7 +101,7 @@ class FormPath(
             null -> {}
             is KeySelector.All -> append(RPT.selectorOpen).append(RPT.all).append(RPT.selectorClose)
             // The entry's own address: a fully keyed path names exactly the entry `entryAddress` would.
-            is KeySelector.Positional -> append(entryAddress("", selector.values))
+            is KeySelector.Positional -> append(keyListText(selector.values))
             is KeySelector.Named -> selector.values.entries.joinTo(
                 this, RPT.valueSep.toString(), RPT.selectorOpen.toString(), RPT.selectorClose.toString(),
             ) { (name, value) -> "$name${RPT.nameSep}${keyValueText(value)}" }
@@ -136,7 +148,7 @@ enum class ReportPathProblem : ProblemCode {
     /** The first segment is not `form`, `workflow`, `user` or `meta`. */
     unknownSource,
 
-    /** A trait, workflow or task id, or a field name, that cannot be one. */
+    /** A trait, workflow or task id that cannot be one, or a field name holding what a path cannot. */
     badIdentifier,
 
     /** The path stops before it names a value: a source alone, a trait with no field. */
@@ -165,8 +177,8 @@ enum class ReportPathProblem : ProblemCode {
 }
 
 /**
- * [text] as a [ReportPath], or what is wrong with it and where. Never throws: a path is written by a person into a
- * client's configuration, so a bad one is an ordinary outcome, reported with its offset.
+ * [text] as a [ReportPath], or what is wrong with it and where. Never throws over the text: a path is written by a
+ * person into a client's configuration, so a bad one is an ordinary outcome, reported with its offset.
  *
  * What this cannot say is whether the path means anything for a client -- that the trait exists, that it is keyed,
  * that the field is in its schema. That is the registry's question, asked when the configuration loads.
@@ -174,7 +186,10 @@ enum class ReportPathProblem : ProblemCode {
 fun parseReportPath(text: String): Parsed<ReportPath> {
     val scanner = ReportPathScanner(text)
     val path = scanner.path()
-    return if (path != null) Parsed.Ok(path) else Parsed.Failed(scanner.problem ?: Problem(ReportPathProblem.blank, "No path."))
+    if (path != null) return Parsed.Ok(path)
+    // Every step that answers null records why first. One that did not is a defect in the scanner, and saying so
+    // beats inventing a problem the text does not have.
+    return Parsed.Failed(scanner.problem ?: throw KdrException("The report path scanner refused '$text' without saying why."))
 }
 
 /** [parseReportPath] for a caller that has no use for a bad path; throws the first problem as a conversion error. */
@@ -257,8 +272,12 @@ private class ReportPathScanner(private val text: String) {
         while (true) {
             val fieldAt = pos
             val field = word()
-            if (!field.isVariableName()) {
-                return fail(ReportPathProblem.badIdentifier, "'$field' cannot be a field name.", fieldAt)
+            if (!isReportFieldName(field)) {
+                return fail(
+                    ReportPathProblem.badIdentifier,
+                    "'$field' cannot be a field in a path: a field is letters, digits and any of '_ - \$'.",
+                    fieldAt,
+                )
             }
             fields.add(field)
             if (peek() == RPT.selectorOpen) {
@@ -336,8 +355,8 @@ private class ReportPathScanner(private val text: String) {
             return if (peek() == null) fail(ReportPathProblem.unclosedSelector, "The '[' has no ']'.", openAt)
             else fail(ReportPathProblem.badKeyValue, "'${RPT.all}' selects every entry and stands alone: '[${RPT.all}]'.", openAt)
         }
-        val positional = mutableListOf<Any>()
-        val named = LinkedHashMap<String, Any>()
+        val positional = mutableListOf<String>()
+        val named = LinkedHashMap<String, String>()
         while (true) {
             val itemAt = pos
             val name = keyName()
@@ -376,8 +395,8 @@ private class ReportPathScanner(private val text: String) {
         return name
     }
 
-    /** One key value: quoted with JSON's escapes, or bare -- and a bare one that spells a number is that number. */
-    private fun keyValue(): Any? {
+    /** One key value, as text: quoted with JSON's escapes, or bare. See the note on [KeySelector] for why text. */
+    private fun keyValue(): String? {
         val valueAt = pos
         if (peek() == RPT.quote) {
             var end = pos + 1
@@ -394,6 +413,15 @@ private class ReportPathScanner(private val text: String) {
         while (pos < text.length && isBareKeyChar(text[pos])) pos++
         val bare = text.substring(valueAt, pos)
         if (bare.isEmpty()) return fail(ReportPathProblem.badKeyValue, "A key value is missing.", valueAt)
-        return bareKeyNumber(bare) ?: bare
+        return bare
     }
 }
+
+/**
+ * Whether [name] can be a field segment of a form path: letters, digits and `_ - $`. Wider than a variable name on
+ * purpose -- a schema does not hold its property names to one, and data arriving from elsewhere has properties like
+ * `first-name` and `2024` -- and no wider than a path can carry: a dot or a bracket would end the segment, and
+ * whitespace or a quote is far likelier a slip than a name.
+ */
+fun isReportFieldName(name: String): Boolean =
+    name.isNotEmpty() && name.all { it.isLetterOrDigit() || it == '_' || it == '-' || it == '$' }

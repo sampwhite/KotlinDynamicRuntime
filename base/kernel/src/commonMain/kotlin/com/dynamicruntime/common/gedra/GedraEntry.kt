@@ -395,39 +395,26 @@ fun entryKeyValuesOrNull(entry: Map<String, Any?>, pkFields: List<String>): List
  * The brackets are what a colon cannot be, now that a colon roots a global trait id.
  */
 fun entryAddress(traitId: String, pkValues: List<Any?>): String =
-    if (pkValues.isEmpty()) traitId else pkValues.joinToString(",", "$traitId[", "]") { keyValueText(it) }
+    if (pkValues.isEmpty()) traitId else traitId + keyListText(pkValues)
+
+/** Key values as an address brackets them: `[2024,Q1]`. Shared with a report path's selector, which is the same text. */
+fun keyListText(values: List<Any?>): String = values.joinToString(",", "[", "]") { keyValueText(it) }
 
 /**
- * One key value as an address writes it (issue #977): bare when it can be -- a number, or text of letters, digits and
- * `_ . : -` that does not read as a number -- and JSON-quoted otherwise, so any string can be a key. Text that looks
- * like a number is quoted, since bare it would read back as one; the two match the same entry either way
- * ([canonicalKey]), but the address should say what the value is.
+ * One key value as an address writes it (issue #977): its [canonicalKey] text, bare when that is only letters,
+ * digits and `_ . : -`, and JSON-quoted otherwise, so any string can be a key.
+ *
+ * The text says nothing of the value's type, deliberately: `2024` is the year whether the key field is an integer
+ * or a string, because an entry is found by its canonical key and both spell the same one. So an address never
+ * guesses a type it cannot know, and a code like `02134` stays exactly as written.
  */
-fun keyValueText(value: Any?): String = when (value) {
-    is Number -> canonicalKey(value)
-    else -> value.toString().let { if (isBareKeyText(it) && bareKeyNumber(it) == null) it else it.toJsonStr() }
-}
+fun keyValueText(value: Any?): String = canonicalKey(value).let { if (isBareKeyText(it)) it else it.toJsonStr() }
 
 /** Whether [text] can be written as a key value without quotes: non-empty, and only letters, digits and `_ . : -`. */
 fun isBareKeyText(text: String): Boolean = text.isNotEmpty() && text.all { isBareKeyChar(it) }
 
 /** A character a bare key value may hold. ASCII only, so an address reads the same wherever it is typed. */
 fun isBareKeyChar(c: Char): Boolean = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '_' || c == '.' || c == ':' || c == '-'
-
-/**
- * The number bare key text spells, or null when it spells none: an optional `-`, digits, and at most one fraction.
- * A whole number is a `Long`, and one too long for a `Long` is not a number here -- it stays text, digit for digit.
- */
-fun bareKeyNumber(text: String): Number? {
-    val digits = text.removePrefix("-")
-    val dot = digits.indexOf('.')
-    val whole = if (dot < 0) digits else digits.substring(0, dot)
-    val fraction = if (dot < 0) null else digits.substring(dot + 1)
-    if (whole.isEmpty() || !whole.all { it in '0'..'9' }) return null
-    if (fraction == null) return text.toLongOrNull()
-    if (fraction.isEmpty() || !fraction.all { it in '0'..'9' }) return null
-    return text.toDoubleOrNull()
-}
 
 /**
  * Refuses a set of entries that carries two with the same address (issue #337, #487).

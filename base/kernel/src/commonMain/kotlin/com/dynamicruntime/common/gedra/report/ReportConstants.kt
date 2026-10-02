@@ -21,7 +21,15 @@ enum class ReportSource {
     meta,
 }
 
-/** What a report value is, which decides how it is compared, combined and shown (issue #977). */
+/**
+ * What a report value is, which decides how it is compared, combined and shown (issue #977).
+ *
+ * Deliberately not `UsageKind`, which it resembles. A usage kind decides which **search parameters** a trait usage
+ * mints for the forms listing (an exact match, a `Min`/`Max` pair), and its comparison works on display *strings*
+ * parsed per kind. A report holds typed values and has a kind search has no parameters for -- `boolean`, which most
+ * of the workflow vocabulary is. Folding the two together would put `boolean` into every usage's choices and every
+ * exhaustive `when` over them, to no one's benefit; a usage's three kinds are a subset of these by name.
+ */
 @Suppress("EnumEntryName")
 enum class ReportKind {
     string,

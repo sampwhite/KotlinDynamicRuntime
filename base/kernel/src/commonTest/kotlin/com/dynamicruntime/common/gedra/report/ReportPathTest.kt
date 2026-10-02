@@ -43,23 +43,35 @@ class ReportPathTest {
         assertEquals("kdr:name", path.traitId)
         val keyed = assertIs<FormPath>(ok("form.sample:yearly[2024].note"))
         assertEquals("sample:yearly", keyed.traitId)
-        assertEquals(listOf<Any>(2024L), assertIs<KeySelector.Positional>(keyed.selector).values)
+        assertEquals(listOf("2024"), assertIs<KeySelector.Positional>(keyed.selector).values)
     }
 
     @Test
     fun aSelectorPicksEntriesOfAKeyedTrait() {
         assertIs<KeySelector.All>(assertIs<FormPath>(ok("form.yearly[*].year")).selector)
-        // Positional, in the key's order; a bare value that spells a number is one.
+        // Positional, in the key's order. Values are the text written: the parser does not know a key field's type.
         val two = assertIs<KeySelector.Positional>(assertIs<FormPath>(ok("form.quarterly[2024,Q1].amount")).selector)
-        assertEquals(listOf<Any>(2024L, "Q1"), two.values)
-        assertEquals(listOf<Any>(-3L, 2.5), assertIs<KeySelector.Positional>(assertIs<FormPath>(ok("form.t[-3,2.5].v")).selector).values)
+        assertEquals(listOf("2024", "Q1"), two.values)
+        assertEquals(listOf("-3", "2.5"), assertIs<KeySelector.Positional>(assertIs<FormPath>(ok("form.t[-3,2.5].v")).selector).values)
         // Named, and possibly only part of the key.
         val named = assertIs<KeySelector.Named>(assertIs<FormPath>(ok("form.quarterly[year=2024].amount")).selector)
-        assertEquals(mapOf<String, Any>("year" to 2024L), named.values)
+        assertEquals(mapOf("year" to "2024"), named.values)
         assertEquals(
-            mapOf<String, Any>("year" to 2024L, "quarter" to "Q1"),
+            mapOf("year" to "2024", "quarter" to "Q1"),
             assertIs<KeySelector.Named>(assertIs<FormPath>(ok("form.quarterly[year=2024,quarter=Q1].amount")).selector).values,
         )
+    }
+
+    @Test
+    fun aKeyValueIsKeptAsWritten() {
+        // A zip or a code keeps its leading zeros: read as a number it would be another key, and match nothing.
+        val zip = assertIs<KeySelector.Positional>(assertIs<FormPath>(ok("form.site[02134].name")).selector)
+        assertEquals(listOf("02134"), zip.values)
+        assertEquals("form.site[02134].name", ok("form.site[02134].name").canonicalText)
+        assertEquals("form.t[2024.0].v", ok("form.t[2024.0].v").canonicalText)
+        // Text and number spell the same entry under the canonical key, so no type has to be guessed to match one.
+        assertEquals(canonicalKey(2024L), canonicalKey("2024"))
+        assertEquals(canonicalKey(2134L), canonicalKey(2134))
     }
 
     @Test
@@ -120,11 +132,12 @@ class ReportPathTest {
             "form.acmeSiteAudit.auditor" to "form.acmeSiteAudit.auditor",
             "form.sample:yearly[2024].note" to "form.sample:yearly[2024].note",
             "form.yearly[*].year" to "form.yearly[*].year",
-            // A quoted value that could be bare is written bare; quoted digits stay quoted, being text.
+            // A quoted value that could be bare is written bare; quotes are only for what bare text cannot hold.
             "form.q[\"Q1\",2024].v" to "form.q[Q1,2024].v",
-            "form.q[\"2024\"].v" to "form.q[\"2024\"].v",
-            "form.q[2024.0].v" to "form.q[2024].v",
-            "form.q[year=2024,quarter=\"Q 1\"].v" to "form.q[year=2024,quarter=\"Q 1\"].v",
+            "form.q[\"2024\"].v" to "form.q[2024].v",
+            "form.q[2024.0].v" to "form.q[2024.0].v",
+            // Named values in name order.
+            "form.q[year=2024,quarter=\"Q 1\"].v" to "form.q[quarter=\"Q 1\",year=2024].v",
             "form.yearly[2024].@updatedAt" to "form.yearly[2024].@updatedAt",
             "workflow.auditReview.approval[approveAudit].approved" to "workflow.auditReview.approval[approveAudit].approved",
             "user.email" to "user.email",
@@ -137,8 +150,10 @@ class ReportPathTest {
             assertEquals(path, ok(path.canonicalText))
             assertEquals(canonical, path.toString())
         }
-        // Two spellings of one path are equal.
+        // Two spellings of one path are equal: quoted or bare, and named values in either order.
         assertEquals(ok("form.q[\"Q1\"].v"), ok("form.q[Q1].v"))
+        assertEquals(ok("form.y[\"2024\"].v"), ok("form.y[2024].v"))
+        assertEquals(ok("form.q[year=2024,quarter=Q1].v"), ok("form.q[quarter=Q1,year=2024].v"))
     }
 
     @Test
@@ -158,7 +173,8 @@ class ReportPathTest {
         assertEquals(ReportPathProblem.badIdentifier to 5, problem("form.a-b.v"))
         assertEquals(ReportPathProblem.badIdentifier to 5, problem("form..v"))
         assertEquals(ReportPathProblem.badIdentifier to 5, problem("form.a:b:c.v"))
-        assertEquals(ReportPathProblem.badIdentifier to 7, problem("form.t.1x"))
+        assertEquals(ReportPathProblem.badIdentifier to 7, problem("form.t.a b"))
+        assertEquals(ReportPathProblem.badIdentifier to 9, problem("form.t.a.\"q\""))
         assertEquals(ReportPathProblem.badIdentifier to 7, problem("form.t."))
         assertEquals(ReportPathProblem.badIdentifier to 9, problem("workflow.9w.category"))
         assertEquals(ReportPathProblem.badIdentifier to 20, problem("workflow.w.approval[a b].approved"))
@@ -189,6 +205,16 @@ class ReportPathTest {
     }
 
     @Test
+    fun aFieldMayBeNamedAsDataNamesIt() {
+        // Wider than a variable name: data arriving from elsewhere has properties like these.
+        assertEquals(listOf("first-name"), assertIs<FormPath>(ok("form.t.first-name")).fields)
+        assertEquals(listOf("byYear", "2024", "total"), assertIs<FormPath>(ok("form.t.byYear.2024.total")).fields)
+        assertEquals(listOf("\$id"), assertIs<FormPath>(ok("form.t.\$id")).fields)
+        assertTrue(isReportFieldName("a_b-c"))
+        assertTrue(!isReportFieldName("") && !isReportFieldName("a b") && !isReportFieldName("a\"b"))
+    }
+
+    @Test
     fun aPathHasABoundedNumberOfFields() {
         val most = (1..RPT.maxFields).joinToString(".") { "f$it" }
         assertEquals(RPT.maxFields, assertIs<FormPath>(ok("form.t.$most")).fields.size)
@@ -207,10 +233,10 @@ class ReportPathTest {
         assertEquals("kdr:name", entryAddress("kdr:name", emptyList()))
         assertEquals("sample:yearly[2024]", entryAddress("sample:yearly", listOf(2024)))
         assertEquals("quarterly[2024,Q1]", entryAddress("quarterly", listOf(2024L, "Q1")))
-        // A year held as a double is the same year; text that reads as a number, or holds what a bare value
-        // cannot, is quoted.
+        // A year held as a double, or as text, is the same year; text holding what a bare value cannot is quoted.
         assertEquals("t[2024]", entryAddress("t", listOf(2024.0)))
-        assertEquals("t[\"2024\"]", entryAddress("t", listOf("2024")))
+        assertEquals("t[2024]", entryAddress("t", listOf("2024")))
+        assertEquals("t[02134]", entryAddress("t", listOf("02134")))
         assertEquals("t[\"North, East\"]", entryAddress("t", listOf("North, East")))
         assertEquals("\"\"", keyValueText(""))
         // A fully keyed path is the entry's address, then the field.
