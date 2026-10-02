@@ -1157,3 +1157,13 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
     body.dv-open { --content-width: min(1400px, 95vw); }
     body.dv-open .app-content { padding-right: 16px; padding-bottom: calc(45vh + 16px); }
 }
+
+/* Design View editing (issue #984). A part whose copy the workflow overrides carries a filled dot on its badge, so
+   overrides show without opening each field; the badge itself shows on hover as before. */
+.dv-altered > .dv-badge::after { content: " ●"; }
+.dv-altered.dv-target:not(:hover) > .dv-badge { opacity: .85; }
+.dv-edit { margin-top: 6px; }
+.dv-edit-row { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; align-items: center; margin: 6px 0; }
+.dv-shared { grid-column: 2; margin: 0; color: var(--text-faint); font-size: 12px; overflow-wrap: anywhere; }
+.dv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dv-json-edit { width: 100%; }

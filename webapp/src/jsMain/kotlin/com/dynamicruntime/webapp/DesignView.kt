@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignOrigin
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchLayoutField
@@ -83,7 +84,25 @@ class DesignAddress(
 }
 
 /** A workflow view's Design View block: the workflow's own address, and each carried type's by qualified name. */
-class WfDesign(val workflow: DesignAddress?, val types: Map<String, DesignAddress>)
+class WfDesign(
+    val workflow: DesignAddress?,
+    val types: Map<String, DesignAddress>,
+    /** Whether this caller may edit the workflow's copy here (issue #984); see `DSV.canEdit`. */
+    val canEdit: Boolean = false,
+    /** The stamp of the definition the page was drawn from, sent back with an edit (issue #984). */
+    val basedOn: String = "",
+    /** The layout entries the workflow alters, by type name and then field (issue #984). */
+    val layoutEdits: Map<String, Map<String, LayoutEdit>> = emptyMap(),
+) {
+    /** The workflow's own entry for [field] of [typeName], with what it replaced, or null when it has none. */
+    fun layoutEdit(typeName: String, field: String): LayoutEdit? = layoutEdits[typeName]?.get(field)
+}
+
+/**
+ * One layout entry a workflow alters (issue #984): the workflow's [entry], the [inherited] one it replaces (null when
+ * the shared layout has none for the field), and whether that inherited entry has [inheritedChanged] since.
+ */
+class LayoutEdit(val entry: Map<String, Any?>, val inherited: Map<String, Any?>?, val inheritedChanged: Boolean)
 
 fun parseDesignAddress(raw: Any?): DesignAddress? {
     val m = raw.toJsonMapOrEmpty()
@@ -102,6 +121,18 @@ fun parseWfDesign(raw: Any?): WfDesign? {
     return WfDesign(
         parseDesignAddress(block[DSV.workflow]),
         block[DSV.types].toJsonMapOrEmpty().mapNotNull { (k, v) -> parseDesignAddress(v)?.let { k to it } }.toMap(),
+        canEdit = block[DSV.canEdit] == true,
+        basedOn = block[DSV.basedOn].toOptStr().orEmpty(),
+        layoutEdits = block[DSV.layoutEdits].toJsonMapOrEmpty().mapValues { (_, fields) ->
+            fields.toJsonMapOrEmpty().mapValues { (_, raw) ->
+                val f = raw.toJsonMapOrEmpty()
+                LayoutEdit(
+                    entry = f[DSV.entry].toJsonMapOrEmpty(),
+                    inherited = (f[DSV.inherited] as? Map<*, *>)?.toJsonMapOrEmpty(),
+                    inheritedChanged = f[DSV.inheritedChanged] == true,
+                )
+            }
+        },
     )
 }
 
@@ -257,12 +288,50 @@ class DesignSession(
     val select: (DesignTarget) -> Unit,
     val showAllIds: Boolean,
     val showHidden: Boolean,
+    /** The workflow the page draws (issue #984): what an edit of its copy names. */
+    val workflowId: String = "",
+    /**
+     * Re-reads the page's view in place after an edit has saved (issue #984), so the change shows without a reload
+     * and unsaved form values survive. A no-op where the page has none.
+     */
+    val afterEdit: suspend () -> Unit = {},
     /** The trait the enclosing form draws -- set per trait by the workflow form, so a field can name its root. */
     val trait: WfTraitView? = null,
 ) {
-    fun forTrait(t: WfTraitView): DesignSession = DesignSession(design, selected, select, showAllIds, showHidden, t)
+    fun forTrait(t: WfTraitView): DesignSession =
+        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, afterEdit, t)
 
     fun isSelected(target: DesignTarget): Boolean = selected?.id == target.id
+
+    /** Whether the workflow overrides the copy of the field [target] names (issue #984) -- what its badge marks. */
+    fun isAltered(target: DesignTarget.Field): Boolean {
+        val owner = fieldOwner(target.root.typeName, target.root.type, target.path)
+        return design.layoutEdit(owner.typeName, target.name) != null
+    }
 }
+
+// --- editing a field's copy for this workflow (issue #984) ------------------------------------------------------
+
+/** The copy attributes the edit form offers, in the order it shows them. */
+val editableCopyKeys: List<String> = listOf(SL.label, SL.description, SL.hint)
+
+/**
+ * The layout entry an edit saves: [start] -- the entry being changed, or the one being overridden -- with each of
+ * [editableCopyKeys] set from [values], a blank value removing it. Every other key of [start] (an error override, a
+ * default mode) is kept, since the form does not offer it and saving must not drop it. Pure.
+ */
+fun copyEntryFrom(start: Map<String, Any?>, field: String, values: Map<String, String>): Map<String, Any?> {
+    val out = LinkedHashMap(start)
+    out[SL.field] = field
+    for (key in editableCopyKeys) {
+        val v = values[key]?.trim().orEmpty()
+        if (v.isEmpty()) out.remove(key) else out[key] = v
+    }
+    return out
+}
+
+/** Where a workflow's override of [field] in [typeName] lives in its definition (issue #984), for people and tools. */
+fun overridePath(typeName: String, field: String): String =
+    "${CCT.definition}.${WFD.types}[\"$typeName\"].${SCH.layout}.${SL.schemaFields}[$field]"
 
 val DesignViewContext = createContext<DesignSession?>(null)
