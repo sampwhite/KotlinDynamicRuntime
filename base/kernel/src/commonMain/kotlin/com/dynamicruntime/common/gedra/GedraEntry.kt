@@ -376,6 +376,60 @@ fun entryKeyValues(
 }
 
 /**
+ * [entryKeyValues] for a reader that must not throw (issue #977): the ordered key values, or null when [entry] omits
+ * any key field -- an entry stored before its trait was keyed. A report meeting such an entry skips it; refusing the
+ * whole report over one unmigrated entry would hide every other form's values.
+ */
+fun entryKeyValuesOrNull(entry: Map<String, Any?>, pkFields: List<String>): List<Any>? {
+    if (pkFields.isEmpty()) return emptyList()
+    val data = entry[GE.data] as? Map<*, *> ?: return null
+    return pkFields.map { data[it] ?: return null }
+}
+
+/**
+ * An entry's **address** as text (issue #977): its trait id, and for a keyed trait its key values in the key's
+ * declared order -- `kdr:name`, `sample:yearly[2024]`, `quarterly[2024,Q1]`. The human-readable counterpart of
+ * [entryKey], and the answer to how an entry is addressed in a path: by key, which survives an insert, never by
+ * its index in the entry list, which does not. A report path is this plus the field it reads.
+ *
+ * The brackets are what a colon cannot be, now that a colon roots a global trait id.
+ */
+fun entryAddress(traitId: String, pkValues: List<Any?>): String =
+    if (pkValues.isEmpty()) traitId else pkValues.joinToString(",", "$traitId[", "]") { keyValueText(it) }
+
+/**
+ * One key value as an address writes it (issue #977): bare when it can be -- a number, or text of letters, digits and
+ * `_ . : -` that does not read as a number -- and JSON-quoted otherwise, so any string can be a key. Text that looks
+ * like a number is quoted, since bare it would read back as one; the two match the same entry either way
+ * ([canonicalKey]), but the address should say what the value is.
+ */
+fun keyValueText(value: Any?): String = when (value) {
+    is Number -> canonicalKey(value)
+    else -> value.toString().let { if (isBareKeyText(it) && bareKeyNumber(it) == null) it else it.toJsonStr() }
+}
+
+/** Whether [text] can be written as a key value without quotes: non-empty, and only letters, digits and `_ . : -`. */
+fun isBareKeyText(text: String): Boolean = text.isNotEmpty() && text.all { isBareKeyChar(it) }
+
+/** A character a bare key value may hold. ASCII only, so an address reads the same wherever it is typed. */
+fun isBareKeyChar(c: Char): Boolean = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '_' || c == '.' || c == ':' || c == '-'
+
+/**
+ * The number bare key text spells, or null when it spells none: an optional `-`, digits, and at most one fraction.
+ * A whole number is a `Long`, and one too long for a `Long` is not a number here -- it stays text, digit for digit.
+ */
+fun bareKeyNumber(text: String): Number? {
+    val digits = text.removePrefix("-")
+    val dot = digits.indexOf('.')
+    val whole = if (dot < 0) digits else digits.substring(0, dot)
+    val fraction = if (dot < 0) null else digits.substring(dot + 1)
+    if (whole.isEmpty() || !whole.all { it in '0'..'9' }) return null
+    if (fraction == null) return text.toLongOrNull()
+    if (fraction.isEmpty() || !fraction.all { it in '0'..'9' }) return null
+    return text.toDoubleOrNull()
+}
+
+/**
  * Refuses a set of entries that carries two with the same address (issue #337, #487).
  *
  * A gedra holds at most one entry per trait -- unless the trait declares a `g-primaryKey`, and then one per

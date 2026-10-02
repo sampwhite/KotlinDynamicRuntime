@@ -481,11 +481,15 @@ Genuine optionality within a form — a radio group the user may leave unanswere
   direction of one journey and stops being true once the value is stored and read back; `value` collides with
   the inner `value` of the conditional shape.
 - **Does an entry pin a trait version?** Attractive, and the enabler for the compatible-edit rules above.
-- **How is an entry addressed?** `entries[3].data.year` is index-based and shifts on insert;
-  `entries[expenseReport:2024].data.year` survives -- though since issue #951 a colon is what roots a global
-  trait id (`kdr:name`), so a settled address syntax needs another separator. Validation failure paths, form-engine keys, attribute-level
-  permissions and derived-value dependencies all consume the same vocabulary, three of them deferred — which is
-  the argument for settling it while only the first exists.
+- ~~**How is an entry addressed?**~~ **Settled (#977): by its trait and its key, in brackets** --
+  `sample:yearly[2024]`, `quarterly[2024,Q1]`, and a bare trait id for an unkeyed trait (`entryAddress` in
+  `GedraEntry.kt`). `entries[3].data.year` is index-based and shifts on insert; a keyed address survives. The
+  bracket is the separator a colon can no longer be, since a colon roots a global trait id (`kdr:name`, issue
+  #951). A key value is written bare when it can be and JSON-quoted when it cannot, and text and number spell the
+  same entry (`canonicalKey`). A **report path** is the first consumer: the address, then the field --
+  `form.sample:yearly[2024].note` (`parseReportPath`). Validation failure paths still spell `entries[3].data.year`;
+  form-engine keys, attribute-level permissions and derived-value dependencies are the deferred consumers, and
+  this is the vocabulary they should take.
 - **May a trait extend more than one base, and may an extension replace an inherited pre-processor or only
   chain after it?** Single-parent and chain-only are the reversible defaults.
 - **Is a trait bound to one gedra kind or a set?** Widening later is easy and narrowing is not.
