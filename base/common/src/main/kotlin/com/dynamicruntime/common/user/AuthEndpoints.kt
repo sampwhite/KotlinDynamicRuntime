@@ -283,6 +283,14 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
         }) { c, req ->
         authHandler(c).switchUser(c, req.getReqLong(AFLD.userId))
     }
+    // The one cross-client write the Shadow Sandbox adds (issue #929): authority flows from the parent to its sandbox,
+    // so it is called from the parent side, and the user it lands on is the caller's own, under their identity.
+    generalEndpoint(AEP.openSandbox, "Opens a client's sandbox as the caller's own user in it (a fresh session).",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.client, "The client whose sandbox to open; the caller's own when absent. Another client's takes an allClients administrator.")
+        }) { c, req ->
+        authHandler(c).openSandbox(c, req.getOptStr(AFLD.client))
+    }
     generalEndpoint(AEP.setDefaultUser, "Chooses which of the signed-in person's users their address logs in as.",
         HttpMethod.POST, outputRef = ATYPE.userChoices, inputFields = {
             field(AFLD.userId, "The user to make the default: a registered, enabled user of the caller's own identity.", required = true) { type = SCT.integer }
@@ -350,6 +358,6 @@ internal fun currentUserInfo(cxt: KdrCxt): Map<String, Any?> {
     // row to read, and the anonymous profile has an `authId` while having no row. Testing the id was harmless
     // only while an unauthenticated request still carried the *system* profile; now that it carries the
     // anonymous one, it would send a query after `CL.systemUserId` on every logged-out call.
-    val loaded = if (profile.isRowBacked) UserService.get(cxt).queryByUserId(cxt, profile.userId)?.toUserProfile() else null
+    val loaded = if (profile.isRowBacked) UserService.get(cxt).queryByUserId(cxt, profile.userId)?.toActingProfile(cxt) else null
     return (loaded ?: UserProfile.anonymous()).toUserInfo()
 }

@@ -211,6 +211,22 @@ class UserService : ServiceInitializer {
     }
 
     /**
+     * The identity [identityId]'s enabled users, registered or not -- from the user cache's `identityId` index when
+     * there is one, as [registeredUsersOf] reads, since this sits on the request gate (issue #929: whether a sandbox
+     * user's identity is an administrator in the parent). SQL only when the cache is absent.
+     */
+    fun enabledUsersOf(cxt: KdrCxt, identityId: String): List<AuthUserRow> {
+        val cache = userCache
+        val rows = if (cache != null) {
+            cache.checkRefresh(cxt)
+            cache.snapshot.allByIndex(AU.identityId, identityId).map { AuthUserRow.extract(it.value, identityOf(cxt)) }
+        } else {
+            usersOfIdentity(cxt, identityId)
+        }
+        return rows.filter { it.enabled }
+    }
+
+    /**
      * The user a person **claims** under the key (identity, [client], [persona], [personaSuffix]) when they prove the
      * address in a way that names no user of theirs -- a Google sign-in with no registered user (issue #749);
      * later, a first login against a client that admits unprovisioned people. An enabled user under the key is

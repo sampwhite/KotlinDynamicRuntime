@@ -111,7 +111,10 @@ Current UI-config endpoints:
   reload, since the client usually changes), `POST /user/self/setDefault {userId}` chooses which user the
   address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
   `public` users (issue #752), down to nothing -- a `public` user's owner registered themselves and can register
-  again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
+  again, so the last user may go too, retiring the identity. `POST /user/self/openSandbox {client?}` (issue #929)
+  moves the session into a client's Shadow Sandbox as the person's own user there, created on first use; it is
+  for an administrator of the parent (an `allClients` administrator may name any client), and in a sandbox
+  `admin` takes effect only for an identity that is an administrator in the parent. Removing the acting user moves the session to the
   person's default user, or ends it when none remains. The **profile page** offers it ("Your public account")
   for every `public` user in the switcher's list, and says when it is the whole registration
   (`removablePublicUsers`, `removalEndsEverything`). The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app

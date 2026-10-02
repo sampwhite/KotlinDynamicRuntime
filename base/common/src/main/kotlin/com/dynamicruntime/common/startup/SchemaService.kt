@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.cfact.CFactRegistries
@@ -1561,13 +1563,20 @@ class SchemaService : ServiceInitializer {
                     EI.endpoints to eps.map { it.path }.sorted(),
                 )
             }
-            cxt.request?.responseMeta?.put(
-                SS.accessExplained,
-                linkedMapOf<String, Any?>(
-                    SS.actingRoles to cxt.userProfile.roles.sorted(),
-                    SS.withheld to bySection,
-                ),
+            val explained = linkedMapOf<String, Any?>(
+                SS.actingRoles to cxt.userProfile.roles.sorted(),
+                SS.withheld to bySection,
             )
+            // A sandbox user's admin role the parent-admin rule withholds (issue #929): named, since the acting roles
+            // alone would read as though the user never held it.
+            val profile = cxt.userProfile
+            val row = if (profile.isRowBacked && profile.isLoggedIn) UserService.get(cxt).queryByUserId(cxt, profile.userId) else null
+            if (row != null && SandboxAccess.adminWithheld(cxt, row)) {
+                explained[SS.rolesWithheld] = listOf(
+                    linkedMapOf(SS.role to ROLE.admin, SS.rule to SS.sandboxAdminRule),
+                )
+            }
+            cxt.request?.responseMeta?.put(SS.accessExplained, explained)
         }
 
         /**
@@ -1732,6 +1741,19 @@ object SS {
     const val accessExplained = "accessExplained"
     const val actingRoles = "actingRoles"
     const val withheld = "withheld"
+
+    /**
+     * In the access report: roles the caller holds that a rule keeps from taking effect (issue #929), each with the
+     * [role] and the [rule] that withheld it.
+     */
+    const val rolesWithheld = "rolesWithheld"
+    const val role = "role"
+    const val rule = "rule"
+
+    /** The rule that withholds a sandbox user's `admin` role from an identity that is no administrator in the parent. */
+    const val sandboxAdminRule =
+        "sandboxAdmin: in a sandbox, admin takes effect only for an identity that is an administrator in the parent, " +
+            "or an allClients administrator"
     const val section = "section"
     const val requiredRole = "requiredRole"
     const val requiredCapability = "requiredCapability"

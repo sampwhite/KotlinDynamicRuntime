@@ -176,6 +176,12 @@ later schema rejects" test.
   own. `reloadClient(parent)` reloads it too and returns its result in `.sandbox` (`.all` is both); a sandbox can
   also be reloaded on its own. A test wanting a preview client sets the flag on the parent and places a
   `TestUser` in the sandbox (`userClient = sandboxOf(parent)`) -- `SandboxClientTest.kt` is the reference.
+- **Admin in a sandbox comes from the parent** (issue #929). In a sandbox, `admin` takes effect only while the
+  user's identity also has an enabled admin user in the parent (or an `admin`+`allClients` one) -- so a `TestUser`
+  created straight into the sandbox at `level = ROLE.admin` acts as a plain user there, by design. For a working
+  sandbox administrator, create the admin in the **parent** and have it `postData(AEP.openSandbox, emptyMap())`,
+  which moves that session to the person's own sandbox user (created on first use); `SandboxAccessTest.kt` is the
+  reference.
 
 Stored config is **added beside** the source-declared config in the same collector, keyed by the client in its
 id — downstream services can't tell a stored client from a source one.

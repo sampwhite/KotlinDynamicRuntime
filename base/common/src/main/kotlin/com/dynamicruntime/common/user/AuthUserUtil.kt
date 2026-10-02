@@ -100,7 +100,8 @@ fun refreshActingRoles(cxt: KdrCxt) {
     if (detached) {
         LogAuth.info(cxt) { "User ${profile.userId} no longer belongs to the session's identity; treating it as disabled." }
     }
-    val liveRoles = if (row.enabled && !detached) row.roles.toSet() else emptySet()
+    // In a sandbox, `admin` takes effect only for an identity that is an administrator in the parent (issue #929).
+    val liveRoles = if (row.enabled && !detached) SandboxAccess.actingRoles(cxt, row) else emptySet()
     if (liveRoles != profile.roles) {
         LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: $liveRoles." }
     }
