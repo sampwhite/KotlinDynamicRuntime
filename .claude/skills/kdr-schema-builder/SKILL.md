@@ -345,15 +345,17 @@ is equivalent):
   `overlay` mode and refused under `reorder`/`authoritative` (it would need a place in the order). An alteration
   that **sets** `mode` to `reorder` or `authoritative` instead **restates** `schemaFields`: its list is the order
   (and, authoritative, the membership), and an entry naming only its `field` keeps the inherited entry. With no
-  inherited layout the client's stands as written, and `g-layout: null` drops the inherited one.
+  inherited layout the client's stands as written, and `g-layout: null` drops the inherited one. A layout a client
+  writes that would fail the boot check, or whose merge refuses an entry, is dropped instead (the type falls back
+  to global's layout, or none) — see *A client's own definitions* below. The merge itself is the general declared
+  merger in `common/overlay/OverlayMerge.kt`; `schemaTypeMergeSpec` is the whole of how an alteration applies.
 - **`properties` in an alteration** is the restated set by default (`{}` keeps a property, an unmentioned one is
   dropped). An alteration may say `"g-merge": { "properties": "merge" }` to merge instead: it names only the
   properties it changes (`{}` keeps one, `null` removes one) and inherits the rest, including any the base gains
   later. `g-merge` is a directive read by the merge, never part of the type; a choice a part does not offer refuses
-  the alteration. Either way the narrowing check judges the merged result. A layout a client writes
-  that would fail the boot check, or whose merge refuses an entry, is dropped instead (the type falls back to
-  global's layout, or none) — see *A client's own definitions* below. The merge itself is the general declared
-  merger in `common/overlay/OverlayMerge.kt`; `schemaTypeMergeSpec` is the whole of how an alteration applies.
+  the alteration, and a `g-merge` anywhere but the top of a client's alteration of a global type — a global type,
+  a client's own type, a nested part — does nothing and is refused like any misplaced keyword. Either way the
+  narrowing check judges the merged result.
 
 **Substitution — two passes, by prefix (issues #586, #587, #605).** Layout copy (`label` / `description` /
 `hint`) carries two kinds of template block, resolved in different passes:

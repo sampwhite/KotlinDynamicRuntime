@@ -51,8 +51,7 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
     // which are ordinary entries under a name of their own.
     for ((name, body) in overlays) {
         if (name !in defs) {
-            // A merge directive means nothing on a type that alters nothing, and is not schema.
-            out[name] = if (body is Map<*, *> && SCH.merge in body) body.toJsonMap() - SCH.merge else body
+            out[name] = body
         }
     }
     return out

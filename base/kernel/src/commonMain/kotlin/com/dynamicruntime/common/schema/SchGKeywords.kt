@@ -57,6 +57,10 @@ object SchGKeywords {
      */
     fun problem(where: String, keyword: String, value: Any?): Problem? {
         if (!keyword.startsWith(SCH.gPrefix) || value == null) return null
+        // A merge directive is consumed by the merge of a client's alteration of a global type (issue #985), so in a
+        // type that is being judged -- a global one, a client's own, a nested part, or anything the parser sees -- it
+        // would do nothing. The repair of a client's alterations lets it stand at the one place it applies.
+        if (keyword == SCH.merge) return misplacedMerge(where)
         val shape = shapes[keyword]
             ?: return Problem(
                 SchemaError.unknownKeyword,
@@ -68,6 +72,14 @@ object SchGKeywords {
             SchemaError.badValue, "$where sets '$keyword' to ${describe(value)}; it must be ${shape.described}.",
         )
     }
+
+    /** [SCH.merge] at [where], where no merge will apply it. */
+    fun misplacedMerge(where: String): Problem = Problem(
+        SchemaError.misplacedKeyword,
+        "$where carries '${SCH.merge}', which says how a client's alteration of a global type merges with it; here it " +
+            "would do nothing. A type a client declares in full -- a new one, or one its own configuration declares " +
+            "elsewhere -- states its whole definition.",
+    )
 
     /** Every problem among [map]'s own keys (not its children's), in key order. */
     fun problems(where: String, map: Map<String, Any?>): List<Problem> =

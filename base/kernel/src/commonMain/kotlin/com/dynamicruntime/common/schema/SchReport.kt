@@ -22,6 +22,12 @@ enum class SchemaError : ProblemCode {
     /** A `g-` key that is not one of our keywords -- usually a misspelling (issue #822). */
     unknownKeyword,
 
+    /**
+     * One of our keywords where it does nothing (issue #985): `g-merge` anywhere but the top of a client's alteration of
+     * a global type, the only place a merge applies it.
+     */
+    misplacedKeyword,
+
     /** A keyword whose value has the wrong shape: text where true/false belongs, a bound that is not a number. */
     badValue,
 

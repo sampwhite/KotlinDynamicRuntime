@@ -129,6 +129,19 @@ class ClientLayoutMergeTest : StringSpec({
         message shouldContain "In 'g-merge', 'properties' merges as one of"
     }
 
+    "g-merge on a client's own type does nothing, so it is refused -- outside production, at the reload" {
+        val message = shouldThrow<KdrException> {
+            alter("ownMerge985") {
+                type("Own") {
+                    type = SCT.kObject
+                    data[SCH.merge] = mapOf(SCH.properties to MCH.merge)
+                    property("x", "A value.")
+                }
+            }
+        }.fullMessage()
+        message shouldContain "would do nothing"
+    }
+
     "a null layout drops the inherited one" {
         alter("bare985") {
             type(LayoutMergeFixture.card) { data[SCH.layout] = null }

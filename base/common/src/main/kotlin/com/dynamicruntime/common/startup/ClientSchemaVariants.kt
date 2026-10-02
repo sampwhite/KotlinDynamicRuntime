@@ -92,7 +92,7 @@ fun buildClientVariants(
         val narrowed = keepWhatNarrows(cxt, collected, client, global.defs, declared, issues)
         // Issue #841: a fault in the client's own definitions costs only itself. Keyword-level faults are repaired
         // on the raw definitions first, where a keyword can still be removed.
-        var authored = repairKeywords(cxt, collected, client, narrowed, repair, issues)
+        var authored = repairKeywords(cxt, collected, client, global.defs, narrowed, repair, issues)
         // The client's forms-listing search fields (issue #538): its usage rules' parameters merged onto the
         // pristine query base -- never onto the global-augmented type, or an overriding client would inherit
         // global's parameters too. Folded in only when they differ from the global type, like the unions
@@ -285,6 +285,7 @@ private fun repairKeywords(
     cxt: KdrCxt,
     collected: SchemaCollector,
     client: String,
+    globalDefs: Map<String, Any?>,
     authored: Map<String, Any?>,
     repair: DefRepairContext,
     issues: MutableList<GedraConfigIssue>,
@@ -292,7 +293,8 @@ private fun repairKeywords(
     var out: LinkedHashMap<String, Any?>? = null
     for ((name, body) in authored) {
         if (body !is Map<*, *>) continue
-        val (repaired, repairs) = repairTypeDef("Type '$name' (client '$client')", body.toJsonMap(), repair)
+        val (repaired, repairs) =
+            repairTypeDef("Type '$name' (client '$client')", body.toJsonMap(), repair, altersGlobal = name in globalDefs)
         if (repairs.isEmpty()) continue
         for (r in repairs) {
             reportConfigProblem(cxt, alterationIssue(collected, client, name, r.message, r.degradedTo), issues)

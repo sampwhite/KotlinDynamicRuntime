@@ -376,7 +376,8 @@ object SCH {
      * default is not wanted -- `{ "properties": "merge" }` merges the properties entry by entry (a `null` entry
      * removing one) instead of restating the set. The choices each part offers are declared by
      * `schemaTypeMergeSpec`. A directive, not schema: the merge reads it and leaves it out of the result, so it
-     * never reaches `SchType` or a served schema; on a type that alters nothing it means nothing and is dropped.
+     * never reaches `SchType` or a served schema. Anywhere else -- a global type, a client's own type, a nested
+     * part -- it would do nothing, and is refused (`SchGKeywords.misplacedMerge`).
      */
     const val merge = "g-merge"
 

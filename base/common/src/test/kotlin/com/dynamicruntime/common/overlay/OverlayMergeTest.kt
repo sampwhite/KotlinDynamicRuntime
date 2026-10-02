@@ -1,10 +1,15 @@
 package com.dynamicruntime.common.overlay
 
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.overlayTypeOutcome
+import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.startup.DefRepairContext
+import com.dynamicruntime.common.startup.repairTypeDef
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
@@ -196,5 +201,30 @@ class OverlayMergeTest : StringSpec({
         // Against a base whose order matters, a copy change for an unlisted field is refused, saying what to do.
         val refused = overlayTypeOutcome("T", type(layout(SLM.authoritative, "a" to "A")), mapOf(SCH.layout to layout(null, "c" to "Cee")))
         refused.problems.single().message.contains("restate the list") shouldBe true
+    }
+
+    // --- where g-merge may stand ---
+
+    val repairContext = DefRepairContext(emptySet()) { null }
+    val directive = mapOf(SCH.properties to MCH.merge)
+
+    "g-merge stands at the top of a client's alteration of a global type, and is refused anywhere else" {
+        val body = mapOf(SCH.merge to directive, SCH.properties to emptyMap<String, Any?>())
+        repairTypeDef("Type 'kdr.B'", body, repairContext, altersGlobal = true).second.shouldBeEmpty()
+        // A type that alters nothing -- a global one, or a client's own.
+        val (repaired, repairs) = repairTypeDef("Type 'client.acme.A'", body, repairContext, altersGlobal = false)
+        repaired.containsKey(SCH.merge) shouldBe false
+        repairs.single().message.contains("would do nothing") shouldBe true
+        // Nested, even inside an alteration.
+        val nested = mapOf(SCH.properties to mapOf("x" to mapOf(SCH.type to SCT.kObject, SCH.merge to directive)))
+        repairTypeDef("Type 'kdr.B'", nested, repairContext, altersGlobal = true).second.single().message
+            .contains("'g-merge'") shouldBe true
+    }
+
+    "the parser refuses a g-merge that reached it, since a merge would have consumed it" {
+        val error = shouldThrow<KdrException> {
+            parseSchemaTypes(mapOf("kdr.B" to mapOf(SCH.type to SCT.kObject, SCH.merge to directive)))
+        }
+        error.fullMessage().contains("would do nothing") shouldBe true
     }
 })
