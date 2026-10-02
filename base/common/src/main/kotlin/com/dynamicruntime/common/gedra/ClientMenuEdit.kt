@@ -33,7 +33,7 @@ import com.dynamicruntime.common.util.toOptStr
  * written; a reset removes the client's item from the array, whatever it held.
  *
  * Trial-checked, published, reloaded, and announced in one call, as a copy edit is; the publish's refusal undoes
- * the write.
+ * the write. For a client with a Shadow Sandbox, a draft instead, as a copy edit is (issue #930).
  */
 object ClientMenuEdit {
     /** One home-menu item as a client sees it, with what the shipped menu says and what the client changed. */
@@ -86,7 +86,8 @@ object ClientMenuEdit {
 
     /**
      * Changes [itemId] for [client] -- [label] renames it, [visibility] hides or shows it (with [condition], for a
-     * show, one the shipped menu draws for) -- and makes that live. At least one of the two must be asked for.
+     * show, one the shipped menu draws for) -- and makes that take effect, live or as a draft. At least one of the two
+     * must be asked for.
      */
     fun set(cxt: KdrCxt, client: String, itemId: String, label: String?, visibility: String?, condition: String?): Result {
         val fields = LinkedHashMap<String, Any?>()
@@ -133,8 +134,9 @@ object ClientMenuEdit {
     }
 
     /**
-     * Removes [client]'s stored changes to [itemId] and makes that live. A 400 when no stored config touches the item:
-     * what the client's source config or the shipped menu says is not something data can take away.
+     * Removes [client]'s stored changes to [itemId] and makes that take effect, live or as a draft. A 400 when no
+     * stored config touches the item: what the client's source config or the shipped menu says is not something data
+     * can take away.
      */
     fun reset(cxt: KdrCxt, client: String, itemId: String): Result {
         val target = ClientStoredEdit.target(cxt, client, "menuEdit")

@@ -12,10 +12,10 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Editing a client's copy (issue #918): the keys an administrator may override for a client, and the set and reset
- * of one -- each written to the client's stored configuration, trial-checked, published, and made live at once
- * (see [ClientCopyEdit]). In the `clientAdmin` section and scoped as the client overview's retrieves are: the
- * caller's own client unless they may name another. App-only, as the overview is: the fragment service is what it
- * reads and writes through.
+ * of one -- each written to the client's stored configuration, trial-checked, published, and made live at once, or
+ * for a client with a Shadow Sandbox saved as a draft its sandbox shows (issue #930; see [ClientCopyEdit]). In the
+ * `clientAdmin` section and scoped as the client overview's retrieves are: the caller's own client unless they may
+ * name another. App-only, as the overview is: the fragment service is what it reads and writes through.
  */
 fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) {
     type(CPY.keyTypeName) {
@@ -72,10 +72,13 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
 
     generalEndpoint(
         CPY.setPath,
-        "Sets one key's value for a client and makes it live: written into the client's stored configuration (the " +
-            "config already overlaying the file, else one named '${CPY.copyConfigName}', created on the first edit), " +
+        "Sets one key's value for a client and makes it take effect: written into the client's stored configuration " +
+            "(the config already overlaying the file, else one named '${CPY.copyConfigName}', created on the first " +
+            "edit), " +
             "refused with its findings when a trial reload would find a new problem, then published and reloaded. A " +
-            "key the client's source configuration sets is overridden, not replaced.",
+            "key the client's source configuration sets is overridden, not replaced. " +
+            "For a client with a Shadow Sandbox (issue #930) the change is saved as a draft instead -- written and " +
+            "reloaded, not published -- so its sandbox shows it and it goes live once published.",
         HttpMethod.POST,
         outputRef = CPY.resultTypeName,
         needsClientConfig = true,
@@ -95,8 +98,10 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
 
     generalEndpoint(
         CPY.resetPath,
-        "Removes a client's stored value for one key and makes that live, so the key reads as the client's source " +
-            "configuration or the shipped copy says. Refused when no stored value sets it.",
+        "Removes a client's stored value for one key and makes that take effect, so the key reads as the client's " +
+            "source configuration or the shipped copy says. Refused when no stored value sets it. " +
+            "For a client with a Shadow Sandbox (issue #930) the change is saved as a draft instead -- written and " +
+            "reloaded, not published -- so its sandbox shows it and it goes live once published.",
         HttpMethod.POST,
         outputRef = CPY.resultTypeName,
         needsClientConfig = true,

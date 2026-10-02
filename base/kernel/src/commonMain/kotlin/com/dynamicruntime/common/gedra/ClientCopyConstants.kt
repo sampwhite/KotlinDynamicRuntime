@@ -14,10 +14,10 @@ object CPY {
     /** Every key an administrator may override for a client, with its value for that client. */
     const val keysPath = "/${SECT.clientAdmin}/client/copy/keys"
 
-    /** Sets one key's value for a client, and makes it live. */
+    /** Sets one key's value for a client, and makes it live -- or a draft, for a client with a sandbox. */
     const val setPath = "/${SECT.clientAdmin}/client/copy/set"
 
-    /** Removes a client's stored value for one key, and makes that live. */
+    /** Removes a client's stored value for one key, and makes that live -- or a draft, for a client with a sandbox. */
     const val resetPath = "/${SECT.clientAdmin}/client/copy/reset"
 
     const val keyTypeName = "CopyKey"

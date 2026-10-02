@@ -11,9 +11,9 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Editing a client's home menu (issue #919): its items as the client sees them, and the rename, hide, show, and reset
- * of one -- written to the client's stored configuration, trial-checked, published, and made live at once (see
- * [ClientMenuEdit]). In the `clientAdmin` section and scoped as the client overview's retrieves are. App-only, as
- * the copy editor is.
+ * of one -- written to the client's stored configuration, trial-checked, published, and made live at once, or for a
+ * client with a Shadow Sandbox saved as a draft its sandbox shows (issue #930; see [ClientMenuEdit]). In the
+ * `clientAdmin` section and scoped as the client overview's retrieves are. App-only, as the copy editor is.
  */
 fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) {
     type(MNU.itemTypeName) {
@@ -73,11 +73,13 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
 
     generalEndpoint(
         MNU.setPath,
-        "Renames, hides or shows one home-menu item for a client and makes it live: written into the client's " +
+        "Renames, hides or shows one home-menu item for a client and makes it take effect: written into the client's " +
             "stored configuration (the config already changing the item, else one overlaying the menu, else " +
             "'${CPY.copyConfigName}'), refused when a trial reload would find a new problem, then published and " +
             "reloaded. Hiding or showing is presentation, not permission: the section gate still decides who may " +
-            "reach a page. Showing names a condition the shipped menu already draws for.",
+            "reach a page. Showing names a condition the shipped menu already draws for. " +
+            "For a client with a Shadow Sandbox (issue #930) the change is saved as a draft instead -- written and " +
+            "reloaded, not published -- so its sandbox shows it and it goes live once published.",
         HttpMethod.POST,
         outputRef = MNU.resultTypeName,
         needsClientConfig = true,
@@ -100,8 +102,10 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
 
     generalEndpoint(
         MNU.resetPath,
-        "Removes a client's stored changes to one home-menu item and makes that live, so the item shows as the " +
-            "client's source configuration or the shipped menu says. Refused when no stored change touches it.",
+        "Removes a client's stored changes to one home-menu item and makes that take effect, so the item shows as " +
+            "the client's source configuration or the shipped menu says. Refused when no stored change touches it. " +
+            "For a client with a Shadow Sandbox (issue #930) the change is saved as a draft instead -- written and " +
+            "reloaded, not published -- so its sandbox shows it and it goes live once published.",
         HttpMethod.POST,
         outputRef = MNU.resultTypeName,
         needsClientConfig = true,

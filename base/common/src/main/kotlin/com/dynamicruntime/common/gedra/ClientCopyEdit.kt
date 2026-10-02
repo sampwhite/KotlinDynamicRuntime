@@ -32,7 +32,12 @@ import com.dynamicruntime.common.util.toOptStr
  * from a map the caller read earlier. So the file's other keys, and a key another administrator changed a moment
  * ago, are kept.
  *
- * ### Live at once
+ * ### Live at once, or a draft
+ *
+ * A client with a Shadow Sandbox (issue #930) -- always published-only -- saves a **draft** instead: the change is
+ * written and the client reloaded, not published, so the sandbox shows it and publishing is the explicit step; and
+ * a save named for the sandbox lands in its parent's configuration ([ClientStoredEdit.EditTarget]). For any other
+ * client:
  *
  * The write is trial-checked (issue #843) -- a `%{...}` in a frontend file, an unresolved `%{@t(...)}` in a backend
  * one, a template that does not parse -- and refused with the findings. What passes is published (a published-only
@@ -85,7 +90,7 @@ object ClientCopyEdit {
         val mode: String = EDM.live,
     )
 
-    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it live. */
+    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it take effect: live, or a draft. */
     fun set(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String, value: String): Result {
         requireShippedKey(cxt, fileId, namespace, key)
         // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
@@ -108,8 +113,9 @@ object ClientCopyEdit {
     }
 
     /**
-     * Removes [client]'s stored value for [key] and makes that live. A 400 when no stored layer sets it: a value
-     * from the client's source config, or the shipped copy, is not something data can take away.
+     * Removes [client]'s stored value for [key] and makes that take effect, live or as a draft. A 400 when no stored
+     * layer sets it: a value from the client's source config, or the shipped copy, is not something data can take
+     * away.
      */
     fun reset(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String): Result {
         val target = ClientStoredEdit.target(cxt, client, "copyEdit")
