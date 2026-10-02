@@ -27,9 +27,13 @@ class CursorSlice<T>(val items: List<T>, val hasMore: Boolean, val numAvailable:
  * date, a count) lets an item cross the cursor between pages, to be skipped or returned twice, so a cursor-paged
  * listing orders by an immutable key -- an id.
  *
+ * A key is **never null**: a null [afterKey] means "no cursor yet", so a key that could be null would make the page
+ * ending on it hand out a cursor that reads as the first page, and the walk would restart for ever. A listing ordered
+ * by a value that may be absent wraps it -- a list of the key's parts, say, which may hold nulls.
+ *
  * A [limit] below one is refused as bad input: a page with no last item has no key to continue after.
  */
-fun <T, K> cursorSlice(
+fun <T, K : Any> cursorSlice(
     sorted: List<T>,
     afterKey: K?,
     limit: Int,
@@ -45,7 +49,7 @@ fun <T, K> cursorSlice(
 }
 
 /** The index of the first item of [sorted] whose key is greater than [afterKey]; `sorted.size` when none is. */
-private fun <T, K> firstAfter(sorted: List<T>, afterKey: K, keyOf: (T) -> K, cmp: Comparator<in K>): Int {
+private fun <T, K : Any> firstAfter(sorted: List<T>, afterKey: K, keyOf: (T) -> K, cmp: Comparator<in K>): Int {
     var low = 0
     var high = sorted.size
     while (low < high) {

@@ -58,8 +58,8 @@ class ListPage(
     companion object {
         /**
          * A page of a **cursor-paged** listing (issue #976): [next] is the token for the following page, or null on
-         * the last, and "more remain" is exactly "there is a next". See `cursorSlice` for cutting the page and
-         * `CursorToken` for building the token.
+         * the last, and "more remain" is exactly "there is a next". A handler normally gets one from `cursorPage`,
+         * which cuts the page and builds the token from the request.
          */
         fun cursor(items: List<Any?>, numAvailable: Int, next: String?, summary: Map<String, Any?>? = null): ListPage =
             ListPage(items, numAvailable, hasMore = next != null, summary = summary, next = next)
@@ -190,7 +190,8 @@ class KdrEndpoint(
     val summaryRef: String? = null,
     /**
      * (List endpoints only.) Whether the listing pages by **cursor** (issue #976): its input takes `after`, its
-     * output may carry `next`, and its handler returns [ListPage.cursor]. The alternative to an offset for a walk
+     * output may carry `next`, and its handler returns a [ListPage.cursor] page, from `cursorPage`. The alternative
+     * to an offset for a walk
      * that must return each item once while the set changes -- which holds only if the handler orders by a key
      * that never changes for an item (see `cursorSlice`).
      */
@@ -420,7 +421,8 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
         summaryRef: String? = null,
         /**
          * Pages by cursor (issue #976): adds the `after` input and the `next` output, and declares `hasMore`. The
-         * handler returns [ListPage.cursor]. See [KdrEndpoint.cursorPaged] for what the handler's order must hold to.
+         * handler returns `cursorPage(...)`, which does the paging from the request. See [KdrEndpoint.cursorPaged] for
+         * what the handler's order must hold to.
          *
          * A reserved input name comes with it: `after`. A listing whose input takes names from configuration (the
          * forms listing's trait search) has to reserve it before turning cursor-paged, as it reserves `limit`.
@@ -657,6 +659,14 @@ fun resolveEndpointInputType(endpoint: KdrEndpoint, types: Map<String, SchType>)
         props[EP.limit] = limitInputProperty
     }
     if (endpoint.cursorPaged) {
+        // The framework's name, so the endpoint's own type may not hold it: replacing a property the type declared
+        // -- a date filter called `after`, say -- would hand its handler a cursor where it reads a date.
+        if (EP.after in props) {
+            throw KdrException(
+                "List endpoint '${endpoint.path}' is cursor-paged and its input type declares its own '${EP.after}'; " +
+                    "the framework adds that field, so the type's has to be named something else.",
+            )
+        }
         props[EP.after] = afterInputProperty
     }
     return inputObjectType("${endpoint.path}#input", props, base.required)

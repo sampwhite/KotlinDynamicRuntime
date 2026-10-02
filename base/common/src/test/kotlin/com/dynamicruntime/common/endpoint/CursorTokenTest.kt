@@ -8,6 +8,7 @@ import com.dynamicruntime.common.util.crc32Hex
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldMatch
@@ -27,6 +28,30 @@ class CursorTokenTest : StringSpec({
         CursorToken.keyOf(token, query) shouldBe key
         // URL-safe as it stands: a caller pastes it into a query string.
         token shouldMatch Regex("[A-Za-z0-9._-]+")
+    }
+
+    // JSON does not keep every type, and the KDoc says which: this is what a codec's `fromValues` has to allow for.
+    "a whole-number double comes back a long, and a date as its text" {
+        val at = kotlin.time.Instant.parse("2026-08-12T13:04:05Z")
+        val back = CursorToken.keyOf(CursorToken.encode(query, listOf(2.0, 7, at)), query).shouldNotBeNull()
+        back[0] shouldBe 2L
+        back[1] shouldBe 7L
+        back[2].shouldBeInstanceOf<String>()
+    }
+
+    "the string codec reads one string and nothing else" {
+        CursorKeys.string.fromValues(CursorKeys.string.toValues("id1")) shouldBe "id1"
+        CursorKeys.string.fromValues(emptyList()).shouldBeNull()
+        CursorKeys.string.fromValues(listOf(5)).shouldBeNull()
+        CursorKeys.string.fromValues(listOf("a", "b")).shouldBeNull()
+    }
+
+    "a token longer than any real one is refused before it is decoded" {
+        // Well-formed in every other way, so only its length refuses it.
+        val huge = CursorToken.encode(query, listOf("x".repeat(CUR.maxTokenLength)))
+        problemOf(huge) shouldBe CursorProblem.malformed
+        // Just inside the bound still reads.
+        CursorToken.decode(CursorToken.encode(query, listOf("x".repeat(1000))), query).valueOrNull() shouldBe listOf("x".repeat(1000))
     }
 
     "no token is the first page" {

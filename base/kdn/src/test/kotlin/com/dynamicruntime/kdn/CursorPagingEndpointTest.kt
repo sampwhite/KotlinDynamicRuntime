@@ -3,8 +3,8 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.CursorToken
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.ListPage
-import com.dynamicruntime.common.endpoint.cursorSlice
+import com.dynamicruntime.common.endpoint.CursorKeys
+import com.dynamicruntime.common.endpoint.cursorPage
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -67,6 +67,15 @@ class CursorPagingEndpointTest : StringSpec({
         page(CursorFixtureComponent.walk, mapOf(EP.after to "garbage"))[EP.status] shouldBe EXC.badInput
     }
 
+    // A token of this very query whose key is not this listing's shape: refused, never read as "no cursor", which
+    // would answer page one and send an automated walk round again.
+    "a cursor whose key is the wrong shape is a 400, not the first page" {
+        for (key in listOf(emptyList(), listOf(5), listOf("r1", "extra"))) {
+            val resp = page(CursorFixtureComponent.walk, mapOf(EP.after to CursorToken.encode(CursorFixtureComponent.queryId, key)))
+            resp[EP.status] shouldBe EXC.badInput
+        }
+    }
+
     "a limit below one is a 400" {
         page(CursorFixtureComponent.walk, mapOf(EP.limit to 0))[EP.status] shouldBe EXC.badInput
     }
@@ -86,11 +95,7 @@ class CursorFixtureComponent : ComponentDefinition {
             schemaModule(cxt, namespace) {
                 type("Row") { type = SCT.kObject; property("id", "The row's id.", required = true) }
                 listEndpoint(walk, "A cursor-paged walk over fixed rows.", outputRef = "Row", cursorPaged = true) { _, request ->
-                    val after = CursorToken.keyOf(request[EP.after].toOptStr(), queryId)?.firstOrNull() as? String
-                    val limit = (request[EP.limit] as Number).toInt()
-                    val slice = cursorSlice(rows, after, limit, { it }, naturalOrder())
-                    val next = if (slice.hasMore) CursorToken.encode(queryId, listOf(slice.items.last())) else null
-                    ListPage.cursor(slice.items.map { mapOf("id" to it) }, slice.numAvailable, next)
+                    cursorPage(request, queryId, rows, { it }, naturalOrder(), CursorKeys.string) { mapOf("id" to it) }
                 }
                 listEndpoint(broken, "Returns a plain list from a cursor-paged listing.", outputRef = "Row", cursorPaged = true) { _, _ ->
                     rows.map { mapOf("id" to it) }

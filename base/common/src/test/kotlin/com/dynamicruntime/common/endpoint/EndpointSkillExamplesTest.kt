@@ -11,8 +11,9 @@ import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -200,10 +201,7 @@ class EndpointSkillExamplesTest : StringSpec({
         type("Thing") { type = SCT.kObject; property("id", "The thing's id.") }
 
         listEndpoint("/thing/list", "Every thing, in id order.", outputRef = "Thing", cursorPaged = true) { _, request ->
-            val after = CursorToken.keyOf(request[EP.after].toOptStr(), queryId)?.firstOrNull() as? String
-            val slice = cursorSlice(sortedThings, after, (request[EP.limit] as Number).toInt(), { it.id }, naturalOrder())
-            val next = if (slice.hasMore) CursorToken.encode(queryId, listOf(slice.items.last().id)) else null
-            ListPage.cursor(slice.items.map { it.toJsonMap() }, slice.numAvailable, next)
+            cursorPage(request, queryId, sortedThings, { it.id }, naturalOrder(), CursorKeys.string) { it.toJsonMap() }
         }
     }
 
@@ -232,6 +230,15 @@ class EndpointSkillExamplesTest : StringSpec({
             after = page.next ?: break
         }
         seen shouldBe listOf("a", "b", "c")
+    }
+
+    // "A cursor from a different query is a 400, as is ... one whose key is not this listing's shape. Never the
+    // first page".
+    "the skill's handler refuses a cursor that is not its own" {
+        val handler = endpoint(cursorExample(), "/thing/list").handler
+        for (after in listOf(CursorToken.encode("otherQuery", listOf("a")), CursorToken.encode(queryId, listOf(5)))) {
+            shouldThrow<KdrException> { handler(cxt, mapOf(EP.limit to 2, EP.after to after)) }.code shouldBe EXC.badInput
+        }
     }
 
     // Transcribed from the skill's options-provider example.

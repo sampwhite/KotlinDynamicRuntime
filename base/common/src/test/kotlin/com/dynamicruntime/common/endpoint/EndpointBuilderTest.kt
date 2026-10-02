@@ -270,6 +270,14 @@ class EndpointBuilderTest : StringSpec({
                 ) { _, _ -> null }
             }
         }.message!!.contains(EP.after) shouldBe true
+        // The same name inside a *named* input type is caught when the input resolves, which the boot does for
+        // every endpoint: the framework's field would otherwise silently replace the type's own.
+        val m = schemaModule(cxt, "api") {
+            type("In") { type = SCT.kObject; property(EP.after, "Only things after this date.") }
+            type("Out") { type = SCT.kObject; property("n", "n") }
+            listEndpoint("/bad/list", "Own after, by ref.", outputRef = "Out", inputRef = "In", cursorPaged = true) { _, _ -> null }
+        }
+        shouldThrow<KdrException> { resolvedInput(m, "/bad/list") }.message!!.contains("declares its own") shouldBe true
     }
 
     "the executor sends a cursor-paged page's next, and faults a handler that breaks the contract" {
