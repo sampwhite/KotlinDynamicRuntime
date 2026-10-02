@@ -42,6 +42,10 @@ fun mkUserGedraId(client: String, userId: Long): GedraId =
  *
  * The construction is not parsed back out. It only has to be invariant given the same user and key, which is
  * what makes "does this user already have one?" answerable by building the id and looking it up.
+ *
+ * **A rooted name cannot be the key as it stands** (issue #953): a base id allows only `[A-Za-z0-9_]`, and a global
+ * workflow id is `<root>:<name>`. A caller keying by one maps the colon to something the id allows, and keeps the
+ * mapping its own -- nothing parses the id back.
  */
 fun mkUserScopedGedraId(kind: GedraKind, client: String, userId: Long, key: String): GedraId =
     GedraId.of(kind, client, "${userIdPart(userId)}_$key")

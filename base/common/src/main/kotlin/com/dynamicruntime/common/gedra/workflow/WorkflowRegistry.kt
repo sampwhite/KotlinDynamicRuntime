@@ -31,7 +31,7 @@ class WfDeclared(val bundle: GedraConfig, val def: WfDef) {
 }
 
 /**
- * The workflows one scope sees, keyed by workflow id, after shadowing (issue #533).
+ * The workflows one scope sees, keyed by workflow id, after shadowing by kind (issues #533, #953).
  *
  * There is one per client, plus the global one every client's is built from -- the shape `CFactRegistries`
  * and `SchemaService.storeFor` share, and for the same reason: a client's own bundles may add to or replace
@@ -84,11 +84,17 @@ fun interface WfFragmentLookup {
  * Builds the global workflow registry and each present client's from the collected bundles, refusing or
  * dropping what does not hold up (issue #533).
  *
- * **Shadowing.** A client sees the global workflows plus its own; its own **replaces** a global one of the
- * same id, and a client declaring a **singleton-kind** workflow (a creation or a survey, of which a scope has
- * at most one) replaces the global one of that kind for that client -- the same overlay rule every other config
- * layer follows, so a deployment can ship a default a client customizes. The at-most-one-per-singleton-kind
- * check runs *after* shadowing, on what the client actually sees.
+ * **Shadowing, by kind only.** A client sees the global workflows plus its own. A client declaring a
+ * **singleton-kind** workflow (a creation or a survey, of which a scope has at most one) replaces the global one of
+ * that kind for that client, so a deployment can ship a default a client customizes. The at-most-one-per-singleton-
+ * kind check runs *after* shadowing, on what the client actually sees.
+ *
+ * **Not by id** (issue #953). A global workflow id is rooted (`kdr:review`) and a client's bare, so the two can never
+ * be equal: a client's `review` beside a global `kdr:review` is two workflows. Replacement by id was replacement by
+ * accident of naming -- a release adding a global workflow would have been shadowed by any client that happened to
+ * use its id. A client meaning to change a global workflow will **overlay** it by naming it (`kdr:review`, #921 rule
+ * 5), which is not built: there is nothing to overlay until core ships a workflow. Wanting a replacement, it defines
+ * its own bare one.
  *
  * **What is checked**, per scope and per workflow -- each a thing that would otherwise fail silently or late:
  *
@@ -103,7 +109,7 @@ fun interface WfFragmentLookup {
  *   binds at request time and is the author's assertion, as it is everywhere.
  * - At most one workflow of each single-instance kind (creation, survey) per scope, after shadowing.
  * - Every cfact expression the definition carries -- eligibility tests, singleton-cfact rules, trait locks, a
- *   task's display and its who-may-save rule -- parses against the scope's cfact names, as UiBlocks' do, so a
+ *   task's display, and its who-may-save rule -- parses against the scope's cfact names, as UiBlocks' do, so a
  *   misspelled cfact refuses the workflow here rather than being a test that silently never passes.
  *
  * A problem is handed to [reportConfigProblem], judged by the origin of the workflow's own bundle (issue #839):
@@ -310,9 +316,10 @@ fun buildWorkflowRegistries(
                 out.entries.removeAll { it.value.def.entry == kind }
             }
         }
-        // Own bundles on top of the inherited ones. Inherited-then-own is shadowing; own-then-own -- two bundles
-        // of one scope naming one workflow -- is a collision, refused the way two configs declaring one trait
-        // are: first kept, second dropped, and said so, since a silent last-wins is the shape nobody reports.
+        // Own bundles beside the inherited ones -- never over one, since an inherited id is rooted and an own one bare
+        // (issue #953). Own-then-own -- two bundles of one scope naming one workflow -- is a collision, refused the
+        // way two configs declaring one trait are: first kept, second dropped, and said so, since a silent last-wins
+        // is the shape nobody reports.
         val ownIds = LinkedHashSet<String>()
         for (w in admitted) {
             if (!ownIds.add(w.def.workflowId)) {
@@ -329,7 +336,7 @@ fun buildWorkflowRegistries(
             }
             out[w.def.workflowId] = w
         }
-        // After shadowing: what this scope actually sees may still hold two of a singleton kind, from two of
+        // After shadowing by kind: what this scope actually sees may still hold two of a singleton kind, from two of
         // its own bundles.
         for (kind in singletonEntries) {
             val ofKind = out.values.filter { it.def.entry == kind }

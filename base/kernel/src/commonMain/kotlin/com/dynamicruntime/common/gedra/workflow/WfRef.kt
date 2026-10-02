@@ -3,7 +3,8 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.util.ConvProblem
-import com.dynamicruntime.common.util.isVariableName
+import com.dynamicruntime.common.naming.OwnedNameKind
+import com.dynamicruntime.common.naming.isOwnedName
 import com.dynamicruntime.common.util.Parsed
 
 /**
@@ -20,7 +21,9 @@ import com.dynamicruntime.common.util.Parsed
  */
 class WfRef(val bundleId: GedraId, val workflowId: String) {
     init {
-        if (!workflowId.isVariableName()) {
+        // A rooted id (`kdr:review`, issue #953) as well as a bare one: the reference splits at its first `#`, and
+        // neither form holds one.
+        if (!isOwnedName(OwnedNameKind.workflow, workflowId)) {
             throw KdrException.mkConv("'$workflowId' cannot be a workflow id in a reference.")
         }
     }
@@ -51,7 +54,7 @@ class WfRef(val bundleId: GedraId, val workflowId: String) {
             }
             val workflowId = text.substring(at + 1)
             // Checked here as well as in `init`, so a bad id is a result rather than the constructor's throw.
-            if (!workflowId.isVariableName()) {
+            if (!isOwnedName(OwnedNameKind.workflow, workflowId)) {
                 return Parsed.failed(ConvProblem.badFormat, "'$workflowId' cannot be a workflow id in a reference.")
             }
             return when (val bundle = GedraId.parseResult(text.substring(0, at))) {

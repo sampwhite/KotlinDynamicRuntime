@@ -180,6 +180,20 @@ class WfDefTest {
         assertEquals(ref, WfRef.parseOrNull(ref.text))
     }
 
+    // A global workflow's id is rooted (issue #953), and a reference carries it as text: the colon is part of the id,
+    // after the one `#`, so the reference still reads back to the same pair.
+    @Test
+    fun wfRefCarriesARootedWorkflowId() {
+        val bundle = GedraId.of(GedraConfigType.configDoc, "global", "flows", "1")
+        val ref = WfRef(bundle, "kdr:review")
+        assertEquals("gc.cd.global.flows~1#kdr:review", ref.text)
+        assertEquals("kdr:review", WfRef.parse(ref.text).workflowId)
+        assertEquals(bundle, WfRef.parse(ref.text).bundleId)
+        assertFailsWith<KdrException> { WfRef(bundle, "kdr:review:again") }
+        assertFailsWith<KdrException> { WfRef(bundle, "kdr:not a name") }
+        assertNull(WfRef.parseOrNull("gc.cd.global.flows~1#:review"))
+    }
+
     private fun task(id: String, vararg required: String, saveKind: WfSaveKind = WfSaveKind.create): WfTask =
         WfTask(id, id, required.map { WfTraitRef(it) }, listOf(WfSave("save", "Save", saveKind)))
 
