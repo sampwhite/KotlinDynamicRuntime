@@ -648,15 +648,17 @@ class SchemaService : ServiceInitializer {
      * It reads the layouts **unpruned** (straight from each store's defs), because what it holds to account is
      * what an author *wrote*; the pruned form on `KdrSchemaStore.layouts` is what is delivered. And it holds a
      * layout to the type it was **authored** on: every global layout, but on a client variant only a layout the
-     * client supplied itself. A variant that narrowed a type inherits global's layout by reference -- the same
+     * client altered -- merged with global's by field (issue #985), the inherited entries for fields the client's
+     * type dropped already left out by the merge, so what remains of global's has been checked as global's. A
+     * variant that narrowed a type and left its layout alone inherits global's layout by reference -- the same
      * object -- and that layout naming a property the client dropped is the sanctioned outcome (pruned on
      * delivery), not a mistake, so it is skipped rather than allowed to take the node down.
      */
     /**
      * The layouts a boot check must examine, each with the `where` label, `client` and resolved `type` it needs
      * (issue #620). One place decides *which* layouts get checked -- every global layout, and on a client
-     * variant only a layout the client supplied itself -- so [checkLayouts] and [checkLayoutPulls] cannot drift
-     * apart on that rule.
+     * variant only a layout the client altered (merged with global's, issue #985) -- so [checkLayouts] and
+     * [checkLayoutPulls] cannot drift apart on that rule.
      *
      * A variant that narrowed a type inherits global's layout **by reference** (the same object); it is skipped
      * because its field/template checks are identical to global's -- save one, the required fields an

@@ -142,6 +142,19 @@ class ClientLayoutMergeTest : StringSpec({
         message shouldContain "would do nothing"
     }
 
+    "a client that narrows the type and rewords a field keeps its wording; entries for dropped fields fall away" {
+        alter("narrowReword985") {
+            type(LayoutMergeFixture.card) {
+                type = SCT.kObject
+                property("a", "First.")
+                property("c", "Third.")
+                layout { field("a", label = "Ay") }
+            }
+        }
+        val merged = layoutFor("narrowReword985", LayoutMergeFixture.card).shouldNotBeNull()
+        merged.fields.map { it.field to it.label } shouldBe listOf("a" to "Ay")
+    }
+
     "a null layout drops the inherited one" {
         alter("bare985") {
             type(LayoutMergeFixture.card) { data[SCH.layout] = null }

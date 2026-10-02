@@ -357,8 +357,10 @@ private fun parseDroppingFaults(
 
 /**
  * [authored] with each `g-layout` the client **wrote** removed when it is at fault (issue #841) -- one that will not
- * parse, names a field its type lacks, or carries a malformed template -- so the type falls back to global's layout
- * (or none) rather than the variant refusing. Returns [authored] itself when nothing was dropped.
+ * parse, names a field its type lacks, or carries a malformed template, judged on the layout as merged with
+ * global's (issue #985); or one whose merge refused an entry (a field global's layout does not list, where its order
+ * matters) -- so the type falls back to global's layout (or none) rather than the variant refusing. Returns
+ * [authored] itself when nothing was dropped.
  *
  * A layout inherited from global by reference is global's to answer for on every count but one, and is otherwise
  * skipped, as the boot check skips it. The one (issue #811): a client that alters a type may add to what it

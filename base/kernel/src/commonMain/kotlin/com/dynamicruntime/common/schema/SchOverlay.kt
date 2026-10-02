@@ -83,14 +83,37 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
  * Whatever the merge refused (a layout entry it had nowhere to put) is left out; [overlayTypeOutcome] says what.
  */
 fun overlayType(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> =
-    mergeOverlay(schemaTypeMergeSpec, base, overlay).value
+    overlayTypeOutcome("", base, overlay).value
 
 /**
  * [overlayType] for the type [typeName], with what the merge refused, each problem located in the type
  * (`acme.Q.g-layout.schemaFields[notes]`) -- what a client's alteration is reported by when part of it cannot apply.
  */
-fun overlayTypeOutcome(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): MergeOutcome =
-    mergeOverlay(schemaTypeMergeSpec, base, overlay, typeName)
+fun overlayTypeOutcome(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): MergeOutcome {
+    val outcome = mergeOverlay(schemaTypeMergeSpec, base, overlay, typeName)
+    return MergeOutcome(withoutStrandedLayoutEntries(outcome.value, overlay), outcome.problems)
+}
+
+/**
+ * [merged] with each **inherited** layout entry for a field the merged type no longer declares left out (issue
+ * #985). An alteration that narrows a type away from a field and also changes its layout gets a layout merged from
+ * global's, which still has an entry for that field -- and that entry is the sanctioned outcome of the narrowing,
+ * exactly as it is for a layout the alteration does not touch (pruned on delivery), not a fault of the client's. An
+ * entry the alteration wrote itself is kept, so a client naming a field its type lacks is still told.
+ */
+private fun withoutStrandedLayoutEntries(merged: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
+    val layout = merged[SCH.layout] as? Map<*, *> ?: return merged
+    val ownLayout = overlay[SCH.layout] as? Map<*, *> ?: return merged
+    val properties = (merged[SCH.properties] as? Map<*, *>)?.keys ?: return merged
+    val written = (ownLayout[SL.schemaFields] as? List<*>).orEmpty().mapNotNull { (it as? Map<*, *>)?.get(SL.field) }.toSet()
+    val fields = layout[SL.schemaFields] as? List<*> ?: return merged
+    val kept = fields.filter { e ->
+        val field = (e as? Map<*, *>)?.get(SL.field)
+        field == null || field in properties || field in written
+    }
+    if (kept.size == fields.size) return merged
+    return merged + (SCH.layout to (layout.toJsonMap() + (SL.schemaFields to kept)))
+}
 
 /**
  * How a schema type's body merges with an alteration of it (issues #356, #985) -- the whole authoring model of an

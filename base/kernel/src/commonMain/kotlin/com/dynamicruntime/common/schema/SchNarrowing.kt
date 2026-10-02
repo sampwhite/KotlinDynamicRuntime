@@ -24,7 +24,8 @@ import com.dynamicruntime.common.util.toOptStr
  * a refusal is cheap to relax later where a wrongly-permitted widening is not -- a widened type reaches
  * storage, and the data it admitted is then wrong for everybody else.
  *
- *  1. **Fewer properties** -- mention only the keys wanted (see `mergeProperties`).
+ *  1. **Fewer properties** -- mention only the keys wanted, or, where the alteration merges its properties
+ *     (`g-merge`), remove one with `null` (see [schemaTypeMergeSpec]).
  *  2. **Fewer choices**, or a choice list where there was none: [SCH.options] whose values are a subset, or
  *     an options list applied to an attribute that had none -- including **closing an open list**
  *     ([SCH.openOptions]), which is the same act said in the other keyword: a list that bounded nothing
@@ -112,9 +113,9 @@ private val presentationKeys = setOf(
     // a field cannot widen what a type accepts.
     SCH.visibleWhen,
     // A layout (issue #584) is how a friendly form renders a type's fields; it is never read into `SchType`
-    // and takes no part in validation, so a client may supply its own. Absent from this list, a client's
-    // `g-layout` overlay would be refused as a validation change -- and, in warn mode, take the client's whole
-    // alteration of that type down with it.
+    // and takes no part in validation, so a client may alter it -- merged with the base's by field (issue #985).
+    // Absent from this list, a client's `g-layout` alteration would be refused as a validation change -- and, in
+    // warn mode, take the client's whole alteration of that type down with it.
     SCH.layout,
 )
 
