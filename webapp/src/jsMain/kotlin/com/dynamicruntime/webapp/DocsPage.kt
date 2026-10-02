@@ -51,7 +51,7 @@ val DocsPage = FC<Props> {
                 val loaded = HomeApi.fetchConfig()
                 config = loaded
                 copy = fetchCopyWithRetry(loaded.fragment) {
-                    runCatching { HomeApi.fetchConfig().fragment }.getOrNull()
+                    apiResult { HomeApi.fetchConfig().fragment }.valueOrNull()
                 }
                 error = null
             } catch (e: Throwable) {

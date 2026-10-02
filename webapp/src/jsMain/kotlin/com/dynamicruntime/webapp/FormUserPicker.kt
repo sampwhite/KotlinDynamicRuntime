@@ -69,9 +69,9 @@ val FormUserPicker = FC<FormUserPickerProps> { props ->
         } else {
             searchTimer.current = setPickerTimer({
                 userPickerScope.launch {
-                    matches = runCatching {
+                    matches = apiResult {
                         AdminApi.searchUsers(UserSearchQuery(anyText = term), limit = maxUserSuggestions).users
-                    }.getOrDefault(emptyList())
+                    }.valueOr(emptyList())
                 }
             }, userPickerDebounceMs)
         }

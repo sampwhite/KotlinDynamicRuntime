@@ -49,7 +49,7 @@ val Home = FC<Props> {
                 // old, which 404s -- re-fetch the config for a fresh ref and retry once, rather than surfacing
                 // the misleading "is the runtime running?" below for a runtime that is running perfectly.
                 copy = fetchCopyWithRetry(loaded.fragment) {
-                    runCatching { HomeApi.fetchConfig().fragment }.getOrNull()
+                    apiResult { HomeApi.fetchConfig().fragment }.valueOrNull()
                 }
                 error = null
             } catch (e: Throwable) {

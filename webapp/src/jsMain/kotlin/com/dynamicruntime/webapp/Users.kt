@@ -247,14 +247,14 @@ val Users = FC<Props> {
 
     useEffect(generation) {
         usersScope.launch {
-            val c = runCatching { HomeApi.fetchConfig() }.getOrNull()
+            val c = apiResult { HomeApi.fetchConfig() }.valueOrNull()
             config = c
             if (c?.canManageUsers == true) {
                 // The caller's own address, for "Create a user for me" (issue #797). Before the search, so it is
                 // known by the time the rows arrive and a reload inside the self form restores that form. A
                 // failure leaves the button off rather than showing an error: it is a convenience over the
                 // ordinary create.
-                val own = runCatching { ProfileApi.fetchConfig().loginId }.getOrNull()?.ifBlank { null }
+                val own = apiResult { ProfileApi.fetchConfig().loginId }.valueOrNull()?.ifBlank { null }
                 ownAddress = own
                 ownAddressRef.current = own
                 // Seed the controls from the URL and run *that* search, so a shared/bookmarked link reproduces
@@ -266,7 +266,7 @@ val Users = FC<Props> {
                 // list -- it is a cross-client question. A failure leaves the list empty, which falls back to
                 // the read-only field rather than an error: the client is not the reason they came here.
                 if (c.user.roles.contains(ROLE.allClients)) {
-                    clientChoices = runCatching { AdminApi.listClients() }.getOrDefault(emptyList())
+                    clientChoices = apiResult { AdminApi.listClients() }.valueOr(emptyList())
                 }
             }
         }
@@ -308,7 +308,7 @@ val Users = FC<Props> {
             usersScope.launch {
                 // A functional update: this runs after the await, when the map captured above may be stale -- two
                 // clients fetched at once would otherwise each write back a map missing the other.
-                runCatching { AdminApi.labelSuggestions(client) }.onSuccess { fetched ->
+                apiResult { AdminApi.labelSuggestions(client) }.valueOrNull()?.let { fetched ->
                     setLabelSuggestions { current -> current + (client to fetched) }
                 }
             }
@@ -358,9 +358,11 @@ val Users = FC<Props> {
         identityFor.current = open?.userId
         if (open != null && !open.deleted) {
             usersScope.launch {
-                val loaded = runCatching { AdminApi.userIdentity(open.userId) }
-                    .onFailure { console.error("$errorLogPrefix could not load the person behind user ${open.userId}: ${it.message}") }
-                    .getOrNull()
+                val result = apiResult { AdminApi.userIdentity(open.userId) }
+                result.failureOrNull()?.let {
+                    console.error("$errorLogPrefix could not load the person behind user ${open.userId}: ${it.message}")
+                }
+                val loaded = result.valueOrNull()
                 if (identityFor.current == open.userId) identity = loaded
             }
         }

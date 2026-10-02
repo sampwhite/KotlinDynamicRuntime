@@ -121,11 +121,9 @@ val SurveyEditPage = FC<Props> {
                 // trip). The check only gates a link, so its own failure just hides the link rather than failing
                 // the page.
                 val patchFetch = async {
-                    try {
+                    apiResult {
                         findFormPatchEndpoint(fetchFormEndpoint(HttpMethod.POST.name, GEP.patch, formClient).endpoints) != null
-                    } catch (e: Throwable) {
-                        false
-                    }
+                    }.valueOr(false)
                 }
                 // Which copy of the workflow endpoints to call, decided by the backend's resolution rather than
                 // by forming the client path here: a client that varies nothing has only the shared endpoint

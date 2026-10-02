@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import kotlin.coroutines.cancellation.CancellationException
+
 /**
  * A structured error from an API call (issue #111): the fields the backend's error envelope carries, so the
  * frontend can decide how to *present* an error rather than seeing only a bare message string. [Http] throws
@@ -51,9 +53,13 @@ class DisplayError(val text: String, val kind: Kind) {
  * no status, so it is treated as internal and withheld under obfuscation too.
  *
  * Either way the raw detail is logged to the browser console with the trace id, so a developer can diagnose it
- * even when the user is shown only the generic stand-in.
+ * even when the user is shown only the generic stand-in. A [CancellationException] is rethrown, never shown.
  */
 fun userFacingError(e: Throwable, obfuscate: Boolean = appConfig().obfuscateSensitiveErrors): DisplayError {
+    // A coroutine's cancellation is not a failure to show: the page that launched the call has been left, and
+    // the catch that brought it here (every display site's `catch (e: Throwable)`) must let it finish unwinding
+    // rather than write an error into state that no longer belongs to anyone (issue #967).
+    if (e is CancellationException) throw e
     val api = e as? ApiError
     if (api?.fromFragment == true) {
         return DisplayError.expected(api.message)

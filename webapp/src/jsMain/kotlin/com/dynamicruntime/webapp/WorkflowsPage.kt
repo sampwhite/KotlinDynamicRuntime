@@ -48,7 +48,7 @@ val WorkflowsPage = FC<Props> {
         workflowsScope.launch {
             try {
                 // Independent, so fetched together: the aggregate -- a pass over every visible form -- need not wait.
-                val across = async { runCatching { HomeApi.fetchConfig().canSeeAllClients }.getOrDefault(false) }
+                val across = async { apiResult { HomeApi.fetchConfig().canSeeAllClients }.valueOr(false) }
                 val aggregate = parseWorkflowAggregate(Http.getApi(GEP.workflowAggregate)[EP.items].toJsonListOfMaps())
                 acrossClients = across.await()
                 entries = aggregate

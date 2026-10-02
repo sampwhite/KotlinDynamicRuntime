@@ -589,6 +589,21 @@ that construction exactly: read the envelope, and `throw ApiError(...)` with the
 `error()` — so the status survives to `userFacingError`. `applyRequestHeaders(headers)` returns the trace id to
 put on it.
 
+### A call whose failure is expected reads an `ApiResult`, never a `runCatching` (issue #967)
+
+Where a page wants a value or a fallback -- a config that may be refused, a suggestion list that may not load --
+wrap the call in `apiResult { … }` and read the `ApiResult`: `valueOrNull()`, `valueOr(default)`,
+`failureOrNull()` to log, or a `when` over `Ok` / `Refused` (the `ApiError`, status and all) / `Failed` (an
+`ApiFailure`: no answer at all). Only those two failures become values; a bug in handling the response and a
+coroutine's cancellation propagate. `runCatching` caught both and turned them into the same default -- a null
+dereference read as "the server could not be reached", and a cancelled fetch wrote its default into a page
+already left. `Http.getApiResult` / `sendApiResult` return the result directly.
+
+A **display** site that shows any failure keeps its `catch (e: Throwable) { … userFacingError(e) }`: it is a UI
+boundary, and `userFacingError` rethrows a `CancellationException` for it. The browser's `fetch` is called in
+one place, `fetchCompleted` (`Http.kt`), which is where a dropped connection becomes an `ApiFailure`; a call
+that needs its own request (an upload) goes through it too.
+
 ## Iterating on the frontend without a rebuild each time
 
 Rebuilding the bundle and restarting `:launch:run` is roughly a minute per change, which is a poor loop for

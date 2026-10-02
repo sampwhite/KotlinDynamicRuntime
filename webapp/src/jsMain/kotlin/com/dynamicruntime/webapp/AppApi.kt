@@ -106,7 +106,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
 object AppApi {
     /** GETs `/app/ui/config` and refreshes the [appConfig] cache; a failure leaves the previous value in place. */
     suspend fun load() {
-        val config = runCatching { fetchUiConfig(APP.uiConfig) }.getOrNull() ?: return
+        val config = apiResult { fetchUiConfig(APP.uiConfig) }.valueOrNull() ?: return
         cached = appConfigFrom(config)
     }
 }
@@ -121,6 +121,6 @@ object AppApi {
  * otherwise -- and the first thing that ever varies with env auth would quietly follow the wrong one.
  */
 suspend fun setEnvAuthOp(op: EnvAuthOp) {
-    runCatching { Http.sendApi("POST", APP.envAuthPath, mapOf(APP.envAuthOp to op.name)) }
+    apiResult { Http.sendApi("POST", APP.envAuthPath, mapOf(APP.envAuthOp to op.name)) }
     AppApi.load()
 }

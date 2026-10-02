@@ -257,12 +257,11 @@ object AuthApi {
      * [email] (much as `AuthFlowTest` does), so a login/registration can be completed locally without real
      * mail. Returns null when the endpoint isn't served (a real deployment) or no code is found.
      */
-    suspend fun fetchDevCode(email: String): String? = try {
-        val emails = Http.getApi(TEP.simulatedEmails)[EP.results].toJsonMapOrEmpty()[TSE.emails].toJsonListOfMaps()
+    suspend fun fetchDevCode(email: String): String? {
+        val results = Http.getApiResult(TEP.simulatedEmails).valueOrNull() ?: return null
+        val emails = results[EP.results].toJsonMapOrEmpty()[TSE.emails].toJsonListOfMaps()
         val text = emails.firstOrNull { it[TSE.to] == email }?.get(TSE.text) as? String
-        text?.let { codePattern.find(it)?.groupValues?.get(1) }
-    } catch (_: Throwable) {
-        null
+        return text?.let { codePattern.find(it)?.groupValues?.get(1) }
     }
 
     /** The verification code in an email body (see the auth email template: "... verification code is <code>."). */
