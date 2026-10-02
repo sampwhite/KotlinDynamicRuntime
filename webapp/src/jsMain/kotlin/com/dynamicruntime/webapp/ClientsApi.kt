@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.ClientOperatorFields
 import com.dynamicruntime.common.gedra.GCI
@@ -376,8 +377,11 @@ fun copyFileChoices(keys: List<CopyKeyView>): List<CopyFileChoice> {
 /** How the picker labels a file: the id and where it is shown -- "home — the app bar and home page". */
 fun copyFileLabel(choice: CopyFileChoice): String = choice.shownOn?.let { "${choice.fileId} \u2014 $it" } ?: choice.fileId
 
-/** What a set or reset did (issue #918): where it landed, and what the client now reads. */
-class CopyEditResult(val configName: String, val value: String?, val stored: Boolean, val issues: List<String>)
+/**
+ * What a set or reset did (issue #918): where it landed, what the client now reads, and how it took effect -- an
+ * `EDM` value, live or a draft its sandbox runs (issue #930).
+ */
+class CopyEditResult(val configName: String, val value: String?, val stored: Boolean, val issues: List<String>, val mode: String = EDM.live)
 
 /** The set/reset result as a [CopyEditResult]. Pure, and covered under `jsNodeTest`. */
 fun parseCopyEditResult(results: Map<String, Any?>): CopyEditResult = CopyEditResult(
@@ -385,7 +389,15 @@ fun parseCopyEditResult(results: Map<String, Any?>): CopyEditResult = CopyEditRe
     value = results[COV.value].toOptStr(),
     stored = results[CPY.stored] == true,
     issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
+    mode = results[CPY.mode].toOptStr() ?: EDM.live,
 )
+
+/**
+ * The note an editor shows after a save (issue #930): [done]'s account of what changed, and -- for a draft, which a
+ * client with a Shadow Sandbox saves -- where it can be seen and how it goes live. Pure, and covered under `jsNodeTest`.
+ */
+fun savedNote(done: String, mode: String): String =
+    if (mode == EDM.draft) "$done Saved as a draft: the client's sandbox shows it, and it goes live once published." else done
 
 /**
  * The request that sets or resets one key for a client (issue #918): its address, the client, and -- for a set -- the
@@ -477,8 +489,15 @@ fun menuEditRequest(clientId: String, itemId: String, label: String?, visibility
         if (condition != null) it[MNU.condition] = condition
     }
 
-/** What a menu edit did (issue #919). */
-class MenuEditResult(val configName: String, val label: String?, val condition: String?, val stored: Boolean, val issues: List<String>)
+/** What a menu edit did (issue #919), and how it took effect -- live, or a draft its sandbox runs (issue #930). */
+class MenuEditResult(
+    val configName: String,
+    val label: String?,
+    val condition: String?,
+    val stored: Boolean,
+    val issues: List<String>,
+    val mode: String = EDM.live,
+)
 
 /** The set/reset result as a [MenuEditResult]. Pure, and covered under `jsNodeTest`. */
 fun parseMenuEditResult(results: Map<String, Any?>): MenuEditResult = MenuEditResult(
@@ -487,6 +506,7 @@ fun parseMenuEditResult(results: Map<String, Any?>): MenuEditResult = MenuEditRe
     condition = results[MNU.condition].toOptStr(),
     stored = results[CPY.stored] == true,
     issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
+    mode = results[CPY.mode].toOptStr() ?: EDM.live,
 )
 
 /** One configuration issue as the detail lists it (issue #906): what is wrong, what was dropped, and where it came from. */

@@ -32,7 +32,12 @@ import com.dynamicruntime.common.util.toOptStr
  * from a map the caller read earlier. So the file's other keys, and a key another administrator changed a moment
  * ago, are kept.
  *
- * ### Live at once
+ * ### Live at once, or a draft
+ *
+ * A client with a Shadow Sandbox (issue #930) -- always published-only -- saves a **draft** instead: the change is
+ * written and the client reloaded, not published, so the sandbox shows it and publishing is the explicit step; and
+ * a save named for the sandbox lands in its parent's configuration ([ClientStoredEdit.EditTarget]). For any other
+ * client:
  *
  * The write is trial-checked (issue #843) -- a `%{...}` in a frontend file, an unresolved `%{@t(...)}` in a backend
  * one, a template that does not parse -- and refused with the findings. What passes is published (a published-only
@@ -81,43 +86,50 @@ object ClientCopyEdit {
         val buildId: String?,
         /** The issues the client's configuration has after the reload -- pre-existing ones; the trial refused new ones. */
         val issues: List<GedraConfigIssue>,
+        /** How the save took effect, an [EDM] value (issue #930): live, or a draft its sandbox runs. */
+        val mode: String = EDM.live,
     )
 
-    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it live. */
+    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it take effect: live, or a draft. */
     fun set(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String, value: String): Result {
         requireShippedKey(cxt, fileId, namespace, key)
-        val bound = cxt.mkSubContext("copyEdit", client)
+        // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
+        val target = ClientStoredEdit.target(cxt, client, "copyEdit")
+        val bound = target.bound
+        val owner = target.client
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, client, fileId, namespace, key) ?: ClientStoredEdit.editConfig(bound, client)
+        val holder = holderOf(bound, owner, fileId, namespace, key) ?: ClientStoredEdit.editConfig(bound, owner)
         if (holder == null) {
             // The first edit of a file no stored config overlays, with no `copy` config yet: created with just this key.
-            val written = ClientStoredEdit.createEditConfig(bound, client) {
+            val written = ClientStoredEdit.createEditConfig(bound, owner) {
                 fragmentOverlay(fileId, mapOf(namespace to mapOf(key to value)))
             }
-            return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, null) })
+            return goLive(cxt, target, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, null) })
         }
-        ClientStoredEdit.requireNoForeignDraft(holder, "a copy edit")
+        ClientStoredEdit.requireNoForeignDraft(target, holder, "a copy edit")
         val before = storedValue(holder, fileId, namespace, key)
         val written = patchKey(svc, bound, holder, fileId, namespace, key, value)
-        return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
+        return goLive(cxt, target, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
     }
 
     /**
-     * Removes [client]'s stored value for [key] and makes that live. A 400 when no stored layer sets it: a value
-     * from the client's source config, or the shipped copy, is not something data can take away.
+     * Removes [client]'s stored value for [key] and makes that take effect, live or as a draft. A 400 when no stored
+     * layer sets it: a value from the client's source config, or the shipped copy, is not something data can take
+     * away.
      */
     fun reset(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String): Result {
-        val bound = cxt.mkSubContext("copyEdit", client)
+        val target = ClientStoredEdit.target(cxt, client, "copyEdit")
+        val bound = target.bound
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, client, fileId, namespace, key)?.takeIf { storedValue(it, fileId, namespace, key) != null }
+        val holder = holderOf(bound, target.client, fileId, namespace, key)?.takeIf { storedValue(it, fileId, namespace, key) != null }
             ?: throw KdrException.mkInput(
-                "No stored value sets '$fileId: $namespace.$key' for client '$client'; what it reads comes from source " +
-                    "code or the shipped copy, which a reset cannot remove.",
+                "No stored value sets '$fileId: $namespace.$key' for client '${target.client}'; what it reads comes from " +
+                    "source code or the shipped copy, which a reset cannot remove.",
             )
-        ClientStoredEdit.requireNoForeignDraft(holder, "a copy edit")
+        ClientStoredEdit.requireNoForeignDraft(target, holder, "a copy edit")
         val before = storedValue(holder, fileId, namespace, key)
         val written = patchKey(svc, bound, holder, fileId, namespace, key, value = null)
-        return goLive(cxt, bound, client, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
+        return goLive(cxt, target, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
     }
 
     /** Refuses a key no shipped file declares: an overlay of it would be stored and never read (an orphan). */
@@ -176,28 +188,25 @@ object ClientCopyEdit {
         if (value != null) nsKeys[key] = value else nsKeys.remove(key)
         if (nsKeys.isEmpty()) content.remove(namespace) else content[namespace] = nsKeys
         val entry = linkedMapOf<String, Any?>(CCT.fileId to fileId, CCT.content to content)
-        when {
-            content.isEmpty() && at >= 0 -> entries.removeAt(at)
-            at >= 0 -> entries[at] = entry
-            else -> entries.add(entry)
-        }
-        if (entries.isEmpty()) out.remove(CCT.fragmentDef) else out[CCT.fragmentDef] = entries
+        ClientStoredEdit.storeEntry(out, CCT.fragmentDef, entries, at, entry, emptied = content.isEmpty())
         out
     }
 
-    /** Makes [written] live (see [ClientStoredEdit.publishAndReload]) and reads back what the client now reads. */
+    /**
+     * Makes [written] take effect ([ClientStoredEdit.takeEffect]: live, or a draft) and reads back what the people of
+     * the client it shows for now read -- the client's when live, its sandbox's for a draft.
+     */
     private fun goLive(
         cxt: KdrCxt,
-        bound: KdrCxt,
-        client: String,
+        target: ClientStoredEdit.EditTarget,
         written: GedraConfigRow,
         fileId: String,
         namespace: String,
         key: String,
         undo: () -> Unit,
     ): Result {
-        val reload = ClientStoredEdit.publishAndReload(cxt, bound, client, written, undo)
-        val effective = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, fileId, client)
+        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo)
+        val effective = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, fileId, target.readsAs)
         return Result(
             configName = written.configId.baseId,
             value = effective?.content?.get(namespace)?.get(key),
@@ -205,6 +214,7 @@ object ClientCopyEdit {
             stored = storedValue(written, fileId, namespace, key) != null,
             buildId = effective?.buildId,
             issues = reload.issues,
+            mode = target.mode,
         )
     }
 }

@@ -14,10 +14,10 @@ object CPY {
     /** Every key an administrator may override for a client, with its value for that client. */
     const val keysPath = "/${SECT.clientAdmin}/client/copy/keys"
 
-    /** Sets one key's value for a client, and makes it live. */
+    /** Sets one key's value for a client, and makes it live -- or a draft, for a client with a sandbox. */
     const val setPath = "/${SECT.clientAdmin}/client/copy/set"
 
-    /** Removes a client's stored value for one key, and makes that live. */
+    /** Removes a client's stored value for one key, and makes that live -- or a draft, for a client with a sandbox. */
     const val resetPath = "/${SECT.clientAdmin}/client/copy/reset"
 
     const val keyTypeName = "CopyKey"
@@ -34,4 +34,21 @@ object CPY {
     const val buildId = "buildId"
     const val issues = "issues"
     const val stored = "stored"
+
+    /** How the save took effect, an [EDM] value (issue #930) -- the copy and the menu editor's results alike. */
+    const val mode = "mode"
+}
+
+/**
+ * How an editor's save of a client's presentation took effect (issue #930): the result's [CPY.mode]. Chosen by
+ * whether the client has a Shadow Sandbox, so the editor can say "Saved and live" or offer "Preview in sandbox" and
+ * "Publish".
+ */
+@Suppress("ConstPropertyName")
+object EDM {
+    /** Published, and live for the client's people at once: a client with no sandbox. */
+    const val live = "live"
+
+    /** Written to the client's editable revision, which its sandbox runs; live in the client once published. */
+    const val draft = "draft"
 }

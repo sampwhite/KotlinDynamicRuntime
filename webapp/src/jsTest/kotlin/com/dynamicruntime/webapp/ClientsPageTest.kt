@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
@@ -386,6 +387,20 @@ class ClientsPageTest {
         val reset = parseCopyEditResult(mapOf(COV.configName to "copy", CPY.stored to false))
         assertEquals(null, reset.value)
         assertEquals(false, reset.stored)
+        // How the save took effect (issue #930): live unless the result says it stayed a draft.
+        assertEquals(EDM.live, reset.mode)
+        assertEquals(EDM.draft, parseCopyEditResult(mapOf(COV.configName to "copy", CPY.mode to EDM.draft)).mode)
+        assertEquals(EDM.draft, parseMenuEditResult(mapOf(COV.configName to "copy", CPY.mode to EDM.draft)).mode)
+    }
+
+    // A draft says where it can be seen and how it goes live; a live save says only what changed (issue #930).
+    @Test
+    fun aDraftSaveSaysWhereItShowsAndHowItGoesLive() {
+        assertEquals("Saved x.", savedNote("Saved x.", EDM.live))
+        assertEquals(
+            "Saved x. Saved as a draft: the client's sandbox shows it, and it goes live once published.",
+            savedNote("Saved x.", EDM.draft),
+        )
     }
 
     // --- editing the menu (issue #919) ---------------------------------------------------------------------

@@ -13,10 +13,10 @@ object MNU {
     /** The home menu's items for a client: shipped and effective label and condition, and what the client changed. */
     const val itemsPath = "/${SECT.clientAdmin}/client/menu/items"
 
-    /** Renames, hides or shows one item for a client, and makes it live. */
+    /** Renames, hides or shows one item for a client, and makes it live -- or a draft, for a client with a sandbox. */
     const val setPath = "/${SECT.clientAdmin}/client/menu/set"
 
-    /** Removes a client's stored changes to one item, and makes that live. */
+    /** Removes a client's stored changes to one item, and makes that live -- or a draft, for a sandboxed client. */
     const val resetPath = "/${SECT.clientAdmin}/client/menu/reset"
 
     const val itemTypeName = "MenuItemView"

@@ -514,13 +514,35 @@ class GedraConfigService : ServiceInitializer {
 
     /**
      * Whether [client] consumes only its published configuration in this node's environment (issue #617): its
-     * toggled state. The one place the tier collapses to the single question the loader and the reload ask.
-     * (`staticConfig` is not a tier: a static client takes nothing stored in production, and outside it toggles
-     * like any other -- see [isStaticHere], issue #824.)
+     * toggled state -- or, whatever the toggle says, its asking for a Shadow Sandbox ([asksForSandbox], issue #930).
+     * The one place the tier collapses to the single question the loader and the reload ask. (`staticConfig` is
+     * not a tier: a static client takes nothing stored in production, and outside it toggles like any other -- see
+     * [isStaticHere], issue #824.)
      */
     fun publishedOnly(cxt: KdrCxt, client: String): Boolean {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
-        return GedraConfigControl.isToggledPublishedOnly(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env)
+        return GedraConfigControl.isToggledPublishedOnly(cxt, sqlCxt, controlTable(cxt), client, cxt.instanceConfig.env) ||
+            asksForSandbox(cxt, client)
+    }
+
+    /**
+     * Whether [client]'s definition asks for a Shadow Sandbox -- in source, or in its **published** stored revision
+     * (issue #930). Such a client is **published-only**: the sandbox is where its latest revision is previewed, so
+     * the client itself runs only what has been published, and nothing an editor saves is live before it is.
+     *
+     * The published definition decides, not the latest, since the tier is what this chooses between them: a client
+     * whose definition asks for a sandbox only in a draft keeps running its latest until that definition is
+     * published -- a client with nothing published has nothing to protect, and reading the draft would leave it
+     * published-only with no published revision, absent altogether.
+     */
+    fun asksForSandbox(cxt: KdrCxt, client: String): Boolean {
+        val source = SchemaCollector.get(cxt)?.gedraConfigs?.configs.orEmpty()
+            .any { !it.isStored && it.gedraId.client == client && it.client?.sandbox == true }
+        if (source) return true
+        return listRevisionRows(cxt, client).any { classRows ->
+            val published = latestPublishedRow(classRows) ?: return@any false
+            GedraConfigRow.extract(gedraService, published).entriesBySlot()[CCT.clientDef]?.firstOrNull()?.get(CLD.sandbox) == true
+        }
     }
 
     /**
@@ -562,7 +584,8 @@ class GedraConfigService : ServiceInitializer {
 
     /**
      * Sets [client]'s published-only state in this node's environment (issue #617), refused for a client that is
-     * static here ([isStaticHere], issue #824). Returns the state after the write, [value].
+     * static here ([isStaticHere], issue #824). Returns the state after the write: [value], except that a client
+     * asking for a sandbox stays published-only whatever its toggle says ([asksForSandbox], issue #930).
      *
      * Taken under the client's config lock, since the tier decides which of the client's revisions it runs: a
      * toggle swaps the whole set, from the latest revisions to the published ones or back. So with [trial] it is
@@ -577,13 +600,14 @@ class GedraConfigService : ServiceInitializer {
             GedraConfigControl.setPublishedOnly(wcxt, sqlCxt, controlTable(wcxt), client, env, value)
             // Nothing is replaced: the trial judges the set the client would now run, as stored.
             if (trial) {
-                val state = if (value) "published-only" else "latest-revision"
+                val effective = value || asksForSandbox(wcxt, client)
+                val state = if (effective) "published-only" else "latest-revision"
                 GedraConfigTrial.requireClean(
-                    wcxt, client, emptyList(), published = value, "Client '$client' was not switched to $state",
+                    wcxt, client, emptyList(), published = effective, "Client '$client' was not switched to $state",
                 )
             }
         }
-        return value
+        return value || asksForSandbox(cxt, client)
     }
 
     /**

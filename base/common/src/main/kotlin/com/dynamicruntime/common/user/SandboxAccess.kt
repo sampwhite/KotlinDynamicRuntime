@@ -26,13 +26,20 @@ object SandboxAccess {
     }
 
     /** Whether [row] holds `admin` in a sandbox and the rule withholds it -- what `explainAccess` reports. */
-    fun adminWithheld(cxt: KdrCxt, row: AuthUserRow): Boolean {
-        if (ROLE.admin !in row.roles || !isSandboxClient(row.client)) return false
-        val parent = sandboxParentOf(row.client) ?: return true
-        val qualifying = UserService.get(cxt).enabledUsersOf(cxt, row.identityId).any {
-            !isSandboxClient(it.client) && ROLE.admin in it.roles && (it.client == parent || ROLE.allClients in it.roles)
-        }
-        return !qualifying
+    fun adminWithheld(cxt: KdrCxt, row: AuthUserRow): Boolean =
+        ROLE.admin in row.roles && isSandboxClient(row.client) && parentActor(cxt, row) == null
+
+    /**
+     * The user outside the sandbox that makes sandbox user [row] an administrator there: its identity's enabled
+     * administrator in the parent, else its enabled `allClients` administrator -- or null when it has neither, or
+     * [row] is no sandbox user. Who a configuration edit made from the sandbox is attributed to (issue #930), since
+     * the configuration's history is the parent's.
+     */
+    fun parentActor(cxt: KdrCxt, row: AuthUserRow): AuthUserRow? {
+        val parent = sandboxParentOf(row.client) ?: return null
+        val outside = UserService.get(cxt).enabledUsersOf(cxt, row.identityId)
+            .filter { !isSandboxClient(it.client) && ROLE.admin in it.roles }
+        return outside.firstOrNull { it.client == parent } ?: outside.firstOrNull { ROLE.allClients in it.roles }
     }
 }
 

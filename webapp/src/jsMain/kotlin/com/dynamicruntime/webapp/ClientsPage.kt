@@ -424,7 +424,7 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
         clientsScope.launch {
             try {
                 val result = action()
-                note = done(result)
+                note = savedNote(done(result), result.mode)
                 target = null
                 props.onChanged()
             } catch (e: Throwable) {
@@ -563,7 +563,7 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
             }
             p {
                 className = ClassName("type-hint")
-                +"Markdown. Saving makes it live for this client at once; a value the checks fault is refused and nothing changes."
+                +"Markdown. Saving makes it live for this client at once -- or, for a client with a sandbox, saves a draft the sandbox shows. A value the checks fault is refused and nothing changes."
             }
             editError?.let { errorText("Couldn't save the copy.", it) }
             div {
@@ -729,7 +729,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
         clientsScope.launch {
             try {
                 val result = action()
-                note = done(result)
+                note = savedNote(done(result), result.mode)
                 renaming = null
                 showing = null
                 props.onChanged()

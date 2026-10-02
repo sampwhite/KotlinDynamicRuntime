@@ -32,8 +32,8 @@ import com.dynamicruntime.common.util.toOptStr
  * items -- and another administrator's change a moment ago -- are kept. Only `label` and `cfactExpression` are ever
  * written; a reset removes the client's item from the array, whatever it held.
  *
- * Trial-checked, published, reloaded and announced in one call, as a copy edit is; the publish's refusal undoes
- * the write.
+ * Trial-checked, published, reloaded, and announced in one call, as a copy edit is; the publish's refusal undoes
+ * the write. For a client with a Shadow Sandbox, a draft instead, as a copy edit is (issue #930).
  */
 object ClientMenuEdit {
     /** One home-menu item as a client sees it, with what the shipped menu says and what the client changed. */
@@ -74,11 +74,20 @@ object ClientMenuEdit {
     }
 
     /** What a set or reset did: the config it landed in, and the item as the client's people now get it. */
-    class Result(val configName: String, val label: String?, val condition: String?, val stored: Boolean, val issues: List<GedraConfigIssue>)
+    class Result(
+        val configName: String,
+        val label: String?,
+        val condition: String?,
+        val stored: Boolean,
+        val issues: List<GedraConfigIssue>,
+        /** How the save took effect, an [EDM] value (issue #930): live, or a draft its sandbox runs. */
+        val mode: String = EDM.live,
+    )
 
     /**
      * Changes [itemId] for [client] -- [label] renames it, [visibility] hides or shows it (with [condition], for a
-     * show, one the shipped menu draws for) -- and makes that live. At least one of the two must be asked for.
+     * show, one the shipped menu draws for) -- and makes that take effect, live or as a draft. At least one of the two
+     * must be asked for.
      */
     fun set(cxt: KdrCxt, client: String, itemId: String, label: String?, visibility: String?, condition: String?): Result {
         val fields = LinkedHashMap<String, Any?>()
@@ -106,37 +115,42 @@ object ClientMenuEdit {
         requireShippedItem(cxt, itemId)
         if (visibility == MNU.hide) requireNoChildren(cxt, itemId)
 
-        val bound = cxt.mkSubContext("menuEdit", client)
+        // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
+        val target = ClientStoredEdit.target(cxt, client, "menuEdit")
+        val bound = target.bound
+        val owner = target.client
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, client, itemId) ?: ClientStoredEdit.editConfig(bound, client)
+        val holder = holderOf(bound, owner, itemId) ?: ClientStoredEdit.editConfig(bound, owner)
         if (holder == null) {
-            val written = ClientStoredEdit.createEditConfig(bound, client) {
+            val written = ClientStoredEdit.createEditConfig(bound, owner) {
                 uiBlockOverlay(HMENU.block, mapOf(HFLD.menu to listOf(linkedMapOf<String, Any?>(HFLD.id to itemId) + fields)))
             }
-            return goLive(cxt, bound, client, written, itemId, undo = { patchItem(svc, bound, written, itemId, null) })
+            return goLive(cxt, target, written, itemId, undo = { patchItem(svc, bound, written, itemId, null) })
         }
-        ClientStoredEdit.requireNoForeignDraft(holder, "a menu edit")
+        ClientStoredEdit.requireNoForeignDraft(target, holder, "a menu edit")
         val before = storedItem(holder, itemId)
         val written = patchItem(svc, bound, holder, itemId, fields)
-        return goLive(cxt, bound, client, written, itemId, undo = { patchItem(svc, bound, written, itemId, before, replace = true) })
+        return goLive(cxt, target, written, itemId, undo = { patchItem(svc, bound, written, itemId, before, replace = true) })
     }
 
     /**
-     * Removes [client]'s stored changes to [itemId] and makes that live. A 400 when no stored config touches the item:
-     * what the client's source config or the shipped menu says is not something data can take away.
+     * Removes [client]'s stored changes to [itemId] and makes that take effect, live or as a draft. A 400 when no
+     * stored config touches the item: what the client's source config or the shipped menu says is not something data
+     * can take away.
      */
     fun reset(cxt: KdrCxt, client: String, itemId: String): Result {
-        val bound = cxt.mkSubContext("menuEdit", client)
+        val target = ClientStoredEdit.target(cxt, client, "menuEdit")
+        val bound = target.bound
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, client, itemId)?.takeIf { storedItem(it, itemId) != null }
+        val holder = holderOf(bound, target.client, itemId)?.takeIf { storedItem(it, itemId) != null }
             ?: throw KdrException.mkInput(
-                "No stored configuration changes the menu item '$itemId' for client '$client'; what it shows comes " +
-                    "from source code or the shipped menu, which a reset cannot remove.",
+                "No stored configuration changes the menu item '$itemId' for client '${target.client}'; what it shows " +
+                    "comes from source code or the shipped menu, which a reset cannot remove.",
             )
-        ClientStoredEdit.requireNoForeignDraft(holder, "a menu edit")
+        ClientStoredEdit.requireNoForeignDraft(target, holder, "a menu edit")
         val before = storedItem(holder, itemId)
         val written = patchItem(svc, bound, holder, itemId, null)
-        return goLive(cxt, bound, client, written, itemId, undo = { patchItem(svc, bound, written, itemId, before, replace = true) })
+        return goLive(cxt, target, written, itemId, undo = { patchItem(svc, bound, written, itemId, before, replace = true) })
     }
 
     /** The conditions the shipped home menu draws for -- the audiences a client may show an item to. */
@@ -174,8 +188,9 @@ object ClientMenuEdit {
      */
     private fun storedItems(cxt: KdrCxt, client: String): Map<String, Map<String, Any?>> {
         val out = LinkedHashMap<String, Map<String, Any?>>()
-        // A template's copies (issue #945) are loaded for the client too, and are not stored: left out.
-        for (config in GedraConfigLoadService.get(cxt).loadedFor(client).filter { it.inheritedFrom == null }) {
+        // A template's copies (issue #945) are loaded for the client too, and are not stored: left out. So are the
+        // source configs a sandbox's load holds beside its parent's stored ones (issue #930).
+        for (config in GedraConfigLoadService.get(cxt).loadedFor(client).filter { it.inheritedFrom == null && it.isStored }) {
             for (layer in config.uiBlocks.filter { it.blockId == HMENU.block }) {
                 for (item in menuItems(layer.content)) {
                     val id = item[HFLD.id].toOptStr() ?: continue
@@ -228,25 +243,24 @@ object ClientMenuEdit {
         }
         if (items.isEmpty()) content.remove(HFLD.menu) else content[HFLD.menu] = items
         val entry = linkedMapOf<String, Any?>(CCT.blockId to HMENU.block, CCT.content to content)
-        when {
-            content.isEmpty() && at >= 0 -> entries.removeAt(at)
-            at >= 0 -> entries[at] = entry
-            else -> entries.add(entry)
-        }
-        if (entries.isEmpty()) out.remove(CCT.uiBlockDef) else out[CCT.uiBlockDef] = entries
+        ClientStoredEdit.storeEntry(out, CCT.uiBlockDef, entries, at, entry, emptied = content.isEmpty())
         out
     }
 
-    /** Makes [written] live and reads back the item as the client's people now get it. */
-    private fun goLive(cxt: KdrCxt, bound: KdrCxt, client: String, written: GedraConfigRow, itemId: String, undo: () -> Unit): Result {
-        val reload = ClientStoredEdit.publishAndReload(cxt, bound, client, written, undo)
-        val item = menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, client).content).firstOrNull { it[HFLD.id].toOptStr() == itemId }
+    /**
+     * Makes [written] take effect ([ClientStoredEdit.takeEffect]: live, or a draft) and reads back the item as the
+     * people of the client it shows for now get it -- the client's when live, its sandbox's for a draft.
+     */
+    private fun goLive(cxt: KdrCxt, target: ClientStoredEdit.EditTarget, written: GedraConfigRow, itemId: String, undo: () -> Unit): Result {
+        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo)
+        val item = menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, target.readsAs).content).firstOrNull { it[HFLD.id].toOptStr() == itemId }
         return Result(
             configName = written.configId.baseId,
             label = item?.get(HFLD.label).toOptStr(),
             condition = item?.get(UIB.cfactExpression).toOptStr(),
             stored = storedItem(written, itemId)?.let { it.containsKey(HFLD.label) || it.containsKey(UIB.cfactExpression) } ?: false,
             issues = reload.issues,
+            mode = target.mode,
         )
     }
 }

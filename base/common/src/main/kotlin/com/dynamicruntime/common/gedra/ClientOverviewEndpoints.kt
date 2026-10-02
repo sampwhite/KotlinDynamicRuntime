@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.FragmentAudience
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
@@ -90,12 +91,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     type(COV.copyTypeName) {
         type = SCT.kObject
         description = "One fragment key -- a piece of copy -- the client's own configuration sets."
-        property(COV.fileId, "The fragment file.", required = true)
-        property(COV.namespaceField, "The namespace within the file.", required = true)
-        property(COV.key, "The key within the namespace.", required = true)
-        property(COV.audience, "Who the file is for: delivered to the frontend, or pulled by the backend.", required = true) {
-            options(FragmentAudience.entries)
-        }
+        copyKeyAddress()
         property(COV.baseValue, "What everybody else reads: the shipped copy with the components' overlays. Absent " +
             "when nothing else sets the key.")
         property(COV.value, "What this client reads.")
@@ -261,4 +257,17 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         CLD.blockOverrides to countBlockOverrides(UiBlockService.registeredUiBlocks(cxt), clientId),
         CLD.issues to ClientConfigIssues.get(cxt).issuesFor(clientId).map { it.toWireMap() },
     )
+}
+
+/**
+ * One piece of copy's address -- its file, namespace, and key -- and who the file is for: the fields the overrides
+ * report's copy rows (issue #916) and the copy editor's keys (issue #918) both lead with, spelled once.
+ */
+internal fun SchTypeBuilder.copyKeyAddress() {
+        property(COV.fileId, "The fragment file.", required = true)
+        property(COV.namespaceField, "The namespace within the file.", required = true)
+        property(COV.key, "The key within the namespace.", required = true)
+        property(COV.audience, "Who the file is for: delivered to the frontend, or pulled by the backend.", required = true) {
+            options(FragmentAudience.entries)
+        }
 }
