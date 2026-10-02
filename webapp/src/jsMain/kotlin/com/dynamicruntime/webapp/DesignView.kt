@@ -161,13 +161,17 @@ sealed class DesignTarget {
 }
 
 /**
- * The named type a field of [rootType] (named [rootName]) belongs to, and the field's place within that type's body
- * (issue #972). The form addresses a field by its data path (`contact.email`); a definition is addressed by the type
- * that declares the field, so walking down, a property whose value is a **named** type (`$ref`) starts a new owner.
- * An array steps into its items. Pure, so a `jsNodeTest` pins it.
+ * Where a field is declared (issue #972): the named type that owns it ([typeName]), and the field's place within
+ * that type's body ([schemaPath]). What [fieldOwner] answers.
  */
 class FieldOwner(val typeName: String, val schemaPath: List<String>)
 
+/**
+ * The named type the field at [dataPath] of [rootType] (named [rootName]) belongs to, and the field's place within
+ * that type's body (issue #972). The form addresses a field by its data path (`contact.email`); a definition is
+ * addressed by the type that declares the field, so walking down, a property whose value is a **named** type (`$ref`)
+ * starts a new owner. An array steps into its items. Pure, so a `jsNodeTest` pins it.
+ */
 fun fieldOwner(rootName: String, rootType: SchType, dataPath: String): FieldOwner {
     var owner = rootName
     var at = mutableListOf<String>()
