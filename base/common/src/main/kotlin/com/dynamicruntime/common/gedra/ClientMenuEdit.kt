@@ -32,7 +32,7 @@ import com.dynamicruntime.common.util.toOptStr
  * items -- and another administrator's change a moment ago -- are kept. Only `label` and `cfactExpression` are ever
  * written; a reset removes the client's item from the array, whatever it held.
  *
- * Trial-checked, published, reloaded and announced in one call, as a copy edit is; the publish's refusal undoes
+ * Trial-checked, published, reloaded, and announced in one call, as a copy edit is; the publish's refusal undoes
  * the write.
  */
 object ClientMenuEdit {

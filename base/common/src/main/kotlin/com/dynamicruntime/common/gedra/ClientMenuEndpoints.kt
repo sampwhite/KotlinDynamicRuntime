@@ -10,8 +10,8 @@ import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Editing a client's home menu (issue #919): its items as the client sees them, and the rename, hide, show and reset
- * of one -- written to the client's stored configuration, trial-checked, published and made live at once (see
+ * Editing a client's home menu (issue #919): its items as the client sees them, and the rename, hide, show, and reset
+ * of one -- written to the client's stored configuration, trial-checked, published, and made live at once (see
  * [ClientMenuEdit]). In the `clientAdmin` section and scoped as the client overview's retrieves are. App-only, as
  * the copy editor is.
  */

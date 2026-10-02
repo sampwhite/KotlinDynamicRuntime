@@ -260,7 +260,7 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
 }
 
 /**
- * One piece of copy's address -- its file, namespace and key -- and who the file is for: the fields the overrides
+ * One piece of copy's address -- its file, namespace, and key -- and who the file is for: the fields the overrides
  * report's copy rows (issue #916) and the copy editor's keys (issue #918) both lead with, spelled once.
  */
 internal fun SchTypeBuilder.copyKeyAddress() {

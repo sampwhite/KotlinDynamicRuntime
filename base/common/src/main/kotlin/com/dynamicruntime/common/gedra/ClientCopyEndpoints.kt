@@ -12,7 +12,7 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Editing a client's copy (issue #918): the keys an administrator may override for a client, and the set and reset
- * of one -- each written to the client's stored configuration, trial-checked, published and made live at once
+ * of one -- each written to the client's stored configuration, trial-checked, published, and made live at once
  * (see [ClientCopyEdit]). In the `clientAdmin` section and scoped as the client overview's retrieves are: the
  * caller's own client unless they may name another. App-only, as the overview is: the fragment service is what it
  * reads and writes through.
