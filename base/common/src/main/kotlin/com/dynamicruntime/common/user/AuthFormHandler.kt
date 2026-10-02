@@ -737,13 +737,10 @@ class AuthFormHandler(
         if (isSandboxClient(parent)) {
             throw KdrException.mkInput("'$parent' is a sandbox; a sandbox is opened from its parent.")
         }
-        val scope = AdminRules.adminScope(cxt)
-        val mayOpen = scope == AdminScope.allClients || (scope == AdminScope.ownClient && parent == profile.client)
-        if (!mayOpen) {
+        if (!SandboxAccess.mayOpen(cxt, parent)) {
             throw KdrException("Only an administrator of '$parent' may open its sandbox.", code = EXC.notAuthorized)
         }
-        val clients = ClientService.get(cxt)
-        if (clients.present(parent)?.sandbox != true || !clients.isPresent(sandboxOf(parent))) {
+        if (!SandboxAccess.hasSandbox(cxt, parent)) {
             throw KdrException.mkInput("Client '$parent' has no sandbox.")
         }
         val identityId = profile.identityId

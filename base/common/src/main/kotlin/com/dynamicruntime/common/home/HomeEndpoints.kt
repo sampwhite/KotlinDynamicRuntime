@@ -1,5 +1,8 @@
 package com.dynamicruntime.common.home
 
+import com.dynamicruntime.common.user.SandboxAccess
+import com.dynamicruntime.common.gedra.sandboxParentOf
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
@@ -104,6 +107,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             property(HFEAT.hasSurvey, "Whether the caller's client declares a survey workflow (issue #695) -- the forms list then offers its survey-status filter.", required = true) {
                 type = SCT.boolean
             }
+            property(HFEAT.canOpenSandbox, "Whether the caller may open their own client's sandbox (issue #931).", required = true) {
+                type = SCT.boolean
+            }
         }
         property(UIC.state, "Dynamic state for constructing the home page.", required = true) {
             type = SCT.kObject
@@ -127,6 +133,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 "The source repository's blob base (.../blob/<branch>) for rewriting a document's interior " +
                     "links; absent when the deployment configured no source repo.",
             )
+            property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
+            property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
         }
     }
 
@@ -151,6 +159,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // The caller's own client's registry (issue #695): a cross-client admin working in another
                 // client's surface reads that client's rows, but the filter keys on where the caller belongs.
                 HFEAT.hasSurvey to (WorkflowService.get(c).forClient(c.client).survey != null),
+                // The rule the open endpoint enforces (issue #931), so the shell offers only what it would admit.
+                // An edge has no clients to have sandboxes.
+                HFEAT.canOpenSandbox to (ClientService.getOrNull(c) != null && c.userProfile.isLoggedIn &&
+                    SandboxAccess.mayOpen(c, c.client) && SandboxAccess.hasSandbox(c, c.client)),
             ),
             UIC.state to buildMap {
                 put(HFLD.links, homeLinksFor(c))
@@ -163,6 +175,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // Only when configured -- an absent field says "no source repo", which is how the frontend
                 // leaves a non-document interior link as written (issue #492).
                 sourceRepoBase(c)?.let { put(HFLD.sourceRepoBase, it) }
+                // In a sandbox (issue #931): whose it is, so the shell marks it and offers the way back.
+                sandboxParentOf(c.client)?.let { parent ->
+                    put(HFLD.sandboxOf, parent)
+                    put(HFLD.sandboxOfName, ClientService.getOrNull(c)?.known(parent)?.name ?: parent)
+                }
             },
         )
     }

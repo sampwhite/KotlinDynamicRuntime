@@ -236,6 +236,12 @@ object AuthApi {
     suspend fun switchUser(userId: Long): UserProfile =
         userFrom(Http.sendApi("POST", AEP.switchUser, mapOf(AFLD.userId to userId)))
 
+    /**
+     * Opens the caller's client's sandbox (issues #929, #931): the backend issues a fresh session as the person's
+     * own user there, created on first use -- so, as after [switchUser], the caller then reloads the app.
+     */
+    suspend fun openSandbox(): UserProfile = userFrom(Http.sendApi("POST", AEP.openSandbox, emptyMap<String, Any?>()))
+
     /** Chooses which of the person's users their address logs in as (issue #749); returns the refreshed list. */
     suspend fun setDefaultUser(userId: Long): List<UserChoice> =
         userChoicesFrom(Http.sendApi("POST", AEP.setDefaultUser, mapOf(AFLD.userId to userId))[EP.results].toJsonMapOrEmpty()[AFLD.users])

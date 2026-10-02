@@ -46,6 +46,13 @@ object HFEAT {
     const val canSeeAllClients = "canSeeAllClients"
 
     /**
+     * Whether the caller may open their own client's **sandbox** (issue #931): an administrator of a client whose
+     * definition asks for one, outside it -- what offers the shell's "Open sandbox" action. Asked by the rule the
+     * open endpoint enforces (`openSandbox`), so the offer and the gate agree.
+     */
+    const val canOpenSandbox = "canOpenSandbox"
+
+    /**
      * Whether the caller's client declares a **survey** workflow (issue #695) -- the signal the forms list keys
      * its survey-status filter on. A fact about the client's configuration rather than about the rows on
      * screen: the status column appears when some row carries survey state, but a control that vanished the
@@ -104,6 +111,15 @@ object HFLD {
      * rewritten under it; without it they are left as written (issue #492).
      */
     const val sourceRepoBase = "sourceRepoBase"
+
+    /**
+     * `state.sandboxOf`: when the caller is in a client's sandbox (issue #931), that client's id -- what the shell's
+     * marker names and its way back leads to; absent everywhere else.
+     */
+    const val sandboxOf = "sandboxOf"
+
+    /** `state.sandboxOfName`: beside [sandboxOf], the client's display name, for the marker's words. */
+    const val sandboxOfName = "sandboxOfName"
 }
 
 /** Home schema type names (the backend's output type refs; also useful to the frontend). */

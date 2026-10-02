@@ -1,5 +1,9 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HFEAT
+import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
@@ -19,8 +23,10 @@ import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
@@ -80,6 +86,24 @@ class SandboxAccessTest : StringSpec({
         opened[UPF.userId].toOptLong() shouldNotBe admin.userId
         admin.selfClient() shouldBe sandboxOf(parent)
         actsAsAdmin(admin) shouldBe true
+    }
+
+    // The shell offers what the open endpoint admits, and marks the sandbox once inside (issue #931).
+    "the shell config offers opening to a parent administrator, and names the parent inside the sandbox" {
+        val parent = "sbxshell"
+        defineParent(parent)
+        fun shell(user: TestUser): Map<String, Any?> = user.getData(HEP.homeUiConfig)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        shell(admin)[UIC.features].toJsonMapOrEmpty()[HFEAT.canOpenSandbox] shouldBe true
+        shell(TestUser.create(cxt, "member@$parent.test", userClient = parent))[UIC.features].toJsonMapOrEmpty()[HFEAT.canOpenSandbox] shouldBe false
+
+        admin.postData(AEP.openSandbox, emptyMap())
+        val inside = shell(admin)
+        inside[UIC.features].toJsonMapOrEmpty()[HFEAT.canOpenSandbox] shouldBe false
+        inside[UIC.state].toJsonMapOrEmpty()[HFLD.sandboxOf] shouldBe parent
+        inside[UIC.state].toJsonMapOrEmpty()[HFLD.sandboxOfName] shouldBe "Client $parent"
+        // The way back is among the users the switcher lists: the person's own user in the parent.
+        inside[UIC.state].toJsonMapOrEmpty()[HFLD.users].toJsonListOfMaps().map { it[UCF.client] } shouldContain parent
     }
 
     "opening twice finds the same user rather than making a second" {
