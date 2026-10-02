@@ -48,6 +48,10 @@ class ClientOverview(
     /** How much of its copy and interface the client's own configuration changes (issue #917). */
     val copyOverrides: Int,
     val blockOverrides: Int,
+    /** When the client is a sandbox (issue #932): the client whose sandbox it is. */
+    val sandboxOf: String? = null,
+    /** Whether the client has a live sandbox (issue #932). */
+    val hasSandbox: Boolean = false,
 )
 
 /** The overview endpoint's items as rows; one without a client id is not a client. Pure, and covered under `jsNodeTest`. */
@@ -68,7 +72,59 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         issues = row[CLD.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
         copyOverrides = int(CLD.copyOverrides),
         blockOverrides = int(CLD.blockOverrides),
+        sandboxOf = row[CLD.sandboxOf].toOptStr(),
+        hasSandbox = row[CLD.hasSandbox] == true,
     )
+}
+
+/**
+ * The listing's rows with each sandbox right after its parent (issue #932), so the two read as a pair; a sandbox
+ * whose parent is not listed keeps its place. Pure, and covered under `jsNodeTest`.
+ */
+fun withSandboxesBesideParents(rows: List<ClientOverview>): List<ClientOverview> {
+    val listed = rows.map { it.clientId }.toSet()
+    val byParent = rows.filter { it.sandboxOf != null && it.sandboxOf in listed }.groupBy { it.sandboxOf }
+    return rows.filter { it.sandboxOf == null || it.sandboxOf !in listed }.flatMap { listOf(it) + byParent[it.clientId].orEmpty() }
+}
+
+/** What the listing's client cell adds for a sandbox: "sandbox of acme"; null for any other client. */
+fun sandboxRowNote(row: ClientOverview): String? = row.sandboxOf?.let { "sandbox of $it" }
+
+/**
+ * What the client detail's Sandbox section says, and the one action it offers (issue #932): [add] true to add a
+ * sandbox, false to remove it, null for none.
+ */
+class SandboxControl(val text: String, val add: Boolean?)
+
+/**
+ * The detail's Sandbox section for [row] (issue #932). A sandbox says whose it is; a client defined in source code
+ * says its flag is set there; a stored, present client offers adding or removing one, saying what follows. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun sandboxControl(row: ClientOverview): SandboxControl {
+    row.sandboxOf?.let {
+        return SandboxControl("This is the sandbox of $it: it runs $it's latest configuration, published or not, with users and data of its own.", null)
+    }
+    if (row.origin == GedraConfigOrigin.source.name) {
+        return SandboxControl(
+            if (row.hasSandbox) "Has a sandbox, set in its source code." else "Defined in source code; a sandbox is turned on there.",
+            null,
+        )
+    }
+    if (row.status != ClientStatus.present.name) return SandboxControl("Not loaded on this node, so its sandbox cannot be changed here.", null)
+    return if (row.hasSandbox) {
+        SandboxControl(
+            "Has a sandbox, which runs this client's unpublished configuration; the client itself runs only what is " +
+                "published. Removing it keeps the sandbox's users and data for if it is added again.",
+            false,
+        )
+    } else {
+        SandboxControl(
+            "No sandbox. Adding one gives a place to preview unpublished configuration, and makes the client run only " +
+                "what is published.",
+            true,
+        )
+    }
 }
 
 private fun issues(n: Int): String = if (n == 1) "1 issue" else "$n issues"
@@ -622,6 +678,14 @@ object ClientsApi {
     /** One client's definition (issue #906), through the scoped retrieve: the caller's own, or one they may name. */
     suspend fun definition(clientId: String): ClientDefinitionView =
         parseClientDefinition(Http.getApi(UADEP.clientDefinition + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
+
+    /**
+     * Adds or removes [clientId]'s sandbox (issue #932): the flag published and the client reloaded, so the sandbox is
+     * there -- or gone -- when this returns. Returns whether it now has one.
+     */
+    suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
+        Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
+            .toJsonMapOrEmpty()[CLD.sandbox] == true
 
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =

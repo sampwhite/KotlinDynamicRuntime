@@ -54,6 +54,8 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 "overlays on a definition from source.",
             required = true,
         ) { type = SCT.integer }
+        property(CLD.sandboxOf, "When the client is a sandbox (issue #932): the client whose sandbox it is; absent otherwise.")
+        property(CLD.hasSandbox, "Whether the client has a live sandbox (issue #932).", required = true) { type = SCT.boolean }
         property(CLD.forms, "How many live form documents the client holds.", required = true) { type = SCT.integer }
         property(
             CLD.users,
@@ -178,6 +180,36 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         present + absentClients(c).map { overviewRow(c, it.clientId, it.name, it.status) }
     }
 
+    type(CLD.sandboxResultTypeName) {
+        type = SCT.kObject
+        description = "What adding or removing a client's sandbox left (issue #932)."
+        property(CLD.client, "The client.", required = true)
+        property(CLD.sandbox, "Whether the client now has a live sandbox.", required = true) { type = SCT.boolean }
+        property(CLD.publishedOnly, "Whether the client now runs only its published configuration.", required = true) {
+            type = SCT.boolean
+        }
+    }
+
+    generalEndpoint(
+        UADEP.clientSandbox,
+        "Adds or removes a client's sandbox (issue #932): sets the sandbox flag of the client's stored definition, " +
+            "publishes it and reloads, so the sandbox is loaded or withdrawn at once. A client with a sandbox runs " +
+            "only its published configuration; the sandbox runs the latest, for previewing it. Refused for a client " +
+            "defined in source code (its flag is set there), for a sandbox, and while the definition's configuration " +
+            "has unpublished changes, which this would publish. Removing a sandbox keeps its users and data.",
+        HttpMethod.POST,
+        outputRef = CLD.sandboxResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            field(CLD.client, "The client; the caller's own when absent.")
+            field(CLD.sandbox, "Whether the client should have a sandbox.", required = true) { type = SCT.boolean }
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[CLD.client].toOptStr())
+        val result = ClientSandboxEdit.set(c, client, request[CLD.sandbox] == true)
+        mapOf(CLD.client to result.client, CLD.sandbox to result.sandbox, CLD.publishedOnly to result.publishedOnly)
+    }
+
     itemEndpoint(
         UADEP.clientDefinition,
         "One client's definition, as `/admin/client/definition` answers it: the caller's own client, or the one " +
@@ -244,8 +276,9 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         CLD.name to name,
         CLD.status to status.name,
         CLD.origin to (ClientService.get(cxt).originOf(clientId) ?: GedraConfigOrigin.stored).name,
-        // The loaded set also holds a template's copies (issue #945), which are source, not stored.
-        CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).count { it.inheritedFrom == null },
+        // The loaded set also holds a template's copies (issue #945), which are source, not stored -- and a sandbox's
+        // holds its parent's source configs beside the stored ones (issue #932).
+        CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).count { it.inheritedFrom == null && it.isStored },
         CLD.forms to GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId),
         CLD.users to users.total,
         CLD.unclaimedUsers to users.unclaimed,
@@ -256,7 +289,11 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         CLD.copyOverrides to countCopyOverrides(MarkdownFragmentService.registeredFragmentSources(cxt), clientId),
         CLD.blockOverrides to countBlockOverrides(UiBlockService.registeredUiBlocks(cxt), clientId),
         CLD.issues to ClientConfigIssues.get(cxt).issuesFor(clientId).map { it.toWireMap() },
-    )
+    ) + buildMap {
+        // A sandbox's row names its parent, so the listing shows it beside the parent (issue #932).
+        sandboxParentOf(clientId)?.let { put(CLD.sandboxOf, it) }
+        put(CLD.hasSandbox, !isSandboxClient(clientId) && ClientService.get(cxt).isPresent(sandboxOf(clientId)))
+    }
 }
 
 /**

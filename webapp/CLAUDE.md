@@ -362,6 +362,17 @@ monotonic token, so a client this node does not carry still shows what the listi
 404, and a slow answer for a client the user moved on from is dropped. The constants the frontend reads these by
 (`CFEP`, `ACEP`, `CCT`, `GCI`) live in the kernel for that reason.
 
+**Sandbox** (issue #932, `SandboxSection` in `ClientsPage.kt`): the detail says whether the client has a Shadow
+Sandbox and offers **Add a sandbox** / **Remove the sandbox** (`sandboxControl`), posting
+`/clientAdmin/client/sandbox {client, sandbox}` (`ClientsApi.setSandbox`), which sets the flag in the client's
+stored definition, **publishes** it and reloads -- the published definition decides both the sandbox and the tier,
+so a draft would change nothing -- and is refused for a source-defined client (its flag is set in source), for a
+sandbox, and while that config has unpublished changes. A client with a sandbox runs only published configuration.
+A sandbox's own detail says whose it is. In the listing each sandbox follows its parent
+(`withSandboxesBesideParents`) with a "sandbox of <id>" note (`sandboxRowNote`); the overview rows carry
+`sandboxOf` and `hasSandbox`. A scoped administrator's listing is their own client, so only an `allClients` one
+sees sandbox rows.
+
 **Copy & menu** (issue #917): what a client's own configuration changes about what its people see, from
 `GET /clientAdmin/client/overrides` (`ClientsApi.overrides`, parsed by the pure `parseClientOverrides`; the wire
 names are the kernel's `COV`). The detail's "Copy & menu" section draws two tables: the copy the client rewords

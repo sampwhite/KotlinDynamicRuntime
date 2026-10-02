@@ -1029,6 +1029,16 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     font-size: 13px;
     font-weight: 600;
 }
+/* A sandbox's row in the clients listing (issue #932): said in words beside the client's name, under its parent. */
+.sandbox-row-note {
+    margin-left: 8px;
+    white-space: nowrap;
+    padding: 1px 8px;
+    border: 1px dashed var(--border-admin);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
 .sandbox-back {
     padding: 2px 10px;
     border: 1px solid var(--border-admin);

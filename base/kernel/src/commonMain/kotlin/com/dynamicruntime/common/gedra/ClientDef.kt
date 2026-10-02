@@ -151,6 +151,18 @@ object CLD {
     const val userLabels = "userLabels"
     const val sandbox = "sandbox"
 
+    /** On a client overview row that is a sandbox (issue #932): the client whose sandbox it is. */
+    const val sandboxOf = "sandboxOf"
+
+    /** On a client overview row: whether the client has a live sandbox (issue #932). */
+    const val hasSandbox = "hasSandbox"
+
+    /** In the sandbox edit's result (issue #932): whether the client now runs only published configuration. */
+    const val publishedOnly = "publishedOnly"
+
+    /** Schema type name for the sandbox edit's result (issue #932). */
+    const val sandboxResultTypeName = "ClientSandboxResult"
+
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"
 
