@@ -532,7 +532,10 @@ class SchemaService : ServiceInitializer {
             onlyClient = client, repair = repairContext(scratch), droppedTypes = dropped,
         )[client]
         checkUsageRules(cxt, scratch, onlyScope = client)
-        return SchemaTrial(registry.names, dropped[client].orEmpty(), (variant ?: snapshot.store).types)
+        // The candidate store -- the client's variant, or global's when it varies nothing -- for the checks that run
+        // after this one and judge against the schema the write would produce (a workflow's type alterations #984,
+        // a report's bindings #980).
+        return SchemaTrial(registry.names, dropped[client].orEmpty(), variant ?: snapshot.store)
     }
 
     /**
@@ -1855,7 +1858,10 @@ object CX {
 
 /**
  * What [SchemaService.trialClient] found that the rest of a trial reads (issue #843): the client's cfact names, the
- * types its variant dropped, and the [types] it would run with -- its variant's, or the global ones when it has none --
- * against which a trial binds its reports (issue #980).
+ * types its variant dropped, and the [store] it would run with -- its variant's, or the global one when it has none --
+ * against which a trial judges its workflows' type alterations (issue #984) and binds its reports (issue #980).
  */
-class SchemaTrial(val cfactNames: Set<String>, val droppedTypes: Set<String>, val types: Map<String, SchType>)
+class SchemaTrial(val cfactNames: Set<String>, val droppedTypes: Set<String>, val store: KdrSchemaStore) {
+    /** The [store]'s parsed types. */
+    val types: Map<String, SchType> get() = store.types
+}

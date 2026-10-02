@@ -64,6 +64,40 @@ object DSV {
     /** For a stored definition: its bundle's latest revision number, and whether that revision is published. */
     const val version = "version"
     const val published = "published"
+
+    // --- editing a workflow's copy (issue #984) ---
+
+    /**
+     * In the block: whether this caller may edit the workflow's copy **here** -- the workflow is the client's own
+     * stored definition, and the client runs its latest revision, so an edit shows on this page once saved.
+     */
+    const val canEdit = "canEdit"
+
+    /**
+     * In the block, and sent back with an edit: a stamp of the workflow definition the page was drawn from. An edit
+     * based on a definition that has since changed is refused rather than overwriting the change.
+     */
+    const val basedOn = "basedOn"
+
+    /**
+     * In the block: the layout entries the workflow alters, by type name and then field -- each with the workflow's
+     * [entry], the [inherited] entry it replaces, and whether that inherited entry has [inheritedChanged] since.
+     */
+    const val layoutEdits = "layoutEdits"
+    const val inherited = "inherited"
+    const val inheritedChanged = "inheritedChanged"
+
+    /**
+     * Sets or clears the workflow's layout entry for one field of one type -- the workflow's own wording -- and
+     * reloads the client so the page shows it. Client-scoped admin.
+     */
+    const val layoutEntryEdit = "/${SECT.clientAdmin}/design/layoutEntry"
+    const val layoutEntryEditType = "DesignLayoutEntryEdit"
+
+    // The edit's input, beside [entry] (the field's layout entry; absent to reset to the inherited one) and [basedOn].
+    const val workflowId = "workflowId"
+    const val typeName = "typeName"
+    const val field = "field"
 }
 
 /**

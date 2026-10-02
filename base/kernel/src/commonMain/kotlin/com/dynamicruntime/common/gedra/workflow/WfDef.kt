@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.isOwnedName
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
@@ -147,6 +148,21 @@ object WFD {
 
     /** On a lock: who may override it -- a cfact expression over the writer's request facts; absent means nobody. */
     const val overrideWhen = "overrideWhen"
+
+    /**
+     * A workflow's **alterations of types** (issue #984): qualified type name to an alteration body, in the shape a
+     * client's alteration of a type takes -- applied over the client's view of the type, one scope down, for this
+     * workflow's pages only. A form's data is not the workflow's (one entry per trait, shared by every workflow on
+     * the form), so a workflow may only vary presentation, and for now only a type's field layout: each body holds a
+     * `g-layout` and nothing else.
+     */
+    const val types = "types"
+
+    /**
+     * For [types]: each altered layout entry's **basis** -- the inherited entry it replaced when it was made, by type
+     * name and field -- so a page can say when the shared copy has changed since the workflow overrode it.
+     */
+    const val typeBasis = "typeBasis"
 
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
@@ -583,6 +599,10 @@ class WfDef(
     /** The time windows (issue #790); only a [WfEntry.normal] workflow may declare any. */
     val windows: WfWindows = WfWindows.none,
     locks: List<WfLock> = emptyList(),
+    /** The workflow's alterations of types, by qualified type name (issue #984); see [WFD.types]. */
+    val typeAlterations: Map<String, Map<String, Any?>> = emptyMap(),
+    /** The basis of each altered layout entry, by type name and then field (issue #984); see [WFD.typeBasis]. */
+    val typeBasis: Map<String, Map<String, Any?>> = emptyMap(),
 ) {
     /** The trait locks (issue #857), in declaration order; only a [WfEntry.normal] workflow may declare any. */
     val locks: List<WfLock> = locks.toList()
@@ -625,6 +645,17 @@ class WfDef(
         }
         if (tasksById.size != tasks.size) {
             throw KdrException.mkConv("Workflow '$workflowId' has two tasks with the same id.")
+        }
+        // A workflow varies presentation only (issue #984): a form's data belongs to its traits, which every workflow
+        // on the form shares, so nothing a workflow alters may take part in validation -- for now, only a field layout.
+        for ((typeName, body) in typeAlterations) {
+            val others = body.keys - SCH.layout
+            if (others.isNotEmpty()) {
+                throw KdrException.mkConv(
+                    "Workflow '$workflowId' alters '$typeName' with ${others.joinToString(", ") { "'$it'" }}; a workflow " +
+                        "may alter only a type's '${SCH.layout}', since the data a form holds is not the workflow's.",
+                )
+            }
         }
         if (entry == WfEntry.creation) {
             val task = tasks.singleOrNull()
@@ -991,6 +1022,12 @@ object WfDefSchema {
                 allowCoerce = true
                 items { ref(WFD.lockType) }
             }
+            property(WFD.types, "The workflow's alterations of types, by qualified type name: each the shape a client's alteration takes, for this workflow's pages only. For now each holds a field layout (g-layout) and nothing else.") {
+                type = SCT.kObject
+            }
+            property(WFD.typeBasis, "For each altered layout entry, the inherited entry it replaced when it was made, by type name and then field -- what a page compares to say the shared copy has changed since.") {
+                type = SCT.kObject
+            }
         }
     }
 
@@ -1053,6 +1090,8 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     if (!windows.relevancy.isEmpty) put(WFD.relevancy, windows.relevancy.toJsonMap())
     if (!windows.engagement.isEmpty) put(WFD.engagement, windows.engagement.toJsonMap())
     if (locks.isNotEmpty()) put(WFD.locks, locks.map { it.toJsonMap() })
+    if (typeAlterations.isNotEmpty()) put(WFD.types, typeAlterations)
+    if (typeBasis.isNotEmpty()) put(WFD.typeBasis, typeBasis)
 }
 
 /**
@@ -1131,6 +1170,8 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                 overrideWhen = l[WFD.overrideWhen].toOptStr(),
             )
         },
+        typeAlterations = m[WFD.types].toJsonMapOrEmpty().mapValues { it.value.toJsonMapOrEmpty() },
+        typeBasis = m[WFD.typeBasis].toJsonMapOrEmpty().mapValues { it.value.toJsonMapOrEmpty() },
     )
 }
 
@@ -1181,6 +1222,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     private val singletons = mutableListOf<Map<String, Any?>>()
     private val windows = linkedMapOf<String, Map<String, Any?>>()
     private val locks = mutableListOf<Map<String, Any?>>()
+    private val types = linkedMapOf<String, Map<String, Any?>>()
 
     /**
      * What the workflow is called (issue #719): a page's title over its form. A template like a task's label,
@@ -1188,6 +1230,14 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
      * Leave unset for a page's own generic title.
      */
     var label: String? = null
+
+    /**
+     * Alters the type [typeName] for this workflow's pages (issue #984): [alteration] in the shape a client's
+     * alteration takes -- for now a `g-layout` only, merged with the client's layout by field.
+     */
+    fun alterType(typeName: String, alteration: Map<String, Any?>) {
+        types[typeName] = alteration
+    }
 
     /** Declares a task. */
     fun task(id: String, label: String, build: WfTaskBuilder.() -> Unit) {
@@ -1262,6 +1312,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
         if (singletons.isNotEmpty()) put(WFD.singletons, singletons.toList())
         putAll(windows)
         if (locks.isNotEmpty()) put(WFD.locks, locks.toList())
+        if (types.isNotEmpty()) put(WFD.types, types.toMap())
     }
 }
 
