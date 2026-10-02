@@ -62,7 +62,14 @@ class HomeConfig(
      * null when the deployment configured none -- then a non-document interior link is left as written (#492).
      */
     val sourceRepoBase: String?,
+    /** Whether the caller may open their own client's sandbox (issue #931) -- offers the bar's "Open sandbox". */
+    val canOpenSandbox: Boolean = false,
+    /** When the caller is in a client's sandbox (issue #931): which client's, for the marker and the way back. */
+    val sandboxOf: SandboxOf? = null,
 )
+
+/** The client whose sandbox the caller is in (issue #931): its id, and the name the marker speaks of. */
+class SandboxOf(val client: String, val name: String)
 
 /**
  * The pure [UiConfig] -> [HomeConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
@@ -105,6 +112,8 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         canSeeAllClients = config.features[HFEAT.canSeeAllClients] == true,
         hasSurvey = config.features[HFEAT.hasSurvey] == true,
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
+        canOpenSandbox = config.features[HFEAT.canOpenSandbox] == true,
+        sandboxOf = (config.state[HFLD.sandboxOf] as? String)?.let { SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it) },
     )
 }
 

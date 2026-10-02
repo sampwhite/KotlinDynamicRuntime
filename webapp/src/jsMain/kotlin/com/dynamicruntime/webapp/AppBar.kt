@@ -252,6 +252,21 @@ val AppBar = FC<AppBarProps> { props ->
         }
     }
 
+    // Opening the sandbox (issue #931): S's open endpoint moves the session to the person's own user in their
+    // client's sandbox -- a fresh session, like a switch -- so the app reloads the same way. A refusal stays in the
+    // console, as a switch's does.
+    fun openSandboxAction() {
+        appBarScope.launch {
+            val opened = apiResult { AuthApi.openSandbox() }
+            opened.failureOrNull()?.let {
+                console.error("$errorLogPrefix could not open the sandbox: ${it.message}")
+                return@launch
+            }
+            navigateHash(emptyList())
+            reloadWebApp()
+        }
+    }
+
     // Env logout (issue #486): clear the perimeter cookie, then leave the app for where the edge says to land.
     // Both URLs come from the call's arguments -- the edge supplies them because only it knows them -- and both
     // arrive already guarded same-origin by `FrontendActions` (issue #498). Unlike `logout`, this is a
@@ -450,6 +465,16 @@ val AppBar = FC<AppBarProps> { props ->
                     +"Admin"
                 }
             }
+            // "Open sandbox" (issue #931), for an administrator of a client that has one, outside it: where they
+            // preview their unpublished configuration before it goes live.
+            if (showOpenSandbox(config)) {
+                button {
+                    className = ClassName("bar-badge sandbox-open")
+                    title = "Open this client's sandbox, which runs its unpublished configuration."
+                    onClick = { openSandboxAction() }
+                    +"Open sandbox"
+                }
+            }
             // A quiet marker that this is the readable build (issue #230), deliberately NOT a .bar-badge chip:
             // it reports which bundle is loaded, not a fact about the session. Can never appear on a real
             // deployment, which ships the minified bundle where the check below is false by construction.
@@ -564,6 +589,23 @@ val AppBar = FC<AppBarProps> { props ->
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+    // The sandbox marker (issue #931): a strip under the bar on every page while the caller is in a client's sandbox,
+    // so nobody can mistake it for the real client, with the way back beside it. Back is a switch (issue #749) to the
+    // person's own user in that client -- the one the switcher also lists.
+    config?.sandboxOf?.let { of ->
+        div {
+            className = ClassName("sandbox-marker")
+            asDynamic()["role"] = "status"
+            span { +sandboxMarkerText(of) }
+            sandboxWayBack(of, config?.users.orEmpty())?.let { back ->
+                button {
+                    className = ClassName("sandbox-back")
+                    onClick = { switchUserAction(back.userId) }
+                    +"Back to ${of.name}"
                 }
             }
         }

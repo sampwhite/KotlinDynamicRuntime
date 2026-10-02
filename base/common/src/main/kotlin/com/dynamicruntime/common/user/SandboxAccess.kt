@@ -2,7 +2,9 @@ package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.http.request.ROLE
 
@@ -19,6 +21,23 @@ import com.dynamicruntime.common.http.request.ROLE
  * A user holding the role who does not qualify keeps every other role; only `admin` is withheld.
  */
 object SandboxAccess {
+    /**
+     * Whether the caller may open [parent]'s sandbox (issue #929, rule 1): an `allClients` administrator any client's,
+     * a client administrator their own -- and never from inside a sandbox, which has none of its own. What the open
+     * endpoint enforces and the shell's offer (issue #931) asks, so the two agree.
+     */
+    fun mayOpen(cxt: KdrCxt, parent: String): Boolean {
+        if (isSandboxClient(parent)) return false
+        val scope = AdminRules.adminScope(cxt)
+        return scope == AdminScope.allClients || (scope == AdminScope.ownClient && parent == cxt.userProfile.client)
+    }
+
+    /** Whether [parent] has a live sandbox to open: its definition asks for one, and the sandbox is present. */
+    fun hasSandbox(cxt: KdrCxt, parent: String): Boolean {
+        val clients = ClientService.get(cxt)
+        return clients.present(parent)?.sandbox == true && clients.isPresent(sandboxOf(parent))
+    }
+
     /** The roles [row] acts with: its own, less `admin` when it is a sandbox user that does not qualify. */
     fun actingRoles(cxt: KdrCxt, row: AuthUserRow): Set<String> {
         val roles = row.roles.toSet()
