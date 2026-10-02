@@ -1024,7 +1024,7 @@ enum class LayoutError : ProblemCode {
 
 /**
  * A [LayoutError] problem at [path] within the `g-layout` block (null for the block as a whole), with a template
- * [issue]'s offset, line and column when the fault is inside copy.
+ * [issue]'s offset, line, and column when the fault is inside copy.
  */
 @KdrPrivate
 fun layoutProblem(code: LayoutError, message: String, path: String? = null, issue: TemplateIssue? = null): Problem =

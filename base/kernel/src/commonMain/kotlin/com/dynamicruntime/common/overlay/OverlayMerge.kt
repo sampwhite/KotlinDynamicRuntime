@@ -219,9 +219,9 @@ private fun mergeValue(rule: MergeRule, base: Any?, over: Any?, path: String, pr
 private fun mergeEntries(base: Map<String, Any?>, over: Map<String, Any?>): Map<String, Any?> {
     val out = LinkedHashMap(base)
     for ((name, entry) in over) {
-        when {
-            entry == null -> out.remove(name)
-            entry is Map<*, *> && entry.isEmpty() && name in base -> Unit
+        when (entry) {
+            null -> out.remove(name)
+            is Map<*, *> if entry.isEmpty() && name in base -> Unit
             else -> out[name] = entry
         }
     }
@@ -262,7 +262,7 @@ private fun mergeKeyed(
     path: String,
     problems: MutableList<Problem>,
 ): List<Any?> {
-    val out = base.toMutableList<Any?>()
+    val out = base.toMutableList()
     for (incoming in over) {
         val element = (incoming as? Map<*, *>)?.toJsonMapOrEmpty()
         val key = element?.get(rule.key)

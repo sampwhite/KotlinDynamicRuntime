@@ -87,7 +87,7 @@ fun overlayType(base: Map<String, Any?>, overlay: Map<String, Any?>): Map<String
 
 /**
  * [overlayType] for the type [typeName], with what the merge refused, each problem located in the type
- * (`acme.Q.g-layout.schemaFields[notes]`) -- what a client's alteration is reported by when part of it cannot apply.
+ * (`acme.Q.g-layout.schemaFields[<notes>]`) -- what a client's alteration is reported by when part of it cannot apply.
  */
 fun overlayTypeOutcome(typeName: String, base: Map<String, Any?>, overlay: Map<String, Any?>): MergeOutcome {
     val outcome = mergeOverlay(schemaTypeMergeSpec, base, overlay, typeName)
