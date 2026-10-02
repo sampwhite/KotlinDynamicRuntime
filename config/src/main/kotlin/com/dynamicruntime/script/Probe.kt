@@ -132,17 +132,13 @@ fun main(args: Array<String>) {
     val name = rest.removeAt(0)
     val cxt = ProbeContext(baseUrl, rest)
     try {
-        try {
+        cxt.use { cxt ->
             if (name == Probe.callVerb) {
                 oneShotCall(cxt)
             } else {
                 val scenario = Probe.scenarios[name] ?: usage("Unknown scenario '$name'.")
                 scenario(cxt)
             }
-        } finally {
-            // Close the sessions (and their HTTP clients) whether the scenario finished or threw, before the
-            // catch below may exit the process.
-            cxt.close()
         }
     } catch (e: Throwable) {
         // A probe that cannot do its job says so and stops. Reporting a partial result is what makes a broken

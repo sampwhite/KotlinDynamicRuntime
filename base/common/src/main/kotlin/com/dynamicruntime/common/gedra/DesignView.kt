@@ -112,7 +112,7 @@ object DesignView {
                 val config = schema.configOfType(client, key)
                 val trait = config?.let { traitGenerating(it, key) }
                 when {
-                    trait != null && config != null ->
+                    trait != null ->
                         Triple(typeAddress(cxt, client, key), config, traitToEntry(config, trait))
                     config != null ->
                         Triple(address(slot, key, null, config), config, schemaEntry(key, config.defs[key] ?: notFound()))
