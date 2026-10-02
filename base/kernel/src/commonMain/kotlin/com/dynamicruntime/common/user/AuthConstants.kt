@@ -42,6 +42,12 @@ object AEP {
      * before anybody places them in a real client -- up to and including their last user.
      */
     const val removePublicUser = "/user/self/removePublic"
+    /**
+     * Open a client's Shadow Sandbox (issue #929): become the caller's own user in it -- created on first use, under
+     * the same identity and with the caller's roles -- with a fresh session. For an administrator of the parent, or
+     * an `allClients` administrator for any client with a sandbox.
+     */
+    const val openSandbox = "/user/self/openSandbox"
 
     // Invitations (issue #751), anonymous like the rest of the register/login flow: the mailed link is the
     // proof, and the person opening it has no session yet.

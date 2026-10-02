@@ -7,6 +7,8 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.logging.KdrLogger
@@ -467,7 +469,7 @@ class AuthFormHandler(
         userService.updateUser(cxt, row)
         // Rebind, so the rest of this request -- and the info returned -- speak of the new name rather than the
         // one the session was carrying.
-        val live = row.toUserProfile()
+        val live = row.toActingProfile(cxt)
         cxt.bindToUserProfile(live)
         return live.toUserInfo()
     }
@@ -484,7 +486,7 @@ class AuthFormHandler(
         clearPassword(identity)
         userService.updateIdentity(cxt, identity)
         // The row's password status was derived when it was read, before the write; say what is true now.
-        return row.toUserProfile().copy(hasPassword = false).toUserInfo()
+        return row.toActingProfile(cxt).copy(hasPassword = false).toUserInfo()
     }
 
     /**
@@ -719,6 +721,43 @@ class AuthFormHandler(
      */
     fun switchUser(cxt: KdrCxt, userId: Long): Map<String, Any?> = completeLogin(cxt, ownUser(cxt, userId), byCode = false)
 
+    /**
+     * Opens [named]'s Shadow Sandbox -- the caller's own client when null -- as the caller's own user in it (issue
+     * #929, rule 1): found by the caller's identity, persona and suffix, or on first use created there, registered,
+     * with the caller's acting roles. Then a fresh session as that user, the way [switchUser] completes.
+     *
+     * Opened from the **parent** side, by an administrator of the parent or an `allClients` administrator: authority
+     * flows from parent to sandbox. No role is kept in step afterwards -- whether the sandbox user's `admin` takes
+     * effect is asked of the parent at every request ([SandboxAccess]). Refused for a client without the `sandbox`
+     * flag, and from inside a sandbox, which has none of its own.
+     */
+    fun openSandbox(cxt: KdrCxt, named: String?): Map<String, Any?> {
+        val profile = cxt.userProfile
+        val parent = named ?: profile.client
+        if (isSandboxClient(parent)) {
+            throw KdrException.mkInput("'$parent' is a sandbox; a sandbox is opened from its parent.")
+        }
+        val scope = AdminRules.adminScope(cxt)
+        val mayOpen = scope == AdminScope.allClients || (scope == AdminScope.ownClient && parent == profile.client)
+        if (!mayOpen) {
+            throw KdrException("Only an administrator of '$parent' may open its sandbox.", code = EXC.notAuthorized)
+        }
+        val clients = ClientService.get(cxt)
+        if (clients.present(parent)?.sandbox != true || !clients.isPresent(sandboxOf(parent))) {
+            throw KdrException.mkInput("Client '$parent' has no sandbox.")
+        }
+        val identityId = profile.identityId
+            ?: throw KdrException.mkInput("This session carries no identity to open a sandbox under; sign in again.")
+        val identity = userService.queryIdentityById(cxt, identityId)
+            ?: throw KdrException("The session's identity could not be found.", code = EXC.notFound)
+        val own = userService.queryByUserId(cxt, profile.userId)
+            ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
+        val clone = userService.claimUser(
+            cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix, profile.roles.sorted(),
+        )
+        return completeLogin(cxt, clone, byCode = false)
+    }
+
     /** Chooses which of the person's users an address logs in as ([UserService.defaultUserOf]'s first rule); returns the list. */
     fun setDefaultUser(cxt: KdrCxt, userId: Long): Map<String, Any?> {
         val target = ownUser(cxt, userId)
@@ -823,7 +862,8 @@ class AuthFormHandler(
 
         // The password status comes from the identity in hand rather than the row: a row read before the
         // password was set (`changePassword`, `setLoginData`) would otherwise report the person as without one.
-        val profile = row.toUserProfile().copy(hasPassword = identity.hasPassword)
+        // The acting roles (issue #929), so the cookie's snapshot never carries a sandbox admin role the gate withholds.
+        val profile = row.toActingProfile(cxt).copy(hasPassword = identity.hasPassword)
         cxt.bindToUserProfile(profile)
         cxt.request?.let {
             it.setAuthCookie = true

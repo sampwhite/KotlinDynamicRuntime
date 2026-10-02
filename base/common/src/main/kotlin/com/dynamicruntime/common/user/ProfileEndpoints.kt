@@ -63,7 +63,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {
             // The page needs a login id for the (code-verified) password calls. It is served explicitly rather
             // than reused from the user info's publicName: that is a display name, and only resolves as a login
             // id by coincidence of today's fallback (see AuthUserRow.publicName).
-            UIC.state to mapOf(AFLD.userInfo to row.toUserProfile().toUserInfo(), AFLD.loginId to row.primaryId),
+            UIC.state to mapOf(AFLD.userInfo to row.toActingProfile(c).toUserInfo(), AFLD.loginId to row.primaryId),
         )
     }
 
