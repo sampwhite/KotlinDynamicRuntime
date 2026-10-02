@@ -38,7 +38,7 @@ object SandboxAccess {
 
 /**
  * The profile [this] row acts as: [AuthUserRow.toUserProfile] with the roles [SandboxAccess] lets take effect. What
- * every place that builds a session's profile from a row uses, so the cookie, the gate and the user info agree.
+ * every place that builds a session's profile from a row uses, so the cookie, the gate, and the user info agree.
  */
 fun AuthUserRow.toActingProfile(cxt: KdrCxt): UserProfile =
     toUserProfile().copy(roles = SandboxAccess.actingRoles(cxt, this))

@@ -143,7 +143,7 @@ class SandboxAccessTest : StringSpec({
         val parent = "sbxdeny"
         defineParent(parent)
         val member = TestUser.create(cxt, "member@$parent.test", userClient = parent)
-        member.expectError(EXC.notAuthorized, AEP.openSandbox, emptyMap<String, Any?>())
+        member.expectError(EXC.notAuthorized, AEP.openSandbox, emptyMap())
         // A client administrator names another client's sandbox: not theirs to open.
         val other = "sbxother"
         defineParent(other)
@@ -153,7 +153,7 @@ class SandboxAccessTest : StringSpec({
         val plain = "sbxnone"
         defineParent(plain, sandbox = false)
         val chief = TestUser.create(cxt, "chief@$plain.test", level = ROLE.admin, userClient = plain)
-        chief.expectError(EXC.badInput, AEP.openSandbox, emptyMap<String, Any?>())
+        chief.expectError(EXC.badInput, AEP.openSandbox, emptyMap())
         chief.selfClient() shouldBe plain
     }
 })
