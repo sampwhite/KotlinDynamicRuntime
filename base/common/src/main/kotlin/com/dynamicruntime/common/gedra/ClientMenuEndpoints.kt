@@ -38,6 +38,10 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         property(MNU.label, "The label the client's people now see.") { emptyIsAbsent = false }
         property(MNU.condition, "The condition the item is now offered under; `#never` withdraws it.")
         property(CPY.stored, "Whether a stored change to the item remains -- false after a reset.", required = true) { type = SCT.boolean }
+        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
+            option(EDM.live, "Live")
+            option(EDM.draft, "Draft")
+        }
         property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing.", required = true) {
             type = SCT.array
             items { ref(CLD.configIssueTypeQualified) }
@@ -119,5 +123,6 @@ private fun ClientMenuEdit.Result.toWireMap(client: String, request: Map<String,
     condition?.let { out[MNU.condition] = it }
     out[CPY.stored] = stored
     out[CPY.issues] = issues.map { it.toWireMap() }
+    out[CPY.mode] = mode
     return out
 }

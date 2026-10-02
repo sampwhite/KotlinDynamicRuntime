@@ -383,11 +383,14 @@ application shows first, each with where (`copyFileChoices`, `copyFileLabel`, fr
 rest under "Not shown by this application" (issue #933) -- and a Copy row of such a file is marked "(not shown
 here)", since its override is served but changes nothing anyone sees on this app. Save posts `/clientAdmin/client/copy/set`
 (`copyEditRequest`), which writes the client's stored config (the one already overlaying the file, else `copy`,
-created on first use), trial-checks it, publishes and reloads -- one call, live at once -- and the backend's
+created on first use), trial-checks it, publishes and reloads -- one call, live at once; for a client with a Shadow
+Sandbox (issue #930) -- which is always published-only -- it instead saves a **draft** of the parent's configuration
+and reloads, so the sandbox shows it and publishing is the explicit step, and the result's `mode` (`EDM.live` / `EDM.draft`) says which, which
+`savedNote` turns into the note; called in the sandbox, it edits the parent's -- and the backend's
 refusal of a faulted value (a raw `%{...}` in a frontend file, an unresolved pull in a backend one) is shown in
 its words under the editor. A success bumps the refresh generation, so the page re-reads the client and the
 shell re-reads its copy: a changed `home.brand` appears in the app bar without a reload. Wire names: `COV`
-(addresses) and `CPY` (paths, `stored`, `buildId`, `issues`), both in the kernel.
+(addresses) and `CPY` (paths, `stored`, `buildId`, `issues`, `mode`), both in the kernel.
 
 **Editing the menu** (issue #919, `MenuEditor` in `ClientsPage.kt`): the detail's "Menu" table lists every home-menu
 item for the client from `/clientAdmin/client/menu/items` (`ClientsApi.menuItems`; shipped and effective label
@@ -398,7 +401,7 @@ sits under) gets no Hide, since the bar draws a child only under a parent it kee
 too. "Set by" comes from the overrides report's rows, which know source from stored. `menuVisibilityText` reads
 the condition as "everyone", "hidden" or the expression itself, noting the shipped state when the client changed
 it. Each action posts `/clientAdmin/client/menu/set` or `/reset` (`menuEditRequest`), the same write-trial-publish-
-reload path as a copy edit, landing in the config already changing the item, else one overlaying the menu, else
+reload path as a copy edit (a draft, likewise, for a client with a sandbox), landing in the config already changing the item, else one overlaying the menu, else
 `copy`. Hiding or showing is presentation, not permission -- the section gate still decides -- and the hint under
 the table says so. Blocks other than the home menu (the sample's nav) stay read-only under "Other interface
 changes". Wire names: `MNU` in the kernel.

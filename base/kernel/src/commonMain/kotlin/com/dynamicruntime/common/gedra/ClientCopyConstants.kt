@@ -34,4 +34,21 @@ object CPY {
     const val buildId = "buildId"
     const val issues = "issues"
     const val stored = "stored"
+
+    /** How the save took effect, an [EDM] value (issue #930) -- the copy and the menu editor's results alike. */
+    const val mode = "mode"
+}
+
+/**
+ * How an editor's save of a client's presentation took effect (issue #930): the result's [CPY.mode]. Chosen by
+ * whether the client has a Shadow Sandbox, so the editor can say "Saved and live" or offer "Preview in sandbox" and
+ * "Publish".
+ */
+@Suppress("ConstPropertyName")
+object EDM {
+    /** Published, and live for the client's people at once: a client with no sandbox. */
+    const val live = "live"
+
+    /** Written to the client's editable revision, which its sandbox runs; live in the client once published. */
+    const val draft = "draft"
 }

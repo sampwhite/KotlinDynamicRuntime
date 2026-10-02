@@ -11,6 +11,66 @@ import com.dynamicruntime.common.naming.clientNamespace
  * ([ClientMenuEdit]) each decide *which* config holds their key or item and how to patch it; this is the rest.
  */
 object ClientStoredEdit {
+    /**
+     * Where an editor's save of [client]'s presentation lands, and how it takes effect (issue #930).
+     *
+     * - **The configuration's owner.** A Shadow Sandbox holds no configuration, so a save named for one lands in its
+     *   parent's, made in [bound] -- bound to the parent and acting as the person's user there ([SandboxEdits]).
+     * - **Live or draft, by whether the owner has a sandbox.** Without one, a save publishes and goes live at once
+     *   (#918's behavior). With one -- from the parent or the sandbox alike -- a save writes the parent's editable
+     *   revision and reloads, so the sandbox shows it, and publishing is the explicit step.
+     */
+    class EditTarget(
+        /** The context the configuration is read and written in, bound to [client]. */
+        val bound: KdrCxt,
+        /** The client whose configuration takes the save: the one named, or a sandbox's parent. */
+        val client: String,
+        /** Whether a save stays a draft ([EDM.draft]) rather than publishing ([EDM.live]). */
+        val draft: Boolean,
+    ) {
+        /** The result's [CPY.mode]. */
+        val mode: String get() = if (draft) EDM.draft else EDM.live
+
+        /** The client whose people read a saved value: the owner when live, its sandbox for a draft. */
+        val readsAs: String get() = if (draft) sandboxOf(client) else client
+    }
+
+    /** Where a save of [client]'s presentation lands -- see [EditTarget]; [what] names the editor's sub context. */
+    fun target(cxt: KdrCxt, client: String, what: String): EditTarget {
+        SandboxEdits.parentCxt(cxt, client)?.let { return EditTarget(it, it.client, draft = true) }
+        val draft = ClientService.get(cxt).known(client)?.sandbox == true
+        return EditTarget(cxt.mkSubContext(what, client), client, draft)
+    }
+
+    /**
+     * Makes a save take effect: published and live ([publishAndReload]), or -- a draft -- the owner reloaded, which
+     * rebuilds its sandbox from the latest revision while a published-only owner keeps running what it published.
+     */
+    fun takeEffect(cxt: KdrCxt, target: EditTarget, written: GedraConfigRow, undo: () -> Unit): ConfigReloadResult =
+        if (target.draft) SandboxEdits.reloadParent(cxt, target.client)
+        else publishAndReload(cxt, target.bound, target.client, written, undo)
+
+    /**
+     * Puts an editor's patched [entry] back into [slot] of [out]: in place of the one at [at], or appended when there
+     * was none -- or, when the patch left it [emptied], removed, so a config does not carry an empty overlay. A slot
+     * left with no [entries] is dropped too. The shared tail of both editors' patches, run inside `patchConfig`.
+     */
+    fun storeEntry(
+        out: MutableMap<String, List<Map<String, Any?>>>,
+        slot: String,
+        entries: MutableList<Map<String, Any?>>,
+        at: Int,
+        entry: Map<String, Any?>,
+        emptied: Boolean,
+    ) {
+        when {
+            emptied && at >= 0 -> entries.removeAt(at)
+            at >= 0 -> entries[at] = entry
+            else -> entries.add(entry)
+        }
+        if (entries.isEmpty()) out.remove(slot) else out[slot] = entries
+    }
+
     /** The editors' own config of [client]'s ([CPY.copyConfigName]), or null when none has been created yet. */
     fun editConfig(bound: KdrCxt, client: String): GedraConfigRow? =
         GedraConfigService.get(bound).readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
@@ -24,10 +84,11 @@ object ClientStoredEdit {
     /**
      * Refuses to write into a config that has unpublished changes of its own -- an edit publishes the config it lands
      * in, and would take somebody's half-finished draft live with it -- unless it is the editors' own config, whose
-     * only drafts are the editors' (a publish that was refused). [what] names the edit in the refusal.
+     * only drafts are the editors' (a publish that was refused). [what] names the edit in the refusal. Not asked of a
+     * [EditTarget.draft] save, which publishes nothing.
      */
-    fun requireNoForeignDraft(holder: GedraConfigRow, what: String) {
-        if (holder.isPublished || holder.configId.baseId == CPY.copyConfigName) return
+    fun requireNoForeignDraft(target: EditTarget, holder: GedraConfigRow, what: String) {
+        if (target.draft || holder.isPublished || holder.configId.baseId == CPY.copyConfigName) return
         throw KdrException.mkInput(
             "Configuration '${holder.configId.baseId}' of client '${holder.client}' has unpublished changes, which " +
                 "$what would publish with it. Publish or revert that configuration first.",

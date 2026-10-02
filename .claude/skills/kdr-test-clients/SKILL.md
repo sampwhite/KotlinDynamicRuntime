@@ -182,6 +182,11 @@ later schema rejects" test.
   sandbox administrator, create the admin in the **parent** and have it `postData(AEP.openSandbox, emptyMap())`,
   which moves that session to the person's own sandbox user (created on first use); `SandboxAccessTest.kt` is the
   reference.
+- **Config edits in a sandbox act on the parent, as drafts** (issue #930). A sandbox has no configuration of its own:
+  the `/clientAdmin/config/...` endpoints and the copy and menu editors, called in one, read and write the parent's,
+  attributed to the person's parent user, and a write reloads the parent (so the sandbox shows it, while the
+  parent -- published-only, as every client with a sandbox is -- keeps its published revision). The editors save a **draft** for any client with a sandbox
+  (result `mode` = `EDM.draft`) and publish at once for one without. `SandboxEditsTest.kt` is the reference.
 
 Stored config is **added beside** the source-declared config in the same collector, keyed by the client in its
 id — downstream services can't tell a stored client from a source one.
@@ -202,7 +207,9 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `GedraConfigEndpointTest.kt` is the
 reference. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A **free-tier** client's latest revision loads
-whether published or not. The tier is `publishedOnly(client) = toggled(client, env)` (`GedraConfigControl`).
+whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
+(`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is
+published-only whatever the toggle says, so a test wanting a free-tier client leaves the flag off.
 **`staticConfig`** is not a tier (issue #824): set only in source, it makes the client take nothing stored in
 production -- writes refused, stored config ignored -- and leaves it an ordinary client everywhere else.
 

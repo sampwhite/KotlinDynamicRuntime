@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.gedra
 
-import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.InputFieldsBuilder
@@ -22,12 +21,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
     type(CPY.keyTypeName) {
         type = SCT.kObject
         description = "One piece of copy a client's people read, and what it says for that client."
-        property(COV.fileId, "The fragment file.", required = true)
-        property(COV.namespaceField, "The namespace within the file.", required = true)
-        property(COV.key, "The key within the namespace.", required = true)
-        property(COV.audience, "Who the file is for: delivered to the frontend, or pulled by the backend.", required = true) {
-            options(FragmentAudience.entries)
-        }
+        copyKeyAddress()
         // `emptyIsAbsent = false`: an empty value is a value the file declares, not a missing one.
         property(COV.value, "The value this client reads, every layer applied.", required = true) { emptyIsAbsent = false }
         property(COV.shownOn, "Where the application shows the file's copy, as its declaration says; absent for a file " +
@@ -45,6 +39,10 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         property(CPY.stored, "Whether a stored value still sets the key -- false after a reset that left the source or " +
             "shipped value.", required = true) { type = SCT.boolean }
         property(CPY.buildId, "The build id the file's content for this client is now served under.")
+        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
+            option(EDM.live, "Live")
+            option(EDM.draft, "Draft")
+        }
         property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the " +
             "change itself was refused if it added one.", required = true) {
             type = SCT.array
@@ -132,5 +130,6 @@ private fun ClientCopyEdit.Result.toWireMap(client: String, request: Map<String,
     out[CPY.stored] = stored
     if (buildId != null) out[CPY.buildId] = buildId
     out[CPY.issues] = issues.map { it.toWireMap() }
+    out[CPY.mode] = mode
     return out
 }

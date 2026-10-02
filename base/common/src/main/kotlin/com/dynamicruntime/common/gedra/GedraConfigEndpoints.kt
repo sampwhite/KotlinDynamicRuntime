@@ -122,7 +122,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         "Lists the configurations this client carries, each as a summary of its latest revision.",
         outputRef = CFEP.summaryType,
         noLimit = true,
-    ) { c, _ -> cfgBundlesBody(c) }
+    ) { c, _ -> inConfigScope(c) { cfgBundlesBody(it) } }
 
     itemEndpoint(
         CFEP.bundle,
@@ -132,7 +132,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
         },
-    ) { c, request -> cfgBundleBody(c, request) }
+    ) { c, request -> inConfigScope(c) { cfgBundleBody(it, request) } }
 
     generalEndpoint(
         CFEP.bundleWrite,
@@ -140,7 +140,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         HttpMethod.POST,
         outputRef = CFEP.bundleType,
         inputRef = CFEP.bundleWriteType,
-    ) { c, request -> cfgWriteBody(c, request) }
+    ) { c, request -> inConfigScope(c, mutating = true) { cfgWriteBody(it, request) } }
 
     generalEndpoint(
         CFEP.bundlePatch,
@@ -150,7 +150,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         HttpMethod.POST,
         outputRef = CFEP.bundleType,
         inputFields = { configPatchInput() },
-    ) { c, request -> cfgPatchBody(c, request) }
+    ) { c, request -> inConfigScope(c, mutating = true) { cfgPatchBody(it, request) } }
 
     generalEndpoint(
         CFEP.bundlePublish,
@@ -160,7 +160,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
         },
-    ) { c, request -> cfgPublishBody(c, request) }
+    ) { c, request -> inConfigScope(c, mutating = true) { cfgPublishBody(it, request) } }
 
     generalEndpoint(
         CFEP.bundleRevert,
@@ -172,7 +172,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
         },
-    ) { c, request -> cfgRevertBody(c, request) }
+    ) { c, request -> inConfigScope(c, mutating = true) { cfgRevertBody(it, request) } }
 
     listEndpoint(
         CFEP.traits,
@@ -186,7 +186,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         // edits over the current slots and writes the whole set through the validated bundle write rather than
         // touching a raw slot -- so it needs no config-trait validation union of its own. This view makes the
         // per-slot accounting legible.
-    ) { c, request -> cfgTraitsBody(c, request) }
+    ) { c, request -> inConfigScope(c) { cfgTraitsBody(it, request) } }
 
     type(CFEP.reloadResultType) {
         type = SCT.kObject
@@ -211,7 +211,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         "Reloads this client's stored configuration on this node, without a restart.",
         HttpMethod.POST,
         outputRef = CFEP.reloadResultType,
-    ) { c, _ -> cfgReloadBody(c) }
+    ) { c, _ -> inConfigScope(c) { cfgReloadBody(it) } }
 
     type(CFEP.tierType) {
         type = SCT.kObject
@@ -234,7 +234,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.publishedOnlyField, "Whether to consume published configuration only.", required = true) { type = SCT.boolean }
         },
-    ) { c, request -> cfgPublishedOnlyBody(c, request) }
+    ) { c, request -> inConfigScope(c, mutating = true) { cfgPublishedOnlyBody(it, request) } }
 }
 
 // --- Shared handler bodies (issue #685) -------------------------------------------------------------------
@@ -514,6 +514,19 @@ private fun cfgPublishedOnlyBody(c: KdrCxt, request: Map<String, Any?>): Map<Str
         ?: throw KdrException.mkInput("'${CFEP.publishedOnlyField}' is required.")
     val effective = GedraConfigService.get(c).setPublishedOnly(c, c.client, value, trial = true)
     return linkedMapOf(CFEP.client to c.client, CFEP.publishedOnlyField to effective)
+}
+
+/**
+ * Runs a `/clientAdmin/config` [body] where its configuration lives (issue #930): in the caller's own client, or --
+ * called in a Shadow Sandbox, which holds none -- in the sandbox's parent, acting as the caller's user there
+ * ([SandboxEdits.parentCxt]). A [mutating] call redirected so then reloads the parent, and with it the sandbox, so
+ * the sandbox shows the change on its next request; a published-only parent still runs its published revision.
+ */
+private fun <T> inConfigScope(c: KdrCxt, mutating: Boolean = false, body: (KdrCxt) -> T): T {
+    val parent = SandboxEdits.parentCxt(c, c.client) ?: return body(c)
+    val out = body(parent)
+    if (mutating) SandboxEdits.reloadParent(c, parent.client)
+    return out
 }
 
 /** The revision-class id of the named config in the caller's own client -- never another client's. */
