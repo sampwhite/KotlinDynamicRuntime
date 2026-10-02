@@ -17,6 +17,7 @@ import com.dynamicruntime.common.gedra.supportedTraits
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.naming.isClientNamespace
+import com.dynamicruntime.common.overlay.OverlayMergeError
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchType
@@ -25,6 +26,7 @@ import com.dynamicruntime.common.schema.collectLayouts
 import com.dynamicruntime.common.schema.analyzeSchemaTypes
 import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
+import com.dynamicruntime.common.schema.overlayTypeOutcome
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.toJsonMap
 
@@ -90,7 +92,7 @@ fun buildClientVariants(
         val narrowed = keepWhatNarrows(cxt, collected, client, global.defs, declared, issues)
         // Issue #841: a fault in the client's own definitions costs only itself. Keyword-level faults are repaired
         // on the raw definitions first, where a keyword can still be removed.
-        var authored = repairKeywords(cxt, collected, client, narrowed, repair, issues)
+        var authored = repairKeywords(cxt, collected, client, global.defs, narrowed, repair, issues)
         // The client's forms-listing search fields (issue #538): its usage rules' parameters merged onto the
         // pristine query base -- never onto the global-augmented type, or an overriding client would inherit
         // global's parameters too. Folded in only when they differ from the global type, like the unions
@@ -144,9 +146,10 @@ fun buildClientVariants(
             types = types,
             endpoints = global.endpoints,
             tables = global.tables,
-            // The variant's own layouts (issue #584) derive from these defs: a client may overlay a type's
-            // `g-layout` (it is a presentation key the narrowing check permits), and an unmentioned one is
-            // inherited from global by reference -- then pruned to whatever properties the client kept.
+            // The variant's own layouts (issue #584) derive from these defs: a client may alter a type's
+            // `g-layout` (it is a presentation key the narrowing check permits), merged with global's by field
+            // (issue #985), and an unmentioned one is inherited from global by reference -- then pruned to
+            // whatever properties the client kept.
             defs = defs,
         )
         LogSchema.debug(cxt) {
@@ -246,8 +249,12 @@ private fun keepWhatNarrows(
             cxt,
             alterationIssue(
                 collected, client, name,
-                "Client '$client' alters '$name' in a way that does not narrow it. " +
-                    problems.joinToString(" ") { it.message },
+                // A merge directive the type does not offer (issue #985) is refused here too, but is no widening.
+                (if (problems.all { it.code == OverlayMergeError.unknownChoice }) {
+                    "Client '$client' alters '$name' with a merge it cannot apply. "
+                } else {
+                    "Client '$client' alters '$name' in a way that does not narrow it. "
+                }) + problems.joinToString(" ") { it.message },
                 "Dropping the alteration; '$name' stays as the global document declares it.",
             ),
             issues,
@@ -278,6 +285,7 @@ private fun repairKeywords(
     cxt: KdrCxt,
     collected: SchemaCollector,
     client: String,
+    globalDefs: Map<String, Any?>,
     authored: Map<String, Any?>,
     repair: DefRepairContext,
     issues: MutableList<GedraConfigIssue>,
@@ -285,7 +293,8 @@ private fun repairKeywords(
     var out: LinkedHashMap<String, Any?>? = null
     for ((name, body) in authored) {
         if (body !is Map<*, *>) continue
-        val (repaired, repairs) = repairTypeDef("Type '$name' (client '$client')", body.toJsonMap(), repair)
+        val (repaired, repairs) =
+            repairTypeDef("Type '$name' (client '$client')", body.toJsonMap(), repair, altersGlobal = name in globalDefs)
         if (repairs.isEmpty()) continue
         for (r in repairs) {
             reportConfigProblem(cxt, alterationIssue(collected, client, name, r.message, r.degradedTo), issues)
@@ -348,8 +357,10 @@ private fun parseDroppingFaults(
 
 /**
  * [authored] with each `g-layout` the client **wrote** removed when it is at fault (issue #841) -- one that will not
- * parse, names a field its type lacks, or carries a malformed template -- so the type falls back to global's layout
- * (or none) rather than the variant refusing. Returns [authored] itself when nothing was dropped.
+ * parse, names a field its type lacks, or carries a malformed template, judged on the layout as merged with
+ * global's (issue #985); or one whose merge refused an entry (a field global's layout does not list, where its order
+ * matters) -- so the type falls back to global's layout (or none) rather than the variant refusing. Returns
+ * [authored] itself when nothing was dropped.
  *
  * A layout inherited from global by reference is global's to answer for on every count but one, and is otherwise
  * skipped, as the boot check skips it. The one (issue #811): a client that alters a type may add to what it
@@ -395,12 +406,22 @@ private fun dropFaultyLayouts(
         }
         if (rawLayout(defs, name) === rawLayout(globalDefs, name)) continue
         val where = "Type '$name' (client '$client')"
-        val problems = (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty()
+        // The client's layout merges with global's by field (issue #985), so what it wrote can be refused before
+        // the result is ever checked: an entry for a field global's layout does not list, where the layout's order
+        // matters. The merge leaves such an entry out; reporting it here keeps that from passing silently.
+        // Said with where it is, since the merger's own words are about the list, not the type.
+        val refused = (globalDefs[name] as? Map<*, *>)
+            ?.let { overlayTypeOutcome(name, it.toJsonMap(), body.toJsonMap()).problems }.orEmpty()
+            // A refused merge directive is the narrowing check's to report; it has already dropped the alteration.
+            .filter { it.code != OverlayMergeError.unknownChoice }
+            .map { "$where, at ${it.location?.path ?: name}: ${it.message}" }
+        val problems = refused +
+            (defs[name] as? Map<*, *>)?.let { layoutProblems(name, where, it, types[name]) }.orEmpty().map { it.message }
         if (problems.isEmpty()) continue
         reportConfigProblem(
             cxt,
             alterationIssue(
-                collected, client, name, problems.joinToString(" ") { it.message },
+                collected, client, name, problems.joinToString(" "),
                 "Dropping the client's '${SCH.layout}' on '$name'; the type renders with global's layout, or none.",
             ),
             issues,

@@ -59,6 +59,11 @@ fun repairTypeDef(
     where: String,
     body: Map<String, Any?>,
     context: DefRepairContext,
+    /**
+     * Whether [body] is a client's alteration of a global type (issue #985) -- the one place a `g-merge` directive
+     * applies, at its top. Anywhere else the directive is refused like any misplaced keyword.
+     */
+    altersGlobal: Boolean = false,
 ): Pair<Map<String, Any?>, List<DefRepair>> {
     val repairs = mutableListOf<DefRepair>()
 
@@ -69,6 +74,8 @@ fun repairTypeDef(
         // An unknown `g-` key, or one of ours with a value of the wrong shape (issue #822): the keyword goes, and the
         // rest of the definition stands. First, so the checks below read only well-shaped keywords.
         for ((key, value) in node) {
+            // The merge directive stands at the top of an alteration of a global type, where the merge reads it.
+            if (key == SCH.merge && altersGlobal && node === body) continue
             val problem = SchGKeywords.problem(at, key, value) ?: continue
             out.remove(key)
             repairs.add(DefRepair(problem.message, "Dropping '$key'."))
@@ -152,11 +159,11 @@ fun repairTypeDef(
         }
 
         // Children. A property is judged against its parent's `required`, since a gate on a required one is refused;
-        // `g-errors` and `g-layout` hold copy, not schema, and are not walked into.
+        // `g-errors` and `g-layout` hold copy, and `g-merge` a merge directive -- not schema, so not walked into.
         val required = (node[SCH.required] as? List<*>).orEmpty().filterIsInstance<String>().toSet()
         for ((key, value) in out.entries.toList()) {
             out[key] = when {
-                key == SCH.errors || key == SCH.layout -> value
+                key == SCH.errors || key == SCH.layout || key == SCH.merge -> value
                 key == SCH.properties && value is Map<*, *> ->
                     value.toJsonMap().mapValuesTo(LinkedHashMap()) { (child, childBody) ->
                         if (childBody is Map<*, *>) {

@@ -2,6 +2,10 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.overlay.KeyedElement
+import com.dynamicruntime.common.overlay.MergeRule
+import com.dynamicruntime.common.overlay.MergeSpec
+import com.dynamicruntime.common.overlay.OnNew
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
@@ -284,6 +288,40 @@ object SL {
 
     /** Every key a [schemaFields] entry may carry. */
     val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode)
+}
+
+/**
+ * How a type's field layout merges with an alteration of it (issue #985) -- the layout being a resource of its own,
+ * keyed by its type's name, rather than a third level of the type's body.
+ *
+ * **The alteration's own [SL.mode] says which kind of change it is.**
+ *
+ *  - **None, or [SLM.overlay]: a copy change.** [SL.schemaFields] is keyed by [SL.field], and an alteration's entry
+ *    replaces the inherited entry for that field whole -- so a client rewording one field states that field's entry
+ *    alone and every other entry is inherited. An entry for a field the inherited layout does not list is appended
+ *    where the layout only annotates (mode [SLM.overlay], the alteration's or else the inherited one's), and refused
+ *    where order matters ([SLM.reorder], [SLM.authoritative]): it would need a place, which an anchor would give, and
+ *    there are none yet -- the message says to restate the list instead.
+ *  - **[SLM.reorder] or [SLM.authoritative]: an order or membership change.** [SL.schemaFields] is **restated**
+ *    ([MergeRule.RestateKeyed]): the alteration's list is the order, and under [SLM.authoritative] the membership too;
+ *    an entry naming only its `field` keeps the inherited entry for that field.
+ *
+ * (A field must still be one the type declares; the layout check says so, on the merged result.) [SL.strings]
+ * merges by key; every other block key (the heading [SL.label], [SL.fragmentFileId], [SL.mode]) replaces.
+ */
+fun layoutMergeSpec(base: Map<String, Any?>, overlay: Map<String, Any?>): MergeSpec {
+    val ownMode = overlay[SL.mode] as? String
+    val fields = if (ownMode == SLM.reorder || ownMode == SLM.authoritative) {
+        MergeRule.RestateKeyed(SL.field)
+    } else {
+        val mode = ownMode ?: base[SL.mode] as? String ?: SLM.overlay
+        MergeRule.Keyed(
+            SL.field, KeyedElement.replace, if (mode == SLM.overlay) OnNew.append else OnNew.refuse,
+            refusalHint = "To change which fields the layout lists, or their order, set its '${SL.mode}' to " +
+                "'${SLM.reorder}' or '${SLM.authoritative}' and restate the list.",
+        )
+    }
+    return MergeSpec(mapOf(SL.schemaFields to fields, SL.strings to MergeRule.Merge))
 }
 
 /**
@@ -986,7 +1024,7 @@ enum class LayoutError : ProblemCode {
 
 /**
  * A [LayoutError] problem at [path] within the `g-layout` block (null for the block as a whole), with a template
- * [issue]'s offset, line and column when the fault is inside copy.
+ * [issue]'s offset, line, and column when the fault is inside copy.
  */
 @KdrPrivate
 fun layoutProblem(code: LayoutError, message: String, path: String? = null, issue: TemplateIssue? = null): Problem =

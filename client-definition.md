@@ -137,6 +137,8 @@ sets**: everything global stays visible so that `$ref`s resolve, while a trait t
 supported by it for forms or data entry. 
 
 The client can define new schemas using the same process of altering, extending, or new as is done for traits.
+(Extending -- a new type declared as a base plus a delta -- is not built yet: it is `g-extends`, issue #990. Today a
+new type is written out in full, and may pull another in by `$ref` as a property.)
 It will be typical for complex traits that they will pull in schemas using "$ref" and it is quite
 possible that a client will target the schema that was pulled in by the "$ref". This would leave the parent
 part of the schema alone.

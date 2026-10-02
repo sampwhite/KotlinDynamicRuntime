@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.overlay.OverlayMergeError
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.ProblemCode
 import com.dynamicruntime.common.util.ProblemLocation
@@ -23,7 +24,8 @@ import com.dynamicruntime.common.util.toOptStr
  * a refusal is cheap to relax later where a wrongly-permitted widening is not -- a widened type reaches
  * storage, and the data it admitted is then wrong for everybody else.
  *
- *  1. **Fewer properties** -- mention only the keys wanted (see `mergeProperties`).
+ *  1. **Fewer properties** -- mention only the keys wanted, or, where the alteration merges its properties
+ *     (`g-merge`), remove one with `null` (see [schemaTypeMergeSpec]).
  *  2. **Fewer choices**, or a choice list where there was none: [SCH.options] whose values are a subset, or
  *     an options list applied to an attribute that had none -- including **closing an open list**
  *     ([SCH.openOptions]), which is the same act said in the other keyword: a list that bounded nothing
@@ -45,7 +47,12 @@ fun narrowingProblems(typeName: String, base: Map<String, Any?>, overlay: Map<St
     // Compared against the **merged result**, not against the fragment the client wrote. A declared property
     // body replaces rather than merges, so the fragment says what changed only in the simplest cases; the
     // result says what this client actually accepts, which is the question.
-    compare(typeName, typeName, base, overlayType(base, overlay), problems)
+    val outcome = overlayTypeOutcome(typeName, base, overlay)
+    // A merge directive the type does not offer (issue #985) leaves the alteration meaning something its author did
+    // not say -- the properties restated where they asked for a merge -- so it fails the alteration like a widening.
+    // (A layout entry the merge refused is the layout's own fault, reported and dropped with the layout.)
+    problems.addAll(outcome.problems.filter { it.code == OverlayMergeError.unknownChoice })
+    compare(typeName, typeName, base, outcome.value, problems)
     return problems
 }
 
@@ -106,9 +113,9 @@ private val presentationKeys = setOf(
     // a field cannot widen what a type accepts.
     SCH.visibleWhen,
     // A layout (issue #584) is how a friendly form renders a type's fields; it is never read into `SchType`
-    // and takes no part in validation, so a client may supply its own. Absent from this list, a client's
-    // `g-layout` overlay would be refused as a validation change -- and, in warn mode, take the client's whole
-    // alteration of that type down with it.
+    // and takes no part in validation, so a client may alter it -- merged with the base's by field (issue #985).
+    // Absent from this list, a client's `g-layout` alteration would be refused as a validation change -- and, in
+    // warn mode, take the client's whole alteration of that type down with it.
     SCH.layout,
 )
 

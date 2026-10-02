@@ -372,6 +372,16 @@ object SCH {
     const val layout = "g-layout"
 
     /**
+     * On a client's **alteration** of a type (issue #985): how parts of it merge with the type it alters, where the
+     * default is not wanted -- `{ "properties": "merge" }` merges the properties entry by entry (a `null` entry
+     * removing one) instead of restating the set. The choices each part offers are declared by
+     * `schemaTypeMergeSpec`. A directive, not schema: the merge reads it and leaves it out of the result, so it
+     * never reaches `SchType` or a served schema. Anywhere else -- a global type, a client's own type, a nested
+     * part -- it would do nothing, and is refused (`SchGKeywords.misplacedMerge`).
+     */
+    const val merge = "g-merge"
+
+    /**
      * The gedra kinds a trait's entry type applies to -- a gedra concept the schema carries without reading (see
      * `GE.appliesTo`, which names it). Declared here so the schema layer's list of its own keywords is whole
      * ([SchGKeywords], issue #822).
