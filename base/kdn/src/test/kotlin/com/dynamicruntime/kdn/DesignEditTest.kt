@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
@@ -234,11 +235,38 @@ class DesignEditTest : StringSpec({
         }
     }
 
+    "a client with a sandbox is sent to it to edit" {
+        val parent = "sandboxed984"
+        val config = gedraConfig(cxt, "main", clientNamespace(parent), parent) {
+            defineClient(
+                ClientDef(
+                    clientId = parent, name = parent, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                ),
+            )
+            trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "A note.") { property("text", "The text.") }
+            workflow("make", WfEntry.creation) {
+                task("ask", "Ask") {
+                    trait("note")
+                    save("create", "Create")
+                }
+            }
+        }
+        val parentCxt = cxt.mkSubContext("setup", parent)
+        GedraConfigService.get(cxt).writeConfig(parentCxt, config)
+        // The published definition is what decides that a client has a sandbox.
+        GedraConfigService.get(cxt).publish(parentCxt, GedraId.of(GedraConfigType.configDoc, parent, "main"))
+        GedraConfigReload.reloadClient(cxt, parent)
+        val declared = WorkflowService.get(cxt).forClient(parent).workflow("make")!!
+        DesignView.editRefusal(parentCxt, declared).orEmpty() shouldContain "edit it from its sandbox"
+    }
+
     "a client that runs its published configuration cannot edit here, and says why" {
         GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, true)
         try {
             block(requestView())[DSV.canEdit] shouldBe false
-            block(requestView())[DSV.editRefusal].toOptStr().orEmpty() shouldContain "runs its published configuration"
+            // Published-only by the administrator's choice, not by a sandbox: there is none to send anyone to.
+            block(requestView())[DSV.editRefusal].toOptStr().orEmpty() shouldContain "it has no sandbox to preview an edit in"
             val refused = admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to "Nope")))
             refused.toString() shouldContain "runs its published configuration"
         } finally {
