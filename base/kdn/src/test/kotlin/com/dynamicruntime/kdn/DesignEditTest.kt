@@ -217,7 +217,7 @@ class DesignEditTest : StringSpec({
         }.fullMessage() shouldContain "may alter only a type's 'g-layout'"
     }
 
-    "a workflow declared in code, or a global one, cannot be edited here" {
+    "a workflow declared in source, or a global one, cannot be edited here, and the reason says where its copy can change" {
         fun declaredIn(owner: String, namespace: String): WfDeclared {
             val bundle = gedraConfig(LiteCxt(), "inCode984", namespace, owner) {
                 workflow("inCode", WfEntry.creation) {
@@ -231,7 +231,9 @@ class DesignEditTest : StringSpec({
         }
         val clientCxt = cxt.mkSubContext("setup", client)
         for (declared in listOf(declaredIn(client, clientNamespace(client)), declaredIn("global", "kdr.inCode984"))) {
-            DesignView.editRefusal(clientCxt, declared).orEmpty() shouldContain "declared in code"
+            val refusal = DesignView.editRefusal(clientCxt, declared).orEmpty()
+            refusal shouldContain "declared in source"
+            refusal shouldContain "copy overrides"
         }
     }
 

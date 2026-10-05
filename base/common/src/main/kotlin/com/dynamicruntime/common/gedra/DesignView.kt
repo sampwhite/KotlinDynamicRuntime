@@ -147,15 +147,19 @@ object DesignView {
 
     /**
      * Why this caller may not edit [declared]'s copy here, or null when they may (issue #984): the workflow must be
-     * the client's own stored definition -- one declared in code, or a global one, changes only in code -- and the
-     * client must run its latest revision, so an edit shows on the page once saved. A sandbox always does; a
+     * the client's own stored definition, since a workflow's own copy is written into its definition and a workflow
+     * declared in source (or a global one) has none here to write to -- overlaying one is issue #1011, and copy it
+     * pulls from a fragment file is the client's copy overrides' to change -- and the client must run its latest
+     * revision, so an edit shows on the page once saved. A sandbox always does; a
      * published-only client does not. Its edits are previewed in its sandbox when it has one -- but published-only is
      * also a tier an administrator sets on its own, and then there is no sandbox to send anyone to.
      */
     fun editRefusal(cxt: KdrCxt, declared: WfDeclared): String? {
         val bundle = declared.bundle
         if (!bundle.isStored || bundle.gedraId.client != cxt.client) {
-            return "Workflow '${declared.def.workflowId}' is declared in code, not in this client's stored configuration, so it changes only in code."
+            return "Workflow '${declared.def.workflowId}' is declared in source, not in this client's stored configuration, so copy " +
+                "just for this workflow cannot be saved here yet. Copy it pulls from a fragment file can be changed in the client's " +
+                "copy overrides, for every workflow that uses it."
         }
         val configs = GedraConfigService.get(cxt)
         if (!isSandboxClient(cxt.client) && configs.publishedOnly(cxt, cxt.client)) {
