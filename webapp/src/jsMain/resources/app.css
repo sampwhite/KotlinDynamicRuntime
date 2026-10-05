@@ -1167,3 +1167,22 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .dv-shared { grid-column: 2; margin: 0; color: var(--text-faint); font-size: 12px; overflow-wrap: anywhere; }
 .dv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .dv-json-edit { width: 100%; }
+
+/* The Reports page (issue #1007): the client's reports down the left, the open one run as a table beside them. */
+.reports-head { justify-content: space-between; }
+.reports-head h1 { margin: 0 auto 0 0; }
+.reports-layout { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 28px; margin-top: 14px; }
+.reports-list ul:not(.wf-reasons) { list-style: none; margin: 0; padding: 0; }
+.reports-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-left: 2px solid transparent; }
+.reports-item.current { border-left-color: var(--accent-bright); background: rgba(255, 255, 255, .04); }
+.reports-issues-lead { margin: 16px 0 4px; color: var(--text-dim); font-size: 13px; }
+.reports-run h2 { margin-top: 0; }
+.reports-controls { margin: 10px 0 4px; }
+.reports-paging { margin-top: 10px; }
+/* One line per row: a report has many narrow columns, and wrapped timestamps make each row four lines tall. The table
+   scrolls sideways inside `.op-table-scroll` instead. */
+.reports-run .op-table th, .reports-run .op-table td { white-space: nowrap; }
+/* A narrow window stacks the two: the list first, the run under it. */
+@media (max-width: 900px) {
+    .reports-layout { grid-template-columns: minmax(0, 1fr); }
+}
