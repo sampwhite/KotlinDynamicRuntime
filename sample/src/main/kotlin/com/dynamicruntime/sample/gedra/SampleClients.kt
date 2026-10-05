@@ -19,6 +19,7 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.report.RENV
 import com.dynamicruntime.common.gedra.report.RMETA
 import com.dynamicruntime.common.gedra.report.RPT
 import com.dynamicruntime.common.gedra.report.RUSR
@@ -212,6 +213,12 @@ object SC {
      */
     const val auditOverview = "auditOverview"
     const val yearlyNotes = "yearlyNotes"
+
+    /** The aggregation example: expense reports grouped by year, counted, summed and averaged. */
+    const val expensesByYear = "expensesByYear"
+
+    /** The straight-up example: one row per form, nothing grouped or rolled up. */
+    const val formRoster = "formRoster"
 
     // Globex extends a global type rather than altering it: a new name, constraining nothing.
     const val globexNamespace = "client.globex"
@@ -618,6 +625,36 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             column("owner", "Owner", "${ReportSource.user.name}.${RUSR.email}")
             column("ownerName", "Owner's name", "${ReportSource.user.name}.${RUSR.name}")
             groupBy = listOf("auditor")
+        }
+
+        // The aggregation example: built to be read grouped. One row per reporting year -- how many forms, what they
+        // claimed in all and on average, and when an audit of one was last touched. Forms with no expense report
+        // are left out, so every group is a year.
+        report(SC.expensesByYear, "Expenses by year") {
+            description = "Expense reports by reporting year: how many, what they total and average, and the latest audit activity."
+            val expense = "${ReportSource.form.name}.${ST.expenseReport}"
+            column("year", "Year", "$expense.${ST.year}")
+            column("total", "Total claimed", "$expense.${ST.totalAmount}", rollup = ReportCombine.sum)
+            column("average", "Average claim", "$expense.${ST.totalAmount}", rollup = ReportCombine.avg)
+            column("largest", "Largest claim", "$expense.${ST.totalAmount}", rollup = ReportCombine.max)
+            column(
+                "lastAudited", "Last audit activity",
+                "${ReportSource.form.name}.${SC.siteAudit}.${RPT.envMark}${RENV.updatedAt}", rollup = ReportCombine.max,
+            )
+            groupBy = listOf("year")
+            excludeEmpty = listOf("year")
+        }
+
+        // The straight-up example: a listing, one row per form, with nothing to group by and nothing rolled up --
+        // when each form was made, whose it is, and where it stands.
+        report(SC.formRoster, "Form roster") {
+            description = "Every form: when it was created, who owns it, its status, and who audited the site."
+            column("created", "Created", "${ReportSource.meta.name}.${RMETA.createdAt}")
+            column("ownerName", "Owner", "${ReportSource.user.name}.${RUSR.name}")
+            column("owner", "Email", "${ReportSource.user.name}.${RUSR.email}")
+            column("status", "Status", "${ReportSource.meta.name}.${RMETA.formStatus}")
+            column("auditor", "Auditor", "${ReportSource.form.name}.${SC.siteAudit}.${SC.auditor}")
+            column("review", "Review", "${ReportSource.workflow.name}.${SW.auditReview}.${RWF.category}")
         }
     }
 

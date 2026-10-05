@@ -66,6 +66,7 @@ object Probe {
         accessMatrixName to ::accessMatrix,
         grantThenCallName to ::grantThenCall,
         designDemoName to ::designDemo,
+        reportDemoName to ::reportDemo,
     )
 }
 
