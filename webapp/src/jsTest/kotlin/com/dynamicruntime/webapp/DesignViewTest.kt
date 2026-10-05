@@ -34,8 +34,8 @@ class DesignViewTest {
                     "rainPlan" to mapOf(SCH.type to SCT.string),
                     "adminNote" to mapOf(SCH.type to SCT.string, SCH.visibleWhen to "kdr:hasAdminLevel"),
                     "total" to mapOf(SCH.type to SCT.number, SCH.derived to true),
-                    "contact" to mapOf(SCH.dRef to "#/\$defs/client.demo.Contact"),
-                    "guests" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "#/\$defs/client.demo.Contact")),
+                    "contact" to mapOf(SCH.dRef to $$"#/$defs/client.demo.Contact"),
+                    "guests" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to $$"#/$defs/client.demo.Contact")),
                     "extra" to mapOf(
                         SCH.type to SCT.kObject,
                         SCH.properties to mapOf("note" to mapOf(SCH.type to SCT.string)),
@@ -159,5 +159,55 @@ class DesignViewTest {
         assertEquals(setOf("client.demo.Request"), design.types.keys)
         // An origin left out reads as global, the cautious answer: nothing claims it is editable.
         assertEquals(DesignOrigin.global.name, design.types.getValue("client.demo.Request").origin)
+    }
+
+    // --- editing a field's copy for the workflow (issue #984) ---
+
+    @Test
+    fun theBlocksEditFactsAreRead() {
+        val design = parseWfDesign(
+            mapOf(
+                DSV.canEdit to true,
+                DSV.basedOn to "abc123",
+                DSV.layoutEdits to mapOf(
+                    "client.demo.Request" to mapOf(
+                        "title" to mapOf(
+                            DSV.entry to mapOf("field" to "title", "label" to "Name it"),
+                            DSV.inherited to mapOf("field" to "title", "label" to "Title"),
+                            DSV.inheritedChanged to true,
+                        ),
+                    ),
+                ),
+            ),
+        )!!
+        assertEquals(true, design.canEdit)
+        assertEquals("abc123", design.basedOn)
+        val edit = design.layoutEdit("client.demo.Request", "title")!!
+        assertEquals("Name it", edit.entry["label"])
+        assertEquals("Title", edit.inherited?.get("label"))
+        assertEquals(true, edit.inheritedChanged)
+        assertNull(design.layoutEdit("client.demo.Request", "venue"))
+        // An ordinary block says nothing about editing, and offers none.
+        assertEquals(false, parseWfDesign(emptyMap<String, Any?>())!!.canEdit)
+    }
+
+    @Test
+    fun aSavedEntryTakesTheFormsCopyAndKeepsWhatTheFormDoesNotOffer() {
+        val start = mapOf("field" to "title", "label" to "Title", "hint" to "Short", "defaultMode" to "offer")
+        val out = copyEntryFrom(start, "title", mapOf("label" to " Name it ", "description" to "What people call it", "hint" to ""))
+        assertEquals(
+            mapOf("field" to "title", "label" to "Name it", "defaultMode" to "offer", "description" to "What people call it"),
+            out,
+        )
+        // Starting from nothing, the field is still named.
+        assertEquals(mapOf("field" to "venue", "label" to "Where"), copyEntryFrom(emptyMap(), "venue", mapOf("label" to "Where")))
+    }
+
+    @Test
+    fun anOverridesPathQuotesTheDottedTypeName() {
+        assertEquals(
+            "definition.types[\"client.demo.Request\"].g-layout.schemaFields[title]",
+            overridePath("client.demo.Request", "title"),
+        )
     }
 }

@@ -42,9 +42,11 @@ val CreationPage = FC<Props> {
 
     // Design View switched while the form is open (issue #972): the view is read again in place, so the form keeps
     // what has been typed and gains (or loses) the explanation.
-    useDesignViewReread {
+    // The same in-place read after a Design View edit has saved (issue #984), so the new copy shows.
+    suspend fun reread() {
         if (workflow != null) apiResult { WorkflowApi.fetchCreationView() }.designRereadValue()?.let { workflow = it }
     }
+    useDesignViewReread { reread() }
 
     when {
         loading -> LoadStateCard { title = "New form" }
@@ -59,6 +61,7 @@ val CreationPage = FC<Props> {
             view = workflow!!
             gedraId = null
             allowCreateForUser = canManageUsers
+            onDesignEdited = { creationScope.launch { reread() } }
         }
     }
 }

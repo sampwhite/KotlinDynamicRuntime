@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.mergeFragmentLayers
+import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
@@ -76,6 +77,7 @@ class WorkflowService : ServiceInitializer {
                 }
             },
             cfactNames = { SchemaService.get(cxt).cfactsFor(it).names },
+            schemaStore = { SchemaService.get(cxt).storeFor(it) },
             issues = found,
             onlyClient = onlyClient,
             runningGlobal = if (onlyClient != null) this.registries.global else null,
@@ -121,6 +123,8 @@ class WorkflowService : ServiceInitializer {
         fragmentSources: List<FragmentSource>,
         cfactNames: Set<String>,
         droppedTypes: Set<String>,
+        /** The candidate schema store for [client] (issue #984), what its workflows' type alterations are judged by. */
+        schemaStore: KdrSchemaStore? = null,
     ): WorkflowRegistry {
         val found = mutableListOf<GedraConfigIssue>()
         val clients: Map<String, ClientDef> =
@@ -140,6 +144,7 @@ class WorkflowService : ServiceInitializer {
             cfactNames = { scope ->
                 if (scope == client) cfactNames else SchemaService.get(cxt).cfactsFor(scope).names
             },
+            schemaStore = { scope -> if (scope == client && schemaStore != null) schemaStore else SchemaService.get(cxt).storeFor(scope) },
             issues = found,
             onlyClient = client,
             runningGlobal = registries.global,

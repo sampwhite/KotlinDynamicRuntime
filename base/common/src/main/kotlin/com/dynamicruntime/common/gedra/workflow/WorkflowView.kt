@@ -74,6 +74,9 @@ fun resolveWorkflowView(
     // `$defs` subset, not the catalog. The *served* form (issue #584): each type's `g-layout` already stripped,
     // since a layout is delivered out-of-band (below) and never rides in a served schema.
     val clientStore = SchemaService.get(cxt).storeFor(client)
+    // The workflow's own view of those types (issue #984): the client's, with the workflow's type alterations applied --
+    // its own wording for the forms it draws. The client's store itself when the workflow alters nothing.
+    val store = workflowSchemaStore(clientStore, declared)
     // The trait data types the workflow references, collected as they are rendered; the seeds of the closure.
     val seedRefs = LinkedHashSet<String>()
     // The request-scoped cfacts, computed once: they are the same for every task, so only each task's own
@@ -191,7 +194,7 @@ fun resolveWorkflowView(
     // Tasks first: rendering them collects the trait refs the closure needs.
     val taskViews = declared.def.tasks.map { taskView(it) }
     // The self-contained schema: exactly the types the trait refs reach, and their dependencies.
-    val defs = collectDefClosure(seedRefs, clientStore.servedDefs)
+    val defs = collectDefClosure(seedRefs, store.servedDefs)
     // The earliest task still needing action -- the CTA, computed once above. Absent when every task is done.
     val focusTask = ctaTaskId
     val view = linkedMapOf<String, Any?>(
@@ -214,12 +217,12 @@ fun resolveWorkflowView(
         // to a trait's data type by name on the page. From the same store the closure came from, so a client
         // that narrowed a trait's type gets the layout pruned to what it kept. These are field layouts; the task
         // layout is a different thing, already applied to each task's trait order above.
-        WVF.fieldLayouts to resolveDeliveredLayouts(cxt, clientStore.layoutsFor(defs)),
+        WVF.fieldLayouts to resolveDeliveredLayouts(cxt, store.layoutsFor(defs)),
     )
     focusTask?.let { view[WVF.focusTask] = it }
     // Design View (issue #972): where the workflow and each type the page draws were declared. Added beside an
     // otherwise identical view, and only for a caller entitled to it, so an ordinary response never carries it.
-    if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs)
+    if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs, clientStore, store)
     if (lockedTraits.isNotEmpty()) view[WVF.lockedTraits] = lockedTraits
     if (declared.def.entry == WfEntry.normal) view[WVF.phase] = WorkflowPhases.of(cxt, declared.def).name
     formFacts?.let { f ->

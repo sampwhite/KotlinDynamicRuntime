@@ -147,14 +147,16 @@ val SurveyEditPage = FC<Props> {
     // Design View switched while the form is open (issue #972): the view is read again in place -- the way a save's
     // re-read is, not through the loading card -- so unsaved edits survive, and applied only while the page still
     // shows this form.
-    useDesignViewReread {
-        if (view == null) return@useDesignViewReread
+    // The same in-place read after a Design View edit has saved (issue #984), so the new copy shows.
+    suspend fun reread() {
+        if (view == null) return
         val form = gedraId
         val wf = workflowId
         val fresh = apiResult { fetchFormView(form, wf, workflowClient) }.designRereadValue()
         val h = hashParams()
         if (fresh != null && h[HP.page] == pageSurveyEdit && h[HP.gedra] == form && h[HP.workflow] == wf) view = fresh
     }
+    useDesignViewReread { reread() }
 
     when {
         loading -> LoadStateCard { title = "Edit form" }
@@ -212,6 +214,7 @@ val SurveyEditPage = FC<Props> {
                     selectTask(id)
                 }
                 onDirtyChange = { dirty = it }
+                onDesignEdited = { surveyEditScope.launch { reread() } }
                 // An approval settled (issue #832): approved, or refused by the endpoint. Either way the form's state may
                 // have moved -- the step now reads approved, someone else approved it first -- so the view is read again,
                 // as after an engage, keeping the refusal to show by its step. It stays on that step: with every step

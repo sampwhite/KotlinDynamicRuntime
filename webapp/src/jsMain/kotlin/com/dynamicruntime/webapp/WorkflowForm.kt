@@ -118,6 +118,12 @@ external interface WorkflowFormProps : Props {
      * when the read fails. Unset for a creation form, whose save leaves the page.
      */
     var refreshView: ((taskId: String) -> Promise<WorkflowView?>)?
+
+    /**
+     * Re-reads the view in place after a Design View edit of the workflow's copy has saved (issue #984), so the change
+     * shows without a reload or a remount. Unset where the page has no such read; the edit then shows on the next.
+     */
+    var onDesignEdited: (() -> Unit)?
 }
 
 /** An approval's refusal (issue #832) and the task it concerns -- shown by that task's button, and nowhere else. */
@@ -217,7 +223,10 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     var designShowAllIds by useState(false)
     var designShowHidden by useState(true)
     val designSession = wf.design?.takeIf { designViewRequested() }?.let {
-        DesignSession(it, designSelected, { t -> designSelected = t }, designShowAllIds, designShowHidden)
+        DesignSession(
+            it, designSelected, { t -> designSelected = t }, designShowAllIds, designShowHidden,
+            workflowId = wf.workflowId, afterEdit = { props.onDesignEdited?.invoke() },
+        )
     }
     // The inspector is fixed to the window's right edge; the page makes room for it rather than being covered.
     val designOpen = designSession != null

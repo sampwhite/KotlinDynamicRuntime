@@ -131,7 +131,7 @@ object GedraConfigTrial {
         val uiBlocks = previous.flatMap { it.uiBlocks } to taken.flatMap { it.uiBlocks }
         UiBlockService.get(tcxt).trialClient(tcxt, client, uiBlocks.first, uiBlocks.second, schema.cfactNames)
         val workflows = WorkflowService.get(tcxt)
-            .trialClient(tcxt, scratch, client, def, fragments, schema.cfactNames, schema.droppedTypes)
+            .trialClient(tcxt, scratch, client, def, fragments, schema.cfactNames, schema.droppedTypes, schema.store)
         // Reports last, as a reload orders them (issue #980): a report's workflow paths bind to the workflows kept.
         ReportService.get(tcxt).trialClient(tcxt, scratch, client, def, schema.types, schema.droppedTypes, workflows)
         return capture.toList()

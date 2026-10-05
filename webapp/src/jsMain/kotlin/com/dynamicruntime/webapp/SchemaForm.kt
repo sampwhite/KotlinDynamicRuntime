@@ -823,7 +823,7 @@ private fun ChildrenBuilder.designMarked(
         trait, childPath(path, name), name, prop, name in type.required,
         type.name?.let { opts.fieldLayouts[it] }?.fieldFor(name), hidden,
     )
-    designTargetFrame(session, target, name, ghostReason = hidden?.reason, content = content)
+    designTargetFrame(session, target, name, ghostReason = hidden?.reason, altered = session.isAltered(target), content = content)
 }
 
 /**

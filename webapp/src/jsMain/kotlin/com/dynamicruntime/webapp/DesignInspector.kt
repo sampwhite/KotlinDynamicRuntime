@@ -3,14 +3,17 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
+import react.Key
 import react.Props
 import react.dom.html.ReactHTML.aside
 import react.dom.html.ReactHTML.button
@@ -22,6 +25,7 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.pre
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.summary
+import react.dom.html.ReactHTML.textarea
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -32,6 +36,28 @@ private val designScope = MainScope()
 object DesignApi {
     suspend fun definition(slot: String, key: String): Map<String, Any?> =
         Http.getApi(DSV.definition + queryString(mapOf(DSV.slot to slot, DSV.key to key)))[EP.item].toJsonMapOrEmpty()
+
+    /**
+     * Sets the workflow's own layout entry for [field] of [typeName] to [entry], or clears it when [entry] is null
+     * (issue #984), as an edit of the definition stamped [basedOn]. The server's refusal -- a stale stamp (409), an
+     * entry the layout checks refuse -- comes back as the result's refusal.
+     */
+    suspend fun setLayoutEntry(
+        workflowId: String,
+        typeName: String,
+        field: String,
+        entry: Map<String, Any?>?,
+        basedOn: String,
+    ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
+        "POST", DSV.layoutEntryEdit,
+        buildMap {
+            put(DSV.workflowId, workflowId)
+            put(DSV.typeName, typeName)
+            put(DSV.field, field)
+            entry?.let { put(DSV.entry, it) }
+            put(DSV.basedOn, basedOn)
+        },
+    )
 }
 
 /**
@@ -45,12 +71,15 @@ fun ChildrenBuilder.designTargetFrame(
     target: DesignTarget,
     label: String,
     ghostReason: String? = null,
+    /** Whether the workflow overrides this part's copy (issue #984): its badge carries a mark. */
+    altered: Boolean = false,
     content: ChildrenBuilder.() -> Unit,
 ) {
     div {
         className = ClassName(
             listOfNotNull(
                 "dv-target",
+                "dv-altered".takeIf { altered },
                 "dv-ghost".takeIf { ghostReason != null },
                 "dv-selected".takeIf { session.isSelected(target) },
                 "dv-pinned".takeIf { session.showAllIds },
@@ -149,7 +178,24 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
         when (selected) {
             null, DesignTarget.Workflow -> workflowSummary(props.view, selected == null)
             is DesignTarget.Trait -> traitSummary(selected)
-            is DesignTarget.Field -> fieldSummary(selected)
+            is DesignTarget.Field -> {
+                // The field's copy as the page now shows it -- read from the view, not from the selection, which was
+                // made before any edit re-read the view.
+                val owner = fieldOwner(selected.root.typeName, selected.root.type, selected.path)
+                fieldSummary(selected, props.view.fieldLayouts[owner.typeName]?.fieldFor(selected.name) ?: selected.layout)
+                // Once the definition read has answered: the form starts from the type's authored entry, and starting
+                // before it arrived would save an entry missing what the form never saw.
+                if (design.canEdit && definition != null) {
+                    WorkflowCopyEditor {
+                        // Keyed on the field and the definition it edits, so a save -- which re-reads the view and
+                        // moves the stamp -- starts the form afresh from what is now stored.
+                        key = "${selected.id}|${design.basedOn}".unsafeCast<Key>()
+                        this.session = session
+                        this.target = selected
+                        authored = (address?.let { authoredLayoutEntry(it, definition, selected) })
+                    }
+                }
+            }
         }
         if (address == null) {
             p {
@@ -197,10 +243,10 @@ private fun ChildrenBuilder.traitSummary(target: DesignTarget.Trait) {
     fact("Fields", trait.type.properties.size.toString())
 }
 
-private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field) {
+private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: SchLayoutField?) {
     val prop = target.prop
     val vt = prop.valueType
-    h2 { +(target.layout?.label ?: prop.title ?: humanizeFieldName(target.name)) }
+    h2 { +(layout?.label ?: prop.title ?: humanizeFieldName(target.name)) }
     target.hidden?.let {
         p {
             className = ClassName("dv-callout")
@@ -218,7 +264,7 @@ private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field) {
     }
     prop.visibleWhen?.let { fact("Shown when", it, mono = true) }
     if (vt.derived) fact("Computed", "yes — nobody enters it")
-    target.layout?.let { layout ->
+    layout?.let { layout ->
         h3 { +"Copy on the form" }
         layout.label?.let { fact("Label", it) }
         layout.description?.let { fact("Description", it) }
@@ -303,5 +349,162 @@ private fun ChildrenBuilder.fact(name: String, value: String, mono: Boolean = fa
             className = ClassName(if (mono) "dv-fact-value mono" else "dv-fact-value")
             +value
         }
+    }
+}
+
+/** The type's own authored layout entry for [field]'s field, from the loaded definition, or null. */
+private fun authoredLayoutEntry(address: DesignAddress, loaded: LoadedDefinition?, field: DesignTarget.Field): Map<String, Any?>? {
+    val entry = loaded?.response?.get(DSV.entry).toJsonMapOrEmpty()
+    val owner = address.path?.substringBeforeLast(".properties.", "")?.ifEmpty { null }
+    return layoutEntryIn(subtreeAt(entry, owner ?: typeBodyPath(address)), field.name)
+}
+
+external interface WorkflowCopyEditorProps : Props {
+    var session: DesignSession
+    var target: DesignTarget.Field
+    /** The type's own layout entry for the field, when the definition read has one -- where an edit starts. */
+    var authored: Map<String, Any?>?
+}
+
+/**
+ * The workflow's own copy for one field (issue #984): its label, description and hint, edited as a small form or as
+ * the layout entry's JSON, saved as the workflow's override of the shared copy -- never the shared definition, which
+ * every other workflow draws from too. Shows what the override replaces, says when the shared copy has changed since,
+ * and offers **Reset to shared**. A save is the server's to refuse (a stale page, an entry the layout checks reject),
+ * and the refusal is said here.
+ */
+private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
+    val session = props.session
+    val target = props.target
+    val owner = fieldOwner(target.root.typeName, target.root.type, target.path)
+    val edit = session.design.layoutEdit(owner.typeName, target.name)
+    val shared = edit?.inherited ?: props.authored
+    val start = edit?.entry ?: props.authored ?: emptyMap()
+    var editing by useState(false)
+    var asJson by useState(false)
+    var values by useState(editableCopyKeys.associateWith { start[it].toOptStr().orEmpty() })
+    var jsonText by useState(start.toJsonStr())
+    var saving by useState(false)
+    var failure by useState<DisplayError?>(null)
+
+    fun save(entry: Map<String, Any?>?) {
+        saving = true
+        failure = null
+        designScope.launch {
+            val result = DesignApi.setLayoutEntry(session.workflowId, owner.typeName, target.name, entry, session.design.basedOn)
+            saving = false
+            val refused = result.failureOrNull()
+            if (refused != null) {
+                failure = userFacingError(refused)
+            } else {
+                editing = false
+                session.afterEdit()
+            }
+        }
+    }
+
+    div {
+        className = ClassName("dv-edit")
+        h3 { +"Copy for this workflow" }
+        if (edit != null) {
+            p {
+                className = ClassName("dv-note")
+                +"This workflow uses its own copy here; every other workflow shows the shared copy."
+            }
+            if (edit.inheritedChanged) {
+                p {
+                    className = ClassName("dv-callout")
+                    +"The shared copy has changed since this workflow overrode it."
+                }
+            }
+        }
+        if (!editing) {
+            div {
+                className = ClassName("dv-actions")
+                Button {
+                    size = "small"
+                    onClick = { editing = true }
+                    +(if (edit == null) "Override for this workflow" else "Edit")
+                }
+                if (edit != null) {
+                    Button {
+                        size = "small"
+                        type = "link"
+                        loading = saving
+                        onClick = { save(null) }
+                        +"Reset to shared"
+                    }
+                }
+            }
+        } else {
+            if (asJson) {
+                textarea {
+                    className = ClassName("code json-edit dv-json-edit")
+                    value = jsonText
+                    rows = 8
+                    onChange = { e -> jsonText = e.target.value }
+                }
+            } else {
+                for (key in editableCopyKeys) {
+                    div {
+                        className = ClassName("dv-edit-row")
+                        span {
+                            className = ClassName("dv-fact-name")
+                            +humanizeFieldName(key)
+                        }
+                        Input {
+                            value = values[key].orEmpty()
+                            onChange = { e -> values = values + (key to (e.target.value as String)) }
+                        }
+                        shared?.get(key).toOptStr()?.let {
+                            p {
+                                className = ClassName("dv-shared")
+                                +"Shared: $it"
+                            }
+                        }
+                    }
+                }
+            }
+            div {
+                className = ClassName("dv-actions")
+                Button {
+                    type = "primary"
+                    size = "small"
+                    loading = saving
+                    onClick = {
+                        if (asJson) {
+                            val parsed = parseJsonField(jsonText)
+                            val entry = parsed.value as? Map<*, *>
+                            if (parsed.error != null || entry == null) {
+                                failure = DisplayError.expected(parsed.error ?: "The entry has to be a JSON object.")
+                            } else {
+                                save(entry.toJsonMapOrEmpty())
+                            }
+                        } else {
+                            save(copyEntryFrom(start, target.name, values))
+                        }
+                    }
+                    +"Save"
+                }
+                Button {
+                    size = "small"
+                    onClick = {
+                        if (!asJson) jsonText = copyEntryFrom(start, target.name, values).toJsonStr()
+                        asJson = !asJson
+                    }
+                    +(if (asJson) "Edit as a form" else "Edit as JSON")
+                }
+                Button {
+                    size = "small"
+                    type = "link"
+                    onClick = {
+                        editing = false
+                        failure = null
+                    }
+                    +"Cancel"
+                }
+            }
+        }
+        failure?.let { errorText("Couldn't save the copy.", it) }
     }
 }

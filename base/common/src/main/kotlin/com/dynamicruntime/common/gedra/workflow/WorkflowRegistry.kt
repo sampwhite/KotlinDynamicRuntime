@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GID
+import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraConfigIssue
@@ -26,6 +27,14 @@ import com.dynamicruntime.common.util.toOptStr
 class WfDeclared(val bundle: GedraConfig, val def: WfDef) {
     /** How a stored gedra refers to this workflow: the bundle id (revision included) and the workflow id. */
     val ref: WfRef = WfRef(bundle.gedraId, def.workflowId)
+
+    /**
+     * The schema store this workflow's pages were last drawn from, with the client store it was built over -- the
+     * cache `workflowSchemaStore` keeps (issue #984). One slot: a global workflow inherited by several clients
+     * rebuilds when another client's page asks, which is correct, just not cached across clients.
+     */
+    @Volatile
+    internal var storeCache: Pair<KdrSchemaStore, KdrSchemaStore>? = null
 
     override fun toString(): String = ref.text
 }
@@ -143,6 +152,11 @@ fun buildWorkflowRegistries(
     runningGlobal: WorkflowRegistry? = null,
     /** The types a client declared that its variant dropped (issue #841): their traits are not supported. */
     droppedTypes: (client: String) -> Set<String> = { emptySet() },
+    /**
+     * The schema a scope's workflows' type alterations are judged against (issue #984) -- the scope's store; null
+     * skips the check, for a caller with no schema to judge by.
+     */
+    schemaStore: ((scope: String?) -> KdrSchemaStore)? = null,
 ): WorkflowRegistries {
     // The entry kinds that are implemented; a workflow declaring any other is dropped rather than run
     // half-built. `normal` landed with issue #794.
@@ -235,6 +249,14 @@ fun buildWorkflowRegistries(
                     )
                     return false
                 }
+            }
+        }
+        // Type alterations (issue #984): only a type the workflow's pages draw, merged and laid out soundly over the
+        // scope's view of it -- the checks a client's layout alteration gets, one scope down.
+        schemaStore?.let { storeOf ->
+            typeAlterationProblem(w, storeOf(scope), configs.traitsFor(scope ?: GID.globalClient))?.let {
+                reportConfigProblem(cxt, problem(scope, w, it), issues)
+                return false
             }
         }
         for (task in w.def.tasks) {
