@@ -19,6 +19,7 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.copyOverrides
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -125,6 +126,16 @@ class ClientExtensionTest : StringSpec({
         labels(sandboxOf(kid)) shouldBe mapOf("overview" to "Kid overview", "notes" to "Template notes")
         // A client that does not extend the template sees none of them.
         labels(CL.hub).keys.none { it == "notes" || it == "overview" } shouldBe true
+        // Bound against the client (issue #980): its own `overview` reads the field its own `tplScore` declares, and
+        // the template's `notes` is the client's copy.
+        val bound = ReportService.get(cxt).forClient(kid)
+        bound.report("overview").shouldNotBeNull().bound.columns.single().path.path.toString() shouldBe "form.tplScore.stars"
+        bound.report("notes").shouldNotBeNull().fromTemplate shouldBe true
+        // The sandbox has a registry of its own, bound against its own copies.
+        val sandbox = ReportService.get(cxt).forClient(sandboxOf(kid))
+        sandbox.client shouldBe sandboxOf(kid)
+        sandbox.reports.keys.toList() shouldContainExactly listOf("overview", "notes")
+        sandbox.report("overview").shouldNotBeNull().bundle.gedraId.client shouldBe sandboxOf(kid)
     }
 
     "the sandbox of an extending client is extended itself rather than carrying its parent's copy" {
@@ -142,6 +153,8 @@ class ClientExtensionTest : StringSpec({
         val client = "tpldata"
         store(client) {
             trait("DataNoteEntry", "tplNote", setOf(GedraDataType.formDoc), "The client's note.") { property("memo", "A memo.") }
+            // The template's `notes` reads `note`, which this redefinition takes away (issue #980), so it is redefined too.
+            report("notes", "Memos") { column("memo", "Memo", "form.tplNote.memo") }
         }
         // `loaded` counts what the client stores, not the template's copy beside it.
         GedraConfigReload.reloadClient(cxt, client).loaded shouldBe 1
@@ -165,9 +178,27 @@ class ClientExtensionTest : StringSpec({
         // The trial remakes the copy without `tplScore`, rather than judging the revision beside the copy holding it.
         store(client, trial = true) {
             trait("TrialScoreEntry", "tplScore", setOf(GedraDataType.formDoc), "The client's score.") { property("grade", "A grade.") }
+            report("overview", "Grades") { column("grade", "Grade", "form.tplScore.grade") }
         }
         GedraConfigReload.reloadClient(cxt, client)
         typeOf(client, "tplScore") shouldBe "${clientNamespace(client)}.main.TrialScoreEntry"
+    }
+
+    // Issue #980: a template's report is the client's by its copy, so it is bound against the client -- a redefinition
+    // that takes away a field it reads is refused at the write, naming the report and the path, until the client
+    // redefines the report as well.
+    "a write redefining a template trait out from under a template report is refused, naming the path" {
+        val client = "tplbreak"
+        store(client, trial = true)
+        GedraConfigReload.reloadClient(cxt, client)
+        ReportService.get(cxt).forClient(client).report("overview").shouldNotBeNull()
+        val message = shouldThrow<KdrException> {
+            store(client, trial = true) {
+                trait("BreakScoreEntry", "tplScore", setOf(GedraDataType.formDoc), "Renamed.") { property("points", "Points.") }
+            }
+        }.message.shouldNotBeNull()
+        message shouldContain "Report 'overview'"
+        message shouldContain "form.tplScore.score"
     }
 
     "two of the client's own configs redefining one template trait are still a collision" {

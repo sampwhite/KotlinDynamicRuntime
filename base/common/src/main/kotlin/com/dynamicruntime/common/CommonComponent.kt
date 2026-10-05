@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
+import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
 import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
@@ -309,6 +310,8 @@ class CommonComponent : ComponentDefinition {
             service(::UiBlockService),
             // After the schema, client and fragment services it checks against (issue #533).
             service(::WorkflowService),
+            // After the workflows its reports' workflow paths bind to (issue #980).
+            service(::ReportService),
             // Boot-validates layout `%{@t(...)}` fragment pulls (issue #620): a regular service, like
             // WorkflowService, so both the startup schema and the fragment registry are available.
             service(::LayoutCheckService),

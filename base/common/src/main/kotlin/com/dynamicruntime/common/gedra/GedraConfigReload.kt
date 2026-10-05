@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.logging.LogStartup
@@ -156,6 +157,8 @@ object GedraConfigReload {
         )
         UiBlockService.get(cxt).reloadClient(cxt, client, previous.flatMap { it.uiBlocks }, taken.flatMap { it.uiBlocks })
         WorkflowService.get(cxt).reloadClient(cxt, client)
+        // Reports after workflows (issue #980): a report's workflow paths bind to the workflows the reload kept.
+        ReportService.get(cxt).reloadClient(cxt, client)
 
         val inherited = taken.count { it.inheritedFrom != null }
         val copies = if (inherited == 0) "" else ", $inherited from its template"
