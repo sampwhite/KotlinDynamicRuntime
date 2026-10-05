@@ -398,9 +398,14 @@ class SchemaCollector(
 
     /**
      * Withdraws [config] -- the reverse of [addGedraConfig], for replacing a client's stored configuration on a
-     * running node (issue #616). Its defs leave the client's overlay map and its cfacts the client's list, key
-     * by key, so a source config of the same client that contributed beside it is untouched. Only a non-global
-     * config is ever withdrawn: a global one is a component's, declared in source, and never reloaded.
+     * running node (issue #616). Only a non-global config is ever withdrawn: a global one is a component's,
+     * declared in source, and never reloaded.
+     *
+     * The client's overlay map and cfact list are **rebuilt** from the configs it still holds, in the order they
+     * were added, rather than having the withdrawn config's names removed (issue #1014). Two configs of one client
+     * may declare one type name -- the later one's body is the one held, as [addGedraConfig]'s fold makes it -- and
+     * removing by name took the other's declaration with it: withdrawing a stored config left the client without a
+     * type its source config still declares.
      */
     fun removeGedraConfig(config: GedraConfig): Boolean {
         if (!gedraConfigs.remove(config)) {
@@ -408,15 +413,12 @@ class SchemaCollector(
         }
         val client = config.gedraId.client
         if (client != GID.globalClient) {
-            clientOverlays[client]?.let { overlay ->
-                config.defs.keys.forEach { overlay.remove(it) }
-                if (overlay.isEmpty()) clientOverlays.remove(client)
-            }
-            clientCFacts[client]?.let { list ->
-                val names = config.cfacts.map { it.name }.toSet()
-                list.removeAll { it.name in names }
-                if (list.isEmpty()) clientCFacts.remove(client)
-            }
+            val remaining = gedraConfigs.configs.filter { it.gedraId.client == client }
+            val overlay = LinkedHashMap<String, Any?>()
+            remaining.forEach { overlay.putAll(it.defs) }
+            if (overlay.isEmpty()) clientOverlays.remove(client) else clientOverlays[client] = overlay
+            val cfacts = remaining.flatMap { it.cfacts }
+            if (cfacts.isEmpty()) clientCFacts.remove(client) else clientCFacts[client] = cfacts.toMutableList()
         }
         return true
     }
