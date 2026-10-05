@@ -194,6 +194,19 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         this.target = selected
                         authored = (address?.let { authoredLayoutEntry(it, definition, selected) })
                     }
+                } else if (design.editRefusal != null) {
+                    // Not editable here: what the workflow's own copy is, if it has one -- and why there is no control,
+                    // so the missing one reads as a rule rather than a fault.
+                    val edit = design.layoutEdit(owner.typeName, selected.name)
+                    div {
+                        className = ClassName("dv-edit")
+                        overrideFacts(edit)
+                        edit?.let { sharedCopyFacts(it.inherited) }
+                        p {
+                            className = ClassName("dv-note")
+                            +design.editRefusal
+                        }
+                    }
                 }
             }
         }
@@ -359,6 +372,39 @@ private fun authoredLayoutEntry(address: DesignAddress, loaded: LoadedDefinition
     return layoutEntryIn(subtreeAt(entry, owner ?: typeBodyPath(address)), field.name)
 }
 
+/**
+ * The heading of a field's "Copy for this workflow" section, and -- when the workflow overrides the field's copy
+ * ([edit]) -- that it does and whether the shared copy has changed since. Said the same way whether or not the copy
+ * can be edited here.
+ */
+private fun ChildrenBuilder.overrideFacts(edit: LayoutEdit?) {
+    h3 { +"Copy for this workflow" }
+    if (edit == null) return
+    p {
+        className = ClassName("dv-note")
+        +"This workflow uses its own copy here; every other workflow shows the shared copy."
+    }
+    if (edit.inheritedChanged) {
+        p {
+            className = ClassName("dv-callout")
+            +"The shared copy has changed since this workflow overrode it."
+        }
+    }
+}
+
+/**
+ * The shared copy a workflow's override replaces, for a reader who cannot edit it here -- the editor shows the same
+ * beside each of its inputs. [inherited] is null when the shared layout has no entry for the field.
+ */
+private fun ChildrenBuilder.sharedCopyFacts(inherited: Map<String, Any?>?) {
+    val copy = editableCopyKeys.mapNotNull { key -> inherited?.get(key).toOptStr()?.let { key to it } }
+    if (copy.isEmpty()) {
+        fact("Shared copy", "none")
+        return
+    }
+    for ((key, value) in copy) fact("Shared ${humanizeFieldName(key).lowercase()}", value)
+}
+
 external interface WorkflowCopyEditorProps : Props {
     var session: DesignSession
     var target: DesignTarget.Field
@@ -405,19 +451,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
 
     div {
         className = ClassName("dv-edit")
-        h3 { +"Copy for this workflow" }
-        if (edit != null) {
-            p {
-                className = ClassName("dv-note")
-                +"This workflow uses its own copy here; every other workflow shows the shared copy."
-            }
-            if (edit.inheritedChanged) {
-                p {
-                    className = ClassName("dv-callout")
-                    +"The shared copy has changed since this workflow overrode it."
-                }
-            }
-        }
+        overrideFacts(edit)
         if (!editing) {
             div {
                 className = ClassName("dv-actions")

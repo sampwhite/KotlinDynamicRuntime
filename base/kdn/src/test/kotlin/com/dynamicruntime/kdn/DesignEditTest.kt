@@ -1,6 +1,7 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.KdrException
@@ -9,6 +10,7 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.DesignView
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigReload
@@ -19,7 +21,9 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WSF
+import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
@@ -74,17 +78,15 @@ class DesignEditTest : StringSpec({
     fun label(view: Map<String, Any?>, type: String, field: String): String? =
         view["fieldLayouts"].toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
             .firstOrNull { it[SL.field] == field }?.get(SL.label).toOptStr()
-    fun edit(type: String, field: String, entry: Map<String, Any?>?, basedOn: String = block(requestView())[DSV.basedOn].toOptStr()!!) =
-        admin.postData(
-            DSV.layoutEntryEdit,
-            buildMap {
-                put(DSV.workflowId, DesignDemo.requestWorkflow)
-                put(DSV.typeName, type)
-                put(DSV.field, field)
-                entry?.let { put(DSV.entry, it) }
-                put(DSV.basedOn, basedOn)
-            },
-        )
+    fun editArgs(type: String, field: String, entry: Map<String, Any?>?, basedOn: String = block(requestView())[DSV.basedOn].toOptStr()!!) =
+        buildMap {
+            put(DSV.workflowId, DesignDemo.requestWorkflow)
+            put(DSV.typeName, type)
+            put(DSV.field, field)
+            entry?.let { put(DSV.entry, it) }
+            put(DSV.basedOn, basedOn)
+        }
+    fun edit(type: String, field: String, entry: Map<String, Any?>?) = admin.postData(DSV.layoutEntryEdit, editArgs(type, field, entry))
 
     val dataType = typeNamed(requestView(), DesignDemo.eventRequest)
     val contactType = "client.$client.${DesignDemo.contactType}"
@@ -116,24 +118,24 @@ class DesignEditTest : StringSpec({
     "an edit based on a definition that has since changed is refused" {
         val stale = block(requestView())[DSV.basedOn].toOptStr()!!
         edit(dataType, DesignDemo.venue, mapOf(SL.label to "Where"))
-        admin.expectError(
-            409, DSV.layoutEntryEdit,
-            mapOf(
-                DSV.workflowId to DesignDemo.requestWorkflow, DSV.typeName to dataType, DSV.field to DesignDemo.venue,
-                DSV.entry to mapOf(SL.label to "Somewhere"), DSV.basedOn to stale,
-            ),
-        )
+        admin.expectError(409, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.venue, mapOf(SL.label to "Somewhere"), stale))
         label(requestView(), dataType, DesignDemo.venue) shouldBe "Where"
     }
 
     "an entry the layout checks refuse is not stored" {
-        admin.expectError(
-            400, DSV.layoutEntryEdit,
-            mapOf(
-                DSV.workflowId to DesignDemo.requestWorkflow, DSV.typeName to dataType, DSV.field to "noSuchField",
-                DSV.entry to mapOf(SL.label to "Nothing"), DSV.basedOn to block(requestView())[DSV.basedOn],
-            ),
+        admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, "noSuchField", mapOf(SL.label to "Nothing")))
+    }
+
+    "a malformed template, or a fragment pull written for the frontend, is refused and not stored" {
+        val refusals = mapOf(
+            $$"Name ${unclosed" to "is a malformed template",
+            $$"${@t(\"design.title\")}" to "uses a frontend fragment pull",
         )
+        for ((bad, why) in refusals) {
+            admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to bad)))
+                .toString() shouldContain why
+        }
+        label(requestView(), dataType, DesignDemo.title) shouldBe "Name the event"
     }
 
     "the block says when the shared copy has changed since the workflow overrode it" {
@@ -200,21 +202,79 @@ class DesignEditTest : StringSpec({
             "which its pages do not show"
     }
 
+    "a workflow alteration of anything but a layout is refused at the write" {
+        val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
+        shouldThrow<KdrException> {
+            GedraConfigService.get(cxt).patchConfig(cxt.mkSubContext("setup", client), configId, trial = true) { slots ->
+                slots + (
+                    CCT.workflowDef to slots[CCT.workflowDef].orEmpty().map { w ->
+                        if (w[CCT.workflowId] != DesignDemo.requestWorkflow) return@map w
+                        val def = w[CCT.definition].toJsonMapOrEmpty()
+                        w + (CCT.definition to (def + (WFD.types to mapOf(dataType to mapOf(SCH.properties to emptyMap<String, Any?>())))))
+                    }
+                    )
+            }
+        }.fullMessage() shouldContain "may alter only a type's 'g-layout'"
+    }
+
+    "a workflow declared in source, or a global one, cannot be edited here, and the reason says where its copy can change" {
+        fun declaredIn(owner: String, namespace: String): WfDeclared {
+            val bundle = gedraConfig(LiteCxt(), "inCode984", namespace, owner) {
+                workflow("inCode", WfEntry.creation) {
+                    task("ask", "Ask") {
+                        trait(DesignDemo.eventRequest)
+                        save("make", "Make")
+                    }
+                }
+            }
+            return WfDeclared(bundle, bundle.workflows.getValue("inCode"))
+        }
+        val clientCxt = cxt.mkSubContext("setup", client)
+        for (declared in listOf(declaredIn(client, clientNamespace(client)), declaredIn("global", "kdr.inCode984"))) {
+            val refusal = DesignView.editRefusal(clientCxt, declared).orEmpty()
+            refusal shouldContain "declared in source"
+            refusal shouldContain "copy overrides"
+        }
+    }
+
+    "a client with a sandbox is sent to it to edit" {
+        val parent = "sandboxed984"
+        val config = gedraConfig(cxt, "main", clientNamespace(parent), parent) {
+            defineClient(
+                ClientDef(
+                    clientId = parent, name = parent, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                ),
+            )
+            trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "A note.") { property("text", "The text.") }
+            workflow("make", WfEntry.creation) {
+                task("ask", "Ask") {
+                    trait("note")
+                    save("create", "Create")
+                }
+            }
+        }
+        val parentCxt = cxt.mkSubContext("setup", parent)
+        GedraConfigService.get(cxt).writeConfig(parentCxt, config)
+        // The published definition is what decides that a client has a sandbox.
+        GedraConfigService.get(cxt).publish(parentCxt, GedraId.of(GedraConfigType.configDoc, parent, "main"))
+        GedraConfigReload.reloadClient(cxt, parent)
+        val declared = WorkflowService.get(cxt).forClient(parent).workflow("make")!!
+        DesignView.editRefusal(parentCxt, declared).orEmpty() shouldContain "edit it from its sandbox"
+    }
+
     "a client that runs its published configuration cannot edit here, and says why" {
         GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, true)
         try {
             block(requestView())[DSV.canEdit] shouldBe false
-            val refused = admin.expectError(
-                400, DSV.layoutEntryEdit,
-                mapOf(
-                    DSV.workflowId to DesignDemo.requestWorkflow, DSV.typeName to dataType, DSV.field to DesignDemo.title,
-                    DSV.entry to mapOf(SL.label to "Nope"), DSV.basedOn to block(requestView())[DSV.basedOn],
-                ),
-            )
+            // Published-only by the administrator's choice, not by a sandbox: there is none to send anyone to.
+            block(requestView())[DSV.editRefusal].toOptStr().orEmpty() shouldContain "it has no sandbox to preview an edit in"
+            val refused = admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to "Nope")))
             refused.toString() shouldContain "runs its published configuration"
         } finally {
             GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, false)
         }
         block(requestView())[DSV.canEdit] shouldNotBe false
+        block(requestView()).containsKey(DSV.editRefusal) shouldBe false
     }
 })
