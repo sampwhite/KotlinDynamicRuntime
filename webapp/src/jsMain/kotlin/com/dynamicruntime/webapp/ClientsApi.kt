@@ -1,5 +1,8 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.content.FragmentAudience
+import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.ACEP
@@ -52,6 +55,10 @@ class ClientOverview(
     val sandboxOf: String? = null,
     /** Whether the client has a live sandbox (issue #932). */
     val hasSandbox: Boolean = false,
+    /** Whether the client runs only its published configuration (issue #1001): every client with a sandbox does. */
+    val publishedOnly: Boolean = false,
+    /** Whether the client takes nothing stored on this node -- static in production (issue #1001). */
+    val staticHere: Boolean = false,
 )
 
 /** The overview endpoint's items as rows; one without a client id is not a client. Pure, and covered under `jsNodeTest`. */
@@ -74,6 +81,8 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         blockOverrides = int(CLD.blockOverrides),
         sandboxOf = row[CLD.sandboxOf].toOptStr(),
         hasSandbox = row[CLD.hasSandbox] == true,
+        publishedOnly = row[CLD.publishedOnly] == true,
+        staticHere = row[CLD.staticHere] == true,
     )
 }
 
@@ -434,6 +443,22 @@ fun copyFileChoices(keys: List<CopyKeyView>): List<CopyFileChoice> {
 fun copyFileLabel(choice: CopyFileChoice): String = choice.shownOn?.let { "${choice.fileId} \u2014 $it" } ?: choice.fileId
 
 /**
+ * What the copy editor says about a value's template syntax, by who the file is for (issue #1001): a frontend file's
+ * `${...}` placeholders are filled as the page renders, and a server-side `%{...}` is refused there; a backend file
+ * is resolved on the server -- `${...}` from what sends it, `%{@t(...)}` pulling in other copy. Said before a save,
+ * so the backend's refusal is not the first a writer hears of it. Pure, and covered under `jsNodeTest`.
+ */
+fun copySyntaxHint(audience: String): String = when (audience) {
+    FragmentAudience.frontend.name ->
+        $$"Markdown for the page: ${...} placeholders, such as ${user.publicName}, are filled in as it renders; " +
+            "a server-side %{...} is refused here."
+    FragmentAudience.backend.name ->
+        $$"Markdown resolved on the server: ${...} is filled from what sends it (a mail's code or address, say), " +
+            "and %{@t(\"file.namespace.key\")} pulls in other copy."
+    else -> "Markdown."
+}
+
+/**
  * What a set or reset did (issue #918): where it landed, what the client now reads, and how it took effect -- an
  * `EDM` value, live or a draft its sandbox runs (issue #930).
  */
@@ -590,6 +615,8 @@ class ConfigSummaryView(
     val publishedAt: String?,
     val updatedAt: String?,
     val issueCount: Int,
+    /** The latest published revision's version (issue #1001), or null when none is. */
+    val publishedVersion: Int? = null,
 )
 
 /** The issues of a definition or a stored configuration, as the wire carries them. */
@@ -617,6 +644,7 @@ fun parseConfigSummaries(items: List<Map<String, Any?>>): List<ConfigSummaryView
         publishedAt = row[CFEP.publishedAt].toOptStr(),
         updatedAt = row[CFEP.updatedAt].toOptStr(),
         issueCount = row[CFEP.issues].toJsonListOfMaps().size,
+        publishedVersion = (row[CFEP.publishedVersion] as? Number)?.toInt(),
     )
 }
 
@@ -723,6 +751,22 @@ object ClientsApi {
         val path = storedConfigsPath(clientId, acrossClients, ownClient) ?: return emptyList()
         return parseConfigSummaries(Http.getApi(path)[EP.items].toJsonListOfMaps())
     }
+
+    /**
+     * Publishes [clientId]'s configuration [name] and reloads the client (issue #1001), so a published-only client
+     * runs what was just published. For a sandbox, its parent's: the full-scope surface names the parent; the scoped
+     * one, called in the sandbox, acts on the parent already (#930).
+     */
+    suspend fun publishBundle(clientId: String, name: String, acrossClients: Boolean) {
+        if (acrossClients) {
+            val owner = sandboxParentOf(clientId) ?: clientId
+            Http.sendApi("POST", ACEP.bundlePublish, mapOf(CFEP.client to owner, CFEP.name to name))
+            Http.sendApi("POST", ACEP.reload, mapOf(CFEP.client to owner))
+        } else {
+            Http.sendApi("POST", CFEP.bundlePublish, mapOf(CFEP.name to name))
+            Http.sendApi("POST", CFEP.reload, emptyMap())
+        }
+    }
 }
 
 /**
@@ -732,7 +776,44 @@ object ClientsApi {
  * none rather than the caller's own under a foreign heading. Pure, and covered under `jsNodeTest`.
  */
 fun storedConfigsPath(clientId: String, acrossClients: Boolean, ownClient: String): String? = when {
-    acrossClients -> ACEP.bundles + queryString(mapOf(CFEP.client to clientId))
+    // A sandbox holds no configuration of its own; it runs its parent's (issue #1001), so that is what it lists.
+    acrossClients -> ACEP.bundles + queryString(mapOf(CFEP.client to (sandboxParentOf(clientId) ?: clientId)))
+    // The scoped listing, called in a sandbox, lists its parent's already (#930).
     clientId == ownClient -> CFEP.bundles
     else -> null
+}
+
+/**
+ * Whether a bundle's latest revision is live (issue #1001), given whether its client runs only published
+ * configuration: published and live; a draft a published-only client does not run -- naming the version it does --
+ * or one a client on its latest revision runs regardless. Pure, and covered under `jsNodeTest`.
+ */
+fun bundleLiveText(bundle: ConfigSummaryView, publishedOnly: Boolean): String = when {
+    bundle.published -> "Live"
+    !publishedOnly -> "Live, unpublished"
+    bundle.publishedVersion != null -> "v${bundle.version} draft; v${bundle.publishedVersion} live"
+    else -> "Draft; not live"
+}
+
+/**
+ * What a bundle row offers (issue #1001): [publish] when publishing is offered, else a [note] saying why not, or what
+ * publishing does -- and, where publishing belongs on the client's sandbox, [sandboxClient] to link to it.
+ */
+class BundleAction(val publish: Boolean, val note: String?, val sandboxClient: String? = null)
+
+/**
+ * What the detail's configuration row for [bundle] offers, on the page of the client [row] (issue #1001). Nothing for
+ * a published revision. A client static here takes nothing stored, so publishing means nothing. A client with a
+ * sandbox publishes from the sandbox, after previewing, and the row points there. A sandbox publishes its parent's,
+ * which is what it runs. A client without one publishes -- saying, on its latest revision, that this changes
+ * nothing it runs. Pure, and covered under `jsNodeTest`.
+ */
+fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction = when {
+    bundle.published -> BundleAction(false, null)
+    row == null -> BundleAction(false, null)
+    row.staticHere -> BundleAction(false, "This client takes nothing stored on this node, so publishing changes nothing.")
+    row.hasSandbox -> BundleAction(false, "Publish from its sandbox, after previewing it there.", sandboxClient = sandboxOf(row.clientId))
+    row.sandboxOf != null -> BundleAction(true, "Publishing makes it live in ${row.sandboxOf}.")
+    !row.publishedOnly -> BundleAction(true, "It runs its latest revision either way; publishing marks this one, and the next edit starts another.")
+    else -> BundleAction(true, null)
 }

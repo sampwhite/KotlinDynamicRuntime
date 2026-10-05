@@ -358,7 +358,15 @@ its definition from `/clientAdmin/client/definition` (`clientSummaryRows`, drawn
 operator-only `audience` and `usageType` (#820) are noted "(set by the platform)" for a scoped administrator, so
 the later editor disables exactly those), the issues its checks forgave, and the stored configurations this node
 holds for it -- the full-scope bundles listing naming the client for an `allClients` administrator, the scoped
-one otherwise. The definition and the configurations are fetched apart and keyed on the open id with a
+one otherwise. Each configuration row (`StoredConfigTable`, issue #1001) says whether its latest revision is
+**live** by the client's tier (`bundleLiveText`: "Live", "v3 draft; v2 live" for a published-only client --
+every client with a sandbox is one -- or "Live, unpublished" for one on its latest revision; the summary carries
+`publishedVersion`, the overview row `publishedOnly` and `staticHere`), and an actions column whose first action
+is **Publish** (`bundleAction`): offered on a client without a sandbox and on a sandbox's page -- which lists its
+parent's bundles, the configuration it runs, and publishes them there -- and replaced by a note elsewhere: a
+client with a sandbox publishes from it, after previewing -- the word "sandbox" leads to the sandbox's page,
+directly for an `allClients` administrator, and for a client-scoped one by opening the sandbox first (a fresh
+session as their user there) and landing on that page -- and a client static in production takes nothing stored. A publish reloads the client (`ClientsApi.publishBundle`). The definition and the configurations are fetched apart and keyed on the open id with a
 monotonic token, so a client this node does not carry still shows what the listing knows above the retrieve's
 404, and a slow answer for a client the user moved on from is dropped. The constants the frontend reads these by
 (`CFEP`, `ACEP`, `CCT`, `GCI`) live in the kernel for that reason.
@@ -399,7 +407,8 @@ included, since `mail` is never served) and offers file → namespace → key, m
 application shows first, each with where (`copyFileChoices`, `copyFileLabel`, from the keys' `shownOn`), and the
 rest under "Not shown by this application" (issue #933) -- and a Copy row of such a file is marked "(not shown
 here)", since its override is served but changes nothing anyone sees on this app. Save posts `/clientAdmin/client/copy/set`
-(`copyEditRequest`), which writes the client's stored config (the one already overlaying the file, else `copy`,
+(`copyEditRequest`; the editor's hint says which template syntax the file takes, by its `audience` --
+`copySyntaxHint`, issue #1001), which writes the client's stored config (the one already overlaying the file, else `copy`,
 created on first use), trial-checks it, publishes and reloads -- one call, live at once; for a client with a Shadow
 Sandbox (issue #930) -- which is always published-only -- it instead saves a **draft** of the parent's configuration
 and reloads, so the sandbox shows it and publishing is the explicit step, and the result's `mode` (`EDM.live` / `EDM.draft`) says which, which

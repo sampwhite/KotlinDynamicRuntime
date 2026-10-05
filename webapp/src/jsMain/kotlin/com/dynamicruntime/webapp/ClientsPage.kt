@@ -283,7 +283,8 @@ private fun ChildrenBuilder.clientDetail(
                 this.onChanged = onChanged
             }
         }
-        h2 { +"Stored configuration" }
+        // A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed here as such.
+        h2 { +(row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration") }
         when {
             storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
             configs == null -> p {
@@ -294,32 +295,12 @@ private fun ChildrenBuilder.clientDetail(
                 className = ClassName("subtitle")
                 +"This node holds no stored configuration for this client."
             }
-            else -> div {
-                className = ClassName("op-table-scroll")
-                table {
-                    className = ClassName("op-table")
-                    thead {
-                        tr {
-                            th { +"Name" }
-                            th { className = ClassName("op-num"); +"Version" }
-                            th { +"Published" }
-                            th { +"Updated" }
-                            th { className = ClassName("op-num"); +"Issues" }
-                        }
-                    }
-                    tbody {
-                        configs.forEach { c ->
-                            tr {
-                                key = c.name.unsafeCast<Key>()
-                                td { +c.name }
-                                td { className = ClassName("op-num"); +c.version.toString() }
-                                td { +(if (c.published) c.publishedAt?.let { formatTimestamp(it) } ?: "Yes" else "No") }
-                                td { +(c.updatedAt?.let { formatTimestamp(it) } ?: "\u2014") }
-                                td { className = ClassName("op-num"); +c.issueCount.toString() }
-                            }
-                        }
-                    }
-                }
+            else -> StoredConfigTable {
+                this.configs = configs
+                this.row = row
+                this.acrossClients = acrossClients
+                this.clientId = clientId
+                this.onChanged = onChanged
             }
         }
         // What the client's own configuration changes about what its people see (issue #917): the copy it rewords
@@ -367,7 +348,128 @@ private fun ChildrenBuilder.clientDetail(
 }
 
 /** The address of the key an editor is open on, and the text it started from. */
-private class CopyEditTarget(val fileId: String, val namespace: String, val key: String, val startValue: String)
+/** [audience] is who the file is for -- `FragmentAudience` -- which decides the value's template syntax (issue #1001). */
+private class CopyEditTarget(val fileId: String, val namespace: String, val key: String, val startValue: String, val audience: String)
+
+external interface StoredConfigTableProps : Props {
+    var configs: List<ConfigSummaryView>
+    var row: ClientOverview?
+    var acrossClients: Boolean
+    var clientId: String
+    var onChanged: () -> Unit
+}
+
+/**
+ * A client's configuration bundles (issues #906, #1001): one row per bundle -- its latest revision's version, when it
+ * was published and last written, whether it is live ([bundleLiveText], by the client's tier), its issues -- and an
+ * **actions** column. Publish is the first action ([bundleAction] decides where it is offered, and why not where it
+ * is not); View and Edit are to join it. A publish reloads the client, and [StoredConfigTableProps.onChanged]
+ * re-reads the page.
+ */
+private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
+    var busy by useState<String?>(null)
+    var error by useState<DisplayError?>(null)
+    useEffect(props.clientId) { error = null }
+    val publishedOnly = props.row?.let { it.publishedOnly || it.sandboxOf != null } ?: true
+    div {
+        className = ClassName("op-table-scroll")
+        table {
+            className = ClassName("op-table")
+            thead {
+                tr {
+                    th { +"Name" }
+                    th { className = ClassName("op-num"); +"Version" }
+                    th { +"Published" }
+                    th { +"Updated" }
+                    th { +"Live" }
+                    th { className = ClassName("op-num"); +"Issues" }
+                    th { +"" }
+                }
+            }
+            tbody {
+                props.configs.forEach { c ->
+                    val action = bundleAction(props.row, c)
+                    tr {
+                        key = c.name.unsafeCast<Key>()
+                        td { +c.name }
+                        td { className = ClassName("op-num"); +c.version.toString() }
+                        td { +(if (c.published) c.publishedAt?.let { formatTimestamp(it) } ?: "Yes" else "No") }
+                        td { +(c.updatedAt?.let { formatTimestamp(it) } ?: "\u2014") }
+                        // A sandbox runs its parent's latest, so for it every row is what it runs (issue #1001).
+                        td { +(if (props.row?.sandboxOf != null) "Runs here" else bundleLiveText(c, publishedOnly)) }
+                        td { className = ClassName("op-num"); +c.issueCount.toString() }
+                        td {
+                            if (action.publish) {
+                                Button {
+                                    size = "small"
+                                    loading = busy == c.name
+                                    disabled = busy != null
+                                    action.note?.let { asDynamic()["title"] = it }
+                                    onClick = {
+                                        busy = c.name
+                                        error = null
+                                        clientsScope.launch {
+                                            try {
+                                                ClientsApi.publishBundle(props.clientId, c.name, props.acrossClients)
+                                                props.onChanged()
+                                            } catch (e: Throwable) {
+                                                error = userFacingError(e)
+                                            } finally {
+                                                busy = null
+                                            }
+                                        }
+                                    }
+                                    +"Publish"
+                                }
+                            } else {
+                                val sandbox = action.sandboxClient
+                                if (sandbox == null) {
+                                    action.note?.let { note ->
+                                        span {
+                                            className = ClassName("type-hint")
+                                            +note
+                                        }
+                                    }
+                                } else {
+                                    // "Publish from its sandbox": the word leads to the sandbox's own page, where this
+                                    // row offers Publish. An administrator who may open another client's detail goes
+                                    // straight there; a client-scoped one first opens the sandbox (#929) -- a fresh
+                                    // session as their user in it -- and lands on that page (issue #1001).
+                                    span {
+                                        className = ClassName("type-hint")
+                                        +"Publish from its "
+                                        a {
+                                            className = ClassName("wf-cell-link")
+                                            href = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
+                                            if (!props.acrossClients) {
+                                                title = "Open the sandbox and show this configuration there."
+                                                onClick = { e ->
+                                                    e.preventDefault()
+                                                    clientsScope.launch {
+                                                        try {
+                                                            AuthApi.openSandbox()
+                                                            navigateHash(listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
+                                                            reloadWebApp()
+                                                        } catch (e: Throwable) {
+                                                            error = userFacingError(e)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            +"sandbox"
+                                        }
+                                        +", after previewing it there."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    error?.let { errorText("Couldn't publish the configuration, or open its sandbox.", it) }
+}
 
 external interface SandboxSectionProps : Props {
     var row: ClientOverview
@@ -456,8 +558,8 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
         note = null
     }
 
-    fun open(fileId: String, namespace: String, key: String, startValue: String) {
-        target = CopyEditTarget(fileId, namespace, key, startValue)
+    fun open(fileId: String, namespace: String, key: String, startValue: String, audience: String) {
+        target = CopyEditTarget(fileId, namespace, key, startValue, audience)
         draft = startValue
         adding = false
         editError = null
@@ -570,7 +672,7 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
                                         type = "link"
                                         size = "small"
                                         disabled = busy
-                                        onClick = { open(r.fileId, r.namespace, r.key, r.value.orEmpty()) }
+                                        onClick = { open(r.fileId, r.namespace, r.key, r.value.orEmpty(), r.audience) }
                                         +"Edit"
                                     }
                                 }
@@ -614,7 +716,8 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
             }
             p {
                 className = ClassName("type-hint")
-                +"Markdown. Saving makes it live for this client at once -- or, for a client with a sandbox, saves a draft the sandbox shows. A value the checks fault is refused and nothing changes."
+                // The value's syntax, by who the file is for (issue #1001), then what a save does.
+                +"${copySyntaxHint(open.audience)} Saving makes it live for this client at once -- or, for a client with a sandbox, saves a draft the sandbox shows. A value the checks fault is refused and nothing changes."
             }
             editError?.let { errorText("Couldn't save the copy.", it) }
             div {
@@ -681,7 +784,7 @@ private val CopyEditor = FC<CopyEditorProps> { props ->
                             options = choiceOptions(choices.map { it.key to it.key })
                             style = js("({ minWidth: 200 })")
                             onChange = { v ->
-                                choices.firstOrNull { it.key == v as? String }?.let { open(it.fileId, it.namespace, it.key, it.value) }
+                                choices.firstOrNull { it.key == v as? String }?.let { open(it.fileId, it.namespace, it.key, it.value, it.audience) }
                             }
                         }
                         Button {

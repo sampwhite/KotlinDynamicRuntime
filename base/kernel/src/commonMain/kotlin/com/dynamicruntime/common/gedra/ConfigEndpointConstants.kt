@@ -39,6 +39,12 @@ object CFEP {
     const val version = "version"
     const val published = "published"
     const val publishedAt = "publishedAt"
+
+    /**
+     * On a summary (issue #1001): the version of the latest **published** revision, absent when none is. When the
+     * latest revision is a draft, this is the one a published-only client runs.
+     */
+    const val publishedVersion = "publishedVersion"
     const val slots = "slots"
     const val impliedDelete = "impliedDelete"
     const val edits = "edits"
