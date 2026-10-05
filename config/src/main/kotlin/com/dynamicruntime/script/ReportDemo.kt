@@ -2,6 +2,7 @@ package com.dynamicruntime.script
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
@@ -87,39 +88,35 @@ fun reportDemoGlobexEntries(n: Int): List<Map<String, Any?>> {
 const val reportDemoName = "report-demo"
 
 /**
- * Creates forms for the sample reports to show (issue #981): [ReportDemo.acmeForms] acme forms over three owners,
+ * Creates forms for the sample reports to show (issue #1005): [ReportDemo.acmeForms] acme forms over three owners,
  * five auditors and five reporting years, and [ReportDemo.globexForms] globex forms with yearly records -- enough for
  * a second page of a detail run and several groups of a grouped one. Needs a test instance that loads the sample
  * (`local`/`dev`, or `KDR_LOAD_SAMPLE=true`). Each run **adds** forms; on an in-memory node, rerun after a restart.
  */
 fun reportDemo(cxt: ProbeContext) {
-    fun create(session: ProbeSession, client: String, entries: List<Map<String, Any?>>): Boolean {
+    // A create that does not make a form **fails the run** -- thrown, so the probe ends on its FAILED marker rather
+    // than on "completed" above a half-made data set that reads as a whole one.
+    fun create(session: ProbeSession, client: String, entries: List<Map<String, Any?>>) {
         val resp = session.sendPostRequest(clientPath(GEP.formDocCreate, client), mapOf(GDF.entries to entries))
-        if (!resp.isSuccess) {
-            println("Create in '$client' refused: HTTP ${resp.statusCode} ${resp.errorMessage ?: resp.rawBody.take(200)}")
+        if (!resp.isSuccess || resp.body[EP.item].toJsonMapOrEmpty()[GDF.gedraId] == null) {
+            throw KdrException(
+                "A form could not be created in '$client' (HTTP ${resp.statusCode}): " +
+                    "${resp.errorMessage ?: resp.rawBody.take(200)}. Does the instance at ${cxt.baseUrl} load the sample?",
+            )
         }
-        return resp.isSuccess && resp.body[EP.item].toJsonMapOrEmpty()[GDF.gedraId] != null
     }
 
     val owners = ReportDemo.acmeOwners.map { (email, name) ->
         cxt.session(email).also { it.becomeUser(email, client = ReportDemo.acme, name = name) }
     }
-    var acme = 0
-    for (n in 0 until ReportDemo.acmeForms) {
-        if (!create(owners[n % owners.size], ReportDemo.acme, reportDemoAcmeEntries(n))) return
-        acme++
-    }
-    println("Created $acme forms in '${ReportDemo.acme}'.")
+    for (n in 0 until ReportDemo.acmeForms) create(owners[n % owners.size], ReportDemo.acme, reportDemoAcmeEntries(n))
+    println("Created ${ReportDemo.acmeForms} forms in '${ReportDemo.acme}'.")
 
     val globexOwner = cxt.session("globex-owner").also {
         it.becomeUser("robin.owner@globex.example", client = ReportDemo.globex, name = "Robin Owner")
     }
-    var globex = 0
-    for (n in 0 until ReportDemo.globexForms) {
-        if (!create(globexOwner, ReportDemo.globex, reportDemoGlobexEntries(n))) return
-        globex++
-    }
-    println("Created $globex forms in '${ReportDemo.globex}'.")
+    for (n in 0 until ReportDemo.globexForms) create(globexOwner, ReportDemo.globex, reportDemoGlobexEntries(n))
+    println("Created ${ReportDemo.globexForms} forms in '${ReportDemo.globex}'.")
 
     println()
     println("Run a report as an acme administrator -- GET /kda${UADEP.reportRun}?${RRUN.reportId}=formRoster, or")

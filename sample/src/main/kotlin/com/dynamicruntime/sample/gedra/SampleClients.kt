@@ -214,7 +214,7 @@ object SC {
     const val auditOverview = "auditOverview"
     const val yearlyNotes = "yearlyNotes"
 
-    /** The aggregation example: expense reports grouped by year, counted, summed and averaged. */
+    /** The aggregation example: expense reports grouped by year -- counted, their totals and items summed, prices averaged. */
     const val expensesByYear = "expensesByYear"
 
     /** The straight-up example: one row per form, nothing grouped or rolled up. */
@@ -628,15 +628,16 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         }
 
         // The aggregation example: built to be read grouped. One row per reporting year -- how many forms, what they
-        // claimed in all and on average, and when an audit of one was last touched. Forms with no expense report
-        // are left out, so every group is a year.
+        // claimed in all, how many items and at what average price, and when an audit of one was last touched. Forms
+        // with no expense report are left out, so every group is a year. A column has one rollup, so each column
+        // reads a field of its own: read ungrouped, a row is still a form's own three figures, not one shown thrice.
         report(SC.expensesByYear, "Expenses by year") {
-            description = "Expense reports by reporting year: how many, what they total and average, and the latest audit activity."
+            description = "Expense reports by reporting year: how many, what they claim, their items and prices, and the latest audit activity."
             val expense = "${ReportSource.form.name}.${ST.expenseReport}"
             column("year", "Year", "$expense.${ST.year}")
             column("total", "Total claimed", "$expense.${ST.totalAmount}", rollup = ReportCombine.sum)
-            column("average", "Average claim", "$expense.${ST.totalAmount}", rollup = ReportCombine.avg)
-            column("largest", "Largest claim", "$expense.${ST.totalAmount}", rollup = ReportCombine.max)
+            column("items", "Items claimed", "$expense.${ST.itemCount}", rollup = ReportCombine.sum)
+            column("itemPrice", "Item price", "$expense.${ST.perItemAmount}", rollup = ReportCombine.avg)
             column(
                 "lastAudited", "Last audit activity",
                 "${ReportSource.form.name}.${SC.siteAudit}.${RPT.envMark}${RENV.updatedAt}", rollup = ReportCombine.max,

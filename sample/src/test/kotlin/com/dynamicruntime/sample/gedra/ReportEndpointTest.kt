@@ -222,7 +222,7 @@ class ReportEndpointTest : StringSpec({
     }
 
     // The two focused examples (issue #1005): one built to be read grouped, one a plain listing.
-    "the aggregation example groups by year: a row per year, its sum, average and maximum matching the details" {
+    "the aggregation example groups by year: a row per year, its sums and average matching the details" {
         val run = mapOf(RRUN.reportId to SC.expensesByYear)
         // Its own defaults: grouped by year, with no need to ask.
         val env = page(admin, run + mapOf(RRUN.aggregate to true))
@@ -234,13 +234,14 @@ class ReportEndpointTest : StringSpec({
         years shouldBe detail.map { (it["year"] as Number).toLong() }.distinct().sorted()
         for (group in groups) {
             val year = (group[RRUN.group].toJsonMapOrEmpty()["year"] as Number).toLong()
-            val totals = detail.filter { (it["year"] as Number).toLong() == year }.mapNotNull { number(it["total"]) }
-            (group[RRUN.count] as Number).toInt() shouldBe detail.count { (it["year"] as Number).toLong() == year }
+            val ofYear = detail.filter { (it["year"] as Number).toLong() == year }
+            fun values(column: String) = ofYear.mapNotNull { number(it[column]) }
+            (group[RRUN.count] as Number).toInt() shouldBe ofYear.size
             val rollups = valuesOf(group)
-            // A year none of whose forms has a total rolls up to a blank, not to zero.
-            number(rollups["total"]) shouldBe totals.takeIf { it.isNotEmpty() }?.sum()
-            number(rollups["average"]) shouldBe totals.takeIf { it.isNotEmpty() }?.let { it.sum() / it.size }
-            number(rollups["largest"]) shouldBe totals.maxOrNull()
+            // A year none of whose forms has a value rolls up to a blank, not to zero.
+            number(rollups["total"]) shouldBe values("total").takeIf { it.isNotEmpty() }?.sum()
+            number(rollups["items"]) shouldBe values("items").takeIf { it.isNotEmpty() }?.sum()
+            number(rollups["itemPrice"]) shouldBe values("itemPrice").takeIf { it.isNotEmpty() }?.let { it.sum() / it.size }
             // The grouped-by column has no rollup, so it is in the group, not the values.
             rollups.containsKey("year") shouldBe false
         }
@@ -349,7 +350,9 @@ class ReportEndpointTest : StringSpec({
         (roster.first()[EP.numAvailable] as Number).toInt() shouldBe before + ReportDemo.acmeForms
         (roster.size >= 2) shouldBe true
         val demo = (0 until ReportDemo.acmeForms).map { reportDemoAcmeEntries(it) }
-        demo.count { entries -> entries.none { it[GE.traitId] == SC.siteAudit } } shouldBe 4
+        // Some with an audit and some without, so the no-auditor group and `excludeEmpty` both have something to show.
+        val unaudited = demo.count { entries -> entries.none { it[GE.traitId] == SC.siteAudit } }
+        (unaudited in 1 until demo.size) shouldBe true
         val byYear = itemsOf(page(admin, mapOf(RRUN.reportId to SC.expensesByYear, RRUN.aggregate to true)))
         byYear.map { (it[RRUN.group].toJsonMapOrEmpty()["year"] as Number).toLong() }.containsAll(ReportDemo.years) shouldBe true
         val byAuditor = itemsOf(page(admin, overview(mapOf(RRUN.aggregate to true))))
