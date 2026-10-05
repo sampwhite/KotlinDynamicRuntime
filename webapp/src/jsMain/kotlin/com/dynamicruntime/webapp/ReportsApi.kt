@@ -147,6 +147,22 @@ class ReportRunSetup(val mode: ReportMode, val groupBy: List<String>? = null, va
     val signature: String get() = "${mode.name}|${groupBy?.joinToString(",") ?: "-"}|${excludeEmpty?.joinToString(",") ?: "-"}"
 }
 
+/**
+ * The setup in force for the open report. The **mode is the URL's**: the hash's `view` when it names one, else the way
+ * the report declares it opens ([defaultMode], null while the report is not yet known) -- so the page always shows
+ * what its address says, and a link reproduces it. The lists are the session's: what the user set on this report
+ * ([groupBy], [excludeEmpty]), null until they did.
+ */
+fun reportSetupInForce(hashView: String?, defaultMode: ReportMode?, groupBy: List<String>?, excludeEmpty: List<String>?): ReportRunSetup =
+    ReportRunSetup(reportModeOf(hashView) ?: defaultMode ?: ReportMode.detail, groupBy, excludeEmpty)
+
+/**
+ * What one walk of a run is: the client, the report and the setup. A cursor, and the rows on screen, belong to
+ * exactly one of these -- so rows fetched for one are never shown under another, and a cursor is never sent to one.
+ */
+fun reportWalkKey(client: String?, reportId: String?, setup: ReportRunSetup): String =
+    "${client.orEmpty()}|${reportId.orEmpty()}|${setup.signature}"
+
 /** The page size a run is shown at: the forms listing's. */
 const val reportPageSize = 25
 
@@ -193,7 +209,7 @@ const val reportCountLabel = "Forms"
 /**
  * The table's columns for a run. A detail run has the report's columns as they are. A grouped run has what it grouped
  * by, then how many forms each group holds, then each rolled-up column headed with its rollup -- "Total (sum)" -- with
- * the kind the rollup yields (a count of anything is a number). Grouped by nothing, it is the count and the rollups:
+ * the kind the rollup yields (a count of anything is a number); a rolled-up column the run is grouped by is left out. Grouped by nothing, it is the count and the rollups:
  * the one total row.
  */
 fun reportTableColumns(summary: ReportRunSummary): List<ReportTableColumn> {
@@ -203,7 +219,8 @@ fun reportTableColumns(summary: ReportRunSummary): List<ReportTableColumn> {
     val byId = summary.columns.associateBy { it.columnId }
     val grouped = summary.groupBy.mapNotNull { byId[it] }.map { ReportTableColumn(it.columnId, it.label, it.kind, ReportCellSource.group) }
     val count = ReportTableColumn(RRUN.count, reportCountLabel, ReportKind.number.name, ReportCellSource.count)
-    val rolled = summary.columns.filter { it.rollup != null }.map {
+    // Not a column the run is grouped by: every form of a group has the group's value, so its rollup would repeat it.
+    val rolled = summary.columns.filter { it.rollup != null && it.columnId !in summary.groupBy }.map {
         val kind = if (it.rollup == ReportCombine.count.name) ReportKind.number.name else it.kind
         ReportTableColumn(it.columnId, "${it.label} (${it.rollup})", kind, ReportCellSource.value)
     }
@@ -235,9 +252,13 @@ fun reportCellText(value: Any?, kind: String, source: ReportCellSource = ReportC
     else -> value.toString()
 }
 
-/** A number as a cell shows it: whole when it is, otherwise rounded to two places. */
+/**
+ * A number as a cell shows it: whole when it is, otherwise rounded to two places. One too large to be held exactly
+ * -- past what the rounding below can carry -- is shown as the number prints, rather than run through it into garbage.
+ */
 fun reportNumberText(value: Double): String {
-    if (value == floor(value) && value >= -9.0e15 && value <= 9.0e15) return value.toLong().toString()
+    if (value.isNaN() || value < -9.0e15 || value > 9.0e15) return value.toString()
+    if (value == floor(value)) return value.toLong().toString()
     val cents = (value * 100).roundToLong()
     val sign = if (cents < 0) "-" else ""
     val abs = if (cents < 0) -cents else cents

@@ -35,16 +35,19 @@ private val reportsScope = MainScope()
 /** Where a run's walk stands: the cursor the page on screen started after, and how many rows came before it. */
 private class ReportPaging(val key: String, val after: String?, val before: Int)
 
-/** A run's setup as the user changed it, for the report it was changed on. */
-private class ReportSetupChoice(val key: String, val setup: ReportRunSetup)
+/** The lists the user set on a report -- what to group by, what a form must have -- for the report they were set on. */
+private class ReportListsChoice(val key: String, val groupBy: List<String>?, val excludeEmpty: List<String>?)
+
+/** A fetched page of a run, with the walk it was fetched for. */
+private class ReportShown(val key: String, val page: ReportRunPage)
 
 /**
  * The Reports page (issue #1007): the named reports of a client, and one of them run as a table.
  *
  * Which client and which report are **where the page is** -- they ride the hash (`c`, `rpt`) and are reached by
- * ordinary links, so Back steps through them, as the Clients page does. How the open report is shown -- one row per
- * form or per group, what it groups by, what a form must have -- is the page's own state, with the mode mirrored into
- * the hash (`view`) so a link reproduces it.
+ * ordinary links, so Back steps through them, as the Clients page does. Whether the open report is shown per form or
+ * grouped rides the hash too (`view`), so the page always shows what its address says; what it groups by and what a
+ * form must have are the page's own state for that report.
  *
  * **Paging goes forward only.** A page is fetched after the cursor the previous one handed back (`next`, sent as
  * `after`), and there is no Previous: a cursor says where the next page starts and nothing about the one before, so
@@ -63,10 +66,10 @@ val ReportsPage = FC<Props> {
 
     var listing by useState<ReportListing?>(null)
     var listingError by useState<DisplayError?>(null)
-    var runPage by useState<ReportRunPage?>(null)
+    var shownRun by useState<ReportShown?>(null)
     var runError by useState<DisplayError?>(null)
     var running by useState(false)
-    var choice by useState<ReportSetupChoice?>(null)
+    var choice by useState<ReportListsChoice?>(null)
     var paging by useState<ReportPaging?>(null)
     // Monotonic tokens, so a slow answer for a client, report or page the user has moved on from is dropped.
     val latestList = useRef(0)
@@ -82,11 +85,14 @@ val ReportsPage = FC<Props> {
     val report = listing?.reports?.firstOrNull { it.reportId == reportId }
     val reportKey = "${client.orEmpty()}|${reportId.orEmpty()}"
 
-    // The setup in force: what the user set on this report, else the hash's mode over the report's own defaults.
-    val setup = choice?.takeIf { it.key == reportKey }?.setup
-        ?: ReportRunSetup(reportModeOf(hash[HP.reportView]) ?: report?.defaultMode ?: ReportMode.detail)
-    val pagingKey = "$reportKey|${setup.signature}"
+    // The setup in force: the mode the address names (else the report's own), with the lists set on this report.
+    val lists = choice?.takeIf { it.key == reportKey }
+    val setup = reportSetupInForce(hash[HP.reportView], report?.defaultMode, lists?.groupBy, lists?.excludeEmpty)
+    val pagingKey = reportWalkKey(client, reportId, setup)
     val page = paging?.takeIf { it.key == pagingKey } ?: ReportPaging(pagingKey, null, 0)
+    // The rows on screen, only while they are this walk's: another report's, or another setup's, are never drawn
+    // under this one's heading while its own are on their way.
+    val runPage = shownRun?.takeIf { it.key == pagingKey }?.page
 
     useEffect(generation) {
         reportsScope.launch {
@@ -95,7 +101,9 @@ val ReportsPage = FC<Props> {
                 config = loaded
                 // The client choices, for an administrator who may look across clients: the scoped overview both
                 // kinds of administrator may read, so nothing full-scope is asked of a caller who would be refused.
-                if (loaded.canManageUsers && loaded.canSeeAllClients) clients = ClientsApi.listOverview()
+                // Read once: every navigation bumps the generation, and the overview counts every client's forms
+                // and users -- far too much to redo for a list of names that a click on a report does not change.
+                if (loaded.canManageUsers && loaded.canSeeAllClients && clients == null) clients = ClientsApi.listOverview()
                 loadError = null
                 refusal = null
             } catch (e: Throwable) {
@@ -133,14 +141,15 @@ val ReportsPage = FC<Props> {
 
     // One page of the open report. Keyed on everything that makes the query, and on the cursor: a new cursor is the
     // next page of the same walk, and anything else is a new walk -- whose paging key no longer matches, so it
-    // starts from the top. The rows on screen stay until their replacement arrives.
+    // starts from the top. Within a walk the rows on screen stay until the next page arrives.
     val runnable = report != null
     useEffect(runnable, pagingKey, page.after, generation) {
         val token = (latestRun.current ?: 0) + 1
         latestRun.current = token
         if (!runnable || reportId == null) {
-            runPage = null
+            shownRun = null
             runError = null
+            running = false
             return@useEffect
         }
         running = true
@@ -148,13 +157,13 @@ val ReportsPage = FC<Props> {
             try {
                 val loaded = ReportsApi.run(reportId, client, setup, page.after)
                 if (latestRun.current == token) {
-                    runPage = loaded
+                    shownRun = ReportShown(pagingKey, loaded)
                     runError = null
                     running = false
                 }
             } catch (e: Throwable) {
                 if (latestRun.current != token) return@launch
-                runPage = null
+                shownRun = null
                 runError = userFacingError(e)
                 running = false
             }
@@ -162,16 +171,18 @@ val ReportsPage = FC<Props> {
     }
 
     fun changeSetup(next: ReportRunSetup) {
-        choice = ReportSetupChoice(reportKey, next)
-        // The mode is part of what a link to this report reproduces; the lists are the session's.
+        // The mode goes to the address, which is where the page reads it from; the lists are the session's. Writing
+        // the hash fires no event, so setting the lists -- a new object even when they are unchanged -- is also what
+        // makes the page read the address again.
         replaceHash(
             buildList {
                 add(HP.page to HMENU.pageReports)
-                hash[HP.client]?.let { add(HP.client to it) }
+                client?.let { add(HP.client to it) }
                 reportId?.let { add(HP.report to it) }
                 add(HP.reportView to reportModeParam(next.mode))
             },
         )
+        choice = ReportListsChoice(reportKey, next.groupBy, next.excludeEmpty)
     }
 
     val current = config
@@ -194,11 +205,13 @@ val ReportsPage = FC<Props> {
                 className = ClassName("subtitle")
                 +"Named reports over a client's forms: one row per form, or grouped and totalled."
             }
+            // A re-read that failed -- a session that ended, a server that went away -- with the page already up.
+            loadError?.let { errorText("Couldn't refresh the page; showing what was loaded.", it) }
             div {
                 className = ClassName("reports-layout")
                 div {
                     className = ClassName("reports-list")
-                    reportList(listing, listingError, hash[HP.client], reportId)
+                    reportList(listing, listingError, client, reportId)
                 }
                 div {
                     className = ClassName("reports-run")
@@ -233,7 +246,7 @@ val ReportsPage = FC<Props> {
                                     +"Running…"
                                 }
                             } else {
-                                reportTable(shown, hash[HP.client])
+                                reportTable(shown, client)
                                 reportPagingBar(
                                     shown, page.before, running,
                                     onFirst = { paging = null },
@@ -284,7 +297,7 @@ private fun ChildrenBuilder.clientPicker(clients: List<ClientOverview>?, chosen:
 }
 
 /** The client's reports as links, the open one marked, and under them the problems that cost the client a report. */
-private fun ChildrenBuilder.reportList(listing: ReportListing?, error: DisplayError?, hashClient: String?, openId: String?) {
+private fun ChildrenBuilder.reportList(listing: ReportListing?, error: DisplayError?, client: String?, openId: String?) {
     error?.let { errorText("Couldn't load the reports.", it) }
     when {
         listing == null -> if (error == null) p {
@@ -302,7 +315,7 @@ private fun ChildrenBuilder.reportList(listing: ReportListing?, error: DisplayEr
                     className = ClassName(if (r.reportId == openId) "reports-item current" else "reports-item")
                     a {
                         className = ClassName("wf-cell-link")
-                        href = reportsHref(hashClient, r.reportId)
+                        href = reportsHref(client, r.reportId)
                         +r.label
                     }
                     span {
@@ -404,7 +417,7 @@ private fun ChildrenBuilder.reportControls(report: ReportInfo, setup: ReportRunS
 }
 
 /** The run as a table: a column per [reportTableColumns], and in a detail run a leading link to each row's form. */
-private fun ChildrenBuilder.reportTable(run: ReportRunPage, hashClient: String?) {
+private fun ChildrenBuilder.reportTable(run: ReportRunPage, client: String?) {
     val columns = reportTableColumns(run.summary)
     val detail = run.summary.mode == ReportMode.detail
     if (run.rows.isEmpty()) {
@@ -439,7 +452,7 @@ private fun ChildrenBuilder.reportTable(run: ReportRunPage, hashClient: String?)
                                 row.gedraId?.let { id ->
                                     a {
                                         className = ClassName("wf-cell-link")
-                                        href = reportFormHref(id, hashClient)
+                                        href = reportFormHref(id, client)
                                         +"Open"
                                     }
                                 }

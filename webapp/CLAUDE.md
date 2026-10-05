@@ -449,7 +449,8 @@ pure half -- parsers, the run's query, the table's columns, a cell's text, the p
 - **Where the page is rides the hash**: `c` (the client, for an `allClients` administrator only -- a client's own
   administrator sends no client and the endpoint answers for theirs), `rpt` (the open report) and `view`
   (`grouped` / `detail`). Report and client are ordinary links, so Back steps through them; the mode is written
-  with `replaceHash`. **Not `m`** for the mode: that is the catalog's, and any hash carrying it routes there.
+  with `replaceHash` and **read back from the hash** (`reportSetupInForce`), never kept beside it, so the page
+  shows what its address says. Rows are drawn only while they belong to the walk on screen (`reportWalkKey`). **Not `m`** for the mode: that is the catalog's, and any hash carrying it routes there.
 - **The setup is "the report's own" until touched.** `ReportRunSetup`'s lists are null until the user changes one,
   and a null list is not sent, so the endpoint applies the report's defaults. A list the user **emptied** is sent
   as an empty list -- absent and empty mean different things to the endpoint (`reportRunQuery`).

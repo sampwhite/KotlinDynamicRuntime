@@ -144,6 +144,36 @@ class ReportsPageTest {
     }
 
     @Test
+    fun theModeIsTheAddressesAndTheListsAreTheSessions() {
+        // The address names a mode: that is the mode, whatever the report declares.
+        assertEquals(ReportMode.detail, reportSetupInForce(reportModeDetail, ReportMode.aggregate, null, null).mode)
+        assertEquals(ReportMode.aggregate, reportSetupInForce(reportModeGrouped, ReportMode.detail, null, null).mode)
+        // It names none: the report opens the way it declares, and per form while it is not yet known.
+        assertEquals(ReportMode.aggregate, reportSetupInForce(null, ReportMode.aggregate, null, null).mode)
+        assertEquals(ReportMode.detail, reportSetupInForce(null, null, null, null).mode)
+        // The lists ride along untouched, absent and emptied told apart.
+        val set = reportSetupInForce(null, ReportMode.aggregate, listOf("auditor"), emptyList())
+        assertEquals(listOf("auditor"), set.groupBy)
+        assertEquals(emptyList(), set.excludeEmpty)
+        assertNull(reportSetupInForce(null, ReportMode.aggregate, null, null).groupBy)
+    }
+
+    @Test
+    fun aWalkIsOneClientOneReportAndOneSetup() {
+        val setup = ReportRunSetup(ReportMode.aggregate, listOf("auditor"))
+        val key = reportWalkKey("acme", "audits", setup)
+        assertEquals(key, reportWalkKey("acme", "audits", ReportRunSetup(ReportMode.aggregate, listOf("auditor"))))
+        val others = listOf(
+            reportWalkKey("globex", "audits", setup),
+            reportWalkKey("acme", "roster", setup),
+            reportWalkKey(null, "audits", setup),
+            reportWalkKey("acme", "audits", ReportRunSetup(ReportMode.detail, listOf("auditor"))),
+            reportWalkKey("acme", "audits", ReportRunSetup(ReportMode.aggregate)),
+        )
+        assertEquals(others.size + 1, (others + key).toSet().size)
+    }
+
+    @Test
     fun aDetailRunsTableIsTheReportsColumns() {
         val table = reportTableColumns(parseRunPage(mapOf(EP.summary to summary(ReportMode.detail))).summary)
         assertEquals(listOf("auditor", "total", "tags", "visited"), table.map { it.key })
@@ -167,6 +197,10 @@ class ReportsPageTest {
         val total = reportTableColumns(parseRunPage(mapOf(EP.summary to summary(ReportMode.aggregate))).summary)
         assertEquals(listOf(reportCountLabel, "Total (sum)", "Tags (count)"), total.map { it.label })
 
+        // Grouped by a column that is also rolled up: its rollup would repeat the group's own value, so it is left out.
+        val byTotal = reportTableColumns(parseRunPage(mapOf(EP.summary to summary(ReportMode.aggregate, listOf("total")))).summary)
+        assertEquals(listOf("Total", reportCountLabel, "Tags (count)"), byTotal.map { it.label })
+
         val row = ReportRunRow(null, mapOf("auditor" to "Smith"), 6, mapOf("total" to 345, "tags" to 4))
         assertEquals(listOf<Any?>("Smith", 6, 345, 4), table.map { reportCellValue(row, it) })
     }
@@ -178,6 +212,9 @@ class ReportsPageTest {
         assertEquals("52.14", reportCellText(52.1428571, ReportKind.number.name))
         assertEquals("-0.50", reportCellText(-0.5, ReportKind.number.name))
         assertEquals("12.50", reportCellText(12.5, ReportKind.number.name))
+        // Past what a number holds exactly it is shown as it prints, not rounded into nonsense.
+        assertEquals(1.5e17.toString(), reportCellText(1.5e17, ReportKind.number.name))
+        assertEquals("9000000000000000", reportCellText(9.0e15, ReportKind.number.name))
         assertEquals("Yes", reportCellText(true, ReportKind.boolean.name))
         assertEquals("No", reportCellText(false, ReportKind.boolean.name))
         // A timestamp as the app shows them; a day as it is written; text that merely looks like a date left alone.
