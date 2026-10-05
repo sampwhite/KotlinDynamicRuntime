@@ -246,12 +246,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             visibleWhen = CFACTS.hasAdminLevel
         }
         // Confine the listing to one client (issue #668) -- the cross-client counterpart of the `user` filter.
-        // Shown to any admin (`g-visibleWhen`), but honored only for an `allClients` caller, whose scope spans
-        // clients; for anyone else the handler ignores it, since their scope cannot widen to a client they are
-        // not in. The frontend draws the control only for an `allClients` caller (the `canSeeAllClients` flag).
+        // Honored only for an `allClients` caller, whose scope spans clients; for anyone else the handler ignores
+        // it, since their scope cannot widen to a client they are not in. So it is shown only to such a caller
+        // (`g-visibleWhen` on `isDeploymentAdmin`, issue #1000), as a choice of the clients they may name -- before
+        // that cfact existed it was shown to any admin. The forms page draws its own control on the same fact.
         property(EI.client, "Confine the listing to one client. Honored only for a caller who sees across clients.") {
             emptyIsAbsent = true
-            visibleWhen = CFACTS.hasAdminLevel
+            clientAttribute()
+            visibleWhen = CFACTS.isDeploymentAdmin
         }
         // The free-text term (issue #562): one box that searches every text field at once, so a caller need
         // not know which column holds the value they remember. ANDed with any per-field filters also sent.

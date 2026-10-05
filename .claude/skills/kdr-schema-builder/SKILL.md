@@ -202,6 +202,11 @@ in an extension on the builder, beside the Kotlin class that owns the concept â€
 `ClientDef` and is called from every field naming a client. The *name* and the *description* stay at each
 site: those objects are the key sets of different surfaces, and the descriptions genuinely differ.
 
+A **scoped** endpoint's optional `client` field -- the caller's own client unless they may name another -- goes
+one step further: declare it with `overseenClientField(name, description)` (issue #1000), beside `overseenClient`,
+the rule that enforces it. It applies `clientAttribute()` and `visibleWhen = CFACTS.isDeploymentAdmin`, so only a
+caller who may name another client (an `allClients` administrator) is shown it.
+
 ## Per-caller field visibility: `visibleWhen`
 
 A property can be shown to some callers and hidden from others with `visibleWhen = "<cfact expression>"` (the

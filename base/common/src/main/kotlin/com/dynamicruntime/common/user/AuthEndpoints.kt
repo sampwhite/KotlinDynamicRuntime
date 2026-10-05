@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
 import com.dynamicruntime.common.content.uiFragmentsProperty
@@ -287,7 +288,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
     // so it is called from the parent side, and the user it lands on is the caller's own, under their identity.
     generalEndpoint(AEP.openSandbox, "Opens a client's sandbox as the caller's own user in it (a fresh session).",
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
-            field(AFLD.client, "The client whose sandbox to open; the caller's own when absent. Another client's takes an allClients administrator.")
+            overseenClientField(AFLD.client, "The client whose sandbox to open; the caller's own when absent. Another client's takes an allClients administrator.")
         }) { c, req ->
         authHandler(c).openSandbox(c, req.getOptStr(AFLD.client))
     }

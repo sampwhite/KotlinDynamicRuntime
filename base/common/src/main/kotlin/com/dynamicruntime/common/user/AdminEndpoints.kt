@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
@@ -12,7 +13,6 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
-import com.dynamicruntime.common.gedra.clientAttribute
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
@@ -196,11 +196,11 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 items { type = SCT.string }
             }
             field(ADF.org, "Primary organization for the new user; defaults to the creator's own.")
-            field(
+            overseenClientField(
                 ADF.client,
                 "Client for the new user; defaults to the creator's own. Naming a different one requires the " +
                     "'${ROLE.allClients}' capability, and it cannot be changed afterward.",
-            ) { clientAttribute() }
+            )
             field(ADF.isEntity, "Whether the new account belongs to a business rather than a person.") { type = SCT.boolean }
             field(ADF.name, "The new account's name: a person's full name, or the business's name.")
             field(ADF.enabled, "Whether the account starts active; defaults to true. False creates it disabled.") {
@@ -544,7 +544,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         HttpMethod.GET,
         outputRef = ADTY.labelSuggestions,
         inputFields = {
-            field(ADF.client, "The client whose suggestions to read; the caller's own when absent.")
+            overseenClientField(ADF.client, "The client whose suggestions to read; the caller's own when absent.")
         },
     ) { c, request ->
         // The same rule as naming a client on create: your own, or any present one with `allClients`.

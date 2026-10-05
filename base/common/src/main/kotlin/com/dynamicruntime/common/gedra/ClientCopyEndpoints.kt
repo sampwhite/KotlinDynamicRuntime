@@ -58,7 +58,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         outputRef = CPY.keyTypeName,
         noLimit = true,
         needsClientConfig = true,
-        inputFields = { field(COV.client, "The client; the caller's own when absent.") },
+        inputFields = { overseenClientField(COV.client) },
     ) { c, request ->
         val client = overseenClient(c, request[COV.client].toOptStr())
         ClientCopyEdit.keysFor(c, client).map {
@@ -117,7 +117,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
 
 /** The address of one key, and the client it is for. */
 private fun InputFieldsBuilder.copyKeyInput() {
-    field(COV.client, "The client; the caller's own when absent.")
+    overseenClientField(COV.client)
     field(COV.fileId, "The fragment file.", required = true)
     field(COV.namespaceField, "The namespace within the file.", required = true)
     field(COV.key, "The key within the namespace.", required = true)
