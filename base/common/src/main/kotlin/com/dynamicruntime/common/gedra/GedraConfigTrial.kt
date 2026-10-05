@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
@@ -118,7 +119,7 @@ object GedraConfigTrial {
         // now would refuse a revision that newly redefines a template trait, as a second definition beside the copy.
         taken.addAll(loader.addTemplateClones(tcxt, scratch, client, boot = false))
 
-        // Phase two's, in the reload's order: the client's definition, the schema, the overlays, the workflows.
+        // Phase two's, in the reload's order: the client's definition, the schema, the overlays, the workflows, the reports.
         // The client's definition before its schema, as a reload now orders them (issue #819): a variant is built only
         // for a client that would be present.
         val def = checkClientDefs(tcxt, scratch.gedraConfigs, setOf(client), ClientService.get(tcxt).clients)
@@ -129,8 +130,10 @@ object GedraConfigTrial {
             .trialClient(tcxt, client, previous.flatMap { it.fragments }, taken.flatMap { it.fragments })
         val uiBlocks = previous.flatMap { it.uiBlocks } to taken.flatMap { it.uiBlocks }
         UiBlockService.get(tcxt).trialClient(tcxt, client, uiBlocks.first, uiBlocks.second, schema.cfactNames)
-        WorkflowService.get(tcxt)
+        val workflows = WorkflowService.get(tcxt)
             .trialClient(tcxt, scratch, client, def, fragments, schema.cfactNames, schema.droppedTypes)
+        // Reports last, as a reload orders them (issue #980): a report's workflow paths bind to the workflows kept.
+        ReportService.get(tcxt).trialClient(tcxt, scratch, client, def, schema.types, schema.droppedTypes, workflows)
         return capture.toList()
     }
 }

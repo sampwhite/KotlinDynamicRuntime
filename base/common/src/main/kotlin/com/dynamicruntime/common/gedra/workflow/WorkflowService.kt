@@ -111,6 +111,7 @@ class WorkflowService : ServiceInitializer {
      * A trial of [client]'s candidate workflows (issue #843) over a trial's [scratch] collector: its scope built and
      * checked against the candidate definition [def], cfact names and layers, inheriting from the running global
      * registry, and its function usages resolved -- every problem going to the trial's capture, nothing published.
+     * Returns the registry the client would see, which the trial binds its reports against (issue #980).
      */
     fun trialClient(
         cxt: KdrCxt,
@@ -120,11 +121,11 @@ class WorkflowService : ServiceInitializer {
         fragmentSources: List<FragmentSource>,
         cfactNames: Set<String>,
         droppedTypes: Set<String>,
-    ) {
+    ): WorkflowRegistry {
         val found = mutableListOf<GedraConfigIssue>()
         val clients: Map<String, ClientDef> =
             if (def != null && def.isEnabledIn(cxt.instanceConfig.env)) mapOf(client to def) else emptyMap()
-        buildWorkflowRegistries(
+        val built = buildWorkflowRegistries(
             cxt, scratch.gedraConfigs, clients,
             overlaidTypes = { scratch.clientOverlays[it]?.keys ?: emptySet() },
             fragments = { c, fileId, namespace, key ->
@@ -150,6 +151,7 @@ class WorkflowService : ServiceInitializer {
             cfactNamesOf = { if (it == client) cfactNames else SchemaService.get(cxt).cfactsFor(it).names },
             assign = false,
         )
+        return built.forClient(client)
     }
 
     /** The registry [client] sees; see [WorkflowRegistries.forClient]. */

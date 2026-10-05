@@ -521,18 +521,18 @@ class SchemaService : ServiceInitializer {
      * (built and repaired, never published) and its usage rules -- with every problem going to the trial's capture.
      * [def] is the client's definition as the trial's client check kept it, when the client would be present; with
      * none there is no variant, as a reload would build none (issue #819). Returns what the rest of the trial reads:
-     * the client's cfact names and the types its variant dropped.
+     * the client's cfact names, the types its variant dropped, and the types it would run with (issue #980).
      */
     fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String, def: ClientDef?): SchemaTrial {
         val own = scratch.clientCFacts[client].orEmpty()
         val registry = cfactRegistriesOf(cxt, scratch, mapOf(client to own)).byClient[client] ?: cfactsFor(null)
         val dropped = HashMap<String, Set<String>>()
-        buildClientVariants(
+        val variant = buildClientVariants(
             cxt, scratch, snapshot.store, queryBase, def?.let { mapOf(client to it) } ?: emptyMap(),
             onlyClient = client, repair = repairContext(scratch), droppedTypes = dropped,
-        )
+        )[client]
         checkUsageRules(cxt, scratch, onlyScope = client)
-        return SchemaTrial(registry.names, dropped[client].orEmpty())
+        return SchemaTrial(registry.names, dropped[client].orEmpty(), (variant ?: snapshot.store).types)
     }
 
     /**
@@ -1853,5 +1853,9 @@ object CX {
     const val phone = "phone"
 }
 
-/** What [SchemaService.trialClient] found that the rest of a trial reads (issue #843). */
-class SchemaTrial(val cfactNames: Set<String>, val droppedTypes: Set<String>)
+/**
+ * What [SchemaService.trialClient] found that the rest of a trial reads (issue #843): the client's cfact names, the
+ * types its variant dropped, and the [types] it would run with -- its variant's, or the global ones when it has none --
+ * against which a trial binds its reports (issue #980).
+ */
+class SchemaTrial(val cfactNames: Set<String>, val droppedTypes: Set<String>, val types: Map<String, SchType>)
