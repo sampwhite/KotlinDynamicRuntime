@@ -247,6 +247,17 @@ private fun ChildrenBuilder.clientDetail(
         backToListing(HMENU.pageClients)
         h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
         for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) readOnlyField(label, value)
+        // The client's named reports (issue #1007) -- for a client this node carries, which is what has any to run.
+        // Named by client only for an administrator who looks across them; a scoped one's reports are their own.
+        if (row?.status == ClientStatus.present.name) {
+            p {
+                a {
+                    className = ClassName("wf-cell-link")
+                    href = reportsHref(clientId.takeIf { acrossClients })
+                    +"Reports"
+                }
+            }
+        }
         detailError?.let { errorText("Couldn't load this client's definition.", it) }
         detailNote?.let {
             p {

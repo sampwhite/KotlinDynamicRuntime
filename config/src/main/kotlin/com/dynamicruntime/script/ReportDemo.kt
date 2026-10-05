@@ -6,9 +6,8 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GEP
-import com.dynamicruntime.common.gedra.report.RRUN
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
@@ -119,9 +118,9 @@ fun reportDemo(cxt: ProbeContext) {
     println("Created ${ReportDemo.globexForms} forms in '${ReportDemo.globex}'.")
 
     println()
-    println("Run a report as an acme administrator -- GET /kda${UADEP.reportRun}?${RRUN.reportId}=formRoster, or")
-    println("expensesByYear with ${RRUN.aggregate}=true. To sign in as one from the browser's console:")
+    println("Open ${cxt.baseUrl}/wa/#page=${HMENU.pageReports} as an acme administrator. To sign in as one, from the")
+    println("browser's console on that page, then reload:")
     println("  fetch('/kda/fixture/becomeUser', {method: 'POST', headers: {'Content-Type': 'application/json'},")
     println("    body: JSON.stringify({email: 'reports.admin@acme.example', level: '${ROLE.admin}', client: '${ReportDemo.acme}'})})")
-    println("For another client's reports (globex's yearlyNotes, with ${RRUN.client}=globex), add capabilities: ['${ROLE.allClients}'].")
+    println("For the Client picker and globex's yearlyNotes, add capabilities: ['${ROLE.allClients}'].")
 }

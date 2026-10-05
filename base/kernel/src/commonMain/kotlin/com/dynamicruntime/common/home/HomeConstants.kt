@@ -154,6 +154,8 @@ object HMENU {
     const val users = "users"
     /** The clients listing (issue #905): the clients an administrator oversees, each with its status and counts. */
     const val clients = "clients"
+    /** The named reports an administrator may run over their client's forms (issue #981). */
+    const val reports = "reports"
     const val envReference = "envReference"
     /** Operator boot-checks page (issue #540). */
     const val bootChecks = "bootChecks"
@@ -207,6 +209,7 @@ object HMENU {
     const val pageForms = "forms"
     const val pageWorkflows = "workflows"
     const val pageClients = "clients"
+    const val pageReports = "reports"
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"

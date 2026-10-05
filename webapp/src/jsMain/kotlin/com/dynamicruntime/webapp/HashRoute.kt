@@ -108,6 +108,14 @@ object HP {
     const val overrides = "ov"
 
     /**
+     * Reports page (issue #1007): the report that is open, and how it is shown -- `grouped` or `detail`; absent, the
+     * report opens the way it declares. The client whose reports these are rides as [client], as on the Clients page.
+     * Not `m`: that is the catalog's, and a hash carrying it is routed there.
+     */
+    const val report = "rpt"
+    const val reportView = "view"
+
+    /**
      * The listing page a child was opened from (issue #554), so its back link can return there; absent when
      * the child was reached some other way, in which case the child's natural parent is used. Honoured only
      * when it names a known listing -- see `backTarget`.

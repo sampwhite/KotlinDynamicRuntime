@@ -439,6 +439,35 @@ menu item is gated on the admin level like Users, so a `public` self-administrat
 page; the endpoint is the authority. The detail view (`c=<id>`, issue #906) and, later, editing a client and
 designing its workflows (#903) open from this page.
 
+## The Reports page (issue #1007)
+
+`#page=reports` lists a client's named reports (`GET /clientAdmin/reports`) down the left and runs the open one
+(`GET /clientAdmin/report/run`) as a table beside them; `reporting.md` at the repo root says what a report is. The
+pure half -- parsers, the run's query, the table's columns, a cell's text, the paging line, the links -- is
+`ReportsApi.kt` (covered by `ReportsPageTest`); `ReportsPage.kt` holds the components.
+
+- **Where the page is rides the hash**: `c` (the client, for an `allClients` administrator only -- a client's own
+  administrator sends no client and the endpoint answers for theirs), `rpt` (the open report) and `view`
+  (`grouped` / `detail`). Report and client are ordinary links, so Back steps through them; the mode is written
+  with `replaceHash` and **read back from the hash** (`reportSetupInForce`), never kept beside it, so the page
+  shows what its address says. Rows are drawn only while they belong to the walk on screen (`reportWalkKey`). **Not `m`** for the mode: that is the catalog's, and any hash carrying it routes there.
+- **The setup is "the report's own" until touched.** `ReportRunSetup`'s lists are null until the user changes one,
+  and a null list is not sent, so the endpoint applies the report's defaults. A list the user **emptied** is sent
+  as an empty list -- absent and empty mean different things to the endpoint (`reportRunQuery`).
+- **Paging is the webapp's first cursor paging, and it goes forward only.** A page is fetched with the previous
+  page's `next` as `after`; there is **Next →** and **← First** and no Previous, because a cursor says nothing
+  about the page before it. The cursor is component state, keyed on the client, report and setup
+  (`ReportRunSetup.signature`): anything that changes the query starts the walk again, which is also what the
+  endpoint requires -- another query's cursor is a 400. The "Forms 26–32 of 32" line counts rows as the walk goes
+  (`reportRangeText`), since a cursor carries no offset.
+- **A detail row's "Open" link goes to the forms page**, which owns its hash and its ways home, so its back link
+  reads "← My forms"; the way back to the report is the browser's Back. Do not add a `from=reports`: the forms
+  page drops any `from` that is not a forms listing.
+- **A grouped run's table** is what it grouped by, a **Forms** count, then each rolled-up column headed with its
+  rollup, "Total (sum)" (`reportTableColumns`). A group with no value reads "(none)"; any other empty cell a dash.
+- **Data to look at**: `kdr-probe --url <your server> report-demo` creates acme and globex forms and prints how to
+  sign in as an acme administrator.
+
 ## Buttons and links on the form surfaces (issue #726)
 
 The form view and edit pages draw two kinds of control, and which one a control gets is decided **by what it

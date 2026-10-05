@@ -253,6 +253,8 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // The clients an administrator oversees (issue #905): gated as Users is. A `public` self-administrator is
         // offered it and refused on the page, the shape Users has -- the endpoint is the authority (#805).
         menuItem(HMENU.clients, "Clients", UiRoute(HMENU.pageClients), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
+        // The client's named reports (issue #981), gated as Clients is: the endpoints are the authority.
+        menuItem(HMENU.reports, "Reports", UiRoute(HMENU.pageReports), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
         // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact
         // (isDeploymentOperator), so a non-operator sees neither the header nor an orphaned child, and the
