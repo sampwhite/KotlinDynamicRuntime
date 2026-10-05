@@ -58,6 +58,18 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         ) { type = SCT.integer }
         property(CLD.sandboxOf, "When the client is a sandbox (issue #932): the client whose sandbox it is; absent otherwise.")
         property(CLD.hasSandbox, "Whether the client has a live sandbox (issue #932).", required = true) { type = SCT.boolean }
+        property(
+            CLD.publishedOnly,
+            "Whether the client runs only its published configuration (issue #1001) -- so an unpublished revision is " +
+                "not live. Every client with a sandbox does.",
+            required = true,
+        ) { type = SCT.boolean }
+        property(
+            CLD.staticHere,
+            "Whether the client takes nothing stored on this node -- static in production -- so publishing its stored " +
+                "configuration changes nothing it runs (issue #1001).",
+            required = true,
+        ) { type = SCT.boolean }
         property(CLD.forms, "How many live form documents the client holds.", required = true) { type = SCT.integer }
         property(
             CLD.users,
@@ -310,6 +322,10 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         // A sandbox's row names its parent, so the listing shows it beside the parent (issue #932).
         sandboxParentOf(clientId)?.let { put(CLD.sandboxOf, it) }
         put(CLD.hasSandbox, !isSandboxClient(clientId) && ClientService.get(cxt).isPresent(sandboxOf(clientId)))
+        // The tier decides whether an unpublished revision is live (issue #1001); a sandbox runs its parent's latest.
+        val configs = GedraConfigService.get(cxt)
+        put(CLD.publishedOnly, !isSandboxClient(clientId) && configs.publishedOnly(cxt, clientId))
+        put(CLD.staticHere, configs.isStaticHere(cxt, clientId))
     }
 }
 

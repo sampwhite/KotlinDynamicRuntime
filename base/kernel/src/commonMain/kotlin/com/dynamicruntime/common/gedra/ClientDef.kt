@@ -157,8 +157,17 @@ object CLD {
     /** On a client overview row: whether the client has a live sandbox (issue #932). */
     const val hasSandbox = "hasSandbox"
 
-    /** In the sandbox edit's result (issue #932): whether the client now runs only published configuration. */
+    /**
+     * Whether the client runs only published configuration: in the sandbox edit's result (issue #932), and on an
+     * overview row (issue #1001), where it decides whether an unpublished revision is live.
+     */
     const val publishedOnly = "publishedOnly"
+
+    /**
+     * On an overview row (issue #1001): whether the client takes **nothing** stored on this node -- static in
+     * production (`staticConfig`) -- so publishing its stored configuration changes nothing it runs.
+     */
+    const val staticHere = "staticHere"
 
     /** Schema type name for the sandbox edit's result (issue #932). */
     const val sandboxResultTypeName = "ClientSandboxResult"

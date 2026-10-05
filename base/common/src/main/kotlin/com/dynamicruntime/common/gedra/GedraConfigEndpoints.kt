@@ -61,6 +61,11 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.version, "The latest revision's version number.", required = true) { type = SCT.integer }
         property(CFEP.published, "Whether the latest revision has been published.", required = true) { type = SCT.boolean }
         property(CFEP.publishedAt, "When the latest revision was published; absent while it is still editable.") { dateTime() }
+        property(
+            CFEP.publishedVersion,
+            "The latest published revision's version (issue #1001) -- what a published-only client runs while the " +
+                "latest is a draft; absent when no revision is published.",
+        ) { type = SCT.integer }
         property(CFEP.createdAt, "When this revision was created.") { dateTime() }
         property(CFEP.updatedAt, "When this revision was last written.") { dateTime() }
         configIssuesProperty()
@@ -252,8 +257,13 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
 private fun cfgBundlesBody(c: KdrCxt): List<Map<String, Any?>> {
     AdminRules.requireClientAdministrator(c)
-    return GedraConfigService.get(c).listConfigs(c).map { summaryOf(c, it) }
+    val published = publishedVersionsOf(c, c.client)
+    return GedraConfigService.get(c).listConfigs(c).map { summaryOf(c, it, published) }
 }
+
+/** The version of each of [client]'s config classes' latest published revision, by config name (issue #1001). */
+private fun publishedVersionsOf(cxt: KdrCxt, client: String): Map<String, Int> =
+    GedraConfigService.get(cxt).configsAt(cxt, client, published = true).associate { it.configId.baseId to it.version }
 
 private fun cfgBundleBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
@@ -632,14 +642,22 @@ fun applyConfigSlotEdits(
     return out.filterValues { it.isNotEmpty() }.mapValues { it.value.toList() }
 }
 
-/** A listing summary of one config revision. */
-private fun summaryOf(cxt: KdrCxt, row: GedraConfigRow): Map<String, Any?> = dropNulls(
+/**
+ * A listing summary of one config revision, with the version of its class's latest published revision (issue #1001)
+ * -- read from [publishedVersions] when the caller has the client's at hand, as a listing does.
+ */
+private fun summaryOf(
+    cxt: KdrCxt,
+    row: GedraConfigRow,
+    publishedVersions: Map<String, Int> = publishedVersionsOf(cxt, row.client),
+): Map<String, Any?> = dropNulls(
     linkedMapOf(
         CFEP.name to row.configId.baseId,
         CFEP.client to row.client,
         CFEP.version to row.version,
         CFEP.published to row.isPublished,
         CFEP.publishedAt to row.publishedAt,
+        CFEP.publishedVersion to publishedVersions[row.configId.baseId],
         CFEP.createdAt to row.createdAt,
         CFEP.updatedAt to row.updatedAt,
         CFEP.issues to configIssuesOf(cxt, row),
