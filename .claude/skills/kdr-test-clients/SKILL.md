@@ -187,6 +187,10 @@ later schema rejects" test.
   attributed to the person's parent user, and a write reloads the parent (so the sandbox shows it, while the
   parent -- published-only, as every client with a sandbox is -- keeps its published revision). The editors save a **draft** for any client with a sandbox
   (result `mode` = `EDM.draft`) and publish at once for one without. `SandboxEditsTest.kt` is the reference.
+- **The sample's acme has a sandbox** (issue #994), so it is published-only: a sample test that stores config for
+  acme -- through an editor or `writeConfig` -- publishes it before asserting what acme serves (`publishAcme` in the
+  sample's tests does what the client page's Publish does). A scenario that needs a client without a sandbox, or a
+  free-tier one, takes a dynamic client of its own as above; the sample's globex has none either.
 
 Stored config is **added beside** the source-declared config in the same collector, keyed by the client in its
 id — downstream services can't tell a stored client from a source one.

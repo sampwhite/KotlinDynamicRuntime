@@ -6,6 +6,7 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.mail.MCOPY
@@ -190,9 +191,10 @@ class FragmentOverlayTest : StringSpec({
         val opal = TestUser.createOperator(cxt, "frag-ops@example.com")
         val rows = opal.getItems("/operator/fragments/check", mapOf(FCHK.fileId to SF.content))
         val clients = rows.map { it[FCHK.client].toOptStr() }
-        // The shared variant and acme's. Without the per-client row, a client's overlay would be the only
-        // copy on the node that nothing ever syntax-checked.
-        clients shouldBe listOf(null, SC.acme)
+        // The shared variant, acme's, and its sandbox's (issue #994), which runs acme's latest configuration.
+        // Without the per-client row, a client's overlay would be the only copy on the node that nothing ever
+        // syntax-checked.
+        clients shouldBe listOf(null, SC.acme, sandboxOf(SC.acme))
         for (row in rows) {
             row[FCHK.found] shouldBe true
             row[FCHK.orphans].toJsonListOfStrings().shouldBeEmpty()

@@ -9,6 +9,8 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFRAG
@@ -121,7 +123,10 @@ class ClientOverridesEndpointTest : StringSpec({
             uiBlockOverlay(HMENU.block) { items(HFLD.menu) { menuItem(HMENU.cfactReference, "Acme facts") } }
         }
         val writer = cxt.mkSubContext("edits", SC.acme).also { it.userId = 9160L }
-        GedraConfigService.get(cxt).writeConfig(writer, edits)
+        val svc = GedraConfigService.get(cxt)
+        svc.writeConfig(writer, edits)
+        // Published: acme has a sandbox (issue #994), so it runs only what is published.
+        svc.publish(writer, GedraId.of(GedraConfigType.configDoc, SC.acme, "edits916"))
         GedraConfigReload.reloadClient(cxt, SC.acme)
 
         val result = overrides(admin, SC.acme)

@@ -11,7 +11,9 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.mail.MCOPY
@@ -32,10 +34,11 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * Editing a client's copy (issue #918): a key set for acme lands in a stored `copy` config, is published and served
- * at once under a new build id, keeps the file's other keys, and leaves globex alone; a second key of the same file
- * lands in the same config; a reset restores what the source config says; a change the trial refuses is not stored;
- * the keys listing offers the backend files too; and the scoping is the client overview's.
+ * Editing a client's copy (issue #918): a key set for acme lands in a stored `copy` config as a draft its sandbox
+ * serves (acme has one, issue #994), and once published acme serves it under a new build id, keeping the file's
+ * other keys and leaving globex alone; a second key of the same file lands in the same config; a reset restores what
+ * the source config says; a change the trial refuses is not stored; the keys listing offers the backend files too;
+ * and the scoping is the client overview's. globex, which has no sandbox, publishes an edit at once.
  */
 class ClientCopyEditEndpointTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -81,7 +84,7 @@ class ClientCopyEditEndpointTest : StringSpec({
             .first { it[COV.fileId] == HFRAG.home && it[COV.key] == "brand" }[COV.value] shouldBe "KDR"
     }
 
-    "setting a key lands in a new copy config, published and served at once, and leaves the rest alone" {
+    "setting a key lands in a new copy config, a draft the sandbox serves until published, and leaves the rest alone" {
         val (before, buildBefore) = served(SC.acme)
         before shouldBe "ACME KDR"
         val (_, globexBefore) = served(SC.globex)
@@ -90,12 +93,19 @@ class ClientCopyEditEndpointTest : StringSpec({
         result[COV.configName] shouldBe CPY.copyConfigName
         result[COV.value] shouldBe "Acme Co"
         result[CPY.stored] shouldBe true
+        result[CPY.mode] shouldBe EDM.draft
         result[CPY.issues].toJsonListOrEmpty().shouldBeEmpty()
+        // A draft: the sandbox serves it, under the build id the result names, and acme does not yet.
+        val (inSandbox, sandboxBuild) = served(sandboxOf(SC.acme))
+        inSandbox shouldBe "Acme Co"
+        result[CPY.buildId] shouldBe sandboxBuild
+        served(SC.acme) shouldBe ("ACME KDR" to buildBefore)
+        admin.getItems(ACEP.bundles, mapOf(CFEP.client to SC.acme)).single { it[CFEP.name] == CPY.copyConfigName }[CFEP.published] shouldBe false
 
+        publishAcme(admin)
         val (after, buildAfter) = served(SC.acme)
         after shouldBe "Acme Co"
         buildAfter shouldNotBe buildBefore
-        result[CPY.buildId] shouldBe buildAfter
         // The file's other keys, and the other client, are as they were.
         served(SC.acme, key = "title").first shouldBe "Welcome"
         served(SC.acme, ns = HFRAG.formsNs, key = HFRAG.noWorkflows).first shouldBe "No workflows available."
@@ -114,10 +124,13 @@ class ClientCopyEditEndpointTest : StringSpec({
 
     "a second key of the same file joins the same config; a key of another file, too, when nothing else overlays it" {
         admin.postData(CPY.setPath, address(SC.acme, HFRAG.formsNs, HFRAG.noWorkflows) + mapOf(COV.value to "Nothing yet."))[COV.configName] shouldBe CPY.copyConfigName
-        served(SC.acme, ns = HFRAG.formsNs, key = HFRAG.noWorkflows).first shouldBe "Nothing yet."
-        served(SC.acme).first shouldBe "Acme Co"
         // A key the client's source config never set: now overridden from the same config.
         admin.postData(CPY.setPath, address(SC.acme, "home", "title") + mapOf(COV.value to "Hello, Acme"))[COV.configName] shouldBe CPY.copyConfigName
+        served(sandboxOf(SC.acme), key = "title").first shouldBe "Hello, Acme"
+        served(SC.acme, key = "title").first shouldBe "Welcome"
+        publishAcme(admin)
+        served(SC.acme, ns = HFRAG.formsNs, key = HFRAG.noWorkflows).first shouldBe "Nothing yet."
+        served(SC.acme).first shouldBe "Acme Co"
         served(SC.acme, key = "title").first shouldBe "Hello, Acme"
         copyRow(SC.acme, "home", "title")!![COV.sourceValue].toOptStr() shouldBe null
         // The bundle holds one entry for the file with all three keys.
@@ -131,6 +144,9 @@ class ClientCopyEditEndpointTest : StringSpec({
         val result = admin.postData(CPY.resetPath, address(SC.acme, "home", "brand"))
         result[COV.value] shouldBe "ACME KDR"
         result[CPY.stored] shouldBe false
+        result[CPY.mode] shouldBe EDM.draft
+        served(SC.acme).first shouldBe "Acme Co"
+        publishAcme(admin)
         served(SC.acme).first shouldBe "ACME KDR"
         copyRow(SC.acme, "home", "brand")!![COV.origin] shouldBe GedraConfigOrigin.source.name
         // The other stored keys survived the reset.
@@ -192,6 +208,8 @@ class ClientCopyEditEndpointTest : StringSpec({
         scoped.getItems(CPY.keysPath).map { "${it[COV.fileId]}:${it[COV.key]}" } shouldContain "${HFRAG.home}:brand"
         val own = address(SC.acme, "home", "brand") - COV.client
         scoped.postData(CPY.setPath, own + mapOf(COV.value to "Acme, by Acme"))[COV.value] shouldBe "Acme, by Acme"
+        served(sandboxOf(SC.acme)).first shouldBe "Acme, by Acme"
+        publishAcme(scoped, acrossClients = false)
         served(SC.acme).first shouldBe "Acme, by Acme"
         scoped.expectError(EXC.notAuthorized, CPY.setPath, data = address(SC.globex, "home", "brand") + mapOf(COV.value to "Nope"))
         scoped.expectError(EXC.notAuthorized, CPY.keysPath, args = mapOf(COV.client to SC.globex))
