@@ -1,4 +1,4 @@
-package com.dynamicruntime.script
+package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.LiteCxt
@@ -17,9 +17,10 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.simulation.DesignDemo
+import com.dynamicruntime.common.simulation.designDemoConfig
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.kdn.Startup
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain

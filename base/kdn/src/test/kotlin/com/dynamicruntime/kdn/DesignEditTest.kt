@@ -1,4 +1,4 @@
-package com.dynamicruntime.script
+package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
@@ -24,11 +24,12 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.simulation.DesignDemo
+import com.dynamicruntime.common.simulation.designDemoConfig
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
-import com.dynamicruntime.kdn.Startup
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -54,7 +55,7 @@ class DesignEditTest : StringSpec({
     val formId = admin.postData(
         clientPath(GEP.workflowSave, client),
         mapOf(
-            WFD.workflowId to DesignDemo.requestWorkflow, GDF.taskId to DesignDemo.describeTask, GDF.saveId to "submit",
+            WFD.workflowId to DesignDemo.requestWorkflow, GDF.taskId to DesignDemo.describeTask, GDF.saveId to DesignDemo.submitSave,
             GDF.entries to listOf(
                 mapOf("traitId" to DesignDemo.eventRequest, "data" to mapOf(DesignDemo.title to "Offsite")),
                 mapOf("traitId" to "kdr:name", "data" to mapOf("name" to "Offsite 2027")),
@@ -98,18 +99,18 @@ class DesignEditTest : StringSpec({
         edit(dataType, DesignDemo.title, mapOf(SL.label to "Name the event"))
         label(requestView(), dataType, DesignDemo.title) shouldBe "Name the event"
         // The survey collects the same trait and keeps the shared copy.
-        label(reviewView(), dataType, DesignDemo.title) shouldBe "What is the event?"
+        label(reviewView(), dataType, DesignDemo.title) shouldBe DesignDemo.titleLabel
         val facts = block(requestView())[DSV.layoutEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[DesignDemo.title]
             .toJsonMapOrEmpty()
         facts[DSV.entry].toJsonMapOrEmpty()[SL.label] shouldBe "Name the event"
-        facts[DSV.inherited].toJsonMapOrEmpty()[SL.label] shouldBe "What is the event?"
+        facts[DSV.inherited].toJsonMapOrEmpty()[SL.label] shouldBe DesignDemo.titleLabel
         facts[DSV.inheritedChanged] shouldBe false
     }
 
     "a field of a referenced type is altered the same way, by naming that type" {
         edit(contactType, DesignDemo.contactEmail, mapOf(SL.label to "Email for the organizers"))
         label(requestView(), contactType, DesignDemo.contactEmail) shouldBe "Email for the organizers"
-        label(reviewView(), contactType, DesignDemo.contactEmail) shouldBe "Contact email"
+        label(reviewView(), contactType, DesignDemo.contactEmail) shouldBe DesignDemo.contactEmailLabel
     }
 
     "an edit based on a definition that has since changed is refused" {

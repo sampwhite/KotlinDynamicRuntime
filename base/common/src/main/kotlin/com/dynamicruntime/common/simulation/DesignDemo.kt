@@ -1,11 +1,9 @@
-package com.dynamicruntime.script
+package com.dynamicruntime.common.simulation
 
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.context.LiteCxt
-import com.dynamicruntime.common.gedra.ACEP
-import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -13,13 +11,18 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
-import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
-import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.layout
+
+/*
+ * The `simulation` package holds what a test sets up that is worth setting up the same way outside one: clients and
+ * data a scenario provisions for a demo or for UAT, kept in main source so the tests, the `kdr-probe` scenarios and
+ * (to come) a provisioning endpoint all build from one definition rather than from copies that drift. Nothing here
+ * runs on its own; whatever provisions it is a test-instance affordance.
+ */
 
 /**
  * The Design View demo client (issue #972): a small client defined **in data** -- written to a running node as
@@ -30,7 +33,12 @@ import com.dynamicruntime.common.schema.layout
  * description, a bounds hint), a closed choice list, a field only an administrator sees and one only a requester
  * sees (`g-visibleWhen` -- the second is a ghost to the administrator using Design View), a field asked only under
  * one answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), and -- beside it in
- * the task -- the global `kdr:name` trait, which no client edits in place.
+ * the task -- the global `kdr:name` trait, which no client edits in place. Its two workflows, a creation and a
+ * survey, collect the same trait, which is what makes a workflow's own copy (issue #984) visible as its own.
+ *
+ * The `design-demo` probe scenario provisions it on a running node, and the Design View tests provision it in
+ * theirs. A test asserts the demo's copy through the constants here (`titleLabel`, ...), not as literals, so the
+ * demo's wording can be reworked for how it looks without breaking them.
  *
  * What it does not carry is copy pulled from a fragment file of its own, because a client cannot yet declare one.
  * Its stored configuration only *overlays* fragment files: a key it adds to a shipped file is an orphan, which the
@@ -50,6 +58,7 @@ object DesignDemo {
     const val reviewWorkflow = "reviewEvent"
     const val describeTask = "describe"
     const val detailsTask = "details"
+    const val submitSave = "submit"
 
     // The event request's fields.
     const val title = "title"
@@ -61,11 +70,15 @@ object DesignDemo {
     const val requesterNote = "requesterNote"
     const val contactName = "name"
     const val contactEmail = "email"
+
+    // Copy a test asserts, so the demo's wording can change under it.
+    const val titleLabel = "What is the event?"
+    const val contactEmailLabel = "Contact email"
 }
 
 /**
- * The demo client's configuration. Built with the same DSL a component uses, then written as a stored bundle by
- * [designDemo]; [cxt] is only what the builder needs, so a [LiteCxt] serves.
+ * The demo client's configuration, built with the same DSL a component uses and written as a stored bundle by
+ * whatever provisions it. [cxt] is only what the builder needs, so a [LiteCxt] serves.
  */
 fun designDemoConfig(cxt: KdrCxtBase = LiteCxt()): GedraConfig =
     gedraConfig(cxt, DesignDemo.configName, clientNamespace(DesignDemo.client), DesignDemo.client) {
@@ -90,7 +103,7 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt()): GedraConfig =
             property(DesignDemo.contactEmail, "The contact's email address.")
             layout {
                 field(DesignDemo.contactName, label = "Contact name")
-                field(DesignDemo.contactEmail, label = "Contact email", hint = "We only use this about the event.")
+                field(DesignDemo.contactEmail, label = DesignDemo.contactEmailLabel, hint = "We only use this about the event.")
             }
         }
 
@@ -117,7 +130,7 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt()): GedraConfig =
             // Asked only for an outdoor event -- so Design View shows it as a ghost until that venue is chosen.
             presentWhen(DesignDemo.backupPlan, on = DesignDemo.venue, value = "outdoors")
             layout(label = "Event request") {
-                field(DesignDemo.title, label = "What is the event?", description = "A short name people will recognize.")
+                field(DesignDemo.title, label = DesignDemo.titleLabel, description = "A short name people will recognize.")
                 field(DesignDemo.attendees, label = "Expected attendees", hint = $$"Between ${min} and ${max} people.")
                 field(DesignDemo.venue, label = "Venue")
                 field(DesignDemo.budgetNote, label = "Budget note", description = "Only administrators see this field.")
@@ -131,7 +144,7 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt()): GedraConfig =
             task(DesignDemo.describeTask, "Describe the event") {
                 trait(DesignDemo.eventRequest)
                 trait(GT.name, required = false)
-                save("submit", "Submit the request")
+                save(DesignDemo.submitSave, "Submit the request")
             }
         }
 
@@ -144,35 +157,3 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt()): GedraConfig =
             }
         }
     }
-
-/** Name of the [designDemo] scenario. */
-const val designDemoName = "design-demo"
-
-/**
- * Writes the Design View demo client ([designDemoConfig]) to the instance and reloads it there (issue #972), as an
- * administrator with the full-scope capability -- the `admin` config surface is how a new client is created over
- * the API. Rerunning rewrites the same bundle, so it is safe to repeat; on an in-memory node it has to be rerun
- * after every restart, since nothing stored survives one.
- */
-fun designDemo(cxt: ProbeContext) {
-    val config = designDemoConfig()
-    val admin = cxt.sessionAt(ROLE.admin)
-    val write = admin.sendPostRequest(
-        ACEP.bundleWrite,
-        mapOf(
-            CFEP.client to DesignDemo.client,
-            CFEP.name to config.name,
-            CFEP.namespaceField to config.namespace,
-            CFEP.slots to gedraConfigToEntries(config),
-        ),
-    )
-    println("Write '${DesignDemo.client}/${config.name}': HTTP ${write.statusCode} ${write.errorMessage ?: "ok"}")
-    if (!write.isSuccess) return
-    val reload = admin.sendPostRequest(ACEP.reload, mapOf(CFEP.client to DesignDemo.client))
-    println("Reload '${DesignDemo.client}': HTTP ${reload.statusCode} ${reload.errorMessage ?: "ok"}")
-    if (!reload.isSuccess) return
-    println()
-    println("Sign in as one of its administrators from the browser's console, then reload:")
-    println("  fetch('/kda/fixture/becomeUser', {method: 'POST', headers: {'Content-Type': 'application/json'},")
-    println("    body: JSON.stringify({email: 'designer@${DesignDemo.client}.example', level: 'admin', client: '${DesignDemo.client}'})})")
-}
