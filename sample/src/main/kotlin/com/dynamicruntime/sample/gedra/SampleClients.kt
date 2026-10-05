@@ -247,6 +247,7 @@ object SC {
  * | extends | no | yes -- `RichAddress` |
  * | declares its own trait | yes -- `acmeSiteAudit` | no |
  * | omits a global trait | yes -- `managerApproval` | no |
+ * | has a Shadow Sandbox | yes -- so published-only (#994) | no -- edits go live at once |
  *
  * Both are `dev` and `customer`, which is what lets them take a functional group at all: `#allGlobal` is
  * refused only to a `customer` client in `production`.
@@ -281,6 +282,11 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // The user labels acme suggests (issue #786): what the admin console's label editor offers, and
                 // what a workflow function naming a label is checked against. Suggestions -- any label may be set.
                 userLabels = listOf(SC.reviewerLabel, SC.siteLeadLabel),
+                // A Shadow Sandbox (issue #994), so the sample's showpiece client demonstrates one: `acme:sandbox`
+                // runs acme's latest configuration, published or not, where an administrator previews a change
+                // before publishing it. Asking for one makes acme published-only (#930), so the copy and menu
+                // editors save drafts for it; globex keeps the live-at-once path.
+                sandbox = true,
             ),
         )
 

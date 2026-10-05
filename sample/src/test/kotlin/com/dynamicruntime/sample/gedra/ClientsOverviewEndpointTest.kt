@@ -11,7 +11,9 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
@@ -108,7 +110,10 @@ class ClientsOverviewEndpointTest : StringSpec({
             }
         }
         val writer = cxt.mkSubContext("overlay", SC.acme).also { it.userId = 9040L }
-        GedraConfigService.get(cxt).writeConfig(writer, overlay)
+        val svc = GedraConfigService.get(cxt)
+        svc.writeConfig(writer, overlay)
+        // Published: acme has a sandbox (issue #994), so it runs only what is published.
+        svc.publish(writer, GedraId.of(GedraConfigType.configDoc, SC.acme, "main"))
         GedraConfigReload.reloadClient(cxt, SC.acme)
         val acme = rows(admin).getValue(SC.acme)
         acme[CLD.origin] shouldBe GedraConfigOrigin.source.name

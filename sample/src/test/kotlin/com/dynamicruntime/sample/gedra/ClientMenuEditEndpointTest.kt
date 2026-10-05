@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
@@ -31,10 +32,11 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
- * Editing a client's home menu (issue #919): a rename and a hide for acme land in its stored `copy` config, show in
- * the items listing and in what an acme user is served, and leave globex alone; a show puts a withdrawn item on offer
- * for globex under a condition the shipped menu knows, and a made-up condition is refused; a reset restores the
- * shipped item; and the scoping is the client overview's.
+ * Editing a client's home menu (issue #919): a rename and a hide for acme land in its stored `copy` config as drafts
+ * (acme has a sandbox, issue #994), and once published show in the items listing and in what an acme user is served,
+ * leaving globex alone; a show puts a withdrawn item on offer for globex -- which has no sandbox, so at once -- under
+ * a condition the shipped menu knows, and a made-up condition is refused; a reset restores the shipped item; and the
+ * scoping is the client overview's.
  */
 class ClientMenuEditEndpointTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(
@@ -77,8 +79,12 @@ class ClientMenuEditEndpointTest : StringSpec({
         renamed[COV.configName] shouldBe CPY.copyConfigName
         renamed[MNU.label] shouldBe "My account"
         renamed[CPY.stored] shouldBe true
+        renamed[CPY.mode] shouldBe EDM.draft
         val hidden = edit(SC.acme, HMENU.docs, MNU.visibility to MNU.hide)
         hidden[MNU.condition] shouldBe CFACT.neverName
+        // Drafts: an acme user still sees the shipped menu, until they are published.
+        servedMenu(acmeUser)[HMENU.profile] shouldBe "Profile"
+        publishAcme(admin)
 
         val served = servedMenu(acmeUser)
         served[HMENU.profile] shouldBe "My account"
@@ -137,6 +143,8 @@ class ClientMenuEditEndpointTest : StringSpec({
         val reset = admin.postData(MNU.resetPath, mapOf(COV.client to SC.acme, COV.itemId to HMENU.docs))
         reset[CPY.stored] shouldBe false
         reset[MNU.condition] shouldBe CFACTS.app
+        servedMenu(acmeUser).keys shouldNotContain HMENU.docs
+        publishAcme(admin)
         servedMenu(acmeUser).keys shouldContain HMENU.docs
         // The rename in the same entry survived the reset of the other item.
         servedMenu(acmeUser)[HMENU.profile] shouldBe "My account"
@@ -150,6 +158,7 @@ class ClientMenuEditEndpointTest : StringSpec({
         val scoped = TestUser.create(cxt, "menu-scoped@acme.test", level = ROLE.admin, userClient = SC.acme)
         scoped.getItems(MNU.itemsPath).map { it[COV.itemId] } shouldContain HMENU.profile
         scoped.postData(MNU.setPath, mapOf(COV.itemId to HMENU.profile, MNU.label to "Me"))[MNU.label] shouldBe "Me"
+        publishAcme(scoped, acrossClients = false)
         servedMenu(acmeUser)[HMENU.profile] shouldBe "Me"
         scoped.expectError(EXC.notAuthorized, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.profile, MNU.label to "Nope"))
         servedMenu(globexUser)[HMENU.profile] shouldBe "Profile"
