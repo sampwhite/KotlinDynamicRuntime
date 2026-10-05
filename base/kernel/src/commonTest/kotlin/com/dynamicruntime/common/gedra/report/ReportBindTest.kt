@@ -71,16 +71,15 @@ class ReportBindTest {
             SCH.oneOf to listOf(mapOf(SCH.dRef to "#/\$defs/$ns.Card"), mapOf(SCH.dRef to "#/\$defs/$ns.Cash")),
             SCH.discriminator to mapOf(SCH.propertyName to "kind"),
         ),
-        "$ns.Card" to branch("card", "last4" to SCT.string),
-        "$ns.Cash" to branch("cash", "tendered" to SCT.number),
+        // Both declare `total` as a number; they disagree on `settled`, a flag on a card and a count on cash.
+        "$ns.Card" to branch("card", "last4" to SCT.string, "total" to SCT.number, "settled" to SCT.boolean),
+        "$ns.Cash" to branch("cash", "tendered" to SCT.number, "total" to SCT.number, "settled" to SCT.integer),
     )
 
-    private fun branch(kind: String, field: Pair<String, String>) = mapOf(
+    private fun branch(kind: String, vararg fields: Pair<String, String>) = mapOf(
         SCH.type to SCT.kObject,
-        SCH.properties to mapOf(
-            "kind" to mapOf(SCH.type to SCT.string, SCH.const to kind),
-            field.first to mapOf(SCH.type to field.second),
-        ),
+        SCH.properties to mapOf("kind" to mapOf(SCH.type to SCT.string, SCH.const to kind)) +
+            fields.associate { (name, type) -> name to mapOf(SCH.type to type) },
     )
 
     private val scope = ReportScope(
@@ -144,6 +143,10 @@ class ReportBindTest {
         // A `$ref` is followed, and a union's field is found in the branch that declares it.
         assertEquals(ReportKind.string, bound("form.audit.contact.email").kind)
         assertEquals(ReportKind.number, bound("form.audit.payment.tendered").kind)
+        // Every branch declaring a field is consulted: agreeing, its kind; disagreeing, text, so no branch's values
+        // are read as another's kind and shown blank.
+        assertEquals(ReportKind.number, bound("form.audit.payment.total").kind)
+        assertEquals(ReportKind.string, bound("form.audit.payment.settled").kind)
         // An envelope field has the vocabulary's kind.
         assertEquals(ReportKind.date, bound("form.audit.@updatedAt").kind)
     }

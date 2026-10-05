@@ -131,6 +131,11 @@ class ClientExtensionTest : StringSpec({
         val bound = ReportService.get(cxt).forClient(kid)
         bound.report("overview").shouldNotBeNull().bound.columns.single().path.path.toString() shouldBe "form.tplScore.stars"
         bound.report("notes").shouldNotBeNull().fromTemplate shouldBe true
+        // The sandbox has a registry of its own, bound against its own copies.
+        val sandbox = ReportService.get(cxt).forClient(sandboxOf(kid))
+        sandbox.client shouldBe sandboxOf(kid)
+        sandbox.reports.keys.toList() shouldContainExactly listOf("overview", "notes")
+        sandbox.report("overview").shouldNotBeNull().bundle.gedraId.client shouldBe sandboxOf(kid)
     }
 
     "the sandbox of an extending client is extended itself rather than carrying its parent's copy" {

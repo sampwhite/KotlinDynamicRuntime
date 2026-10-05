@@ -150,6 +150,12 @@ class ReportEvalTest {
         // Nor is a Java-only spelling a number anywhere.
         assertFalse(keyTextMatches(2010, "2010d"))
         assertTrue(keyTextMatches(1000, "1e3"))
+        // A boolean key by any spelling the registry accepts for one (issue #980), and only by those.
+        assertTrue(keyTextMatches(true, "yes") && keyTextMatches(true, "true") && keyTextMatches(false, "off"))
+        assertFalse(keyTextMatches(true, "no"))
+        assertFalse(keyTextMatches(true, "sure"))
+        // Text keys are not read as booleans.
+        assertFalse(keyTextMatches("true", "yes"))
     }
 
     @Test

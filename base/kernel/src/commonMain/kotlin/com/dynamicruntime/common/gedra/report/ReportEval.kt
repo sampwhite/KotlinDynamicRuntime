@@ -160,10 +160,14 @@ private fun selects(selector: KeySelector?, pkFields: List<String>, key: List<An
 /**
  * Whether a selector's [text] names the key value [value]. By canonical key, under which a year held as `2024`,
  * `2024.0` or `"2024"` is one key -- and, for a numeric key, by number, so a path written `[2024.0]` finds the year
- * too. Text is never read as a number against a *string* key: the code `02134` matches only `02134`.
+ * too. Text is never read as a number against a *string* key: the code `02134` matches only `02134`. A boolean key is
+ * matched by the spellings the registry accepts for one (`parseExactBool`), so `[yes]` finds the entry keyed `true`
+ * rather than binding and then matching nothing.
  */
 fun keyTextMatches(value: Any, text: String): Boolean =
-    canonicalKey(value) == text || (value is Number && plainNumberOrNull(text) == value.toDouble())
+    canonicalKey(value) == text ||
+        (value is Number && plainNumberOrNull(text) == value.toDouble()) ||
+        (value is Boolean && parseExactBool(text) == value)
 
 /**
  * One fact about a workflow on the form. **A report says about a workflow only what the forms listing would show**:

@@ -94,6 +94,21 @@ class ReportRegistryTest : StringSpec({
         }.message.shouldNotBeNull() shouldContain "kdr:broken"
     }
 
+    "under off nothing is reported, and what does not bind is still left out" {
+        val off = KdrCxt(
+            "reportRegistryOff",
+            KdrInstanceConfig("reportRegistryOff", ENV.local, ENV.liveSource).apply { put(GCFG.checkEnvVar.name, "off") },
+        )
+        val found = mutableListOf<GedraConfigIssue>()
+        val registries = buildReportRegistries(off, collector, mapOf("acme" to acme), ::scopeOf, found)
+        found.size shouldBe 0
+        // There is nothing to run for a report that does not bind, so it is not there; a second declaration is
+        // skipped, the first kept.
+        registries.global.reports.keys.toList() shouldContainExactly listOf("kdr:sites")
+        registries.forClient("acme").reports.keys.toList() shouldContainExactly listOf("kdr:sites", "audits", "owners")
+        registries.forClient("acme").report("audits").shouldNotBeNull().bound.report.label shouldBe "Audits"
+    }
+
     "a reload builds the one client against the running global registry" {
         val (running, _) = captured()
         val capture = mutableListOf<GedraConfigIssue>()

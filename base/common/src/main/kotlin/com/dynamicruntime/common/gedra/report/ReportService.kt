@@ -92,19 +92,21 @@ class ReportService : ServiceInitializer {
         workflows: WorkflowRegistry,
     ) {
         val present = if (def != null && def.isEnabledIn(cxt.instanceConfig.env)) mapOf(client to def) else emptyMap()
+        // The only scope a trial binds: the global one is inherited from the running node, and the client is asked
+        // for only when present, which needs its definition. Anything else would be the scratch collector beside the
+        // running node's types and workflows -- a mix nothing should bind against -- so it is a defect, said so.
+        val trialDef = present[client] ?: return
+        val overlaid = scratch.clientOverlays[client]?.keys ?: emptySet()
+        val scope = ReportScope(
+            formTraitsOf(supportedTraits(scratch.gedraConfigs, client, trialDef, overlaid, droppedTypes)),
+            types,
+            workflows.workflows.mapValues { it.value.def },
+        )
         buildReportRegistries(
             cxt, scratch.gedraConfigs, present,
-            scopeOf = { scope ->
-                if (scope == client && def != null) {
-                    val overlaid = scratch.clientOverlays[client]?.keys ?: emptySet()
-                    ReportScope(
-                        formTraitsOf(supportedTraits(scratch.gedraConfigs, client, def, overlaid, droppedTypes)),
-                        types,
-                        workflows.workflows.mapValues { it.value.def },
-                    )
-                } else {
-                    liveScope(cxt, scratch, present, scope)
-                }
+            scopeOf = { asked ->
+                if (asked != client) throw KdrException("A report trial of '$client' was asked to bind the scope '$asked'.")
+                scope
             },
             issues = mutableListOf(), onlyClient = client, runningGlobal = registries.global,
         )

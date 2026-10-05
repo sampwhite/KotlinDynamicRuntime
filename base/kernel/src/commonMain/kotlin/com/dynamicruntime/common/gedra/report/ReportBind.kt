@@ -302,44 +302,61 @@ class ReportFieldTarget(val kind: ReportKind, val multiValued: Boolean)
 /**
  * [fields] followed down the data schema [type] to the value they name (issue #980). A property whose value is a
  * named type (`$ref`) is followed into it -- parsing has already bound it -- an array is stepped into, its items read
- * whole, which makes the target several values; and a union's property is found in whichever branch declares it,
- * since a form's entry may be any of them. The walk must end at a value: a string, number, date or boolean, or an
- * array of them.
+ * whole, which makes the target several values; and a union's property is found in **every** branch that declares
+ * it, since a form's entry may be any of them. The walk must end at a value: a string, number, date or boolean, or an
+ * array of them -- in every branch it reached. Branches that disagree on the value's kind are read as text, the one
+ * kind every value has, so no branch's values are coerced to blanks under another's kind.
  *
- * Bounded twice over: the path's own length ([RPT.maxFields]), and [maxArrayNesting] for the arrays between two
- * fields, so neither a long path nor a schema of nested arrays drives an unbounded walk.
+ * Bounded three ways: the path's own length ([RPT.maxFields]), [maxArrayNesting] for the arrays between two fields,
+ * and [maxUnionNesting] for unions whose branches are unions -- so neither a long path nor a deep schema drives an
+ * unbounded walk.
  */
 fun walkReportFields(type: SchType, fields: List<String>): Parsed<ReportFieldTarget> {
     if (fields.size > RPT.maxFields) {
         return Parsed.failed(ReportPathProblem.tooManyFields, "A path holds at most ${RPT.maxFields} fields.")
     }
-    var at = type
+    // The types the walk may be at: one, until a union's branches each declare the next field.
+    var at = listOf(type)
     var multi = false
     var walked = ""
     for (field in fields) {
-        val opened = openArrays(at) ?: return nestedTooDeep(walked)
-        multi = multi || opened !== at
-        at = opened
-        val prop = propertyOf(at, field, 0)
-            ?: return Parsed.failed(
+        val next = ArrayList<SchType>()
+        for (candidate in at) {
+            val opened = openArrays(candidate) ?: return nestedTooDeep(walked)
+            multi = multi || opened !== candidate
+            for (prop in propertiesOf(opened, field, 0)) {
+                if (next.none { it === prop.valueType }) next.add(prop.valueType)
+            }
+        }
+        if (next.isEmpty()) {
+            return Parsed.failed(
                 ReportBindProblem.unknownField,
                 if (walked.isEmpty()) "Its data has no field '$field'." else "'$walked' has no field '$field'.",
             )
+        }
         walked = if (walked.isEmpty()) field else "$walked${RPT.sep}$field"
-        at = prop.valueType
+        at = next
     }
-    val leaf = openArrays(at) ?: return nestedTooDeep(walked)
-    val kind = scalarKind(leaf)
-        ?: return Parsed.failed(
-            ReportBindProblem.notScalar,
-            "'$walked' is ${leaf.jsonType?.let { "an $it" } ?: "a value with no type"}, not a value a column can show; " +
-                "name a field inside it.",
+    val kinds = LinkedHashSet<ReportKind>()
+    for (candidate in at) {
+        val leaf = openArrays(candidate) ?: return nestedTooDeep(walked)
+        multi = multi || leaf !== candidate
+        kinds.add(
+            scalarKind(leaf) ?: return Parsed.failed(
+                ReportBindProblem.notScalar,
+                "'$walked' is ${leaf.jsonType?.let { "an $it" } ?: "a value with no type"}, not a value a column can " +
+                    "show; name a field inside it.",
+            ),
         )
-    return Parsed.Ok(ReportFieldTarget(kind, multi || leaf !== at))
+    }
+    return Parsed.Ok(ReportFieldTarget(kinds.singleOrNull() ?: ReportKind.string, multi))
 }
 
 /** How many arrays may nest between two fields of a path before the walk refuses. */
 const val maxArrayNesting = 8
+
+/** How deep a union's branches may themselves be unions before the walk stops looking in them. */
+const val maxUnionNesting = 8
 
 /** [type] with any arrays around it stepped into, or null past [maxArrayNesting]. */
 private fun openArrays(type: SchType): SchType? {
@@ -358,13 +375,15 @@ private fun nestedTooDeep(walked: String): Parsed.Failed = Parsed.failed(
 )
 
 /**
- * The property [name] of [type]: its own, or -- for a union -- the first branch's that declares one, the default
- * branch last. [depth] bounds the walk down unions whose branches are unions.
+ * The property [name] of [type]: its own when it declares one, otherwise -- for a union -- every branch's that does,
+ * the default branch's last. [depth] bounds the walk down unions whose branches are unions.
  */
-private fun propertyOf(type: SchType, name: String, depth: Int): SchProperty? =
-    type.properties[name] ?: if (depth >= maxArrayNesting) null else type.variants?.let { v ->
-        (v.branches + listOfNotNull(v.defaultBranch)).firstNotNullOfOrNull { propertyOf(it, name, depth + 1) }
-    }
+private fun propertiesOf(type: SchType, name: String, depth: Int): List<SchProperty> {
+    type.properties[name]?.let { return listOf(it) }
+    if (depth >= maxUnionNesting) return emptyList()
+    val v = type.variants ?: return emptyList()
+    return (v.branches + listOfNotNull(v.defaultBranch)).flatMap { propertiesOf(it, name, depth + 1) }
+}
 
 /** The report kind of a scalar [type], or null for anything else. A date is a string with a date format. */
 private fun scalarKind(type: SchType): ReportKind? = when (type.jsonType) {
