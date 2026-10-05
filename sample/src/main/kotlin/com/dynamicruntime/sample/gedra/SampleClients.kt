@@ -19,6 +19,12 @@ import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.report.RMETA
+import com.dynamicruntime.common.gedra.report.RPT
+import com.dynamicruntime.common.gedra.report.RUSR
+import com.dynamicruntime.common.gedra.report.RWF
+import com.dynamicruntime.common.gedra.report.ReportCombine
+import com.dynamicruntime.common.gedra.report.ReportSource
 import com.dynamicruntime.common.gedra.workflow.PFO
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -199,6 +205,13 @@ object SC {
 
     /** The friendly label [underAudit] presents under. */
     const val auditGroup = "Site audits"
+
+    /**
+     * The sample reports (issue #981): acme's over its audits, expense reports and audit review, and globex's over the
+     * keyed `yearly` trait -- between them every source a report path reads, and a keyed trait read several ways.
+     */
+    const val auditOverview = "auditOverview"
+    const val yearlyNotes = "yearlyNotes"
 
     // Globex extends a global type rather than altering it: a new name, constraining nothing.
     const val globexNamespace = "client.globex"
@@ -588,6 +601,24 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
         // `>=`/`<=` range. So acme's forms list can be filtered by who audited a site or by reporting year.
         traitUsage(SC.siteAudit, "Auditor", $$"${auditor}", substring = true)
         traitUsage(ST.expenseReport, "Year", $$"${year}", UsageKind.number)
+
+        // --- a named report (issue #981) ------------------------------------------------------------------
+        //
+        // Every source a report path reads, over one form: acme's own trait, a global trait with a field computed on
+        // read (the expense total), where the form stands in a normal workflow, the form's status, and its owner. Run
+        // grouped, it is a row per auditor with the forms counted and their totals summed.
+        report(SC.auditOverview, "Audit overview") {
+            description = "Each site audit beside the expense report it covers, where its review stands, and who owns it."
+            column("auditor", "Auditor", "${ReportSource.form.name}.${SC.siteAudit}.${SC.auditor}")
+            column("findings", "Findings", "${ReportSource.form.name}.${SC.siteAudit}.${SC.findings}")
+            column("year", "Year", "${ReportSource.form.name}.${ST.expenseReport}.${ST.year}", rollup = ReportCombine.max)
+            column("total", "Total", "${ReportSource.form.name}.${ST.expenseReport}.${ST.totalAmount}", rollup = ReportCombine.sum)
+            column("review", "Review", "${ReportSource.workflow.name}.${SW.auditReview}.${RWF.category}")
+            column("status", "Status", "${ReportSource.meta.name}.${RMETA.formStatus}")
+            column("owner", "Owner", "${ReportSource.user.name}.${RUSR.email}")
+            column("ownerName", "Owner's name", "${ReportSource.user.name}.${RUSR.name}")
+            groupBy = listOf("auditor")
+        }
     }
 
 /**
@@ -663,4 +694,17 @@ private fun globexClient(cxt: KdrCxt): GedraConfig =
         // `yearly` entry, since a display expression reads one entry (`computeDisplayValues`).
         traitUsage(GT.name, "Name", $$"${name}", substring = true)
         traitUsage(ST.yearly, "Year", $$"${year}", UsageKind.number)
+
+        // --- a named report over a keyed trait (issue #981) -----------------------------------------------
+        //
+        // What a usage cannot do -- one column per trait, from its first entry -- a report does: the keyed `yearly`
+        // trait read whole three ways (every year, how many, the latest) and one year's note picked by its key.
+        report(SC.yearlyNotes, "Yearly records") {
+            description = "The years each form has a record for, and what was noted for 2024."
+            val years = "${ReportSource.form.name}.${ST.yearly}[${RPT.all}].${ST.year}"
+            column("years", "Years", years, combine = ReportCombine.list)
+            column("yearCount", "Years recorded", years, combine = ReportCombine.count, rollup = ReportCombine.sum)
+            column("latest", "Latest year", years, combine = ReportCombine.max, rollup = ReportCombine.max)
+            column("note2024", "2024 note", "${ReportSource.form.name}.${ST.yearly}[2024].${ST.note}")
+        }
     }

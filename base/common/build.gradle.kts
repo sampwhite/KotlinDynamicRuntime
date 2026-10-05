@@ -62,7 +62,7 @@ val embedDocs by tasks.registering(Copy::class) {
     from(layout.projectDirectory.dir("../..")) {
         include(
             "code-guide.md", "client-definition.md", "deferred-work.md",
-            "gedra-config-and-data.md", "gedra-entry.md", "gedra-patch.md", "ui-block.md",
+            "gedra-config-and-data.md", "gedra-entry.md", "gedra-patch.md", "ui-block.md", "reporting.md",
         )
     }
     // The MIT license the README links to (issue #555): extension-less at the repo root, so it is copied in

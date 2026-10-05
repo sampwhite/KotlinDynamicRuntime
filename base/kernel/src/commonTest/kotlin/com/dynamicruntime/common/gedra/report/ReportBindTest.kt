@@ -58,6 +58,9 @@ class ReportBindTest {
         trait("ProfileEntry", "profile", setOf(GedraDataType.userData), "A user's profile.") {
             property("bio", "A bio.")
         }
+        workflow("intake", WfEntry.creation) {
+            task("start", "Start") { trait("audit"); save("s", "Create") }
+        }
         workflow("review", WfEntry.normal) {
             task("collect", "Collect") { trait("audit"); save("s", "Save", WfSaveKind.edit) }
             task("signoff", "Sign off") { approval("signedOff", "Approve?", "Approve") }
@@ -195,6 +198,8 @@ class ReportBindTest {
         refusal("workflow.elsewhere.category", ReportBindProblem.unknownWorkflow, "'elsewhere'")
         refusal("workflow.review.approval[later].approved", ReportBindProblem.unknownWorkflow, "no task 'later'")
         refusal("workflow.review.approval[collect].approved", ReportBindProblem.unknownWorkflow, "not an approval task")
+        // A creation workflow has no place on a form to report.
+        refusal("workflow.intake.category", ReportBindProblem.unknownWorkflow, "is a creation workflow")
     }
 
     @Test

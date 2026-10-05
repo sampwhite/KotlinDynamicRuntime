@@ -328,7 +328,7 @@ fun combineReportValues(values: List<Any>, kind: ReportKind, combine: ReportComb
     return when (combine) {
         ReportCombine.first -> values.first()
         ReportCombine.list -> values
-        ReportCombine.distinct -> values.distinctBy { distinctKey(it) }.sortedWith(::compareReportValues)
+        ReportCombine.distinct -> values.distinctBy { reportValueKey(it) }.sortedWith(::compareReportValues)
         ReportCombine.min -> values.minWithOrNull(::compareReportValues)
         ReportCombine.max -> values.maxWithOrNull(::compareReportValues)
         ReportCombine.sum -> sumOf(values)
@@ -360,8 +360,12 @@ private fun sumOf(values: List<Any>): Number? {
     return reportNumber(values.sumOf { (it as Number).toDouble() })
 }
 
-/** What makes two values the same value for `distinct`: a number by its canonical key, so `2` and `2.0` are one. */
-private fun distinctKey(value: Any): String = when (value) {
+/**
+ * What makes two report values the same value -- for `distinct`, and for an aggregate run's groups (#981): a number
+ * by its canonical key, so `2` and `2.0` are one, and null as itself.
+ */
+fun reportValueKey(value: Any?): String = when (value) {
+    null -> "-"
     is Number -> "n:" + canonicalKey(value)
     is LocalDate -> "d:" + value.formatDay()
     else -> value::class.simpleName + ":" + value.toString()

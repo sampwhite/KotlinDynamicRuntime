@@ -970,6 +970,27 @@ class GedraDataService : ServiceInitializer {
     }
 
     /**
+     * The gedras [fullIds] name, of [kind] and within [scope], keyed by full id (issue #981) -- the batch counterpart of
+     * [queryGedra], for a caller holding many ids at once (a report run). An id that is absent, deleted, of another
+     * kind or outside the scope is simply not in the answer. Cache-first, each row scope-checked as a single read is;
+     * SQL only when there is no cache to trust or `_debug=dataFromSql` forces it.
+     *
+     * No path-client check: the caller passes the scope it has already decided -- a report run's is the client it was
+     * asked about, which an `allClients` administrator may name.
+     */
+    fun readGedras(cxt: KdrCxt, kind: GedraDataType, fullIds: List<String>, scope: ReadScope): Map<String, GedraDataRow> {
+        val useCache = dataCache != null && !cxt.hasDebugDiagnostic(GDBG.dataFromSql)
+        val out = LinkedHashMap<String, GedraDataRow>()
+        for (fullId in fullIds) {
+            val gedraId = gedraService.readId(fullId)
+            if (gedraId.dataType != kind) continue
+            val row = if (useCache) cachedGedra(cxt, gedraId.fullId, scope) else queryGedraFromSql(cxt, gedraId, scope)
+            if (row != null) out[fullId] = row
+        }
+        return out
+    }
+
+    /**
      * Reads the gedra [gedraId] names from SQL, scope-checked by [SqlScopeUtil], or null when the scope refuses
      * it or no enabled row matches. The dormant path [queryGedra] takes only when there is no cache to trust or
      * `_debug=dataFromSql` ([GDBG.dataFromSql]) forces it -- the by-id counterpart of [readStatesFromSql].
@@ -1788,6 +1809,12 @@ class GedraDataService : ServiceInitializer {
      * anyway, and at the sizes a client holds a count query would save nothing worth a second path.
      */
     fun countLiveGedras(cxt: KdrCxt, kind: GedraDataType, client: String): Int = liveGedraIds(cxt, kind, client).size
+
+    /**
+     * The full ids of the live gedras of [kind] that [scope] admits (issue #981) -- [liveGedraIds] for a scope narrower
+     * than a whole client, such as an administrator confined to their organization.
+     */
+    fun liveGedraIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> = liveIdsInScope(cxt, kind, scope)
 
     /** The full ids of the live gedras of [kind] that [scope] admits, from the cache when it can key on the scope. */
     private fun liveIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> {

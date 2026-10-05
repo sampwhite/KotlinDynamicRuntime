@@ -135,6 +135,12 @@ object UADEP {
      * items, each with the value it replaces and the config that set it. Scoped as [clientDefinition] is.
      */
     const val clientOverrides = "/${SECT.clientAdmin}/client/overrides"
+
+    /** The named reports one client may run (issue #981), with how each column was bound. Scoped as [clientDefinition] is. */
+    const val reports = "/${SECT.clientAdmin}/reports"
+
+    /** Runs one report over a client's forms (issue #981): a row per form or per group, cursor-paged. */
+    const val reportRun = "/${SECT.clientAdmin}/report/run"
 }
 
 /** Admin request/response field (JSON key) names. */

@@ -153,11 +153,35 @@ fun <T, K : Any> cursorPage(
     codec: CursorKeyCodec<K>,
     summary: Map<String, Any?>? = null,
     toItem: (T) -> Any?,
+): ListPage = cursorPageOf(request, queryId, sorted, keyOf, cmp, codec, summary) { page -> page.map(toItem) }
+
+/**
+ * [cursorPage] rendering the page's items **together** (issue #981): [toItems] is handed the page's items at once and
+ * answers their rendering in the same order, so a listing whose rendering is a batch read -- a page of ids whose rows,
+ * states and owners are each one read for the lot -- does one read per page rather than one per item.
+ *
+ * It may answer **fewer**: an item gone between ordering and rendering (a form deleted in that moment) is left out
+ * rather than rendered as nothing. The `next` is the page's last *key* either way, so the walk still resumes after
+ * everything this page covered.
+ */
+fun <T, K : Any> cursorPageOf(
+    request: Map<String, Any?>,
+    queryId: String,
+    sorted: List<T>,
+    keyOf: (T) -> K,
+    cmp: Comparator<in K>,
+    codec: CursorKeyCodec<K>,
+    summary: Map<String, Any?>? = null,
+    toItems: (List<T>) -> List<Any?>,
 ): ListPage {
     val values = CursorToken.keyOf(request[EP.after] as? String, queryId)
     val afterKey = values?.let { codec.fromValues(it) ?: CursorToken.malformed().orThrow { m -> KdrException.mkInput(m) } }
     val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
     val slice = cursorSlice(sorted, afterKey, limit, keyOf, cmp)
     val next = if (slice.hasMore) CursorToken.encode(queryId, codec.toValues(keyOf(slice.items.last()))) else null
-    return ListPage.cursor(slice.items.map(toItem), slice.numAvailable, next, summary)
+    val items = toItems(slice.items)
+    if (items.size > slice.items.size) {
+        throw KdrException("A cursor page rendered ${items.size} item(s) for a page of ${slice.items.size}.")
+    }
+    return ListPage.cursor(items, slice.numAvailable, next, summary)
 }
