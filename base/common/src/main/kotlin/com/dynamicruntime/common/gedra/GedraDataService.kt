@@ -1810,6 +1810,12 @@ class GedraDataService : ServiceInitializer {
      */
     fun countLiveGedras(cxt: KdrCxt, kind: GedraDataType, client: String): Int = liveGedraIds(cxt, kind, client).size
 
+    /**
+     * The full ids of the live gedras of [kind] that [scope] admits (issue #981) -- [liveGedraIds] for a scope narrower
+     * than a whole client, such as an administrator confined to their organization.
+     */
+    fun liveGedraIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> = liveIdsInScope(cxt, kind, scope)
+
     /** The full ids of the live gedras of [kind] that [scope] admits, from the cache when it can key on the scope. */
     private fun liveIdsInScope(cxt: KdrCxt, kind: GedraDataType, scope: ReadScope): List<String> {
         val cache = dataCache

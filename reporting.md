@@ -109,7 +109,8 @@ configuration write runs — each report is **bound** to what it reads (`ReportS
   when positional, only key fields when named, and each value reading as its field's kind;
 - the field exists in the trait's data schema — through `$ref`s, into arrays, in any branch of a union (a field the
   branches declare with different kinds reads as text) — and ends at a value or an array of values;
-- a workflow path's workflow exists for the client, and an approval's task is one of its approval tasks;
+- a workflow path's workflow is a normal workflow of the client's — a creation or survey workflow has no place on a
+  form to report — and an approval's task is one of its approval tasks;
 - the declared kind, the combine and the rollup suit the value, and a grouped-by column has one value.
 
 A global report is bound once, against the global traits, types and workflows; run for a client that lacks a trait it
@@ -125,7 +126,10 @@ kept verbatim, so editing anything else in the config does not delete it.
 ## Running a report
 
 Two endpoints, in the `clientAdmin` section: a client's administrator sees their own client, an `allClients`
-administrator may name any with `client`, and a `public` self-administrator is refused.
+administrator may name any with `client`, and a `public` self-administrator is refused. A run reads what the caller
+may read: an administrator with a primary organization sees that organization's forms and the client's own (those with
+no organization), as the forms listing shows them — a report never shows a form, or an owner, the caller could not
+open elsewhere.
 
 - **`GET /clientAdmin/reports`** — the client's reports, each column with the kind, combine and multiplicity it was
   bound to, which config declared the report and whether it came from a template, and in the summary the report
@@ -151,8 +155,9 @@ Send each page's `next` back as `after` until a page has none.
 - **Groups are ordered by their key values**, no value last. A group is never skipped or repeated, but its count can
   change between pages, since the forms in it can.
 - `excludeEmpty` applies before paging, so a form gaining a value mid-walk may join the walk if it is still ahead.
-- A cursor belongs to one query — the client, the report, the mode and the grouping. Another query's cursor, or a
-  malformed one, is a 400, never a silent restart at the first page.
+- A cursor belongs to one query — the client, the report as it was bound, the mode and the grouping. Another query's
+  cursor — including one taken before a reload changed the report — or a malformed one is a 400, never a silent
+  restart at the first page.
 
 ### Execution
 

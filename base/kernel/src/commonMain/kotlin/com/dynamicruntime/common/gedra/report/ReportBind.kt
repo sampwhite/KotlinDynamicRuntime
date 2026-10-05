@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.report
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.workflow.WfDef
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
@@ -179,7 +180,7 @@ private fun shapeProblem(report: ClientReport): String? {
  * - A **form** path's trait is one the scope's forms may carry. A keyed trait needs a selector, an unkeyed one
  *   refuses one; a positional selector gives every key field, a named one only fields of the key, and each key value
  *   must read as its field's kind. The field path is found in the trait's data schema ([walkReportFields]).
- * - A **workflow** path's workflow is one the scope has, and an approval's task one of its approval tasks.
+ * - A **workflow** path's workflow is a normal one the scope has, and an approval's task one of its approval tasks.
  * - A **user** or **meta** path is in its vocabulary, which the parser has already held it to.
  *
  * A path reading several entries of a keyed trait -- `[*]`, or a named selector leaving key fields open -- may
@@ -279,6 +280,15 @@ private fun bindWorkflowPath(path: WorkflowPath, scope: ReportScope): Parsed<Bou
     val attr = path.attr ?: return Parsed.failed(ReportPathProblem.unknownAttribute, "'$path' names no attribute.")
     val wf = scope.workflows[path.workflowId]
         ?: return Parsed.failed(ReportBindProblem.unknownWorkflow, "'${path.workflowId}' is not a workflow here.")
+    // A report says about a workflow what the forms listing's workflow column does, which only a normal workflow has:
+    // a creation or survey workflow has no phase on a form, so every cell would be blank (issue #981 review).
+    if (wf.entry != WfEntry.normal) {
+        return Parsed.failed(
+            ReportBindProblem.unknownWorkflow,
+            "'${path.workflowId}' is a ${wf.entry.name} workflow; a report reads where a form stands in a " +
+                "${WfEntry.normal.name} workflow, which is the only kind a form has a place in.",
+        )
+    }
     val taskId = path.taskId
     if (taskId != null) {
         val task = wf.tasks.firstOrNull { it.id == taskId }

@@ -28,9 +28,12 @@ import com.dynamicruntime.common.gedra.workflow.WfPhase
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AuthUserRow
+import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
@@ -247,7 +250,7 @@ private fun describeReport(declared: ReportDeclared): Map<String, Any?> {
  * - **Aggregate**: every form is read for the grouped and rolled-up columns, then grouped; the groups are paged by
  *   their key values, and `numAvailable` is the number of groups.
  *
- * Above [REP.scanLimitEnvVar] forms the run is refused, naming the variable.
+ * Above [REP.scanLimitEnvVar] forms the run is refused, naming the variable. What is read is [reportScope]'s.
  */
 fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     val client = overseenClient(c, request[RRUN.client].toOptStr())
@@ -265,8 +268,8 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     }
     val excludeEmpty = columnsNamed(bound, namesIn(request[RRUN.excludeEmpty]) ?: bound.report.excludeEmpty, RRUN.excludeEmpty)
 
-    val scope = ReadScope.ofClient(client)
-    val ids = GedraDataService.get(c).liveGedraIds(c, GedraDataType.formDoc, client).sorted()
+    val scope = reportScope(c, client)
+    val ids = GedraDataService.get(c).liveGedraIdsInScope(c, GedraDataType.formDoc, scope).sorted()
     val scanLimit = c.getEnvVar(REP.scanLimitEnvVar)?.trim()?.toIntOrNull() ?: REP.defaultScanLimit
     if (ids.size > scanLimit) {
         throw KdrException.mkInput(
@@ -276,7 +279,7 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     }
     val reader = SubjectReader(c, client, scope)
     val mode = if (aggregate) ReportMode.aggregate else ReportMode.detail
-    val queryId = listOf("report", client, reportId, mode.name, groupBy.joinToString(",") { it.columnId }).joinToString("|")
+    val queryId = reportQueryId(client, bound, mode, groupBy)
     fun summary(excluded: Int) = mapOf(
         RRUN.reportId to reportId,
         RRUN.label to bound.report.label,
@@ -295,7 +298,7 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
         val kept = read.filterNot { bound.excludes(it, excludeEmpty) }
         val groups = aggregateReport(kept, groupBy, rolled)
         return cursorPageOf(
-            request, queryId, groups, { it.key }, ::compareReportKeys, groupKeyCodec(groupBy), summary(read.size - kept.size),
+            request, queryId, groups, { it.key }, ::compareReportKeys, reportGroupKeyCodec(groupBy), summary(read.size - kept.size),
         ) { page ->
             page.map { g ->
                 mapOf(
@@ -311,8 +314,10 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     val (pagedIds, excluded) = if (excludeEmpty.isEmpty()) {
         ids to 0
     } else {
-        val kept = reader.read(ids, excludeEmpty).filterNot { bound.excludes(it, excludeEmpty) }.map { it.meta[RMETA.gedraId] as String }
-        kept to ids.size - kept.size
+        // Excluded counts the forms read and left out; one deleted since its id was listed is neither.
+        val read = reader.read(ids, excludeEmpty)
+        val kept = read.filterNot { bound.excludes(it, excludeEmpty) }.map { it.meta[RMETA.gedraId] as String }
+        kept to read.size - kept.size
     }
     return cursorPageOf(request, queryId, pagedIds, { it }, naturalOrder(), CursorKeys.string, summary(excluded)) { page ->
         reader.read(page, bound.columns).map { subject ->
@@ -323,6 +328,27 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
         }
     }
 }
+
+/**
+ * How far a run reads (issue #981): the client named, for an administrator who may see every client; otherwise the
+ * caller's own scope, which [overseenClient] has already held to their client -- and which, for an administrator with
+ * a primary organization, is that organization. A report shows no form the caller could not open in the forms
+ * listing, nor an owner they could not see in the user administration.
+ */
+fun reportScope(c: KdrCxt, client: String): ReadScope =
+    if (AdminRules.canSeeAllClients(c)) ReadScope.ofClient(client) else ReadScopeRules.forCaller(c)
+
+/**
+ * What makes two runs the same query, for their cursors (issue #981): the client, the report, the mode and the
+ * grouping -- and the report **as bound**, each column's path, kind, combine and rollup. A cursor taken before a reload
+ * changed the report is then another query's, refused with a 400, rather than a key of the old definition read as one
+ * of the new and resumed at a place that means nothing there.
+ */
+fun reportQueryId(client: String, bound: BoundReport, mode: ReportMode, groupBy: List<BoundColumn>): String =
+    listOf(
+        "report", client, bound.reportId, mode.name, groupBy.joinToString(",") { it.columnId },
+        bound.columns.map { it.describe() }.toJsonStr(compact = true),
+    ).joinToString("|")
 
 /** The column ids a list-valued input names, blanks dropped; null when the input is absent. */
 private fun namesIn(value: Any?): List<String>? =
@@ -342,7 +368,7 @@ private fun columnsNamed(report: BoundReport, ids: List<String>, input: String):
  * read back as the grouped-by column's kind, so a key comes back as the values it was made of. A cursor whose values
  * do not read as the columns' kinds is not a key of this run.
  */
-private fun groupKeyCodec(groupBy: List<BoundColumn>): CursorKeyCodec<List<Any?>> = CursorKeyCodec(
+fun reportGroupKeyCodec(groupBy: List<BoundColumn>): CursorKeyCodec<List<Any?>> = CursorKeyCodec(
     toValues = { key -> key.map { if (it is Instant) it.toString() else reportWireValue(it) } },
     fromValues = { values -> readGroupKey(values, groupBy) },
 )

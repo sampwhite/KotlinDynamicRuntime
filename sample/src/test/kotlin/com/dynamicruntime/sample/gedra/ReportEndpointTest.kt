@@ -94,6 +94,9 @@ class ReportEndpointTest : StringSpec({
         create(owner, SC.acme, expense(2022)),
     )
 
+    /** The form the mid-walk test deletes. */
+    var deletedId = ""
+
     "the client's reports are listed with how each column was bound" {
         val env = admin.client.sendJsonGetRequest(UADEP.reports)
         val report = itemsOf(env).single { it[RRUN.reportId] == SC.auditOverview }
@@ -136,7 +139,12 @@ class ReportEndpointTest : StringSpec({
     "forms edited, deleted and created mid-walk: each original once or not at all, the new one at the end" {
         val before = walk(admin, overview()).flatMap { itemsOf(it) }.map { it[RRUN.gedraId] as String }
         var created = ""
-        val deleted = formIds[3]
+        // Two forms past the first page, by the walk's own order: ids made in one millisecond do not sort in the order
+        // they were made. Not the form without an audit, which a later test reads.
+        val ahead = before.drop(2).filter { it != formIds[4] }
+        val edited = ahead[0]
+        val deleted = ahead[1]
+        deletedId = deleted
         val pages = walk(admin, overview(mapOf(EP.limit to 2))) { pageNo ->
             if (pageNo != 1) return@walk
             // After the first page: edit a form still to come, delete another, and create a new one.
@@ -146,7 +154,7 @@ class ReportEndpointTest : StringSpec({
                     GPF.targets to mapOf(
                         GedraDataType.formDoc.name to listOf(
                             mapOf(
-                                GDF.gedraId to formIds[2],
+                                GDF.gedraId to edited,
                                 GPF.edits to listOf(
                                     mapOf(GED.action to GedraEditAction.addOrReplace.name, GE.traitId to ST.expenseReport, GE.data to mapOf(ST.year to 2021L)),
                                 ),
@@ -164,7 +172,7 @@ class ReportEndpointTest : StringSpec({
         // Every original but the deleted one, in order, then the new one last.
         walked shouldBe before.filter { it != deleted } + created
         // The edit shows, on the one row the form appears in.
-        pages.flatMap { itemsOf(it) }.single { it[RRUN.gedraId] == formIds[2] }.let { valuesOf(it)["year"] shouldBe 2021L }
+        pages.flatMap { itemsOf(it) }.single { it[RRUN.gedraId] == edited }.let { valuesOf(it)["year"] shouldBe 2021L }
     }
 
     "excludeEmpty drops forms without the value, and the counts say so" {
@@ -199,6 +207,15 @@ class ReportEndpointTest : StringSpec({
         val total = itemsOf(page(admin, overview(mapOf(RRUN.aggregate to true, RRUN.groupBy to ""))))
         total.size shouldBe 1
         total.single()[RRUN.count] shouldBe detail.size
+    }
+
+    "an aggregate walk keyed by a number visits every group once, in order" {
+        val pages = walk(admin, overview(mapOf(RRUN.aggregate to true, RRUN.groupBy to "year", EP.limit to 1)))
+        val years = pages.flatMap { itemsOf(it) }.map { (it[RRUN.group].toJsonMapOrEmpty()["year"] as Number).toLong() }
+        years shouldBe years.distinct().sorted()
+        pages.size shouldBe years.size
+        pages.sumOf { p -> itemsOf(p).sumOf { (it[RRUN.count] as Number).toInt() } } shouldBe
+            (page(admin, overview())[EP.numAvailable] as Number).toInt()
     }
 
     "a keyed trait's column: every year, how many, the latest, and a blank for a form without the chosen key" {
@@ -238,6 +255,21 @@ class ReportEndpointTest : StringSpec({
             cxt.instanceConfig.put(REP.scanLimitEnvVar.name, null)
         }
         page(admin, overview())[EP.items].shouldNotBeNull()
+    }
+
+    // Late: it gives acme users organizations for the rest of the boot, which the tests after it do not depend on.
+    "an administrator confined to an organization reads only its forms and the client's own" {
+        val north = TestUser.create(cxt, "rpt-north-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
+        val south = TestUser.create(cxt, "rpt-south@acme.test", userClient = SC.acme)
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to north.userId, ADF.org to "north"))
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to south.userId, ADF.org to "south"))
+        val southForm = create(south, SC.acme, audit("South"), expense(2024))
+        fun ids(user: TestUser) = walk(user, overview()).flatMap { itemsOf(it) }.map { it[RRUN.gedraId] }
+        // The client's own forms (no organization) are every administrator's; another organization's are not.
+        ids(north).containsAll(formIds - deletedId) shouldBe true
+        ids(north).contains(southForm) shouldBe false
+        ids(admin).contains(southForm) shouldBe true
+        walk(full, overview(mapOf(RRUN.client to SC.acme))).flatMap { itemsOf(it) }.any { it[RRUN.gedraId] == southForm } shouldBe true
     }
 
     "an unknown report is a 404, an unknown column a 400, and another run's cursor a 400" {
