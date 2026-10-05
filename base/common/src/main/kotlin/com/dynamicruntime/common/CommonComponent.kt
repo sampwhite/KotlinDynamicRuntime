@@ -3,6 +3,7 @@ package com.dynamicruntime.common
 import com.dynamicruntime.common.gedra.stateRecomputeJob
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.cfact.addCoreCFacts
+import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
@@ -143,6 +144,9 @@ class CommonComponent : ComponentDefinition {
         // The workflow definition schema, published so the types a definition is validated against are the
         // same ones a catalog or a frontend can read.
         collector.defs.putAll(WfDefSchema.defs(cxt))
+        // The report definition schema (issue #979), published for the same reason, and what a stored report's slot
+        // references.
+        collector.defs.putAll(ReportDefSchema.defs(cxt))
         // Endpoints/types live with the services that own them; the component just wires them in.
         collector.addModule(NodeService.schema(cxt))
         collector.addModule(SchemaService.schema(cxt))

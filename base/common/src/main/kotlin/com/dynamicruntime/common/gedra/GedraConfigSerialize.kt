@@ -56,6 +56,9 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     out[CCT.workflowDef] = config.workflows.values.map {
         linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to it.toJsonMap())
     }
+    out[CCT.reportDef] = config.reports.values.map {
+        linkedMapOf(CCT.reportId to it.reportId, CCT.definition to it.toJsonMap())
+    }
     out[CCT.schemaDef] = config.defs.filterKeys { it !in generated }.map { (name, body) ->
         linkedMapOf(CCT.typeName to name, CCT.schema to body)
     }
@@ -96,6 +99,7 @@ fun reassembleGedraConfig(
         )
     }
     entriesBySlot[CCT.workflowDef]?.forEach { workflowFromMap(it[CCT.definition].toJsonMapOrEmpty()) }
+    entriesBySlot[CCT.reportDef]?.forEach { reportFromMap(it[CCT.definition].toJsonMapOrEmpty()) }
     entriesBySlot[CCT.fragmentDef]?.forEach { e ->
         fragmentOverlay(e[CCT.fileId].toOptStr().orEmpty(), fragmentContentOf(e[CCT.content]))
     }

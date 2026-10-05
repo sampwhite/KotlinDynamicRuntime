@@ -23,7 +23,8 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
  * Whatever the client defines itself replaces the template's definition **of the same id, whole**, so the built
  * client holds each definition once. The redefinition is taken out of the copy rather than layered over it:
  *
- * - **Traits** by trait id, **types** by qualified name, **cfacts** by name, **workflows** by workflow id.
+ * - **Traits** by trait id, **types** by qualified name, **cfacts** by name, **workflows** by workflow id,
+ *   **reports** by report id (issue #979).
  * - A **creation or survey** workflow of the client's own replaces the template's of that kind, whatever its id --
  *   a client has one answer to how a form is created or surveyed, which is the rule a client already has against
  *   the global workflows.
@@ -75,6 +76,7 @@ object ClientExtension {
         val ownWorkflowIds = ownWorkflows.map { it.workflowId }.toSet()
         val ownSingletonKinds = ownWorkflows.map { it.entry }.filter { it in WfEntry.singletons }.toSet()
         val ownUsages = own.any { it.usages.isNotEmpty() }
+        val ownReports = own.flatMap { it.reports.keys }.toSet()
         return templateConfigs.map { config ->
             GedraConfig(
                 gedraId = GedraId.of(config.gedraId.kind, client, cloneName(template, config.name)),
@@ -86,6 +88,7 @@ object ClientExtension {
                 uiBlocks = config.uiBlocks.map { it.inheritedBy(client, template) },
                 workflows = config.workflows.filterValues { it.workflowId !in ownWorkflowIds && it.entry !in ownSingletonKinds },
                 usages = if (ownUsages) emptyList() else config.usages,
+                reports = config.reports.filterKeys { it !in ownReports },
                 origin = origin,
                 inheritedFrom = template,
             )

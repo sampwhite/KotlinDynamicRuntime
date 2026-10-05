@@ -19,7 +19,7 @@ import com.dynamicruntime.common.util.isVariableName
  *   `client.acme.ExpenseReport` for a client's -- a client's namespace is always under the reserved root
  *   `client`, so a client id itself needs no reservation. A dot, because a type name becomes a `$defs` key
  *   and an OpenAPI component key, which may not hold a colon.
- * - **Traits, cfacts, workflows, and tasks** are rooted with a colon, `kdr:expenseReport`, because those names end
+ * - **Traits, cfacts, workflows, tasks and reports** are rooted with a colon, `kdr:expenseReport`, because those names end
  *   up in data, where a dot is read as a path. A client's are bare, and a colon in a client's configuration only
  *   ever *refers* to another owner's definition.
  *
@@ -57,20 +57,23 @@ enum class OwnedNameKind(val label: String) {
     workflow("workflow id"),
 
     /** A task id: a variable name, as a workflow id is. */
-    task("task id");
+    task("task id"),
+
+    /** A report id (issue #979): a variable name, as a workflow id is -- a report is run by naming it. */
+    report("report id");
 
     /** Whether [local] is a legal local part for this kind. */
     fun isLocalPart(local: String): Boolean = when (this) {
         trait -> local.isNotEmpty() && local.all { it.isAsciiLetterOrDigit() || it == '_' }
         cfact -> local.isNotEmpty() && local.all { it.isLetterOrDigit() || it == '_' || it == '.' }
-        workflow, task -> local.isVariableName()
+        workflow, task, report -> local.isVariableName()
     }
 
     /** The local-part rule, as a phrase for a refusal. */
     val localRule: String get() = when (this) {
         trait -> "letters, digits and underscores"
         cfact -> "letters, digits, underscores and dots"
-        workflow, task -> "a variable name: a letter or underscore, then letters, digits and underscores"
+        workflow, task, report -> "a variable name: a letter or underscore, then letters, digits and underscores"
     }
 }
 

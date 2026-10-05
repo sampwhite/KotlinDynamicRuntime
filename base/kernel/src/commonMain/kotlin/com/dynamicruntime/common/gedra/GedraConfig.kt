@@ -12,6 +12,9 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.report.ClientReport
+import com.dynamicruntime.common.gedra.report.ReportBuilder
+import com.dynamicruntime.common.gedra.report.parseClientReport
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -260,6 +263,12 @@ class GedraConfig(
      */
     val usages: List<ClientTraitUsage> = emptyList(),
     /**
+     * The named reports this config declares, keyed by report id (issue #979) -- the columns a client's forms are
+     * shown with. Keyed as [workflows] are, since a report is addressed by its id. A component's ids are rooted and a
+     * client's bare (#921), so a client's never shadows a global one: it sees both.
+     */
+    val reports: Map<String, ClientReport> = emptyMap(),
+    /**
      * Where this config came from (issue #839): declared in source code, or read back from the database. A
      * problem found in a stored config is judged under its own, forgiving check mode, since a boot refused over
      * stored data leaves nothing with which to repair it.
@@ -414,6 +423,31 @@ class GedraConfigBuilder(
     /** The workflows declared in this block; see [workflow]. */
     @Suppress("MemberVisibilityCanBePrivate")
     val workflows: MutableMap<String, WfDef> = LinkedHashMap()
+
+    /** The named reports declared in this block (issue #979); see [report]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val reports: MutableMap<String, ClientReport> = LinkedHashMap()
+
+    /** Declares a named report (issue #979), built through the same JSON form and parser a stored one is. */
+    fun report(reportId: String, label: String, build: ReportBuilder.() -> Unit) {
+        reportFromMap(ReportBuilder(reportId, label).apply(build).build())
+    }
+
+    /**
+     * Declares a report from its JSON form -- a stored row, or a builder's output -- validated against the definition
+     * schema. A report id declared twice in one config is refused, as a workflow id is: the second would silently
+     * replace the first.
+     */
+    fun reportFromMap(raw: Map<String, Any?>) {
+        val report = parseClientReport(cxt, raw)
+        if (report.reportId in reports) {
+            throw KdrException.mkConv(
+                "Report '${report.reportId}' is declared twice in one config. A report id names one definition within " +
+                    "its client.",
+            )
+        }
+        reports[report.reportId] = report
+    }
 
     /** The trait-usage rules declared in this block; see [traitUsage]. */
     @Suppress("MemberVisibilityCanBePrivate")
@@ -724,6 +758,7 @@ fun gedraConfig(
         uiBlocks = builder.uiBlocks.toList(),
         workflows = builder.workflows.toMap(),
         usages = builder.usages.toList(),
+        reports = builder.reports.toMap(),
         origin = origin,
         contributesTo = contributesTo,
     )
