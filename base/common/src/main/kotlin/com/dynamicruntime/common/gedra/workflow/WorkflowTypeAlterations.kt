@@ -110,7 +110,7 @@ fun withLayoutEntry(
     val alteration = types[typeName].asMap()
     val layout = alteration[SCH.layout].asMap()
     val fields = (layout[SL.schemaFields] as? List<*>).orEmpty().filter { (it as? Map<*, *>)?.get(SL.field) != field }
-        .toMutableList<Any?>()
+        .toMutableList()
     if (entry != null) fields.add(LinkedHashMap(entry).also { it[SL.field] = field })
     if (fields.isEmpty()) layout.remove(SL.schemaFields) else layout[SL.schemaFields] = fields
     if (layout.isEmpty()) alteration.remove(SCH.layout) else alteration[SCH.layout] = layout

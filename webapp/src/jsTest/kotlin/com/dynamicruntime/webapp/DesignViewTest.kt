@@ -34,8 +34,8 @@ class DesignViewTest {
                     "rainPlan" to mapOf(SCH.type to SCT.string),
                     "adminNote" to mapOf(SCH.type to SCT.string, SCH.visibleWhen to "kdr:hasAdminLevel"),
                     "total" to mapOf(SCH.type to SCT.number, SCH.derived to true),
-                    "contact" to mapOf(SCH.dRef to "#/\$defs/client.demo.Contact"),
-                    "guests" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "#/\$defs/client.demo.Contact")),
+                    "contact" to mapOf(SCH.dRef to $$"#/$defs/client.demo.Contact"),
+                    "guests" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to $$"#/$defs/client.demo.Contact")),
                     "extra" to mapOf(
                         SCH.type to SCT.kObject,
                         SCH.properties to mapOf("note" to mapOf(SCH.type to SCT.string)),
