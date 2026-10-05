@@ -280,14 +280,18 @@ body {
     color: var(--text-dim);
     letter-spacing: .02em;
 }
-.app-bar-right { position: relative; display: flex; align-items: center; gap: 8px; }
+/* `min-width: 0` lets the group shrink below its content on a narrow window (issue #1002), so the identity badge --
+   the one item that can -- cuts off with an ellipsis rather than pushing the bar's controls off screen. */
+.app-bar-right { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
 
 /* Who is signed in, in the bar rather than only inside the menu (issue #276). Quiet by default -- it is
    context, not a call to action -- and set apart when signed out, because that is the state a reader is
    most likely to have misread as "still loading". Spelled out rather than signalled by colour alone, the
-   same reasoning as `.admin-badge` above. */
+   same reasoning as `.admin-badge` above. The cap is wide enough for a short address and a sandbox user's
+   qualifier -- `chief@acme.test [acme:sandbox · Admin]` (issue #1002) -- and the badge still shrinks, cutting
+   off with an ellipsis, before it crowds the bar's other controls; the tooltip carries the whole label. */
 .identity-badge {
-    max-width: 34ch;
+    max-width: 51ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -386,6 +390,8 @@ body {
 .identity-badge.has-users:hover { background: var(--border); }
 .identity-badge.has-users .app-menu-caret { margin-left: 6px; font-size: 0.7em; }
 .user-menu { min-width: 12rem; }
+/* One line per user, however long its qualifier -- a sandbox client's id is (issue #1002). */
+.user-menu .app-menu-item { white-space: nowrap; }
 .user-menu .app-menu-item:disabled { cursor: default; }
 
 /* The ↗ affordance on a menu item whose action leaves the app (issue #493) -- a quiet trailing glyph, not a
