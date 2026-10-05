@@ -64,6 +64,32 @@ class ReportConfigTest : StringSpec({
         back.reports.getValue("odd").columns.single().path shouldBe "not a path"
     }
 
+    "a stored report that cannot be read costs only itself" {
+        val good = mapOf(
+            RDEF.reportId to "good", RDEF.label to "Good",
+            RDEF.columns to listOf(mapOf(RDEF.columnId to "a", RDEF.label to "A", RDEF.path to "user.email")),
+        )
+        // Shape the slot schema could pass but the model cannot: a report id with a space; and one missing its label.
+        val badId = good + mapOf(RDEF.reportId to "bad id")
+        val noLabel = good + mapOf(RDEF.reportId to "unlabelled") - RDEF.label
+        val entries = gedraConfigToEntries(source) + mapOf(
+            CCT.reportDef to listOf(good, badId, noLabel).map { mapOf(CCT.reportId to it[RDEF.reportId], CCT.definition to it) },
+        )
+        val back = reassembleGedraConfig(cxt, "main", "client.acme", "acme", entries)
+        // The readable report and every other slot are there; the two unreadable ones are noted, not thrown.
+        back.reports.keys.toList() shouldContainExactly listOf("good")
+        back.unreadReports.keys.toList() shouldContainExactly listOf("bad id", "unlabelled")
+        back.unreadReports.getValue("unlabelled").why shouldContain RDEF.label
+        // Written back as stored: a write of this config -- an edit of something else in it -- deletes nothing.
+        val rewritten = gedraConfigToEntries(back).getValue(CCT.reportDef)
+        rewritten.map { it[CCT.reportId] } shouldContainExactly listOf("good", "bad id", "unlabelled")
+        rewritten.single { it[CCT.reportId] == "unlabelled" }[CCT.definition] shouldBe noLabel
+        // A source config's mistakes still refuse the build.
+        shouldThrow<KdrException> { clientConfig { report("bad id", "Bad") { column("a", "A", "user.email") } } }
+        // A sandbox's copy carries the note, so its load reports it too.
+        SandboxConfigs.rebind(back).unreadReports.keys shouldBe back.unreadReports.keys
+    }
+
     "a report id declared twice in one config is refused" {
         shouldThrow<KdrException> {
             clientConfig {

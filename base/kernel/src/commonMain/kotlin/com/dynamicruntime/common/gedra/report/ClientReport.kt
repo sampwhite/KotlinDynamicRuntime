@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.isOwnedName
+import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
@@ -54,8 +55,8 @@ class ReportColumn(
     val kind: ReportKind? = null,
     val combine: ReportCombine? = null,
     val rollup: ReportCombine? = null,
-) {
-    fun toJsonMap(): Map<String, Any?> = buildMap {
+) : JsonMappable {
+    override fun toJsonMap(): Map<String, Any?> = buildMap {
         put(RDEF.columnId, columnId)
         put(RDEF.label, label)
         put(RDEF.path, path)
@@ -84,7 +85,7 @@ class ClientReport(
     val description: String? = null,
     val groupBy: List<String> = emptyList(),
     val excludeEmpty: List<String> = emptyList(),
-) {
+) : JsonMappable {
     init {
         if (!isOwnedName(OwnedNameKind.report, reportId)) {
             throw KdrException.mkConv(
@@ -94,7 +95,7 @@ class ClientReport(
     }
 
     /** The definition as its JSON form: what a stored configuration keeps, and what [parseClientReport] reads. */
-    fun toJsonMap(): Map<String, Any?> = buildMap {
+    override fun toJsonMap(): Map<String, Any?> = buildMap {
         put(RDEF.reportId, reportId)
         put(RDEF.label, label)
         description?.let { put(RDEF.description, it) }
@@ -105,6 +106,14 @@ class ClientReport(
 
     override fun toString(): String = reportId
 }
+
+/**
+ * A stored report definition that could not be read (issue #979), kept **as stored**: [definition] verbatim under its
+ * slot key [slotKey], and [why] it was refused. Kept, not dropped, because every write of a stored config rebuilds it
+ * and serializes it again -- a definition dropped on reading would be deleted from storage by the next edit of
+ * anything else in the config (a copy change, a menu label). Kept, it round-trips untouched until someone fixes it.
+ */
+class UnreadReport(val slotKey: String, val definition: Map<String, Any?>, val why: String)
 
 /**
  * The schema a report definition is validated against before it becomes a [ClientReport] (issue #979): one set of

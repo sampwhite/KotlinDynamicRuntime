@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.Parsed
+import com.dynamicruntime.common.schema.JsonMappable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -49,6 +50,9 @@ class ClientReportTest {
         // The JSON form is the one the parser reads: the round trip is exact.
         assertEquals(raw, report.toJsonMap())
         assertEquals(raw, parseClientReport(cxt, report.toJsonMap()).toJsonMap())
+        // Both are JsonMappable, as the house rule asks of a class that hosts its own serialization.
+        assertIs<JsonMappable>(report)
+        assertIs<JsonMappable>(report.columns.first())
     }
 
     @Test

@@ -13,8 +13,13 @@ import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.report.ClientReport
+import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.ReportBuilder
+import com.dynamicruntime.common.gedra.report.UnreadReport
+import com.dynamicruntime.common.gedra.report.clientReportResult
 import com.dynamicruntime.common.gedra.report.parseClientReport
+import com.dynamicruntime.common.util.Parsed
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -269,6 +274,14 @@ class GedraConfig(
      */
     val reports: Map<String, ClientReport> = emptyMap(),
     /**
+     * The report definitions a **stored** config holds that could not be read, by slot key (issue #979). A report is
+     * presentation, so one that no longer parses -- a combine a later release renamed, a hand edit -- costs only
+     * itself: it is left out of [reports] and the loader reports it, rather than failing the whole config and the
+     * client definition with it. Kept verbatim and written back on every write ([UnreadReport]), so an edit of
+     * anything else never deletes it. Always empty for a source config, whose mistakes refuse the build.
+     */
+    val unreadReports: Map<String, UnreadReport> = emptyMap(),
+    /**
      * Where this config came from (issue #839): declared in source code, or read back from the database. A
      * problem found in a stored config is judged under its own, forgiving check mode, since a boot refused over
      * stored data leaves nothing with which to repair it.
@@ -447,6 +460,27 @@ class GedraConfigBuilder(
             )
         }
         reports[report.reportId] = report
+    }
+
+    /** The stored report definitions that could not be read (issue #979); see [storedReportFromMap]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val unreadReports: MutableMap<String, UnreadReport> = LinkedHashMap()
+
+    /**
+     * [reportFromMap] for a definition read back from a **stored** row under [slotKey]: one that does not parse is
+     * kept in [unreadReports] as stored rather than thrown, so it costs only itself (see `GedraConfig.unreadReports`).
+     */
+    fun storedReportFromMap(raw: Map<String, Any?>, slotKey: String?) {
+        val key = slotKey?.ifEmpty { null } ?: raw[RDEF.reportId].toOptStr()?.ifEmpty { null }
+            ?: "(report ${reports.size + unreadReports.size + 1})"
+        when (val parsed = clientReportResult(cxt, raw)) {
+            is Parsed.Ok -> if (parsed.value.reportId in reports) {
+                unreadReports[key] = UnreadReport(key, raw, "it is declared twice in one config")
+            } else {
+                reports[parsed.value.reportId] = parsed.value
+            }
+            is Parsed.Failed -> unreadReports[key] = UnreadReport(key, raw, parsed.problems.joinToString("; ") { it.message })
+        }
     }
 
     /** The trait-usage rules declared in this block; see [traitUsage]. */
@@ -759,6 +793,7 @@ fun gedraConfig(
         workflows = builder.workflows.toMap(),
         usages = builder.usages.toList(),
         reports = builder.reports.toMap(),
+        unreadReports = builder.unreadReports.toMap(),
         origin = origin,
         contributesTo = contributesTo,
     )

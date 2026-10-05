@@ -80,6 +80,9 @@ object GCEL {
 
     /** A Markdown fragment overlay. */
     const val fragment = "fragment"
+
+    /** A named report (issue #979). */
+    const val report = "report"
 }
 
 /**

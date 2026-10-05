@@ -68,6 +68,7 @@ object SandboxConfigs {
             workflows = config.workflows,
             usages = config.usages,
             reports = config.reports,
+            unreadReports = config.unreadReports,
             origin = config.origin,
             inheritedFrom = config.inheritedFrom,
         )
