@@ -76,7 +76,7 @@ class BundleRowsTest {
     @Test
     fun theCopyEditorsHintSaysWhichSyntaxTheFileTakes() {
         val frontend = copySyntaxHint(FragmentAudience.frontend.name)
-        assertTrue("\${user.publicName}" in frontend)
+        assertTrue($$"${user.publicName}" in frontend)
         assertTrue("%{...} is refused" in frontend)
         val backend = copySyntaxHint(FragmentAudience.backend.name)
         assertTrue("resolved on the server" in backend)

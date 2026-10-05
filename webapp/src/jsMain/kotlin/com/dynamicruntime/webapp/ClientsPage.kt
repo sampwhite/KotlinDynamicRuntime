@@ -58,6 +58,7 @@ private val clientsScope = MainScope()
  * so a deep link works before the listing has loaded and a client this node does not carry still shows what the
  * listing knows above the retrieve's honest 404. Editing a client and designing its workflows (#903) will open here.
  */
+@Suppress("UnnecessaryVariable")
 val ClientsPage = FC<Props> {
     var config by useState<HomeConfig?>(null)
     var rows by useState<List<ClientOverview>?>(null)
