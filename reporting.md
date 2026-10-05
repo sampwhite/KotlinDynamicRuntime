@@ -146,7 +146,7 @@ and excludeEmpty, and how many forms were scanned and excluded — so an automat
 
 The **Reports page** in the webapp (`#page=reports`) is these two endpoints with a table over them, and its
 **Download CSV** is the cursor walked to the end in the browser: the whole run as set up, saved as one file, or
-nothing at all if a page fails part-way.
+nothing at all if a page fails part-way. Times in the file are UTC, written `yyyy-MM-dd HH:mm:ss`.
 
 ### What the cursor guarantees
 

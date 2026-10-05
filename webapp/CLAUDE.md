@@ -469,8 +469,10 @@ pure half -- parsers, the run's query, the table's columns, a cell's text, the p
   the run as set up from its first page at `reportDownloadPageSize` (500), following `next` to the end, and
   `reportCsv` writes it -- there is no export endpoint. The walk asks `stillWanted` around every page, so changing
   the report or a control abandons it; **a failure part-way saves nothing**, since part of a run would pass for
-  the whole. In the file a detail run leads with the form id, a number is in full, a timestamp is ISO, nothing is
-  an empty field, and text beginning `= + - @` gets a leading apostrophe (`csvSafeText`): a report's text is
+  the whole, and so does leaving the page (a cleanup bumps the token, since the walk's scope outlives the
+  component). In the file a detail run leads with the form id, a number is in full, a UTC timestamp is written
+  `yyyy-MM-dd HH:mm:ss` (`csvTimestamp`; the ISO form is one spreadsheets leave as text), nothing is an empty
+  field, and a cell beginning `= + - @` gets a leading apostrophe (`csvSafeText`, applied once per cell): a report's text is
   whatever somebody typed into a form, and a spreadsheet would run it as a formula. `walkReportRun` is `suspend`,
   and its tests return `GlobalScope.promise { … }`, which the Node runner awaits -- the way to test suspend logic
   here without a coroutine test library.

@@ -5,7 +5,9 @@ import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.gedra.report.ReportMode
 import com.dynamicruntime.common.home.HMENU
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
@@ -26,6 +28,7 @@ import react.dom.html.ReactHTML.thead
 import react.dom.html.ReactHTML.tr
 import react.dom.html.ReactHTML.ul
 import react.useEffect
+import react.useEffectOnce
 import react.useRef
 import react.useState
 import web.cssom.ClassName
@@ -183,6 +186,17 @@ val ReportsPage = FC<Props> {
         latestDownload.current = (latestDownload.current ?: 0) + 1
         download = null
     }
+    // Leaving the page abandons it too: the walk runs in a scope that outlives the component, so without this it
+    // would go on fetching behind another page and save its file there.
+    // The effect's scope is cancelled when the component goes, so the tear-down is the house idiom: suspend until
+    // cancelled, then act in `finally`.
+    useEffectOnce {
+        try {
+            awaitCancellation()
+        } finally {
+            latestDownload.current = (latestDownload.current ?: 0) + 1
+        }
+    }
 
     fun startDownload() {
         val id = reportId ?: return
@@ -190,7 +204,8 @@ val ReportsPage = FC<Props> {
         latestDownload.current = token
         val key = pagingKey
         val runSetup = setup
-        download = ReportDownload(key, 0, runPage?.numAvailable ?: 0)
+        // The total is unknown until the walk's own first page says: the page on screen may be of an older moment.
+        download = ReportDownload(key, 0, 0)
         reportsScope.launch {
             try {
                 val whole = ReportsApi.runAll(
@@ -201,8 +216,18 @@ val ReportsPage = FC<Props> {
                 saveTextFile(reportCsvFileName(id, runSetup.mode), "text/csv;charset=utf-8", reportCsv(whole))
                 if (latestDownload.current == token) download = null
             } catch (e: Throwable) {
-                // Part of a run would pass for the whole of it, so a walk that fails saves nothing and says so.
-                if (latestDownload.current == token) download = ReportDownload(key, 0, 0, userFacingError(e))
+                if (e is CancellationException) throw e
+                // Part of a run would pass for the whole of it, so a walk that fails saves nothing and says so. A
+                // request that failed is said as one; anything else -- a cursor that never ended, a fault putting
+                // the file together -- is a defect, and "the server could not be reached, try again" would send
+                // the user round the same loop.
+                val shown = if (e is ApiError || e is ApiFailure) {
+                    userFacingError(e)
+                } else {
+                    console.error("$errorLogPrefix report download failed", e)
+                    DisplayError("The download could not be completed: ${e.message ?: "an unexpected fault"}.", DisplayError.Kind.fault)
+                }
+                if (latestDownload.current == token) download = ReportDownload(key, 0, 0, shown)
             }
         }
     }
@@ -469,7 +494,7 @@ private fun ChildrenBuilder.reportDownload(download: ReportDownload?, start: () 
             onClick = start
             +(if (walking) reportDownloadProgressText(download!!.fetched, download.total) else "Download CSV")
         }
-        download?.error?.let { errorText("The download failed part-way, so nothing was saved.", it) }
+        download?.error?.let { errorText("Nothing was saved.", it) }
     }
 }
 

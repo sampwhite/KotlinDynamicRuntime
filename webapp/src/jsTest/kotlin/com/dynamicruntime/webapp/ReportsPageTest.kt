@@ -282,8 +282,8 @@ class ReportsPageTest {
         assertEquals(
             listOf(
                 "Form,Auditor,Total,Tags,Visited",
-                // A comma is quoted; a number is written in full; a list is joined; a timestamp stays ISO.
-                "gd.fd.acme.a,\"Smith, J\",52.1428571,a; b,2026-10-05T18:47:50.836Z",
+                // A comma is quoted; a number is written in full; a list is joined; a timestamp as a spreadsheet reads one.
+                "gd.fd.acme.a,\"Smith, J\",52.1428571,a; b,2026-10-05 18:47:50",
                 // A quote is doubled; a whole number has no fraction; an empty list and a day.
                 "gd.fd.acme.b,\"The \"\"Lee\"\"\",50,,2024-03-05",
                 // A line break is kept inside quotes; nothing is an empty field.
@@ -319,9 +319,31 @@ class ReportsPageTest {
         assertEquals("-12.5", reportCsvCell(-12.5))
         assertEquals("a=b", reportCsvCell("a=b"))
         assertEquals("true", reportCsvCell(true))
-        // Within a list too, since the joined cell begins with its first element.
+        // A list is guarded once, as the cell it becomes: its first character is what a spreadsheet reads, and a
+        // later element is left as it was entered.
         assertEquals("'=x; y", reportCsvCell(listOf("=x", "y")))
-        assertEquals(reportDownloadProgressText(500, 1200), "Fetched 500 of 1200\u2026")
+        assertEquals("north; -urgent", reportCsvCell(listOf("north", "-urgent")))
+        assertEquals("'-5; 3", reportCsvCell(listOf(-5, 3)))
+        assertEquals("Fetched 500 of 1200\u2026", reportDownloadProgressText(500, 1200))
+        // Before the first page has said how many there are, no count is claimed.
+        assertEquals("Fetching\u2026", reportDownloadProgressText(0, 0))
+    }
+
+    @Test
+    fun aTimestampIsWrittenAsASpreadsheetReadsOne() {
+        assertEquals("2026-10-05 18:47:50", csvTimestamp("2026-10-05T18:47:50.836Z"))
+        assertEquals("2026-10-05 18:47:50", csvTimestamp("2026-10-05T18:47:50Z"))
+        // A day, a time with another offset, and anything that is not a timestamp are left as they are.
+        assertEquals("2024-03-05", csvTimestamp("2024-03-05"))
+        assertEquals("2026-10-05T18:47:50+02:00", csvTimestamp("2026-10-05T18:47:50+02:00"))
+        assertEquals("soon", csvTimestamp("soon"))
+        // Only a date column is rewritten: text that merely looks like a timestamp is somebody's text.
+        assertEquals("2026-10-05T18:47:50.836Z", reportCsvCell("2026-10-05T18:47:50.836Z", ReportKind.string.name))
+        assertEquals("2026-10-05 18:47:50", reportCsvCell("2026-10-05T18:47:50.836Z", ReportKind.date.name))
+        // The page and the file agree on what a whole number is.
+        assertEquals("50", wholeNumberTextOrNull(50.0))
+        assertNull(wholeNumberTextOrNull(50.5))
+        assertNull(wholeNumberTextOrNull(1.5e17))
     }
 
     private fun pageOf(ids: List<String>, next: String?, total: Int) = ReportRunPage(
