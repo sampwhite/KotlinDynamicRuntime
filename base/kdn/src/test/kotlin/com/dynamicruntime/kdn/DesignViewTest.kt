@@ -1,10 +1,14 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.gedra.DesignView
@@ -15,8 +19,11 @@ import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.simulation.DesignDemo
 import com.dynamicruntime.common.simulation.designDemoConfig
 import com.dynamicruntime.common.user.TestUser
@@ -42,6 +49,7 @@ class DesignViewTest : StringSpec({
     val user = TestUser.create(cxt, "member@$client.test", userClient = client)
     val viewPath = clientPath(GEP.workflowView, client)
     val design = mapOf(EP.view to DSV.design)
+    val nameType = "kdr.core.NameData"
 
     fun typesOf(view: Map<String, Any?>): Map<String, Map<String, Any?>> =
         view[DSV.designBlock].toJsonMapOrEmpty()[DSV.types].toJsonMapOrEmpty().mapValues { it.value.toJsonMapOrEmpty() }
@@ -70,28 +78,27 @@ class DesignViewTest : StringSpec({
         workflow[DSV.key] shouldBe DesignDemo.requestWorkflow
         workflow[DSV.origin] shouldBe DesignOrigin.stored.name
         workflow[DSV.config] shouldBe DesignDemo.configName
-        workflow[DSV.editable] shouldBe true
 
         val types = typesOf(admin.getData(viewPath, design))
         // The request's inline data type belongs to its trait's declaration, under `dataSchema`...
         val request = types.values.single { it[DSV.key] == DesignDemo.eventRequest }
         request[DSV.slot] shouldBe CCT.traitDef
         request[DSV.path] shouldBe CCT.dataSchema
-        request[DSV.editable] shouldBe true
+        request[DSV.origin] shouldBe DesignOrigin.stored.name
+        request.containsKey(DSV.alteredBy) shouldBe false
         // ...the shared contact type is a schema entry of its own...
         val contact = types.getValue("client.$client.${DesignDemo.contactType}")
         contact[DSV.slot] shouldBe CCT.schemaDef
         contact[DSV.origin] shouldBe DesignOrigin.stored.name
-        // ...and the global name trait is shown, but not as the client's to edit.
+        // ...and the global name trait is shown as shared, which this client does not alter.
         val name = types.values.single { it[DSV.key] == GT.name }
         name[DSV.origin] shouldBe DesignOrigin.global.name
-        name[DSV.editable] shouldBe false
+        name.containsKey(DSV.alteredBy) shouldBe false
     }
 
     "the definition read returns a stored trait's authored entry, with its bundle's revision" {
         val d = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))
         d[DSV.origin] shouldBe DesignOrigin.stored.name
-        d[DSV.editable] shouldBe true
         d[DSV.version] shouldBe 1
         d[DSV.published] shouldBe false
         val entry = d[DSV.entry].toJsonMapOrEmpty()
@@ -111,7 +118,6 @@ class DesignViewTest : StringSpec({
 
         val name = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to GT.name))
         name[DSV.origin] shouldBe DesignOrigin.global.name
-        name[DSV.editable] shouldBe false
         name.containsKey(DSV.version) shouldBe false
     }
 
@@ -130,6 +136,55 @@ class DesignViewTest : StringSpec({
         )
         missing.toString() shouldContain "noSuchTrait"
         user.expectError(403, DSV.definition, args = mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))
+    }
+
+    "a shared type the client alters is credited to where it is declared, with the alteration beside it" {
+        // A client whose stored configuration rewords the global name trait's data type (issue #1013).
+        val altering = "altersName1013"
+        val config = gedraConfig(cxt, "names", clientNamespace(altering), altering) {
+            defineClient(
+                ClientDef(
+                    clientId = altering, name = altering, usageType = ClientUsageType.dev,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    includedTraits = listOf(GT.name),
+                ),
+            )
+            // Copy only: a client may reword a shared type's layout freely.
+            type(nameType) { layout { field("name", label = "Your name") } }
+            workflow("make", WfEntry.creation) {
+                task("ask", "Ask") {
+                    trait(GT.name)
+                    save("create", "Create")
+                }
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", altering), config)
+        GedraConfigReload.reloadClient(cxt, altering)
+        val alteringAdmin = TestUser.create(cxt, "designer@$altering.test", level = ROLE.admin, userClient = altering)
+
+        // On the page: declared by the global trait, altered by this client's stored config.
+        val view = alteringAdmin.getData(clientPath(GEP.workflowView, altering), design)
+        val address = typesOf(view).getValue(nameType)
+        address[DSV.slot] shouldBe CCT.traitDef
+        address[DSV.key] shouldBe GT.name
+        address[DSV.origin] shouldBe DesignOrigin.global.name
+        address[DSV.alteredBy].toJsonMapOrEmpty() shouldBe mapOf(DSV.origin to DesignOrigin.stored.name, DSV.config to "names")
+
+        // The definition read: the trait as declared, and the alteration's own authored body beside it.
+        val d = alteringAdmin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to GT.name))
+        d[DSV.origin] shouldBe DesignOrigin.global.name
+        d[DSV.entry].toJsonMapOrEmpty()[CCT.dataSchema].toString() shouldContain "maxLength"
+        val altered = d[DSV.alteredBy].toJsonMapOrEmpty()
+        altered[DSV.config] shouldBe "names"
+        altered[DSV.key] shouldBe nameType
+        altered[DSV.entry].toString() shouldContain "Your name"
+        // Its bundle is the client's own stored one, so its revision is said.
+        d[DSV.version] shouldBe 1
+
+        // Asked by the type's name, the same: the trait that declares it, and the alteration.
+        val viaType = alteringAdmin.getItem(DSV.definition, mapOf(DSV.slot to CCT.schemaDef, DSV.key to nameType))
+        viaType[DSV.key] shouldBe GT.name
+        viaType[DSV.alteredBy].toJsonMapOrEmpty()[DSV.config] shouldBe "names"
     }
 
     "where a definition was declared follows its config" {

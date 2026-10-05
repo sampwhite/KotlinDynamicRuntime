@@ -216,7 +216,8 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 +"This part of the page has no definition the backend could name."
             }
         } else {
-            definitionSection(address, definition, selected)
+            // Yes or no on editing is the block's decision, and only a field has an edit to offer (issue #1013).
+            definitionSection(address, definition, selected, editable = design.canEdit.takeIf { selected is DesignTarget.Field })
         }
     }
 }
@@ -286,7 +287,13 @@ private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: Sch
 }
 
 /** Where the selection's definition lives, and its authored JSON -- the part at the address, then the whole entry. */
-private fun ChildrenBuilder.definitionSection(address: DesignAddress, loaded: LoadedDefinition?, selected: DesignTarget?) {
+private fun ChildrenBuilder.definitionSection(
+    address: DesignAddress,
+    loaded: LoadedDefinition?,
+    selected: DesignTarget?,
+    /** Whether the selection can be edited here, for the pill; null when it has no edit to offer. */
+    editable: Boolean?,
+) {
     h3 { +"Definition" }
     p {
         className = ClassName("dv-address")
@@ -294,11 +301,13 @@ private fun ChildrenBuilder.definitionSection(address: DesignAddress, loaded: Lo
     }
     div {
         className = ClassName("dv-origin")
-        span {
-            className = ClassName(if (address.editable) "dv-pill dv-pill-own" else "dv-pill")
-            +(if (address.editable) "Editable here" else "Read-only here")
+        editable?.let { yes ->
+            span {
+                className = ClassName(if (yes) "dv-pill dv-pill-own" else "dv-pill")
+                +(if (yes) "Editable here" else "Read-only here")
+            }
         }
-        span { +originText(address) }
+        span { +provenanceText(address) }
     }
     val response = loaded?.response
     when {
@@ -326,6 +335,13 @@ private fun ChildrenBuilder.definitionSection(address: DesignAddress, loaded: Lo
                 if (address.path == null) asDynamic()["open"] = true
                 summary { +"The whole ${slotWord(address.slot)} entry" }
                 jsonBlock(null, entry)
+            }
+            // The client's own alteration of a shared definition (issue #1013): its authored body, as written.
+            (response[DSV.alteredBy] as? Map<*, *>)?.toJsonMapOrEmpty()?.let { altered ->
+                details {
+                    summary { +("This client's alteration" + altered[DSV.config].toOptStr()?.let { " ($it)" }.orEmpty()) }
+                    jsonBlock(null, altered[DSV.entry])
+                }
             }
         }
     }

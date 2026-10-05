@@ -46,8 +46,13 @@ object DSV {
     /** The configuration that declares it -- a stored bundle's name, or a source config's; absent for core code. */
     const val config = "config"
 
-    /** Whether the definition can be edited in place: true only for one in the client's own stored configuration. */
-    const val editable = "editable"
+    /**
+     * On an address, when the client's own configuration alters a shared definition (issue #1013): that config,
+     * as `{ origin, config }`. A definition is at most a shared declaration plus one client alteration -- within a
+     * client a later declaration replaces an earlier one -- so this is one layer, not a list. In the definition read
+     * it also carries the alteration's own authored entry, under [entry].
+     */
+    const val alteredBy = "alteredBy"
 
     // --- the definition read ---
 
@@ -79,6 +84,9 @@ object DSV {
      */
     const val editRefusal = "editRefusal"
 
+    /** In the block, beside [editRefusal]: which of the [DesignRefusal] reasons it is, by name. */
+    const val editRefusalCode = "editRefusalCode"
+
     /**
      * In the block, and sent back with an edit: a stamp of the workflow definition the page was drawn from. An edit
      * based on a definition that has since changed is refused rather than overwriting the change.
@@ -107,12 +115,25 @@ object DSV {
 }
 
 /**
- * Where a definition shown in Design View was declared (issue #972) -- which decides whether it can be edited in
- * place. Named for the reader of the inspector, not for the loader's mechanics.
+ * Why Design View offers no edit of a workflow's copy (issue #1013): a closed set, so a refusal is one of a few known
+ * reasons -- each with its sentence -- rather than whatever a new check happens to say.
+ */
+@Suppress("EnumEntryName")
+enum class DesignRefusal {
+    /** The workflow is declared in source, or globally: there is no stored definition here to write its copy to. */
+    declaredInSource,
+
+    /** The client runs its published configuration, so a saved change would not show on the page until published. */
+    publishedOnly,
+}
+
+/**
+ * Where a definition shown in Design View was declared (issue #972), named for the reader of the inspector, not for
+ * the loader's mechanics. What may be edited is the block's to say (`canEdit`), not the origin's.
  */
 @Suppress("EnumEntryName")
 enum class DesignOrigin {
-    /** In the client's own **stored** configuration: editable in place. */
+    /** In the client's own **stored** configuration. */
     stored,
 
     /** In configuration declared in **source** for this client: changing it means changing code. */

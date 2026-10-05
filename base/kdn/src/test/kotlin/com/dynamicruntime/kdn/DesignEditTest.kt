@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.DesignRefusal
 import com.dynamicruntime.common.gedra.DesignView
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GEP
@@ -231,9 +232,9 @@ class DesignEditTest : StringSpec({
         }
         val clientCxt = cxt.mkSubContext("setup", client)
         for (declared in listOf(declaredIn(client, clientNamespace(client)), declaredIn("global", "kdr.inCode984"))) {
-            val refusal = DesignView.editRefusal(clientCxt, declared).orEmpty()
-            refusal shouldContain "declared in source"
-            refusal shouldContain "copy overrides"
+            val refusal = DesignView.editRefusal(clientCxt, declared)
+            refusal?.code shouldBe DesignRefusal.declaredInSource
+            refusal?.message.orEmpty() shouldContain "copy overrides"
         }
     }
 
@@ -260,7 +261,9 @@ class DesignEditTest : StringSpec({
         GedraConfigService.get(cxt).publish(parentCxt, GedraId.of(GedraConfigType.configDoc, parent, "main"))
         GedraConfigReload.reloadClient(cxt, parent)
         val declared = WorkflowService.get(cxt).forClient(parent).workflow("make")!!
-        DesignView.editRefusal(parentCxt, declared).orEmpty() shouldContain "edit it from its sandbox"
+        val refusal = DesignView.editRefusal(parentCxt, declared)
+        refusal?.code shouldBe DesignRefusal.publishedOnly
+        refusal?.message.orEmpty() shouldContain "edit it from its sandbox"
     }
 
     "a client that runs its published configuration cannot edit here, and says why" {
@@ -268,6 +271,7 @@ class DesignEditTest : StringSpec({
         try {
             block(requestView())[DSV.canEdit] shouldBe false
             // Published-only by the administrator's choice, not by a sandbox: there is none to send anyone to.
+            block(requestView())[DSV.editRefusalCode] shouldBe DesignRefusal.publishedOnly.name
             block(requestView())[DSV.editRefusal].toOptStr().orEmpty() shouldContain "it has no sandbox to preview an edit in"
             val refused = admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to "Nope")))
             refused.toString() shouldContain "runs its published configuration"
@@ -276,5 +280,6 @@ class DesignEditTest : StringSpec({
         }
         block(requestView())[DSV.canEdit] shouldNotBe false
         block(requestView()).containsKey(DSV.editRefusal) shouldBe false
+        block(requestView()).containsKey(DSV.editRefusalCode) shouldBe false
     }
 })

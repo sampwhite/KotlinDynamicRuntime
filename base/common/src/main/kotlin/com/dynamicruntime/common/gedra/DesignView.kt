@@ -56,14 +56,36 @@ object DesignView {
     }
 
     /** [slot], [key] and (when given) [path], with where [config] declared it: the shape every address takes. */
-    fun address(slot: String, key: String, path: String?, config: GedraConfig?): Map<String, Any?> {
-        val origin = originOf(config)
+    fun address(slot: String, key: String, path: String?, config: GedraConfig?): MutableMap<String, Any?> {
         val out = linkedMapOf<String, Any?>(DSV.slot to slot, DSV.key to key)
         path?.let { out[DSV.path] = it }
-        out[DSV.origin] = origin.name
-        config?.let { out[DSV.config] = it.name }
-        out[DSV.editable] = origin == DesignOrigin.stored
+        out.putAll(layer(config))
         return out
+    }
+
+    /** Where [config] puts a definition, as `{ origin, config }`: an address's own, or its [DSV.alteredBy]. */
+    private fun layer(config: GedraConfig?): Map<String, Any?> = buildMap {
+        put(DSV.origin, originOf(config).name)
+        config?.let { put(DSV.config, it.name) }
+    }
+
+    /** The config that declares a type, and the client config that alters it, when one does (see [typeLayers]). */
+    private class TypeLayers(val declaredBy: GedraConfig?, val alteredBy: GedraConfig?)
+
+    /**
+     * Where [typeName] comes from for [client] (issue #1013). A type the global document holds is **declared**
+     * there -- by a global config, or by a component's code, which no config holds -- and a client config
+     * contributing the same name **alters** it. Any other type is the client's own, declared by its config. Within a
+     * client a later declaration replaces an earlier one, so there is at most one alteration.
+     */
+    private fun typeLayers(cxt: KdrCxt, client: String, typeName: String): TypeLayers {
+        val schema = SchemaService.get(cxt)
+        val own = schema.clientConfigOfType(client, typeName)
+        return if (typeName in schema.schemaStore.defs) {
+            TypeLayers(schema.globalConfigOfType(typeName), own)
+        } else {
+            TypeLayers(own, null)
+        }
     }
 
     /**
@@ -72,16 +94,20 @@ object DesignView {
      * A trait's generated types -- its entry type and its inline data type -- belong to the **trait's** declaration
      * (the `traitDef` entry, where the data type is written under `dataSchema`), since that is what an author
      * edits. Any other type is a `schemaDef` entry of its own, its body under `schema`. A type no config declares
-     * (one from a component's code) is global, with no config to name.
+     * (one from a component's code) is global, with no config to name. The address names where the type is
+     * **declared**; a client config altering a shared type rides beside it as [DSV.alteredBy] (issue #1013).
      */
     fun typeAddress(cxt: KdrCxt, client: String, typeName: String): Map<String, Any?> {
-        val config = SchemaService.get(cxt).configOfType(client, typeName)
+        val layers = typeLayers(cxt, client, typeName)
+        val config = layers.declaredBy
         val trait = config?.let { traitGenerating(it, typeName) }
-        return when {
+        val out = when {
             trait == null -> address(CCT.schemaDef, typeName, CCT.schema, config)
             trait.typeName == typeName -> address(CCT.traitDef, trait.traitId, null, config)
             else -> address(CCT.traitDef, trait.traitId, CCT.dataSchema, config)
         }
+        layers.alteredBy?.let { out[DSV.alteredBy] = layer(it) }
+        return out
     }
 
     /** The trait of [config] that generates [typeName] -- as its entry type or its inline data type -- or null. */
@@ -110,7 +136,10 @@ object DesignView {
             DSV.canEdit to (refusal == null),
             DSV.basedOn to workflowDefStamp(declared.def),
         )
-        if (refusal != null) out[DSV.editRefusal] = refusal
+        if (refusal != null) {
+            out[DSV.editRefusal] = refusal.message
+            out[DSV.editRefusalCode] = refusal.code.name
+        }
         val edits = layoutEdits(declared, clientStore, store)
         if (edits.isNotEmpty()) out[DSV.layoutEdits] = edits
         return out
@@ -154,12 +183,15 @@ object DesignView {
      * published-only client does not. Its edits are previewed in its sandbox when it has one -- but published-only is
      * also a tier an administrator sets on its own, and then there is no sandbox to send anyone to.
      */
-    fun editRefusal(cxt: KdrCxt, declared: WfDeclared): String? {
+    fun editRefusal(cxt: KdrCxt, declared: WfDeclared): EditRefusal? {
         val bundle = declared.bundle
         if (!bundle.isStored || bundle.gedraId.client != cxt.client) {
-            return "Workflow '${declared.def.workflowId}' is declared in source, not in this client's stored configuration, so copy " +
-                "just for this workflow cannot be saved here yet. Copy it pulls from a fragment file can be changed in the client's " +
-                "copy overrides, for every workflow that uses it."
+            return EditRefusal(
+                DesignRefusal.declaredInSource,
+                "Workflow '${declared.def.workflowId}' is declared in source, not in this client's stored configuration, so copy " +
+                    "just for this workflow cannot be saved here yet. Copy it pulls from a fragment file can be changed in the " +
+                    "client's copy overrides, for every workflow that uses it.",
+            )
         }
         val configs = GedraConfigService.get(cxt)
         if (!isSandboxClient(cxt.client) && configs.publishedOnly(cxt, cxt.client)) {
@@ -168,7 +200,10 @@ object DesignView {
             } else {
                 "it has no sandbox to preview an edit in"
             }
-            return "Client '${cxt.client}' runs its published configuration, so a change would not show here until published; $where."
+            return EditRefusal(
+                DesignRefusal.publishedOnly,
+                "Client '${cxt.client}' runs its published configuration, so a change would not show here until published; $where.",
+            )
         }
         return null
     }
@@ -190,7 +225,7 @@ object DesignView {
     ): String {
         val declared = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
             ?: throw KdrException("No workflow '$workflowId' for client '${cxt.client}'.", code = EXC.notFound)
-        editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it) }
+        editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it.message) }
         val inherited = layoutEntryOf(SchemaService.get(cxt).storeFor(cxt.client), typeName, field)
         val writeCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
         val configId = GedraId.of(GedraConfigType.configDoc, writeCxt.client, declared.bundle.name)
@@ -224,7 +259,9 @@ object DesignView {
      * definition's origin, so an inherited one reads in the same shape as the client's own.
      *
      * A `schemaDef` address naming a type a trait generates resolves to that trait's `traitDef` entry, the thing
-     * actually authored; the returned address says so.
+     * actually authored; the returned address says so. When a client config alters the shared type -- a global
+     * type, or a global trait's generated type -- the alteration's own authored entry rides beside the declaration's
+     * under [DSV.alteredBy] (issue #1013), so every layer behind what the page draws can be read.
      */
     fun definition(cxt: KdrCxt, slot: String, key: String): Map<String, Any?> {
         val client = cxt.client
@@ -232,42 +269,60 @@ object DesignView {
         fun notFound(): Nothing =
             throw KdrException("No $slot definition '$key' for client '$client'.", code = EXC.notFound)
 
-        val (addr, config, entry) = when (slot) {
+        // The client config altering a shared type, with the type's name, when one does.
+        fun alterationOf(vararg typeNames: String?): Pair<String, GedraConfig>? = typeNames.filterNotNull()
+            .firstNotNullOfOrNull { t -> typeLayers(cxt, client, t).alteredBy?.let { t to it } }
+
+        val read = when (slot) {
             CCT.traitDef -> {
                 val config = schema.configOfTrait(client, key) ?: notFound()
                 val trait = config.traits[key] ?: notFound()
-                Triple(address(slot, key, null, config), config, traitToEntry(config, trait))
+                Read(
+                    address(slot, key, null, config), config, traitToEntry(config, trait),
+                    alterationOf(trait.typeName, inlineDataTypeName(config, trait)),
+                )
             }
             CCT.schemaDef -> {
-                val config = schema.configOfType(client, key)
+                val layers = typeLayers(cxt, client, key)
+                val config = layers.declaredBy
                 val trait = config?.let { traitGenerating(it, key) }
+                val altered = layers.alteredBy?.let { key to it }
                 when {
-                    trait != null ->
-                        Triple(typeAddress(cxt, client, key), config, traitToEntry(config, trait))
+                    trait != null -> Read(typeAddress(cxt, client, key), config, traitToEntry(config, trait), altered)
                     config != null ->
-                        Triple(address(slot, key, null, config), config, schemaEntry(key, config.defs[key] ?: notFound()))
+                        Read(address(slot, key, null, config), config, schemaEntry(key, config.defs[key] ?: notFound()), altered)
                     else -> {
-                        val body = schema.storeFor(client).defs[key] ?: notFound()
-                        Triple(address(slot, key, null, null), null, schemaEntry(key, body))
+                        // Declared in a component's code: its body is the global document's, before any alteration.
+                        val body = schema.schemaStore.defs[key] ?: schema.storeFor(client).defs[key] ?: notFound()
+                        Read(address(slot, key, null, null), null, schemaEntry(key, body), altered)
                     }
                 }
             }
             CCT.workflowDef -> {
                 val declared = WorkflowService.get(cxt).forClient(client).workflow(key) ?: notFound()
                 val entry = linkedMapOf(CCT.workflowId to key, CCT.definition to declared.def.toJsonMap())
-                Triple(address(slot, key, null, declared.bundle), declared.bundle, entry)
+                Read(address(slot, key, null, declared.bundle), declared.bundle, entry, null)
             }
             else -> throw KdrException.mkInput(
                 "Design View reads ${readableSlots.joinToString()} definitions; '$slot' is not one of them.",
             )
         }
-        val out = LinkedHashMap(addr)
-        out[DSV.entry] = entry
-        // A stored definition's bundle: which revision it is, and whether that one is live for a published-only
-        // client -- what the inspector says beside "editable". Only the client's own bundles are read, which is
-        // what a stored definition's config always is outside a sandbox (whose rows are its parent's).
-        if (config != null && config.isStored && config.gedraId.client == client) {
-            GedraConfigService.get(cxt).readLatest(cxt, GedraId.of(GedraConfigType.configDoc, client, config.name))
+        val out = LinkedHashMap(read.address)
+        out[DSV.entry] = read.entry
+        read.altered?.let { (typeName, alteration) ->
+            out[DSV.alteredBy] = layer(alteration) + linkedMapOf(
+                DSV.slot to CCT.schemaDef,
+                DSV.key to typeName,
+                DSV.entry to schemaEntry(typeName, alteration.defs[typeName]),
+            )
+        }
+        // The client's own stored bundle among the layers -- the declaration's or the alteration's: which revision it
+        // is, and whether that one is live for a published-only client. Only the client's own bundles are read, which
+        // is what a stored definition's config always is outside a sandbox (whose rows are its parent's).
+        val stored = listOfNotNull(read.config, read.altered?.second)
+            .firstOrNull { it.isStored && it.gedraId.client == client }
+        if (stored != null) {
+            GedraConfigService.get(cxt).readLatest(cxt, GedraId.of(GedraConfigType.configDoc, client, stored.name))
                 ?.let {
                     out[DSV.version] = it.version
                     out[DSV.published] = it.publishedAt != null
@@ -276,12 +331,23 @@ object DesignView {
         return out
     }
 
+    /** What [definition] found: the address, the declaring config, its entry, and the client's alteration if any. */
+    private class Read(
+        val address: Map<String, Any?>,
+        val config: GedraConfig?,
+        val entry: Map<String, Any?>,
+        val altered: Pair<String, GedraConfig>?,
+    )
+
     private fun schemaEntry(typeName: String, body: Any?): Map<String, Any?> =
         linkedMapOf(CCT.typeName to typeName, CCT.schema to body)
 
     /** The slots [definition] reads. The rest (cfacts, fragments, menus) come into Design View in later slices. */
     val readableSlots: List<String> = listOf(CCT.traitDef, CCT.schemaDef, CCT.workflowDef)
 }
+
+/** Why Design View offers no edit of a workflow's copy (issue #1013): the [code], and the sentence the page shows. */
+class EditRefusal(val code: DesignRefusal, val message: String)
 
 /**
  * The Design View endpoints (issue #972). In the `clientAdmin` section, and each opens with
@@ -297,9 +363,10 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.path, "Where within the entry the addressed definition sits, when it is not the whole entry.")
         property(DSV.origin, "Where the definition was declared.", required = true) { options(DesignOrigin.entries) }
         property(DSV.config, "The configuration that declares it; absent for one declared in a component's code.")
-        property(DSV.editable, "Whether it can be edited in place: only in the client's own stored configuration.", required = true) {
-            type = SCT.boolean
-        }
+        property(
+            DSV.alteredBy,
+            "The client's own configuration altering this shared definition, when one does: its origin, config, the type it alters and that alteration's authored entry.",
+        ) { type = SCT.kObject }
         property(DSV.entry, "The authored entry, as a stored configuration holds it.", required = true) { type = SCT.kObject }
         property(DSV.version, "For a stored definition: its bundle's latest revision.") { type = SCT.integer }
         property(DSV.published, "For a stored definition: whether that revision is published.") { type = SCT.boolean }

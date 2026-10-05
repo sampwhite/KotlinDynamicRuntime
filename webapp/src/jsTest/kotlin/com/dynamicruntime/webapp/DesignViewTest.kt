@@ -121,12 +121,28 @@ class DesignViewTest {
 
     @Test
     fun anAddressReadsAsNamesAndExtendsIntoItsBody() {
-        val trait = DesignAddress(CCT.traitDef, "eventRequest", CCT.dataSchema, DesignOrigin.stored.name, "designDemo", true)
+        val trait = DesignAddress(CCT.traitDef, "eventRequest", CCT.dataSchema, DesignOrigin.stored.name, "designDemo")
         val field = trait.below(listOf(SCH.properties, "venue"))
         assertEquals("dataSchema.properties.venue", field.path)
         assertEquals("trait eventRequest › venue", addressLine(field))
-        assertEquals("This client's stored configuration (designDemo)", originText(field))
-        assertEquals("type kdr.Thing", addressLine(DesignAddress(CCT.schemaDef, "kdr.Thing", null, "global", null, false)))
+        assertEquals("type kdr.Thing", addressLine(DesignAddress(CCT.schemaDef, "kdr.Thing", null, "global", null)))
+    }
+
+    @Test
+    fun provenanceIsOneSentenceSharedOrTheClientsOwnWithAnyAlteration() {
+        fun at(origin: DesignOrigin, config: String?, alteredBy: DesignLayer? = null) =
+            DesignAddress(CCT.schemaDef, "x.Thing", null, origin.name, config, alteredBy)
+        assertEquals("This client's own, declared in its stored configuration (designDemo).", provenanceText(at(DesignOrigin.stored, "designDemo")))
+        assertEquals("This client's own, declared in source (acmeClient).", provenanceText(at(DesignOrigin.source, "acmeClient")))
+        assertEquals("Shared by every client, from coreTraits.", provenanceText(at(DesignOrigin.global, "coreTraits")))
+        assertEquals("Shared by every client, from the platform.", provenanceText(at(DesignOrigin.global, null)))
+        assertEquals(
+            "Shared by every client, from sampleTraits; altered for this client in source (acmeClient).",
+            provenanceText(at(DesignOrigin.global, "sampleTraits", DesignLayer(DesignOrigin.source.name, "acmeClient"))),
+        )
+        // The alteration rides below the address into a field, so a field reads the same as its type.
+        val field = at(DesignOrigin.global, "coreTraits", DesignLayer(DesignOrigin.stored.name, "copy")).below(listOf("name"))
+        assertEquals("Shared by every client, from coreTraits; altered for this client in its stored configuration (copy).", provenanceText(field))
     }
 
     @Test
@@ -147,18 +163,26 @@ class DesignViewTest {
         assertNull(parseWfDesign(null))
         val design = parseWfDesign(
             mapOf(
-                DSV.workflow to mapOf(DSV.slot to CCT.workflowDef, DSV.key to "requestEvent", DSV.origin to "stored", DSV.editable to true),
+                DSV.workflow to mapOf(DSV.slot to CCT.workflowDef, DSV.key to "requestEvent", DSV.origin to "stored"),
                 DSV.types to mapOf(
                     "client.demo.Request" to mapOf(DSV.slot to CCT.traitDef, DSV.key to "eventRequest", DSV.path to CCT.dataSchema),
+                    "kdr.core.NameData" to mapOf(
+                        DSV.slot to CCT.traitDef, DSV.key to "kdr:name", DSV.origin to "global", DSV.config to "coreTraits",
+                        DSV.alteredBy to mapOf(DSV.origin to "stored", DSV.config to "copy"),
+                    ),
                     "broken" to mapOf(DSV.key to "noSlot"),
                 ),
             ),
         )!!
         assertEquals("requestEvent", design.workflow?.key)
-        assertEquals(true, design.workflow?.editable)
-        assertEquals(setOf("client.demo.Request"), design.types.keys)
-        // An origin left out reads as global, the cautious answer: nothing claims it is editable.
+        assertEquals(DesignOrigin.stored.name, design.workflow?.origin)
+        assertEquals(setOf("client.demo.Request", "kdr.core.NameData"), design.types.keys)
+        // An origin left out reads as global, the cautious answer: nothing claims it is the client's own.
         assertEquals(DesignOrigin.global.name, design.types.getValue("client.demo.Request").origin)
+        assertNull(design.types.getValue("client.demo.Request").alteredBy)
+        val altered = design.types.getValue("kdr.core.NameData").alteredBy
+        assertEquals("copy", altered?.config)
+        assertEquals(DesignOrigin.stored.name, altered?.origin)
     }
 
     // --- editing a field's copy for the workflow (issue #984) ---
