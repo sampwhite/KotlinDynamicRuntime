@@ -19,6 +19,7 @@ import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.header
 import react.dom.html.ReactHTML.img
 import react.dom.html.ReactHTML.input
+import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.useEffect
 import react.useRef
@@ -166,6 +167,7 @@ val AppBar = FC<AppBarProps> { props ->
     var open by useState(false)
     // Whether the identity badge's user menu is open (issue #749); independent of the hamburger's.
     var userMenuOpen by useState(false)
+    var sandboxInfoOpen by useState(false)
     // Which drill-down groups are expanded (issue #540). Collapsed by default -- a group's children show on
     // demand, keeping a long menu short -- and remembered per browser, so an operator who opens the Operator
     // group finds it open next time. Held as the set of expanded parent ids.
@@ -465,9 +467,42 @@ val AppBar = FC<AppBarProps> { props ->
                     +"Admin"
                 }
             }
-            // "Open sandbox" (issue #931), for an administrator of a client that has one, outside it: where they
-            // preview their unpublished configuration before it goes live.
-            if (showOpenSandbox(config)) {
+            // The sandbox's place in the bar (issue #931): outside a sandbox, "Open sandbox" for an administrator of a
+            // client that has one; inside one, "Acme Sandbox" -- for anyone there, and always on screen as the bar is,
+            // so nobody mistakes the sandbox for the real client. The chip opens a popover saying what the sandbox is,
+            // with the way back: a switch (issue #749) to the person's own user in that client.
+            val inSandbox = config?.sandboxOf
+            if (inSandbox != null) {
+                button {
+                    className = ClassName("bar-badge sandbox-chip")
+                    asDynamic()["aria-haspopup"] = "dialog"
+                    asDynamic()["aria-expanded"] = sandboxInfoOpen
+                    title = "You are in a sandbox. Click for what that means, and the way back."
+                    onClick = { sandboxInfoOpen = !sandboxInfoOpen }
+                    +sandboxChipLabel(inSandbox)
+                }
+                if (sandboxInfoOpen) {
+                    div {
+                        className = ClassName("app-menu-overlay")
+                        onClick = { sandboxInfoOpen = false }
+                    }
+                    div {
+                        className = ClassName("app-menu sandbox-info")
+                        asDynamic()["role"] = "dialog"
+                        p { +sandboxInfoText(inSandbox) }
+                        sandboxWayBack(inSandbox, config?.users.orEmpty())?.let { back ->
+                            button {
+                                className = ClassName("sandbox-back")
+                                onClick = {
+                                    sandboxInfoOpen = false
+                                    switchUserAction(back.userId)
+                                }
+                                +"Back to ${inSandbox.name}"
+                            }
+                        }
+                    }
+                }
+            } else if (showOpenSandbox(config)) {
                 button {
                     className = ClassName("bar-badge sandbox-open")
                     title = "Open this client's sandbox, which runs its unpublished configuration."
@@ -589,23 +624,6 @@ val AppBar = FC<AppBarProps> { props ->
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-    // The sandbox marker (issue #931): a strip under the bar on every page while the caller is in a client's sandbox,
-    // so nobody can mistake it for the real client, with the way back beside it. Back is a switch (issue #749) to the
-    // person's own user in that client -- the one the switcher also lists.
-    config?.sandboxOf?.let { of ->
-        div {
-            className = ClassName("sandbox-marker")
-            asDynamic()["role"] = "status"
-            span { +sandboxMarkerText(of) }
-            sandboxWayBack(of, config?.users.orEmpty())?.let { back ->
-                button {
-                    className = ClassName("sandbox-back")
-                    onClick = { switchUserAction(back.userId) }
-                    +"Back to ${of.name}"
                 }
             }
         }

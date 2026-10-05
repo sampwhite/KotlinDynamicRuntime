@@ -111,15 +111,7 @@ Current UI-config endpoints:
   reload, since the client usually changes), `POST /user/self/setDefault {userId}` chooses which user the
   address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
   `public` users (issue #752), down to nothing -- a `public` user's owner registered themselves and can register
-  again, so the last user may go too, retiring the identity. `POST /user/self/openSandbox {client?}` (issue #929)
-  moves the session into a client's Shadow Sandbox as the person's own user there, created on first use; it is
-  for an administrator of the parent (an `allClients` administrator may name any client), and in a sandbox
-  `admin` takes effect only for an identity that is an administrator in the parent. In the shell (issue #931) the
-  bar offers **Open sandbox** when the shell config's `canOpenSandbox` feature says so, and while in a sandbox
-  (`state.sandboxOf` / `sandboxOfName`) draws a marker strip under the bar on every page -- "Sandbox of Acme -- runs
-  Acme's unpublished configuration" -- with **Back to Acme**, a switch to the person's own user there
-  (`SandboxShell.kt`: `showOpenSandbox`, `sandboxMarkerText`, `sandboxWayBack`). The UI word is "sandbox"; "Shadow"
-  is the feature's internal name and appears in no UI text. Removing the acting user moves the session to the
+  again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
   person's default user, or ends it when none remains. The **profile page** offers it ("Your public account")
   for every `public` user in the switcher's list, and says when it is the whole registration
   (`removablePublicUsers`, `removalEndsEverything`). The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
@@ -127,6 +119,15 @@ Current UI-config endpoints:
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
   and becomes the menu that switches; with one user it is the plain label it always was. The default persona
   is `member` (shown `Member`); `admin` is the other so far.
+- The **sandbox** (issues #929, #931), login-required (`user` section): `POST /user/self/openSandbox {client?}`
+  moves the session into a client's Shadow Sandbox as the person's own user there, created on first use; it is for
+  an administrator of the parent (an `allClients` administrator may name any client), and in a sandbox `admin`
+  takes effect only for an identity that is an administrator in the parent. The bar offers **Open sandbox** when the
+  shell config's `canOpenSandbox` feature says so; in a sandbox (`state.sandboxOf` / `sandboxOfName`) a chip takes
+  its place -- **Acme Sandbox**, on screen however far a page scrolls, as the bar is -- whose popover says what the
+  sandbox runs and offers **Back to Acme**, a switch to the person's own user there (`SandboxShell.kt`:
+  `showOpenSandbox`, `sandboxChipLabel`, `sandboxInfoText`, `sandboxWayBack`). The UI word is "sandbox"; "Shadow" is
+  the feature's internal name and appears in no UI text.
 - **Invitations** (issue #751), anonymous like the rest of the auth flow: an administrator's create for an
   address that is not their own -- new, or another person's -- provisions an unclaimed user and mails a link
   to `#page=invite&token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The

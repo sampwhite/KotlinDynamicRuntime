@@ -10,8 +10,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The shell's sandbox pieces (issue #931): when "Open sandbox" is offered, what the marker says, and where "Back"
- * leads -- read off the shell config the backend serves.
+ * The shell's sandbox pieces (issue #931): when "Open sandbox" is offered, what the chip and its popover say, and
+ * where "Back" leads -- read off the shell config the backend serves.
  */
 class SandboxShellTest {
     private fun config(features: Map<String, Any?> = emptyMap(), state: Map<String, Any?> = emptyMap()) =
@@ -24,7 +24,7 @@ class SandboxShellTest {
         assertNull(config().sandboxOf)
         val inside = config(state = mapOf(HFLD.sandboxOf to "acme", HFLD.sandboxOfName to "Acme")).sandboxOf!!
         assertEquals("acme" to "Acme", inside.client to inside.name)
-        // A name the backend could not supply falls back to the id, so the marker never reads blank.
+        // A name the backend could not supply falls back to the id, so the chip never reads blank.
         assertEquals("acme", config(state = mapOf(HFLD.sandboxOf to "acme")).sandboxOf!!.name)
     }
 
@@ -39,10 +39,13 @@ class SandboxShellTest {
     }
 
     @Test
-    fun theMarkerSaysWhoseSandboxAndWhatItRunsWithoutTheInternalName() {
-        val text = sandboxMarkerText(SandboxOf("acme", "Acme"))
-        assertEquals("Sandbox of Acme — runs Acme's unpublished configuration", text)
-        assertFalse("Shadow" in text)
+    fun theChipNamesWhoseSandboxAndItsPopoverSaysWhatItRunsWithoutTheInternalName() {
+        val of = SandboxOf("acme", "Acme")
+        assertEquals("Acme Sandbox", sandboxChipLabel(of))
+        val info = sandboxInfoText(of)
+        assertTrue(info.startsWith("You are in Acme's sandbox."))
+        assertTrue("published" in info)
+        assertFalse("Shadow" in sandboxChipLabel(of) + info)
     }
 
     @Test

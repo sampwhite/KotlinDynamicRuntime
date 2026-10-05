@@ -4,18 +4,23 @@ import com.dynamicruntime.common.user.UserChoice
 
 /*
  * The shell's Shadow Sandbox pieces (issue #931), pure so they are covered under `jsNodeTest`: whether to offer
- * opening the sandbox, what the marker says while in one, and where "Back" leads. The customer-facing word is
- * "sandbox" throughout; "Shadow" is the feature's internal name and appears in no text here.
+ * opening the sandbox, what its chip and popover say while in one, and where "Back" leads. The customer-facing word
+ * is "sandbox" throughout; "Shadow" is the feature's internal name and appears in no text here.
  */
 
 /** Whether the bar offers "Open sandbox": the caller may open their client's, and is not in one already. */
 fun showOpenSandbox(config: HomeConfig?): Boolean = config != null && config.canOpenSandbox && config.sandboxOf == null
 
 /**
- * The persistent marker while in a sandbox: whose it is and what it runs, so nobody mistakes it for the real
- * client -- "Sandbox of Acme -- runs Acme's unpublished configuration".
+ * The bar's chip while in a sandbox -- "Acme Sandbox" -- in the place "Open sandbox" takes outside one: always on
+ * screen, as the bar is, so nobody mistakes the sandbox for the real client. Clicked, it explains itself.
  */
-fun sandboxMarkerText(of: SandboxOf): String = "Sandbox of ${of.name} — runs ${of.name}'s unpublished configuration"
+fun sandboxChipLabel(of: SandboxOf): String = "${of.name} Sandbox"
+
+/** What the chip's popover says, above its way back: whose sandbox this is, what it runs, and what an edit here does. */
+fun sandboxInfoText(of: SandboxOf): String =
+    "You are in ${of.name}'s sandbox. It runs ${of.name}'s latest configuration, published or not, with users and " +
+        "data of its own. Configuration changed here is a draft of ${of.name}'s, live there only once published."
 
 /**
  * The user "Back to <client>" switches to: the person's own user in the client whose sandbox this is -- the one the
