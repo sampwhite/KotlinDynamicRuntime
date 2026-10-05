@@ -101,14 +101,16 @@ object DesignView {
         /** The workflow's own, with its alterations applied; the client's when it alters nothing. */
         store: KdrSchemaStore,
     ): Map<String, Any?> {
+        val refusal = editRefusal(cxt, declared)
         val out = linkedMapOf<String, Any?>(
             DSV.workflow to address(CCT.workflowDef, declared.def.workflowId, null, declared.bundle),
             DSV.types to defs.keys.associateWith { typeAddress(cxt, cxt.client, it) },
-            // Editing (issue #984): whether this caller may change the workflow's copy here, and the stamp of the
-            // definition the page was drawn from, which an edit sends back.
-            DSV.canEdit to (editRefusal(cxt, declared) == null),
+            // Editing (issue #984): whether this caller may change the workflow's copy here -- and why not, when not
+            // -- and the stamp of the definition the page was drawn from, which an edit sends back.
+            DSV.canEdit to (refusal == null),
             DSV.basedOn to workflowDefStamp(declared.def),
         )
+        if (refusal != null) out[DSV.editRefusal] = refusal
         val edits = layoutEdits(declared, clientStore, store)
         if (edits.isNotEmpty()) out[DSV.layoutEdits] = edits
         return out

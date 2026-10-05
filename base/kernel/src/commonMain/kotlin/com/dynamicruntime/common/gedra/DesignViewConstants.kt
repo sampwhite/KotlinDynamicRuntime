@@ -74,6 +74,12 @@ object DSV {
     const val canEdit = "canEdit"
 
     /**
+     * In the block, when [canEdit] is false: why, as a sentence the page shows -- so a workflow declared in code, or
+     * a client that runs its published configuration, reads as such rather than as a missing control.
+     */
+    const val editRefusal = "editRefusal"
+
+    /**
      * In the block, and sent back with an edit: a stamp of the workflow definition the page was drawn from. An edit
      * based on a definition that has since changed is refused rather than overwriting the change.
      */

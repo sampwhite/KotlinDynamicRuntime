@@ -194,6 +194,16 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         this.target = selected
                         authored = (address?.let { authoredLayoutEntry(it, definition, selected) })
                     }
+                } else if (design.editRefusal != null) {
+                    // Not editable here: say why, so the missing control reads as a rule rather than a fault.
+                    div {
+                        className = ClassName("dv-edit")
+                        h3 { +"Copy for this workflow" }
+                        p {
+                            className = ClassName("dv-note")
+                            +design.editRefusal
+                        }
+                    }
                 }
             }
         }

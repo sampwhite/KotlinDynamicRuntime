@@ -89,6 +89,8 @@ class WfDesign(
     val types: Map<String, DesignAddress>,
     /** Whether this caller may edit the workflow's copy here (issue #984); see `DSV.canEdit`. */
     val canEdit: Boolean = false,
+    /** Why the copy cannot be edited here, when [canEdit] is false and the backend said why; see `DSV.editRefusal`. */
+    val editRefusal: String? = null,
     /** The stamp of the definition the page was drawn from, sent back with an edit (issue #984). */
     val basedOn: String = "",
     /** The layout entries the workflow alters, by type name and then field (issue #984). */
@@ -122,6 +124,7 @@ fun parseWfDesign(raw: Any?): WfDesign? {
         parseDesignAddress(block[DSV.workflow]),
         block[DSV.types].toJsonMapOrEmpty().mapNotNull { (k, v) -> parseDesignAddress(v)?.let { k to it } }.toMap(),
         canEdit = block[DSV.canEdit] == true,
+        editRefusal = block[DSV.editRefusal].toOptStr(),
         basedOn = block[DSV.basedOn].toOptStr().orEmpty(),
         layoutEdits = block[DSV.layoutEdits].toJsonMapOrEmpty().mapValues { (_, fields) ->
             fields.toJsonMapOrEmpty().mapValues { (_, raw) ->
