@@ -252,13 +252,20 @@ fun reportCellText(value: Any?, kind: String, source: ReportCellSource = ReportC
     else -> value.toString()
 }
 
+/** Past this a number is not held exactly, and is shown as it prints rather than as digits it does not have. */
+const val reportExactLimit = 9.0e15
+
+/** [value] as a whole number's digits when it is one within [reportExactLimit]; null otherwise. The page and the file share it. */
+fun wholeNumberTextOrNull(value: Double): String? =
+    if (value == floor(value) && value >= -reportExactLimit && value <= reportExactLimit) value.toLong().toString() else null
+
 /**
  * A number as a cell shows it: whole when it is, otherwise rounded to two places. One too large to be held exactly
  * -- past what the rounding below can carry -- is shown as the number prints, rather than run through it into garbage.
  */
 fun reportNumberText(value: Double): String {
-    if (value.isNaN() || value < -9.0e15 || value > 9.0e15) return value.toString()
-    if (value == floor(value)) return value.toLong().toString()
+    if (value.isNaN() || value < -reportExactLimit || value > reportExactLimit) return value.toString()
+    wholeNumberTextOrNull(value)?.let { return it }
     val cents = (value * 100).roundToLong()
     val sign = if (cents < 0) "-" else ""
     val abs = if (cents < 0) -cents else cents
@@ -322,6 +329,118 @@ fun reportFormHref(gedraId: String, client: String?): String = hashHref(
     listOf(HP.page to HMENU.pageForms) + (client?.let { listOf(EI.client to it) } ?: emptyList()) + listOf(HP.gedra to gedraId),
 )
 
+// --- the whole run as a file (issue #1008) ------------------------------------------------------------------------
+
+/** The page size the download walks at: large, since a grouped or filtered run re-reads every form per page. */
+const val reportDownloadPageSize = 500
+
+/** The heading of a detail download's leading column: the form's id, where the page shows an "Open" link. */
+const val reportCsvFormLabel = "Form"
+
+/**
+ * Every row of a run, fetched by walking its cursor (issue #1008): [fetchPage] is asked for the first page (null) and
+ * then for the page after each `next`, until a page hands back none. [onProgress] hears how many rows are in hand
+ * and how many the run says there are, after each page. [stillWanted] is asked before each fetch and after it: once
+ * it answers false -- the user changed the report or a control -- the walk stops and answers null, and what it had
+ * fetched is dropped. A failure of any page propagates: a run that cannot be fetched whole is not handed over in part.
+ *
+ * Returns the first page's summary with all the rows. A cursor that never ends is cut off at [maxPages] and thrown
+ * as a fault, rather than walked forever.
+ */
+suspend fun walkReportRun(
+    fetchPage: suspend (after: String?) -> ReportRunPage,
+    onProgress: (fetched: Int, total: Int) -> Unit = { _, _ -> },
+    stillWanted: () -> Boolean = { true },
+    maxPages: Int = 10_000,
+): ReportRunPage? {
+    val rows = ArrayList<ReportRunRow>()
+    var first: ReportRunPage? = null
+    var after: String? = null
+    var pages = 0
+    while (true) {
+        if (!stillWanted()) return null
+        val page = fetchPage(after)
+        if (!stillWanted()) return null
+        if (first == null) first = page
+        rows.addAll(page.rows)
+        onProgress(rows.size, page.numAvailable)
+        after = page.next ?: return ReportRunPage(rows, rows.size, null, first.summary)
+        if (++pages >= maxPages) throw IllegalStateException("The report's paging did not end after $maxPages pages.")
+    }
+}
+
+/**
+ * A run as CSV (RFC 4180): a header row of the table's column labels, then a row per form or per group, lines ended
+ * by CRLF. A detail run leads with the form's id. What the page shows for people is written here for a spreadsheet:
+ * a number in full, a timestamp as `yyyy-MM-dd HH:mm:ss` in UTC ([csvTimestamp]) and a day as written, a boolean as
+ * `true` or `false`, a list joined with "; ", and nothing -- a blank cell, a group with no value -- as an empty field.
+ */
+fun reportCsv(run: ReportRunPage): String {
+    val columns = reportTableColumns(run.summary)
+    val detail = run.summary.mode == ReportMode.detail
+    val lines = ArrayList<String>()
+    lines.add(((if (detail) listOf(reportCsvFormLabel) else emptyList()) + columns.map { it.label }).joinToString(",") { csvField(it) })
+    for (row in run.rows) {
+        val cells = (if (detail) listOf(row.gedraId.orEmpty()) else emptyList()) +
+            columns.map { reportCsvCell(reportCellValue(row, it), it.kind) }
+        lines.add(cells.joinToString(",") { csvField(it) })
+    }
+    return lines.joinToString("\r\n", postfix = "\r\n")
+}
+
+/**
+ * One value of a column of [kind] as a CSV cell's text, before quoting. The formula guard ([csvSafeText]) is applied
+ * to the **cell**, once -- only a cell's first character can start a formula, so a list's later elements are left as
+ * they were entered -- and to anything but a lone number or boolean, which a spreadsheet must read as what it is.
+ */
+fun reportCsvCell(value: Any?, kind: String = ReportKind.string.name): String {
+    val text = csvRawText(value, kind)
+    return if (value is Number || value is Boolean) text else csvSafeText(text)
+}
+
+private fun csvRawText(value: Any?, kind: String): String = when (value) {
+    null -> ""
+    is List<*> -> value.joinToString("; ") { csvRawText(it, kind) }
+    is Boolean -> value.toString()
+    is Number -> value.toDouble().let { d -> wholeNumberTextOrNull(d) ?: d.toString() }
+    is String -> if (kind == ReportKind.date.name) csvTimestamp(value) else value
+    else -> value.toString()
+}
+
+/**
+ * A UTC timestamp as a spreadsheet takes one: `2026-10-05T19:50:31.543Z` written `2026-10-05 19:50:31`. The ISO form
+ * -- its `T`, its fraction, its `Z` -- is one spreadsheets commonly leave as text, where the plain form is the one
+ * they are documented to read as a date and time. The time is still UTC; the file cannot say so per cell, and
+ * `reporting.md` does. Anything else -- a day, a time with another offset -- is written as it is.
+ */
+fun csvTimestamp(text: String): String =
+    if (text.length >= 20 && text[10] == 'T' && text.endsWith("Z") && text[4] == '-' && text[13] == ':') {
+        text.substring(0, 10) + " " + text.substring(11, 19)
+    } else {
+        text
+    }
+
+/**
+ * Text made safe to open in a spreadsheet: a cell beginning `=`, `+`, `-`, `@`, a tab or a carriage return is read
+ * by Excel and its kin as a **formula**, and a report's text is whatever somebody typed into a form. Such a value
+ * gets a leading apostrophe, which a spreadsheet shows as the text it is. Numbers are written as numbers and never
+ * come through here, so a negative amount stays a number.
+ */
+fun csvSafeText(text: String): String =
+    if (text.isNotEmpty() && text[0] in "=+-@\t\r") "'$text" else text
+
+/** One field as RFC 4180 writes it: quoted when it holds a comma, a quote or a line break, its quotes doubled. */
+fun csvField(text: String): String =
+    if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + text.replace("\"", "\"\"") + "\"" else text
+
+/** The name a run is saved under: the report and how it was run. */
+fun reportCsvFileName(reportId: String, mode: ReportMode): String =
+    "${reportId.replace(':', '-')}-${reportModeParam(mode)}.csv"
+
+/** The download button's text while a walk is under way: how far it has got, once a page has said how far there is. */
+fun reportDownloadProgressText(fetched: Int, total: Int): String =
+    if (total <= 0) "Fetching\u2026" else "Fetched $fetched of $total\u2026"
+
 /** The report endpoints (issue #981), each a fetch and a pure parse. */
 object ReportsApi {
     /** [client]'s reports -- the caller's own client's when null -- and its report issues. */
@@ -332,4 +451,13 @@ object ReportsApi {
     /** One page of a run, starting after the cursor [after] -- the previous page's `next` -- or at the start. */
     suspend fun run(reportId: String, client: String?, setup: ReportRunSetup, after: String?, limit: Int = reportPageSize): ReportRunPage =
         parseRunPage(Http.getApi(UADEP.reportRun + queryString(reportRunQuery(reportId, client, setup, after, limit))))
+
+    /** The whole of a run, walked from its first page in large pages (issue #1008); null when no longer wanted. */
+    suspend fun runAll(
+        reportId: String,
+        client: String?,
+        setup: ReportRunSetup,
+        onProgress: (fetched: Int, total: Int) -> Unit,
+        stillWanted: () -> Boolean,
+    ): ReportRunPage? = walkReportRun({ after -> run(reportId, client, setup, after, reportDownloadPageSize) }, onProgress, stillWanted)
 }
