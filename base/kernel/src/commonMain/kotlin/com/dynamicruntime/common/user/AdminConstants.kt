@@ -125,6 +125,12 @@ object UADEP {
     const val clientDefinition = "/${SECT.clientAdmin}/client/definition"
 
     /**
+     * Adds or removes a client's Shadow Sandbox (issue #932): sets the `sandbox` flag of its stored definition,
+     * publishes it and reloads -- the caller's own client unless they may name another.
+     */
+    const val clientSandbox = "/${SECT.clientAdmin}/client/sandbox"
+
+    /**
      * The copy and interface one client's own configuration changes (issue #916) -- fragment keys and UiBlock
      * items, each with the value it replaces and the config that set it. Scoped as [clientDefinition] is.
      */

@@ -275,6 +275,14 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
         }
+        // Its sandbox (issue #932): whose it is, or adding and removing one.
+        row?.let { overview ->
+            h2 { +"Sandbox" }
+            SandboxSection {
+                this.row = overview
+                this.onChanged = onChanged
+            }
+        }
         h2 { +"Stored configuration" }
         when {
             storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
@@ -360,6 +368,49 @@ private fun ChildrenBuilder.clientDetail(
 
 /** The address of the key an editor is open on, and the text it started from. */
 private class CopyEditTarget(val fileId: String, val namespace: String, val key: String, val startValue: String)
+
+external interface SandboxSectionProps : Props {
+    var row: ClientOverview
+    var onChanged: () -> Unit
+}
+
+/**
+ * A client's sandbox on its detail page (issue #932): what it has ([sandboxControl]), and adding or removing one. The
+ * change is published and the client reloaded in the one call, so the sandbox is there -- or gone -- at once, and
+ * [SandboxSectionProps.onChanged] re-reads the page and the shell (whose Open sandbox follows it).
+ */
+private val SandboxSection = FC<SandboxSectionProps> { props ->
+    var busy by useState(false)
+    var error by useState<DisplayError?>(null)
+    useEffect(props.row.clientId) { error = null }
+    val control = sandboxControl(props.row)
+    p {
+        className = ClassName("subtitle")
+        +control.text
+    }
+    control.add?.let { add ->
+        Button {
+            type = if (add) "primary" else "default"
+            loading = busy
+            onClick = {
+                busy = true
+                error = null
+                clientsScope.launch {
+                    try {
+                        ClientsApi.setSandbox(props.row.clientId, add)
+                        props.onChanged()
+                    } catch (e: Throwable) {
+                        error = userFacingError(e)
+                    } finally {
+                        busy = false
+                    }
+                }
+            }
+            +(if (add) "Add a sandbox" else "Remove the sandbox")
+        }
+    }
+    error?.let { errorText(if (control.add == true) "Couldn't add the sandbox." else "Couldn't remove the sandbox.", it) }
+}
 
 external interface CopyEditorProps : Props {
     var clientId: String
@@ -1125,7 +1176,8 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
                         }
                     }
                     tbody {
-                        rows.forEach { c ->
+                        // Each sandbox right after its parent (issue #932), so the pair reads together.
+                        withSandboxesBesideParents(rows).forEach { c ->
                             tr {
                                 key = c.clientId.unsafeCast<Key>()
                                 td {
@@ -1134,6 +1186,12 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
                                         className = ClassName("wf-cell-link")
                                         href = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to c.clientId))
                                         +clientLabel(c.clientId, c.name)
+                                    }
+                                    sandboxRowNote(c)?.let { note ->
+                                        span {
+                                            className = ClassName("sandbox-row-note")
+                                            +note
+                                        }
                                     }
                                 }
                                 td {

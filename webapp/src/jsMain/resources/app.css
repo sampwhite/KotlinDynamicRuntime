@@ -1007,28 +1007,30 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     --dv-panel-width: 380px;
 }
 
-/* The Shadow Sandbox (issue #931). "Open sandbox" is a quiet outline chip beside the admin cue: a door, not an
-   alarm. The marker is the opposite: a full-width strip under the bar on every page while in a sandbox, in words
-   rather than colour alone, so nobody can mistake the sandbox for the real client. */
+/* The Shadow Sandbox (issue #931). Outside a sandbox, "Open sandbox" is a quiet outline chip beside the admin cue: a
+   door, not an alarm. Inside one, the "Acme Sandbox" chip takes its place, filled and dashed so it reads unlike any
+   other badge -- and in words, not colour alone. The bar is fixed, so it is on screen however far a page scrolls.
+   Clicked, it opens a popover saying what the sandbox is, with the way back. */
 .sandbox-open {
     background: transparent;
     border-color: var(--border-admin);
     color: var(--text);
     cursor: pointer;
 }
-.sandbox-marker {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: 6px 16px;
+.sandbox-chip {
     background: var(--surface-admin);
-    border-bottom: 2px dashed var(--border-admin);
+    border: 1px dashed var(--border-admin);
     color: var(--text);
-    font-size: 13px;
-    font-weight: 600;
+    cursor: pointer;
 }
+.sandbox-info {
+    min-width: 18rem;
+    max-width: 24rem;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+.sandbox-info p { margin: 0 0 10px; }
 .sandbox-back {
     padding: 2px 10px;
     border: 1px solid var(--border-admin);
