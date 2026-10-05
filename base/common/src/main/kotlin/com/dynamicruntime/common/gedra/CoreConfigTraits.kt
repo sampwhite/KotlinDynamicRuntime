@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
@@ -33,6 +34,8 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  * - **[CCT.fragmentDef]** / **[CCT.uiBlockDef]** -- a Markdown-fragment / UiBlock overlay, by file / block id.
  *   Only the persisted core is a field -- the id and the `content` map; `isOverlay`, `origin`, `client` and the
  *   like are reconstructed on load from the config that owns the entry, not stored.
+ * - **[CCT.reportDef]** -- a named report, by report id, by **reference** to the definition schema under
+ *   [RDEF.namespace] (issue #979). Its columns travel inside it, as a workflow's tasks do.
  * - **[CCT.cfactDef]** -- a cfact **name declaration**, by name. **Declaration only**: a component is what
  *   makes a cfact *true* (that needs Kotlin), so a config authored from data may only declare that a name
  *   *exists*, under the additive-only rule. There is no way to author a production here, and the loader (#614)
@@ -40,10 +43,10 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  *
  * ### Referencing, not copying
  *
- * The client and workflow slots reference the canonical shapes rather than redeclaring them, so a field added
- * to the real `ClientInfo` or `WfDef` reaches the stored form with no second declaration to remember. Both
- * refs resolve at boot, where every component's `$defs` are compiled together (`clientCatalogSchema` and the
- * workflow schema are always present).
+ * The client, workflow and report slots reference the canonical shapes rather than redeclaring them, so a field
+ * added to the real `ClientInfo`, `WfDef` or `ClientReport` reaches the stored form with no second declaration to
+ * remember. The refs resolve at boot, where every component's `$defs` are compiled together (`clientCatalogSchema`
+ * and the workflow and report definition schemas are always present).
  *
  * ### The storage vocabulary
  *
@@ -90,6 +93,16 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.workflowId, "The workflow's id within this configuration.", required = true)
         property(CCT.definition, "The workflow definition, as the definition schema describes it.", required = true) {
             ref("${WFD.namespace}.${WFD.defType}")
+        }
+    }
+    configTrait(
+        "ReportDefEntry", CCT.reportDef, setOf(GedraConfigType.configDoc),
+        "One named report of this configuration, keyed by its report id.",
+        primaryKey = listOf(CCT.reportId),
+    ) {
+        property(CCT.reportId, "The report's id within this configuration.", required = true)
+        property(CCT.definition, "The report definition, as the definition schema describes it.", required = true) {
+            ref("${RDEF.namespace}.${RDEF.defType}")
         }
     }
     configTrait(

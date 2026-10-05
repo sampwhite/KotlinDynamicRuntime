@@ -111,6 +111,7 @@ object GedraConfigTrial {
                 continue
             }
             loader.unknownSlotsIssue(row)?.let { reportConfigProblem(tcxt, it, ignored) }
+            loader.unreadReportIssues(config).forEach { reportConfigProblem(tcxt, it, ignored) }
             if (scratch.addGedraConfig(tcxt, config)) taken.add(config)
         }
         // The template's copy, remade as the reload remakes it (issue #945): a trial keeping the copy the client runs

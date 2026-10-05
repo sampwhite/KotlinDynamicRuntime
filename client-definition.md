@@ -585,6 +585,7 @@ The merge is **by rule, per kind of definition**, and only two kinds look inside
 | Cfact, by name | The client's replaces the base's. |
 | Workflow, by workflow id | The client's replaces the base's, whole. Its tasks are not merged; that waits on task ids having a root (#921). |
 | Creation or survey workflow | The client's replaces the base's of that kind, whatever its id. |
+| Report, by report id | The client's replaces the base's, whole (issue #979). Both are client-owned bare ids; a global report is rooted and never replaced. |
 | Trait usages (listing columns) | The client's list replaces the base's list. |
 | Fragment copy | Merged key by key: two levels, string values. The base's layer sits below the client's own. |
 | UiBlock | The UiBlock merge (keyed arrays, recursive), the base's layer below the client's own. |

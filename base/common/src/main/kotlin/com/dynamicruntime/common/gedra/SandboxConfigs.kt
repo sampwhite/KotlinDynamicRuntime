@@ -67,6 +67,8 @@ object SandboxConfigs {
             uiBlocks = config.uiBlocks.map { it.reboundTo(sandbox) },
             workflows = config.workflows,
             usages = config.usages,
+            reports = config.reports,
+            unreadReports = config.unreadReports,
             origin = config.origin,
             inheritedFrom = config.inheritedFrom,
         )

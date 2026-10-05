@@ -12,6 +12,7 @@ import com.dynamicruntime.common.startup.modeOverride
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.naming.OwnedNameKind
+import com.dynamicruntime.common.gedra.report.ClientReport
 import com.dynamicruntime.common.naming.clientNameProblem
 import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.naming.OWNR
@@ -79,6 +80,9 @@ object GCEL {
 
     /** A Markdown fragment overlay. */
     const val fragment = "fragment"
+
+    /** A named report (issue #979). */
+    const val report = "report"
 }
 
 /**
@@ -334,6 +338,26 @@ class GedraConfigCollector {
         val own = configsById.values.filter { it.gedraId.client == client }.flatMap { it.usages }
         if (own.isNotEmpty()) return own
         return configsById.values.filter { it.gedraId.client == GID.globalClient }.flatMap { it.usages }
+    }
+
+    /**
+     * The named reports [client] sees (issue #979): the global ones, then its own, each in contribution order. Unlike
+     * [usagesFor] these are **both**, not one or the other -- a component's report ids are rooted and a client's bare
+     * (#921), so a client's report never shadows a global one and both are there to run. A client built on a template
+     * holds the template's reports as its own, by its copy (`ClientExtension`); a sandbox holds its parent's.
+     *
+     * Two of a client's own configs declaring one report id keep the first; saying so is the registry's (#980), which
+     * judges reports when the configuration loads.
+     */
+    fun reportsFor(client: String): List<ClientReport> {
+        val out = LinkedHashMap<String, ClientReport>()
+        val owners = if (client == GID.globalClient) listOf(client) else listOf(GID.globalClient, client)
+        for (owner in owners) {
+            for (config in configsById.values.filter { it.gedraId.client == owner }) {
+                for ((id, report) in config.reports) out.putIfAbsent(id, report)
+            }
+        }
+        return out.values.toList()
     }
 
     /** The `$defs` the kept configs generated, merged, for compiling with everything else. */
@@ -616,19 +640,20 @@ class GedraConfigCollector {
 
     /**
      * The first name a client's [config] declares that its client may not use (issue #921), or null: a trait id,
-     * workflow id, or a task id in one of its workflows -- each bare, and following its kind's rule. Not a cfact:
+     * workflow id, a task id in one of its workflows, or a report id (#979) -- each bare, and following its kind's rule. Not a cfact:
      * a cfact costs only itself (issue #841), so the cfact registry build drops just that declaration (#952).
      */
     private fun clientNamesProblem(config: GedraConfig): String? {
         val names = config.traits.keys.map { OwnedNameKind.trait to it } +
             config.workflows.values.flatMap { wf ->
                 listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
-            }
+            } +
+            config.reports.keys.map { OwnedNameKind.report to it }
         return names.firstNotNullOfOrNull { (kind, name) -> clientNameProblem(kind, name) }
     }
 
     /**
-     * The first of a global [config]'s [traitIds], cfact names, workflow ids, and task ids that is not rooted under
+     * The first of a global [config]'s [traitIds], cfact names, workflow ids, task ids and report ids that is not rooted under
      * the config's own root (issues #951-#953), as a reason, or null.
      *
      * A task id is rooted because a global workflow is a container clients will add tasks to by overlay (#921 rule
@@ -640,7 +665,8 @@ class GedraConfigCollector {
         val names = traitIds.map { OwnedNameKind.trait to it } + config.cfacts.map { OwnedNameKind.cfact to it.name } +
             config.workflows.values.flatMap { wf ->
                 listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
-            }
+            } +
+            config.reports.keys.map { OwnedNameKind.report to it }
         for ((kind, name) in names) {
             rootedNameProblem(kind, name)?.let { return it }
             val nameRoot = name.substringBefore(OWNR.rootSep)

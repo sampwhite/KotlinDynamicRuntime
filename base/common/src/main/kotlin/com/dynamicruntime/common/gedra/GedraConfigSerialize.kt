@@ -56,6 +56,12 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     out[CCT.workflowDef] = config.workflows.values.map {
         linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to it.toJsonMap())
     }
+    out[CCT.reportDef] = config.reports.values.map {
+        linkedMapOf(CCT.reportId to it.reportId, CCT.definition to it.toJsonMap())
+    } + config.unreadReports.values.map {
+        // Written back as stored, so an edit of anything else in the config does not delete it (issue #979).
+        linkedMapOf(CCT.reportId to it.slotKey, CCT.definition to it.definition)
+    }
     out[CCT.schemaDef] = config.defs.filterKeys { it !in generated }.map { (name, body) ->
         linkedMapOf(CCT.typeName to name, CCT.schema to body)
     }
@@ -96,6 +102,10 @@ fun reassembleGedraConfig(
         )
     }
     entriesBySlot[CCT.workflowDef]?.forEach { workflowFromMap(it[CCT.definition].toJsonMapOrEmpty()) }
+    // Forgiving, unlike the other slots: a report that no longer reads costs only itself (`GedraConfig.unreadReports`).
+    entriesBySlot[CCT.reportDef]?.forEach {
+        storedReportFromMap(it[CCT.definition].toJsonMapOrEmpty(), it[CCT.reportId].toOptStr())
+    }
     entriesBySlot[CCT.fragmentDef]?.forEach { e ->
         fragmentOverlay(e[CCT.fileId].toOptStr().orEmpty(), fragmentContentOf(e[CCT.content]))
     }

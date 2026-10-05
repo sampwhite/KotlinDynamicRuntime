@@ -26,6 +26,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -113,6 +114,17 @@ class ClientExtensionTest : StringSpec({
         rows.single { it.key == "brand" }.inheritedFrom shouldBe tpl
         rows.single { it.key == "title" }.inheritedFrom.shouldBeNull()
         rows.single { it.key == "title" }.value shouldBe "Kid title"
+    }
+
+    // Issue #979: a template's reports reach a client built on it, the client's own replacing the template's of the
+    // same id; the sandbox of the client sees the same set.
+    "a client built on a template sees the template's reports, its own replacing one" {
+        fun labels(client: String) = SchemaCollector.get(cxt).shouldNotBeNull().gedraConfigs.reportsFor(client)
+            .associate { it.reportId to it.label }
+        labels(kid) shouldBe mapOf("overview" to "Kid overview", "notes" to "Template notes")
+        labels(sandboxOf(kid)) shouldBe mapOf("overview" to "Kid overview", "notes" to "Template notes")
+        // A client that does not extend the template sees none of them.
+        labels(CL.hub).keys.none { it == "notes" || it == "overview" } shouldBe true
     }
 
     "the sandbox of an extending client is extended itself rather than carrying its parent's copy" {
@@ -226,6 +238,8 @@ class ExtensionTemplateComponent : ComponentDefinition {
                     key("brand", "TPL")
                 }
             }
+            report("notes", "Template notes") { column("note", "Note", "form.tplNote.note") }
+            report("overview", "Template overview") { column("score", "Score", "form.tplScore.score") }
         },
         gedraConfig(cxt, "kid", "client.tplkid", child) {
             defineClient(
@@ -239,6 +253,7 @@ class ExtensionTemplateComponent : ComponentDefinition {
                 property("stars", "Stars.") { type = SCT.integer }
             }
             fragmentOverlay("home") { namespace("home") { key("title", "Kid title") } }
+            report("overview", "Kid overview") { column("stars", "Stars", "form.tplScore.stars") }
         },
     )
 

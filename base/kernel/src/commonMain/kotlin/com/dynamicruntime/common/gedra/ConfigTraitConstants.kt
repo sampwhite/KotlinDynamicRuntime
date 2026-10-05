@@ -35,6 +35,9 @@ object CCT {
     /** One cfact **name declaration** (declaration only, never a production), keyed by name (issue #625). */
     const val cfactDef = "kdr:cfactDef"
 
+    /** One named report, keyed by its report id (issue #979). */
+    const val reportDef = "kdr:reportDef"
+
     // --- field names inside the slots' data (each matches its value) ---
 
     const val traitId = "traitId"
@@ -51,6 +54,8 @@ object CCT {
 
     const val workflowId = "workflowId"
     const val definition = "definition"
+
+    const val reportId = "reportId"
 
     const val schema = "schema"
 

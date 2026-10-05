@@ -7,6 +7,7 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.schemaDefs
+import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
@@ -215,7 +216,7 @@ class GedraConfigTest : StringSpec({
     "the core config traits declare a slot for every piece of a stored client configuration" {
         val config = coreConfigTraits(cxt)
         config.configTraits.keys.toList() shouldContainExactly listOf(
-            CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef,
+            CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef, CCT.reportDef,
             CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef,
         )
         config.traits.isEmpty() shouldBe true
@@ -223,6 +224,7 @@ class GedraConfigTest : StringSpec({
         // fragments/uiBlocks by their overlay id, cfacts by name; the client is single-instance.
         config.configTraits.getValue(CCT.clientDef).primaryKey shouldBe emptyList()
         config.configTraits.getValue(CCT.workflowDef).primaryKey shouldBe listOf(CCT.workflowId)
+        config.configTraits.getValue(CCT.reportDef).primaryKey shouldBe listOf(CCT.reportId)
         config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)
         config.configTraits.getValue(CCT.traitDef).primaryKey shouldBe listOf(CCT.traitId)
         config.configTraits.getValue(CCT.usageDef).primaryKey shouldBe listOf(CCT.traitId)
@@ -237,7 +239,7 @@ class GedraConfigTest : StringSpec({
         // config's types resolve only beside those -- how they are compiled at boot, and what `existingTypes`
         // is for. The client trait names `clientCatalog.ClientInfo`, not a local copy.
         val canonical = parseSchemaTypes(
-            WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+            WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
         )
         val types = parseSchemaTypes(config.defs, existingTypes = canonical)
         types.getValue("kdr.core.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.infoTypeQualified
@@ -254,7 +256,7 @@ class GedraConfigTest : StringSpec({
     "a trait-declaration slot stores the declaration inputs, bounding appliesTo to the data kinds" {
         val config = coreConfigTraits(cxt)
         val canonical = parseSchemaTypes(
-            WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+            WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
         )
         val traitData = parseSchemaTypes(config.defs, existingTypes = canonical)
             .getValue("kdr.core.TraitDefEntry").properties.getValue(GE.data).valueType
@@ -272,7 +274,7 @@ class GedraConfigTest : StringSpec({
         val types = parseSchemaTypes(
             coreConfigTraits(cxt).defs,
             existingTypes = parseSchemaTypes(
-                WfDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+                WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
             ),
         )
         fun slotData(entryType: String) = types.getValue("kdr.core.$entryType").properties.getValue(GE.data).valueType
