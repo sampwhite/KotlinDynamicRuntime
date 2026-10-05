@@ -1179,6 +1179,8 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .reports-run h2 { margin-top: 0; }
 .reports-controls { margin: 10px 0 4px; }
 .reports-paging { margin-top: 10px; }
+.reports-download { margin: 6px 0 2px; }
+.reports-download p { margin: 0; }
 /* One line per row: a report has many narrow columns, and wrapped timestamps make each row four lines tall. The table
    scrolls sideways inside `.op-table-scroll` instead. */
 .reports-run .op-table th, .reports-run .op-table td { white-space: nowrap; }

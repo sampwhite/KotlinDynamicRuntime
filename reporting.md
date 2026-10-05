@@ -144,6 +144,10 @@ nothing to group by it is one total row. Beside the items, a `summary` names the
 and excludeEmpty, and how many forms were scanned and excluded — so an automated caller needs no second call.
 `numAvailable` is the forms left after excluding, or the number of groups.
 
+The **Reports page** in the webapp (`#page=reports`) is these two endpoints with a table over them, and its
+**Download CSV** is the cursor walked to the end in the browser: the whole run as set up, saved as one file, or
+nothing at all if a page fails part-way.
+
 ### What the cursor guarantees
 
 Send each page's `next` back as `after` until a page has none.

@@ -465,6 +465,15 @@ pure half -- parsers, the run's query, the table's columns, a cell's text, the p
   page drops any `from` that is not a forms listing.
 - **A grouped run's table** is what it grouped by, a **Forms** count, then each rolled-up column headed with its
   rollup, "Total (sum)" (`reportTableColumns`). A group with no value reads "(none)"; any other empty cell a dash.
+- **Download CSV** (issue #1008) is the browser walking the cursor: `ReportsApi.runAll` → `walkReportRun` fetches
+  the run as set up from its first page at `reportDownloadPageSize` (500), following `next` to the end, and
+  `reportCsv` writes it -- there is no export endpoint. The walk asks `stillWanted` around every page, so changing
+  the report or a control abandons it; **a failure part-way saves nothing**, since part of a run would pass for
+  the whole. In the file a detail run leads with the form id, a number is in full, a timestamp is ISO, nothing is
+  an empty field, and text beginning `= + - @` gets a leading apostrophe (`csvSafeText`): a report's text is
+  whatever somebody typed into a form, and a spreadsheet would run it as a formula. `walkReportRun` is `suspend`,
+  and its tests return `GlobalScope.promise { … }`, which the Node runner awaits -- the way to test suspend logic
+  here without a coroutine test library.
 - **Data to look at**: `kdr-probe --url <your server> report-demo` creates acme and globex forms and prints how to
   sign in as an acme administrator.
 

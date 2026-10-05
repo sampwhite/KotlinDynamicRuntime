@@ -6,6 +6,9 @@ import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportMode
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.promise
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,6 +19,7 @@ import kotlin.test.assertTrue
  * The Reports page's pure half (issue #1007): the listing and a run parsed from wire maps built with the kernel's own
  * constants, the run's query, the table a run is shown as, a cell's text, the paging line, and the page's links.
  */
+@OptIn(DelicateCoroutinesApi::class)
 class ReportsPageTest {
     private fun column(id: String, kind: ReportKind, combine: ReportCombine = ReportCombine.first, rollup: ReportCombine? = null) =
         buildMap<String, Any?> {
@@ -258,5 +262,111 @@ class ReportsPageTest {
         // A row's form, on the forms page; told the client when looking across clients.
         assertEquals("#page=forms&g=gd.fd.acme.a", reportFormHref("gd.fd.acme.a", null))
         assertEquals("#page=forms&client=acme&g=gd.fd.acme.a", reportFormHref("gd.fd.acme.a", "acme"))
+    }
+
+    // --- the download (issue #1008) ---
+
+    private fun runOf(mode: ReportMode, groupBy: List<String>, vararg rows: ReportRunRow) =
+        ReportRunPage(rows.toList(), rows.size, null, parseRunPage(mapOf(EP.summary to summary(mode, groupBy))).summary)
+
+    @Test
+    fun aDetailRunAsCsvLeadsWithTheFormAndWritesEachKindForASpreadsheet() {
+        val csv = reportCsv(
+            runOf(
+                ReportMode.detail, emptyList(),
+                ReportRunRow("gd.fd.acme.a", emptyMap(), null, mapOf("auditor" to "Smith, J", "total" to 52.1428571, "tags" to listOf("a", "b"), "visited" to "2026-10-05T18:47:50.836Z")),
+                ReportRunRow("gd.fd.acme.b", emptyMap(), null, mapOf("auditor" to "The \"Lee\"", "total" to 50, "tags" to emptyList<String>(), "visited" to "2024-03-05")),
+                ReportRunRow("gd.fd.acme.c", emptyMap(), null, mapOf("auditor" to "two\nlines", "total" to null)),
+            ),
+        )
+        assertEquals(
+            listOf(
+                "Form,Auditor,Total,Tags,Visited",
+                // A comma is quoted; a number is written in full; a list is joined; a timestamp stays ISO.
+                "gd.fd.acme.a,\"Smith, J\",52.1428571,a; b,2026-10-05T18:47:50.836Z",
+                // A quote is doubled; a whole number has no fraction; an empty list and a day.
+                "gd.fd.acme.b,\"The \"\"Lee\"\"\",50,,2024-03-05",
+                // A line break is kept inside quotes; nothing is an empty field.
+                "gd.fd.acme.c,\"two\nlines\",,,",
+                "",
+            ).joinToString("\r\n"),
+            csv,
+        )
+    }
+
+    @Test
+    fun aGroupedRunAsCsvIsHeadedAsThePageIs() {
+        val csv = reportCsv(
+            runOf(
+                ReportMode.aggregate, listOf("auditor"),
+                ReportRunRow(null, mapOf("auditor" to "Smith"), 6, mapOf("total" to 345, "tags" to 4)),
+                // The group with no value: an empty field, where the page says "(none)".
+                ReportRunRow(null, mapOf("auditor" to null), 4, mapOf("total" to 170.5, "tags" to 0)),
+            ),
+        )
+        assertEquals("Auditor,Forms,Total (sum),Tags (count)\r\nSmith,6,345,4\r\n,4,170.5,0\r\n", csv)
+        assertEquals("audits-grouped.csv", reportCsvFileName("audits", ReportMode.aggregate))
+        assertEquals("kdr-formsByStatus-detail.csv", reportCsvFileName("kdr:formsByStatus", ReportMode.detail))
+    }
+
+    @Test
+    fun textASpreadsheetWouldRunAsAFormulaIsWrittenAsText() {
+        assertEquals("'=SUM(A1:A9)", reportCsvCell("=SUM(A1:A9)"))
+        assertEquals("'+1 555 0100", reportCsvCell("+1 555 0100"))
+        assertEquals("'-draft-", reportCsvCell("-draft-"))
+        assertEquals("'@home", reportCsvCell("@home"))
+        // A number is a number, negative or not, and ordinary text is left alone.
+        assertEquals("-12.5", reportCsvCell(-12.5))
+        assertEquals("a=b", reportCsvCell("a=b"))
+        assertEquals("true", reportCsvCell(true))
+        // Within a list too, since the joined cell begins with its first element.
+        assertEquals("'=x; y", reportCsvCell(listOf("=x", "y")))
+        assertEquals(reportDownloadProgressText(500, 1200), "Fetched 500 of 1200\u2026")
+    }
+
+    private fun pageOf(ids: List<String>, next: String?, total: Int) = ReportRunPage(
+        ids.map { ReportRunRow(it, emptyMap(), null, emptyMap()) }, total, next,
+        parseRunPage(mapOf(EP.summary to summary(ReportMode.detail))).summary,
+    )
+
+    @Test
+    fun theWalkFollowsNextToThePageWithNone() = GlobalScope.promise {
+        val asked = mutableListOf<String?>()
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val pages = mapOf(null to pageOf(listOf("a", "b"), "c1", 5), "c1" to pageOf(listOf("c", "d"), "c2", 5), "c2" to pageOf(listOf("e"), null, 5))
+        val whole = walkReportRun({ after -> asked.add(after); pages.getValue(after) }, { f, t -> progress.add(f to t) })
+        // Each page's `next` is the next page's `after`, starting with none and stopping at the page that hands back none.
+        assertEquals(listOf(null, "c1", "c2"), asked)
+        assertEquals(listOf("a", "b", "c", "d", "e"), whole?.rows?.map { it.gedraId })
+        assertEquals(5, whole?.numAvailable)
+        assertNull(whole?.next)
+        assertEquals(listOf(2 to 5, 4 to 5, 5 to 5), progress)
+    }
+
+    @Test
+    fun aWalkNoLongerWantedStopsAndHandsBackNothing() = GlobalScope.promise {
+        var asked = 0
+        val whole = walkReportRun({ asked++; pageOf(listOf("a"), "more", 9) }, stillWanted = { asked < 2 })
+        assertNull(whole)
+        assertEquals(2, asked)
+    }
+
+    @Test
+    fun aWalkThatFailsPartWayFailsWhole() = GlobalScope.promise {
+        var failed: Throwable? = null
+        try {
+            walkReportRun({ after -> if (after == null) pageOf(listOf("a"), "c1", 2) else throw IllegalStateException("gone") })
+        } catch (e: Throwable) {
+            failed = e
+        }
+        assertEquals("gone", failed?.message)
+        // And a cursor that never ends is cut off rather than walked forever.
+        var endless: Throwable? = null
+        try {
+            walkReportRun({ pageOf(listOf("a"), "again", 1) }, maxPages = 3)
+        } catch (e: Throwable) {
+            endless = e
+        }
+        assertTrue(endless is IllegalStateException)
     }
 }

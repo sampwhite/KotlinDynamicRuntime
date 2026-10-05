@@ -38,6 +38,11 @@ private class ReportPaging(val key: String, val after: String?, val before: Int)
 /** The lists the user set on a report -- what to group by, what a form must have -- for the report they were set on. */
 private class ReportListsChoice(val key: String, val groupBy: List<String>?, val excludeEmpty: List<String>?)
 
+/**
+ * A download of a whole run (issue #1008), for the walk it is of: how far it has got while it runs, or why it failed.
+ */
+private class ReportDownload(val key: String, val fetched: Int, val total: Int, val error: DisplayError? = null)
+
 /** A fetched page of a run, with the walk it was fetched for. */
 private class ReportShown(val key: String, val page: ReportRunPage)
 
@@ -74,6 +79,8 @@ val ReportsPage = FC<Props> {
     // Monotonic tokens, so a slow answer for a client, report or page the user has moved on from is dropped.
     val latestList = useRef(0)
     val latestRun = useRef(0)
+    var download by useState<ReportDownload?>(null)
+    val latestDownload = useRef(0)
     val listedClient = useRef<String>(null)
 
     val hash = hashParams()
@@ -170,6 +177,36 @@ val ReportsPage = FC<Props> {
         }
     }
 
+    // A download is of one run: of this report, as set up. Moving to another report, client or setup abandons it --
+    // the walk asks before and after each page whether it is still the latest, and a file is saved only if it is.
+    useEffect(pagingKey) {
+        latestDownload.current = (latestDownload.current ?: 0) + 1
+        download = null
+    }
+
+    fun startDownload() {
+        val id = reportId ?: return
+        val token = (latestDownload.current ?: 0) + 1
+        latestDownload.current = token
+        val key = pagingKey
+        val runSetup = setup
+        download = ReportDownload(key, 0, runPage?.numAvailable ?: 0)
+        reportsScope.launch {
+            try {
+                val whole = ReportsApi.runAll(
+                    id, client, runSetup,
+                    onProgress = { fetched, total -> if (latestDownload.current == token) download = ReportDownload(key, fetched, total) },
+                    stillWanted = { latestDownload.current == token },
+                ) ?: return@launch
+                saveTextFile(reportCsvFileName(id, runSetup.mode), "text/csv;charset=utf-8", reportCsv(whole))
+                if (latestDownload.current == token) download = null
+            } catch (e: Throwable) {
+                // Part of a run would pass for the whole of it, so a walk that fails saves nothing and says so.
+                if (latestDownload.current == token) download = ReportDownload(key, 0, 0, userFacingError(e))
+            }
+        }
+    }
+
     fun changeSetup(next: ReportRunSetup) {
         // The mode goes to the address, which is where the page reads it from; the lists are the session's. Writing
         // the hash fires no event, so setting the lists -- a new object even when they are unchanged -- is also what
@@ -227,6 +264,7 @@ val ReportsPage = FC<Props> {
                         report != null -> {
                             reportHeading(report)
                             reportControls(report, setup, running, ::changeSetup)
+                            reportDownload(download?.takeIf { it.key == pagingKey }, ::startDownload)
                             runError?.let {
                                 errorText("Couldn't run the report.", it)
                                 // A cursor outlives neither a changed report nor a reloaded configuration: the way
@@ -414,6 +452,47 @@ private fun ChildrenBuilder.reportControls(report: ReportInfo, setup: ReportRunS
             onChange = { v -> change(ReportRunSetup(setup.mode, setup.groupBy, chosen(v))) }
         }
     }
+}
+
+/**
+ * **Download CSV** (issue #1008): the whole of the run as set up, fetched by walking its cursor. While the walk runs
+ * the button says how far it has got; a failure is said beside it, and nothing is saved.
+ */
+private fun ChildrenBuilder.reportDownload(download: ReportDownload?, start: () -> Unit) {
+    val walking = download != null && download.error == null
+    div {
+        className = ClassName("row reports-download")
+        Button {
+            size = "small"
+            loading = walking
+            disabled = walking
+            onClick = start
+            +(if (walking) reportDownloadProgressText(download!!.fetched, download.total) else "Download CSV")
+        }
+        download?.error?.let { errorText("The download failed part-way, so nothing was saved.", it) }
+    }
+}
+
+/**
+ * Hands [text] to the browser to save as [fileName]: a Blob behind a transient link, so nothing leaves the page and
+ * no server holds the file. The leading byte-order mark is what makes Excel read the file as UTF-8.
+ */
+private fun saveTextFile(fileName: String, mimeType: String, text: String) {
+    js(
+        """
+        (function () {
+            var blob = new Blob(['\uFEFF' + text], { type: mimeType });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        })()
+        """,
+    )
 }
 
 /** The run as a table: a column per [reportTableColumns], and in a detail run a leading link to each row's form. */
