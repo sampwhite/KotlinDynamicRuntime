@@ -29,3 +29,16 @@ fun useRefreshGeneration(): Int = use(RefreshContext).generation
 
 /** Triggers an app-wide refresh: bumps the generation so every mounted config consumer re-fetches. */
 fun useRefreshBump(): () -> Unit = use(RefreshContext).bump
+
+/**
+ * After a **same-person session change** (issue #1015) -- a switch to another of the person's users (#749), opening
+ * or leaving a sandbox (#931), accepting an invitation, removing the user the session acts as: go to [to] (home when
+ * empty) and [bump], the way a login completes. No page reload: every per-caller surface either re-reads on the
+ * bump -- the shell, the menu, the users list, the sandbox chip -- or fetches when it mounts, and navigating away
+ * unmounts the page that was showing. The bump covers the move that changes no hash (already home), which fires no
+ * `hashchange`. A reload stays for picking up a newly deployed web app, which the next navigation does on its own.
+ */
+fun afterSessionChange(bump: () -> Unit, to: List<Pair<String, String>> = emptyList()) {
+    navigateHash(to)
+    bump()
+}

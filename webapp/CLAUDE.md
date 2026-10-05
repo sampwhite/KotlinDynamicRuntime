@@ -107,8 +107,9 @@ Current UI-config endpoints:
   state `{userInfo}`. Fragment file `profile`.
 - The **switcher** (issue #749), login-required (`user` section): `GET /user/self/users` lists the `UserChoice`s
   the signed-in person may act as (registered, enabled users of their identity; `isCurrent` / `isDefault`
-  marked), `POST /user/self/switch {userId}` reissues the session as one of them (the app then does a full
-  reload, since the client usually changes), `POST /user/self/setDefault {userId}` chooses which user the
+  marked), `POST /user/self/switch {userId}` reissues the session as one of them (the app then goes home and
+  bumps the refresh generation, as a login does -- no page reload, issue #1015; see `afterSessionChange`, which
+  every same-person session change uses), `POST /user/self/setDefault {userId}` chooses which user the
   address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
   `public` users (issue #752), down to nothing -- a `public` user's owner registered themselves and can register
   again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
@@ -133,7 +134,8 @@ Current UI-config endpoints:
   to `#page=invite&token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The
   **invite page** (`InvitePage`) POSTs `/auth/invitation/preview {invitationToken}` to say what the account is
   and waits for **Accept**, which POSTs `/auth/invitation/accept`: the link is the proof, so accepting registers
-  the user, verifies a new identity, signs the browser in, and reloads. Nothing happens on merely opening the
+  the user, verifies a new identity, signs the browser in, and goes home re-reading (`afterSessionChange`, issue
+  #1015). Nothing happens on merely opening the
   link. `POST /clientAdmin/user/invite {userId}` re-sends a lapsed one (the editor offers it for an unclaimed
   user). The **register form** shows Client / Persona / Persona suffix to an `allClients` caller only; set, they ride
   `createInitial` and the backend refuses them from anyone else.

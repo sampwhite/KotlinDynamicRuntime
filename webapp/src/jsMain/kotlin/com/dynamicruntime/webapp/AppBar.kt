@@ -236,27 +236,26 @@ val AppBar = FC<AppBarProps> { props ->
         }
     }
 
-    // Switching user (issue #749): a fresh session as another of the person's users, then a **full reload**
-    // rather than a bump. A switch usually changes the client, and every per-caller surface -- the menu, the
-    // forms list, the catalog -- caches something about the caller; a reload re-fetches all of it from
-    // nothing, which is the `becomeUser` pattern the guide describes. A failure stays in the console (never
-    // swallowed), and the menu closes either way.
+    // Switching user (issue #749): a fresh session as another of the person's users, then home and a bump, the
+    // way a login completes -- no page reload (issue #1015): every per-caller surface re-reads on the bump or fetches
+    // as it mounts, and going home unmounts the page that was showing. A failure stays in the console (never
+    // swallowed), and the menus close either way.
     fun switchUserAction(userId: Long) {
         userMenuOpen = false
+        sandboxInfoOpen = false
         appBarScope.launch {
             val switched = apiResult { AuthApi.switchUser(userId) }
             switched.failureOrNull()?.let {
                 console.error("$errorLogPrefix could not switch user: ${it.message}")
                 return@launch
             }
-            navigateHash(emptyList())
-            reloadWebApp()
+            afterSessionChange(bump)
         }
     }
 
     // Opening the sandbox (issue #931): S's open endpoint moves the session to the person's own user in their
-    // client's sandbox -- a fresh session, like a switch -- so the app reloads the same way. A refusal stays in the
-    // console, as a switch's does.
+    // client's sandbox -- a fresh session, like a switch -- so it lands the same way (issue #1015). A refusal stays in
+    // the console, as a switch's does.
     fun openSandboxAction() {
         appBarScope.launch {
             val opened = apiResult { AuthApi.openSandbox() }
@@ -264,8 +263,7 @@ val AppBar = FC<AppBarProps> { props ->
                 console.error("$errorLogPrefix could not open the sandbox: ${it.message}")
                 return@launch
             }
-            navigateHash(emptyList())
-            reloadWebApp()
+            afterSessionChange(bump)
         }
     }
 

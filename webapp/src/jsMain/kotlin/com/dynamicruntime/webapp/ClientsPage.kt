@@ -379,6 +379,7 @@ external interface StoredConfigTableProps : Props {
  * re-reads the page.
  */
 private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
+    val bump = useRefreshBump()
     var busy by useState<String?>(null)
     var error by useState<DisplayError?>(null)
     useEffect(props.clientId) { error = null }
@@ -460,8 +461,7 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                                                     clientsScope.launch {
                                                         try {
                                                             AuthApi.openSandbox()
-                                                            navigateHash(listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
-                                                            reloadWebApp()
+                                                            afterSessionChange(bump, listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
                                                         } catch (e: Throwable) {
                                                             error = userFacingError(e)
                                                         }

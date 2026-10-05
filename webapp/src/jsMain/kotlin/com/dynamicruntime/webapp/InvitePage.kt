@@ -33,6 +33,7 @@ fun invitationWhat(info: InvitationInfo): String {
  * hands (the `becomeUser` pattern). Copy from the auth fragment's `invite` namespace.
  */
 val InvitePage = FC<Props> {
+    val bump = useRefreshBump()
     var copy by useState(Copy.empty)
     var info by useState<InvitationInfo?>(null)
     var error by useState<DisplayError?>(null)
@@ -62,8 +63,8 @@ val InvitePage = FC<Props> {
             try {
                 AuthApi.acceptInvitation(tk)
                 accepted = true
-                navigateHash(emptyList())
-                reloadWebApp()
+                // A fresh session as the invited user: home and a re-read, as after a login (issue #1015).
+                afterSessionChange(bump)
             } catch (e: Throwable) {
                 error = userFacingError(e)
                 busy = false

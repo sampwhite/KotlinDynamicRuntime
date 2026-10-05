@@ -161,15 +161,14 @@ val Profile = FC<Props> {
 
     /**
      * Removes [target], one of the person's `public` users (issue #752). Removing the user the session acts as
-     * moves the session to another of theirs, so the whole app reloads, as after a switch; removing another
-     * only needs the page and the badge to re-read.
+     * moves the session to another of theirs, so the app goes home and re-reads, as after a switch (issue #1015);
+     * removing another only needs the page and the badge to re-read.
      */
     fun removePublic(target: UserChoice) = run {
         AuthApi.removePublicUser(target.userId)
         confirmingRemove = null
         if (target.isCurrent) {
-            navigateHash(emptyList())
-            reloadWebApp()
+            afterSessionChange(bump)
         } else {
             note = t("placeholder", "removedNote", "The public account was removed.")
             bump()
