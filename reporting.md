@@ -172,10 +172,21 @@ refused with a message naming the variable. A report covering part of a client's
 
 ## Samples
 
-The sample component declares one report per sample client:
+The sample component declares four reports:
 
-- **acme `auditOverview`** — its site audit's auditor and findings, the expense report's year and computed total,
-  where the audit review stands, the form's status, and the owner's email and name; grouped by auditor, the totals
-  summed and the latest year kept.
+- **acme `expensesByYear`** — the **aggregation** example, built to be read grouped: a row per reporting year with
+  how many forms, what they claimed in total, how many items at what average price, and the latest audit activity
+  (an envelope date, rolled up by `max`). Forms with no expense report are left out, so every group is a year.
+- **acme `formRoster`** — the **straight-up** example: a row per form with nothing grouped or rolled up — when it was
+  created, whose it is, its status, who audited the site and where the review stands.
+- **acme `auditOverview`** — both at once: its site audit's auditor and findings, the expense report's year and
+  computed total, where the audit review stands, the form's status, and the owner's email and name; grouped by
+  auditor, the totals summed and the latest year kept.
 - **globex `yearlyNotes`** — the keyed `yearly` trait read whole three ways (every year, how many, the latest) and
   one year's note picked by its key, `form.sample:yearly[2024].note`.
+
+A fresh node has no forms, so each runs empty. `kdr-probe --url <the node> report-demo` (the flag goes before the
+scenario) creates some against a test
+instance that loads the sample: 32 acme forms over three owners, five auditors and five reporting years (some with no
+audit, some with open findings) and 10 globex forms with one to four yearly records — a second page of a detail run
+and several groups of a grouped one. Each run adds forms; an in-memory node needs it again after a restart.

@@ -270,6 +270,7 @@ kdr-probe                                             # lists the scenarios
 kdr-probe catalog-diff                                # what each rung is shown by /schema/endpoints
 kdr-probe access-matrix /health /admin/users          # callers x paths -> status codes
 kdr-probe grant-then-call                             # grant a rung to a live session, re-probe it
+kdr-probe report-demo                                 # creates acme and globex forms for the sample reports (#1005)
 kdr-probe call --as operator GET /operator/system/info # one request, no session to keep
 kdr-probe --url http://localhost:7099 catalog-diff    # somewhere other than the default 7071
 ```

@@ -26,6 +26,9 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
+import com.dynamicruntime.script.ReportDemo
+import com.dynamicruntime.script.reportDemoAcmeEntries
+import com.dynamicruntime.script.reportDemoGlobexEntries
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -218,6 +221,52 @@ class ReportEndpointTest : StringSpec({
             (page(admin, overview())[EP.numAvailable] as Number).toInt()
     }
 
+    // The two focused examples (issue #1005): one built to be read grouped, one a plain listing.
+    "the aggregation example groups by year: a row per year, its sums and average matching the details" {
+        val run = mapOf(RRUN.reportId to SC.expensesByYear)
+        // Its own defaults: grouped by year, with no need to ask.
+        val env = page(admin, run + mapOf(RRUN.aggregate to true))
+        summaryOf(env)[RRUN.groupBy] shouldBe listOf("year")
+        summaryOf(env)[RRUN.excludeEmpty] shouldBe listOf("year")
+        val detail = walk(admin, run).flatMap { itemsOf(it) }.map { valuesOf(it) }
+        val groups = itemsOf(env)
+        val years = groups.map { (it[RRUN.group].toJsonMapOrEmpty()["year"] as Number).toLong() }
+        years shouldBe detail.map { (it["year"] as Number).toLong() }.distinct().sorted()
+        for (group in groups) {
+            val year = (group[RRUN.group].toJsonMapOrEmpty()["year"] as Number).toLong()
+            val ofYear = detail.filter { (it["year"] as Number).toLong() == year }
+            fun values(column: String) = ofYear.mapNotNull { number(it[column]) }
+            (group[RRUN.count] as Number).toInt() shouldBe ofYear.size
+            val rollups = valuesOf(group)
+            // A year none of whose forms has a value rolls up to a blank, not to zero.
+            number(rollups["total"]) shouldBe values("total").takeIf { it.isNotEmpty() }?.sum()
+            number(rollups["items"]) shouldBe values("items").takeIf { it.isNotEmpty() }?.sum()
+            number(rollups["itemPrice"]) shouldBe values("itemPrice").takeIf { it.isNotEmpty() }?.let { it.sum() / it.size }
+            // The grouped-by column has no rollup, so it is in the group, not the values.
+            rollups.containsKey("year") shouldBe false
+        }
+        // A date rolls up too: the latest audit activity, for a year with an audited form.
+        groups.any { valuesOf(it)["lastAudited"] is String } shouldBe true
+    }
+
+    "the listing example is a row per form with nothing rolled up" {
+        val run = mapOf(RRUN.reportId to SC.formRoster)
+        val env = page(admin, run)
+        summaryOf(env)[RRUN.groupBy] shouldBe emptyList<String>()
+        summaryOf(env)[RRUN.columns].toJsonListOfMaps().none { it.containsKey(RRUN.rollup) } shouldBe true
+        val row = itemsOf(env).first { it[RRUN.gedraId] == formIds[0] }
+        valuesOf(row).let {
+            (it["created"] as String).startsWith("20") shouldBe true
+            it["owner"] shouldBe "rpt-owner@acme.test"
+            it["auditor"] shouldBe "Smith"
+            it["status"].shouldNotBeNull()
+        }
+        // Aggregated, a report with no grouping is the one total row, with no values to roll up.
+        val total = itemsOf(page(admin, run + mapOf(RRUN.aggregate to true))).single()
+        total[RRUN.count] shouldBe (env[EP.numAvailable] as Number).toInt()
+        valuesOf(total).isEmpty() shouldBe true
+    }
+
     "a keyed trait's column: every year, how many, the latest, and a blank for a form without the chosen key" {
         fun yearly(year: Long, note: String) = mapOf(GE.traitId to ST.yearly, GE.data to mapOf(ST.year to year, ST.note to note))
         val both = create(globexOwner, SC.globex, yearly(2024, "Good year"), yearly(2023, "Slow"))
@@ -287,5 +336,26 @@ class ReportEndpointTest : StringSpec({
                 args = overview(mapOf(RRUN.aggregate to true, RRUN.groupBy to grouping, EP.after to detailNext)),
             )[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "different query"
         }
+    }
+    // Last: it adds the demo's forms. The probe names the sample's traits by literal (it cannot see this module), so
+    // this is what fails when the two drift apart.
+    "the probe's demo entries are ones the sample accepts, and give the examples something to show" {
+        ReportDemo.acme shouldBe SC.acme
+        ReportDemo.globex shouldBe SC.globex
+        val before = (page(admin, mapOf(RRUN.reportId to SC.formRoster))[EP.numAvailable] as Number).toInt()
+        for (n in 0 until ReportDemo.acmeForms) create(owner, SC.acme, *reportDemoAcmeEntries(n).toTypedArray())
+        for (n in 0 until ReportDemo.globexForms) create(globexOwner, SC.globex, *reportDemoGlobexEntries(n).toTypedArray())
+        // Enough for a second page of a listing at the page size a view uses, and a group per year and per auditor.
+        val roster = walk(admin, mapOf(RRUN.reportId to SC.formRoster, EP.limit to 25))
+        (roster.first()[EP.numAvailable] as Number).toInt() shouldBe before + ReportDemo.acmeForms
+        (roster.size >= 2) shouldBe true
+        val demo = (0 until ReportDemo.acmeForms).map { reportDemoAcmeEntries(it) }
+        // Some with an audit and some without, so the no-auditor group and `excludeEmpty` both have something to show.
+        val unaudited = demo.count { entries -> entries.none { it[GE.traitId] == SC.siteAudit } }
+        (unaudited in 1 until demo.size) shouldBe true
+        val byYear = itemsOf(page(admin, mapOf(RRUN.reportId to SC.expensesByYear, RRUN.aggregate to true)))
+        byYear.map { (it[RRUN.group].toJsonMapOrEmpty()["year"] as Number).toLong() }.containsAll(ReportDemo.years) shouldBe true
+        val byAuditor = itemsOf(page(admin, overview(mapOf(RRUN.aggregate to true))))
+        byAuditor.mapNotNull { it[RRUN.group].toJsonMapOrEmpty()["auditor"] as? String }.containsAll(ReportDemo.auditors) shouldBe true
     }
 })

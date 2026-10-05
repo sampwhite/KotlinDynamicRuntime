@@ -70,10 +70,20 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) : A
         email: String,
         level: String = ROLE.user,
         capabilities: List<String> = emptyList(),
+        /** The client to be a user of; the deployment's default when null. */
+        client: String? = null,
+        /** The account's real-world name, set when the user is created. */
+        name: String? = null,
     ): Map<String, Any?> {
         val resp = sendPostRequest(
             TEP.becomeUser,
-            mapOf(TEP.email to email, TEP.level to level, TEP.capabilities to capabilities),
+            buildMap {
+                put(TEP.email, email)
+                put(TEP.level, level)
+                put(TEP.capabilities, capabilities)
+                client?.let { put(TEP.client, it) }
+                name?.let { put(TEP.name, it) }
+            },
         )
         if (!resp.isSuccess) {
             throw KdrException(
