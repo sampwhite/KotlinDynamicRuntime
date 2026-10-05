@@ -56,7 +56,7 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         outputRef = MNU.itemTypeName,
         noLimit = true,
         needsClientConfig = true,
-        inputFields = { field(COV.client, "The client; the caller's own when absent.") },
+        inputFields = { overseenClientField(COV.client) },
     ) { c, request ->
         val client = overseenClient(c, request[COV.client].toOptStr())
         ClientMenuEdit.itemsFor(c, client).map { item ->
@@ -117,7 +117,7 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
 }
 
 private fun InputFieldsBuilder.menuItemInput() {
-    field(COV.client, "The client; the caller's own when absent.")
+    overseenClientField(COV.client)
     field(COV.itemId, "The home-menu item's id.", required = true)
 }
 

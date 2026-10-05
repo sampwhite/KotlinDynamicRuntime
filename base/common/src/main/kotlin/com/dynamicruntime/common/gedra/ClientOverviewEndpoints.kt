@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
+import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.content.MarkdownFragmentService
@@ -201,7 +203,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         outputRef = CLD.sandboxResultTypeName,
         needsClientConfig = true,
         inputFields = {
-            field(CLD.client, "The client; the caller's own when absent.")
+            overseenClientField(CLD.client)
             field(CLD.sandbox, "Whether the client should have a sandbox.", required = true) { type = SCT.boolean }
         },
     ) { c, request ->
@@ -216,7 +218,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             "named by an administrator who may see every client.",
         HttpMethod.GET,
         outputRef = CLD.definitionTypeQualified,
-        inputFields = { field(CLD.client, "The client to retrieve; the caller's own when absent.") },
+        inputFields = { overseenClientField(CLD.client, "The client to retrieve; the caller's own when absent.") },
         needsClientConfig = true,
     ) { c, request ->
         clientDefinitionItem(c, overseenClient(c, request[CLD.client].toOptStr()))
@@ -231,7 +233,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             "node does not carry has none.",
         HttpMethod.GET,
         outputRef = COV.typeName,
-        inputFields = { field(COV.client, "The client to report on; the caller's own when absent.") },
+        inputFields = { overseenClientField(COV.client, "The client to report on; the caller's own when absent.") },
         needsClientConfig = true,
     ) { c, request ->
         val clientId = overseenClient(c, request[COV.client].toOptStr())
@@ -246,6 +248,21 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                 blocks.merged(c, blockId, forClient)
             }.map { it.toJsonMap() },
         )
+    }
+}
+
+/**
+ * The `client` field of a scoped endpoint (issue #1000): the client it acts on, the caller's own when absent -- what
+ * [overseenClient] enforces. Declared once here, beside that rule, so every such field reads the same: a choice of
+ * the clients the caller may name (`clientAttribute()`), shown only to a caller who may name another
+ * ([CFACTS.isDeploymentAdmin], `g-visibleWhen`). Hiding it is presentation, never the gate: the handler's
+ * [overseenClient] -- or the same rule in another form -- still refuses another client to anyone else. [name] stays
+ * the surface's own key, since `COV.client`, `CLD.client` and `ADF.client` belong to different key sets.
+ */
+fun InputFieldsBuilder.overseenClientField(name: String, description: String = "The client; the caller's own when absent.") {
+    field(name, description) {
+        clientAttribute()
+        visibleWhen = CFACTS.isDeploymentAdmin
     }
 }
 

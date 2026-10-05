@@ -42,6 +42,13 @@ object CFACTS {
     /** The caller may reach the `operator` section -- level **and** deployment-wide scope. */
     const val isDeploymentOperator = "kdr:isDeploymentOperator"
 
+    /**
+     * The caller may reach the `admin` section -- the admin level **and** the `allClients` capability (issue #1000).
+     * Delivered to the frontend, so a field only such a caller may use -- naming another client -- is hidden from the
+     * rest.
+     */
+    const val isDeploymentAdmin = "kdr:isDeploymentAdmin"
+
     /** The caller may reach the `clientOperator` section -- operator level, confined to their own scope (#488). */
     const val isClientOperator = "kdr:isClientOperator"
 
@@ -79,7 +86,7 @@ object CFACTS {
  *
  * | | level only | deployment-wide |
  * | --- | --- | --- |
- * | admin | [CFACTS.hasAdminLevel] | `isDeploymentAdmin` -- named, not yet declared |
+ * | admin | [CFACTS.hasAdminLevel] | [CFACTS.isDeploymentAdmin] |
  * | operator | [CFACTS.hasOperatorLevel] | [CFACTS.isDeploymentOperator] |
  *
  * `has*Level` is a statement about **rank on the ladder**, and rank alone: [CFACTS.hasOperatorLevel] is true
@@ -87,10 +94,9 @@ object CFACTS {
  * "may reach `/admin`", which takes the `allClients` capability as well. A bare `isOperator` said neither
  * clearly, and its description drifted into claiming section parity it did not have once #464 landed.
  *
- * There is no `isDeploymentAdmin` yet, and the name is recorded here rather than declared: a *core* cfact
- * with neither a producer nor a consumer is a row in every deployment's discovery listing that nothing uses.
- * It arrives with the first thing that needs it, which is the cheap half -- the name is the part that would
- * have been expensive to change later.
+ * [CFACTS.isDeploymentAdmin] was named here long before it was declared: a *core* cfact with neither a producer
+ * nor a consumer is a row in every deployment's discovery listing that nothing uses. It arrived with the first thing
+ * that needed it (issue #1000): hiding a `client` field from a caller who may not name another client.
  *
  * `isDeployment*`, and [CFACTS.isClientOperator], are statements about **a section**, and carry a rule: **a
  * cfact named after a section must ask that section**, through `RequestService.sectionAdmits`. That is what
@@ -157,6 +163,17 @@ fun addCoreCFacts(collector: SchemaCollector) {
         // invariant). Restating "operator and allClients" would be a second copy of a rule that has already
         // changed once.
     ) { RequestService.get(it).sectionAdmits(it.userProfile, SECT.operator) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.isDeploymentAdmin, CFGRP.caller,
+            "True when the caller may reach the `admin` section -- the deployment-wide administrative surface, which " +
+                "takes the admin level **and** the `allClients` capability. A client-scoped administrator is not " +
+                "one. It is what may name another client on a scoped surface.",
+            // Delivered to the frontend (issue #1000): a `client` field only such a caller may use is gated on it.
+            toFrontend = true,
+        ),
+        // Asked of the dispatcher, like `isDeploymentOperator`, so the field shown and the gate behind it agree.
+    ) { RequestService.get(it).sectionAdmits(it.userProfile, SECT.admin) }
     collector.addCFact(
         CFactDef(
             CFACTS.isClientOperator, CFGRP.caller,

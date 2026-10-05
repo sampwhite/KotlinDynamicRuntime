@@ -707,6 +707,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     type(ACEP.writeType) {
         type = SCT.kObject
         description = "A configuration to write for a named client, as a whole bundle."
+        // Free text, not a choice of clients (issue #1000): writing a bundle for a client id no node knows yet is how
+        // a brand-new client is created over the API.
         property(CFEP.client, "The client to write the configuration for.", required = true)
         property(CFEP.name, "The configuration's name (its id within the client).", required = true)
         property(CFEP.namespaceField, "The namespace the configuration's generated types live in.", required = true)
@@ -723,7 +725,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         "Lists a named client's configurations, each as a summary of its latest revision (issue #685).",
         outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
         noLimit = true,
-        inputFields = { field(CFEP.client, "The client whose configurations to list.", required = true) },
+        inputFields = { field(CFEP.client, "The client whose configurations to list.", required = true) { clientAttribute() } },
     ) { c, request -> cfgBundlesBody(adminConfigCxt(c, request)) }
 
     itemEndpoint(
@@ -732,7 +734,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         HttpMethod.GET,
         outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
         inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgBundleBody(adminConfigCxt(c, request), request) }
@@ -754,7 +756,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         HttpMethod.POST,
         outputRef = "${CFEP.namespace}.${CFEP.bundleType}",
         inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             configPatchInput()
         },
     ) { c, request -> cfgPatchBody(adminConfigCxt(c, request), request) }
@@ -765,7 +767,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         HttpMethod.POST,
         outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
         inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgPublishBody(adminConfigCxt(c, request), request) }
@@ -778,7 +780,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         HttpMethod.POST,
         outputRef = "${CFEP.namespace}.${CFEP.summaryType}",
         inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgRevertBody(adminConfigCxt(c, request), request) }
@@ -789,7 +791,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         outputRef = "${CFEP.namespace}.${CFEP.traitEntryType}",
         noLimit = true,
         inputFields = {
-            field(CFEP.client, "The client that owns the configuration.", required = true)
+            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
         },
     ) { c, request -> cfgTraitsBody(adminConfigCxt(c, request), request) }
@@ -799,7 +801,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         "Reloads a named client's stored configuration on this node, and announces the sync marker (issue #685).",
         HttpMethod.POST,
         outputRef = "${CFEP.namespace}.${CFEP.reloadResultType}",
-        inputFields = { field(CFEP.client, "The client to reload.", required = true) },
+        inputFields = { field(CFEP.client, "The client to reload.", required = true) { clientAttribute() } },
     ) { c, request -> cfgReloadBody(adminConfigCxt(c, request)) }
 
     generalEndpoint(
@@ -808,7 +810,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         HttpMethod.POST,
         outputRef = "${CFEP.namespace}.${CFEP.tierType}",
         inputFields = {
-            field(CFEP.client, "The client to set the tier for.", required = true)
+            field(CFEP.client, "The client to set the tier for.", required = true) { clientAttribute() }
             field(CFEP.publishedOnlyField, "Whether to consume published configuration only.", required = true) { type = SCT.boolean }
         },
     ) { c, request -> cfgPublishedOnlyBody(adminConfigCxt(c, request), request) }
