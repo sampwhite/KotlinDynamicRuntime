@@ -244,6 +244,11 @@ has already cached, and how SDUI data invokes frontend functionality at all — 
 hardwired registry, with the names in shared kernel code so the reference is checkable at boot. Nothing is
 built yet; it exists so the term and the settled decisions are not buried in an issue thread.
 
+[`reporting.md`](reporting.md) covers **named reports**: a client's chosen trait values — and facts about a form,
+its workflows and its owner — promoted to columns, a row per form or per group. It sets out the path grammar, how
+values are combined within a form and rolled up across a group, the checks a report passes when configuration loads,
+and what the cursor-paged run guarantees when forms change during a walk.
+
 ## Deferred work
 
 Work we have deliberately put off — each with the condition that should make us revisit it — lives in

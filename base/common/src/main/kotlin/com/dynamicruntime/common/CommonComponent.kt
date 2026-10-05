@@ -6,6 +6,7 @@ import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.report.ReportService
+import com.dynamicruntime.common.gedra.report.reportSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
 import com.dynamicruntime.common.gedra.workflow.PrefillFromOwnerCreation
@@ -185,6 +186,9 @@ class CommonComponent : ComponentDefinition {
         // The administrators' clients overview (issue #904): the same `clientAdmin` section, and app-only like the
         // user administration -- its counts read the user and gedra caches, which an edge does not carry.
         collector.addModule(clientOverviewSchema(cxt), appOnly)
+        // The named reports (issue #981): the same section, app-only for the same reason -- a run reads the caches.
+        // Building it also declares KDR_REPORT_SCAN_LIMIT, which the endpoint's description names.
+        collector.addModule(reportSchema(cxt), appOnly)
         collector.addModule(clientCopySchema(cxt), appOnly)
         collector.addModule(clientMenuSchema(cxt), appOnly)
         // The cfacts an expression may name, for whoever is authoring configuration against them. In the

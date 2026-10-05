@@ -248,6 +248,10 @@ listEndpoint("/thing/list", "Every thing, in id order.", outputRef = "Thing", cu
   the request, cuts the page, builds the `next`, and renders only the page's items -- so a listing that is cheap
   to order and costly to render pays for one page. A plain `List` from a cursor-paged handler is a fault: the
   executor can trim a list but cannot say where the next page starts.
+- **`cursorPageOf(...) { page -> items }`** is the same with the page rendered **together** -- for a listing whose
+  rendering is a batch read (a page of ids, then their rows, states and owners in one read each; the report run,
+  issue #981). It may answer fewer items than the page, leaving out one gone since the ordering; `next` is the
+  page's last key either way.
 - **`queryId`** is whatever makes the query the same query -- the listing, and any input that changes the set or
   its order. A cursor from a different query is a **400**, as is a malformed one, or one whose key is not this
   listing's shape. Never the first page: that would restart a caller's walk without telling them.
