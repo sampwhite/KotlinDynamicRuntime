@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
@@ -278,5 +279,14 @@ class DesignViewTest {
             listOf(mapOf(SCH.value to "office", SCH.label to "At the office"), mapOf(SCH.value to "park", SCH.label to "park")),
             sent,
         )
+    }
+
+    @Test
+    fun copyIsSentOnlyWhenItChanged() {
+        val start = mapOf(SL.label to "Venue", SL.hint to "Where.")
+        assertEquals(false, copyChanged(start, mapOf(SL.label to "Venue", SL.description to "", SL.hint to "Where. ")))
+        assertEquals(true, copyChanged(start, mapOf(SL.label to "Place", SL.description to "", SL.hint to "Where.")))
+        // A field with no entry and nothing typed has nothing to send.
+        assertEquals(false, copyChanged(emptyMap(), mapOf(SL.label to "", SL.description to "", SL.hint to "")))
     }
 }

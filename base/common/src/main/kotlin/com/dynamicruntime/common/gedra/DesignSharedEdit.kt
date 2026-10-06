@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.startup.SchemaService
@@ -170,7 +171,7 @@ object DesignSharedEdit {
 
 /**
  * [body] -- a type's authored body -- with [field]'s layout entry set to [entry] (replaced whole, or appended when the
- * layout has none for it) and its choices set to [options], each only when given (issue #1029). Every existing choice's
+ * layout has none for it and only annotates -- a `reorder` or `authoritative` layout's list is never extended) and its choices set to [options], each only when given (issue #1029). Every existing choice's
  * value must still be among [options] -- relabeling is free, adding is allowed, removing or changing a value is refused
  * -- and [field] must already have choices to be given new ones. Pure, so a test pins it.
  */
@@ -189,7 +190,22 @@ fun withSharedField(
         val fields = (layout[SL.schemaFields] as? List<*>).orEmpty().toMutableList()
         val replacement = LinkedHashMap(entry).also { it[SL.field] = field }
         val at = fields.indexOfFirst { (it as? Map<*, *>)?.get(SL.field) == field }
-        if (at >= 0) fields[at] = replacement else fields.add(replacement)
+        if (at >= 0) {
+            fields[at] = replacement
+        } else {
+            // A layout that owns its list (`reorder`: the order; `authoritative`: the order and which fields show) would
+            // change for every workflow if an entry were appended -- a field moved to the end, or one it leaves out
+            // shown. Only an annotating (`overlay`) layout takes a new entry.
+            val mode = layout[SL.mode].toOptStr() ?: SLM.overlay
+            if (mode != SLM.overlay) {
+                val owns = if (mode == SLM.authoritative) "the form's fields and their order" else "the form's field order"
+                throw KdrException.mkInput(
+                    "The type's layout is '$mode', so its list decides $owns, and '$field' is not in it. Giving it copy " +
+                        "here would add it to that list for every workflow, which the shared editor does not do.",
+                )
+            }
+            fields.add(replacement)
+        }
         layout[SL.schemaFields] = fields
         out[SCH.layout] = layout
     }

@@ -432,3 +432,7 @@ fun sharedOptionsPayload(rows: List<ChoiceRow>): List<Map<String, Any?>> =
     rows.filter { it.value.isNotBlank() }.map {
         linkedMapOf(SCH.value to it.value.trim(), SCH.label to it.label.trim().ifEmpty { it.value.trim() })
     }
+
+/** Whether the editor's copy [values] differ from [start]'s, key by key, blanks and absent alike (issue #1029). */
+fun copyChanged(start: Map<String, Any?>, values: Map<String, String>): Boolean =
+    editableCopyKeys.any { key -> start[key].toOptStr()?.trim().orEmpty() != values[key]?.trim().orEmpty() }

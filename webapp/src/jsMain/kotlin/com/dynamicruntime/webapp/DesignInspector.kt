@@ -721,8 +721,11 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                             saving = true
                             failure = null
                             designScope.launch {
+                                // Only what changed is sent: copy that was not touched sends no entry, so a choices-only
+                                // save never writes a layout entry the type's layout did not have.
                                 val result = DesignApi.setSharedField(
-                                    props.typeName, target.name, copyEntryFrom(start, target.name, values),
+                                    props.typeName, target.name,
+                                    copyEntryFrom(start, target.name, values).takeIf { copyChanged(start, values) },
                                     startRows?.let { sharedOptionsPayload(rows) }, facts.basedOn,
                                 )
                                 saving = false
