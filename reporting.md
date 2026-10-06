@@ -229,3 +229,9 @@ instance that loads the sample -- run it from the webapp's **Simulations** page,
 report-demo` (the flag goes before the scenario): 32 acme forms over three owners, five auditors and five reporting years (some with no
 audit, some with open findings) and 10 globex forms with one to four yearly records — a second page of a detail run
 and several groups of a grouped one. Each run adds forms; an in-memory node needs it again after a restart.
+
+The `report-history-demo` simulation (issue #1036) does the same and then gives the two history reports a series:
+five days of six more acme forms each, with a snapshot of both reports stored after each day's forms and **dated
+that day**, the last five days ending today. The snapshots are backdated rows -- the node's clock is not moved --
+stored as the nightly job's would be, under the simulation's name as their launch. A rerun adds the forms again,
+replaces each past day's snapshot with a newer one, and adds another for today.
