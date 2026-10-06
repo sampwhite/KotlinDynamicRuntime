@@ -980,7 +980,11 @@ fun impactFindingText(f: ImpactFindingView): String {
 fun impactSummary(report: ImpactReportView, doing: String = "Publishing ${report.name}"): String = when {
     report.tooLarge -> "This client stores more forms than an impact check examines, so what " +
         "${doing.replaceFirstChar { it.lowercase() }} would do to them is unknown."
-    report.findings.isEmpty() -> "$doing changes nothing the client's ${report.scanned} stored form(s) rely on."
+    // Exact about what was checked: the report looks for what would break, not for state a form would derive
+    // differently, which is usually the point of the change.
+    report.findings.isEmpty() -> "$doing would leave none of the client's " +
+        "${if (report.scanned == 1) "1 stored form" else "${report.scanned} stored forms"} broken: no trait, field, " +
+        "workflow or task they rely on goes away."
     else -> "$doing would affect forms ${report.client} already stores:"
 }
 
