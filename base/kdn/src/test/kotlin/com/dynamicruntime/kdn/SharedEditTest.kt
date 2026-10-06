@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignRefusal
 import com.dynamicruntime.common.gedra.DesignSharedEdit
@@ -12,6 +13,8 @@ import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.http.request.ROLE
@@ -21,6 +24,7 @@ import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.simulation.DesignDemo
 import com.dynamicruntime.common.simulation.provisionDesignDemo
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -157,13 +161,28 @@ class SharedEditTest : StringSpec({
         DesignSharedEdit.refusal(cxt.mkSubContext("setup", client), inSource)?.code shouldBe DesignRefusal.declaredInSource
     }
 
-    "a client that runs its published configuration cannot edit here" {
-        GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, true)
+    "a configuration carrying somebody's unpublished changes is refused; published, editing returns" {
+        // An unpublished change beside Design View: a save here publishes, and would take it live (issue #1026).
+        val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
+        GedraConfigService.get(cxt).patchConfig(cxt.mkSubContext("setup", client), configId) { it }
         try {
-            traitRead()[DSV.sharedRefusalCode] shouldBe DesignRefusal.publishedOnly.name
+            traitRead()[DSV.sharedRefusalCode] shouldBe DesignRefusal.unpublishedChanges.name
         } finally {
-            GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, false)
+            GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), configId)
         }
         traitRead()[DSV.canEditShared] shouldBe true
+    }
+
+    "a shared save publishes, so the client's configuration is left with no draft" {
+        shared(dataType, DesignDemo.backupPlan, mapOf(SL.label to "If it rains"))
+        val row = GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("setup", client), GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName))
+        row?.isPublished shouldBe true
+    }
+
+    // The reconciliation with the Clients page's editors (issue #1026): Design View saves publish as theirs do, so after
+    // any number of them the client's definition is still editable there -- no draft is left to refuse it.
+    "after Design View saves, the Clients page can still edit the client's definition" {
+        val result = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "Design demo, renamed"))
+        result[CLD.definition].toJsonMapOrEmpty()[CLD.name] shouldBe "Design demo, renamed"
     }
 })

@@ -178,10 +178,8 @@ object DesignView {
      * Why this caller may not edit [declared]'s copy here, or null when they may (issue #984): the workflow must be
      * the client's own stored definition, since a workflow's own copy is written into its definition and a workflow
      * declared in source (or a global one) has none here to write to -- overlaying one is issue #1011, and copy it
-     * pulls from a fragment file is the client's copy overrides' to change -- and the client must run its latest
-     * revision, so an edit shows on the page once saved. A sandbox always does; a
-     * published-only client does not. Its edits are previewed in its sandbox when it has one -- but published-only is
-     * also a tier an administrator sets on its own, and then there is no sandbox to send anyone to.
+     * pulls from a fragment file is the client's copy overrides' to change. Then the rules every Design View save
+     * shares with the Clients page's editors ([saveRefusal]).
      */
     fun editRefusal(cxt: KdrCxt, declared: WfDeclared): EditRefusal? {
         val bundle = declared.bundle
@@ -193,48 +191,74 @@ object DesignView {
                     "client's copy overrides, for every workflow that uses it.",
             )
         }
-        return publishedOnlyRefusal(cxt)
+        return saveRefusal(cxt, bundle.name)
     }
 
     /**
-     * The refusal for a client that runs its published configuration, where an edit would not show on the page until
-     * published, or null when it runs its latest -- as a sandbox always does. Shared by the workflow-copy edit and the
-     * shared editor (issue #1029).
+     * Why a Design View save into the client's stored config [configName] may not be made, or null when it may --
+     * the rule the Clients page's editors follow ([ClientStoredEdit], issues #930, #1026), so the two kinds of editor
+     * never disagree about a client:
+     *
+     * - **A client with a sandbox** runs its published configuration and previews edits in the sandbox, so its own
+     *   page refuses and points there; in the sandbox a save is a draft of the parent's configuration.
+     * - **A client without one** -- published-only by an administrator's choice included -- has a save published and
+     *   live at once. So a config carrying somebody's unpublished changes is refused, since publishing would take them
+     *   live too.
      */
-    internal fun publishedOnlyRefusal(cxt: KdrCxt): EditRefusal? {
+    internal fun saveRefusal(cxt: KdrCxt, configName: String): EditRefusal? {
+        if (isSandboxClient(cxt.client)) return null
         val configs = GedraConfigService.get(cxt)
-        if (!isSandboxClient(cxt.client) && configs.publishedOnly(cxt, cxt.client)) {
-            val where = if (configs.asksForSandbox(cxt, cxt.client)) {
-                "edit it from its sandbox"
-            } else {
-                "it has no sandbox to preview an edit in"
-            }
+        if (configs.publishedOnly(cxt, cxt.client) && configs.asksForSandbox(cxt, cxt.client)) {
             return EditRefusal(
                 DesignRefusal.publishedOnly,
-                "Client '${cxt.client}' runs its published configuration, so a change would not show here until published; $where.",
+                "Client '${cxt.client}' runs its published configuration and previews changes in its sandbox: edit it from there.",
+            )
+        }
+        val holder = configs.readLatest(cxt, GedraId.of(GedraConfigType.configDoc, cxt.client, configName))
+        if (holder != null && !holder.isPublished && configName != CPY.copyConfigName) {
+            return EditRefusal(
+                DesignRefusal.unpublishedChanges,
+                "Configuration '$configName' has unpublished changes, which a save here would publish with it. Publish or " +
+                    "revert it first, on the client's page.",
             )
         }
         return null
     }
 
     /**
-     * After a Design View write through [writeCxt] -- the client's own context, or a sandbox's parent's (issue #930) --
-     * reload where the configuration lives and announce it, so the page and every node pick the change up.
+     * Makes a Design View save (issues #984, #1029): [patch] applied to the client's stored config [configName], where
+     * and as the Clients page's editors save ([ClientStoredEdit]) -- in a sandbox's parent's config as a draft its
+     * sandbox shows, otherwise published and live at once, with a publish the trial refuses undone. Refused first by
+     * [saveRefusal]'s rules. Trial-checked like every config write, and reloaded and announced.
      */
-    internal fun reloadAfterEdit(cxt: KdrCxt, writeCxt: KdrCxt) {
-        if (writeCxt !== cxt) {
-            SandboxEdits.reloadParent(cxt, writeCxt.client)
-        } else {
-            ClientSyncService.get(cxt).announceReload(cxt, GedraConfigReload.reloadClient(cxt, cxt.client))
+    internal fun saveEdit(
+        cxt: KdrCxt,
+        configName: String,
+        patch: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
+    ) {
+        saveRefusal(cxt, configName)?.let { throw KdrException.mkInput(it.message) }
+        val target = ClientStoredEdit.target(cxt, cxt.client, "designEdit")
+        val svc = GedraConfigService.get(target.bound)
+        val configId = GedraId.of(GedraConfigType.configDoc, target.client, configName)
+        val holder = svc.readLatest(target.bound, configId)
+            ?: throw KdrException("No configuration '$configName' for client '${target.client}'.", code = EXC.notFound)
+        var before: Map<String, List<Map<String, Any?>>> = emptyMap()
+        val written = svc.patchConfig(target.bound, configId, trial = true) { slots ->
+            before = slots
+            patch(slots)
         }
+        ClientStoredEdit.takeEffect(
+            cxt, target, written,
+            undo = { svc.patchConfig(target.bound, configId) { before } },
+            restorePublished = holder.isPublished,
+        )
     }
 
     /**
      * Sets [field]'s layout entry for [typeName] in workflow [workflowId] to [entry], or removes it when [entry] is
-     * null -- the workflow's own wording over the inherited copy (issue #984) -- and reloads the client so the page
-     * shows it. Written where the configuration lives: the client's own, or a sandbox's parent's (issue #930).
-     * Trial-checked like every config write, and refused when the definition has changed since [basedOn]. Returns
-     * the new stamp, for the page's next edit.
+     * null -- the workflow's own wording over the inherited copy (issue #984) -- as every Design View save is made
+     * ([saveEdit]), and refused when the definition has changed since [basedOn]. Returns the new stamp, for the page's
+     * next edit.
      */
     fun setLayoutEntry(
         cxt: KdrCxt,
@@ -248,14 +272,12 @@ object DesignView {
             ?: throw KdrException("No workflow '$workflowId' for client '${cxt.client}'.", code = EXC.notFound)
         editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it.message) }
         val inherited = layoutEntryOf(SchemaService.get(cxt).storeFor(cxt.client), typeName, field)
-        val writeCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-        val configId = GedraId.of(GedraConfigType.configDoc, writeCxt.client, declared.bundle.name)
-        GedraConfigService.get(writeCxt).patchConfig(writeCxt, configId, trial = true) { slots ->
+        saveEdit(cxt, declared.bundle.name) { slots ->
             val workflows = slots[CCT.workflowDef].orEmpty()
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }
             if (at < 0) throw KdrException("No workflow '$workflowId' in '${declared.bundle.name}'.", code = EXC.notFound)
             val stored = (workflows[at][CCT.definition] as? Map<*, *>)?.toJsonMap().orEmpty()
-            val current = parseWfDef(writeCxt, stored)
+            val current = parseWfDef(cxt, stored)
             if (workflowDefStamp(current) != basedOn) {
                 throw KdrException(
                     "Workflow '$workflowId' has changed since this page was drawn; reload it and make the change again.",
@@ -265,7 +287,6 @@ object DesignView {
             val rewritten = withLayoutEntry(current.toJsonMap(), typeName, field, entry, inherited)
             slots + (CCT.workflowDef to workflows.mapIndexed { i, e -> if (i == at) e + (CCT.definition to rewritten) else e })
         }
-        reloadAfterEdit(cxt, writeCxt)
         val reloaded = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
         return reloaded?.def?.let { workflowDefStamp(it) } ?: ""
     }

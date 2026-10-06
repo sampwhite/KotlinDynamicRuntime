@@ -155,8 +155,17 @@ enum class DesignRefusal {
     /** The definition is declared globally, for every client (issue #1029): not one client's to edit. */
     declaredGlobally,
 
-    /** The client runs its published configuration, so a saved change would not show on the page until published. */
+    /**
+     * The client runs its published configuration and previews edits in its sandbox, so a change is made from there.
+     * (A published-only client without a sandbox is edited here: a save publishes, as the Clients page's do.)
+     */
     publishedOnly,
+
+    /**
+     * The configuration the edit would land in has somebody's unpublished changes, which a save -- it publishes, as the
+     * Clients page's editors do (issue #1026) -- would take live with it. Publish or revert that configuration first.
+     */
+    unpublishedChanges,
 }
 
 /**

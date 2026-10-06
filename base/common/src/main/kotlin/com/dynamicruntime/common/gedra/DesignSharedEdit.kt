@@ -51,7 +51,8 @@ object DesignSharedEdit {
 
     /**
      * Why this caller may not edit the definition [declaredBy] declares, or null when they may: it must be declared in
-     * the client's own stored configuration, and the client must run its latest revision (as for #984's edit).
+     * the client's own stored configuration, and then the rules every Design View save shares with the Clients page's
+     * editors ([DesignView.saveRefusal]).
      */
     fun refusal(cxt: KdrCxt, declaredBy: GedraConfig?): EditRefusal? {
         if (declaredBy == null || declaredBy.gedraId.client == GID.globalClient) {
@@ -68,7 +69,7 @@ object DesignSharedEdit {
                     "so it cannot be edited here.",
             )
         }
-        return DesignView.publishedOnlyRefusal(cxt)
+        return DesignView.saveRefusal(cxt, declaredBy.name)
     }
 
     /**
@@ -128,8 +129,8 @@ object DesignSharedEdit {
      * Sets [field] of the type [typeName] -- in the definition the client declares -- to have the layout [entry] (when
      * given) and the choices [options] (when given), for every workflow on the client (issue #1029). Refused unless
      * the definition is the client's own ([refusal]), when it has changed since [basedOn] (409), and when [options]
-     * would remove a choice or change one's value. Written where the configuration lives -- a sandbox's parent's
-     * (issue #930) -- trial-checked, reloaded and announced. Returns the new stamp.
+     * would remove a choice or change one's value. Saved as every Design View save is ([DesignView.saveEdit]): published
+     * and live, or a draft its sandbox shows. Returns the new stamp.
      */
     fun setSharedField(
         cxt: KdrCxt,
@@ -148,9 +149,7 @@ object DesignSharedEdit {
         }
         val slot = if (trait != null) CCT.traitDef else CCT.schemaDef
         val key = trait?.traitId ?: typeName
-        val writeCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-        val configId = GedraId.of(GedraConfigType.configDoc, writeCxt.client, config.name)
-        GedraConfigService.get(writeCxt).patchConfig(writeCxt, configId, trial = true) { slots ->
+        DesignView.saveEdit(cxt, config.name) { slots ->
             val entries = slots[slot].orEmpty()
             val at = entries.indexOfFirst { it[keyField(slot)] == key }
             if (at < 0) throw KdrException("No $slot entry '$key' in '${config.name}'.", code = EXC.notFound)
@@ -164,8 +163,8 @@ object DesignSharedEdit {
             val rewritten = withSharedField(body, field, entry, options)
             slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewritten) else e })
         }
-        DesignView.reloadAfterEdit(cxt, writeCxt)
-        return storedEntry(writeCxt, config, slot, key)?.let { stampOf(it) } ?: ""
+        val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
+        return storedEntry(readCxt, config, slot, key)?.let { stampOf(it) } ?: ""
     }
 }
 
