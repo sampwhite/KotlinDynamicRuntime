@@ -9,8 +9,10 @@ import com.dynamicruntime.common.gedra.ClientSyncService
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.test.SIM
@@ -83,6 +85,18 @@ object Simulations {
         result.issues.firstOrNull()?.let {
             throw KdrException("Client '$client' was written but did not load cleanly: ${it.message} ${it.degradedTo}")
         }
+    }
+
+    /**
+     * Publishes [client]'s stored configuration [name] and makes the result live on **every** node, as
+     * [provisionConfig] does a write -- what a simulation of a published-only client needs before its configuration
+     * runs. The publish is the simulation's own setup, so its impact on stored data is not checked.
+     */
+    fun publishConfig(cxt: KdrCxt, client: String, name: String) {
+        GedraConfigService.get(cxt).publish(
+            cxt.mkSubContext("simulation", client), GedraId.of(GedraConfigType.configDoc, client, name), trial = true,
+        )
+        ClientSyncService.get(cxt).announceReload(cxt, GedraConfigReload.reloadClient(cxt, client))
     }
 
     /**

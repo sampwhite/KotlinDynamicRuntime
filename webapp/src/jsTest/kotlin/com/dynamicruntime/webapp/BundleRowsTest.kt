@@ -72,6 +72,20 @@ class BundleRowsTest {
         assertFalse(bundleAction(client(staticHere = true), draft).publish)
     }
 
+    // The impact report (issue #935) is offered where publishing would change what the client runs.
+    @Test
+    fun checkImpactIsOfferedWherePublishingChangesWhatRuns() {
+        val draft = bundle(2, published = false, publishedVersion = 1)
+        assertTrue(bundleAction(client(publishedOnly = true), draft).checkImpact)
+        // On a client with a sandbox too, beside the note, where its forms can be opened.
+        assertTrue(bundleAction(client(hasSandbox = true, publishedOnly = true), draft).checkImpact)
+        assertTrue(bundleAction(client("acme:sandbox", sandboxOf = "acme"), draft).checkImpact)
+        // On its latest revision publishing changes nothing it runs; a published revision has nothing to publish.
+        assertFalse(bundleAction(client(), draft).checkImpact)
+        assertFalse(bundleAction(client(publishedOnly = true), bundle(2, published = true)).checkImpact)
+        assertFalse(bundleAction(client(staticHere = true, publishedOnly = true), draft).checkImpact)
+    }
+
     // The copy editor says which template syntax a value takes, by who its file is for (issue #1001).
     @Test
     fun theCopyEditorsHintSaysWhichSyntaxTheFileTakes() {

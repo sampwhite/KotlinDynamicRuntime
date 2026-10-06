@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.ConfigImpact
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -25,6 +26,8 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.simulation.ImpactDemo
+import com.dynamicruntime.common.simulation.provisionImpactDemo
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -254,5 +257,17 @@ class ConfigImpactTest : StringSpec({
             it[IMP.scanned] shouldBe 0
             findings(it).shouldBeEmpty()
         }
+    }
+    "the impact-demo simulation leaves a draft whose report finds its forms, and a rerun is safe" {
+        val client = "${ImpactDemo.client}t"
+        fun demoReport() = ConfigImpact.report(cxt.mkSubContext("check", client), client, ImpactDemo.traits)
+        provisionImpactDemo(cxt, "t").clients shouldContainExactly listOf(client, sandboxOf(client))
+        val byKind = demoReport().findings.associateBy { it.kind }
+        byKind.getValue(ImpactKind.traitGone).let { it.traitId shouldBe ImpactDemo.visit; it.rows.size shouldBe 2 }
+        byKind.getValue(ImpactKind.dataInvalid).let { it.traitId shouldBe ImpactDemo.note; it.rows.size shouldBe 2 }
+
+        // A rerun publishes the harmless traits over the draft, adds its forms again, and leaves the draft anew.
+        provisionImpactDemo(cxt, "t")
+        demoReport().findings.associateBy { it.kind }.getValue(ImpactKind.traitGone).rows.size shouldBe 4
     }
 })

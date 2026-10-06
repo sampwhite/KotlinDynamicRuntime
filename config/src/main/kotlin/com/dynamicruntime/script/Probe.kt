@@ -67,6 +67,7 @@ object Probe {
         grantThenCallName to ::grantThenCall,
         designDemoName to ::designDemo,
         reportDemoName to ::reportDemo,
+        impactDemoName to ::impactDemo,
     )
 }
 
