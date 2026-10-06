@@ -451,7 +451,8 @@ fun choiceRowsOf(fieldSchema: Any?): List<ChoiceRow>? =
 
 /**
  * The choices a shared edit sends, from the editor's [rows]: every row with a value, a blank label read as the value.
- * The backend refuses a removed or changed value, which the editor never produces -- an existing row's value is fixed.
+ * A value left out is removed (issue #1040); an existing row's value is fixed, so a changed value arrives as a removal
+ * and an addition.
  */
 fun sharedOptionsPayload(rows: List<ChoiceRow>): List<Map<String, Any?>> =
     rows.filter { it.value.isNotBlank() }.map {
@@ -461,3 +462,22 @@ fun sharedOptionsPayload(rows: List<ChoiceRow>): List<Map<String, Any?>> =
 /** Whether the editor's copy [values] differ from [start]'s, key by key, blanks and absent alike (issue #1029). */
 fun copyChanged(start: Map<String, Any?>, values: Map<String, String>): Boolean =
     editableCopyKeys.any { key -> start[key].toOptStr()?.trim().orEmpty() != values[key]?.trim().orEmpty() }
+
+/** The values of [start]'s choices that [rows] no longer carry: what a save would remove (issue #1040). Pure. */
+fun removedChoiceValues(start: List<ChoiceRow>?, rows: List<ChoiceRow>): List<String> {
+    val kept = rows.map { it.value.trim() }.toSet()
+    return start.orEmpty().map { it.value }.filter { it !in kept }
+}
+
+/** "Removing hotel" / "Removing hotel and outdoors" -- what a save removes, as the impact report's subject. Pure. */
+fun removingPhrase(values: List<String>): String = "Removing " + when (values.size) {
+    0 -> "these choices"
+    1 -> values.single()
+    else -> values.dropLast(1).joinToString(", ") + " and " + values.last()
+}
+
+/** The editor's note while choices are marked for removal, or null when none is. Pure. */
+fun removingNote(values: List<String>): String? =
+    if (values.isEmpty()) null
+    else "${removingPhrase(values)}: saving first checks whether the client's stored forms hold " +
+        "${if (values.size == 1) "it" else "them"}."

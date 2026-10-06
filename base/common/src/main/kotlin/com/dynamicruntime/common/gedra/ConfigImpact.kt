@@ -71,15 +71,21 @@ object ConfigImpact {
         return reportFor(cxt, client, latest)
     }
 
-    /** The report for making [latest] -- a revision of one of [client]'s configurations -- the one it runs. */
-    fun reportFor(cxt: KdrCxt, client: String, latest: GedraConfigRow): ImpactReport {
+    /**
+     * The report for making [latest] -- a revision of one of [client]'s configurations -- the one it runs. A publish
+     * asks on behalf of a published-only client alone, since a client on the latest tier already runs [latest]. An
+     * editor's save that writes [latest] and makes it live in one step ([anyTier], issue #1040) asks before the reload
+     * on either tier: what the client runs now is still the revision before it.
+     */
+    fun reportFor(cxt: KdrCxt, client: String, latest: GedraConfigRow, anyTier: Boolean = false): ImpactReport {
         val report = ImpactReport(client, latest.configId.baseId, latest.version)
-        if (!GedraConfigService.get(cxt).publishedOnly(cxt, client)) return report
+        val publishedOnly = GedraConfigService.get(cxt).publishedOnly(cxt, client)
+        if (!publishedOnly && !anyTier) return report
         val data = GedraDataService.get(cxt)
         val idsByKind = GU.entryKinds.associateWith { data.liveGedraIds(cxt, it, client).sorted() }
         val limit = cxt.getEnvVar(scanLimitEnvVar)?.trim()?.toIntOrNull() ?: defaultScanLimit
         if (idsByKind.values.sumOf { it.size } > limit) return report.also { it.tooLarge = true }
-        val candidate = GedraConfigTrial.candidate(cxt, client, listOf(latest), published = true) ?: return report
+        val candidate = GedraConfigTrial.candidate(cxt, client, listOf(latest), published = publishedOnly) ?: return report
 
         val now = Judged(SchemaService.get(cxt).storeFor(client).types, WorkflowService.get(cxt).forClient(client))
         val next = Judged(candidate.schema.types, candidate.workflows)
@@ -102,10 +108,11 @@ object ConfigImpact {
     /**
      * Refuses a publish of [latest] whose report finds anything (or could not be computed), with the report in the
      * refusal's `extraData` under [IMP.report] and its `errorCode` [IMP.refusedCode], so a caller can show it and ask
-     * again with [IMP.acknowledgeImpact].
+     * again with [IMP.acknowledgeImpact]. With [asSave] it is an editor's save made live at once (issue #1040): judged
+     * on any tier ([reportFor]'s `anyTier`), and refused in a save's words.
      */
-    fun requireNone(cxt: KdrCxt, client: String, latest: GedraConfigRow) {
-        val report = reportFor(cxt, client, latest)
+    fun requireNone(cxt: KdrCxt, client: String, latest: GedraConfigRow, asSave: Boolean = false) {
+        val report = reportFor(cxt, client, latest, anyTier = asSave)
         if (!report.blocks) return
         val what = if (report.tooLarge) {
             "client '$client' stores more rows than an impact report examines (${scanLimitEnvVar.name}), so what it " +
@@ -113,9 +120,10 @@ object ConfigImpact {
         } else {
             report.findings.joinToString("; ") { it.describe() }
         }
+        val (doing, again) = if (asSave) "This change" to "Save" else "Publishing configuration '${report.name}'" to "Publish"
         throw KdrException.mkInput(
-            "Publishing configuration '${report.name}' would affect data client '$client' already stores: $what. " +
-                "Publish again acknowledging the impact to go ahead.",
+            "$doing would affect data client '$client' already stores: $what. $again again acknowledging the impact " +
+                "to go ahead.",
         ).also {
             it.extraData[KdrException.errorCodeKey] = IMP.refusedCode
             it.extraData[IMP.report] = report.toMap()

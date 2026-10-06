@@ -661,8 +661,10 @@ The **shared definition** -- what every workflow on the client draws -- is edite
 `SharedFieldSection`), behind a deliberate **Edit the shared definition** button and never as an option beside a
 workflow's Save. It is offered for a definition the client declares in its own stored configuration, and says first
 where it is used ("Used by 2 workflows: …") and which workflows keep their own copy of the field. It edits the
-field's copy and its choices -- relabel one, or add one -- but never removes a choice or changes a value, since stored
-forms may hold it. Its two headings say what an edit changes -- **Form copy** (what forms show) and **Choices** (what
+field's copy and its choices -- relabel, add or remove one; a changed value is a removal and an addition. A save that
+removes a choice is checked against the forms the client stores (issue #1040, #935's impact report, on any tier) and
+refused with the report when one holds it; the dialog's **Save anyway** resends it with `acknowledgeImpact`. In a
+sandbox the save is only a draft, so the check waits for its publish. Its two headings say what an edit changes -- **Form copy** (what forms show) and **Choices** (what
 the field accepts) -- under one save (issue #1039). A blank copy input is not empty copy: the form falls back to the
 field's own title or name, description and range hint, and both copy editors show that fallback in place
 (`copyFallback`, mirroring `SchemaForm`'s own fallbacks -- change the two together). A field the type's layout leaves

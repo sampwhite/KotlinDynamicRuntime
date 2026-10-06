@@ -713,10 +713,8 @@ private external interface ImpactReportDialogProps : Props {
 }
 
 /**
- * The publish impact report in a dialog (issue #935): [impactSummary], then a line per finding ([impactFindingText])
- * with a few of the forms' ids to go and look at -- each opening in the raw trait editor in a new tab, where this
- * session can read them ([impactFormsOpenable]); in a sandbox, a note says where they open instead. Its publish
- * button goes ahead -- **Publish anyway**, acknowledging the report, when it found anything; plain Publish after a
+ * The publish impact report in a dialog (issue #935): the report ([impactReportBody]), its forms openable where this
+ * session can read them ([impactFormsOpenable]). Its publish button goes ahead -- **Publish anyway**, acknowledging the report, when it found anything; plain Publish after a
  * check that found nothing -- and is absent where the configuration publishes from the sandbox.
  */
 private val ImpactReportDialog = FC<ImpactReportDialogProps> { props ->
@@ -741,38 +739,46 @@ private val ImpactReportDialog = FC<ImpactReportDialogProps> { props ->
                 }
             }
         }
-        if (report != null) {
-            p { +impactSummary(report) }
-            if (!props.formsOpenable && report.findings.isNotEmpty()) {
-                p {
-                    className = ClassName("type-hint")
-                    +"These forms are ${report.client}'s, which this sandbox session cannot open; open them from ${report.client}'s own page."
-                }
-            }
-            if (report.findings.isNotEmpty()) {
-                ul {
-                    report.findings.forEachIndexed { i, f ->
-                        li {
-                            key = i.toString().unsafeCast<Key>()
-                            +impactFindingText(f)
-                            if (f.sampleIds.isNotEmpty()) {
-                                div {
-                                    className = ClassName("type-hint")
-                                    +(if (f.count > f.sampleIds.size) "For example: " else "Forms: ")
-                                    f.sampleIds.forEachIndexed { j, id ->
-                                        if (j > 0) +", "
-                                        if (props.formsOpenable) {
-                                            a {
-                                                href = impactFormHref(id)
-                                                target = WindowTarget._blank
-                                                rel = "noopener"
-                                                title = "Open this form's entries in a new tab."
-                                                code { +id }
-                                            }
-                                        } else {
-                                            code { +id }
-                                        }
+        if (report != null) impactReportBody(report, props.formsOpenable)
+    }
+}
+
+/**
+ * An impact report's body (issues #935, #1040): [impactSummary] -- saying what is [doing] it -- then a line per finding
+ * ([impactFindingText]) with a few of the forms' ids to go and look at, each opening in the raw trait editor in a new
+ * tab where this session can read them ([formsOpenable]); otherwise a note says where they open instead. Shared by
+ * the client page's publish dialog and Design View's save of a removed choice.
+ */
+internal fun ChildrenBuilder.impactReportBody(report: ImpactReportView, formsOpenable: Boolean, doing: String? = null) {
+    p { +(doing?.let { impactSummary(report, it) } ?: impactSummary(report)) }
+    if (!formsOpenable && report.findings.isNotEmpty()) {
+        p {
+            className = ClassName("type-hint")
+            +"These forms are ${report.client}'s, which this sandbox session cannot open; open them from ${report.client}'s own page."
+        }
+    }
+    if (report.findings.isNotEmpty()) {
+        ul {
+            report.findings.forEachIndexed { i, f ->
+                li {
+                    key = i.toString().unsafeCast<Key>()
+                    +impactFindingText(f)
+                    if (f.sampleIds.isNotEmpty()) {
+                        div {
+                            className = ClassName("type-hint")
+                            +(if (f.count > f.sampleIds.size) "For example: " else "Forms: ")
+                            f.sampleIds.forEachIndexed { j, id ->
+                                if (j > 0) +", "
+                                if (formsOpenable) {
+                                    a {
+                                        href = impactFormHref(id)
+                                        target = WindowTarget._blank
+                                        rel = "noopener"
+                                        title = "Open this form's entries in a new tab."
+                                        code { +id }
                                     }
+                                } else {
+                                    code { +id }
                                 }
                             }
                         }

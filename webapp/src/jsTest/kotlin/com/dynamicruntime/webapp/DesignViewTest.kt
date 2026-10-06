@@ -337,4 +337,27 @@ class DesignViewTest {
         assertEquals(mapOf("phone" to "Not in its list."), facts.copyRefusals)
         assertEquals(emptyMap(), parseSharedFacts(sharedRead)!!.copyRefusals)
     }
+
+    // --- removing a choice (issue #1040) ---
+
+    @Test
+    fun aRemovedChoiceIsLeftOutAndNamed() {
+        val start = listOf(ChoiceRow("office", "At the office", false), ChoiceRow("hotel", "A hotel", false), ChoiceRow("park", "A park", false))
+        val rows = listOf(start[0], ChoiceRow("venue", "A venue", isNew = true))
+        assertEquals(listOf("hotel", "park"), removedChoiceValues(start, rows))
+        assertEquals(listOf("office", "venue"), sharedOptionsPayload(rows).map { it[SCH.value] })
+        assertEquals(emptyList(), removedChoiceValues(start, start))
+        assertEquals(emptyList(), removedChoiceValues(null, rows))
+    }
+
+    @Test
+    fun aRemovalIsSaidBeforeTheSave() {
+        assertEquals("Removing hotel", removingPhrase(listOf("hotel")))
+        assertEquals("Removing office, hotel and park", removingPhrase(listOf("office", "hotel", "park")))
+        assertEquals(
+            "Removing hotel: saving first checks whether the client's stored forms hold it.",
+            removingNote(listOf("hotel")),
+        )
+        assertNull(removingNote(emptyList()))
+    }
 }

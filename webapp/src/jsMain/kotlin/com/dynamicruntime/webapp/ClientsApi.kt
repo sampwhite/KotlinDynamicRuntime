@@ -974,14 +974,14 @@ fun impactFindingText(f: ImpactFindingView): String {
 
 /**
  * The sentence heading the impact dialog (issue #935): too many rows to examine, nothing found, or how many kinds of
- * harm were. Pure.
+ * harm were. [doing] names the change -- "Publishing <name>" unless a caller says otherwise, as Design View's save of
+ * a removed choice does (issue #1040). Pure.
  */
-fun impactSummary(report: ImpactReportView): String = when {
-    report.tooLarge -> "This client stores more forms than an impact check examines, so what publishing " +
-        "${report.name} would do to them is unknown."
-    report.findings.isEmpty() -> "Publishing ${report.name} changes nothing the client's ${report.scanned} stored " +
-        "form(s) rely on."
-    else -> "Publishing ${report.name} would affect forms ${report.client} already stores:"
+fun impactSummary(report: ImpactReportView, doing: String = "Publishing ${report.name}"): String = when {
+    report.tooLarge -> "This client stores more forms than an impact check examines, so what " +
+        "${doing.replaceFirstChar { it.lowercase() }} would do to them is unknown."
+    report.findings.isEmpty() -> "$doing changes nothing the client's ${report.scanned} stored form(s) rely on."
+    else -> "$doing would affect forms ${report.client} already stores:"
 }
 
 /**
