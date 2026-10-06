@@ -64,6 +64,7 @@ import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.app.appSchema
 import com.dynamicruntime.common.home.homeMenuBlock
 import com.dynamicruntime.common.home.homeSchema
+import com.dynamicruntime.common.simulation.simulationSchema
 import com.dynamicruntime.common.test.testSchema
 import com.dynamicruntime.common.http.request.VariantBehavior
 import com.dynamicruntime.common.http.request.variantSchema
@@ -206,6 +207,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(appSchema(cxt))
         // Test-only endpoints (issue #125): filtered out of the store unless the deployment allows them.
         collector.addModule(testSchema(cxt))
+        // Simulations (issue #997): canned scenarios a test instance provisions in one call; test-only like the above.
+        collector.addModule(simulationSchema(cxt))
         // Request-variant escape hatch (issue #471): selects a configured misbehavior scenario by cookie so the
         // frontend's loading/failure states can be driven. App-only -- it exists for the browser talking to this
         // node -- and registered only when the deployment configured scenarios, so it is not a squatting,

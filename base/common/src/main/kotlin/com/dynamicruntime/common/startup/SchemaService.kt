@@ -77,6 +77,7 @@ import com.dynamicruntime.common.schema.requiredGateProblem
 import com.dynamicruntime.common.schema.requiredVisibleWhenProblems
 import com.dynamicruntime.common.schema.resolveOptionsSources
 import com.dynamicruntime.common.schema.visibleWhenProblems
+import com.dynamicruntime.common.test.SIM
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -1065,6 +1066,15 @@ class SchemaService : ServiceInitializer {
                 inputRef = "EndpointQuery",
             ) { c, request -> endpointCatalog(c, request) }
 
+            // ---- GET /fixture/simulations: the simulations this test instance offers (issue #997) ----
+            generalEndpoint(
+                SIM.list,
+                "Test-only: lists the simulations this node offers -- the endpoints tagged '${SIM.tag}' -- in the catalog's shape.",
+                HttpMethod.GET,
+                outputRef = "EndpointCatalog",
+                forTestingOnly = true,
+            ) { c, _ -> simulationCatalog(c) }
+
             // ---- GET /schema/endpoint: look up a single endpoint by exact method + path ----
             // Returns the SAME shape as /schema/endpoints (the reused EndpointCatalog): a one-element (or
             // empty, when unmatched) `endpoints` list plus the shared `$defs`, so a client consumes either
@@ -1410,6 +1420,26 @@ class SchemaService : ServiceInitializer {
          */
         @KdrPrivate
         fun endpointCatalog(cxt: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+            // A caller without env auth is confined to the published set and cannot lift that (issue #489): the
+            // catalog is a developer surface, so an ordinary production user sees only what is documented, and
+            // the request's `publicApi` cannot widen it. `isEnvAuthEffective` is the gate a suppressed session
+            // also fails, which is what makes the restriction previewable locally.
+            val publishedOnly = if (cxt.isEnvAuthEffective) request[EI.publicApi] as? Boolean else true
+            return catalogOf(cxt, request, publishedOnly)
+        }
+
+        /**
+         * Handler for [SIM.list] (issue #997): the catalog of the **simulations** this node offers -- the endpoints
+         * tagged [SIM.tag] -- in the same shape, for the Simulations page to draw forms from. Not narrowed to the
+         * published API: simulations are test-only, and on a test instance they are for anyone testing it, env auth
+         * or not. The access decision is the catalog's own, unchanged.
+         */
+        @KdrPrivate
+        fun simulationCatalog(cxt: KdrCxt): Map<String, Any?> =
+            catalogOf(cxt, mapOf(EI.tags to listOf(SIM.tag)), publishedOnly = null)
+
+        /** [endpointCatalog]'s listing, with [publishedOnly] (null for either) decided by the caller. */
+        private fun catalogOf(cxt: KdrCxt, request: Map<String, Any?>, publishedOnly: Boolean?): Map<String, Any?> {
             // Input is flat: the filter fields and `limit` are top-level.
             val namespace = request[EI.namespace] as? String
             val method = (request[EI.method] as? String)?.uppercase()
@@ -1418,11 +1448,6 @@ class SchemaService : ServiceInitializer {
             // access decision below is unchanged, so a filter can only ever hide endpoints the caller could
             // already have seen. `tags` is OR: an endpoint matches if it carries any of them.
             val requestedTags = request[EI.tags].toJsonListOfStrings().filter { it.isNotBlank() }.toSet()
-            // A caller without env auth is confined to the published set and cannot lift that (issue #489): the
-            // catalog is a developer surface, so an ordinary production user sees only what is documented, and
-            // the request's `publicApi` cannot widen it. `isEnvAuthEffective` is the gate a suppressed session
-            // also fails, which is what makes the restriction previewable locally.
-            val publishedOnly = if (cxt.isEnvAuthEffective) request[EI.publicApi] as? Boolean else true
             val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
             refreshCallerRoles(cxt)
             val surface = catalogSurface(cxt, request)

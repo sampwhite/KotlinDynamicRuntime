@@ -49,6 +49,9 @@ import com.dynamicruntime.common.schema.layout
 @Suppress("ConstPropertyName")
 object DesignDemo {
     const val client = "designdemo"
+
+    /** The simulation that provisions it (issue #997): `/fixture/simulate/design-demo`. */
+    const val simulationName = "design-demo"
     const val configName = "designDemo"
 
     const val eventRequest = "eventRequest"
@@ -78,13 +81,15 @@ object DesignDemo {
 
 /**
  * The demo client's configuration, built with the same DSL a component uses and written as a stored bundle by
- * whatever provisions it. [cxt] is only what the builder needs, so a [LiteCxt] serves.
+ * whatever provisions it. [cxt] is only what the builder needs, so a [LiteCxt] serves. [client] is the client id it is
+ * built for -- [DesignDemo.client], or that plus a suffix for a fresh copy of the same shape (issue #997); its types
+ * take the client's namespace, so copies never share a name.
  */
-fun designDemoConfig(cxt: KdrCxtBase = LiteCxt()): GedraConfig =
-    gedraConfig(cxt, DesignDemo.configName, clientNamespace(DesignDemo.client), DesignDemo.client) {
+fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.client): GedraConfig =
+    gedraConfig(cxt, DesignDemo.configName, clientNamespace(client), client) {
         defineClient(
             ClientDef(
-                clientId = DesignDemo.client,
+                clientId = client,
                 name = "Design demo",
                 usageType = ClientUsageType.demo,
                 audience = ClientAudience.internal,

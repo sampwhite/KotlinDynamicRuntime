@@ -156,6 +156,8 @@ object HMENU {
     const val clients = "clients"
     /** The named reports an administrator may run over their client's forms (issue #981). */
     const val reports = "reports"
+    /** The simulations a test instance offers, to provision a canned scenario and sign in to it (issue #997). */
+    const val simulations = "simulations"
     const val envReference = "envReference"
     /** Operator boot-checks page (issue #540). */
     const val bootChecks = "bootChecks"
@@ -210,6 +212,7 @@ object HMENU {
     const val pageWorkflows = "workflows"
     const val pageClients = "clients"
     const val pageReports = "reports"
+    const val pageSimulations = "simulations"
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"

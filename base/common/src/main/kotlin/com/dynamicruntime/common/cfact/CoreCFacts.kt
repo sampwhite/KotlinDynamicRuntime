@@ -31,6 +31,9 @@ object CFACTS {
     /** The node is an edge: the [BOOT.edge] role. */
     const val edge = "kdr:${BOOT.edge}"
 
+    /** The node is a test instance, carrying the test-only fixtures (issue #997). */
+    const val isTestInstance = "kdr:isTestInstance"
+
     const val loggedIn = "kdr:loggedIn"
     const val anonymous = "kdr:anonymous"
     /** The caller ranks at `operator` or above on the ladder. **Level only** -- see the naming note. */
@@ -127,6 +130,13 @@ fun addCoreCFacts(collector: SchemaCollector) {
             "True on an edge node: the perimeter that fronts other servers, booted by `StartEdge`.",
         ),
     ) { role == BOOT.edge }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.isTestInstance, CFGRP.node,
+            "True on a test instance -- one carrying the test-only fixtures (issue #997). The Simulations menu item " +
+                "is offered on it, since the simulations it lists exist nowhere else.",
+        ),
+    ) { it.instanceConfig.isTestInstance }
 
     collector.addCFact(
         CFactDef(
