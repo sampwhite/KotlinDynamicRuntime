@@ -532,7 +532,9 @@ library), and these are the rules it was built to:
 - **A group's colour is its place, never its rank.** `historySeries` orders groups as first seen, oldest day first,
   so switching metric or one group overtaking another repaints nothing. Past eight groups, the eight with the most
   forms on the latest day are kept; the rest fold into a grey **Other** bar when the metric adds up (a count, a
-  sum) and are left to a note when it does not (an average).
+  sum) and are left to a note when it does not (an average). Only there can a new snapshot repaint -- a group
+  entering the kept eight takes its first-seen place among them -- since eight colours cannot be a fixed place for
+  a ninth group; switching metric still repaints nothing.
 - **The palette is validated, not picked**: `--chart-1..8` in `app.css` are a fixed categorical order checked as a
   set against the card surface for colour-vision separation and contrast. Do not re-order them or add a ninth hue
   by eye. Text never wears a series colour; a swatch beside it does.
@@ -543,10 +545,15 @@ library), and these are the rules it was built to:
   says so.
 - **Nothing is hover-only.** Each bar's hit target is its whole column of the plot, is focusable, and shows the
   same readout on focus as on hover; the table under the chart holds every day and every number the readout shows.
+  To the keyboard the chart is **one Tab stop** (the latest day's first bar) with the arrows, Home and End moving
+  among the bars (`historyBarStep`, a roving `tabindex`) -- sixty bars are not sixty stops on the way to the table.
+  The plot's `svg` is a `group`, never an `img`: an image's children do not exist for a screen reader, and the
+  bars' named hit targets are its children.
 - **A Kotlin trap this view hit**: inside an antd `Button { }` builder, `loading = x` assigns a *local* named
   `loading` if the component has one (a `var loading by useState(...)`), not the button's property -- which sets
   state during render and crashes with React's "too many re-renders". Name such state something else, or write
-  `this.loading`.
+  `this.loading`. A function *parameter* does the same (`onFocus: (...) -> Unit` beside a `rect { onFocus = ... }`),
+  though that one the compiler catches: a parameter cannot be assigned.
 
 ## Buttons and links on the form surfaces (issue #726)
 

@@ -156,6 +156,30 @@ class ReportHistoryTest {
     }
 
     @Test
+    fun theKeyboardEntersAtTheLatestDayAndTheArrowsStepBarByBar() {
+        val snapshots = listOf(
+            snapshot(1, "2026-10-02T03:30:00Z", row(2023, 26), row(2024, 13)),
+            snapshot(2, "2026-10-03T03:30:00Z", row(2023, 124), row(2024, 62)),
+        )
+        val bars = historyChartLayout(historySeries(snapshots, count)).bars
+        // One Tab stop: the latest day's first bar.
+        assertEquals(2, historyBarEntry(bars))
+        assertEquals(1, bars[historyBarEntry(bars)].dayIndex)
+        assertEquals(-1, historyBarEntry(emptyList()))
+        // The arrows go to the neighbour, across days; at either end the key is the browser's again.
+        assertEquals(1, historyBarStep(2, bars.size, HKEY.left))
+        assertEquals(3, historyBarStep(2, bars.size, HKEY.right))
+        assertNull(historyBarStep(0, bars.size, HKEY.left))
+        assertNull(historyBarStep(3, bars.size, HKEY.right))
+        assertEquals(0, historyBarStep(2, bars.size, HKEY.home))
+        assertEquals(3, historyBarStep(2, bars.size, HKEY.end))
+        assertNull(historyBarStep(0, bars.size, HKEY.home))
+        assertNull(historyBarStep(3, bars.size, HKEY.end))
+        assertNull(historyBarStep(2, bars.size, "Tab"))
+        assertNull(historyBarStep(0, 0, HKEY.end))
+    }
+
+    @Test
     fun numbersTicksAndLinksReadAsTheChartWritesThem() {
         assertEquals("1,480", historyNumberText(1480.0))
         assertEquals("-12,345.50", historyNumberText(-12345.5))
@@ -171,6 +195,8 @@ class ReportHistoryTest {
         assertEquals(HCH.minWidth, historyChartWidth(120.0))
         assertEquals("Oct 2", historyDayLabel("2026-10-02"))
         assertEquals("not a day", historyDayLabel("not a day"))
+        assertEquals("2026-13-02", historyDayLabel("2026-13-02"))
+        assertEquals("2026-10-xx", historyDayLabel("2026-10-xx"))
         assertEquals(true, reportViewIsHistory(HMENU.reportViewHistory))
         assertEquals(false, reportViewIsHistory(reportModeGrouped))
         assertEquals(null, reportModeOf(HMENU.reportViewHistory))

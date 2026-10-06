@@ -76,8 +76,12 @@ fun parseHistoryPage(envelope: Map<String, Any?>): ReportHistoryPage = ReportHis
     next = envelope[EP.next].toOptStr(),
 )
 
-/** The page size the history is walked at: the listing's own default. */
-const val reportHistoryPageSize = 100
+/**
+ * The page size the history is walked at: past what the backend keeps of a report by default (a snapshot a day for
+ * 400 days, and today's), so a year of history is one request rather than five in a row, each waiting on the last
+ * one's cursor. A deployment keeping more is walked in pages, as before.
+ */
+const val reportHistoryPageSize = 500
 
 /** The history endpoint's query; [client] is sent only when given, as the run's is. */
 fun reportHistoryQuery(reportId: String, client: String?, after: String?, limit: Int = reportHistoryPageSize): Map<String, Any?> = buildMap {
@@ -207,8 +211,12 @@ class HistorySeries(
  *
  * A group's place -- and so its colour -- is the order groups were **first seen**, oldest day first, never its rank
  * by the metric: switching metric, or a group overtaking another, repaints nothing, and a group that appears later
- * takes the next free place. When there are more than [maxGroups], the ones kept are those with the most forms on
- * the latest day (not the most of the metric, for the same reason), in that same first-seen order.
+ * takes the next free place.
+ *
+ * That holds while the groups fit. When there are more than [maxGroups], the ones kept are those with the most forms
+ * on the latest day (not the most of the metric, so that switching metric still repaints nothing), in that same
+ * first-seen order -- and there a **new snapshot can** repaint: a group entering the kept set takes its first-seen
+ * place among them, and those after it move down one. Eight colours cannot be a fixed place for a ninth group.
  */
 fun historySeries(snapshots: List<ReportSnapshot>, metric: HistoryMetric, maxGroups: Int = historyMaxGroups): HistorySeries {
     val current = snapshots.filter { it.sameDefinition }
@@ -256,9 +264,10 @@ private val historyMonths = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Ju
 
 /** A `yyyy-MM-dd` day as an axis label: `Oct 2`. Anything else is left as it is. */
 fun historyDayLabel(day: String): String {
-    val month = day.substring(5.coerceAtMost(day.length), 7.coerceAtMost(day.length)).toIntOrNull()
-    val dayOfMonth = day.substring(8.coerceAtMost(day.length)).toIntOrNull()
-    return if (day.length == 10 && month != null && month in 1..12 && dayOfMonth != null) "${historyMonths[month - 1]} $dayOfMonth" else day
+    if (day.length != 10) return day
+    val month = day.substring(5, 7).toIntOrNull()?.takeIf { it in 1..12 } ?: return day
+    val dayOfMonth = day.substring(8).toIntOrNull() ?: return day
+    return "${historyMonths[month - 1]} $dayOfMonth"
 }
 
 // --- the chart's geometry ----------------------------------------------------------------------------------------------
@@ -425,6 +434,37 @@ fun barPath(x: Double, y: Double, width: Double, height: Double, upward: Boolean
     } else {
         "M${n(x)},${n(y)} V${n(bottom - r)} Q${n(x)},${n(bottom)} ${n(x + r)},${n(bottom)} H${n(right - r)} Q${n(right)},${n(bottom)} ${n(right)},${n(bottom - r)} V${n(y)} Z"
     }
+}
+
+/** The keys that move the keyboard's place among a chart's bars. Each name matches the DOM's `KeyboardEvent.key`. */
+@Suppress("ConstPropertyName")
+object HKEY {
+    const val left = "ArrowLeft"
+    const val right = "ArrowRight"
+    const val home = "Home"
+    const val end = "End"
+}
+
+/**
+ * Where [key] takes the keyboard from the bar at [index] of [count], in the order bars are drawn (day by day, a
+ * day's groups left to right): the arrows to the neighbour, Home and End to the first and the last. Null for any
+ * other key, and for an arrow at the end it points off -- the key is then left to the browser.
+ */
+fun historyBarStep(index: Int, count: Int, key: String): Int? = when (key) {
+    HKEY.left -> (index - 1).takeIf { it >= 0 }
+    HKEY.right -> (index + 1).takeIf { it < count }
+    HKEY.home -> 0.takeIf { count > 0 && index != 0 }
+    HKEY.end -> (count - 1).takeIf { count > 0 && index != count - 1 }
+    else -> null
+}
+
+/**
+ * The bar the Tab key lands on when the chart is entered: the **latest** day's first -- the day the eye lands on --
+ * so the chart is one stop on the way through the page, and the arrows move within it. -1 when there are no bars.
+ */
+fun historyBarEntry(bars: List<HistoryBar>): Int {
+    val latest = bars.lastOrNull()?.dayIndex ?: return -1
+    return bars.indexOfFirst { it.dayIndex == latest }
 }
 
 // --- the table under the chart -------------------------------------------------------------------------------------------

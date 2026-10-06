@@ -30,6 +30,7 @@ import react.dom.svg.ReactSVG.text
 import react.dom.svg.TextAnchor
 import react.useEffect
 import react.useEffectOnce
+import react.useMemo
 import react.useRef
 import react.useState
 import web.cssom.ClassName
@@ -46,6 +47,12 @@ external interface ReportHistoryPanelProps : Props {
 /** A report's fetched history, with the report it was fetched for: another report's is never drawn under this one's heading. */
 private class HistoryShown(val key: String, val snapshots: List<ReportSnapshot>)
 
+/**
+ * A fetch of a report's history that failed, with the report it failed for: said under that report only, never under
+ * the next one's heading while its own history is on its way. A 403 is a [refusal], in the endpoint's words.
+ */
+private class HistoryFailure(val key: String, val error: DisplayError?, val refusal: String?)
+
 /** The bar the pointer or the keyboard is on. */
 private class HistoryHover(val dayIndex: Int, val groupIndex: Int)
 
@@ -57,7 +64,9 @@ private class HistoryHover(val dayIndex: Int, val groupIndex: Int)
  * draws them. The chart is hand-drawn SVG laid out at the pane's own width -- measured, and followed as the pane
  * resizes -- rather than scaled to it, so its text keeps its size; the hover readout is HTML over it, placed in the
  * same pixels. Every bar can be reached by the pointer or the keyboard and says the same thing either way, and
- * nothing the readout says is missing from the table.
+ * nothing the readout says is missing from the table. To the keyboard the chart is **one** Tab stop -- the latest
+ * day's first bar -- and the arrows, Home and End move among the bars (`historyBarStep`); a chart of sixty bars is
+ * not sixty stops between the controls and the table.
  *
  * A refetch -- after a snapshot, or on the app's refresh -- keeps the chart on screen, dimmed, until its replacement
  * arrives. An administrator confined to an organization is refused by the endpoint (history is client-wide), and
@@ -69,8 +78,7 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
     val key = "${props.client.orEmpty()}|${report.reportId}"
 
     var shown by useState<HistoryShown?>(null)
-    var error by useState<DisplayError?>(null)
-    var refusal by useState<String?>(null)
+    var failure by useState<HistoryFailure?>(null)
     // Not `loading`: inside a Button's builder that name is the button's own property, and a local would shadow it.
     var fetching by useState(false)
     var metricKey by useState<String?>(null)
@@ -79,6 +87,8 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
     var note by useState<String?>(null)
     var reload by useState(0)
     var hover by useState<HistoryHover?>(null)
+    // The bar the keyboard is on, apart from the pointer's: the pointer leaving a bar must not move the Tab stop.
+    var focus by useState<HistoryHover?>(null)
     // Monotonic, so a slow answer for a report the user has moved on from is dropped.
     val latest = useRef(0)
     // The width the chart is laid out at: the panel's own, followed as it changes.
@@ -102,6 +112,7 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
         note = null
         takeError = null
         hover = null
+        focus = null
     }
     useEffect(key, generation, reload) {
         val token = (latest.current ?: 0) + 1
@@ -112,13 +123,16 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
                 val snapshots = ReportHistoryApi.all(report.reportId, props.client)
                 if (latest.current == token) {
                     shown = HistoryShown(key, snapshots)
-                    error = null
-                    refusal = null
+                    failure = null
                     fetching = false
                 }
             } catch (e: Throwable) {
                 if (latest.current != token) return@launch
-                if ((e as? ApiError)?.status == EXC.notAuthorized) refusal = e.message else error = userFacingError(e)
+                failure = if ((e as? ApiError)?.status == EXC.notAuthorized) {
+                    HistoryFailure(key, null, e.message ?: "Report history is not open to you.")
+                } else {
+                    HistoryFailure(key, userFacingError(e), null)
+                }
                 fetching = false
             }
         }
@@ -147,6 +161,13 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
     val metrics = historyMetrics(report.columns, report.groupBy)
     val metric = metrics.firstOrNull { it.key == metricKey } ?: metrics.first()
     val snapshots = shown?.takeIf { it.key == key }?.snapshots
+    val failed = failure?.takeIf { it.key == key }
+    val error = failed?.error
+    val refusal = failed?.refusal
+    // Made once per history, metric and width -- not on every render: the readout following the pointer re-renders
+    // the panel at each bar it crosses, and regrouping every snapshot's rows for that would be work for nothing.
+    val series = useMemo(snapshots, report, metric.key) { snapshots?.let { historySeries(it, metric) } }
+    val layout = useMemo(series, chartWidth) { series?.let { historyChartLayout(it, chartWidth) } }
 
     div {
         id = ElementId(historyPanelId)
@@ -190,9 +211,9 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
         when {
             refusal != null -> p {
                 className = ClassName("subtitle")
-                +refusal!!
+                +refusal
             }
-            snapshots == null -> {
+            snapshots == null || series == null || layout == null -> {
                 error?.let { errorText("Couldn't load the report's history.", it) }
                 if (error == null) p {
                     className = ClassName("subtitle")
@@ -206,14 +227,13 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
                     className = ClassName("subtitle")
                     +historySummaryText(snapshots)
                 }
-                val series = historySeries(snapshots, metric)
                 if (series.days.isEmpty()) {
                     p {
                         className = ClassName("subtitle")
                         +historyEmptyText(report, series.otherDefinitions)
                     }
                 } else {
-                    historyChart(report, series, chartWidth, hover, fetching) { hover = it }
+                    historyChart(report, series, layout, hover, focus, fetching, hoverAt = { hover = it }, focusAt = { focus = it })
                     historyNotes(series)
                     historyTable(series)
                 }
@@ -224,6 +244,9 @@ val ReportHistoryPanel = FC<ReportHistoryPanelProps> { props ->
 
 /** The panel's element id, which the width it is laid out at is measured from. */
 private const val historyPanelId = "report-history-panel"
+
+/** The id of the hit target of the bar at [index] of the chart's bars: what the arrow keys move the focus to. */
+private fun historyHitId(index: Int): String = "rh-hit-$index"
 
 /** A `ResizeObserver` calling [changed] whenever what it observes changes size. */
 private fun resizeObserver(changed: () -> Unit): dynamic = js("new ResizeObserver(function () { changed(); })")
@@ -250,18 +273,28 @@ private fun groupName(series: HistorySeries, groupIndex: Int): String =
     if (groupIndex == historyOtherIndex) "Other (${series.otherCount} groups)" else series.groups[groupIndex].label
 
 /**
- * The chart: its title, the legend (for two series or more -- one needs none), and the plot with its hover readout.
+ * The chart: its title, the legend (for two series or more -- one needs none), and the plot with its readout.
  * Text is in the text colours throughout; only the marks, and the swatches beside names, wear a series colour.
+ *
+ * The readout is of the bar the pointer is on ([hover]), else the one the keyboard is ([focus]). The plot is a
+ * `group`, not an `img`: an image's children are not there for a screen reader, and each bar's hit target is one --
+ * focusable, an `img` of its own, named "day, group: value".
  */
 private fun ChildrenBuilder.historyChart(
     report: ReportInfo,
     series: HistorySeries,
-    chartWidth: Double,
+    layout: HistoryChartLayout,
     hover: HistoryHover?,
+    focus: HistoryHover?,
     refetching: Boolean,
-    onHover: (HistoryHover?) -> Unit,
+    // Not `onHover`/`onFocus`: inside the rect's builder `onFocus = ...` would assign a parameter of that name.
+    hoverAt: (HistoryHover?) -> Unit,
+    focusAt: (HistoryHover?) -> Unit,
 ) {
-    val layout = historyChartLayout(series, chartWidth)
+    val at = hover ?: focus
+    // The chart's one Tab stop: the bar the keyboard is on, else the one it enters at.
+    val tabStop = focus?.let { f -> layout.bars.indexOfFirst { it.dayIndex == f.dayIndex && it.groupIndex == f.groupIndex } }
+        ?.takeIf { it >= 0 } ?: historyBarEntry(layout.bars)
     val seriesCount = series.groups.size + (if (series.otherDrawn) 1 else 0)
     h3 {
         className = ClassName("rh-title")
@@ -291,8 +324,8 @@ private fun ChildrenBuilder.historyChart(
             height = layout.height
             viewBox = "0 0 ${layout.width} ${layout.height}"
             asDynamic().className = "rh-svg"
-            role = AriaRole.img
-            ariaLabel = "${historyChartTitle(report, series)}. The table below holds the same numbers."
+            role = AriaRole.group
+            ariaLabel = "${historyChartTitle(report, series)}. Arrow keys move between bars; the table below holds the same numbers."
             // The y axis: hairline gridlines one step off the surface, and the baseline a step firmer.
             layout.ticks.forEach { t ->
                 line {
@@ -325,7 +358,7 @@ private fun ChildrenBuilder.historyChart(
                 }
             }
             layout.bars.forEach { b ->
-                val hot = hover != null && hover.dayIndex == b.dayIndex && hover.groupIndex == b.groupIndex
+                val hot = at != null && at.dayIndex == b.dayIndex && at.groupIndex == b.groupIndex
                 path {
                     key = "b${b.dayIndex}_${b.groupIndex}".unsafeCast<Key>()
                     asDynamic().className = "rh-bar ${colorClass(b.groupIndex)}" + (if (hot) " rh-hot" else "")
@@ -333,25 +366,34 @@ private fun ChildrenBuilder.historyChart(
                 }
             }
             // The hit targets, over the bars: the bar's whole column of the plot, gap included, so a short bar is
-            // as easy to land on as a tall one. Focusable, and saying on focus what they say on hover.
-            layout.bars.forEach { b ->
+            // as easy to land on as a tall one. Focusable, and saying on focus what they say on hover -- but only
+            // one is a Tab stop, and the arrows move the focus from it (a roving tabindex).
+            layout.bars.forEachIndexed { i, b ->
                 rect {
                     key = "h${b.dayIndex}_${b.groupIndex}".unsafeCast<Key>()
                     asDynamic().className = "rh-hit"
+                    asDynamic().id = historyHitId(i)
                     x = b.x - HCH.barGap / 2
                     y = layout.plotTop
                     width = b.width + HCH.barGap
                     height = layout.plotBottom - layout.plotTop
-                    tabIndex = 0
+                    role = AriaRole.img
+                    tabIndex = if (i == tabStop) 0 else -1
                     ariaLabel = "${series.days[b.dayIndex].day}, ${groupName(series, b.groupIndex)}: ${historyNumberText(b.value)}"
-                    onMouseEnter = { onHover(HistoryHover(b.dayIndex, b.groupIndex)) }
-                    onMouseLeave = { onHover(null) }
-                    onFocus = { onHover(HistoryHover(b.dayIndex, b.groupIndex)) }
-                    onBlur = { onHover(null) }
+                    onMouseEnter = { hoverAt(HistoryHover(b.dayIndex, b.groupIndex)) }
+                    onMouseLeave = { hoverAt(null) }
+                    onFocus = { focusAt(HistoryHover(b.dayIndex, b.groupIndex)) }
+                    onBlur = { focusAt(null) }
+                    onKeyDown = { e ->
+                        historyBarStep(i, layout.bars.size, e.key)?.let { next ->
+                            e.preventDefault()
+                            document.getElementById(historyHitId(next))?.asDynamic()?.focus()
+                        }
+                    }
                 }
             }
         }
-        val bar = hover?.let { h -> layout.bars.firstOrNull { it.dayIndex == h.dayIndex && it.groupIndex == h.groupIndex } }
+        val bar = at?.let { h -> layout.bars.firstOrNull { it.dayIndex == h.dayIndex && it.groupIndex == h.groupIndex } }
         if (bar != null) {
             // The readout: the value leads, then whose it is and when. Placed in the chart's own pixels.
             div {
