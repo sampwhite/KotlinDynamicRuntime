@@ -45,7 +45,13 @@ object DesignSharedEdit {
         } else {
             // Read where the configuration lives: a sandbox's rows are its parent's (issue #930).
             val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-            storedEntry(readCxt, declaredBy!!, slot, key)?.let { out[DSV.sharedBasedOn] = stampOf(it) }
+            storedEntry(readCxt, declaredBy!!, slot, key)?.let { stored ->
+                out[DSV.sharedBasedOn] = stampOf(stored)
+                // Said before Save rather than after it (issue #1039).
+                val body = stored[bodyField(slot)].toJsonMapOrEmpty()
+                out[DSV.sharedCopyRefusals] = body[SCH.properties].toJsonMapOrEmpty().keys
+                    .mapNotNull { field -> sharedCopyRefusal(body, field)?.let { field to it } }.toMap()
+            }
         }
         return out
     }
@@ -194,17 +200,9 @@ fun withSharedField(
         if (at >= 0) {
             fields[at] = replacement
         } else {
-            // A layout that owns its list (`reorder`: the order; `authoritative`: the order and which fields show) would
-            // change for every workflow if an entry were appended -- a field moved to the end, or one it leaves out
-            // shown. Only an annotating (`overlay`) layout takes a new entry.
-            val mode = layout[SL.mode].toOptStr() ?: SLM.overlay
-            if (mode != SLM.overlay) {
-                val owns = if (mode == SLM.authoritative) "the form's fields and their order" else "the form's field order"
-                throw KdrException.mkInput(
-                    "The type's layout is '$mode', so its list decides $owns, and '$field' is not in it. Giving it copy " +
-                        "here would add it to that list for every workflow, which the shared editor does not do.",
-                )
-            }
+            // Only an annotating (`overlay`) layout takes a new entry; one that owns its list would change for every
+            // workflow.
+            sharedCopyRefusal(body, field)?.let { throw KdrException.mkInput(it) }
             fields.add(replacement)
         }
         layout[SL.schemaFields] = fields
@@ -231,4 +229,21 @@ fun withSharedField(
         out[SCH.properties] = LinkedHashMap(properties).also { it[field] = newProperty }
     }
     return out
+}
+
+/**
+ * Why [field] of the type whose authored body is [body] cannot be given shared copy, or null when it can (issues #1029,
+ * #1039). A layout that owns its list (`reorder`: the order; `authoritative`: the order and which fields show) would
+ * change for every workflow if an entry were appended -- a field moved to the end, or one it leaves out shown -- so a
+ * field such a list leaves out cannot take copy. A field the list names, or any field under an annotating (`overlay`)
+ * layout or none, can. Pure; the save refuses with it, and the definition read says it before the save.
+ */
+fun sharedCopyRefusal(body: Map<String, Any?>, field: String): String? {
+    val layout = body[SCH.layout].toJsonMapOrEmpty()
+    val listed = (layout[SL.schemaFields] as? List<*>).orEmpty().any { (it as? Map<*, *>)?.get(SL.field) == field }
+    val mode = layout[SL.mode].toOptStr() ?: SLM.overlay
+    if (listed || mode == SLM.overlay) return null
+    val owns = if (mode == SLM.authoritative) "which fields the form shows and their order" else "the form's field order"
+    return "This type's layout decides $owns, and '$field' is not in its list. Giving it copy here would add it to " +
+        "that list for every workflow, which the shared editor does not do."
 }

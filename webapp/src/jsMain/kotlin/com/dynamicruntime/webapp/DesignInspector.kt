@@ -546,14 +546,23 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                             className = ClassName("dv-fact-name")
                             +humanizeFieldName(key)
                         }
+                        // Blank, the page shows the shared copy -- or, with none, the field's own (issue #1039).
+                        val sharedValue = shared?.get(key).toOptStr()
+                        val fallback = copyFallback(key, target.name, target.prop)
                         Input {
                             value = values[key].orEmpty()
+                            placeholder = sharedValue ?: fallback.text
                             onChange = { e -> values = values + (key to (e.target.value as String)) }
                         }
-                        shared?.get(key).toOptStr()?.let {
+                        if (sharedValue != null) {
                             p {
                                 className = ClassName("dv-shared")
-                                +"Shared: $it"
+                                +"Shared: $sharedValue"
+                            }
+                        } else if (values[key].isNullOrBlank()) {
+                            p {
+                                className = ClassName("dv-fallback")
+                                +fallback.note
                             }
                         }
                     }
@@ -631,6 +640,7 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
     var rows by useState(startRows.orEmpty())
     var saving by useState(false)
     var failure by useState<DisplayError?>(null)
+    val copyRefusal = facts.copyRefusals[target.name]
 
     div {
         className = ClassName("dv-edit")
@@ -652,6 +662,11 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                     +it
                 }
             }
+            // Nothing to edit: copy it cannot take, and no choices (issue #1039).
+            copyRefusal != null && startRows == null -> p {
+                className = ClassName("dv-note")
+                +copyRefusal
+            }
             !editing -> div {
                 className = ClassName("dv-actions")
                 Button {
@@ -661,7 +676,20 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                 }
             }
             else -> {
+                // Grouped by what an edit changes (issue #1039): wording forms show, and what the field accepts.
+                p {
+                    className = ClassName("dv-caption")
+                    +"Form copy \u2014 what forms show for this field"
+                }
+                copyRefusal?.let {
+                    p {
+                        className = ClassName("dv-note")
+                        +it
+                    }
+                }
                 for (key in editableCopyKeys) {
+                    // A blank input is the field's own wording, not nothing: say what the form shows instead.
+                    val fallback = copyFallback(key, target.name, target.prop)
                     div {
                         className = ClassName("dv-edit-row")
                         span {
@@ -670,14 +698,22 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                         }
                         Input {
                             value = values[key].orEmpty()
+                            placeholder = fallback.text
+                            disabled = copyRefusal != null
                             onChange = { e -> values = values + (key to (e.target.value as String)) }
+                        }
+                        if (values[key].isNullOrBlank()) {
+                            p {
+                                className = ClassName("dv-fallback")
+                                +fallback.note
+                            }
                         }
                     }
                 }
                 if (startRows != null) {
                     p {
                         className = ClassName("dv-caption")
-                        +"Choices"
+                        +"Choices \u2014 what the field accepts"
                     }
                     rows.forEachIndexed { i, row ->
                         div {

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -355,6 +356,27 @@ fun copyEntryFrom(start: Map<String, Any?>, field: String, values: Map<String, S
     return out
 }
 
+/**
+ * What a form shows for one of [editableCopyKeys] when no layout entry gives it ([text], null for nothing), and a
+ * sentence saying so for a blank input ([note]) -- issue #1039.
+ */
+class CopyFallback(val text: String?, val note: String)
+
+/**
+ * What a form shows for [key] of the field [name] when no layout entry gives it: the field's own wording, as
+ * `SchemaForm` falls back to it -- its title or a label made from its name, its description, the hint its bounds
+ * give. A blank copy input means this, which the editor says rather than showing an empty box. Pure.
+ */
+fun copyFallback(key: String, name: String, prop: SchProperty): CopyFallback = when (key) {
+    SL.label -> prop.title?.let { CopyFallback(it, "Blank: forms show the field's own title.") }
+        ?: CopyFallback(humanizeFieldName(name), "Blank: forms show a label made from the field's name.")
+    SL.description -> prop.description?.let { CopyFallback(it, "Blank: forms show the field's own description.") }
+        ?: CopyFallback(null, "Blank: forms show no description.")
+    SL.hint -> boundHintText(prop.valueType)?.let { CopyFallback(it, "Blank: forms show the field's range.") }
+        ?: CopyFallback(null, "Blank: forms show no hint.")
+    else -> CopyFallback(null, "")
+}
+
 /** Where a workflow's override of [field] in [typeName] lives in its definition (issue #984), for people and tools. */
 fun overridePath(typeName: String, field: String): String =
     "${CCT.definition}.${WFD.types}[\"$typeName\"].${SCH.layout}.${SL.schemaFields}[$field]"
@@ -377,6 +399,8 @@ class SharedFacts(
     val canEdit: Boolean,
     val refusal: String?,
     val basedOn: String,
+    /** By field, why it cannot be given shared copy (issue #1039); a field not named here can. */
+    val copyRefusals: Map<String, String> = emptyMap(),
 )
 
 /** The shared-editor facts of a definition read, or null for one that carries none (a workflow's). */
@@ -391,6 +415,7 @@ fun parseSharedFacts(read: Map<String, Any?>?): SharedFacts? {
         canEdit = read[DSV.canEditShared] == true,
         refusal = read[DSV.sharedRefusal].toOptStr(),
         basedOn = read[DSV.sharedBasedOn].toOptStr().orEmpty(),
+        copyRefusals = read[DSV.sharedCopyRefusals].toJsonMapOrEmpty().mapNotNull { (k, v) -> v.toOptStr()?.let { k to it } }.toMap(),
     )
 }
 

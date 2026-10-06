@@ -86,6 +86,17 @@ class SharedEditTest : StringSpec({
         (d[DSV.sharedBasedOn] as String).isNotBlank() shouldBe true
     }
 
+    "the read says which fields cannot take shared copy, and the save refuses them" {
+        // The contact type's layout decides the order and leaves the phone out (issue #1039).
+        val contact = definition(CCT.schemaDef, contactType)
+        contact[DSV.sharedCopyRefusals].toJsonMapOrEmpty().keys shouldBe setOf(DesignDemo.contactPhone)
+        traitRead()[DSV.sharedCopyRefusals].toJsonMapOrEmpty() shouldBe emptyMap()
+        admin.expectError(
+            400, DSV.sharedFieldEdit,
+            sharedArgs(contactType, DesignDemo.contactPhone, mapOf(SL.label to "Phone"), null, contact[DSV.sharedBasedOn] as String),
+        ).toString() shouldContain "not in its list"
+    }
+
     "a shared copy edit shows on every workflow" {
         shared(dataType, DesignDemo.title, mapOf(SL.label to "Event name", SL.description to "What people will call it."))
         label(requestView(), dataType, DesignDemo.title) shouldBe "Event name"

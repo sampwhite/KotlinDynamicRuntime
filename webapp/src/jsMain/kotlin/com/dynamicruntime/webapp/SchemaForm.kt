@@ -1780,9 +1780,21 @@ internal fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null) {
         }
         return
     }
+    val text = boundHintText(vt) ?: return
+    p {
+        className = ClassName("type-hint")
+        +text
+    }
+}
+
+/**
+ * The hint a field's declared bounds give it -- "range: 1 to 200", "characters: 3 or more" -- or null when it declares
+ * neither end. What a form shows beneath the field when no layout `hint` replaces it. Pure.
+ */
+fun boundHintText(vt: SchType): String? {
     val min = vt.minBound
     val max = vt.maxBound
-    if (min == null && max == null) return
+    if (min == null && max == null) return null
     val what = when (vt.jsonType) {
         SCT.string -> "characters"
         SCT.array -> "items"
@@ -1797,8 +1809,5 @@ internal fun ChildrenBuilder.boundHint(vt: SchType, override: String? = null) {
         min != null -> if (vt.minExclusive) "more than ${min.fmtD()}" else "${min.fmtD()} or more"
         else -> if (vt.maxExclusive) "less than ${max!!.fmtD()}" else "${max!!.fmtD()} or less"
     }
-    p {
-        className = ClassName("type-hint")
-        +if (what == null) "range: $range" else "$what: $range"
-    }
+    return if (what == null) "range: $range" else "$what: $range"
 }
