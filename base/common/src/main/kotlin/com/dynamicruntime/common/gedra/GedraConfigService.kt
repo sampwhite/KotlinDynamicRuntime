@@ -237,6 +237,22 @@ class GedraConfigService : ServiceInitializer {
      * silently stripped -- a bulk clone/restore, #685, strips and logs instead). Run before a write and, for a
      * patch, on the reassembled result.
      */
+    /** Why [def]'s routing is another client's, or null: the prefix or domain it claims that a different known client declares. */
+    private fun routingClaimedByAnother(cxt: KdrCxt, def: ClientDef): String? {
+        val others = ClientService.get(cxt).clients.values.filter { it.clientId != def.clientId }
+        def.domainPrefix?.let { prefix ->
+            others.firstOrNull { it.domainPrefix.equals(prefix, ignoreCase = true) }?.let {
+                return "the domain prefix '$prefix' is client '${it.clientId}''s; a prefix routes to one client."
+            }
+        }
+        def.customDomain?.let { domain ->
+            others.firstOrNull { it.customDomain.equals(domain, ignoreCase = true) }?.let {
+                return "the domain '$domain' is client '${it.clientId}''s; a domain routes to one client."
+            }
+        }
+        return null
+    }
+
     private fun checkWritableConfig(cxt: KdrCxt, config: GedraConfig) {
         storedOwnershipProblem(config)?.let { throw KdrException.mkInput(it) }
         // `staticConfig` is a source-only fact (issue #824): a static client takes nothing stored in production, so
@@ -251,6 +267,12 @@ class GedraConfigService : ServiceInitializer {
         // replaces asking who already claimed the namespace.
         clientNamespaceProblem(config.namespace, config.gedraId.client)?.let {
             throw KdrException.mkInput("Config '${config.gedraId}' cannot be written: $it")
+        }
+        // A domain prefix or custom domain routes to one client (issue #1026): a stored definition may not claim
+        // another known client's, whatever write carries it -- the Clients page's editor, a bundle write or patch.
+        // Judged against the definitions this node knows, case-insensitively, since a hostname is.
+        config.client?.let { def ->
+            routingClaimedByAnother(cxt, def)?.let { throw KdrException.mkInput("Config '${config.gedraId}' cannot be written: $it") }
         }
         val testFeatures = config.client?.testFeatures.orEmpty()
         if (!cxt.instanceConfig.isTestInstance && testFeatures.isNotEmpty()) {

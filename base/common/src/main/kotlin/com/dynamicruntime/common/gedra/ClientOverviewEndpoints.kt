@@ -294,7 +294,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         inputFields = { overseenClientField(CLD.client, "The client to retrieve; the caller's own when absent.") },
         needsClientConfig = true,
     ) { c, request ->
-        clientDefinitionItem(c, overseenClient(c, request[CLD.client].toOptStr()))
+        clientDefinitionItem(c, overseenClient(c, request[CLD.client].toOptStr()), withStored = true)
     }
 
     itemEndpoint(

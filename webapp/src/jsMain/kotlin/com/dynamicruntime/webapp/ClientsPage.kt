@@ -258,18 +258,19 @@ private fun ChildrenBuilder.clientDetail(
         // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
         def?.stored?.let { stored ->
             if (definitionEditable(row)) {
-                val blocker = definitionEditBlocker(def.storedConfig, configs, row)
-                if (blocker == null) {
+                val offer = definitionEditOffer(def.storedConfig, configs, sandbox = def.info[CLD.sandbox] == true)
+                if (offer.editor) {
                     DefinitionEditor {
                         this.clientId = clientId
                         baseline = stored
                         this.onChanged = onChanged
                     }
-                } else {
+                }
+                offer.note?.let { note ->
                     // Said before the attempt, with the way there: the editor would only be refused for the same reason.
                     p {
                         className = ClassName("subtitle")
-                        +"$blocker, in "
+                        +"$note, in "
                         a {
                             className = ClassName("wf-cell-link")
                             href = "#"
@@ -422,6 +423,11 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
     var busy by useState(false)
     var editError by useState<DisplayError?>(null)
     var note by useState<String?>(null)
+    // The definition a save just stored, until the page's re-read brings the same: an editor reopened in between
+    // starts from it, so the old values are not sent back as changes.
+    var saved by useState<Map<String, Any?>?>(null)
+    val baseline = saved ?: props.baseline
+    useEffect(props.baseline) { saved = null }
     // Which client a save was started for: a save still in flight when the administrator opens another client is
     // disowned, so its note and close land nowhere rather than on the new client's page.
     val latest = useRef(0)
@@ -435,14 +441,14 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
     }
 
     fun open() {
-        draft = definitionDraftOf(props.baseline)
+        draft = definitionDraftOf(baseline)
         editing = true
         editError = null
         note = null
     }
 
     fun save() {
-        val request = definitionEditRequest(props.clientId, props.baseline, draft)
+        val request = definitionEditRequest(props.clientId, baseline, draft)
         if (!definitionEditChanges(request)) return
         val token = latest.current
         busy = true
@@ -453,6 +459,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
                 if (latest.current == token) {
                     note = savedNote("Saved the definition to ${result.configName}.", result.mode)
                     editing = false
+                    saved = result.info
                 }
                 props.onChanged()
             } catch (e: Throwable) {
@@ -472,7 +479,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
             }
         }
     } else {
-        val request = definitionEditRequest(props.clientId, props.baseline, draft)
+        val request = definitionEditRequest(props.clientId, baseline, draft)
         // The one list the endpoint's input is built from, so a field joining it is drawn here without a change.
         for (name in ClientPresentationFields.names) {
             textField(humanizeFieldName(name), draft[name].orEmpty(), disabled = busy) { v -> draft = draft + (name to v) }

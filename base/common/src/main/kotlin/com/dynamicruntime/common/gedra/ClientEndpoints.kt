@@ -116,9 +116,10 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         property(CLD.client, "The client's attributes.", required = true) { ref(CLD.infoTypeName) }
         property(
             CLD.storedDefinition,
-            "The client's stored definition as its latest revision holds it (issue #1026), when it has one: what an " +
-                "edit starts from, which differs from the attributes the client runs by an unpublished draft and by " +
-                "what a template fills in. Absent for a client defined in source code, and for a sandbox.",
+            "On the scoped retrieve: the client's stored definition as its latest revision holds it (issue #1026), " +
+                "when it has one -- what an edit starts from, which differs from the attributes the client runs by " +
+                "an unpublished draft and by what a template fills in. Absent for a client defined in source code, " +
+                "for a sandbox, and on the full-scope retrieve.",
         ) { ref(CLD.infoTypeName) }
         property(CLD.storedDefinitionConfig, "With storedDefinition: the name of the stored configuration holding it.")
         property(
@@ -220,16 +221,21 @@ internal fun workflowIdsFor(cxt: KdrCxt, clientId: String): List<String> =
  * its issues, else a 404 ([droppedClientDefinitionOf] says which). Shared by the full-scope retrieve and the scoped
  * one (issue #904), so the two cannot answer differently about the same client.
  */
-internal fun clientDefinitionItem(cxt: KdrCxt, clientId: String): Map<String, Any?> {
+internal fun clientDefinitionItem(
+    cxt: KdrCxt,
+    clientId: String,
+    /** Whether to read and return the stored definition too (issue #1026) -- the scoped retrieve, which the Clients page reads. */
+    withStored: Boolean = false,
+): Map<String, Any?> {
     val def = ClientService.get(cxt).present(clientId)
-    return if (def != null) clientDefinitionOf(cxt, def) else droppedClientDefinitionOf(cxt, clientId)
+    return if (def != null) clientDefinitionOf(cxt, def, withStored) else droppedClientDefinitionOf(cxt, clientId)
 }
 
 /** One client's definition for the retrieve endpoint (issue #672): its attributes, the traits it **supports**
  *  (as metadata -- the resolved schema is read from the endpoint catalog with `client=`), its usage rules, and
  *  the ids of the workflows it sees. Reads the *present* (neutralized) definition, so `testFeatures` is already
  *  absent off a test instance. */
-private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
+private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef, withStored: Boolean): Map<String, Any?> {
     val schema = SchemaService.get(cxt)
     // The shared projections (issue #702): a trait's metadata as the serializer writes it, and a usage rule
     // without its internal `display` expression.
@@ -237,7 +243,8 @@ private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
     val usages = schema.traitUsagesFor(def.clientId).map { it.toRuleMap(includeDisplay = false) }
     return buildMap {
         put(CLD.client, def.toInfo())
-        storedDefinitionOf(cxt, def.clientId)?.let { (configName, stored) ->
+        // Read only where asked for: the full-scope retrieve is on every node, and its callers do not edit.
+        if (withStored) storedDefinitionOf(cxt, def.clientId)?.let { (configName, stored) ->
             put(CLD.storedDefinition, stored)
             put(CLD.storedDefinitionConfig, configName)
         }

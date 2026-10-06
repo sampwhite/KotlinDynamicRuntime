@@ -756,19 +756,26 @@ fun definitionEditable(row: ClientOverview?): Boolean =
     row != null && row.status == ClientStatus.present.name && row.origin == GedraConfigOrigin.stored.name &&
         row.sandboxOf == null && !row.staticHere
 
+/** What the detail offers for editing the definition (issue #1026): the [editor], a [note] in its place, or neither yet. */
+class DefinitionEditOffer(val editor: Boolean, val note: String?)
+
 /**
- * Why the definition cannot be edited yet (issue #1026), said before the attempt, or null when it can: the stored
- * configuration [storedConfig] holding the definition has unpublished changes, which a save would publish unseen --
- * the backend's draft rule -- so it must be published or reverted first. Not for a client with a sandbox, whose
- * saves are drafts and publish nothing; and unknown (null) until the [configs] have loaded. Pure, and covered under
- * `jsNodeTest`.
+ * Whether the detail offers the definition editor (issue #1026), or a note in its place, or neither yet: the
+ * stored configuration [storedConfig] holding the definition may have unpublished changes, which a save would publish
+ * unseen -- the backend's draft rule -- so it must be published first, and the page says so before the attempt.
+ * Not for a client whose definition asks for a sandbox ([sandbox], the running definition's flag, which is what
+ * the backend reads to make a save a draft); and nothing is offered until the [configs] have loaded, so an editor is
+ * never opened and then replaced by the note. Pure, and covered under `jsNodeTest`.
  */
-fun definitionEditBlocker(storedConfig: String?, configs: List<ConfigSummaryView>?, row: ClientOverview?): String? {
-    if (storedConfig == null || configs == null || row == null || row.hasSandbox) return null
-    val holder = configs.firstOrNull { it.name == storedConfig } ?: return null
-    if (holder.published) return null
-    return "This client's definition is in configuration '$storedConfig', which has unpublished changes that a save " +
-        "would publish with it. Publish or revert that configuration first"
+fun definitionEditOffer(storedConfig: String?, configs: List<ConfigSummaryView>?, sandbox: Boolean): DefinitionEditOffer {
+    if (storedConfig == null || configs == null) return DefinitionEditOffer(editor = false, note = null)
+    val holder = configs.firstOrNull { it.name == storedConfig }
+    if (sandbox || holder == null || holder.published) return DefinitionEditOffer(editor = true, note = null)
+    return DefinitionEditOffer(
+        editor = false,
+        note = "This client's definition is in configuration '$storedConfig', which has unpublished changes that a " +
+            "save would publish with it. Publish it first",
+    )
 }
 
 /** Whether a configuration row wants attention in the table (issue #1026): it is offered Publish. */

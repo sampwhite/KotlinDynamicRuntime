@@ -22,7 +22,9 @@ import com.dynamicruntime.common.util.toOptStr
  * `storedDefinition` -- not from what the client runs, which differs by an unpublished draft and by what a template
  * fills in (a template's labels written back would become the client's own). A client defined in **source code** is refused: a stored definition cannot override a source one, so the
  * edit would change nothing, and the refusal says where the definition is. A **sandbox** is refused too: its
- * definition is derived from its parent's (`SandboxConfigs.deriveDef`), which is edited on the parent's page.
+ * definition is derived from its parent's (`SandboxConfigs.deriveDef`), which is edited on the parent's page. A
+ * routing claim on another client's domain prefix or custom domain is refused by the stored write itself
+ * (`GedraConfigService`), as every write of a definition is.
  *
  * ### Live at once, or a draft
  *
@@ -62,7 +64,6 @@ object ClientDefinitionEdit {
                     "stored definition cannot override it.",
             )
         }
-        requireRoutingFree(cxt, client, changes)
         val target = ClientStoredEdit.target(cxt, client, "definitionEdit")
         val bound = target.bound
         val holder = ClientStoredEdit.definitionHolder(bound)
@@ -86,26 +87,6 @@ object ClientDefinitionEdit {
             issues = reload.issues,
             mode = target.mode,
         )
-    }
-
-    /**
-     * Refuses a domain prefix or custom domain in [changes] that another known client already declares: the two
-     * route to one client each, and a client's own administrator must not be able to claim another's. Checked here,
-     * at the one write a client makes to its own routing; a collision between source definitions is a deployment's
-     * own mistake to make.
-     */
-    private fun requireRoutingFree(cxt: KdrCxt, client: String, changes: Map<String, Any?>) {
-        val others = ClientService.get(cxt).clients.values.filter { it.clientId != client }
-        changes[CLD.domainPrefix]?.let { prefix ->
-            others.firstOrNull { it.domainPrefix == prefix }?.let {
-                throw KdrException.mkInput("The domain prefix '$prefix' is client '${it.clientId}''s; a prefix routes to one client.")
-            }
-        }
-        changes[CLD.customDomain]?.let { domain ->
-            others.firstOrNull { it.customDomain == domain }?.let {
-                throw KdrException.mkInput("The domain '$domain' is client '${it.clientId}''s; a domain routes to one client.")
-            }
-        }
     }
 
     /**

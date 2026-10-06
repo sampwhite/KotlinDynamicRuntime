@@ -128,8 +128,18 @@ object ClientStoredEdit {
         } catch (e: KdrException) {
             undo()
             // Best effort: the undone content is what the client already runs, so its publish should pass; if it does
-            // not, the refusal to report is the edit's.
-            if (restorePublished) runCatching { GedraConfigService.get(bound).publish(bound, written.configId, trial = true) }
+            // not, the refusal to report is the edit's, and the config is left a draft -- said in the log, since the
+            // next edit will be refused for it.
+            if (restorePublished) {
+                try {
+                    GedraConfigService.get(bound).publish(bound, written.configId, trial = true)
+                } catch (restore: KdrException) {
+                    LogGedra.warn(cxt) {
+                        "Could not republish '${written.configId.baseId}' of client '$client' after undoing a refused " +
+                            "edit; it is left with unpublished changes: ${restore.message}"
+                    }
+                }
+            }
             throw e
         }
         val reload = GedraConfigReload.reloadClient(cxt, client)

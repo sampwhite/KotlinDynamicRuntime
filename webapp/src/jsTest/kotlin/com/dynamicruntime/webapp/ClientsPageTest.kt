@@ -460,25 +460,33 @@ class ClientsPageTest {
         assertEquals(false, definitionEditable(null))
     }
 
-    /** The note before the attempt (issue #1026): only when the definition's config is unpublished on a client without a sandbox. */
+    /** The note before the attempt (issue #1026): only when the definition's config is unpublished and saves would publish. */
     @Test
     fun theEditorIsHeldBackWhileTheDefinitionsConfigHasUnpublishedChanges() {
-        fun row(hasSandbox: Boolean = false) =
-            ClientOverview("globex", "Globex", ClientStatus.present.name, GedraConfigOrigin.stored.name, 1, 0, 0, 0, 0, false, emptyList(), 0, 0, hasSandbox = hasSandbox)
         fun config(name: String, published: Boolean) = ConfigSummaryView(name, 2, published, null, null, 0)
         val drafted = listOf(config("main", published = false), config("copy", published = true))
-        val blocker = definitionEditBlocker("main", drafted, row())
-        assertEquals(true, blocker != null && blocker.contains("'main'"))
-        // Published, held in another config, a client with a sandbox (its saves are drafts), or not yet known: no note.
-        assertEquals(null, definitionEditBlocker("main", listOf(config("main", published = true)), row()))
-        assertEquals(null, definitionEditBlocker("copy", drafted, row()))
-        assertEquals(null, definitionEditBlocker("main", drafted, row(hasSandbox = true)))
-        assertEquals(null, definitionEditBlocker("main", null, row()))
-        assertEquals(null, definitionEditBlocker(null, drafted, row()))
+        val held = definitionEditOffer("main", drafted, sandbox = false)
+        assertEquals(false, held.editor)
+        assertEquals(true, held.note?.contains("'main'") == true && held.note.contains("Publish it first"))
+        // Published, held in another config, or a definition asking for a sandbox (its saves are drafts): the editor.
+        for (offer in listOf(
+            definitionEditOffer("main", listOf(config("main", published = true)), sandbox = false),
+            definitionEditOffer("copy", drafted, sandbox = false),
+            definitionEditOffer("main", drafted, sandbox = true),
+        )) {
+            assertEquals(true, offer.editor)
+            assertEquals(null, offer.note)
+        }
+        // Not yet known -- the configs still loading, or no stored definition: neither, so an editor is never opened
+        // and then replaced by the note.
+        for (offer in listOf(definitionEditOffer("main", null, sandbox = false), definitionEditOffer(null, drafted, sandbox = false))) {
+            assertEquals(false, offer.editor)
+            assertEquals(null, offer.note)
+        }
         // The row the note sends people to is the one offered Publish.
-        assertEquals(true, configRowNeedsPublish(row(), config("main", published = false)))
-        assertEquals(false, configRowNeedsPublish(row(), config("main", published = true)))
-        assertEquals(false, configRowNeedsPublish(row(hasSandbox = true), config("main", published = false)))
+        val row = ClientOverview("globex", "Globex", ClientStatus.present.name, GedraConfigOrigin.stored.name, 1, 0, 0, 0, 0, false, emptyList(), 0, 0)
+        assertEquals(true, configRowNeedsPublish(row, config("main", published = false)))
+        assertEquals(false, configRowNeedsPublish(row, config("main", published = true)))
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
@@ -23,7 +24,9 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -34,11 +37,12 @@ import io.kotest.matchers.string.shouldContain
  * all, so naming one is refused by the input's shape. One booted instance; a client per case.
  */
 class ClientDefinitionEditTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("clientDefEdit1026", "clientDefEdit1026")
+    // With the extension fixture, for a stored client built on a source template (issue #945).
+    val cxt = Startup.mkTestBootCxt("clientDefEdit1026", "clientDefEdit1026", emptyMap(), listOf(ExtensionTemplateComponent()))
     val svc = GedraConfigService.get(cxt)
 
-    /** Defines [client] in stored configuration, published and reloaded; with a sandbox when asked. */
-    fun defineClient(client: String, sandbox: Boolean = false) {
+    /** Defines [client] in stored configuration, published and reloaded; with a sandbox, or on a template, when asked. */
+    fun defineClient(client: String, sandbox: Boolean = false, extends: String? = null) {
         val setup = cxt.mkSubContext("setup", client).also { it.userId = 10260L }
         svc.writeConfig(
             setup,
@@ -47,7 +51,8 @@ class ClientDefinitionEditTest : StringSpec({
                     ClientDef(
                         clientId = client, name = "Client $client", description = "Before.", usageType = ClientUsageType.dev,
                         audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
-                        domainPrefix = client, userLabels = listOf("reviewer"), sandbox = sandbox,
+                        domainPrefix = client, userLabels = if (extends == null) listOf("reviewer") else emptyList(),
+                        sandbox = sandbox, extendsFromClientId = extends,
                     ),
                 )
             },
@@ -109,16 +114,49 @@ class ClientDefinitionEditTest : StringSpec({
         full.getItem(UADEP.clientDefinition, mapOf(CLD.client to full.selfClient())).containsKey(CLD.storedDefinition) shouldBe false
     }
 
-    "a domain prefix or custom domain another client declares is refused" {
+    "an edit starts from the client's own stored definition, not the template's values merged into what it runs" {
+        val client = "defedittpl"
+        defineClient(client, extends = ExtensionTemplateComponent.template)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        val read = admin.getItem(UADEP.clientDefinition)
+        // What the client runs carries the template's labels and resources; what it stores carries neither.
+        read[CLD.client].toJsonMapOrEmpty()[CLD.userLabels].toJsonListOfStrings() shouldBe listOf("vip")
+        read[CLD.client].toJsonMapOrEmpty()[CLD.webResourcesId] shouldBe "tplres"
+        read[CLD.storedDefinition].toJsonMapOrEmpty().containsKey(CLD.userLabels) shouldBe false
+        read[CLD.storedDefinition].toJsonMapOrEmpty().containsKey(CLD.webResourcesId) shouldBe false
+        // Adding a label stores only the client's own; the template's still joins it when the client runs.
+        val saved = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.userLabels to listOf("own")))
+        saved[CLD.definition].toJsonMapOrEmpty()[CLD.userLabels].toJsonListOfStrings() shouldBe listOf("own")
+        present(client).userLabels shouldBe listOf("vip", "own")
+        present(client).webResourcesId shouldBe "tplres"
+    }
+
+    "a domain prefix or custom domain another client declares is refused, by whatever write carries it" {
         val client = "defeditdom"
         val other = "defeditdomother"
         defineClient(client)
         defineClient(other)
         val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
-        // `other`'s definition carries `domainPrefix = other`.
+        // `other`'s definition carries `domainPrefix = other`; a hostname's case does not make it another's.
         admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to other)).toString() shouldContain other
-        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "forms.example.test"))
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to other.uppercase())).toString() shouldContain other
         val chief = TestUser.create(cxt, "chief@$other.test", level = ROLE.admin, userClient = other)
+        chief.postData(UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "other.example.test"))
+        // The rule is the stored write's, so a whole-definition write is held to it too.
+        shouldThrow<KdrException> {
+            svc.writeConfig(
+                cxt.mkSubContext("claim", client).also { it.userId = 10262L },
+                gedraConfig(cxt, "main", clientNamespace(client), client) {
+                    defineClient(
+                        ClientDef(
+                            clientId = client, name = "Claimant", usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                            enabledEnvironments = setOf(ENV.unit, ENV.local), customDomain = "Other.Example.Test",
+                        ),
+                    )
+                },
+            )
+        }.message.shouldNotBeNull() shouldContain other
+        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "forms.example.test"))
         chief.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "forms.example.test")).toString() shouldContain client
         // Its own prefix again is not a collision.
         admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to client, CLD.description to "kept"))

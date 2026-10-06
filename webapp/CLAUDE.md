@@ -448,10 +448,14 @@ nothing differs), the same write-trial-publish-reload path as a copy edit, a dra
 sandbox (`savedNote` says which). The structural fields (environments, template, included traits, preload) and the
 platform's (#820) are not inputs of the endpoint at all, so the editor never offers them: they stay in the read-only
 rows, the platform's marked "(set by the platform)". A domain prefix or custom domain another client declares is
-refused. When the configuration holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished
-changes on a client without a sandbox, the backend's draft rule would refuse every save, so the page says so
-instead of offering the editor (`definitionEditBlocker`), linking down to the Stored configuration table, where the
-row offered Publish is tinted (`configRowNeedsPublish`, `.op-row-attention`). A success bumps the refresh generation, so the heading, the
+refused by the stored write itself (`GedraConfigService`), whatever write carries it. When the configuration
+holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished changes and the definition does not
+ask for a sandbox (its saves would be drafts), the backend's draft rule would refuse every save, so the page says so
+instead of offering the editor (`definitionEditOffer`; nothing is offered until the configurations have loaded, so
+an open editor is never replaced by the note), linking down to the Stored configuration table, where the row
+offered Publish is tinted (`configRowNeedsPublish`, `.op-row-attention`). After a save the editor keeps the stored
+definition the result returned as its baseline until the page re-reads, so a quick reopen does not send the old
+values back. A success bumps the refresh generation, so the heading, the
 listing row and the shell follow the new name. The editable set is the kernel's `ClientPresentationFields`, which
 the endpoint's input and this editor both read.
 
