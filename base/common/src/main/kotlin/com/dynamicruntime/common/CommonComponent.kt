@@ -6,6 +6,7 @@ import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.report.ReportService
+import com.dynamicruntime.common.gedra.report.reportHistoryJob
 import com.dynamicruntime.common.gedra.report.reportHistoryTables
 import com.dynamicruntime.common.gedra.report.reportSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -128,6 +129,8 @@ class CommonComponent : ComponentDefinition {
         // The batch job that recomputes derived state nightly and on demand (issue #793): the derivers above run
         // on every write, and this catches the forms nobody wrote -- state gone stale against configuration or time.
         collector.addJob(stateRecomputeJob())
+        // The nightly report snapshots (issue #1035), half an hour after the recompute they read the results of.
+        collector.addJob(reportHistoryJob())
         // The framework singleton cfacts a normal workflow may emit about a form (issue #784), declared globally
         // so any scope's expressions can name them.
         addWorkflowSingletonCFacts(collector)

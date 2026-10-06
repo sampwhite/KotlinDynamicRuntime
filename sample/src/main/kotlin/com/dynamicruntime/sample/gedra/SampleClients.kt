@@ -631,6 +631,8 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             column("owner", "Owner", "${ReportSource.user.name}.${RUSR.email}")
             column("ownerName", "Owner's name", "${ReportSource.user.name}.${RUSR.name}")
             groupBy = listOf("auditor")
+            // Snapshotted nightly (issue #1035), so the History view has a series of audits per auditor.
+            history = true
         }
 
         // The aggregation example: built to be read grouped. One row per reporting year -- how many forms, what they
@@ -650,6 +652,8 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
             )
             groupBy = listOf("year")
             excludeEmpty = listOf("year")
+            // Snapshotted nightly (issue #1035): the yearly totals over time are what the History view charts.
+            history = true
         }
 
         // The straight-up example: a listing, one row per form, with nothing to group by and nothing rolled up --
