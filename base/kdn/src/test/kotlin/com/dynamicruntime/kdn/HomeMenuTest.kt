@@ -69,6 +69,8 @@ class HomeMenuTest : StringSpec({
             page(HMENU.register, "Register", HMENU.pageRegister, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.docs, "Documents", HMENU.pageDocs),
+            // Every test runs on a test instance, where Simulations is offered to anyone testing it (issue #997).
+            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
     }
 
@@ -81,6 +83,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.forms, "My forms", HMENU.pageForms),
+            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
     }
 
@@ -100,6 +103,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.reports, "Reports", HMENU.pageReports),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
+            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
     }
 
@@ -121,6 +125,7 @@ class HomeMenuTest : StringSpec({
             page(HMENU.cacheState, "Cache state", HMENU.pageCacheState, HMENU.operator),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
+            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
     }
 
