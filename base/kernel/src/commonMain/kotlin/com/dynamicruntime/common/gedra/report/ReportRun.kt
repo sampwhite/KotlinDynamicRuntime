@@ -55,6 +55,8 @@ object RHIS {
     const val rows = "rows"
     /** Whether the rows were cut at the stored limit. */
     const val truncated = "truncated"
+    /** Whether the snapshot was taken under the report's definition as it is bound now -- the same grouping and columns. */
+    const val sameDefinition = "sameDefinition"
     /** On the history listing's summary: how many snapshots the report has for the client. */
     const val numSnapshots = "numSnapshots"
 }

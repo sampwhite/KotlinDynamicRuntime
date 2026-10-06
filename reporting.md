@@ -192,8 +192,11 @@ Two things take one:
 
 **`GET /clientAdmin/report/history`** lists a report's snapshots for a client, newest first and paged by cursor as
 every reporting endpoint is, with a summary saying whether the job snapshots the report and how many snapshots it
-has. Per report and client the newest `KDR_REPORT_HISTORY_KEEP` (default 400) are kept; the oldest beyond that are
-deleted as a new one is written.
+has, and each snapshot says whether it was taken under the report's definition as bound now. Per report and client,
+of each past day only the latest snapshot is kept, and `KDR_REPORT_HISTORY_KEEP` days (default 400) in all, the
+oldest days deleted as a new snapshot is written; today's are all kept until the day is over, so pressing the
+button cannot push the nightly series out. The snapshots of a report since removed from the configuration stay
+listable under its id.
 
 **Client-wide only.** Both endpoints are in the `clientAdmin` section and scoped as the run is, and both refuse an
 administrator whose administration is confined to an organization: their own runs narrow to their organization's

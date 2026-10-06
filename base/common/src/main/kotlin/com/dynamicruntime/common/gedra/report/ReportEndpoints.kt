@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.GedraDataService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.deriveEntryData
 import com.dynamicruntime.common.gedra.overseenClient
+import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.gedra.toWireMap
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfPhase
@@ -62,13 +63,13 @@ object REP {
     const val snapshotType = "ReportSnapshot"
     const val historySummaryType = "ReportHistorySummary"
 
-    /** How many snapshots of one report are kept per client (issue #1034); the oldest beyond it are pruned on each write. */
+    /** How many days of one report's snapshots are kept per client (issue #1034); see `ReportSnapshotRows.prune`. */
     val historyKeepEnvVar = EnvVarDef(
         "KDR_REPORT_HISTORY_KEEP", group = ENVGRP.gedra, defaultDoc = "400",
-        description = "The most snapshots of one report kept per client (issue #1034). A snapshot is taken nightly " +
-            "for a report that asks for history, and whenever someone presses Snapshot now; past this many the oldest " +
-            "are deleted as a new one is written, so the table and the History view's series stay bounded. The " +
-            "default keeps a year of nightly snapshots and some taken by hand.",
+        description = "How many days of one report's snapshots are kept per client (issue #1034). Of each past day " +
+            "only the latest snapshot survives, and days beyond this many are deleted as a new snapshot is written, " +
+            "oldest first; today's snapshots are all kept until the day is over, so pressing Snapshot now cannot " +
+            "push the nightly series out. The default keeps over a year.",
     )
 
     const val defaultHistoryKeep = 400
@@ -176,7 +177,7 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         outputRef = REP.reportType,
         noLimit = true,
         summaryRef = REP.listSummaryType,
-        inputFields = { field(RRUN.client, "The client whose reports to list; the caller's own when absent.") },
+        inputFields = { overseenClientField(RRUN.client, "The client whose reports to list; the caller's own when absent.") },
         needsClientConfig = true,
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
@@ -211,6 +212,12 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         property(RRUN.scanned, "How many of the client's forms the run read.", required = true) { type = SCT.integer }
         property(RRUN.excluded, "How many of them were left out for a missing value.", required = true) { type = SCT.integer }
         property(RHIS.truncated, "Whether the rows were cut at the stored limit.", required = true) { type = SCT.boolean }
+        property(
+            RHIS.sameDefinition,
+            "Whether the snapshot was taken under the report's definition as it is bound now: the same grouping and " +
+                "columns. A series spanning a change is not one question, and a chart should say so.",
+            required = true,
+        ) { type = SCT.boolean }
     }
     type(REP.historySummaryType) {
         type = SCT.kObject
@@ -233,25 +240,30 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         summaryRef = REP.historySummaryType,
         inputFields = {
             field(RRUN.reportId, "The report whose snapshots to list.", required = true)
-            field(RRUN.client, "The client; the caller's own when absent.")
+            overseenClientField(RRUN.client)
         },
         needsClientConfig = true,
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
         requireClientWideView(c)
-        val bound = boundReport(c, client, request)
-        val rows = ReportSnapshotRows.list(c, client, bound.reportId)
+        val reportId = request[RRUN.reportId].toOptStr() ?: throw KdrException.mkInput("A ${RRUN.reportId} is required.")
+        // A report since removed from the configuration still has its snapshots: listed under its id, so they are
+        // not stranded; a report nobody has, and nothing was stored for, is a 404.
+        val bound = ReportService.get(c).forClient(client).report(reportId)?.bound
+        val rows = ReportSnapshotRows.list(c, client, reportId)
+        if (bound == null && rows.isEmpty()) throw KdrException("Client '$client' has no report '$reportId'.", code = EXC.notFound)
+        val currentQueryId = bound?.let { reportQueryId(client, it, ReportMode.aggregate, it.defaultGroupBy()) } ?: ""
         val summary = mapOf(
-            RRUN.reportId to bound.reportId,
-            RRUN.label to bound.report.label,
+            RRUN.reportId to reportId,
+            RRUN.label to (bound?.report?.label ?: reportId),
             RRUN.client to client,
-            RRUN.history to bound.report.history,
+            RRUN.history to (bound?.report?.history ?: false),
             RHIS.numSnapshots to rows.size,
         )
         cursorPageOf(
-            request, listOf("reportHistory", client, bound.reportId).joinToString("|"), rows,
+            request, listOf("reportHistory", client, reportId).joinToString("|"), rows,
             { it.takenAt to it.snapshotId }, reportSnapshotOrder, reportSnapshotKeyCodec, summary,
-        ) { page -> page.map { it.toWireMap() } }
+        ) { page -> page.map { it.toWireMap(currentQueryId) } }
     }
 
     generalEndpoint(
@@ -264,14 +276,15 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         outputRef = REP.snapshotType,
         inputFields = {
             field(RRUN.reportId, "The report to snapshot.", required = true)
-            field(RRUN.client, "The client; the caller's own when absent.")
+            overseenClientField(RRUN.client)
         },
         needsClientConfig = true,
     ) { c, request ->
         val client = overseenClient(c, request[RRUN.client].toOptStr())
         requireClientWideView(c)
         val bound = boundReport(c, client, request)
-        ReportHistoryWriter.snapshot(c, client, bound, ReportSnapshotTrigger.manual).toWireMap()
+        val taken = ReportHistoryWriter.snapshot(c, client, bound, ReportSnapshotTrigger.manual)
+        taken.toWireMap(currentQueryId = taken.queryId ?: "")
     }
 
     listEndpoint(
@@ -288,7 +301,7 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         summaryRef = REP.runSummaryType,
         inputFields = {
             field(RRUN.reportId, "The report to run.", required = true)
-            field(RRUN.client, "The client whose forms to read; the caller's own when absent.")
+            overseenClientField(RRUN.client, "The client whose forms to read; the caller's own when absent.")
             field(RRUN.aggregate, "A row per group rather than per form.") { type = SCT.boolean }
             field(RRUN.groupBy, "The columns an aggregate run groups by; the report's own when absent.") {
                 type = SCT.array
@@ -465,8 +478,8 @@ fun scannableIds(c: KdrCxt, client: String, scope: ReadScope): List<String> {
     return ids
 }
 
-/** What an aggregate run read and made (issue #1034): its groups, the columns rolled up, and the forms scanned and left out. */
-class AggregateRun(val groups: List<ReportGroup>, val rolled: List<BoundColumn>, val scanned: Int, val excluded: Int)
+/** What an aggregate run read and made (issue #1034): its groups, and the forms scanned and left out. */
+class AggregateRun(val groups: List<ReportGroup>, val scanned: Int, val excluded: Int)
 
 /**
  * An aggregate run of [bound] over [scope]'s forms of [client] (issues #981, #1034): every form read for the
@@ -485,7 +498,7 @@ fun aggregateReportRun(
     val rolled = bound.columns.filter { it.column.rollup != null }
     val read = SubjectReader(c, client, scope).read(ids, groupBy + rolled + excludeEmpty)
     val kept = read.filterNot { bound.excludes(it, excludeEmpty) }
-    return AggregateRun(aggregateReport(kept, groupBy, rolled), rolled, ids.size, read.size - kept.size)
+    return AggregateRun(aggregateReport(kept, groupBy, rolled), ids.size, read.size - kept.size)
 }
 
 /** One group as the run endpoint's row and a snapshot's: its key by column id, its count, and its rollups. */
