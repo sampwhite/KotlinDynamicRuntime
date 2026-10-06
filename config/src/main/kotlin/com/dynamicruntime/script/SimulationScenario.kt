@@ -28,7 +28,8 @@ fun runSimulation(cxt: ProbeContext, name: String, input: Map<String, Any?> = em
     val start = report[SIM.startPage].toOptStr()
     for (user in report[SIM.users].toJsonListOfMaps()) {
         println()
-        println("Sign in as ${user[SIM.purpose]} from the browser's console, then reload${start?.let { " (or open #$it)" }.orEmpty()}:")
+        println("${user[SIM.email]} -- ${user[SIM.purpose]}.")
+        println("To sign in as them, from the browser's console, then reload${start?.let { " (or open #$it)" }.orEmpty()}:")
         val body = buildMap {
             put(SIM.email, user[SIM.email])
             put(SIM.level, user[SIM.level])
