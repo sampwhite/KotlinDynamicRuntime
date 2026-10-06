@@ -653,6 +653,16 @@ of the field's type, shows on that workflow's pages only, and **Reset to shared*
 where the workflow is the client's own stored definition and the client runs its latest revision; elsewhere the
 inspector says why, from the block's `editRefusal`.
 
+The **shared definition** -- what every workflow on the client draws -- is edited separately (issue #1029,
+`SharedFieldSection`), behind a deliberate **Edit the shared definition** button and never as an option beside a
+workflow's Save. It is offered for a definition the client declares in its own stored configuration, and says first
+where it is used ("Used by 2 workflows: …") and which workflows keep their own copy of the field. It edits the
+field's copy and its choices -- relabel one, or add one -- but never removes a choice or changes a value, since stored
+forms may hold it. The facts come from the definition read (`parseSharedFacts`); the save is
+`/clientAdmin/design/sharedField`. Where a definition comes from is said in one sentence (`provenanceText`, issue
+#1013): where it is declared, and the client configuration altering it when one does -- the reader sees what every
+client shares and what is this client's own, however it was assembled.
+
 - **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
   request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
   administrator, adding a `design` block to the workflow view -- an address and origin for every type the page
