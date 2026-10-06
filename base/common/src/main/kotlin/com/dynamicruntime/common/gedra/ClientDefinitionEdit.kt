@@ -16,9 +16,11 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * ### Where an edit lands
  *
- * In the stored config holding the client's `clientDef` entry, patched under the client's config lock
- * (`patchConfig`) over the revision as it stands there, so a field another administrator changed a moment ago is
- * kept. A client defined in **source code** is refused: a stored definition cannot override a source one, so the
+ * In the stored config holding the client's `clientDef` entry ([ClientStoredEdit.definitionHolder]), patched under
+ * the client's config lock ([ClientStoredEdit.patchDefinition]) over the revision as it stands there, so a field
+ * another administrator changed a moment ago is kept. An edit starts from that stored entry -- the retrieve's
+ * `storedDefinition` -- not from what the client runs, which differs by an unpublished draft and by what a template
+ * fills in (a template's labels written back would become the client's own). A client defined in **source code** is refused: a stored definition cannot override a source one, so the
  * edit would change nothing, and the refusal says where the definition is. A **sandbox** is refused too: its
  * definition is derived from its parent's (`SandboxConfigs.deriveDef`), which is edited on the parent's page.
  *
@@ -60,30 +62,56 @@ object ClientDefinitionEdit {
                     "stored definition cannot override it.",
             )
         }
+        requireRoutingFree(cxt, client, changes)
         val target = ClientStoredEdit.target(cxt, client, "definitionEdit")
         val bound = target.bound
-        val svc = GedraConfigService.get(bound)
-        val holder = svc.listConfigs(bound).firstOrNull { it.entriesBySlot()[CCT.clientDef]?.isNotEmpty() == true }
+        val holder = ClientStoredEdit.definitionHolder(bound)
             ?: throw KdrException.mkInput("Client '$client' has no stored definition to edit.")
         ClientStoredEdit.requireNoForeignDraft(target, holder, "a definition edit")
         val before = holder.entriesBySlot()[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty()
-        val written = patchDef(svc, bound, holder) { def ->
+        val written = ClientStoredEdit.patchDefinition(bound, holder) { def ->
             def.putAll(changes)
             def.entries.removeAll { it.value == null }
         }
-        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = { patchDef(svc, bound, written) { def -> def.clear(); def.putAll(before) } })
+        val reload = ClientStoredEdit.takeEffect(
+            cxt, target, written,
+            undo = { ClientStoredEdit.patchDefinition(bound, written) { def -> def.clear(); def.putAll(before) } },
+            // The draft rule admitted only a published holder, so a refused publish puts it back as published.
+            restorePublished = true,
+        )
         return Result(
             configName = written.configId.baseId,
-            info = written.entriesBySlot()[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty(),
+            // Redacted as every stored read is (`testFeatures` off a test instance, #696).
+            info = written.slotsForEmission(cxt.instanceConfig.isTestInstance)[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty(),
             issues = reload.issues,
             mode = target.mode,
         )
     }
 
     /**
+     * Refuses a domain prefix or custom domain in [changes] that another known client already declares: the two
+     * route to one client each, and a client's own administrator must not be able to claim another's. Checked here,
+     * at the one write a client makes to its own routing; a collision between source definitions is a deployment's
+     * own mistake to make.
+     */
+    private fun requireRoutingFree(cxt: KdrCxt, client: String, changes: Map<String, Any?>) {
+        val others = ClientService.get(cxt).clients.values.filter { it.clientId != client }
+        changes[CLD.domainPrefix]?.let { prefix ->
+            others.firstOrNull { it.domainPrefix == prefix }?.let {
+                throw KdrException.mkInput("The domain prefix '$prefix' is client '${it.clientId}''s; a prefix routes to one client.")
+            }
+        }
+        changes[CLD.customDomain]?.let { domain ->
+            others.firstOrNull { it.customDomain == domain }?.let {
+                throw KdrException.mkInput("The domain '$domain' is client '${it.clientId}''s; a domain routes to one client.")
+            }
+        }
+    }
+
+    /**
      * [fields] as the definition will hold them: text trimmed, the name refused blank, the labels held to the one
      * label rule ([normalizeUserLabels]) rather than refused later by `ClientDef`'s own check -- and an optional field
-     * cleared ("" or an empty list) kept as a null, which [patchDef] removes, as `toInfo` leaves an absent one out.
+     * cleared ("" or an empty list) kept as a null, which the patch removes, as `toInfo` leaves an absent one out.
      * A key outside [ClientPresentationFields] is a fault: the endpoint's input admits no other.
      */
     private fun cleaned(client: String, fields: Map<String, Any?>): Map<String, Any?> {
@@ -99,15 +127,4 @@ object ClientDefinitionEdit {
         }
         return out
     }
-
-    /** Patches [row]'s client definition entry as [edit] leaves it, inside `patchConfig`, over the revision under the lock. */
-    private fun patchDef(svc: GedraConfigService, bound: KdrCxt, row: GedraConfigRow, edit: (LinkedHashMap<String, Any?>) -> Unit): GedraConfigRow =
-        svc.patchConfig(bound, row.configId, trial = true) { current ->
-            val out = LinkedHashMap(current)
-            val defs = current[CCT.clientDef].orEmpty()
-            val def = LinkedHashMap(defs.firstOrNull().toJsonMapOrEmpty())
-            edit(def)
-            out[CCT.clientDef] = listOf(def) + defs.drop(1)
-            out
-        }
 }

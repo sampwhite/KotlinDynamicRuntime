@@ -115,6 +115,13 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
         description = "One client's definition: its attributes, supported traits, usage rules and workflow ids."
         property(CLD.client, "The client's attributes.", required = true) { ref(CLD.infoTypeName) }
         property(
+            CLD.storedDefinition,
+            "The client's stored definition as its latest revision holds it (issue #1026), when it has one: what an " +
+                "edit starts from, which differs from the attributes the client runs by an unpublished draft and by " +
+                "what a template fills in. Absent for a client defined in source code, and for a sandbox.",
+        ) { ref(CLD.infoTypeName) }
+        property(CLD.storedDefinitionConfig, "With storedDefinition: the name of the stored configuration holding it.")
+        property(
             CLD.present,
             "Whether this node carries the client. False for one whose definition a check dropped -- returned " +
                 "anyway, with its issues, so the reason is visible; its traits, usages and workflows are then empty.",
@@ -228,14 +235,30 @@ private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
     // without its internal `display` expression.
     val traits = schema.supportedGedraTraitsFor(def.clientId, def).map { it.toMetadataMap() }
     val usages = schema.traitUsagesFor(def.clientId).map { it.toRuleMap(includeDisplay = false) }
-    return mapOf(
-        CLD.client to def.toInfo(),
-        CLD.present to true,
-        CLD.issues to ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() },
-        CLD.traits to traits,
-        CLD.usages to usages,
-        CLD.workflows to workflowIdsFor(cxt, def.clientId),
-    )
+    return buildMap {
+        put(CLD.client, def.toInfo())
+        storedDefinitionOf(cxt, def.clientId)?.let { (configName, stored) ->
+            put(CLD.storedDefinition, stored)
+            put(CLD.storedDefinitionConfig, configName)
+        }
+        put(CLD.present, true)
+        put(CLD.issues, ClientConfigIssues.get(cxt).issuesFor(def.clientId).map { it.toWireMap() })
+        put(CLD.traits, traits)
+        put(CLD.usages, usages)
+        put(CLD.workflows, workflowIdsFor(cxt, def.clientId))
+    }
+}
+
+/**
+ * The client's stored definition as its latest revision holds it (issue #1026), redacted for emission as every
+ * stored read is (`testFeatures` off a test instance, #696) -- or null for a client with none stored: one defined in
+ * source code, or a sandbox, which holds no configuration of its own.
+ */
+private fun storedDefinitionOf(cxt: KdrCxt, clientId: String): Pair<String, Map<String, Any?>>? {
+    if (isSandboxClient(clientId)) return null
+    val holder = ClientStoredEdit.definitionHolder(cxt.mkSubContext("storedDefinition", clientId)) ?: return null
+    val stored = holder.slotsForEmission(cxt.instanceConfig.isTestInstance)[CCT.clientDef]?.firstOrNull() ?: return null
+    return holder.configId.baseId to stored
 }
 
 /**

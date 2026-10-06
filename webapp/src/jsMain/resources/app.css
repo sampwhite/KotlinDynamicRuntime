@@ -979,6 +979,10 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 }
 .forms-row-highlight > td { animation: forms-row-flash 2s ease-out; }
 
+/* A configuration row that wants attention (issue #1026): one offered Publish, which a note above the table sends
+   people to. The warning chip's tint, so it reads as "look here", not as an error. */
+.op-table tr.op-row-attention > td { background: rgba(217, 119, 6, .16); }
+
 /* The workflow pages (issue #792): counts right-aligned under their headings, so the columns read as numbers. */
 .wf-aggregate .wf-count { text-align: right; width: 90px; }
 .wf-aggregate th.wf-count { text-align: right; }

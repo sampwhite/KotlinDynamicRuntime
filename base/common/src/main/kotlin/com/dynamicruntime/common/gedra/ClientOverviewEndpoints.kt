@@ -257,16 +257,18 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         needsClientConfig = true,
         inputFields = {
             overseenClientField(CLD.client)
-            // `emptyIsAbsent = false` throughout: a blank is a value here -- it clears the field (or, for the name, is
-            // refused) -- where the default would drop it and leave the field as it was.
-            field(CLD.name, "The name presented to users as the name of the client.") { emptyIsAbsent = false }
-            field(CLD.description, "An internal note about who, what or why; blank clears it.") { emptyIsAbsent = false }
-            field(CLD.domainPrefix, "A prefix on a core domain that routes to this client; blank clears it.") { emptyIsAbsent = false }
-            field(CLD.customDomain, "A whole hostname the client configured for itself; blank clears it.") { emptyIsAbsent = false }
-            field(CLD.webResourcesId, "The package of web resources the client presents; blank clears it.") { emptyIsAbsent = false }
-            field(CLD.userLabels, "The user labels the client suggests, each once and trimmed; empty clears them.") {
-                type = SCT.array
-                items { type = SCT.string }
+            // The one list (`ClientPresentationFields`), so the input and the editor cannot differ on what is editable.
+            // `emptyIsAbsent = false`: a blank is a value here -- it clears the field (or, for the name, is refused)
+            // -- where the default would drop it and leave the field as it was.
+            for ((name, description) in ClientPresentationFields.descriptions) {
+                field(name, description) {
+                    if (ClientPresentationFields.isList(name)) {
+                        type = SCT.array
+                        items { type = SCT.string }
+                    } else {
+                        emptyIsAbsent = false
+                    }
+                }
             }
         },
     ) { c, request ->

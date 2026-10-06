@@ -10,6 +10,7 @@ import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.gedra.ClientPresentationFields
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.home.HFLD
@@ -411,18 +412,19 @@ class ClientsPageTest {
     )
 
     @Test
-    fun theDraftOpensOnTheDefinitionAndTheRequestCarriesOnlyWhatChanged() {
+    fun theDraftOpensOnTheStoredDefinitionAndTheRequestCarriesOnlyWhatChanged() {
         val draft = definitionDraftOf(storedInfo)
-        assertEquals("Globex", draft.name)
-        assertEquals("", draft.customDomain)
-        assertEquals("reviewer, auditor", draft.labelsText)
+        assertEquals(ClientPresentationFields.names, draft.keys.toList())
+        assertEquals("Globex", draft[CLD.name])
+        assertEquals("", draft[CLD.customDomain])
+        assertEquals("reviewer, auditor", draft[CLD.userLabels])
         // Untouched: nothing but the client.
         val same = definitionEditRequest("globex", storedInfo, draft)
         assertEquals(mapOf(CLD.client to "globex"), same)
         assertEquals(false, definitionEditChanges(same))
         // A rename trimmed, the note cleared (sent blank, so the backend clears it), the labels re-read as a list --
         // each once and trimmed -- and the fields left alone not sent.
-        val edited = draft.copy(name = " Globex Corp ", description = "  ", labelsText = "auditor, reviewer ,auditor,,")
+        val edited = draft + mapOf(CLD.name to " Globex Corp ", CLD.description to "  ", CLD.userLabels to "auditor, reviewer ,auditor,,")
         val request = definitionEditRequest("globex", storedInfo, edited)
         assertEquals(true, definitionEditChanges(request))
         assertEquals(
@@ -431,7 +433,17 @@ class ClientsPageTest {
         )
         // A label line that only re-spells the same list is not a change.
         assertEquals(listOf("reviewer", "auditor"), labelsOfText(" reviewer,auditor , reviewer"))
-        assertEquals(false, definitionEditChanges(definitionEditRequest("globex", storedInfo, draft.copy(labelsText = " reviewer,auditor "))))
+        assertEquals(false, definitionEditChanges(definitionEditRequest("globex", storedInfo, draft + (CLD.userLabels to " reviewer,auditor "))))
+    }
+
+    /** The retrieve's stored definition (issue #1026) is the editor's baseline; a source-defined client has none. */
+    @Test
+    fun theStoredDefinitionParsesWhenPresent() {
+        assertEquals(null, acmeDefinition().stored)
+        val withStored = parseClientDefinition(mapOf(CLD.client to storedInfo, CLD.storedDefinition to mapOf(CLD.name to "Draft"), CLD.storedDefinitionConfig to "main", CLD.present to true))
+        assertEquals("Draft", withStored.stored?.get(CLD.name))
+        assertEquals("main", withStored.storedConfig)
+        assertEquals("Globex", withStored.info[CLD.name])
     }
 
     @Test
@@ -446,6 +458,27 @@ class ClientsPageTest {
         assertEquals(false, definitionEditable(row(staticHere = true)))
         assertEquals(false, definitionEditable(row(status = ClientStatus.dropped.name)))
         assertEquals(false, definitionEditable(null))
+    }
+
+    /** The note before the attempt (issue #1026): only when the definition's config is unpublished on a client without a sandbox. */
+    @Test
+    fun theEditorIsHeldBackWhileTheDefinitionsConfigHasUnpublishedChanges() {
+        fun row(hasSandbox: Boolean = false) =
+            ClientOverview("globex", "Globex", ClientStatus.present.name, GedraConfigOrigin.stored.name, 1, 0, 0, 0, 0, false, emptyList(), 0, 0, hasSandbox = hasSandbox)
+        fun config(name: String, published: Boolean) = ConfigSummaryView(name, 2, published, null, null, 0)
+        val drafted = listOf(config("main", published = false), config("copy", published = true))
+        val blocker = definitionEditBlocker("main", drafted, row())
+        assertEquals(true, blocker != null && blocker.contains("'main'"))
+        // Published, held in another config, a client with a sandbox (its saves are drafts), or not yet known: no note.
+        assertEquals(null, definitionEditBlocker("main", listOf(config("main", published = true)), row()))
+        assertEquals(null, definitionEditBlocker("copy", drafted, row()))
+        assertEquals(null, definitionEditBlocker("main", drafted, row(hasSandbox = true)))
+        assertEquals(null, definitionEditBlocker("main", null, row()))
+        assertEquals(null, definitionEditBlocker(null, drafted, row()))
+        // The row the note sends people to is the one offered Publish.
+        assertEquals(true, configRowNeedsPublish(row(), config("main", published = false)))
+        assertEquals(false, configRowNeedsPublish(row(), config("main", published = true)))
+        assertEquals(false, configRowNeedsPublish(row(hasSandbox = true), config("main", published = false)))
     }
 
     @Test

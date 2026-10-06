@@ -438,13 +438,20 @@ changes". Wire names: `MNU` in the kernel.
 defined in **stored** configuration (`definitionEditable`: present, origin stored, not a sandbox, not static here --
 the backend refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the presentation fields -- name, description, domain prefix, custom domain, web resources,
-user labels as one comma line (`labelsOfText`) -- seeded from the definition (`definitionDraftOf`). Save posts
+user labels as one comma line (`labelsOfText`) -- seeded from the client's **stored** definition, the retrieve's
+`storedDefinition` (`definitionDraftOf`; what the client runs differs from it by an unpublished draft, which the
+editor must show and be able to take back, and by what a template fills in, which written back would become the
+client's own). Save posts
 `/clientAdmin/client/definition/set` (`ClientsApi.setDefinition`) with **only the fields that changed**
 (`definitionEditRequest`; a cleared field goes as blank, which the backend clears, and Save is disabled while
 nothing differs), the same write-trial-publish-reload path as a copy edit, a draft likewise for a client with a
 sandbox (`savedNote` says which). The structural fields (environments, template, included traits, preload) and the
 platform's (#820) are not inputs of the endpoint at all, so the editor never offers them: they stay in the read-only
-rows, the platform's marked "(set by the platform)". A success bumps the refresh generation, so the heading, the
+rows, the platform's marked "(set by the platform)". A domain prefix or custom domain another client declares is
+refused. When the configuration holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished
+changes on a client without a sandbox, the backend's draft rule would refuse every save, so the page says so
+instead of offering the editor (`definitionEditBlocker`), linking down to the Stored configuration table, where the
+row offered Publish is tinted (`configRowNeedsPublish`, `.op-row-attention`). A success bumps the refresh generation, so the heading, the
 listing row and the shell follow the new name. The editable set is the kernel's `ClientPresentationFields`, which
 the endpoint's input and this editor both read.
 

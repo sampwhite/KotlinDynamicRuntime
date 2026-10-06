@@ -91,6 +91,40 @@ class ClientDefinitionEditTest : StringSpec({
         admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, emptyMap())
     }
 
+    "an administrator who sees every client edits one by name, and the retrieve shows the stored definition" {
+        val client = "defeditnamed"
+        defineClient(client)
+        val full = TestUser.createFullAdmin(cxt, "full@$client.test")
+        val saved = full.postData(UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.name to "Named Edit", CLD.webResourcesId to "pack1"))
+        saved[CLD.client] shouldBe client
+        saved[CPY.mode] shouldBe EDM.live
+        present(client).name shouldBe "Named Edit"
+        present(client).webResourcesId shouldBe "pack1"
+        // The full administrator's own, source-defined client is untouched.
+        present(full.selfClient()!!).name shouldBe ClientService.get(cxt).present(full.selfClient()!!)!!.name
+        val read = full.getItem(UADEP.clientDefinition, mapOf(CLD.client to client))
+        read[CLD.storedDefinition].toJsonMapOrEmpty()[CLD.name] shouldBe "Named Edit"
+        read[CLD.storedDefinitionConfig] shouldBe "main"
+        // A source-defined client has no stored definition to start an edit from.
+        full.getItem(UADEP.clientDefinition, mapOf(CLD.client to full.selfClient())).containsKey(CLD.storedDefinition) shouldBe false
+    }
+
+    "a domain prefix or custom domain another client declares is refused" {
+        val client = "defeditdom"
+        val other = "defeditdomother"
+        defineClient(client)
+        defineClient(other)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        // `other`'s definition carries `domainPrefix = other`.
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to other)).toString() shouldContain other
+        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "forms.example.test"))
+        val chief = TestUser.create(cxt, "chief@$other.test", level = ROLE.admin, userClient = other)
+        chief.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "forms.example.test")).toString() shouldContain client
+        // Its own prefix again is not a collision.
+        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to client, CLD.description to "kept"))
+        present(client).domainPrefix shouldBe client
+    }
+
     "a field only the platform sets is not an input: naming it is refused, not dropped (issue #820)" {
         val client = "defeditoper"
         defineClient(client)
@@ -143,6 +177,10 @@ class ClientDefinitionEditTest : StringSpec({
         present(client).name shouldBe "Client $client"
         present(sandboxOf(client)).name shouldBe "Draft Name (sandbox)"
         mainPublished(client) shouldBe false
+        // The retrieve shows both: what the client runs, and the stored draft an edit starts from.
+        val read = admin.getItem(UADEP.clientDefinition)
+        read[CLD.client].toJsonMapOrEmpty()[CLD.name] shouldBe "Client $client"
+        read[CLD.storedDefinition].toJsonMapOrEmpty()[CLD.name] shouldBe "Draft Name"
 
         admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to "main"))
         admin.postData(CFEP.reload, emptyMap())
