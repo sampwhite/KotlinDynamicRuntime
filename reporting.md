@@ -192,7 +192,8 @@ Two things take one:
   client, each report that declares `history = true` (a global one for every client), once per scheduled slot: a
   resumed launch finds the snapshot its slot already took and does nothing twice. A client with more forms than a
   run reads fails that report's task and the launch goes on; a dry run notes what it would take and stores nothing.
-  It can be launched by hand through the operator's job endpoints, as any job can.
+  A sandbox is skipped: a nightly series of its preview data is nobody's chart (a snapshot by hand there still
+  works). It can be launched by hand through the operator's job endpoints, as any job can.
 
 **`GET /clientAdmin/report/history`** lists a report's snapshots for a client, newest first and paged by cursor as
 every reporting endpoint is, with a summary saying whether the job snapshots the report and how many snapshots it

@@ -60,6 +60,13 @@ object REP {
 
     const val defaultScanLimit = 50_000
 
+    /**
+     * The scenario the scan-limit refusal carries in its extra data (issue #1035), so a caller that must tell it
+     * from another 400 -- the report-history job, which fails that report's task and goes on -- can, by name
+     * rather than by the message's wording.
+     */
+    const val scanLimitScenario = "reportScanLimit"
+
     const val snapshotType = "ReportSnapshot"
     const val historySummaryType = "ReportHistorySummary"
 
@@ -473,7 +480,7 @@ fun scannableIds(c: KdrCxt, client: String, scope: ReadScope): List<String> {
         throw KdrException.mkInput(
             "Client '$client' has ${ids.size} forms, more than the $scanLimit a report run reads " +
                 "(${REP.scanLimitEnvVar.name}). A report covering part of them would mislead, so none is given.",
-        )
+        ).also { it.extraData[KdrException.scenarioKey] = REP.scanLimitScenario }
     }
     return ids
 }
