@@ -662,8 +662,13 @@ The **shared definition** -- what every workflow on the client draws -- is edite
 workflow's Save. It is offered for a definition the client declares in its own stored configuration, and says first
 where it is used ("Used by 2 workflows: …") and which workflows keep their own copy of the field. It edits the
 field's copy and its choices -- relabel one, or add one -- but never removes a choice or changes a value, since stored
-forms may hold it. The facts come from the definition read (`parseSharedFacts`); the save is
-`/clientAdmin/design/sharedField`. Where a definition comes from is said in one sentence (`provenanceText`, issue
+forms may hold it. Its two headings say what an edit changes -- **Form copy** (what forms show) and **Choices** (what
+the field accepts) -- under one save (issue #1039). A blank copy input is not empty copy: the form falls back to the
+field's own title or name, description and range hint, and both copy editors show that fallback in place
+(`copyFallback`, mirroring `SchemaForm`'s own fallbacks -- change the two together). A field the type's layout leaves
+out of a list that owns the order (`reorder`, `authoritative`) cannot take shared copy, and the read says so per field
+(`sharedCopyRefusals`), so the inputs are disabled with the reason rather than refused on Save. The facts come from the
+definition read (`parseSharedFacts`); the save is `/clientAdmin/design/sharedField`. Where a definition comes from is said in one sentence (`provenanceText`, issue
 #1013): where it is declared, and the client configuration altering it when one does -- the reader sees what every
 client shares and what is this client's own, however it was assembled.
 

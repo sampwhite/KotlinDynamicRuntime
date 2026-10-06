@@ -40,9 +40,17 @@ class SharedFieldTest : StringSpec({
 
     "a layout that owns its list is never extended" {
         shouldThrow<KdrException> { withSharedField(body(SLM.authoritative), "note", mapOf(SL.label to "Note"), null) }
-            .message.orEmpty() shouldContain "the form's fields and their order"
+            .message.orEmpty() shouldContain "which fields the form shows and their order"
         shouldThrow<KdrException> { withSharedField(body(SLM.reorder), "note", mapOf(SL.label to "Note"), null) }
             .message.orEmpty() shouldContain "the form's field order"
+    }
+
+    "the read and the save share one rule for which fields can take copy" {
+        // Listed, or under an annotating layout: yes. Left out of a list the layout owns: no, with the reason.
+        sharedCopyRefusal(body(SLM.reorder), "title") shouldBe null
+        sharedCopyRefusal(body(null), "note") shouldBe null
+        sharedCopyRefusal(body(SLM.reorder), "note").orEmpty() shouldContain "'note' is not in its list"
+        sharedCopyRefusal(mapOf(SCH.properties to emptyMap<String, Any?>()), "note") shouldBe null
     }
 
     "a choices-only edit of a field the layout leaves out writes no layout entry" {

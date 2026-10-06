@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.layout
 
 /*
@@ -32,8 +33,9 @@ import com.dynamicruntime.common.schema.layout
  * Its one form carries each case the inspector has to tell apart: copy written inline in a layout (label,
  * description, a bounds hint), a closed choice list, a field only an administrator sees and one only a requester
  * sees (`g-visibleWhen` -- the second is a ghost to the administrator using Design View), a field asked only under
- * one answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), and -- beside it in
- * the task -- the global `kdr:name` trait, which no client edits in place. Its two workflows, a creation and a
+ * one answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), a field with no layout
+ * entry -- whose form copy is the field's own -- and one its type's layout leaves out of a list that decides the order
+ * (issue #1039), and -- beside it in the task -- the global `kdr:name` trait, which no client edits in place. Its two workflows, a creation and a
  * survey, collect the same trait, which is what makes a workflow's own copy (issue #984) visible as its own.
  *
  * The `design-demo` probe scenario provisions it on a running node, and the Design View tests provision it in
@@ -73,6 +75,8 @@ object DesignDemo {
     const val requesterNote = "requesterNote"
     const val contactName = "name"
     const val contactEmail = "email"
+    const val contactPhone = "phone"
+    const val catering = "catering"
 
     // Copy a test asserts, so the demo's wording can change under it.
     const val titleLabel = "What is the event?"
@@ -106,7 +110,10 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
             description = "Who to talk to about the event."
             property(DesignDemo.contactName, "The contact's name.")
             property(DesignDemo.contactEmail, "The contact's email address.")
-            layout {
+            property(DesignDemo.contactPhone, "A number to reach the contact on the day.") { title = "Phone number" }
+            // A list that decides the order: the phone, which it leaves out, follows the fields it names -- and the
+            // shared editor cannot give the phone copy, since that would add it to the list.
+            layout(mode = SchLayoutMode.reorder) {
                 field(DesignDemo.contactName, label = "Contact name")
                 field(DesignDemo.contactEmail, label = DesignDemo.contactEmailLabel, hint = "We only use this about the event.")
             }
@@ -129,6 +136,8 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
             }
             property(DesignDemo.contact, "Who to talk to.") { ref(DesignDemo.contactType) }
             property(DesignDemo.backupPlan, "What happens if the weather turns.")
+            // No layout entry: the form shows a label made from the name, and this description.
+            property(DesignDemo.catering, "Whether the event needs food and drink.") { type = SCT.boolean }
             property(DesignDemo.requesterNote, "Anything the requester wants the organizers to know.") {
                 visibleWhen = "~${CFACTS.hasAdminLevel}"
             }

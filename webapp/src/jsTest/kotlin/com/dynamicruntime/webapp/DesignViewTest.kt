@@ -289,4 +289,52 @@ class DesignViewTest {
         // A field with no entry and nothing typed has nothing to send.
         assertEquals(false, copyChanged(emptyMap(), mapOf(SL.label to "", SL.description to "", SL.hint to "")))
     }
+
+    // --- what a blank copy input stands for (issue #1039) ---
+
+    private val fallbackTypes = parseSchemaTypes(
+        mapOf(
+            "client.demo.Fallbacks" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    "phone" to mapOf(SCH.type to SCT.string, SCH.title to "Phone number", SCH.description to "A number to call."),
+                    "catering" to mapOf(SCH.type to SCT.boolean),
+                    "attendees" to mapOf(SCH.type to SCT.integer, SCH.minimum to 1, SCH.maximum to 200),
+                ),
+            ),
+        ),
+    ).getValue("client.demo.Fallbacks")
+
+    private fun fallback(key: String, field: String) = copyFallback(key, field, fallbackTypes.properties.getValue(field))
+
+    @Test
+    fun aBlankLabelIsTheFieldsTitleOrItsNameMadeReadable() {
+        assertEquals("Phone number", fallback(SL.label, "phone").text)
+        assertEquals("Blank: forms show the field's own title.", fallback(SL.label, "phone").note)
+        assertEquals("Catering", fallback(SL.label, "catering").text)
+        assertEquals("Blank: forms show a label made from the field's name.", fallback(SL.label, "catering").note)
+    }
+
+    @Test
+    fun aBlankDescriptionIsTheFieldsOwnOrNone() {
+        assertEquals("A number to call.", fallback(SL.description, "phone").text)
+        assertEquals("Blank: forms show the field's own description.", fallback(SL.description, "phone").note)
+        assertNull(fallback(SL.description, "catering").text)
+        assertEquals("Blank: forms show no description.", fallback(SL.description, "catering").note)
+    }
+
+    @Test
+    fun aBlankHintIsTheRangeTheBoundsGiveOrNone() {
+        assertEquals("range: 1 to 200", fallback(SL.hint, "attendees").text)
+        assertEquals("Blank: forms show the field's range.", fallback(SL.hint, "attendees").note)
+        assertNull(fallback(SL.hint, "phone").text)
+        assertEquals("Blank: forms show no hint.", fallback(SL.hint, "phone").note)
+    }
+
+    @Test
+    fun aFieldThatCannotTakeCopyIsReadWithItsReason() {
+        val facts = parseSharedFacts(sharedRead + (DSV.sharedCopyRefusals to mapOf("phone" to "Not in its list.")))!!
+        assertEquals(mapOf("phone" to "Not in its list."), facts.copyRefusals)
+        assertEquals(emptyMap(), parseSharedFacts(sharedRead)!!.copyRefusals)
+    }
 }

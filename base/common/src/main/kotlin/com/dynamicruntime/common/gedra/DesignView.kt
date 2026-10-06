@@ -435,6 +435,9 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.sharedRefusal, "Why it may not be, when it may not.")
         property(DSV.sharedRefusalCode, "Which of the closed set of reasons that is.") { options(DesignRefusal.entries) }
         property(DSV.sharedBasedOn, "A stamp of the stored entry, sent back with a shared edit.")
+        property(DSV.sharedCopyRefusals, "By field, why it cannot be given shared copy; a field not named here can.") {
+            type = SCT.kObject
+        }
     }
 
     type(DSV.layoutEntryEditType) {

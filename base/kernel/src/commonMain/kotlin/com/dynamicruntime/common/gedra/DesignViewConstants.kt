@@ -135,6 +135,12 @@ object DSV {
     /** In the definition read, and sent back with a shared edit: a stamp of the stored entry it was drawn from. */
     const val sharedBasedOn = "sharedBasedOn"
 
+    /**
+     * In the definition read, when [canEditShared] is true: by field, why that field cannot be given shared copy -- the
+     * type's layout owns its list of fields and leaves it out (issue #1039). A field not named here can.
+     */
+    const val sharedCopyRefusals = "sharedCopyRefusals"
+
     /** Sets a field's shared copy and choices in the client's own definition (a POST). */
     const val sharedFieldEdit = "/${SECT.clientAdmin}/design/sharedField"
     const val sharedFieldEditType = "DesignSharedFieldEdit"
