@@ -5,6 +5,7 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.report.RHIS
 import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.ReportSnapshotTrigger
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.simulation.DesignDemo
 import com.dynamicruntime.common.test.SIM
@@ -60,7 +61,8 @@ class SampleSimulationTest : StringSpec({
     // Last: it adds forms, which the count above does not expect.
     "report-history-demo leaves five dated days of snapshots, growing day by day, and a rerun keeps one a past day" {
         val report = tester.postData(historyDemo, emptyMap())
-        report[SIM.startPage] shouldBe "page=reports&rpt=${SC.expensesByYear}&view=history"
+        report[SIM.startPage] shouldBe
+            "page=${HMENU.pageReports}&${HMENU.reportParam}=${SC.expensesByYear}&${HMENU.reportViewParam}=${HMENU.reportViewHistory}"
         report[SIM.users].toJsonListOfMaps().map { it[SIM.email] } shouldContainAll listOf(ReportDemo.acmeAdmin, ReportDemo.overseer)
 
         // As the reported administrator, the history each report's view will draw: newest first.
@@ -76,16 +78,23 @@ class SampleSimulationTest : StringSpec({
             snapshots.map { dayOf(it) } shouldBe snapshots.map { dayOf(it) }.sortedDescending()
             // Each day read the day before's forms and its own six more.
             snapshots.zipWithNext { newer, older -> scanned(newer) - scanned(older) }.toSet() shouldBe setOf(ReportHistoryDemo.formsPerDay)
-            snapshots.all { it[RHIS.trigger] == ReportSnapshotTrigger.scheduled.name && it[RHIS.launchName] == ReportHistoryDemo.simulationName } shouldBe true
+            // Marked as a simulation's, never as the nightly job's.
+            snapshots.all { it[RHIS.trigger] == ReportSnapshotTrigger.simulated.name && it[RHIS.launchName] == ReportHistoryDemo.simulationName } shouldBe true
         }
         scanned(series(SC.expensesByYear).first()) shouldBe formsInAcme(admin)
 
-        // A rerun: a newer snapshot for each day -- a past day keeps only its latest, today both.
-        val before = series(SC.expensesByYear)
+        // A rerun: a newer snapshot for each day. Every day but the newest keeps only its latest, and the newest
+        // keeps what it has -- said by day rather than by count, so a run straddling midnight UTC (when the first
+        // run's "today" has become a past day, and the series a day longer) is held to the same rule.
         tester.postData(historyDemo, emptyMap())
         val after = series(SC.expensesByYear)
-        after.size shouldBe ReportHistoryDemo.days + 1
-        after.map { it[RHIS.snapshotId] }.count { id -> before.any { it[RHIS.snapshotId] == id } } shouldBe 1
+        val byDay = after.groupBy { dayOf(it) }
+        val newestDay = dayOf(after.first())
+        byDay.filterKeys { it != newestDay }.values.all { it.size == 1 } shouldBe true
+        (byDay.getValue(newestDay).size in 1..2) shouldBe true
+        (byDay.size in ReportHistoryDemo.days..ReportHistoryDemo.days + 1) shouldBe true
+        // The rerun's own five days are all there, each newer than anything the first run left on that day.
+        after.count { scanned(it) > formsInAcme(admin) - ReportHistoryDemo.days * ReportHistoryDemo.formsPerDay } shouldBe ReportHistoryDemo.days
         scanned(after.first()) shouldBe formsInAcme(admin)
     }
 })

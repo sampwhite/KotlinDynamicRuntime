@@ -212,6 +212,14 @@ object HMENU {
     const val pageWorkflows = "workflows"
     const val pageClients = "clients"
     const val pageReports = "reports"
+    /**
+     * The Reports page's own hash parameters (issues #1007, #1036): the report that is open, how it is shown, and
+     * the view that shows a report's history. Here, beside the page id, because a simulation's start page is built
+     * on the server and the page reads it in the browser: one name each, so a rename cannot part them.
+     */
+    const val reportParam = "rpt"
+    const val reportViewParam = "view"
+    const val reportViewHistory = "history"
     const val pageSimulations = "simulations"
     const val pageProfile = "profile"
     const val pageLogin = "login"

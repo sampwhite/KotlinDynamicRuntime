@@ -185,7 +185,7 @@ time is a chart too. A snapshot's rows are cut at 2,000 groups, in key order, an
 
 Two things take one:
 
-- **`POST /clientAdmin/report/snapshot`** -- now, by hand, for any grouped report (`reportId`, and `client` for an
+- **`POST /clientAdmin/report/snapshot`** -- now, by hand (trigger `manual`), for any grouped report (`reportId`, and `client` for an
   administrator who sees every client). The snapshot comes back in the response.
 - **The nightly `reportHistory` job** (issue #1035), at 03:30 UTC -- half an hour after the derived-state recompute,
   so a report grouping by a form's status snapshots what that recompute just brought up to date -- for every
@@ -233,5 +233,7 @@ and several groups of a grouped one. Each run adds forms; an in-memory node need
 The `report-history-demo` simulation (issue #1036) does the same and then gives the two history reports a series:
 five days of six more acme forms each, with a snapshot of both reports stored after each day's forms and **dated
 that day**, the last five days ending today. The snapshots are backdated rows -- the node's clock is not moved --
-stored as the nightly job's would be, under the simulation's name as their launch. A rerun adds the forms again,
-replaces each past day's snapshot with a newer one, and adds another for today.
+marked as a simulation's (trigger `simulated`, the simulation's name as their launch), so the series never reads as
+the nightly job having run. Every form is created now, so only the counts and sums differ from day to day; a
+date-valued column reads the same on all of them. A rerun adds the forms again, replaces each past day's snapshot
+with a newer one, and adds another for today.

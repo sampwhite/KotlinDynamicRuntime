@@ -36,10 +36,12 @@ object SampleSimulations {
             "Gives the Reports page's History view a series to draw (issue #1036): everything '${ReportDemo.simulationName}' " +
                 "creates, then ${ReportHistoryDemo.days} days of ${ReportHistoryDemo.formsPerDay} more acme forms each, " +
                 "with a snapshot of acme's two history reports stored after each day's forms and dated that day -- " +
-                "the last ${ReportHistoryDemo.days} days, ending today. The snapshots are backdated rows; the node's " +
-                "clock is not moved. Each run ADDS the forms again, replaces each past day's snapshot with a newer " +
-                "one (a past day keeps its latest), and adds another for today. Shares its forms and users with " +
-                "'${ReportDemo.simulationName}', so running both only adds forms.",
+                "the last ${ReportHistoryDemo.days} days, ending today. The snapshots are backdated rows marked as a " +
+                "simulation's; the node's clock is not moved, so every form is created now and only the counts and " +
+                "sums differ from day to day -- a date column reads the same on all of them. Each run ADDS the forms " +
+                "again, replaces each past day's snapshot with a newer one (a past day keeps its latest), and adds " +
+                "another for today. Shares its forms and users with '${ReportDemo.simulationName}', so running both " +
+                "only adds forms.",
         ) { c, _ -> provisionReportHistoryDemo(c) }
     }
 }
@@ -76,11 +78,8 @@ object ReportHistoryDemo {
     /** Acme's reports that ask for history: the ones the nightly job would snapshot, and the History view charts. */
     val reports = listOf(SC.expensesByYear, SC.auditOverview)
 
-    /**
-     * Where the simulation sends its administrator: the first report's History view. The parameter names are the
-     * webapp's (`HP.report`, `HP.reportView`), which this module sits below and cannot name.
-     */
-    val startPage = "page=${HMENU.pageReports}&rpt=${reports.first()}&view=history"
+    /** Where the simulation sends its administrator: the first report's History view, in the page's own parameter names. */
+    val startPage = "page=${HMENU.pageReports}&${HMENU.reportParam}=${reports.first()}&${HMENU.reportViewParam}=${HMENU.reportViewHistory}"
 }
 
 /**
@@ -154,8 +153,10 @@ fun provisionReportDemo(cxt: KdrCxt): SimulationReport {
  *
  * The days are made by backdating the snapshots (`takenAt`), never by moving the instance clock: the clock is the
  * whole node's, and a simulation that rewound it would rewind every other request made meanwhile. The snapshots are
- * stored as the nightly job's would be, under this simulation's name as their launch, so a row says where it came
- * from. The forms themselves are all created now; only what the reports counted on each "day" differs.
+ * stored as a simulation's ([ReportSnapshotTrigger.simulated]), under this simulation's name as their launch, so a
+ * series here never reads as the nightly job having run. The forms themselves are all created now: what the reports
+ * **counted and summed** on each "day" differs, while a date-valued column (the latest audit activity) reads the
+ * same on every one.
  */
 fun provisionReportHistoryDemo(cxt: KdrCxt): SimulationReport {
     val base = provisionReportDemo(cxt)
@@ -174,7 +175,7 @@ fun provisionReportHistoryDemo(cxt: KdrCxt): SimulationReport {
         val takenAt = now.addDays(day - (ReportHistoryDemo.days - 1))
         for (report in reports) {
             ReportHistoryWriter.snapshot(
-                cxt, SC.acme, report, ReportSnapshotTrigger.scheduled, launchName = ReportHistoryDemo.simulationName, takenAt = takenAt,
+                cxt, SC.acme, report, ReportSnapshotTrigger.simulated, launchName = ReportHistoryDemo.simulationName, takenAt = takenAt,
             )
         }
     }

@@ -54,7 +54,7 @@ fun reportHistoryTables(cxt: KdrCxt): List<KdrTable> =
             }
             column(RRUN.reportId, "The report snapshotted.", required = true)
             column(RHT.takenAt, "When the run was taken.", required = true) { dateTime() }
-            column(RHT.trigger, "What took it: scheduled, or manual.", required = true)
+            column(RHT.trigger, "What took it: scheduled, manual, or simulated.", required = true)
             column(RHT.launchName, "The job launch that took it; absent for a manual one.")
             column(RHT.queryId, "The run's query id: the report as it was bound.")
             column(RHT.scanned, "How many of the client's forms the run read.", required = true) { type = SCT.integer }
