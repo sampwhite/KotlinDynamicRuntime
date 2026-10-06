@@ -40,7 +40,30 @@ object RRUN {
     const val origin = "origin"
     const val template = "template"
     const val issues = "issues"
+    /** Whether the nightly job stores snapshots of the report (issue #1033). */
+    const val history = "history"
 }
+
+/** The field names of a report **snapshot** on the wire (issue #1033): a grouped run kept as it was. */
+@Suppress("ConstPropertyName")
+object RHIS {
+    const val snapshotId = "snapshotId"
+    const val takenAt = "takenAt"
+    const val trigger = "trigger"
+    const val launchName = "launchName"
+    /** The run's rows: `{group, count, values}` per group, as the run endpoint pages them. */
+    const val rows = "rows"
+    /** Whether the rows were cut at the stored limit. */
+    const val truncated = "truncated"
+    /** Whether the snapshot was taken under the report's definition as it is bound now -- the same grouping and columns. */
+    const val sameDefinition = "sameDefinition"
+    /** On the history listing's summary: how many snapshots the report has for the client. */
+    const val numSnapshots = "numSnapshots"
+}
+
+/** What took a snapshot (issue #1033): the nightly job, or someone pressing the button. */
+@Suppress("EnumEntryName")
+enum class ReportSnapshotTrigger { scheduled, manual }
 
 /** How a report is run (issue #981): one row per form, or one per group of forms. */
 @Suppress("EnumEntryName")

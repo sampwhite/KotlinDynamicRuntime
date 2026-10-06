@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra.report
 
+import com.dynamicruntime.common.exception.KdrException
+
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.workflow.WfDef
@@ -79,6 +81,19 @@ enum class ReportBindProblem : ProblemCode {
 
     /** A grouped-by column whose value is a list. */
     groupByList,
+}
+
+/**
+ * The columns the report's own `groupBy` names, bound (issue #1034): the grouping a run without an override, and
+ * every snapshot of the report, uses. The shape check made sure each names a column, so a miss here is a fault.
+ */
+fun BoundReport.defaultGroupBy(): List<BoundColumn> = ownColumns(report.groupBy, RDEF.groupBy)
+
+/** The columns the report's own `excludeEmpty` names, bound -- see [defaultGroupBy]. */
+fun BoundReport.defaultExcludeEmpty(): List<BoundColumn> = ownColumns(report.excludeEmpty, RDEF.excludeEmpty)
+
+private fun BoundReport.ownColumns(ids: List<String>, what: String): List<BoundColumn> = ids.map { id ->
+    column(id) ?: throw KdrException("Report '$reportId' has a $what naming '$id', which is not one of its bound columns.")
 }
 
 /**

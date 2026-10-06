@@ -31,6 +31,7 @@ object RDEF {
     const val columns = "columns"
     const val groupBy = "groupBy"
     const val excludeEmpty = "excludeEmpty"
+    const val history = "history"
 
     const val columnId = "columnId"
     const val path = "path"
@@ -69,7 +70,8 @@ class ReportColumn(
 /**
  * A **named report** in a client's configuration (issue #979): the columns it promotes to the top level, which of
  * them it groups by when run grouped ([groupBy]), and which must hold a value for a form to appear
- * ([excludeEmpty]). Both are the defaults a run may override.
+ * ([excludeEmpty]). Both are the defaults a run may override. A report asking for [history] (issue #1033) has a
+ * snapshot of its grouped run stored nightly, so what its groups were can be charted over time.
  *
  * Declared in a config bundle, source or stored, as a workflow is, and addressed by [reportId] -- an owned name
  * (#921): a component's is rooted (`kdr:formsByStatus`) and a client's bare, so a release adding a report can never
@@ -85,6 +87,8 @@ class ClientReport(
     val description: String? = null,
     val groupBy: List<String> = emptyList(),
     val excludeEmpty: List<String> = emptyList(),
+    /** Whether the nightly job stores a snapshot of this report's grouped run (issue #1033). */
+    val history: Boolean = false,
 ) : JsonMappable {
     init {
         if (!isOwnedName(OwnedNameKind.report, reportId)) {
@@ -102,6 +106,8 @@ class ClientReport(
         put(RDEF.columns, columns.map { it.toJsonMap() })
         if (groupBy.isNotEmpty()) put(RDEF.groupBy, groupBy)
         if (excludeEmpty.isNotEmpty()) put(RDEF.excludeEmpty, excludeEmpty)
+        // Only when set, so the stored form of every report declared before history existed is unchanged.
+        if (history) put(RDEF.history, true)
     }
 
     override fun toString(): String = reportId
@@ -158,6 +164,9 @@ object ReportDefSchema {
                 allowCoerce = true
                 items { type = SCT.string }
             }
+            property(RDEF.history, "Whether the nightly job stores a snapshot of the report's grouped run, so its groups can be charted over time.") {
+                type = SCT.boolean
+            }
         }
     }
 
@@ -204,6 +213,7 @@ fun clientReportResult(cxt: KdrCxtBase, raw: Map<String, Any?>): Parsed<ClientRe
                 },
                 groupBy = m[RDEF.groupBy].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
                 excludeEmpty = m[RDEF.excludeEmpty].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
+                history = m[RDEF.history] == true,
             ),
         )
     } catch (e: KdrException) {
@@ -233,6 +243,8 @@ class ReportBuilder(private val reportId: String, private val label: String) {
     var description: String? = null
     var groupBy: List<String> = emptyList()
     var excludeEmpty: List<String> = emptyList()
+    /** Whether the nightly job stores a snapshot of the grouped run (issue #1033). */
+    var history: Boolean = false
     private val columns = mutableListOf<ReportColumn>()
 
     fun column(
@@ -248,5 +260,5 @@ class ReportBuilder(private val reportId: String, private val label: String) {
 
     /** The definition's JSON form, for the parser. */
     fun build(): Map<String, Any?> =
-        ClientReport(reportId, label, columns.toList(), description, groupBy, excludeEmpty).toJsonMap()
+        ClientReport(reportId, label, columns.toList(), description, groupBy, excludeEmpty, history).toJsonMap()
 }

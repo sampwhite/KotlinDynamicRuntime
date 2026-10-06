@@ -6,6 +6,7 @@ import com.dynamicruntime.common.cfact.addCoreCFacts
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.gedra.report.ReportService
+import com.dynamicruntime.common.gedra.report.reportHistoryTables
 import com.dynamicruntime.common.gedra.report.reportSchema
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.ComputeCFactsFromDataCreation
@@ -231,6 +232,8 @@ class CommonComponent : ComponentDefinition {
         collector.addTables(clientSyncTables(cxt), appOnly)
         // Batch-job status rows (issue #868): the launch and per-client rows every claim and heartbeat locks.
         collector.addTables(jobTables(cxt), appOnly)
+        // The report-snapshot table (issue #1034): read and written by the report endpoints and the nightly job.
+        collector.addTables(reportHistoryTables(cxt), appOnly)
         // Per-gedra job failures (issue #871), in the same topic.
         collector.addTables(jobExceptionTables(cxt), appOnly)
         collector.addModule(gedraConfigSchema(cxt), appOnly)

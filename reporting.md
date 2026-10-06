@@ -174,6 +174,34 @@ nothing reads only its page's forms.
 Above **`KDR_REPORT_SCAN_LIMIT`** forms (default 50,000, the ceiling #538 states for in-memory search) the run is
 refused with a message naming the variable. A report covering part of a client's forms would be worse than none.
 
+## History
+
+A run answers "now". **Report history** (issue #1033) keeps what a report's groups were: a **snapshot** is the
+report's grouped run -- its **own** `groupBy` and `excludeEmpty`, never a viewer's, since a history is comparable
+only when every snapshot asks the same question -- over the **whole client**, stored in a row of the
+`ReportSnapshot` table in the run endpoint's row shape (`{group, count, values}` per group, with the grouping and
+the columns as they were bound). A report grouping by nothing is snapshotted as its one total row: a total over
+time is a chart too. A snapshot's rows are cut at 2,000 groups, in key order, and say so.
+
+Two things take one:
+
+- **`POST /clientAdmin/report/snapshot`** -- now, by hand, for any grouped report (`reportId`, and `client` for an
+  administrator who sees every client). The snapshot comes back in the response.
+- **The nightly `reportHistory` job** (issue #1035), for every report that declares `history = true`, once per
+  scheduled slot: a resumed launch finds the snapshot its slot already took and does nothing twice.
+
+**`GET /clientAdmin/report/history`** lists a report's snapshots for a client, newest first and paged by cursor as
+every reporting endpoint is, with a summary saying whether the job snapshots the report and how many snapshots it
+has, and each snapshot says whether it was taken under the report's definition as bound now. Per report and client,
+of each past day only the latest snapshot is kept, and `KDR_REPORT_HISTORY_KEEP` days (default 400) in all, the
+oldest days deleted as a new snapshot is written; today's are all kept until the day is over, so pressing the
+button cannot push the nightly series out. The snapshots of a report since removed from the configuration stay
+listable under its id.
+
+**Client-wide only.** Both endpoints are in the `clientAdmin` section and scoped as the run is, and both refuse an
+administrator whose administration is confined to an organization: their own runs narrow to their organization's
+forms, and a snapshot would show them the client's totals.
+
 ## Samples
 
 The sample component declares four reports:
