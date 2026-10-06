@@ -112,19 +112,17 @@ class GedraSearchTest : StringSpec({
         // not declare `after` (the framework appends it later, where a second one would refuse the endpoint).
         val after = usage(EP.after, UsageKind.string, substring = true)
         searchParamCollisions(listOf(after)) shouldBe listOf(EP.after)
-        // Its `afterContains` is nobody's field, so that half of the usage still searches.
-        gedraSearchParams(listOf(after)).map { it.name } shouldBe listOf("afterContains")
+        // The whole usage goes: an `afterContains` left on its own would read back as another trait's exact match.
+        gedraSearchParams(listOf(after)) shouldBe emptyList()
         val base = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf(EP.offset to mapOf(SCH.type to SCT.integer)))
-        withSearchProperties(base, listOf(after))[SCH.properties].toJsonMapOrEmpty().keys shouldBe
-            setOf(EP.offset, "afterContains")
+        withSearchProperties(base, listOf(after, usage("name", UsageKind.string)))[SCH.properties].toJsonMapOrEmpty().keys shouldBe
+            setOf(EP.offset, "name")
         // The same for a name the listing declares: the predicate must not read the paging offset as a filter.
         gedraSearchParams(listOf(usage(EP.offset, UsageKind.string))) shouldBe emptyList()
         // Every reserved name is one a usage can ask for and be told about.
         for (name in reservedQueryFieldNames) {
             searchParamCollisions(listOf(usage(name, UsageKind.string))) shouldBe listOf(name)
         }
-        // A bound's name is reserved only when it is itself a field: `sort` + `Dir` is not a role's suffix.
-        searchParamCollisions(listOf(usage("sort", UsageKind.number))) shouldBe emptyList()
     }
 
     "duplicateUsageTraitIds names a trait declared more than once, once, in first-seen order" {

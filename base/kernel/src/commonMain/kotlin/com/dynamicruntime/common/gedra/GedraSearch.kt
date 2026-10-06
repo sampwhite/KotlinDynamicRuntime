@@ -66,27 +66,29 @@ class GedraSearchParam(
  * for the trait (the design's "the trait id becomes a search parameter") and, when [ClientTraitUsage.substring]
  * is set, a `<traitId>Contains` beside it; a `number` or `date` gives `<traitId>Min` and `<traitId>Max`.
  *
- * A parameter whose name the listing keeps for itself ([reservedQueryFieldNames]) is **not** among them (issue
- * #987): it is left out here, at the one place every reader starts from, so the advertised schema and the
- * predicate drop it together -- a predicate that still read it would filter by the listing's own `offset`.
- * The usage keeps its column; [searchParamCollisions] is what reports it.
+ * A usage one of whose names the listing keeps for itself ([reservedQueryFieldNames]) contributes **nothing**
+ * (issue #987): it is left out here, at the one place every reader starts from, so the advertised schema and
+ * the predicate drop it together -- a predicate that still read it would filter by the listing's own `offset`.
+ * The whole usage goes, not the one name: a `<traitId>Contains` left standing alone would read back
+ * ([decodeSearchParam]) as the exact match of some other trait. The usage keeps its column;
+ * [searchParamCollisions] is what reports it.
  */
-fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> =
-    mintedSearchParams(usages).filter { it.name !in reservedQueryFieldNames }
+fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = usages.flatMap { usage ->
+    val minted = mintedSearchParams(usage)
+    if (minted.any { it.name in reservedQueryFieldNames }) emptyList() else minted
+}
 
-/** Every parameter [usages] would mint by name alone, a reserved name included -- see [gedraSearchParams]. */
-private fun mintedSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = buildList {
-    for (usage in usages) {
-        fun param(role: SearchRole) = GedraSearchParam(usage.traitId + role.nameSuffix, usage.label, usage.traitId, role, usage.kind)
-        when (usage.kind) {
-            UsageKind.string -> {
-                add(param(SearchRole.exact))
-                if (usage.substring) add(param(SearchRole.contains))
-            }
-            UsageKind.number, UsageKind.date -> {
-                add(param(SearchRole.min))
-                add(param(SearchRole.max))
-            }
+/** Every parameter [usage] would mint by name alone, a reserved name included -- see [gedraSearchParams]. */
+private fun mintedSearchParams(usage: ClientTraitUsage): List<GedraSearchParam> = buildList {
+    fun param(role: SearchRole) = GedraSearchParam(usage.traitId + role.nameSuffix, usage.label, usage.traitId, role, usage.kind)
+    when (usage.kind) {
+        UsageKind.string -> {
+            add(param(SearchRole.exact))
+            if (usage.substring) add(param(SearchRole.contains))
+        }
+        UsageKind.number, UsageKind.date -> {
+            add(param(SearchRole.min))
+            add(param(SearchRole.max))
         }
     }
 }
@@ -194,11 +196,11 @@ val reservedQueryFieldNames: Set<String> = setOf(
 /**
  * The search parameter names [usages] ask for that are a [reservedQueryFieldNames] entry -- the boot check. A
  * `string` usage on a trait named `user` (say) asks for an exact parameter `user`, the listing's own user
- * filter; [gedraSearchParams] leaves it out, so the trait shows as a column and cannot be searched. Empty is the
+ * filter; [gedraSearchParams] leaves the usage out, so the trait shows as a column and cannot be searched. Empty is the
  * ordinary case; a non-empty result is a client-config mistake to report.
  */
 fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
-    mintedSearchParams(usages).map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
+    usages.flatMap { mintedSearchParams(it) }.map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
 
 /**
  * The trait ids [usages] name more than once (issue #681), in first-seen order and without repeats -- the boot
