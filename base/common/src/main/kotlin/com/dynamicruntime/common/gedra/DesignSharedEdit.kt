@@ -84,7 +84,7 @@ object DesignSharedEdit {
         return WorkflowService.get(cxt).forClient(cxt.client).workflows.values.filter { declared ->
             val seeds = declared.def.tasks.flatMap { it.traits }.flatMap { ref ->
                 val trait = traits[ref.traitId] ?: return@flatMap emptyList()
-                listOfNotNull(trait.typeName, trait.dataSchema?.get(SCH.dRef).toOptStr()?.let { refName(it) })
+                listOfNotNull(trait.typeName, trait.dataSchema[SCH.dRef].toOptStr()?.let { refName(it) })
             }
             collectDefClosure(seeds, store.defs).keys.any { it in typeNames }
         }.map { declared ->
@@ -171,7 +171,8 @@ object DesignSharedEdit {
 
 /**
  * [body] -- a type's authored body -- with [field]'s layout entry set to [entry] (replaced whole, or appended when the
- * layout has none for it and only annotates -- a `reorder` or `authoritative` layout's list is never extended) and its choices set to [options], each only when given (issue #1029). Every existing choice's
+ * layout has none for it and only annotates -- a `reorder` or `authoritative` layout's list is never extended) and
+ * its choices set to [options], each only when given (issue #1029). Every existing choice's
  * value must still be among [options] -- relabeling is free, adding is allowed, removing or changing a value is refused
  * -- and [field] must already have choices to be given new ones. Pure, so a test pins it.
  */
