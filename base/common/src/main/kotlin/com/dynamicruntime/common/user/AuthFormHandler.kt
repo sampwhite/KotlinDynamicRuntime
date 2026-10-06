@@ -505,6 +505,26 @@ class AuthFormHandler(
         cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
         client: String? = null, name: String? = null, persona: String? = null, personaSuffix: String = "",
     ): Map<String, Any?> {
+        val found = findOrProvisionUser(
+            cxt, email, level, capabilities, failIfUserAlreadyExists, client, name, persona, personaSuffix,
+        )
+        // The fixture is proof by fiat (issue #749): becoming a user nobody has claimed registers it.
+        return if (found.existed) {
+            completeLogin(cxt, found.row, byCode = false, register = true)
+        } else {
+            completeLogin(cxt, found.row, byCode = false)
+        }
+    }
+
+    /**
+     * The user [becomeUserByEmail] would become -- found by the same rules, or created with the same fields -- without
+     * logging in as them (issue #997): how a simulation provisions the users it then reports, for a person to sign in
+     * as later. [ProvisionedUser.existed] says which it was.
+     */
+    fun findOrProvisionUser(
+        cxt: KdrCxt, email: String, level: String, capabilities: List<String>, failIfUserAlreadyExists: Boolean,
+        client: String? = null, name: String? = null, persona: String? = null, personaSuffix: String = "",
+    ): ProvisionedUser {
         val address = email.normalizeEmail()
         // A username as the login id resolves directly; an address resolves to its identity's users, and the
         // one to become is the match on (client, persona, personaSuffix) when the caller named any of them, else
@@ -526,8 +546,7 @@ class AuthFormHandler(
             if (failIfUserAlreadyExists) {
                 throw KdrException("A user with email '$address' already exists.", code = EXC.badInput)
             }
-            // The fixture is proof by fiat (issue #749): becoming a user nobody has claimed registers it.
-            return completeLogin(cxt, existing, byCode = false, register = true)
+            return ProvisionedUser(existing, existed = true)
         }
         val roles = RoleLadder.rolesAtLevel(emptyList(), level) + capabilities.filter { it.isNotBlank() }
         val userId = userService.provisionUser(
@@ -542,7 +561,7 @@ class AuthFormHandler(
         }
         val row = userService.queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '$address'.", code = EXC.internalError)
-        return completeLogin(cxt, row, byCode = false)
+        return ProvisionedUser(row, existed = false)
     }
 
     /**
@@ -878,3 +897,6 @@ class AuthFormHandler(
         const val unknownIp = "unknown"
     }
 }
+
+/** A user [AuthFormHandler.findOrProvisionUser] found or created, and whether it [existed] already. */
+class ProvisionedUser(val row: AuthUserRow, val existed: Boolean)

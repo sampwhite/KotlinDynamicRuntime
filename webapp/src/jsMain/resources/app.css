@@ -1194,3 +1194,8 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 @media (max-width: 900px) {
     .reports-layout { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* The Simulations page (issue #997): one card per simulation, its run's sign-in buttons beneath. */
+.sim-card { border-top: 1px solid var(--border); padding: 12px 0 4px; margin-top: 12px; }
+.sim-card:first-of-type { border-top: none; }
+.sim-users .row { align-items: center; gap: 12px; }
