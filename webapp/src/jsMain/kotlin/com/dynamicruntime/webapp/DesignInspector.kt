@@ -58,6 +58,28 @@ object DesignApi {
             put(DSV.basedOn, basedOn)
         },
     )
+
+    /**
+     * Sets [field] of [typeName] -- in the definition the client declares -- to the layout [entry] and the choices
+     * [options], each when given, for every workflow on the client (issue #1029), as an edit of the entry stamped
+     * [basedOn]. A refusal (a stale stamp, a removed choice) comes back as the result's refusal.
+     */
+    suspend fun setSharedField(
+        typeName: String,
+        field: String,
+        entry: Map<String, Any?>?,
+        options: List<Map<String, Any?>>?,
+        basedOn: String,
+    ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
+        "POST", DSV.sharedFieldEdit,
+        buildMap {
+            put(DSV.typeName, typeName)
+            put(DSV.field, field)
+            entry?.let { put(DSV.entry, it) }
+            options?.let { put(DSV.options, it) }
+            put(DSV.sharedBasedOn, basedOn)
+        },
+    )
 }
 
 /**
@@ -132,8 +154,11 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
     // The authored entry, by slot and key: one read per definition, kept while the panel is open, so moving between
     // the fields of one trait does not refetch it.
     var loaded by useState<Map<String, LoadedDefinition>>(emptyMap())
+    // Bumped when a save changes a definition the panel has read (the shared editor, issue #1029): its cached read is
+    // dropped, and the key alone would not change, so this is what makes the read run again.
+    var rereads by useState(0)
     val cacheKey = address?.let { "${it.slot}|${it.key}" }
-    useEffect(cacheKey) {
+    useEffect(cacheKey, rereads) {
         val a = address ?: return@useEffect
         if (cacheKey == null || cacheKey in loaded) return@useEffect
         designScope.launch {
@@ -205,6 +230,25 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         p {
                             className = ClassName("dv-note")
                             +design.editRefusal
+                        }
+                    }
+                }
+                // The shared definition (issue #1029): where it is used, and -- deliberately, behind its own button --
+                // editing it for every workflow. Once the definition read has answered, for the same reason as above.
+                val facts = parseSharedFacts(definition?.response)
+                if (facts != null && address != null) {
+                    SharedFieldSection {
+                        key = "${selected.id}|${facts.basedOn}".unsafeCast<Key>()
+                        this.session = session
+                        this.target = selected
+                        this.facts = facts
+                        this.typeName = owner.typeName
+                        this.fieldSchema = subtreeAt(definition?.response?.get(DSV.entry).toJsonMapOrEmpty(), address.path)
+                        this.authored = authoredLayoutEntry(address, definition, selected)
+                        // The read is cached per definition, so a shared save -- which changes it -- drops it to re-read.
+                        onSaved = {
+                            cacheKey?.let { loaded = loaded - it }
+                            rereads += 1
                         }
                     }
                 }
@@ -556,5 +600,153 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
             }
         }
         failure?.let { errorText("Couldn't save the copy.", it) }
+    }
+}
+
+external interface SharedFieldSectionProps : Props {
+    var session: DesignSession
+    var target: DesignTarget.Field
+    var facts: SharedFacts
+    /** The type that declares the field -- what the edit names. */
+    var typeName: String
+    /** The field's schema in the definition's authored entry, where its choices are. */
+    var fieldSchema: Any?
+    /** The type's own layout entry for the field, when it has one -- where a copy edit starts. */
+    var authored: Map<String, Any?>?
+    var onSaved: () -> Unit
+}
+
+/**
+ * The field's **shared** definition (issue #1029): where it is used, which workflows keep their own copy of it, and --
+ * opened deliberately, never as an option beside a workflow's Save -- its copy and choices edited for every workflow.
+ * A choice can be relabeled or added; an existing value stays as it is, since stored forms may hold it.
+ */
+private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
+    val facts = props.facts
+    val target = props.target
+    val start = props.authored ?: emptyMap()
+    val startRows = choiceRowsOf(props.fieldSchema)
+    var editing by useState(false)
+    var values by useState(editableCopyKeys.associateWith { start[it].toOptStr().orEmpty() })
+    var rows by useState(startRows.orEmpty())
+    var saving by useState(false)
+    var failure by useState<DisplayError?>(null)
+
+    div {
+        className = ClassName("dv-edit")
+        h3 { +"Shared definition" }
+        p {
+            className = ClassName("dv-note")
+            +usedByText(facts.usedBy)
+        }
+        variantNote(facts, target.name)?.let {
+            p {
+                className = ClassName("dv-note")
+                +it
+            }
+        }
+        when {
+            !facts.canEdit -> facts.refusal?.let {
+                p {
+                    className = ClassName("dv-note")
+                    +it
+                }
+            }
+            !editing -> div {
+                className = ClassName("dv-actions")
+                Button {
+                    size = "small"
+                    onClick = { editing = true }
+                    +"Edit the shared definition"
+                }
+            }
+            else -> {
+                for (key in editableCopyKeys) {
+                    div {
+                        className = ClassName("dv-edit-row")
+                        span {
+                            className = ClassName("dv-fact-name")
+                            +humanizeFieldName(key)
+                        }
+                        Input {
+                            value = values[key].orEmpty()
+                            onChange = { e -> values = values + (key to (e.target.value as String)) }
+                        }
+                    }
+                }
+                if (startRows != null) {
+                    p {
+                        className = ClassName("dv-caption")
+                        +"Choices"
+                    }
+                    rows.forEachIndexed { i, row ->
+                        div {
+                            className = ClassName("dv-edit-row")
+                            if (row.isNew) {
+                                Input {
+                                    value = row.value
+                                    placeholder = "value"
+                                    onChange = { e -> rows = rows.mapIndexed { j, r -> if (j == i) ChoiceRow(e.target.value as String, r.label, true) else r } }
+                                }
+                            } else {
+                                span {
+                                    className = ClassName("dv-fact-name")
+                                    +row.value
+                                }
+                            }
+                            Input {
+                                value = row.label
+                                placeholder = "label"
+                                onChange = { e -> rows = rows.mapIndexed { j, r -> if (j == i) ChoiceRow(r.value, e.target.value as String, r.isNew) else r } }
+                            }
+                        }
+                    }
+                    div {
+                        className = ClassName("dv-actions")
+                        Button {
+                            size = "small"
+                            type = "link"
+                            onClick = { rows = rows + ChoiceRow("", "", isNew = true) }
+                            +"Add a choice"
+                        }
+                    }
+                }
+                div {
+                    className = ClassName("dv-actions")
+                    Button {
+                        type = "primary"
+                        size = "small"
+                        loading = saving
+                        onClick = {
+                            saving = true
+                            failure = null
+                            designScope.launch {
+                                val result = DesignApi.setSharedField(
+                                    props.typeName, target.name, copyEntryFrom(start, target.name, values),
+                                    startRows?.let { sharedOptionsPayload(rows) }, facts.basedOn,
+                                )
+                                saving = false
+                                val refused = result.failureOrNull()
+                                if (refused != null) {
+                                    failure = userFacingError(refused)
+                                } else {
+                                    editing = false
+                                    props.onSaved()
+                                    props.session.afterEdit()
+                                }
+                            }
+                        }
+                        +"Save for every workflow"
+                    }
+                    Button {
+                        size = "small"
+                        type = "link"
+                        onClick = { editing = false }
+                        +"Cancel"
+                    }
+                }
+            }
+        }
+        failure?.let { errorText("Couldn't save the shared definition.", it) }
     }
 }
