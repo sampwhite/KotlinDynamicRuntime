@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignOrigin
+import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SCT
@@ -359,5 +360,14 @@ class DesignViewTest {
             removingNote(listOf("hotel")),
         )
         assertNull(removingNote(emptyList()))
+    }
+
+    @Test
+    fun saveAnywayAcknowledgesTheImpactAndAPlainSaveDoesNot() {
+        val options = listOf(mapOf<String, Any?>(SCH.value to "office", SCH.label to "At the office"))
+        val plain = sharedFieldBody("client.demo.Request", "venue", null, options, "abc123", acknowledgeImpact = false)
+        assertEquals(setOf(DSV.typeName, DSV.field, DSV.options, DSV.sharedBasedOn), plain.keys)
+        val anyway = sharedFieldBody("client.demo.Request", "venue", null, options, "abc123", acknowledgeImpact = true)
+        assertEquals(true, anyway[IMP.acknowledgeImpact])
     }
 }

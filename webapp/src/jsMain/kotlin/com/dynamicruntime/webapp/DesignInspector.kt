@@ -3,7 +3,6 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
-import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.humanizeFieldName
@@ -76,15 +75,7 @@ object DesignApi {
         basedOn: String,
         acknowledgeImpact: Boolean = false,
     ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
-        "POST", DSV.sharedFieldEdit,
-        buildMap {
-            put(DSV.typeName, typeName)
-            put(DSV.field, field)
-            entry?.let { put(DSV.entry, it) }
-            options?.let { put(DSV.options, it) }
-            put(DSV.sharedBasedOn, basedOn)
-            if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
-        },
+        "POST", DSV.sharedFieldEdit, sharedFieldBody(typeName, field, entry, options, basedOn, acknowledgeImpact),
     )
 }
 

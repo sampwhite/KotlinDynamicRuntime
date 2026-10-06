@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCH
@@ -481,3 +482,24 @@ fun removingNote(values: List<String>): String? =
     if (values.isEmpty()) null
     else "${removingPhrase(values)}: saving first checks whether the client's stored forms hold " +
         "${if (values.size == 1) "it" else "them"}."
+
+/**
+ * The body of a shared-field edit (issue #1029): the copy [entry] and the [options], each only when given, with
+ * [acknowledgeImpact] -- the dialog's **Save anyway** -- when a removal's impact report has been seen (issue #1040).
+ * Pure.
+ */
+fun sharedFieldBody(
+    typeName: String,
+    field: String,
+    entry: Map<String, Any?>?,
+    options: List<Map<String, Any?>>?,
+    basedOn: String,
+    acknowledgeImpact: Boolean,
+): Map<String, Any?> = buildMap {
+    put(DSV.typeName, typeName)
+    put(DSV.field, field)
+    entry?.let { put(DSV.entry, it) }
+    options?.let { put(DSV.options, it) }
+    put(DSV.sharedBasedOn, basedOn)
+    if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
+}
