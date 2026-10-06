@@ -272,6 +272,7 @@ object EP {
     //  - `message`     the framework's wording, which describes the wire problem
     //  - `userMessage` the schema's own wording from its `g-errors` block; absent when it declares none
     //  - `options`     for an invalid choice, the values that would have been valid; absent otherwise
+    //  - `formRequirement` true for a form's own requirement rather than the schema's (issue #1022); absent otherwise
     //
     // The exception's `cause` is deliberately not carried: it is the one part most likely to hold internal
     // detail, and redacting it belongs with issue #97 rather than here.
@@ -281,6 +282,7 @@ object EP {
     const val failureMessage = "message"
     const val failureUserMessage = "userMessage"
     const val failureOptions = "options"
+    const val failureFormRequirement = "formRequirement"
 
     // Input, list endpoints.
     const val limit = "limit"

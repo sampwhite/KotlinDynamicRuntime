@@ -104,6 +104,8 @@ fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind 
 internal fun ChildrenBuilder.widget(
     vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
     presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
+    /** The choices a form's layout offers in place of the schema's (issue #1022, [formChoiceList]). */
+    choices: List<SchOption>? = null,
     commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
@@ -129,7 +131,7 @@ internal fun ChildrenBuilder.widget(
             this.onCommit = commit
         }
         ControlKind.Choice -> Select {
-            options = optionsToJs(vt.options.orEmpty())
+            options = optionsToJs(choices ?: vt.options.orEmpty())
             this.value = value?.toString()
             placeholder = "(choose)"
             allowClear = true

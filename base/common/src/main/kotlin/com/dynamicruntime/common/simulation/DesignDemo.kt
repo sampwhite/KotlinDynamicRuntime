@@ -11,10 +11,13 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchLayoutBuilder
 import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.layout
 
@@ -35,7 +38,8 @@ import com.dynamicruntime.common.schema.layout
  * sees (`g-visibleWhen` -- the second is a ghost to the administrator using Design View), a field asked only under
  * one answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), a field with no layout
  * entry -- whose form copy is the field's own -- and one its type's layout leaves out of a list that decides the order
- * (issue #1039), and -- beside it in the task -- the global `kdr:name` trait, which no client edits in place. Its two workflows, a creation and a
+ * (issue #1039), and -- beside it in the task -- the global `kdr:name` trait, which no client edits in place. The
+ * survey's form requires the headcount the request leaves optional, a form requirement (issue #1022). Its two workflows, a creation and a
  * survey, collect the same trait, which is what makes a workflow's own copy (issue #984) visible as its own.
  *
  * The `design-demo` probe scenario provisions it on a running node, and the Design View tests provision it in
@@ -164,6 +168,17 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
 
         workflow(DesignDemo.reviewWorkflow, WfEntry.survey) {
             label = "Event request"
+            // The review's own form asks for the headcount, which the request leaves optional (issue #1022): a form
+            // requirement, not a schema change -- a request saved without it reads here as unfinished. The entry
+            // restates the shared copy, since a workflow's entry for a field replaces the shared one whole.
+            alterType(
+                "${clientNamespace(client)}.${traitDataTypeName("EventRequestEntry")}",
+                mapOf(
+                    SCH.layout to SchLayoutBuilder(null).apply {
+                        field(DesignDemo.attendees, label = "Expected attendees", hint = $$"Between ${min} and ${max} people.", required = true)
+                    }.build(),
+                ),
+            )
             task(DesignDemo.detailsTask, "Event details") {
                 trait(DesignDemo.eventRequest)
                 trait(GT.name, required = false)

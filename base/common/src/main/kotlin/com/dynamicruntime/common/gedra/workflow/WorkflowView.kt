@@ -283,7 +283,7 @@ class WorkflowTaskJudge(
     private val viewer = ViewerCfacts(cxt, client)
 
     val statuses: List<Pair<WfTask, WfTaskStatus>> = declared.def.tasks.map {
-        it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals)
+        it to WorkflowTaskStatus.of(cxt, client, it, entriesByTask[it.id] ?: emptyList(), approved = it.id in approvals, declared = declared)
     }
     val statusById: Map<String, WfTaskStatus> = statuses.associate { (task, status) -> task.id to status }
 

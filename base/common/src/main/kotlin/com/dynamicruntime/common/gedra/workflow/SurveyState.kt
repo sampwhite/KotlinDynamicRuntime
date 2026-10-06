@@ -73,7 +73,8 @@ fun addSurveyCFacts(collector: SchemaCollector) {
         CFactDef(
             SVY.surveyValid, SVY.group,
             "True, about a form, when the present survey-trait data passes its schema (ignoring missing required " +
-                "values) -- asserted by the form's stored survey state.",
+                "values) and meets the survey form's own requirements (a field its layout requires, a choice it " +
+                "offers) -- asserted by the form's stored survey state.",
             toFrontend = true,
         ),
     )
@@ -121,7 +122,7 @@ object SurveyStateDeriver : GedraStateDeriver {
         // created cleanly is always valid at create -- the interesting cases are a lenient import and a schema
         // narrowed after capture (the recompute path).
         val surveyTraitIds = def.tasks.flatMap { task -> task.traits.map { it.traitId } }.toSet()
-        val invalidTraits = surveyContentFailures(cxt, row.client, surveyTraitIds, entries).keys.toList()
+        val invalidTraits = surveyContentFailures(cxt, row.client, surveyTraitIds, entries, survey).keys.toList()
         val valid = invalidTraits.isEmpty()
 
         // The survey's own two facts, plus whatever the survey workflow's cfactCalc functions emit from the same
@@ -155,16 +156,22 @@ object SurveyStateDeriver : GedraStateDeriver {
  * the write path checks against, keeping only failures that are not `missingRequired`: a missing required
  * value is *incomplete*, not *invalid*. A trait with no such failures is absent from the map; the map is empty
  * when the client has no union at all (no formDoc traits).
+ *
+ * With [declared], the workflow whose form this is, its **form requirements** count too (issue #1022,
+ * [WorkflowFormRules]) -- a field its layout requires included. Unlike a schema-required value, which a write
+ * refuses and so only an older schema could leave missing, a form-required value is missing from data the schema
+ * accepted elsewhere: this form would not accept it, so its task is not done.
  */
 fun surveyContentFailures(
     cxt: KdrCxt,
     client: String,
     traitIds: Set<String>,
     entries: List<Map<String, Any?>>,
+    declared: WfDeclared? = null,
 ): Map<String, List<SchFailure>> {
     val union = SchemaService.get(cxt).storeFor(client)
         .types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"] ?: return emptyMap()
-    return entries
+    val content = entries
         .filter { it[GE.traitId].toOptStr() in traitIds && it[GE.data] != null }
         .mapNotNull { entry ->
             val traitId = entry[GE.traitId].toOptStr() ?: return@mapNotNull null
@@ -173,4 +180,7 @@ fun surveyContentFailures(
         }
         .groupBy({ it.first }, { it.second })
         .mapValues { (_, lists) -> lists.flatten() }
+    val form = declared?.let { WorkflowFormRules.failures(cxt, client, it, traitIds, entries) }.orEmpty()
+    if (form.isEmpty()) return content
+    return (content.keys + form.keys).associateWith { content[it].orEmpty() + form[it].orEmpty() }
 }

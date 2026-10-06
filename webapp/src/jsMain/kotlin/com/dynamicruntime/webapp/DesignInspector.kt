@@ -4,6 +4,8 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.schema.SchLayoutField
+import com.dynamicruntime.common.schema.SchOption
+import com.dynamicruntime.common.schema.offeredChoices
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -298,6 +300,10 @@ private fun ChildrenBuilder.traitSummary(target: DesignTarget.Trait) {
     fact("Fields", trait.type.properties.size.toString())
 }
 
+/** Choices as the inspector lists them: each value, with its label when that says something more. */
+private fun choicesText(options: List<SchOption>): String =
+    options.joinToString(", ") { if (it.label == it.value) it.value else "${it.value} (${it.label})" }
+
 private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: SchLayoutField?) {
     val prop = target.prop
     val vt = prop.valueType
@@ -310,12 +316,17 @@ private fun ChildrenBuilder.fieldSummary(target: DesignTarget.Field, layout: Sch
     }
     fact("Field", target.path, mono = true)
     fact("Type", typeWord(vt))
-    fact("Required", if (target.required) "yes" else "no")
+    fact("Required by the data", if (target.required) "yes" else "no")
+    // What this form asks for beyond the schema (issue #1022), from the layout entry the page draws it with.
+    if (layout?.required == true) fact("Required on this form", "yes")
     if (vt.minBound != null || vt.maxBound != null) {
         fact("Range", listOfNotNull(vt.minBound?.let { "from ${it.fmtD()}" }, vt.maxBound?.let { "to ${it.fmtD()}" }).joinToString(" "))
     }
     vt.options?.let { options ->
-        fact("Choices", options.joinToString(", ") { if (it.label == it.value) it.value else "${it.value} (${it.label})" })
+        fact("Choices", choicesText(options))
+    }
+    if (layout?.choices != null) {
+        fact("Choices on this form", choicesText(offeredChoices(vt, layout).orEmpty()))
     }
     prop.visibleWhen?.let { fact("Shown when", it, mono = true) }
     if (vt.derived) fact("Computed", "yes — nobody enters it")

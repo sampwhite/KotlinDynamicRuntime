@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.errorContextData
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
@@ -198,6 +199,8 @@ class LayoutCopy(
      * resolves one per [SchFailure] at render time, unlike the copy above which resolves once per field.
      */
     val errors: Map<String, String> = emptyMap(),
+    /** The layout's entry for the field itself, for what it says beyond copy: its form requirements (issue #1022). */
+    val entry: SchLayoutField? = null,
 )
 
 /**
@@ -233,6 +236,7 @@ internal fun layoutCopy(type: SchType, name: String, values: Map<String, Any?>, 
         hint = field.hint?.let { resolveLayoutTemplate(it, boundsData()) },
         // Kept unresolved -- resolved per failure by layoutErrorMessage, against that failure's params.
         errors = field.errors,
+        entry = field,
     )
 }
 
@@ -703,7 +707,8 @@ private fun ChildrenBuilder.renderProperties(
                 // control is not something anybody can supply. It is required of the *stored* shape, which the
                 // response demonstrates by carrying it.
                 name, prop,
-                (name in type.required || name in alsoRequired) && !prop.valueType.derived,
+                // Or required on this form by its layout (issue #1022): drawn here, so the schema offers it now.
+                (name in type.required || name in alsoRequired || copy?.entry?.required == true) && !prop.valueType.derived,
                 values[name], seen,
                 editable && !prop.valueType.derived,
                 childPath(path, name), errors,
@@ -1106,6 +1111,8 @@ private fun ChildrenBuilder.renderField(
             // A hint declared at *this* use site wins over one on the (shared) target type -- the same
             // per-site precedence `title` takes (issue #540).
             presentation = prop.presentation ?: vt.presentation, opts = opts,
+            // The form's own choices (issue #1022), when its layout restates them.
+            choices = copy?.entry?.choices?.let { formChoiceList(vt, copy.entry, value) },
             commit = { errors.noteCommit(path) },
         ) { newValue ->
             errors.noteEdit(path)

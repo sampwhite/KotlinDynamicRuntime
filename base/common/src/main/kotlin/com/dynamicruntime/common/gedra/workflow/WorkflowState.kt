@@ -279,7 +279,7 @@ object WorkflowStateDeriver : GedraStateDeriver {
                 data[WFS.singletonCfacts] = singletons.getValue(workflowId)
                 if (workflowId in engaged) {
                     val cta = WorkflowTaskStatus.ctaOf(
-                        cxt, state.row.client, it.def, state.row.entries, approvals.getValue(workflowId).keys,
+                        cxt, state.row.client, it, state.row.entries, approvals.getValue(workflowId).keys,
                     )
                     data[WFS.tasksDone] = cta == null
                     cta?.let { (task, status) ->
