@@ -30,7 +30,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.simulation.DesignDemo
-import com.dynamicruntime.common.simulation.designDemoConfig
+import com.dynamicruntime.common.simulation.provisionDesignDemo
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -38,7 +38,6 @@ import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 
 /**
@@ -49,9 +48,9 @@ import io.kotest.matchers.string.shouldContain
  */
 class DesignEditTest : StringSpec({
     val cxt = Startup.mkTestBootCxt("designEdit984", "designEdit984")
-    val client = DesignDemo.client
-    GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client), designDemoConfig(cxt))
-    GedraConfigReload.reloadClient(cxt, client)
+    // Provisioned by its simulation (issue #997), so its configuration is published -- a Design View save publishes,
+    // as the Clients page's editors do, and refuses a config carrying unpublished changes (issue #1026).
+    val client = provisionDesignDemo(cxt).clients.single()
     val admin = TestUser.create(cxt, "designer@$client.test", level = ROLE.admin, userClient = client)
     val design = mapOf(EP.view to DSV.design)
     val viewPath = clientPath(GEP.workflowView, client)
@@ -155,6 +154,8 @@ class DesignEditTest : StringSpec({
                 }
                 )
         }
+        // Published, as an edit on the Clients page would be: Design View saves refuse a config left with a draft.
+        GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), configId)
         GedraConfigReload.reloadClient(cxt, client)
         val facts = block(requestView())[DSV.layoutEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[DesignDemo.title]
             .toJsonMapOrEmpty()
@@ -263,23 +264,35 @@ class DesignEditTest : StringSpec({
         val declared = WorkflowService.get(cxt).forClient(parent).workflow("make")!!
         val refusal = DesignView.editRefusal(parentCxt, declared)
         refusal?.code shouldBe DesignRefusal.publishedOnly
-        refusal?.message.orEmpty() shouldContain "edit it from its sandbox"
+        refusal?.message.orEmpty() shouldContain "previews changes in its sandbox"
     }
 
-    "a client that runs its published configuration cannot edit here, and says why" {
+    "a client set to run its published configuration, with no sandbox, still edits here: the save publishes" {
         GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, true)
         try {
-            block(requestView())[DSV.canEdit] shouldBe false
-            // Published-only by the administrator's choice, not by a sandbox: there is none to send anyone to.
-            block(requestView())[DSV.editRefusalCode] shouldBe DesignRefusal.publishedOnly.name
-            block(requestView())[DSV.editRefusal].toOptStr().orEmpty() shouldContain "it has no sandbox to preview an edit in"
-            val refused = admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to "Nope")))
-            refused.toString() shouldContain "runs its published configuration"
+            block(requestView())[DSV.canEdit] shouldBe true
+            edit(dataType, DesignDemo.title, mapOf(SL.label to "Published at once"))
+            // Live on the page, because the save published it -- as a Clients page edit of this client would.
+            label(requestView(), dataType, DesignDemo.title) shouldBe "Published at once"
+            edit(dataType, DesignDemo.title, null)
         } finally {
             GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, false)
         }
-        block(requestView())[DSV.canEdit] shouldNotBe false
-        block(requestView()).containsKey(DSV.editRefusal) shouldBe false
+    }
+
+    "a configuration carrying somebody's unpublished changes is refused, and the block says why" {
+        // An unpublished change, made beside Design View: a save here would publish it too (issue #1026).
+        val configId = GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName)
+        GedraConfigService.get(cxt).patchConfig(cxt.mkSubContext("setup", client), configId) { it }
+        try {
+            block(requestView())[DSV.canEdit] shouldBe false
+            block(requestView())[DSV.editRefusalCode] shouldBe DesignRefusal.unpublishedChanges.name
+            admin.expectError(400, DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to "Nope")))
+                .toString() shouldContain "has unpublished changes"
+        } finally {
+            GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", client), configId)
+        }
+        block(requestView())[DSV.canEdit] shouldBe true
         block(requestView()).containsKey(DSV.editRefusalCode) shouldBe false
     }
 })

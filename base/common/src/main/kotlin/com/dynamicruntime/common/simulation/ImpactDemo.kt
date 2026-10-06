@@ -85,7 +85,7 @@ fun provisionImpactDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
     Simulations.createForm(cxt, owner, listOf(entry(ImpactDemo.note, "text", "Nothing to report.")))
 
     // The draft: written and reloaded, so the sandbox runs it while the client keeps what it published.
-    Simulations.provisionConfig(cxt, impactDemoTraits(cxt, client, harmful = true))
+    Simulations.provisionConfig(cxt, impactDemoTraits(cxt, client, harmful = true), publish = false)
 
     val admin = Simulations.provisionUser(cxt, "chief@$client.example", client, ROLE.admin, name = "Casey Chief")
     return SimulationReport(

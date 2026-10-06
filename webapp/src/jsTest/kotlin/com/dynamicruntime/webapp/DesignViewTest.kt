@@ -4,6 +4,7 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
@@ -233,5 +234,59 @@ class DesignViewTest {
             "definition.types[\"client.demo.Request\"].g-layout.schemaFields[title]",
             overridePath("client.demo.Request", "title"),
         )
+    }
+
+    // --- the shared editor (issue #1029) ---
+
+    private val sharedRead = mapOf(
+        DSV.usedBy to listOf(
+            mapOf(DSV.workflowId to "requestEvent", DSV.label to "Request an event"),
+            mapOf(DSV.workflowId to "reviewEvent", DSV.label to "Event request"),
+        ),
+        DSV.variantFields to mapOf("title" to listOf("requestEvent")),
+        DSV.canEditShared to true,
+        DSV.sharedBasedOn to "abc123",
+    )
+
+    @Test
+    fun sharedFactsAreReadAndAWorkflowsReadHasNone() {
+        val facts = parseSharedFacts(sharedRead)!!
+        assertEquals(true, facts.canEdit)
+        assertEquals("abc123", facts.basedOn)
+        assertEquals("Used by 2 workflows: Request an event, Event request.", usedByText(facts.usedBy))
+        assertNull(parseSharedFacts(mapOf(DSV.entry to emptyMap<String, Any?>())))
+        assertEquals("Not used by any workflow yet.", usedByText(emptyList()))
+    }
+
+    @Test
+    fun aWorkflowWithItsOwnCopyIsNamedForTheFieldItOverrides() {
+        val facts = parseSharedFacts(sharedRead)!!
+        assertEquals(
+            "Request an event keeps its own copy of this field, so a shared change to its copy will not show there.",
+            variantNote(facts, "title"),
+        )
+        assertNull(variantNote(facts, "venue"))
+    }
+
+    @Test
+    fun choicesBecomeRowsAndRowsTheChoicesSent() {
+        val schema = mapOf(SCH.options to listOf(mapOf(SCH.label to "At the office", SCH.value to "office")))
+        val rows = choiceRowsOf(schema)!!
+        assertEquals(listOf("office"), rows.map { it.value })
+        assertNull(choiceRowsOf(mapOf(SCH.type to "string")))
+        val sent = sharedOptionsPayload(rows + ChoiceRow(" park ", "", isNew = true) + ChoiceRow("", "blank", isNew = true))
+        assertEquals(
+            listOf(mapOf(SCH.value to "office", SCH.label to "At the office"), mapOf(SCH.value to "park", SCH.label to "park")),
+            sent,
+        )
+    }
+
+    @Test
+    fun copyIsSentOnlyWhenItChanged() {
+        val start = mapOf(SL.label to "Venue", SL.hint to "Where.")
+        assertEquals(false, copyChanged(start, mapOf(SL.label to "Venue", SL.description to "", SL.hint to "Where. ")))
+        assertEquals(true, copyChanged(start, mapOf(SL.label to "Place", SL.description to "", SL.hint to "Where.")))
+        // A field with no entry and nothing typed has nothing to send.
+        assertEquals(false, copyChanged(emptyMap(), mapOf(SL.label to "", SL.description to "", SL.hint to "")))
     }
 }

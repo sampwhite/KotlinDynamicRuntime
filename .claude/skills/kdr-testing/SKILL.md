@@ -311,8 +311,10 @@ with a purpose) and where to start; the webapp's **Simulations** page and `kdr-p
   `simulation` package (`design-demo`, `impact-demo`); one over a component's own clients or data lives in that component and uses
   its constants (`sample`'s `report-demo`). The declaration is the registration: a node without the component does
   not offer it.
-- **Provision with `Simulations`.** `provisionConfig` writes, reloads **and announces**, so the config reaches every
-  node -- never `writeConfig` plus `reloadClient` alone, which reaches only this one. `provisionUser` finds or
+- **Provision with `Simulations`.** `provisionConfig` writes, **publishes**, reloads **and announces**, so the config
+  reaches every node and is left with no draft -- the Clients page's editors and Design View refuse a config with
+  unpublished changes (#1026). Never `writeConfig` plus `reloadClient` alone, which reaches only this node and leaves
+  one. `provisionUser` finds or
   creates a user without signing in as them; `createForm` creates a form owned by one.
 - **Keep the work in a plain function** the handler calls (`provisionDesignDemo`), so a test calls it in-process.
 - **Say in the description** what a rerun does (rewrites config; adds data) and any simulation it could conflict

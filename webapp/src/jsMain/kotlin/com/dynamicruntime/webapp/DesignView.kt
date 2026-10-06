@@ -10,6 +10,7 @@ import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import react.createContext
@@ -359,3 +360,79 @@ fun overridePath(typeName: String, field: String): String =
     "${CCT.definition}.${WFD.types}[\"$typeName\"].${SCH.layout}.${SL.schemaFields}[$field]"
 
 val DesignViewContext = createContext<DesignSession?>(null)
+
+// --- the shared editor (issue #1029) ---------------------------------------------------------------------------------
+
+/** A workflow a shared definition reaches, as the definition read names it. */
+class UsedBy(val workflowId: String, val label: String)
+
+/**
+ * What the definition read says about editing a trait or type **for every workflow** (issue #1029): where it is
+ * [usedBy], which workflows override which fields ([variantFields]), and whether it [canEdit] here -- with the
+ * [refusal] when not, and the stamp an edit is [basedOn].
+ */
+class SharedFacts(
+    val usedBy: List<UsedBy>,
+    val variantFields: Map<String, List<String>>,
+    val canEdit: Boolean,
+    val refusal: String?,
+    val basedOn: String,
+)
+
+/** The shared-editor facts of a definition read, or null for one that carries none (a workflow's). */
+fun parseSharedFacts(read: Map<String, Any?>?): SharedFacts? {
+    if (read == null || DSV.usedBy !in read) return null
+    return SharedFacts(
+        usedBy = read[DSV.usedBy].toJsonListOfMaps().mapNotNull { u ->
+            val id = u[DSV.workflowId].toOptStr() ?: return@mapNotNull null
+            UsedBy(id, u[DSV.label].toOptStr() ?: id)
+        },
+        variantFields = read[DSV.variantFields].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
+        canEdit = read[DSV.canEditShared] == true,
+        refusal = read[DSV.sharedRefusal].toOptStr(),
+        basedOn = read[DSV.sharedBasedOn].toOptStr().orEmpty(),
+    )
+}
+
+/** Where a shared definition is used, in a sentence: "Used by 2 workflows: Request an event, Event request." */
+fun usedByText(usedBy: List<UsedBy>): String = when (usedBy.size) {
+    0 -> "Not used by any workflow yet."
+    1 -> "Used by 1 workflow: ${usedBy.single().label}."
+    else -> "Used by ${usedBy.size} workflows: ${usedBy.joinToString(", ") { it.label }}."
+}
+
+/**
+ * The workflows that keep their own copy of [field] -- a variant (#984) -- and so will not show a shared change, in a
+ * sentence; null when none does.
+ */
+fun variantNote(facts: SharedFacts, field: String): String? {
+    val ids = facts.variantFields[field].orEmpty()
+    if (ids.isEmpty()) return null
+    val labels = ids.map { id -> facts.usedBy.firstOrNull { it.workflowId == id }?.label ?: id }
+    val who = if (labels.size == 1) "${labels.single()} keeps its" else "${labels.joinToString(" and ")} keep their"
+    return "$who own copy of this field, so a shared change to its copy will not show there."
+}
+
+/** One choice in the shared editor: an existing one ([isNew] false, value fixed) or one being added. */
+class ChoiceRow(val value: String, val label: String, val isNew: Boolean)
+
+/** A field schema's choices as editor rows, or null when the field has none to edit. */
+fun choiceRowsOf(fieldSchema: Any?): List<ChoiceRow>? =
+    ((fieldSchema as? Map<*, *>)?.get(SCH.options) as? List<*>)?.mapNotNull { o ->
+        val m = o.toJsonMapOrEmpty()
+        val value = m[SCH.value].toOptStr() ?: return@mapNotNull null
+        ChoiceRow(value, m[SCH.label].toOptStr() ?: value, isNew = false)
+    }
+
+/**
+ * The choices a shared edit sends, from the editor's [rows]: every row with a value, a blank label read as the value.
+ * The backend refuses a removed or changed value, which the editor never produces -- an existing row's value is fixed.
+ */
+fun sharedOptionsPayload(rows: List<ChoiceRow>): List<Map<String, Any?>> =
+    rows.filter { it.value.isNotBlank() }.map {
+        linkedMapOf(SCH.value to it.value.trim(), SCH.label to it.label.trim().ifEmpty { it.value.trim() })
+    }
+
+/** Whether the editor's copy [values] differ from [start]'s, key by key, blanks and absent alike (issue #1029). */
+fun copyChanged(start: Map<String, Any?>, values: Map<String, String>): Boolean =
+    editableCopyKeys.any { key -> start[key].toOptStr()?.trim().orEmpty() != values[key]?.trim().orEmpty() }

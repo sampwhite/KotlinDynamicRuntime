@@ -70,7 +70,7 @@ object DesignView {
     }
 
     /** The config that declares a type, and the client config that alters it, when one does (see [typeLayers]). */
-    private class TypeLayers(val declaredBy: GedraConfig?, val alteredBy: GedraConfig?)
+    internal class TypeLayers(val declaredBy: GedraConfig?, val alteredBy: GedraConfig?)
 
     /**
      * Where [typeName] comes from for [client] (issue #1013). A type the global document holds is **declared**
@@ -78,7 +78,7 @@ object DesignView {
      * contributing the same name **alters** it. Any other type is the client's own, declared by its config. Within a
      * client a later declaration replaces an earlier one, so there is at most one alteration.
      */
-    private fun typeLayers(cxt: KdrCxt, client: String, typeName: String): TypeLayers {
+    internal fun typeLayers(cxt: KdrCxt, client: String, typeName: String): TypeLayers {
         val schema = SchemaService.get(cxt)
         val own = schema.clientConfigOfType(client, typeName)
         return if (typeName in schema.schemaStore.defs) {
@@ -111,7 +111,7 @@ object DesignView {
     }
 
     /** The trait of [config] that generates [typeName] -- as its entry type or its inline data type -- or null. */
-    private fun traitGenerating(config: GedraConfig, typeName: String): GedraTrait? =
+    internal fun traitGenerating(config: GedraConfig, typeName: String): GedraTrait? =
         config.traits.values.firstOrNull { it.typeName == typeName || inlineDataTypeName(config, it) == typeName }
 
     /**
@@ -178,10 +178,8 @@ object DesignView {
      * Why this caller may not edit [declared]'s copy here, or null when they may (issue #984): the workflow must be
      * the client's own stored definition, since a workflow's own copy is written into its definition and a workflow
      * declared in source (or a global one) has none here to write to -- overlaying one is issue #1011, and copy it
-     * pulls from a fragment file is the client's copy overrides' to change -- and the client must run its latest
-     * revision, so an edit shows on the page once saved. A sandbox always does; a
-     * published-only client does not. Its edits are previewed in its sandbox when it has one -- but published-only is
-     * also a tier an administrator sets on its own, and then there is no sandbox to send anyone to.
+     * pulls from a fragment file is the client's copy overrides' to change. Then the rules every Design View save
+     * shares with the Clients page's editors ([saveRefusal]).
      */
     fun editRefusal(cxt: KdrCxt, declared: WfDeclared): EditRefusal? {
         val bundle = declared.bundle
@@ -193,27 +191,74 @@ object DesignView {
                     "client's copy overrides, for every workflow that uses it.",
             )
         }
+        return saveRefusal(cxt, bundle.name)
+    }
+
+    /**
+     * Why a Design View save into the client's stored config [configName] may not be made, or null when it may --
+     * the rule the Clients page's editors follow ([ClientStoredEdit], issues #930, #1026), so the two kinds of editor
+     * never disagree about a client:
+     *
+     * - **A client with a sandbox** runs its published configuration and previews edits in the sandbox, so its own
+     *   page refuses and points there; in the sandbox a save is a draft of the parent's configuration.
+     * - **A client without one** -- published-only by an administrator's choice included -- has a save published and
+     *   live at once. So a config carrying somebody's unpublished changes is refused, since publishing would take them
+     *   live too.
+     */
+    internal fun saveRefusal(cxt: KdrCxt, configName: String): EditRefusal? {
+        if (isSandboxClient(cxt.client)) return null
         val configs = GedraConfigService.get(cxt)
-        if (!isSandboxClient(cxt.client) && configs.publishedOnly(cxt, cxt.client)) {
-            val where = if (configs.asksForSandbox(cxt, cxt.client)) {
-                "edit it from its sandbox"
-            } else {
-                "it has no sandbox to preview an edit in"
-            }
+        if (configs.publishedOnly(cxt, cxt.client) && configs.asksForSandbox(cxt, cxt.client)) {
             return EditRefusal(
                 DesignRefusal.publishedOnly,
-                "Client '${cxt.client}' runs its published configuration, so a change would not show here until published; $where.",
+                "Client '${cxt.client}' runs its published configuration and previews changes in its sandbox: edit it from there.",
+            )
+        }
+        val holder = configs.readLatest(cxt, GedraId.of(GedraConfigType.configDoc, cxt.client, configName))
+        if (holder != null && !holder.isPublished && configName != CPY.copyConfigName) {
+            return EditRefusal(
+                DesignRefusal.unpublishedChanges,
+                "Configuration '$configName' has unpublished changes, which a save here would publish with it. Publish or " +
+                    "revert it first, on the client's page.",
             )
         }
         return null
     }
 
     /**
+     * Makes a Design View save (issues #984, #1029): [patch] applied to the client's stored config [configName], where
+     * and as the Clients page's editors save ([ClientStoredEdit]) -- in a sandbox's parent's config as a draft its
+     * sandbox shows, otherwise published and live at once, with a publish the trial refuses undone. Refused first by
+     * [saveRefusal]'s rules. Trial-checked like every config write, and reloaded and announced.
+     */
+    internal fun saveEdit(
+        cxt: KdrCxt,
+        configName: String,
+        patch: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
+    ) {
+        saveRefusal(cxt, configName)?.let { throw KdrException.mkInput(it.message) }
+        val target = ClientStoredEdit.target(cxt, cxt.client, "designEdit")
+        val svc = GedraConfigService.get(target.bound)
+        val configId = GedraId.of(GedraConfigType.configDoc, target.client, configName)
+        val holder = svc.readLatest(target.bound, configId)
+            ?: throw KdrException("No configuration '$configName' for client '${target.client}'.", code = EXC.notFound)
+        var before: Map<String, List<Map<String, Any?>>> = emptyMap()
+        val written = svc.patchConfig(target.bound, configId, trial = true) { slots ->
+            before = slots
+            patch(slots)
+        }
+        ClientStoredEdit.takeEffect(
+            cxt, target, written,
+            undo = { svc.patchConfig(target.bound, configId) { before } },
+            restorePublished = holder.isPublished,
+        )
+    }
+
+    /**
      * Sets [field]'s layout entry for [typeName] in workflow [workflowId] to [entry], or removes it when [entry] is
-     * null -- the workflow's own wording over the inherited copy (issue #984) -- and reloads the client so the page
-     * shows it. Written where the configuration lives: the client's own, or a sandbox's parent's (issue #930).
-     * Trial-checked like every config write, and refused when the definition has changed since [basedOn]. Returns
-     * the new stamp, for the page's next edit.
+     * null -- the workflow's own wording over the inherited copy (issue #984) -- as every Design View save is made
+     * ([saveEdit]), and refused when the definition has changed since [basedOn]. Returns the new stamp, for the page's
+     * next edit.
      */
     fun setLayoutEntry(
         cxt: KdrCxt,
@@ -227,14 +272,12 @@ object DesignView {
             ?: throw KdrException("No workflow '$workflowId' for client '${cxt.client}'.", code = EXC.notFound)
         editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it.message) }
         val inherited = layoutEntryOf(SchemaService.get(cxt).storeFor(cxt.client), typeName, field)
-        val writeCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-        val configId = GedraId.of(GedraConfigType.configDoc, writeCxt.client, declared.bundle.name)
-        GedraConfigService.get(writeCxt).patchConfig(writeCxt, configId, trial = true) { slots ->
+        saveEdit(cxt, declared.bundle.name) { slots ->
             val workflows = slots[CCT.workflowDef].orEmpty()
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }
             if (at < 0) throw KdrException("No workflow '$workflowId' in '${declared.bundle.name}'.", code = EXC.notFound)
             val stored = (workflows[at][CCT.definition] as? Map<*, *>)?.toJsonMap().orEmpty()
-            val current = parseWfDef(writeCxt, stored)
+            val current = parseWfDef(cxt, stored)
             if (workflowDefStamp(current) != basedOn) {
                 throw KdrException(
                     "Workflow '$workflowId' has changed since this page was drawn; reload it and make the change again.",
@@ -243,11 +286,6 @@ object DesignView {
             }
             val rewritten = withLayoutEntry(current.toJsonMap(), typeName, field, entry, inherited)
             slots + (CCT.workflowDef to workflows.mapIndexed { i, e -> if (i == at) e + (CCT.definition to rewritten) else e })
-        }
-        if (writeCxt !== cxt) {
-            SandboxEdits.reloadParent(cxt, writeCxt.client)
-        } else {
-            ClientSyncService.get(cxt).announceReload(cxt, GedraConfigReload.reloadClient(cxt, cxt.client))
         }
         val reloaded = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
         return reloaded?.def?.let { workflowDefStamp(it) } ?: ""
@@ -280,6 +318,7 @@ object DesignView {
                 Read(
                     address(slot, key, null, config), config, traitToEntry(config, trait),
                     alterationOf(trait.typeName, inlineDataTypeName(config, trait)),
+                    setOfNotNull(trait.typeName, inlineDataTypeName(config, trait)),
                 )
             }
             CCT.schemaDef -> {
@@ -288,20 +327,23 @@ object DesignView {
                 val trait = config?.let { traitGenerating(it, key) }
                 val altered = layers.alteredBy?.let { key to it }
                 when {
-                    trait != null -> Read(typeAddress(cxt, client, key), config, traitToEntry(config, trait), altered)
+                    trait != null -> Read(
+                        typeAddress(cxt, client, key), config, traitToEntry(config, trait), altered,
+                        setOfNotNull(trait.typeName, inlineDataTypeName(config, trait)),
+                    )
                     config != null ->
-                        Read(address(slot, key, null, config), config, schemaEntry(key, config.defs[key] ?: notFound()), altered)
+                        Read(address(slot, key, null, config), config, schemaEntry(key, config.defs[key] ?: notFound()), altered, setOf(key))
                     else -> {
                         // Declared in a component's code: its body is the global document's, before any alteration.
                         val body = schema.schemaStore.defs[key] ?: schema.storeFor(client).defs[key] ?: notFound()
-                        Read(address(slot, key, null, null), null, schemaEntry(key, body), altered)
+                        Read(address(slot, key, null, null), null, schemaEntry(key, body), altered, setOf(key))
                     }
                 }
             }
             CCT.workflowDef -> {
                 val declared = WorkflowService.get(cxt).forClient(client).workflow(key) ?: notFound()
                 val entry = linkedMapOf(CCT.workflowId to key, CCT.definition to declared.def.toJsonMap())
-                Read(address(slot, key, null, declared.bundle), declared.bundle, entry, null)
+                Read(address(slot, key, null, declared.bundle), declared.bundle, entry, null, emptySet())
             }
             else -> throw KdrException.mkInput(
                 "Design View reads ${readableSlots.joinToString()} definitions; '$slot' is not one of them.",
@@ -309,6 +351,15 @@ object DesignView {
         }
         val out = LinkedHashMap(read.address)
         out[DSV.entry] = read.entry
+        // The shared editor's facts (issue #1029), for a definition that gives the page types: where it is used, which
+        // workflows override which fields, and whether it may be edited here. Keyed by the declaration's own entry.
+        if (read.typeNames.isNotEmpty()) {
+            out.putAll(
+                DesignSharedEdit.facts(
+                    cxt, read.typeNames, read.config, read.address[DSV.slot] as String, read.address[DSV.key] as String,
+                ),
+            )
+        }
         read.altered?.let { (typeName, alteration) ->
             out[DSV.alteredBy] = layer(alteration) + linkedMapOf(
                 DSV.slot to CCT.schemaDef,
@@ -337,6 +388,8 @@ object DesignView {
         val config: GedraConfig?,
         val entry: Map<String, Any?>,
         val altered: Pair<String, GedraConfig>?,
+        /** The types this definition gives the page -- a trait's entry and data types, or a schema type -- if any. */
+        val typeNames: Set<String>,
     )
 
     private fun schemaEntry(typeName: String, body: Any?): Map<String, Any?> =
@@ -370,6 +423,18 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.entry, "The authored entry, as a stored configuration holds it.", required = true) { type = SCT.kObject }
         property(DSV.version, "For a stored definition: its bundle's latest revision.") { type = SCT.integer }
         property(DSV.published, "For a stored definition: whether that revision is published.") { type = SCT.boolean }
+        // The shared editor (issue #1029), for a trait or type.
+        property(DSV.usedBy, "The client's workflows whose pages show this definition, each {workflowId, label}.") {
+            type = SCT.array
+            items { type = SCT.kObject }
+        }
+        property(DSV.variantFields, "By field, the workflows that override its copy with a variant of their own.") {
+            type = SCT.kObject
+        }
+        property(DSV.canEditShared, "Whether this definition may be edited here, for every workflow.") { type = SCT.boolean }
+        property(DSV.sharedRefusal, "Why it may not be, when it may not.")
+        property(DSV.sharedRefusalCode, "Which of the closed set of reasons that is.") { options(DesignRefusal.entries) }
+        property(DSV.sharedBasedOn, "A stamp of the stored entry, sent back with a shared edit.")
     }
 
     type(DSV.layoutEntryEditType) {
@@ -400,6 +465,44 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
             request.getReqNonBlankStr(DSV.basedOn),
         )
         linkedMapOf(DSV.basedOn to stamp)
+    }
+
+    type(DSV.sharedFieldEditType) {
+        type = SCT.kObject
+        description = "The outcome of a shared-field edit: the stamp of the definition's entry as it now stands."
+        property(DSV.sharedBasedOn, "The entry's stamp after the edit -- what the next shared edit is based on.", required = true)
+    }
+
+    generalEndpoint(
+        DSV.sharedFieldEdit,
+        "Sets a field's copy and choices in the definition the client declares, for every workflow on the client.",
+        HttpMethod.POST,
+        outputRef = DSV.sharedFieldEditType,
+        inputFields = {
+            field(DSV.typeName, "The type that declares the field.", required = true)
+            field(DSV.field, "The field to edit.", required = true)
+            field(DSV.entry, "The field's layout entry -- label, description, hint and the rest; absent to leave the copy as it is.") {
+                type = SCT.kObject
+            }
+            field(
+                DSV.options,
+                "The field's choices as they should stand, each {value, label}: every existing value kept, relabeled or " +
+                    "not, and new ones added. Absent to leave them as they are.",
+            ) {
+                type = SCT.array
+                items { type = SCT.kObject }
+            }
+            field(DSV.sharedBasedOn, "The stamp of the entry the edit was made against, from the definition read.", required = true)
+        },
+    ) { c, request ->
+        AdminRules.requireClientAdministrator(c)
+        val stamp = DesignSharedEdit.setSharedField(
+            c, request.getReqNonBlankStr(DSV.typeName), request.getReqNonBlankStr(DSV.field),
+            (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
+            (request[DSV.options] as? List<*>)?.map { (it as? Map<*, *>)?.toJsonMap().orEmpty() },
+            request.getReqNonBlankStr(DSV.sharedBasedOn),
+        )
+        linkedMapOf(DSV.sharedBasedOn to stamp)
     }
 
     itemEndpoint(
