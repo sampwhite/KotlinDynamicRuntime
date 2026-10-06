@@ -108,7 +108,7 @@ class GedraConfigSyncTest : StringSpec({
             ClientSyncService.get(node).announceAndMark(node, tc, r.marker)
         }
 
-        // v1 published (tierP), then v2 unpublished adds tierQ. Free tier consumes the latest, so tierQ is live.
+        // v1 published (tierP), then v2 unpublished adds tierQ. The latest tier consumes the latest, so tierQ is live.
         writeTc(nodeA, "tierP")
         GedraConfigService.get(nodeA).publish(tcClient(nodeA), GedraId.of(GedraConfigType.configDoc, tc, "${tc}cfg"))
         writeTc(nodeA, "tierP", "tierQ")

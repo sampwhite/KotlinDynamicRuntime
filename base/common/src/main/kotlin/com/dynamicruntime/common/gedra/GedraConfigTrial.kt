@@ -4,9 +4,11 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.report.ReportService
+import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.startup.SchemaTrial
 import com.dynamicruntime.common.uiblock.UiBlockService
 
 /**
@@ -76,15 +78,27 @@ object GedraConfigTrial {
         client: String,
         replacing: List<GedraConfigRow> = emptyList(),
         published: Boolean = false,
-    ): List<GedraConfigIssue> {
+    ): List<GedraConfigIssue> = candidate(cxt, client, replacing, published)?.issues.orEmpty()
+
+    /**
+     * What [client] would run with [replacing] in place -- the same trial as [trial], keeping what it built: the
+     * schema and workflows a reload would give the client, beside the problems it found. What a publish impact report
+     * judges stored data by (issue #935). Null on a node with no schema collector, where there is nothing to judge.
+     */
+    fun candidate(
+        cxt: KdrCxt,
+        client: String,
+        replacing: List<GedraConfigRow> = emptyList(),
+        published: Boolean = false,
+    ): TrialCandidate? {
         val replaced = replacing.map { it.configId.fullId }.toSet()
         val stored = GedraConfigService.get(cxt).configsAt(cxt, client, published)
         val rows = stored.filter { it.configId.fullId !in replaced } + replacing
         return GedraConfigReload.underReloadLock { trialLocked(cxt, client, rows) }
     }
 
-    private fun trialLocked(cxt: KdrCxt, client: String, rows: List<GedraConfigRow>): List<GedraConfigIssue> {
-        val collector = SchemaCollector.get(cxt) ?: return emptyList()
+    private fun trialLocked(cxt: KdrCxt, client: String, rows: List<GedraConfigRow>): TrialCandidate? {
+        val collector = SchemaCollector.get(cxt) ?: return null
         val capture = mutableListOf<GedraConfigIssue>()
         val tcxt = cxt.mkSubContext("configTrial", client).also { it.locals[GCFG.trialCaptureKey] = capture }
         val loader = GedraConfigLoadService.get(tcxt)
@@ -134,6 +148,19 @@ object GedraConfigTrial {
             .trialClient(tcxt, scratch, client, def, fragments, schema.cfactNames, schema.droppedTypes, schema.store)
         // Reports last, as a reload orders them (issue #980): a report's workflow paths bind to the workflows kept.
         ReportService.get(tcxt).trialClient(tcxt, scratch, client, def, schema.types, schema.droppedTypes, workflows)
-        return capture.toList()
+        return TrialCandidate(capture.toList(), present != null, schema, workflows)
     }
 }
+
+/**
+ * What a trial built for a client (issue #935): the [issues] it found, whether the client would be [present] at all,
+ * and the [schema] and [workflows] a reload would give it. Built over a scratch collector and kept by nothing, so
+ * holding one changes nothing the node runs. The workflows' functions are left unassigned, as every trial leaves
+ * them (`resolveWorkflowFunctions`), so they describe the candidate's shape and cannot be run.
+ */
+class TrialCandidate(
+    val issues: List<GedraConfigIssue>,
+    val present: Boolean,
+    val schema: SchemaTrial,
+    val workflows: WorkflowRegistry,
+)

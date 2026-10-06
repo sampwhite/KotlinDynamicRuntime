@@ -1,6 +1,6 @@
 ---
 name: kdr-test-clients
-description: Set up an isolated test scenario by creating a NEW CLIENT (with its own traits, workflows, schema) on a SHARED instance, instead of booting a new instance per test. Because form docs, workflows, and users are isolated by a client boundary, a fresh client id is a clean namespace, so one booted node serves many scenarios. Covers the stored-config capability this rests on — the `gedraConfig` DSL (`defineClient`/`trait`/`workflow`/`cfact`), `GedraConfigService.writeConfig`, `GedraConfigReload.reloadClient` (making config live with no restart), the `/clientAdmin/config/{bundle,bundle/write,bundle/publish,reload,publishedOnly}` HTTP endpoints, and the free/published-only/static protection tiers (#617). Also covers placing a `TestUser` in the new client, the client-isolation boundary (client-in-id + ReadScope→SQL), and time travel (instance-wide `InstanceClock` today; per-client is a documented but unbuilt seam). Use when writing a test that needs its own client/workflow/trait/schema, when creating or editing a client/workflow/trait/schema in the database at runtime, or when deciding between a new instance and a new client for a scenario.
+description: Set up an isolated test scenario by creating a NEW CLIENT (with its own traits, workflows, schema) on a SHARED instance, instead of booting a new instance per test. Because form docs, workflows, and users are isolated by a client boundary, a fresh client id is a clean namespace, so one booted node serves many scenarios. Covers the stored-config capability this rests on — the `gedraConfig` DSL (`defineClient`/`trait`/`workflow`/`cfact`), `GedraConfigService.writeConfig`, `GedraConfigReload.reloadClient` (making config live with no restart), the `/clientAdmin/config/{bundle,bundle/write,bundle/publish,reload,publishedOnly}` HTTP endpoints, and the latest/published-only/static protection tiers (#617). Also covers placing a `TestUser` in the new client, the client-isolation boundary (client-in-id + ReadScope→SQL), and time travel (instance-wide `InstanceClock` today; per-client is a documented but unbuilt seam). Use when writing a test that needs its own client/workflow/trait/schema, when creating or editing a client/workflow/trait/schema in the database at runtime, or when deciding between a new instance and a new client for a scenario.
 ---
 
 # Creating clients dynamically, and using one per test scenario
@@ -117,7 +117,7 @@ user.expectError(EXC.badInput, GEP.formDocCreate, mapOf(GDF.entries to listOf(en
 ```
 
 Two revisions of the same config class (same `name`) rewrite the editable latest **in place** while it is
-unpublished, so no `publish` is needed for a free-tier client — `reloadClient` picks up the narrowed revision.
+unpublished, so no `publish` is needed for a client on the latest tier — `reloadClient` picks up the narrowed revision.
 Because there is no restart, the captured row is never wiped, so persistence is no longer the point (it was only
 ever there to survive the rebuild). Prefer this to the persistent-H2 two-build pattern for any "captured data a
 later schema rejects" test.
@@ -189,8 +189,8 @@ later schema rejects" test.
   (result `mode` = `EDM.draft`) and publish at once for one without. `SandboxEditsTest.kt` is the reference.
 - **The sample's acme has a sandbox** (issue #994), so it is published-only: a sample test that stores config for
   acme -- through an editor or `writeConfig` -- publishes it before asserting what acme serves (`publishAcme` in the
-  sample's tests does what the client page's Publish does). A scenario that needs a client without a sandbox, or a
-  free-tier one, takes a dynamic client of its own as above; the sample's globex has none either.
+  sample's tests does what the client page's Publish does). A scenario that needs a client without a sandbox, or one on
+  the latest tier, takes a dynamic client of its own as above; the sample's globex has none either.
 
 Stored config is **added beside** the source-declared config in the same collector, keyed by the client in its
 id — downstream services can't tell a stored client from a source one.
@@ -203,17 +203,26 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | Path (`CFEP`) | Method | Purpose |
 | --- | --- | --- |
 | `/clientAdmin/config/bundle/write` | POST | write a whole bundle (authoritative; `impliedDelete` default true) |
-| `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision |
+| `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision (`acknowledgeImpact` to go past an impact report) |
+| `/clientAdmin/config/bundle/impact` | GET | what publishing it would do to the client's stored data (`IMP`, issue #935) |
 | `/clientAdmin/config/reload` | POST | reload this client on this node |
 | `/clientAdmin/config/bundle` / `/bundles` | GET | fetch one / list this client's configs |
 | `/clientAdmin/config/publishedOnly` | POST | set the protection tier |
 
 Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `GedraConfigEndpointTest.kt` is the
 reference. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
-later reload/boot picks up for a **published-only** client. A **free-tier** client's latest revision loads
+later reload/boot picks up for a **published-only** client. A client on the **latest** tier loads its latest revision
 whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
 (`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is
-published-only whatever the toggle says, so a test wanting a free-tier client leaves the flag off.
+published-only whatever the toggle says, so a test wanting a client on the latest tier leaves the flag off.
+
+**A publish can be refused over the client's stored data** (issue #935). For a published-only client the publish
+endpoints compute an impact report (`ConfigImpact`): rows whose trait the publish drops, whose entries would stop
+validating, or whose workflow or recorded task it removes. A non-empty report refuses the publish (`errorCode`
+`IMP.refusedCode`, the report in `extraData`) unless the request sends `IMP.acknowledgeImpact = true`. A test that
+publishes such a change on purpose acknowledges it; `GedraConfigService.publish` called directly checks nothing
+unless asked (`impact = ImpactGate.refuse`). `ConfigImpactTest.kt` is the reference.
+
 **`staticConfig`** is not a tier (issue #824): set only in source, it makes the client take nothing stored in
 production -- writes refused, stored config ignored -- and leaves it an ordinary client everywhere else.
 
@@ -278,7 +287,7 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
 
 - `base/kdn/src/test/.../GedraConfigReloadTest.kt` — the service path (write + reload + isolation + rollback).
 - `base/kdn/src/test/.../GedraConfigEndpointTest.kt` — the HTTP path as an admin.
-- `base/kdn/src/test/.../GedraConfigTierTest.kt` — the free/published-only/static tiers.
+- `base/kdn/src/test/.../GedraConfigTierTest.kt` — the latest/published-only/static tiers.
 - `base/common/.../gedra/GedraConfigService.kt` / `GedraConfigReload.kt` / `GedraConfigControl.kt` — the runtime.
 - Design docs (repo root, also on the home page): `gedra-config-and-data.md` (the model), `client-definition.md`
   (the `ClientDef` spec), `gedra-workflow.md`.

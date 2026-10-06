@@ -71,6 +71,51 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         configIssuesProperty()
     }
 
+    type(IMP.findingType) {
+        type = SCT.kObject
+        description = "Rows a publish would affect the same way (issue #935): a kind of harm, what it is about, how " +
+            "many rows, and a few of them."
+        property(
+            IMP.kind,
+            "What would happen to the rows: ${ImpactKind.traitGone} (their trait would no longer be supported), " +
+                "${ImpactKind.dataInvalid} (an entry would no longer validate, so every later edit of the form is " +
+                "refused), ${ImpactKind.workflowGone} (a workflow they take part in would no longer exist) or " +
+                "${ImpactKind.stateStranded} (their recorded state names a task the workflow would no longer define).",
+            required = true,
+        )
+        property(IMP.traitId, "The trait a trait finding is about.")
+        property(IMP.workflowId, "The workflow a workflow finding is about.")
+        property(IMP.taskId, "The task a stranded-state finding is about.")
+        property(IMP.count, "How many rows; a row counts once however many of its entries are affected.", required = true) {
+            type = SCT.integer
+        }
+        property(IMP.sampleIds, "Up to ${IMP.sampleLimit} of the rows' gedra ids, to go and look at.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+    }
+
+    type(IMP.reportType) {
+        type = SCT.kObject
+        description = "What publishing one configuration would do to the data its client already stores (issue " +
+            "#935): only what the publish breaks, so a row with a problem already is not reported. Always empty for " +
+            "a client that is not published-only, since publishing changes nothing such a client runs."
+        property(IMP.client, "The client whose stored data is judged: the configuration's owner.", required = true)
+        property(IMP.name, "The configuration a publish would make live.", required = true)
+        property(IMP.version, "The version of its latest revision, the one judged.", required = true) { type = SCT.integer }
+        property(IMP.scanned, "How many stored rows were examined.", required = true) { type = SCT.integer }
+        property(
+            IMP.tooLarge,
+            "The client stores more rows than a report examines (${ConfigImpact.scanLimitEnvVar.name}), so none " +
+                "were: a publish asks for acknowledgement as for a finding.",
+            required = true,
+        ) { type = SCT.boolean }
+        property(IMP.findings, "What the publish would do, one finding per kind and subject.", required = true) {
+            type = SCT.array
+            items { ref(IMP.findingType) }
+        }
+    }
+
     // The whole bundle: a summary plus the config contents, one array of entries per slot -- the shape a
     // component declares and the reassembler consumes. The slot contents are heterogeneous and are validated by
     // rebuilding the `GedraConfig` on write, so `slots` is an open object rather than a spelled-out type.
@@ -159,13 +204,28 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
 
     generalEndpoint(
         CFEP.bundlePublish,
-        "Publishes a configuration's latest editable revision.",
+        "Publishes a configuration's latest editable revision. For a published-only client, refused when making it " +
+            "live would affect the data the client already stores (issue #935) -- the refusal's errorCode is " +
+            "'${IMP.refusedCode}' and its extraData carries the report under '${IMP.report}' -- unless the call " +
+            "acknowledges it.",
         HttpMethod.POST,
         outputRef = CFEP.summaryType,
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
+            acknowledgeImpactField()
         },
     ) { c, request -> inConfigScope(c, mutating = true) { cfgPublishBody(it, request) } }
+
+    itemEndpoint(
+        CFEP.bundleImpact,
+        "What publishing a configuration's latest revision would do to the data the client already stores (issue " +
+            "#935), without publishing it. Called in a Shadow Sandbox, about its parent's data.",
+        HttpMethod.GET,
+        outputRef = IMP.reportType,
+        inputFields = {
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> inConfigScope(c) { cfgImpactBody(it, request) } }
 
     generalEndpoint(
         CFEP.bundleRevert,
@@ -482,7 +542,25 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
     if (GedraConfigService.get(c).readLatest(c, configId(c, name)) == null) {
         throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     }
-    return summaryOf(c, GedraConfigService.get(c).publish(c, configId(c, name), trial = true))
+    return summaryOf(c, GedraConfigService.get(c).publish(c, configId(c, name), trial = true, impact = impactGate(request)))
+}
+
+private fun cfgImpactBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
+    AdminRules.requireClientAdministrator(c)
+    return ConfigImpact.report(c, c.client, requireName(request)).toMap()
+}
+
+/** A publish request's [IMP.acknowledgeImpact] as the gate it asks for (issue #935). */
+private fun impactGate(request: Map<String, Any?>): ImpactGate =
+    if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
+
+/** The publish endpoints' [IMP.acknowledgeImpact] input. */
+private fun InputFieldsBuilder.acknowledgeImpactField() {
+    field(
+        IMP.acknowledgeImpact,
+        "Publish although the impact report on the client's stored data finds something (issue #935); without it, " +
+            "such a publish is refused with the report.",
+    ) { type = SCT.boolean }
 }
 
 private fun cfgRevertBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -787,8 +865,20 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         inputFields = {
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
+            acknowledgeImpactField()
         },
     ) { c, request -> cfgPublishBody(adminConfigCxt(c, request), request) }
+
+    itemEndpoint(
+        ACEP.bundleImpact,
+        "What publishing a named client's configuration would do to the data that client already stores (issue #935).",
+        HttpMethod.GET,
+        outputRef = "${CFEP.namespace}.${IMP.reportType}",
+        inputFields = {
+            field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
+            field(CFEP.name, "The configuration's name.", required = true)
+        },
+    ) { c, request -> cfgImpactBody(adminConfigCxt(c, request), request) }
 
     generalEndpoint(
         ACEP.bundleRevert,

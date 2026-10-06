@@ -20,6 +20,9 @@ object CFEP {
     const val bundlePatch = "/${SECT.clientAdmin}/config/bundle/patch"
     const val bundlePublish = "/${SECT.clientAdmin}/config/bundle/publish"
     const val bundleRevert = "/${SECT.clientAdmin}/config/bundle/revert"
+
+    /** What publishing a configuration would do to the client's stored data (issue #935); the names are [IMP]'s. */
+    const val bundleImpact = "/${SECT.clientAdmin}/config/bundle/impact"
     const val traits = "/${SECT.clientAdmin}/config/traits"
     const val reload = "/${SECT.clientAdmin}/config/reload"
     const val publishedOnly = "/${SECT.clientAdmin}/config/publishedOnly"
@@ -74,6 +77,7 @@ object ACEP {
     const val bundlePatch = "/${SECT.admin}/client/config/bundle/patch"
     const val bundlePublish = "/${SECT.admin}/client/config/bundle/publish"
     const val bundleRevert = "/${SECT.admin}/client/config/bundle/revert"
+    const val bundleImpact = "/${SECT.admin}/client/config/bundle/impact"
     const val traits = "/${SECT.admin}/client/config/traits"
     const val reload = "/${SECT.admin}/client/config/reload"
     const val publishedOnly = "/${SECT.admin}/client/config/publishedOnly"
