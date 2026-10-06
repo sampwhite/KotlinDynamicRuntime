@@ -70,7 +70,11 @@ class ImpactReportTest {
     fun theSummarySaysTooLargeNothingOrWhatFollows() {
         val empty = parseImpactReport(wire + (IMP.findings to emptyList<Any?>()))
         assertFalse(empty.blocks)
-        assertTrue(impactSummary(empty).contains("changes nothing"))
+        assertEquals(
+            "Publishing traits would leave none of the client's 12 stored forms broken: no trait, field, workflow or " +
+                "task they rely on goes away.",
+            impactSummary(empty),
+        )
         val large = parseImpactReport(wire + mapOf(IMP.findings to emptyList<Any?>(), IMP.tooLarge to true))
         assertTrue(large.blocks)
         assertTrue(impactSummary(large).contains("unknown"))
