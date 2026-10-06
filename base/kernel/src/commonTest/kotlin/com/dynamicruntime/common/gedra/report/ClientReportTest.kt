@@ -24,6 +24,16 @@ class ClientReportTest {
     private fun problem(raw: Map<String, Any?>): String =
         assertIs<Parsed.Failed>(clientReportResult(cxt, raw)).problems.single().message
 
+    /** History (issue #1033) is written only when asked for, so a report declared before it existed is stored as it was. */
+    @Test
+    fun historyRoundTripsAndIsAbsentUnlessAskedFor() {
+        assertEquals(false, parseClientReport(cxt, built()).history)
+        assertNull(built()[RDEF.history])
+        val raw = built { history = true }
+        assertEquals(true, raw[RDEF.history])
+        assertTrue(parseClientReport(cxt, raw).history)
+    }
+
     @Test
     fun aBuiltReportParsesBackAsItWasDeclared() {
         val raw = built {

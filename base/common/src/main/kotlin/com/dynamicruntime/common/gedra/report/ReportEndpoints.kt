@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.CursorKeyCodec
 import com.dynamicruntime.common.endpoint.CursorKeys
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.cursorPageOf
@@ -57,6 +58,23 @@ object REP {
     )
 
     const val defaultScanLimit = 50_000
+
+    const val snapshotType = "ReportSnapshot"
+    const val historySummaryType = "ReportHistorySummary"
+
+    /** How many snapshots of one report are kept per client (issue #1034); the oldest beyond it are pruned on each write. */
+    val historyKeepEnvVar = EnvVarDef(
+        "KDR_REPORT_HISTORY_KEEP", group = ENVGRP.gedra, defaultDoc = "400",
+        description = "The most snapshots of one report kept per client (issue #1034). A snapshot is taken nightly " +
+            "for a report that asks for history, and whenever someone presses Snapshot now; past this many the oldest " +
+            "are deleted as a new one is written, so the table and the History view's series stay bounded. The " +
+            "default keeps a year of nightly snapshots and some taken by hand.",
+    )
+
+    const val defaultHistoryKeep = 400
+
+    /** The most groups one snapshot stores (issue #1034); a run with more is cut, in key order, and says so. */
+    const val historyMaxGroups = 2000
 }
 
 /**
@@ -69,6 +87,8 @@ object REP {
  *   resolved kind and combine, and the client's report issues.
  * - `GET /clientAdmin/report/run` -- one report over the client's forms, a row per form or per group, paged by
  *   cursor (#976). See [runReport].
+ * - `GET /clientAdmin/report/history` and `POST /clientAdmin/report/snapshot` -- a report's stored snapshots, and
+ *   taking one now (#1034). Client-wide: an organization-confined administrator is refused ([requireClientWideView]).
  */
 fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
     columnInfoType()
@@ -95,6 +115,7 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
             options(GedraConfigOrigin.entries)
         }
         property(RRUN.template, "The template the report came from, for a client's copy of its template's report.")
+        property(RRUN.history, "Whether the nightly job stores snapshots of the report (issue #1033).", required = true) { type = SCT.boolean }
     }
     type(REP.listSummaryType) {
         type = SCT.kObject
@@ -166,6 +187,93 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         ListPage(items, items.size, hasMore = false, summary = mapOf(RRUN.client to client, RRUN.issues to issues.map { it.toWireMap() }))
     }
 
+    type(REP.snapshotType) {
+        type = SCT.kObject
+        description = "One snapshot of a report's grouped run over a client's forms (issue #1034): when and what took it, and the run's rows."
+        property(RHIS.snapshotId, "The snapshot's id.", required = true) { type = SCT.integer }
+        property(RRUN.reportId, "The report.", required = true)
+        property(RRUN.client, "The client whose forms were read.", required = true)
+        property(RHIS.takenAt, "When the run was taken.", required = true) { dateTime() }
+        property(RHIS.trigger, "What took it.", required = true) { options(ReportSnapshotTrigger.entries) }
+        property(RHIS.launchName, "The job launch that took it; absent for one taken by hand.")
+        property(RRUN.groupBy, "The columns the run grouped by: the report's own.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(RRUN.columns, "The report's columns as they were bound when the snapshot was taken.", required = true) {
+            type = SCT.array
+            items { ref(REP.columnType) }
+        }
+        property(RHIS.rows, "The run's rows: a group of forms each, in key order.", required = true) {
+            type = SCT.array
+            items { ref(REP.rowType) }
+        }
+        property(RRUN.scanned, "How many of the client's forms the run read.", required = true) { type = SCT.integer }
+        property(RRUN.excluded, "How many of them were left out for a missing value.", required = true) { type = SCT.integer }
+        property(RHIS.truncated, "Whether the rows were cut at the stored limit.", required = true) { type = SCT.boolean }
+    }
+    type(REP.historySummaryType) {
+        type = SCT.kObject
+        description = "Beside a report's snapshots: the report, and how many snapshots it has."
+        property(RRUN.reportId, "The report.", required = true)
+        property(RRUN.label, "What the report is called.", required = true)
+        property(RRUN.client, "The client.", required = true)
+        property(RRUN.history, "Whether the nightly job snapshots the report.", required = true) { type = SCT.boolean }
+        property(RHIS.numSnapshots, "How many snapshots the report has for the client.", required = true) { type = SCT.integer }
+    }
+
+    listEndpoint(
+        UADEP.reportHistory,
+        "A report's stored snapshots for a client (issue #1034), newest first and paged by cursor: each the report's " +
+            "grouped run -- its own grouping, over the whole client -- as it was when taken, by the nightly job for a " +
+            "report that asks for history or by someone pressing Snapshot now. Client-wide: refused for an " +
+            "administrator confined to an organization, whose own runs would narrow what a snapshot shows.",
+        outputRef = REP.snapshotType,
+        cursorPaged = true,
+        summaryRef = REP.historySummaryType,
+        inputFields = {
+            field(RRUN.reportId, "The report whose snapshots to list.", required = true)
+            field(RRUN.client, "The client; the caller's own when absent.")
+        },
+        needsClientConfig = true,
+    ) { c, request ->
+        val client = overseenClient(c, request[RRUN.client].toOptStr())
+        requireClientWideView(c)
+        val bound = boundReport(c, client, request)
+        val rows = ReportSnapshotRows.list(c, client, bound.reportId)
+        val summary = mapOf(
+            RRUN.reportId to bound.reportId,
+            RRUN.label to bound.report.label,
+            RRUN.client to client,
+            RRUN.history to bound.report.history,
+            RHIS.numSnapshots to rows.size,
+        )
+        cursorPageOf(
+            request, listOf("reportHistory", client, bound.reportId).joinToString("|"), rows,
+            { it.takenAt to it.snapshotId }, reportSnapshotOrder, reportSnapshotKeyCodec, summary,
+        ) { page -> page.map { it.toWireMap() } }
+    }
+
+    generalEndpoint(
+        UADEP.reportSnapshot,
+        "Takes a snapshot of a report now (issue #1034): its grouped run -- the report's own grouping and excluded " +
+            "columns, over the whole client -- stored as it is at this moment, and returned. Any grouped report may " +
+            "be snapshotted by hand; the nightly job takes only those that ask for history. Client-wide: refused for " +
+            "an administrator confined to an organization. Refused past ${REP.scanLimitEnvVar.name} forms, as a run is.",
+        HttpMethod.POST,
+        outputRef = REP.snapshotType,
+        inputFields = {
+            field(RRUN.reportId, "The report to snapshot.", required = true)
+            field(RRUN.client, "The client; the caller's own when absent.")
+        },
+        needsClientConfig = true,
+    ) { c, request ->
+        val client = overseenClient(c, request[RRUN.client].toOptStr())
+        requireClientWideView(c)
+        val bound = boundReport(c, client, request)
+        ReportHistoryWriter.snapshot(c, client, bound, ReportSnapshotTrigger.manual).toWireMap()
+    }
+
     listEndpoint(
         UADEP.reportRun,
         "Runs one named report over a client's forms (issue #981). A detail run has a row per form, in form-id order; " +
@@ -234,6 +342,7 @@ private fun describeReport(declared: ReportDeclared): Map<String, Any?> {
         put(RRUN.configName, declared.bundle.name)
         put(RRUN.origin, declared.bundle.origin.name)
         declared.bundle.inheritedFrom?.let { put(RRUN.template, it) }
+        put(RRUN.history, report.history)
     }
 }
 
@@ -254,9 +363,8 @@ private fun describeReport(declared: ReportDeclared): Map<String, Any?> {
  */
 fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     val client = overseenClient(c, request[RRUN.client].toOptStr())
-    val reportId = request[RRUN.reportId].toOptStr() ?: throw KdrException.mkInput("A ${RRUN.reportId} is required.")
-    val bound = ReportService.get(c).forClient(client).report(reportId)?.bound
-        ?: throw KdrException("Client '$client' has no report '$reportId'.", code = EXC.notFound)
+    val bound = boundReport(c, client, request)
+    val reportId = bound.reportId
     val aggregate = request[RRUN.aggregate] == true
     val askedGroupBy = namesIn(request[RRUN.groupBy])
     if (!aggregate && !askedGroupBy.isNullOrEmpty()) {
@@ -269,18 +377,9 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     val excludeEmpty = columnsNamed(bound, namesIn(request[RRUN.excludeEmpty]) ?: bound.report.excludeEmpty, RRUN.excludeEmpty)
 
     val scope = reportScope(c, client)
-    val ids = GedraDataService.get(c).liveGedraIdsInScope(c, GedraDataType.formDoc, scope).sorted()
-    val scanLimit = c.getEnvVar(REP.scanLimitEnvVar)?.trim()?.toIntOrNull() ?: REP.defaultScanLimit
-    if (ids.size > scanLimit) {
-        throw KdrException.mkInput(
-            "Client '$client' has ${ids.size} forms, more than the $scanLimit a report run reads " +
-                "(${REP.scanLimitEnvVar.name}). A report covering part of them would mislead, so none is given.",
-        )
-    }
-    val reader = SubjectReader(c, client, scope)
     val mode = if (aggregate) ReportMode.aggregate else ReportMode.detail
     val queryId = reportQueryId(client, bound, mode, groupBy)
-    fun summary(excluded: Int) = mapOf(
+    fun summary(scanned: Int, excluded: Int) = mapOf(
         RRUN.reportId to reportId,
         RRUN.label to bound.report.label,
         RRUN.client to client,
@@ -288,28 +387,19 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
         RRUN.groupBy to groupBy.map { it.columnId },
         RRUN.excludeEmpty to excludeEmpty.map { it.columnId },
         RRUN.columns to bound.columns.map { it.describe() },
-        RRUN.scanned to ids.size,
+        RRUN.scanned to scanned,
         RRUN.excluded to excluded,
     )
 
     if (aggregate) {
-        val rolled = bound.columns.filter { it.column.rollup != null }
-        val read = reader.read(ids, groupBy + rolled + excludeEmpty)
-        val kept = read.filterNot { bound.excludes(it, excludeEmpty) }
-        val groups = aggregateReport(kept, groupBy, rolled)
+        val run = aggregateReportRun(c, client, bound, groupBy, excludeEmpty, scope)
         return cursorPageOf(
-            request, queryId, groups, { it.key }, ::compareReportKeys, reportGroupKeyCodec(groupBy), summary(read.size - kept.size),
-        ) { page ->
-            page.map { g ->
-                mapOf(
-                    RRUN.group to groupBy.indices.associate { groupBy[it].columnId to reportWireValue(g.key[it]) },
-                    RRUN.count to g.count,
-                    RRUN.values to g.rollups.mapValues { reportWireValue(it.value) },
-                )
-            }
-        }
+            request, queryId, run.groups, { it.key }, ::compareReportKeys, reportGroupKeyCodec(groupBy), summary(run.scanned, run.excluded),
+        ) { page -> page.map { aggregateRowMap(groupBy, it) } }
     }
 
+    val ids = scannableIds(c, client, scope)
+    val reader = SubjectReader(c, client, scope)
     // Detail: the ids the run pages over -- every form, or those with a value in each excluding column.
     val (pagedIds, excluded) = if (excludeEmpty.isEmpty()) {
         ids to 0
@@ -319,7 +409,7 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
         val kept = read.filterNot { bound.excludes(it, excludeEmpty) }.map { it.meta[RMETA.gedraId] as String }
         kept to read.size - kept.size
     }
-    return cursorPageOf(request, queryId, pagedIds, { it }, naturalOrder(), CursorKeys.string, summary(excluded)) { page ->
+    return cursorPageOf(request, queryId, pagedIds, { it }, naturalOrder(), CursorKeys.string, summary(ids.size, excluded)) { page ->
         reader.read(page, bound.columns).map { subject ->
             mapOf(
                 RRUN.gedraId to subject.meta[RMETA.gedraId],
@@ -337,6 +427,73 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
  */
 fun reportScope(c: KdrCxt, client: String): ReadScope =
     if (AdminRules.canSeeAllClients(c)) ReadScope.ofClient(client) else ReadScopeRules.forCaller(c)
+
+/** The report [request] names for [client], bound -- a 400 for no name, a 404 for a report the client does not have. */
+private fun boundReport(c: KdrCxt, client: String, request: Map<String, Any?>): BoundReport {
+    val reportId = request[RRUN.reportId].toOptStr() ?: throw KdrException.mkInput("A ${RRUN.reportId} is required.")
+    return ReportService.get(c).forClient(client).report(reportId)?.bound
+        ?: throw KdrException("Client '$client' has no report '$reportId'.", code = EXC.notFound)
+}
+
+/**
+ * Refuses a caller whose administration is confined to an organization (issue #1034): report history is computed
+ * over the whole client, so showing it to them would show totals their own runs narrow away, and taking one would
+ * let them. An administrator who sees every client, or a client's unconfined one, passes.
+ */
+fun requireClientWideView(c: KdrCxt) {
+    if (AdminRules.canSeeAllClients(c)) return
+    val org = ReadScopeRules.forCaller(c).org ?: return
+    throw KdrException(
+        "Report history is client-wide, and your administration is confined to organization '$org'.",
+        code = EXC.notAuthorized,
+    )
+}
+
+/**
+ * The ids a run over [scope] reads, in id order -- or a 400 past [REP.scanLimitEnvVar]: a report covering part of a
+ * client's forms would mislead, so none is given. What every run, and every snapshot, starts from.
+ */
+fun scannableIds(c: KdrCxt, client: String, scope: ReadScope): List<String> {
+    val ids = GedraDataService.get(c).liveGedraIdsInScope(c, GedraDataType.formDoc, scope).sorted()
+    val scanLimit = c.getEnvVar(REP.scanLimitEnvVar)?.trim()?.toIntOrNull() ?: REP.defaultScanLimit
+    if (ids.size > scanLimit) {
+        throw KdrException.mkInput(
+            "Client '$client' has ${ids.size} forms, more than the $scanLimit a report run reads " +
+                "(${REP.scanLimitEnvVar.name}). A report covering part of them would mislead, so none is given.",
+        )
+    }
+    return ids
+}
+
+/** What an aggregate run read and made (issue #1034): its groups, the columns rolled up, and the forms scanned and left out. */
+class AggregateRun(val groups: List<ReportGroup>, val rolled: List<BoundColumn>, val scanned: Int, val excluded: Int)
+
+/**
+ * An aggregate run of [bound] over [scope]'s forms of [client] (issues #981, #1034): every form read for the
+ * [groupBy], rolled-up and [excludeEmpty] columns, the forms missing an excluding value left out, the rest grouped.
+ * The run endpoint pages the groups; a snapshot stores them.
+ */
+fun aggregateReportRun(
+    c: KdrCxt,
+    client: String,
+    bound: BoundReport,
+    groupBy: List<BoundColumn>,
+    excludeEmpty: List<BoundColumn>,
+    scope: ReadScope,
+): AggregateRun {
+    val ids = scannableIds(c, client, scope)
+    val rolled = bound.columns.filter { it.column.rollup != null }
+    val read = SubjectReader(c, client, scope).read(ids, groupBy + rolled + excludeEmpty)
+    val kept = read.filterNot { bound.excludes(it, excludeEmpty) }
+    return AggregateRun(aggregateReport(kept, groupBy, rolled), rolled, ids.size, read.size - kept.size)
+}
+
+/** One group as the run endpoint's row and a snapshot's: its key by column id, its count, and its rollups. */
+fun aggregateRowMap(groupBy: List<BoundColumn>, group: ReportGroup): Map<String, Any?> = mapOf(
+    RRUN.group to groupBy.indices.associate { groupBy[it].columnId to reportWireValue(group.key[it]) },
+    RRUN.count to group.count,
+    RRUN.values to group.rollups.mapValues { reportWireValue(it.value) },
+)
 
 /**
  * What makes two runs the same query, for their cursors (issue #981): the client, the report, the mode and the

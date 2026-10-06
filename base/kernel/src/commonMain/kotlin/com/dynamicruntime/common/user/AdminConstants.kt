@@ -149,6 +149,12 @@ object UADEP {
 
     /** Runs one report over a client's forms (issue #981): a row per form or per group, cursor-paged. */
     const val reportRun = "/${SECT.clientAdmin}/report/run"
+
+    /** A report's stored snapshots, newest first and cursor-paged (issue #1034). Scoped as [reportRun] is, and client-wide. */
+    const val reportHistory = "/${SECT.clientAdmin}/report/history"
+
+    /** Takes a snapshot of a report's grouped run now (issue #1034). Scoped as [reportRun] is, and client-wide. */
+    const val reportSnapshot = "/${SECT.clientAdmin}/report/snapshot"
 }
 
 /** Admin request/response field (JSON key) names. */
