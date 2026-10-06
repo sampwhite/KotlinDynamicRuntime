@@ -187,8 +187,13 @@ Two things take one:
 
 - **`POST /clientAdmin/report/snapshot`** -- now, by hand, for any grouped report (`reportId`, and `client` for an
   administrator who sees every client). The snapshot comes back in the response.
-- **The nightly `reportHistory` job** (issue #1035), for every report that declares `history = true`, once per
-  scheduled slot: a resumed launch finds the snapshot its slot already took and does nothing twice.
+- **The nightly `reportHistory` job** (issue #1035), at 03:30 UTC -- half an hour after the derived-state recompute,
+  so a report grouping by a form's status snapshots what that recompute just brought up to date -- for every
+  client, each report that declares `history = true` (a global one for every client), once per scheduled slot: a
+  resumed launch finds the snapshot its slot already took and does nothing twice. A client with more forms than a
+  run reads fails that report's task and the launch goes on; a dry run notes what it would take and stores nothing.
+  A sandbox is skipped: a nightly series of its preview data is nobody's chart (a snapshot by hand there still
+  works). It can be launched by hand through the operator's job endpoints, as any job can.
 
 **`GET /clientAdmin/report/history`** lists a report's snapshots for a client, newest first and paged by cursor as
 every reporting endpoint is, with a summary saying whether the job snapshots the report and how many snapshots it
@@ -216,6 +221,8 @@ The sample component declares four reports:
   auditor, the totals summed and the latest year kept.
 - **globex `yearlyNotes`** — the keyed `yearly` trait read whole three ways (every year, how many, the latest) and
   one year's note picked by its key, `form.sample:yearly[2024].note`.
+
+`expensesByYear` and `auditOverview` ask for history (`history = true`), so the nightly job snapshots them.
 
 A fresh node has no forms, so each runs empty. The `report-demo` simulation (issue #997) creates some on a test
 instance that loads the sample -- run it from the webapp's **Simulations** page, or `kdr-probe --url <the node>

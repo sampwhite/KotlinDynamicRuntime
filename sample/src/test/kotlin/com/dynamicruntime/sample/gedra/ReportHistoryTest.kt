@@ -84,9 +84,9 @@ class ReportHistoryTest : StringSpec({
         // The same groups a grouped run answers.
         val run = admin.client.sendJsonGetRequest(UADEP.reportRun, mapOf(RRUN.reportId to SC.expensesByYear, RRUN.aggregate to true))
         itemsOf(run).map { groupOf(it)["year"] to it[RRUN.count] } shouldBe rows.map { groupOf(it)["year"] to it[RRUN.count] }
-        // The listing says whether the job snapshots a report: none of the sample's asks yet (the job is #1035).
+        // The listing says whether the nightly job snapshots a report (issue #1035).
         val listed = itemsOf(admin.client.sendJsonGetRequest(UADEP.reports)).associateBy { it[RRUN.reportId] }
-        listed.getValue(SC.expensesByYear)[RRUN.history] shouldBe false
+        listed.getValue(SC.expensesByYear)[RRUN.history] shouldBe true
         listed.getValue(SC.formRoster)[RRUN.history] shouldBe false
     }
 
@@ -96,7 +96,7 @@ class ReportHistoryTest : StringSpec({
         val first = history(admin, reportId, mapOf(EP.limit to 3))
         val summary = first[EP.summary].toJsonMapOrEmpty()
         summary[RRUN.reportId] shouldBe reportId
-        summary[RRUN.history] shouldBe false
+        summary[RRUN.history] shouldBe true
         // KDR_REPORT_HISTORY_KEEP is 3 days on this node, and these four are today's: none is pruned.
         summary[RHIS.numSnapshots] shouldBe 4L
         first[EP.numAvailable] shouldBe 4L
