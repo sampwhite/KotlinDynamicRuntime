@@ -303,6 +303,22 @@ class GedraConfigLoadService : ServiceInitializer {
      */
     private fun addSandboxes(cxt: KdrCxt, collector: SchemaCollector, latestByClient: Map<String, List<Map<String, Any?>>>) {
         val parents = SandboxConfigs.parentsWithSandboxes(collector.gedraConfigs)
+        // An overlay for a sandbox its parent does not ask for (issue #940) has nowhere to go: reported on the
+        // parent, whose definition is what to change, and not loaded.
+        for (overlay in collector.sandboxOverlays) {
+            val parent = sandboxParentOf(overlay.gedraId.client) ?: continue
+            if (parent in parents) continue
+            reportConfigProblem(
+                cxt,
+                GedraConfigIssue(
+                    "Source config '${overlay.gedraId}' is an overlay for the sandbox '${overlay.gedraId.client}', but " +
+                        "client '$parent' has no sandbox: its definition does not set the sandbox flag.",
+                    "Not loading the overlay.",
+                    client = parent, elementKind = GCEL.config, elementId = overlay.gedraId.fullId,
+                ),
+                issues,
+            )
+        }
         if (parents.isEmpty()) return
         val sourceClients = sourceClientsOf(collector)
         val markers = HashMap(loadedMarkers)
@@ -363,7 +379,27 @@ class GedraConfigLoadService : ServiceInitializer {
                 config
             }
         }
-        return SandboxBuild(SandboxConfigs.configsFor(parentSource, parentStored), latestRows.mapNotNull { it.updatedAt }.maxOrNull())
+        // The sandbox's own source overlays (issue #940), the layer between the two; what one repeats of the
+        // parent's source is reported, since a leftover from a promotion is how an overlay goes stale.
+        val sandboxSource = collector.sandboxOverlays.filter { it.gedraId.client == sandbox }
+        for (overlay in sandboxSource) {
+            val repeats = SandboxConfigs.overlayRepeats(overlay, parentSource)
+            if (repeats.isEmpty()) continue
+            reportConfigProblem(
+                cxt,
+                overlay.issue(
+                    "The sandbox overlay '${overlay.gedraId}' repeats the parent's definition: " +
+                        "${repeats.joinToString(", ")} -- left behind when the change moved into '$parent''s source?",
+                    "Loading the overlay as written; remove what the parent now defines.",
+                    GCEL.config, overlay.gedraId.fullId,
+                ),
+                sink,
+            )
+        }
+        return SandboxBuild(
+            SandboxConfigs.configsFor(parentSource, parentStored, sandboxSource),
+            latestRows.mapNotNull { it.updatedAt }.maxOrNull(),
+        )
     }
 
     /** The clients defined in source code -- those whose defining config this service did not load. */

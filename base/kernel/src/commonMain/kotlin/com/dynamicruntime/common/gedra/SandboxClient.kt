@@ -30,8 +30,9 @@ import com.dynamicruntime.common.exception.KdrException
  * - **Keys built by prefix** (the UiBlock predicate cache's `"$client|…"`) stay distinct: `acme|` is not a prefix
  *   of `acme:sandbox|`.
  * - **Schema namespaces** built from a client (`client.<clientId>`, `"${client}Copy"`) never see a sandbox, because
- *   a sandbox owns no configuration and `gedraConfig` refuses to file one under it. That matters: an OpenAPI
- *   component key may not hold a colon.
+ *   a sandbox owns no stored configuration -- `gedraConfig` refuses to file a stored one under it -- and what source
+ *   code files under it (an overlay, issue #940) authors into its parent's namespace, which the collector holds it
+ *   to. That matters: an OpenAPI component key may not hold a colon.
  * - **Client definitions**: `ClientCheck` holds a declared id to the identifier rule, and judges a sandbox's derived
  *   definition by its parent (issue #928) -- an authored one naming a sandbox never gets that far.
  * - **File paths**: none holds a client id today. A future per-client file or object-store key layout has to

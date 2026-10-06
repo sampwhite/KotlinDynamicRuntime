@@ -187,6 +187,12 @@ later schema rejects" test.
   attributed to the person's parent user, and a write reloads the parent (so the sandbox shows it, while the
   parent -- published-only, as every client with a sandbox is -- keeps its published revision). The editors save a **draft** for any client with a sandbox
   (result `mode` = `EDM.draft`) and publish at once for one without. `SandboxEditsTest.kt` is the reference.
+- **Source code may file an overlay under a sandbox** (issue #940): a config built with `client = sandboxOf(parent)`
+  and the **parent's** namespace (`clientNamespace(parent)`), which the sandbox runs and the parent does not -- a
+  per-client feature flag, promoted by moving it into the parent's source. It layers above the parent's source and
+  below its stored revisions (so a stored copy or menu change wins over the overlay's); only a stored or imported
+  config under a sandbox is refused. An overlay for a parent without the `sandbox` flag is reported on the parent and
+  not loaded, and one repeating the parent's source is reported. `SandboxOverlayTest.kt` is the reference.
 - **The sample's acme has a sandbox** (issue #994), so it is published-only: a sample test that stores config for
   acme -- through an editor or `writeConfig` -- publishes it before asserting what acme serves (`publishAcme` in the
   sample's tests does what the client page's Publish does). A scenario that needs a client without a sandbox, or one on

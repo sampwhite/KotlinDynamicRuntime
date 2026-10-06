@@ -58,12 +58,15 @@ class GedraConfigTest : StringSpec({
         config.gedraId.fullId shouldBe "gc.cd.acme.expenseTraits"
     }
 
-    // A sandbox runs its parent's configuration and owns none (issue #927). Every authored config -- source,
-    // stored, imported -- is built by `gedraConfig`, so refusing the sandbox as an owner, and a colon in a
-    // declared client id, there is what keeps a sandbox id something only the system makes.
-    "a sandbox can neither own a config nor be defined as a client" {
-        shouldThrow<KdrException> { gedraConfig(cxt, "expenseTraits", "acme", client = "acme:sandbox") {} }
-            .message.shouldNotBeNull() shouldContain "written to 'acme'"
+    // A sandbox runs its parent's configuration and owns no stored configuration (issue #927). Every authored config
+    // -- source, stored, imported -- is built by `gedraConfig`, so refusing the sandbox as a stored config's owner,
+    // and a colon in a declared client id, there is what keeps a sandbox id something only the system makes. Source
+    // code may file an overlay under one (issue #940).
+    "a sandbox can neither own a stored config nor be defined as a client; source may file an overlay under it" {
+        shouldThrow<KdrException> {
+            gedraConfig(cxt, "expenseTraits", "acme", client = "acme:sandbox", origin = GedraConfigOrigin.stored) {}
+        }.message.shouldNotBeNull() shouldContain "written to 'acme'"
+        gedraConfig(cxt, "expenseTraits", "client.acme", client = "acme:sandbox") {}.gedraId.client shouldBe "acme:sandbox"
         val sandboxDef = ClientDef(
             clientId = "acme:sandbox", name = "Acme (sandbox)", usageType = ClientUsageType.dev,
             audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
