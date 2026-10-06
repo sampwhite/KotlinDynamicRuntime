@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
@@ -104,6 +105,24 @@ class GedraSearchTest : StringSpec({
         val userProp = (withSearchProperties(base, listOf(usage("user", UsageKind.string)))[SCH.properties]
             as Map<String, Any?>)["user"] as Map<*, *>
         userProp[SCH.visibleWhen] shouldBe "hasAdminLevel"
+    }
+
+    "a reserved name is left out of the parameters, so the schema and the predicate drop it together (issue #987)" {
+        // A trait named for the cursor field: reported, and minted nowhere -- not even onto a base that does
+        // not declare `after` (the framework appends it later, where a second one would refuse the endpoint).
+        val after = usage(EP.after, UsageKind.string, substring = true)
+        searchParamCollisions(listOf(after)) shouldBe listOf(EP.after)
+        // The whole usage goes: an `afterContains` left on its own would read back as another trait's exact match.
+        gedraSearchParams(listOf(after)) shouldBe emptyList()
+        val base = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf(EP.offset to mapOf(SCH.type to SCT.integer)))
+        withSearchProperties(base, listOf(after, usage("name", UsageKind.string)))[SCH.properties].toJsonMapOrEmpty().keys shouldBe
+            setOf(EP.offset, "name")
+        // The same for a name the listing declares: the predicate must not read the paging offset as a filter.
+        gedraSearchParams(listOf(usage(EP.offset, UsageKind.string))) shouldBe emptyList()
+        // Every reserved name is one a usage can ask for and be told about.
+        for (name in reservedQueryFieldNames) {
+            searchParamCollisions(listOf(usage(name, UsageKind.string))) shouldBe listOf(name)
+        }
     }
 
     "duplicateUsageTraitIds names a trait declared more than once, once, in first-seen order" {

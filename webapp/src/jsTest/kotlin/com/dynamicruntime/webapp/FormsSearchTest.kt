@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.SVYS
 import com.dynamicruntime.common.schema.SCH
@@ -54,6 +55,15 @@ class FormsSearchTest {
     @Test
     fun theFreeTextTermIsReservedToo() {
         val schema = mapOf(SCH.properties to linkedMapOf(EI.q to mapOf<String, Any?>(), "name" to mapOf(SCH.title to "Name")))
+        assertEquals(listOf("name"), searchGroups(schema).map { it.traitId })
+    }
+
+    /** The reserved names are the kernel's one list (issue #987), the cursor field `after` among them. */
+    @Test
+    fun everyReservedNameIsNeverASearchBox() {
+        val own = reservedQueryFieldNames.associateWith { mapOf<String, Any?>() }
+        val schema = mapOf(SCH.properties to LinkedHashMap(own).apply { put("name", mapOf(SCH.title to "Name")) })
+        assertTrue(EP.after in reservedQueryFieldNames)
         assertEquals(listOf("name"), searchGroups(schema).map { it.traitId })
     }
 

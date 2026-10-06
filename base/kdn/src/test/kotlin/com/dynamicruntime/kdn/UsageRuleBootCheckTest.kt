@@ -10,18 +10,30 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCFG
+import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.SearchRole
+import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
@@ -66,8 +78,8 @@ class UsageRuleBootCheckTest : StringSpec({
     }
 
     "a usage whose search parameter collides with a reserved listing field refuses the boot (issue #538)" {
-        // A usage on a trait named like a reserved query field mints a parameter that would overwrite it; the
-        // check refuses rather than let the trait become silently unsearchable at merge time.
+        // A usage on a trait named like a reserved query field asks for a parameter of that name; the check
+        // refuses rather than let the trait become silently unsearchable.
         val thrown = shouldThrow<KdrException> {
             Startup.mkTestBootCxt(
                 "reservedUsageStrict", "reservedUsageStrictTest",
@@ -77,6 +89,43 @@ class UsageRuleBootCheckTest : StringSpec({
         }
         thrown.fullMessage() shouldContain ReservedFieldUsageComponent.reservedTrait
         thrown.fullMessage() shouldContain "reserved forms-listing field"
+    }
+
+    "the same usages only warn in warn mode: the columns stay, the parameters are dropped, paging works (issue #987)" {
+        // One trait is named for the cursor field, which the listing's type does not declare -- the framework
+        // appends it to a cursor-paged listing -- so only the generator leaving it out keeps it off the type.
+        // The other is named for the paging offset, the case where a filter still reading the dropped parameter
+        // would take `offset=0` as the value to match.
+        val cxt = Startup.mkTestBootCxt(
+            "reservedUsageWarn", "reservedUsageWarnTest",
+            mapOf(
+                ReservedFieldUsageComponent.loadFlag.name to "true",
+                GCFG.checkEnvVar.name to BootCheckMode.warn.name,
+            ),
+            additionalComponents = listOf(ReservedFieldUsageComponent()),
+        )
+        val schema = SchemaService.get(cxt)
+        val client = ReservedFieldUsageComponent.reservedClient
+        schema.traitUsagesFor(client).map { it.traitId } shouldBe
+            listOf(ReservedFieldUsageComponent.reservedTrait, ReservedFieldUsageComponent.offsetTrait)
+        val query = schema.storeFor(client).types.getValue(formDocsQueryDefName()).properties.keys
+        query shouldNotContain ReservedFieldUsageComponent.reservedTrait
+        query shouldNotContain ReservedFieldUsageComponent.reservedTrait + SearchRole.contains.nameSuffix
+        query shouldContain EP.offset
+
+        // Through the listing: a form whose `offset` trait reads "7" is on the first page asked for with
+        // `offset=0`. Were the dropped parameter still read as a filter, "0" would match no row's "7".
+        val user = TestUser.create(cxt, "u@$client.test", userClient = client)
+        fun entry(traitId: String, value: String) = mapOf(GE.traitId to traitId, GE.data to mapOf("value" to value))
+        val doc = user.postItem(
+            GEP.formDocCreate,
+            mapOf(GDF.entries to listOf(entry(ReservedFieldUsageComponent.reservedTrait, "x"), entry(ReservedFieldUsageComponent.offsetTrait, "7"))),
+        )
+        val rows = user.getItems(GEP.formDocs, mapOf(EP.offset to 0))
+        rows.map { it[GDF.gedraId] } shouldBe listOf(doc[GDF.gedraId])
+        // Both columns show, dropped search or not.
+        rows.single()[GDF.displayValues].toJsonListOfMaps().associate { it[UF.traitId] to it[UF.value] } shouldBe
+            mapOf(ReservedFieldUsageComponent.reservedTrait to "x", ReservedFieldUsageComponent.offsetTrait to "7")
     }
 })
 
@@ -115,8 +164,10 @@ class DuplicateUsageComponent : ComponentDefinition {
 }
 
 /**
- * Contributes a client's config whose usage mints a search parameter colliding with a reserved field (#538). A
- * client's, because only a client's trait id is bare (issue #951), so only it can be named exactly like the field.
+ * Contributes a client's config with usages minting search parameters that collide with reserved fields (#538,
+ * #987): one on a trait named for the cursor field `after`, which the listing's type does not itself declare, and
+ * one named for the paging `offset`, which it does. A client's, because only a client's trait id is bare (issue
+ * #951), so only it can be named exactly like the field.
  */
 class ReservedFieldUsageComponent : ComponentDefinition {
     override val providerName: String = "reservedFieldUsageFixture"
@@ -131,12 +182,17 @@ class ReservedFieldUsageComponent : ComponentDefinition {
                     audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
                 ),
             )
-            trait(reservedEntry, reservedTrait, setOf(GedraDataType.formDoc), "A trait named like a reserved field.") {
+            trait(reservedEntry, reservedTrait, setOf(GedraDataType.formDoc), "A trait named like the cursor field.") {
                 property("value", "A value.")
             }
-            // A string usage on a trait id that is a reserved listing field name mints an exact parameter of the
-            // same name (`offset`), which would overwrite the listing's paging field -- the collision #538 refuses.
-            traitUsage(reservedTrait, "Offset", $$"${value}", UsageKind.string)
+            trait(offsetEntry, offsetTrait, setOf(GedraDataType.formDoc), "A trait named like the paging offset.") {
+                property("value", "A value.")
+            }
+            // A string usage on a trait id that is a reserved listing field name asks for an exact parameter of
+            // the same name -- the collision #538 refuses. A substring usage on `after`, so the `afterContains`
+            // beside it is shown to go with it.
+            traitUsage(reservedTrait, "After", $$"${value}", UsageKind.string, substring = true)
+            traitUsage(offsetTrait, "Offset", $$"${value}", UsageKind.string)
         },
     )
 
@@ -146,11 +202,13 @@ class ReservedFieldUsageComponent : ComponentDefinition {
             "KDR_LOAD_RESERVED_USAGE_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
             description = "Test-only flag that loads the reserved-field-usage fixture component regardless of environment.",
         )
-        // The offset paging field's name -- a usage on a trait so named collides with it. Referencing the
-        // constant keeps the collision a compile-time fact: rename EP.offset and this fixture stops compiling
-        // rather than silently declaring a trait that collides with nothing.
-        const val reservedTrait = EP.offset
+        // The reserved fields' names -- a usage on a trait so named collides with them. Referencing the constants
+        // keeps the collision a compile-time fact: rename `EP.after` or `EP.offset` and this fixture stops
+        // compiling rather than silently declaring a trait that collides with nothing.
+        const val reservedTrait = EP.after
         const val reservedEntry = "ReservedUsageEntry"
+        const val offsetTrait = EP.offset
+        const val offsetEntry = "ReservedOffsetEntry"
         const val reservedClient = "reservedusageclient"
     }
 }
