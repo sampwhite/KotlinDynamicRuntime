@@ -61,9 +61,21 @@ object RHIS {
     const val numSnapshots = "numSnapshots"
 }
 
-/** What took a snapshot (issue #1033): the nightly job, or someone pressing the button. */
+/** What took a snapshot (issue #1033): the nightly job, someone pressing the button, or a simulation making demo data. */
 @Suppress("EnumEntryName")
-enum class ReportSnapshotTrigger { scheduled, manual }
+enum class ReportSnapshotTrigger {
+    /** The nightly report-history job. */
+    scheduled,
+
+    /** Someone asked for it, through the snapshot endpoint. */
+    manual,
+
+    /**
+     * A simulation stored it as demo data (issue #1036), possibly dated in the past. Told apart so a series on a test
+     * instance never reads as the nightly job having run.
+     */
+    simulated,
+}
 
 /** How a report is run (issue #981): one row per form, or one per group of forms. */
 @Suppress("EnumEntryName")

@@ -3,12 +3,17 @@ package com.dynamicruntime.sample.simulation
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.report.ReportHistoryWriter
+import com.dynamicruntime.common.gedra.report.ReportService
+import com.dynamicruntime.common.gedra.report.ReportSnapshotTrigger
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.simulation.SimulationReport
 import com.dynamicruntime.common.simulation.Simulations
 import com.dynamicruntime.common.simulation.simulationEndpoint
+import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.ST
 
@@ -26,6 +31,18 @@ object SampleSimulations {
                 "Each run ADDS that many forms again; it never rewrites. Lists an acme administrator for the Reports " +
                 "page, and an administrator over all clients for its Client picker and globex's reports.",
         ) { c, _ -> provisionReportDemo(c) }
+        simulationEndpoint(
+            ReportHistoryDemo.simulationName,
+            "Gives the Reports page's History view a series to draw (issue #1036): everything '${ReportDemo.simulationName}' " +
+                "creates, then ${ReportHistoryDemo.days} days of ${ReportHistoryDemo.formsPerDay} more acme forms each, " +
+                "with a snapshot of acme's two history reports stored after each day's forms and dated that day -- " +
+                "the last ${ReportHistoryDemo.days} days, ending today. The snapshots are backdated rows marked as a " +
+                "simulation's; the node's clock is not moved, so every form is created now and only the counts and " +
+                "sums differ from day to day -- a date column reads the same on all of them. Each run ADDS the forms " +
+                "again, replaces each past day's snapshot with a newer one (a past day keeps its latest), and adds " +
+                "another for today. Shares its forms and users with '${ReportDemo.simulationName}', so running both " +
+                "only adds forms.",
+        ) { c, _ -> provisionReportHistoryDemo(c) }
     }
 }
 
@@ -49,6 +66,20 @@ object ReportDemo {
 
     const val acmeAdmin = "reports.admin@acme.example"
     const val overseer = "reports.overseer@acme.example"
+}
+
+/** The report-history demo's shape (issue #1036): how many days, how many forms a day, and which reports are snapshotted. */
+object ReportHistoryDemo {
+    const val simulationName = "report-history-demo"
+
+    const val days = 5
+    const val formsPerDay = 6
+
+    /** Acme's reports that ask for history: the ones the nightly job would snapshot, and the History view charts. */
+    val reports = listOf(SC.expensesByYear, SC.auditOverview)
+
+    /** Where the simulation sends its administrator: the first report's History view, in the page's own parameter names. */
+    val startPage = "page=${HMENU.pageReports}&${HMENU.reportParam}=${reports.first()}&${HMENU.reportViewParam}=${HMENU.reportViewHistory}"
 }
 
 /**
@@ -114,3 +145,49 @@ fun provisionReportDemo(cxt: KdrCxt): SimulationReport {
             "A rerun adds as many again.",
     )
 }
+
+/**
+ * Provisions the report-history demo (issue #1036): the report demo's forms and users ([provisionReportDemo]), then
+ * [ReportHistoryDemo.days] days' worth of further acme forms, each day's followed by a snapshot of acme's history
+ * reports **dated that day** -- today's last -- so the History view opens on a series that grows day by day.
+ *
+ * The days are made by backdating the snapshots (`takenAt`), never by moving the instance clock: the clock is the
+ * whole node's, and a simulation that rewound it would rewind every other request made meanwhile. The snapshots are
+ * stored as a simulation's ([ReportSnapshotTrigger.simulated]), under this simulation's name as their launch, so a
+ * series here never reads as the nightly job having run. The forms themselves are all created now: what the reports
+ * **counted and summed** on each "day" differs, while a date-valued column (the latest audit activity) reads the
+ * same on every one.
+ */
+fun provisionReportHistoryDemo(cxt: KdrCxt): SimulationReport {
+    val base = provisionReportDemo(cxt)
+    // Already provisioned by the report demo above; asked for again only for their rows.
+    val owners = ReportDemo.acmeOwners.map { (email, name) -> Simulations.provisionUser(cxt, email, SC.acme, ROLE.user, name = name) }
+    val registry = ReportService.get(cxt).forClient(SC.acme)
+    val reports = ReportHistoryDemo.reports.map { id ->
+        registry.report(id)?.bound ?: throw KdrException("The sample's '${SC.acme}' has no report '$id' to snapshot.")
+    }
+    val now = cxt.instanceNow()
+    for (day in 0 until ReportHistoryDemo.days) {
+        for (i in 0 until ReportHistoryDemo.formsPerDay) {
+            val n = ReportDemo.acmeForms + day * ReportHistoryDemo.formsPerDay + i
+            Simulations.createForm(cxt, owners[n % owners.size], reportDemoAcmeEntries(n))
+        }
+        val takenAt = now.addDays(day - (ReportHistoryDemo.days - 1))
+        for (report in reports) {
+            ReportHistoryWriter.snapshot(
+                cxt, SC.acme, report, ReportSnapshotTrigger.simulated, launchName = ReportHistoryDemo.simulationName, takenAt = takenAt,
+            )
+        }
+    }
+    val added = ReportHistoryDemo.days * ReportHistoryDemo.formsPerDay
+    return SimulationReport(
+        clients = base.clients,
+        users = base.users,
+        startPage = ReportHistoryDemo.startPage,
+        summary = base.summary.removeSuffix(" A rerun adds as many again.") +
+            " Then $added more in '${SC.acme}' over ${ReportHistoryDemo.days} days, with a snapshot of " +
+            "${ReportHistoryDemo.reports.joinToString(" and ") { "'$it'" }} dated each day, ending today. A rerun " +
+            "adds the forms again and a newer snapshot for each day.",
+    )
+}
+

@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HMENU
+
 /**
  * Shared URL-hash routing helpers. The app's navigation state lives in the location hash (`page=…&m=…&p=…&v=…`)
  * — client-only, survives a refresh, and needs no server-side routing (works under any static host, including
@@ -110,10 +112,11 @@ object HP {
     /**
      * Reports page (issue #1007): the report that is open, and how it is shown -- `grouped` or `detail`; absent, the
      * report opens the way it declares. The client whose reports these are rides as [client], as on the Clients page.
-     * Not `m`: that is the catalog's, and a hash carrying it is routed there.
+     * Not `m`: that is the catalog's, and a hash carrying it is routed there. The names are the kernel's
+     * (`HMENU`), since a simulation's start page is built with them on the server (issue #1036).
      */
-    const val report = "rpt"
-    const val reportView = "view"
+    const val report = HMENU.reportParam
+    const val reportView = HMENU.reportViewParam
 
     /**
      * The listing page a child was opened from (issue #554), so its back link can return there; absent when

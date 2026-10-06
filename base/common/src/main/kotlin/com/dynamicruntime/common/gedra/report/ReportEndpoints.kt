@@ -202,7 +202,9 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
         property(RRUN.reportId, "The report.", required = true)
         property(RRUN.client, "The client whose forms were read.", required = true)
         property(RHIS.takenAt, "When the run was taken.", required = true) { dateTime() }
-        property(RHIS.trigger, "What took it.", required = true) { options(ReportSnapshotTrigger.entries) }
+        property(RHIS.trigger, "What took it: the nightly job, someone asking, or a simulation's demo data.", required = true) {
+            options(ReportSnapshotTrigger.entries)
+        }
         property(RHIS.launchName, "The job launch that took it; absent for one taken by hand.")
         property(RRUN.groupBy, "The columns the run grouped by: the report's own.", required = true) {
             type = SCT.array

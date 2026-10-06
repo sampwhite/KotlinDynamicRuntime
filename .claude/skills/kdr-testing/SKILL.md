@@ -272,6 +272,7 @@ kdr-probe access-matrix /health /admin/users          # callers x paths -> statu
 kdr-probe grant-then-call                             # grant a rung to a live session, re-probe it
 kdr-probe design-demo [suffix]                        # runs the design-demo simulation (#997)
 kdr-probe report-demo                                 # runs the report-demo simulation: sample report data (#1005)
+kdr-probe report-history-demo                         # report-demo plus five days of dated report snapshots (#1036)
 kdr-probe impact-demo [suffix]                        # runs the impact-demo simulation: a draft to publish (#935)
 kdr-probe call --as operator GET /operator/system/info # one request, no session to keep
 kdr-probe --url http://localhost:7099 catalog-diff    # somewhere other than the default 7071
