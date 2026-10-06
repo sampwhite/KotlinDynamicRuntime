@@ -77,15 +77,16 @@ object Simulations {
      * -- what every config-writing endpoint does. (A test's `writeConfig` plus `reloadClient` reaches this node only.)
      * Published because a provisioned client stands for one as deployed: the Clients page's editors refuse a config
      * with unpublished changes (issue #1026), so a simulation that left a draft would hand over a client whose
-     * definition could not be edited until someone published it. A problem the reload reports is thrown, so a
-     * simulation never reports success over a client that did not load.
+     * definition could not be edited until someone published it. A simulation whose point **is** a draft -- the
+     * impact demo's (#935) -- passes [publish] false and gets the write and reload alone. A problem the reload reports
+     * is thrown, so a simulation never reports success over a client that did not load.
      */
-    fun provisionConfig(cxt: KdrCxt, config: GedraConfig) {
+    fun provisionConfig(cxt: KdrCxt, config: GedraConfig, publish: Boolean = true) {
         val client = config.gedraId.client
         val bound = cxt.mkSubContext("simulation", client)
         val service = GedraConfigService.get(cxt)
         val written = service.writeConfig(bound, config, trial = true)
-        if (!written.isPublished) service.publish(bound, written.configId, trial = true)
+        if (publish && !written.isPublished) service.publish(bound, written.configId, trial = true)
         val result = GedraConfigReload.reloadClient(cxt, client)
         ClientSyncService.get(cxt).announceReload(cxt, result)
         result.issues.firstOrNull()?.let {
