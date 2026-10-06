@@ -324,8 +324,7 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
  */
 private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
     if (proposed == null || AdminRules.canSeeAllClients(c)) return
-    val stored = GedraConfigService.get(c).listConfigs(c)
-        .firstNotNullOfOrNull { it.entriesBySlot()[CCT.clientDef]?.firstOrNull() }
+    val stored = ClientStoredEdit.definitionHolder(c)?.entriesBySlot()?.get(CCT.clientDef)?.firstOrNull()
     val current = stored ?: ClientService.get(c).known(c.client)?.toInfo()
     val changed = ClientOperatorFields.changedBy(proposed.toInfo(), current)
     if (changed.isEmpty()) return

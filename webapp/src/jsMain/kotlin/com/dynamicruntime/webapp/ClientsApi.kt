@@ -16,6 +16,7 @@ import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.ClientOperatorFields
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
+import com.dynamicruntime.common.gedra.ClientPresentationFields
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.cfact.CFACT
@@ -23,6 +24,7 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -600,6 +602,10 @@ class ConfigIssueView(val message: String, val degradedTo: String, val origin: S
  */
 class ClientDefinitionView(
     val info: Map<String, Any?>,
+    /** The client's stored definition as its latest revision holds it (issue #1026), or null when it has none. */
+    val stored: Map<String, Any?>?,
+    /** With [stored]: the name of the stored configuration holding it. */
+    val storedConfig: String?,
     val present: Boolean,
     val issues: List<ConfigIssueView>,
     val traitIds: List<String>,
@@ -628,6 +634,8 @@ private fun parseConfigIssues(raw: Any?): List<ConfigIssueView> = raw.toJsonList
 /** The definition item as a [ClientDefinitionView]. Pure, and covered under `jsNodeTest`. */
 fun parseClientDefinition(item: Map<String, Any?>): ClientDefinitionView = ClientDefinitionView(
     info = item[CLD.client].toJsonMapOrEmpty(),
+    stored = (item[CLD.storedDefinition] as? Map<*, *>)?.let { item[CLD.storedDefinition].toJsonMapOrEmpty() },
+    storedConfig = item[CLD.storedDefinitionConfig].toOptStr(),
     present = item[CLD.present] == true,
     issues = parseConfigIssues(item[CLD.issues]),
     traitIds = item[CLD.traits].toJsonListOfMaps().mapNotNull { it[CCT.traitId].toOptStr() },
@@ -697,6 +705,93 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
     }
 }
 
+// --- editing the definition (issue #1026) ---------------------------------------------------------------------
+
+/**
+ * The draft the editor opens on (issue #1026): each of `ClientPresentationFields` as text -- the labels as one
+ * comma-separated line -- seeded from [baseline], the client's **stored** definition (`storedDefinition`), an absent
+ * field blank. The stored one, not what the client runs: those differ by an unpublished draft, which the editor must
+ * show and be able to take back, and by what a template fills in, which written back would become the client's own.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun definitionDraftOf(baseline: Map<String, Any?>): Map<String, String> = ClientPresentationFields.names.associateWith { name ->
+    if (ClientPresentationFields.isList(name)) baseline[name].toJsonListOfStrings().joinToString(", ")
+    else baseline[name].toOptStr().orEmpty()
+}
+
+/** The labels a comma-separated line names, each once and trimmed -- the rule a client's list is held to. */
+fun labelsOfText(text: String): List<String> = normalizeUserLabels(text.split(','))
+
+/**
+ * The request that saves [draft] for [clientId]: the client, and **only the fields that differ** from [baseline],
+ * the stored definition the draft was seeded from -- a text field trimmed, a cleared one sent blank (the backend
+ * clears it), the labels as a list. Empty beyond the client when nothing changed, which is when Save has nothing
+ * to do. Pure, and covered under `jsNodeTest`.
+ */
+fun definitionEditRequest(clientId: String, baseline: Map<String, Any?>, draft: Map<String, String>): Map<String, Any?> {
+    val out = linkedMapOf<String, Any?>(CLD.client to clientId)
+    for (name in ClientPresentationFields.names) {
+        if (ClientPresentationFields.isList(name)) {
+            val labels = labelsOfText(draft[name].orEmpty())
+            if (labels != baseline[name].toJsonListOfStrings()) out[name] = labels
+        } else {
+            val now = draft[name].orEmpty().trim()
+            if (now != baseline[name].toOptStr().orEmpty()) out[name] = now
+        }
+    }
+    return out
+}
+
+/** Whether a [definitionEditRequest] asks for anything. */
+fun definitionEditChanges(request: Map<String, Any?>): Boolean = request.size > 1
+
+/**
+ * Whether the detail offers the definition editor for the client [row] describes (issue #1026): one this node
+ * carries, defined in **stored** configuration (a source definition is edited in source), not a sandbox (its
+ * definition is its parent's), and not static here (a static client takes nothing stored). The backend refuses
+ * each of these in its own words; this only spares showing an editor that cannot save. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun definitionEditable(row: ClientOverview?): Boolean =
+    row != null && row.status == ClientStatus.present.name && row.origin == GedraConfigOrigin.stored.name &&
+        row.sandboxOf == null && !row.staticHere
+
+/** What the detail offers for editing the definition (issue #1026): the [editor], a [note] in its place, or neither yet. */
+class DefinitionEditOffer(val editor: Boolean, val note: String?)
+
+/**
+ * Whether the detail offers the definition editor (issue #1026), or a note in its place, or neither yet: the
+ * stored configuration [storedConfig] holding the definition may have unpublished changes, which a save would publish
+ * unseen -- the backend's draft rule -- so it must be published first, and the page says so before the attempt.
+ * Not for a client whose definition asks for a sandbox ([sandbox], the running definition's flag, which is what
+ * the backend reads to make a save a draft); and nothing is offered until the [configs] have loaded, so an editor is
+ * never opened and then replaced by the note. Pure, and covered under `jsNodeTest`.
+ */
+fun definitionEditOffer(storedConfig: String?, configs: List<ConfigSummaryView>?, sandbox: Boolean): DefinitionEditOffer {
+    if (storedConfig == null || configs == null) return DefinitionEditOffer(editor = false, note = null)
+    val holder = configs.firstOrNull { it.name == storedConfig }
+    if (sandbox || holder == null || holder.published) return DefinitionEditOffer(editor = true, note = null)
+    return DefinitionEditOffer(
+        editor = false,
+        note = "This client's definition is in configuration '$storedConfig', which has unpublished changes that a " +
+            "save would publish with it. Publish it first",
+    )
+}
+
+/** Whether a configuration row wants attention in the table (issue #1026): it is offered Publish. */
+fun configRowNeedsPublish(row: ClientOverview?, bundle: ConfigSummaryView): Boolean = bundleAction(row, bundle).publish
+
+/** What a definition edit did (issue #1026), and how it took effect -- live, or a draft its sandbox runs (issue #930). */
+class DefinitionEditResult(val configName: String, val info: Map<String, Any?>, val issues: List<String>, val mode: String = EDM.live)
+
+/** The set result as a [DefinitionEditResult]. Pure, and covered under `jsNodeTest`. */
+fun parseDefinitionEditResult(results: Map<String, Any?>): DefinitionEditResult = DefinitionEditResult(
+    configName = results[COV.configName].toOptStr().orEmpty(),
+    info = results[CLD.definition].toJsonMapOrEmpty(),
+    issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
+    mode = results[CPY.mode].toOptStr() ?: EDM.live,
+)
+
 /** The clients endpoints (issue #905): the scoped surface, which both kinds of administrator reach. */
 object ClientsApi {
     /** The clients this administrator oversees, as the overview lists them. */
@@ -714,6 +809,13 @@ object ClientsApi {
     suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
         Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
             .toJsonMapOrEmpty()[CLD.sandbox] == true
+
+    /**
+     * Saves a client's definition edit (issue #1026) -- [request] from [definitionEditRequest] -- and makes it take
+     * effect: live, or a draft for a client with a sandbox; the backend refuses what its trial faults.
+     */
+    suspend fun setDefinition(request: Map<String, Any?>): DefinitionEditResult =
+        parseDefinitionEditResult(Http.sendApi("POST", UADEP.clientDefinitionSet, request)[EP.results].toJsonMapOrEmpty())
 
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =

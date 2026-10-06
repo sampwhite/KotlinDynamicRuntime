@@ -2,7 +2,6 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
  * Adding or removing a client's Shadow Sandbox from the clients page (issue #932): the `sandbox` flag of the
@@ -35,8 +34,7 @@ object ClientSandboxEdit {
             )
         }
         val bound = cxt.mkSubContext("sandboxEdit", client)
-        val svc = GedraConfigService.get(bound)
-        val holder = svc.listConfigs(bound).firstOrNull { it.entriesBySlot()[CCT.clientDef]?.isNotEmpty() == true }
+        val holder = ClientStoredEdit.definitionHolder(bound)
             ?: throw KdrException.mkInput("Client '$client' has no stored definition whose sandbox flag could be set.")
         val current = holder.entriesBySlot()[CCT.clientDef]?.firstOrNull()?.get(CLD.sandbox) == true
         // Already so, and published: nothing to do. Anything else publishes, so an unpublished change -- even the
@@ -48,8 +46,8 @@ object ClientSandboxEdit {
                         "changing its sandbox would publish with it. Publish or revert that configuration first.",
                 )
             }
-            val written = patchFlag(svc, bound, holder, sandbox)
-            ClientStoredEdit.publishAndReload(cxt, bound, client, written, undo = { patchFlag(svc, bound, written, current) })
+            val written = patchFlag(bound, holder, sandbox)
+            ClientStoredEdit.publishAndReload(cxt, bound, client, written, undo = { patchFlag(bound, written, current) }, restorePublished = true)
         }
         return Result(
             client = client,
@@ -59,13 +57,6 @@ object ClientSandboxEdit {
     }
 
     /** Patches [row]'s client definition so its sandbox flag is [sandbox] -- absent when off, as `toInfo` writes it. */
-    private fun patchFlag(svc: GedraConfigService, bound: KdrCxt, row: GedraConfigRow, sandbox: Boolean): GedraConfigRow =
-        svc.patchConfig(bound, row.configId, trial = true) { current ->
-            val out = LinkedHashMap(current)
-            val defs = current[CCT.clientDef].orEmpty()
-            val def = LinkedHashMap(defs.firstOrNull().toJsonMapOrEmpty())
-            if (sandbox) def[CLD.sandbox] = true else def.remove(CLD.sandbox)
-            out[CCT.clientDef] = listOf(def) + defs.drop(1)
-            out
-        }
+    private fun patchFlag(bound: KdrCxt, row: GedraConfigRow, sandbox: Boolean): GedraConfigRow =
+        ClientStoredEdit.patchDefinition(bound, row) { def -> if (sandbox) def[CLD.sandbox] = true else def.remove(CLD.sandbox) }
 }

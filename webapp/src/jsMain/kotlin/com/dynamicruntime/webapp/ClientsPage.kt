@@ -3,10 +3,12 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientPresentationFields
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
@@ -36,9 +38,14 @@ import react.dom.html.ReactHTML.ul
 import react.useEffect
 import react.useRef
 import react.useState
+import kotlinx.browser.document
+import web.dom.ElementId
 import web.cssom.ClassName
 
 private val clientsScope = MainScope()
+
+/** The Stored configuration heading's element id, which a note above links down to. */
+private const val storedConfigurationId = "stored-configuration"
 
 /**
  * The Clients page (issue #905): the clients an administrator oversees, each with where it stands on this node,
@@ -56,7 +63,8 @@ private val clientsScope = MainScope()
  * the overview's facts for it, its definition as the scoped retrieve answers, the issues its checks forgave, and
  * the stored configurations this node holds for it. The definition is asked for on its own, keyed on the open id,
  * so a deep link works before the listing has loaded and a client this node does not carry still shows what the
- * listing knows above the retrieve's honest 404. Editing a client and designing its workflows (#903) will open here.
+ * listing knows above the retrieve's honest 404. Its definition is edited in place (`DefinitionEditor`, issue
+ * #1026) for a client defined in stored configuration.
  */
 @Suppress("UnnecessaryVariable")
 val ClientsPage = FC<Props> {
@@ -247,6 +255,37 @@ private fun ChildrenBuilder.clientDetail(
         backToListing(HMENU.pageClients)
         h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
         for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) readOnlyField(label, value)
+        // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
+        def?.stored?.let { stored ->
+            if (definitionEditable(row)) {
+                val offer = definitionEditOffer(def.storedConfig, configs, sandbox = def.info[CLD.sandbox] == true)
+                if (offer.editor) {
+                    DefinitionEditor {
+                        this.clientId = clientId
+                        baseline = stored
+                        this.onChanged = onChanged
+                    }
+                }
+                offer.note?.let { note ->
+                    // Said before the attempt, with the way there: the editor would only be refused for the same reason.
+                    p {
+                        className = ClassName("subtitle")
+                        +"$note, in "
+                        a {
+                            className = ClassName("wf-cell-link")
+                            href = "#"
+                            onClick = { e ->
+                                e.preventDefault()
+                                // Centred, not at the top: the app bar is fixed and would cover a heading scrolled under it.
+                                document.getElementById(storedConfigurationId)?.asDynamic()?.scrollIntoView(js("({ block: 'center', behavior: 'smooth' })"))
+                            }
+                            +"Stored configuration"
+                        }
+                        +" below."
+                    }
+                }
+            }
+        }
         // The client's named reports (issue #1007) -- for a client this node carries, which is what has any to run.
         // Named by client only for an administrator who looks across them; a scoped one's reports are their own.
         if (row?.status == ClientStatus.present.name) {
@@ -296,7 +335,10 @@ private fun ChildrenBuilder.clientDetail(
             }
         }
         // A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed here as such.
-        h2 { +(row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration") }
+        h2 {
+            id = ElementId(storedConfigurationId)
+            +(row?.sandboxOf?.let { "Configuration it runs ($it's)" } ?: "Stored configuration")
+        }
         when {
             storedError != null -> errorText("Couldn't load this client's stored configuration.", storedError)
             configs == null -> p {
@@ -355,7 +397,119 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
         }
-        // Editing the client, and designing its workflows, land here (#903, later slices).
+    }
+}
+
+external interface DefinitionEditorProps : Props {
+    var clientId: String
+    /** The client's stored definition, which the draft is seeded from and diffed against. */
+    var baseline: Map<String, Any?>
+    var onChanged: () -> Unit
+}
+
+/**
+ * The definition editor (issue #1026): **Edit definition** opens the presentation fields -- name, note, domain
+ * prefix, custom domain, web resources, suggested user labels -- seeded from the client's **stored** definition
+ * ([definitionDraftOf]; a draft already saved shows, and can be taken back); Save sends only what changed ([definitionEditRequest]) and is offered only when something
+ * did; Cancel drops the draft. The fields the platform sets (#820) and the structural ones are not here: they stay
+ * in the read-only rows above. A save takes effect as the copy and menu editors' do -- live, or a draft for a
+ * client with a sandbox, which the note says ([savedNote]) -- and [DefinitionEditorProps.onChanged] re-reads the
+ * page and the shell, so the heading and the listing row follow the new name. A refusal is shown in the backend's
+ * words under the fields, the draft kept, so it can be corrected rather than retyped.
+ */
+private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
+    var editing by useState(false)
+    var draft by useState(definitionDraftOf(props.baseline))
+    var busy by useState(false)
+    var editError by useState<DisplayError?>(null)
+    var note by useState<String?>(null)
+    // The definition a save just stored, until the page's re-read brings the same: an editor reopened in between
+    // starts from it, so the old values are not sent back as changes.
+    var saved by useState<Map<String, Any?>?>(null)
+    val baseline = saved ?: props.baseline
+    useEffect(props.baseline) { saved = null }
+    // Which client a save was started for: a save still in flight when the administrator opens another client is
+    // disowned, so its note and close land nowhere rather than on the new client's page.
+    val latest = useRef(0)
+    // A new client under the same editor: nothing of the previous one's editing state carries over.
+    useEffect(props.clientId) {
+        latest.current = (latest.current ?: 0) + 1
+        editing = false
+        busy = false
+        editError = null
+        note = null
+    }
+
+    fun open() {
+        draft = definitionDraftOf(baseline)
+        editing = true
+        editError = null
+        note = null
+    }
+
+    fun save() {
+        val request = definitionEditRequest(props.clientId, baseline, draft)
+        if (!definitionEditChanges(request)) return
+        val token = latest.current
+        busy = true
+        editError = null
+        clientsScope.launch {
+            try {
+                val result = ClientsApi.setDefinition(request)
+                if (latest.current == token) {
+                    note = savedNote("Saved the definition to ${result.configName}.", result.mode)
+                    editing = false
+                    saved = result.info
+                }
+                props.onChanged()
+            } catch (e: Throwable) {
+                if (latest.current == token) editError = userFacingError(e)
+            } finally {
+                if (latest.current == token) busy = false
+            }
+        }
+    }
+
+    if (!editing) {
+        p {
+            Button {
+                size = "small"
+                onClick = { open() }
+                +"Edit definition"
+            }
+        }
+    } else {
+        val request = definitionEditRequest(props.clientId, baseline, draft)
+        // The one list the endpoint's input is built from, so a field joining it is drawn here without a change.
+        for (name in ClientPresentationFields.names) {
+            textField(humanizeFieldName(name), draft[name].orEmpty(), disabled = busy) { v -> draft = draft + (name to v) }
+        }
+        p {
+            className = ClassName("subtitle")
+            +"Labels are comma-separated; each is matched exactly as written."
+        }
+        p {
+            Button {
+                type = "primary"
+                loading = busy
+                disabled = !definitionEditChanges(request)
+                onClick = { save() }
+                +"Save"
+            }
+            Button {
+                type = "link"
+                disabled = busy
+                onClick = { editing = false; editError = null }
+                +"Cancel"
+            }
+        }
+        editError?.let { errorText("Couldn't save the definition.", it) }
+    }
+    note?.let {
+        p {
+            className = ClassName("subtitle")
+            +it
+        }
     }
 }
 
@@ -404,6 +558,8 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                     val action = bundleAction(props.row, c)
                     tr {
                         key = c.name.unsafeCast<Key>()
+                        // A row offered Publish is marked, so the button a note above sends people to is found at a glance.
+                        if (configRowNeedsPublish(props.row, c)) className = ClassName("op-row-attention")
                         td { +c.name }
                         td { className = ClassName("op-num"); +c.version.toString() }
                         td { +(if (c.published) c.publishedAt?.let { formatTimestamp(it) } ?: "Yes" else "No") }

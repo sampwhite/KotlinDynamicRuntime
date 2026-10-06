@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
  * What the administrators' editors of a client's presentation share (issues #918, #919): the stored config their
@@ -46,9 +47,28 @@ object ClientStoredEdit {
      * Makes a save take effect: published and live ([publishAndReload]), or -- a draft -- the owner reloaded, which
      * rebuilds its sandbox from the latest revision while a published-only owner keeps running what it published.
      */
-    fun takeEffect(cxt: KdrCxt, target: EditTarget, written: GedraConfigRow, undo: () -> Unit): ConfigReloadResult =
+    fun takeEffect(cxt: KdrCxt, target: EditTarget, written: GedraConfigRow, undo: () -> Unit, restorePublished: Boolean = false): ConfigReloadResult =
         if (target.draft) SandboxEdits.reloadParent(cxt, target.client)
-        else publishAndReload(cxt, target.bound, target.client, written, undo)
+        else publishAndReload(cxt, target.bound, target.client, written, undo, restorePublished)
+
+    /** The stored config of the bound client's that holds its definition (`clientDef`), or null when none does. */
+    fun definitionHolder(bound: KdrCxt): GedraConfigRow? =
+        GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.entriesBySlot()[CCT.clientDef]?.isNotEmpty() == true }
+
+    /**
+     * Patches [row]'s client definition entry as [edit] leaves it -- inside `patchConfig`, over the revision as it
+     * stands under the lock, so a field another administrator changed a moment ago is kept. The definition editors'
+     * shared patch (the sandbox flag, #932; the presentation fields, #1026).
+     */
+    fun patchDefinition(bound: KdrCxt, row: GedraConfigRow, edit: (LinkedHashMap<String, Any?>) -> Unit): GedraConfigRow =
+        GedraConfigService.get(bound).patchConfig(bound, row.configId, trial = true) { current ->
+            val out = LinkedHashMap(current)
+            val defs = current[CCT.clientDef].orEmpty()
+            val def = LinkedHashMap(defs.firstOrNull().toJsonMapOrEmpty())
+            edit(def)
+            out[CCT.clientDef] = listOf(def) + defs.drop(1)
+            out
+        }
 
     /**
      * Puts an editor's patched [entry] back into [slot] of [out]: in place of the one at [at], or appended when there
@@ -98,13 +118,28 @@ object ClientStoredEdit {
     /**
      * Publishes [written]'s config, reloads [client] on this node and announces it to peers, returning the reload.
      * A publish the trial refuses runs [undo] -- the change put back as it was -- before the refusal is rethrown, so
-     * the change is not left in a draft that the next edit would publish.
+     * the change is not left in a draft that the next edit would publish. The undo is itself a further unpublished
+     * revision, equal to the published one; with [restorePublished] -- for a config that was published before the
+     * edit -- it is published too, so the config is as it was rather than a draft the next edit is refused for.
      */
-    fun publishAndReload(cxt: KdrCxt, bound: KdrCxt, client: String, written: GedraConfigRow, undo: () -> Unit): ConfigReloadResult {
+    fun publishAndReload(cxt: KdrCxt, bound: KdrCxt, client: String, written: GedraConfigRow, undo: () -> Unit, restorePublished: Boolean = false): ConfigReloadResult {
         try {
             GedraConfigService.get(bound).publish(bound, written.configId, trial = true)
         } catch (e: KdrException) {
             undo()
+            // Best effort: the undone content is what the client already runs, so its publish should pass; if it does
+            // not, the refusal to report is the edit's, and the config is left a draft -- said in the log, since the
+            // next edit will be refused for it.
+            if (restorePublished) {
+                try {
+                    GedraConfigService.get(bound).publish(bound, written.configId, trial = true)
+                } catch (restore: KdrException) {
+                    LogGedra.warn(cxt) {
+                        "Could not republish '${written.configId.baseId}' of client '$client' after undoing a refused " +
+                            "edit; it is left with unpublished changes: ${restore.message}"
+                    }
+                }
+            }
             throw e
         }
         val reload = GedraConfigReload.reloadClient(cxt, client)
