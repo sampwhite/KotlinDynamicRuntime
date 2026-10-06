@@ -68,7 +68,8 @@ fun <T> ApiResult<T>.designRereadValue(): T? {
 /**
  * A definition's address and where it was declared, as the backend's Design View block gives it: the config [slot]
  * and [key] that name the definition, the [path] within its entry where the addressed part sits, the [origin] (a
- * [DesignOrigin] name), the [config] that declares it, and whether it is [editable] in place.
+ * [DesignOrigin] name) and the [config] that declares it, and -- when the client's own configuration alters a shared
+ * definition -- that alteration, [alteredBy] (issue #1013).
  */
 class DesignAddress(
     val slot: String,
@@ -76,12 +77,15 @@ class DesignAddress(
     val path: String?,
     val origin: String,
     val config: String?,
-    val editable: Boolean,
+    val alteredBy: DesignLayer? = null,
 ) {
     /** This address with [more] appended to its path -- a field inside the definition's body. */
     fun below(more: List<String>): DesignAddress =
-        if (more.isEmpty()) this else DesignAddress(slot, key, (listOfNotNull(path) + more).joinToString("."), origin, config, editable)
+        if (more.isEmpty()) this else DesignAddress(slot, key, (listOfNotNull(path) + more).joinToString("."), origin, config, alteredBy)
 }
+
+/** One layer behind a definition (issue #1013): where it is held -- the [origin] (a [DesignOrigin] name) and [config]. */
+class DesignLayer(val origin: String, val config: String?)
 
 /** A workflow view's Design View block: the workflow's own address, and each carried type's by qualified name. */
 class WfDesign(
@@ -106,13 +110,16 @@ class WfDesign(
  */
 class LayoutEdit(val entry: Map<String, Any?>, val inherited: Map<String, Any?>?, val inheritedChanged: Boolean)
 
+fun parseDesignLayer(m: Map<String, Any?>): DesignLayer =
+    DesignLayer(m[DSV.origin].toOptStr() ?: DesignOrigin.global.name, m[DSV.config].toOptStr())
+
 fun parseDesignAddress(raw: Any?): DesignAddress? {
     val m = raw.toJsonMapOrEmpty()
     val slot = m[DSV.slot].toOptStr() ?: return null
     val key = m[DSV.key].toOptStr() ?: return null
     return DesignAddress(
         slot, key, m[DSV.path].toOptStr(), m[DSV.origin].toOptStr() ?: DesignOrigin.global.name,
-        m[DSV.config].toOptStr(), m[DSV.editable] == true,
+        m[DSV.config].toOptStr(), (m[DSV.alteredBy] as? Map<*, *>)?.toJsonMapOrEmpty()?.let(::parseDesignLayer),
     )
 }
 
@@ -234,11 +241,25 @@ fun fieldOwner(rootName: String, rootType: SchType, dataPath: String): FieldOwne
     return FieldOwner(owner, at)
 }
 
-/** A definition's origin, said for the inspector: who owns it and whether it can be edited in place. */
-fun originText(address: DesignAddress): String = when (address.origin) {
-    DesignOrigin.stored.name -> "This client's stored configuration" + (address.config?.let { " ($it)" } ?: "")
-    DesignOrigin.source.name -> "Defined in code for this client" + (address.config?.let { " ($it)" } ?: "")
-    else -> "Global — shared by every client" + (address.config?.let { " ($it)" } ?: "")
+/**
+ * Where a definition comes from, in one sentence for the inspector (issue #1013): where it is declared, and the
+ * client's own configuration altering it when one does. However the shared part was assembled, the reader sees
+ * two things -- what every client shares, and what is this client's own.
+ */
+fun provenanceText(address: DesignAddress): String {
+    val declared = when (address.origin) {
+        DesignOrigin.stored.name, DesignOrigin.source.name ->
+            "This client's own, declared in " + layerText(DesignLayer(address.origin, address.config))
+        else -> "Shared by every client, from " + (address.config ?: "the platform")
+    }
+    val altered = address.alteredBy?.let { "; altered for this client in " + layerText(it) }.orEmpty()
+    return "$declared$altered."
+}
+
+/** Where a client's own layer is held, as [provenanceText] says it after "declared in" or "altered … in". */
+private fun layerText(layer: DesignLayer): String {
+    val named = layer.config?.let { " ($it)" }.orEmpty()
+    return if (layer.origin == DesignOrigin.stored.name) "its stored configuration$named" else "source$named"
 }
 
 /** A slot's name for a reader: `kdr:traitDef` reads "trait". */

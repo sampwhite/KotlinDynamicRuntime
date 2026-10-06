@@ -775,13 +775,19 @@ class SchemaService : ServiceInitializer {
         collector?.gedraConfigs?.configOfTrait(client, traitId)
 
     /**
-     * The config declaring the type [typeName] as [client] sees it -- the client's own (the last of its configs to
-     * declare it, the one its variant folds in last), else a global config -- or null when no config declares it,
-     * as for a type declared in a component's code (issue #972).
+     * The client's own config contributing the type [typeName] -- the last of its configs to declare it, the one its
+     * variant folds in last -- or null (issue #972). For a type the global document also holds, this is the client's
+     * **alteration** of it, not its declaration (issue #1013).
      */
-    fun configOfType(client: String, typeName: String): GedraConfig? = collector?.gedraConfigs?.let {
-        it.contributorOf(client, typeName) ?: it.contributorOf(GID.globalClient, typeName)
-    }
+    fun clientConfigOfType(client: String, typeName: String): GedraConfig? =
+        collector?.gedraConfigs?.contributorOf(client, typeName)
+
+    /**
+     * The global config declaring the type [typeName], or null -- also for a type declared in a component's code,
+     * which no config holds (that one is in the global document, [schemaStore], all the same).
+     */
+    fun globalConfigOfType(typeName: String): GedraConfig? =
+        collector?.gedraConfigs?.contributorOf(GID.globalClient, typeName)
 
     /** Whether [traitId] is a global data trait's id -- the same trait for every client (issue #807). */
     fun isGlobalTrait(traitId: String): Boolean = collector?.gedraConfigs?.isGlobalTrait(traitId) ?: false
