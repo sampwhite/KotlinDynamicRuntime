@@ -272,6 +272,7 @@ kdr-probe access-matrix /health /admin/users          # callers x paths -> statu
 kdr-probe grant-then-call                             # grant a rung to a live session, re-probe it
 kdr-probe design-demo [suffix]                        # runs the design-demo simulation (#997)
 kdr-probe report-demo                                 # runs the report-demo simulation: sample report data (#1005)
+kdr-probe impact-demo [suffix]                        # runs the impact-demo simulation: a draft to publish (#935)
 kdr-probe call --as operator GET /operator/system/info # one request, no session to keep
 kdr-probe --url http://localhost:7099 catalog-diff    # somewhere other than the default 7071
 ```
@@ -307,7 +308,7 @@ so a person doing UAT (or reviewing a page) can set it up and look. It is a `for
 with a purpose) and where to start; the webapp's **Simulations** page and `kdr-probe <name>` both read it.
 
 - **Declare it in the component that owns what it provisions.** One that depends on nothing lives in `common`'s
-  `simulation` package (`design-demo`); one over a component's own clients or data lives in that component and uses
+  `simulation` package (`design-demo`, `impact-demo`); one over a component's own clients or data lives in that component and uses
   its constants (`sample`'s `report-demo`). The declaration is the registration: a node without the component does
   not offer it.
 - **Provision with `Simulations`.** `provisionConfig` writes, reloads **and announces**, so the config reaches every

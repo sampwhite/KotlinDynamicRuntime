@@ -368,7 +368,18 @@ is **Publish** (`bundleAction`): offered on a client without a sandbox and on a 
 parent's bundles, the configuration it runs, and publishes them there -- and replaced by a note elsewhere: a
 client with a sandbox publishes from it, after previewing -- the word "sandbox" leads to the sandbox's page,
 directly for an `allClients` administrator, and for a client-scoped one by opening the sandbox first (a fresh
-session as their user there) and landing on that page -- and a client static in production takes nothing stored. A publish reloads the client (`ClientsApi.publishBundle`). The definition and the configurations are fetched apart and keyed on the open id with a
+session as their user there) and landing on that page -- and a client static in production takes nothing stored. A publish reloads the client (`ClientsApi.publishBundle`).
+A publish is judged against the client's **stored data** (issue #935): one that would affect it is refused with an
+impact report (the envelope's `errorCode` `IMP.refusedCode`, the report in its `extraData`, which `ApiError` carries
+for this), and the table opens it in a dialog (`ImpactReportDialog`: `impactSummary`, a line per finding from
+`impactFindingText`, at most five form ids per finding beside the full count) whose **Publish anyway** sends
+`acknowledgeImpact` (`publishBundleRequest`). **Check impact** (`BundleAction.checkImpact`) fetches the same report
+before any publish (`ClientsApi.bundleImpact`): beside Publish where publishing changes what the client runs, and on a
+client with a sandbox beside the "publish from its sandbox" note too, with no publish button in the dialog there. Each
+form id opens the raw trait editor in a new tab (`impactFormHref`) where the session can read it
+(`impactFormsOpenable`); a session in the sandbox is a user of the sandbox and cannot read its parent's forms, so there
+the ids stay plain and a note says to open them from the parent's own page. The `impact-demo` simulation leaves a harmful draft to look at -- run it from the
+**Simulations** page, which signs you in as the client's administrator, or `kdr-probe --url <your server> impact-demo`. The definition and the configurations are fetched apart and keyed on the open id with a
 monotonic token, so a client this node does not carry still shows what the listing knows above the retrieve's
 404, and a slow answer for a client the user moved on from is dropped. The constants the frontend reads these by
 (`CFEP`, `ACEP`, `CCT`, `GCI`) live in the kernel for that reason.

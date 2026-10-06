@@ -17,9 +17,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
+import react.Fragment
 import react.Key
 import react.Props
+import react.create
 import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
@@ -41,6 +44,8 @@ import react.useState
 import kotlinx.browser.document
 import web.dom.ElementId
 import web.cssom.ClassName
+import web.window.WindowTarget
+import web.window._blank
 
 private val clientsScope = MainScope()
 
@@ -526,18 +531,61 @@ external interface StoredConfigTableProps : Props {
 }
 
 /**
+ * The impact dialog's subject (issue #935): a [report] on publishing [name], from a [refused] publish or a check; with
+ * [canPublish] where this page publishes the configuration (not a client's page whose sandbox does).
+ */
+private class ImpactDialog(val name: String, val report: ImpactReportView, val refused: Boolean, val canPublish: Boolean)
+
+/**
  * A client's configuration bundles (issues #906, #1001): one row per bundle -- its latest revision's version, when it
  * was published and last written, whether it is live ([bundleLiveText], by the client's tier), its issues -- and an
  * **actions** column. Publish is the first action ([bundleAction] decides where it is offered, and why not where it
  * is not); View and Edit are to join it. A publish reloads the client, and [StoredConfigTableProps.onChanged]
  * re-reads the page.
+ *
+ * Publishing is judged against the client's stored data (issue #935). A publish that would affect it is refused with
+ * a report, which opens a dialog listing what would happen, with **Publish anyway**; **Check impact**, beside Publish
+ * where the client runs only what is published, opens the same dialog before any publish -- most useful from the
+ * sandbox, just before going live.
  */
 private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     val bump = useRefreshBump()
     var busy by useState<String?>(null)
     var error by useState<DisplayError?>(null)
-    useEffect(props.clientId) { error = null }
+    var impact by useState<ImpactDialog?>(null)
+    useEffect(props.clientId) { error = null; impact = null }
     val publishedOnly = props.row?.let { it.publishedOnly || it.sandboxOf != null } ?: true
+
+    fun publish(name: String, acknowledge: Boolean) {
+        busy = name
+        error = null
+        clientsScope.launch {
+            try {
+                ClientsApi.publishBundle(props.clientId, name, props.acrossClients, acknowledgeImpact = acknowledge)
+                impact = null
+                props.onChanged()
+            } catch (e: Throwable) {
+                val refusedOver = impactOf(e)
+                if (refusedOver != null) impact = ImpactDialog(name, refusedOver, refused = true, canPublish = true) else error = userFacingError(e)
+            } finally {
+                busy = null
+            }
+        }
+    }
+
+    fun checkImpact(name: String, canPublish: Boolean) {
+        busy = name
+        error = null
+        clientsScope.launch {
+            try {
+                impact = ImpactDialog(name, ClientsApi.bundleImpact(props.clientId, name, props.acrossClients), refused = false, canPublish = canPublish)
+            } catch (e: Throwable) {
+                error = userFacingError(e)
+            } finally {
+                busy = null
+            }
+        }
+    }
     div {
         className = ClassName("op-table-scroll")
         table {
@@ -569,28 +617,27 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                         td { className = ClassName("op-num"); +c.issueCount.toString() }
                         td {
                             if (action.publish) {
-                                Button {
-                                    size = "small"
-                                    loading = busy == c.name
-                                    disabled = busy != null
-                                    action.note?.let { asDynamic()["title"] = it }
-                                    onClick = {
-                                        busy = c.name
-                                        error = null
-                                        clientsScope.launch {
-                                            try {
-                                                ClientsApi.publishBundle(props.clientId, c.name, props.acrossClients)
-                                                props.onChanged()
-                                            } catch (e: Throwable) {
-                                                error = userFacingError(e)
-                                            } finally {
-                                                busy = null
-                                            }
-                                        }
+                                span {
+                                    className = ClassName("row-actions")
+                                    Button {
+                                        size = "small"
+                                        loading = busy == c.name
+                                        disabled = busy != null
+                                        action.note?.let { asDynamic()["title"] = it }
+                                        onClick = { publish(c.name, acknowledge = false) }
+                                        +"Publish"
                                     }
-                                    +"Publish"
+                                    if (action.checkImpact) checkImpactButton(c.name, busy, canPublish = true, ::checkImpact)
                                 }
                             } else {
+                                // A client with a sandbox publishes there, but its impact is checked here too, where
+                                // the report's forms can be opened (issue #935).
+                                if (action.checkImpact) {
+                                    span {
+                                        className = ClassName("row-actions")
+                                        checkImpactButton(c.name, busy, canPublish = false, ::checkImpact)
+                                    }
+                                }
                                 val sandbox = action.sandboxClient
                                 if (sandbox == null) {
                                     action.note?.let { note ->
@@ -636,7 +683,104 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
             }
         }
     }
-    error?.let { errorText("Couldn't publish the configuration, or open its sandbox.", it) }
+    error?.let { errorText("Couldn't publish the configuration, check its impact, or open its sandbox.", it) }
+    ImpactReportDialog {
+        dialog = impact
+        formsOpenable = impactFormsOpenable(props.acrossClients, onSandboxPage = props.row?.sandboxOf != null)
+        publishing = busy != null
+        onClose = { impact = null }
+        onPublish = { name, acknowledge -> publish(name, acknowledge) }
+    }
+}
+
+/** A bundle row's Check impact button (issue #935). */
+private fun ChildrenBuilder.checkImpactButton(name: String, busy: String?, canPublish: Boolean, check: (String, Boolean) -> Unit) {
+    Button {
+        size = "small"
+        disabled = busy != null
+        asDynamic()["title"] = "What publishing it would do to the forms the client already stores."
+        onClick = { check(name, canPublish) }
+        +"Check impact"
+    }
+}
+
+private external interface ImpactReportDialogProps : Props {
+    var dialog: ImpactDialog?
+    var formsOpenable: Boolean
+    var publishing: Boolean
+    var onClose: () -> Unit
+    var onPublish: (name: String, acknowledge: Boolean) -> Unit
+}
+
+/**
+ * The publish impact report in a dialog (issue #935): [impactSummary], then a line per finding ([impactFindingText])
+ * with a few of the forms' ids to go and look at -- each opening in the raw trait editor in a new tab, where this
+ * session can read them ([impactFormsOpenable]); in a sandbox, a note says where they open instead. Its publish
+ * button goes ahead -- **Publish anyway**, acknowledging the report, when it found anything; plain Publish after a
+ * check that found nothing -- and is absent where the configuration publishes from the sandbox.
+ */
+private val ImpactReportDialog = FC<ImpactReportDialogProps> { props ->
+    val dialog = props.dialog
+    val report = dialog?.report
+    Modal {
+        open = dialog != null
+        title = dialog?.let { if (it.refused) "Publishing ${it.name} was stopped" else "Impact of publishing ${it.name}" }
+        onCancel = props.onClose
+        footer = if (dialog == null) null else Fragment.create {
+            Button {
+                onClick = props.onClose
+                +(if (report?.blocks == true && dialog.canPublish) "Cancel" else "Close")
+            }
+            if (dialog.canPublish) {
+                Button {
+                    type = "primary"
+                    danger = report?.blocks == true
+                    loading = props.publishing
+                    onClick = { props.onPublish(dialog.name, report?.blocks == true) }
+                    +(if (report?.blocks == true) "Publish anyway" else "Publish")
+                }
+            }
+        }
+        if (report != null) {
+            p { +impactSummary(report) }
+            if (!props.formsOpenable && report.findings.isNotEmpty()) {
+                p {
+                    className = ClassName("type-hint")
+                    +"These forms are ${report.client}'s, which this sandbox session cannot open; open them from ${report.client}'s own page."
+                }
+            }
+            if (report.findings.isNotEmpty()) {
+                ul {
+                    report.findings.forEachIndexed { i, f ->
+                        li {
+                            key = i.toString().unsafeCast<Key>()
+                            +impactFindingText(f)
+                            if (f.sampleIds.isNotEmpty()) {
+                                div {
+                                    className = ClassName("type-hint")
+                                    +(if (f.count > f.sampleIds.size) "For example: " else "Forms: ")
+                                    f.sampleIds.forEachIndexed { j, id ->
+                                        if (j > 0) +", "
+                                        if (props.formsOpenable) {
+                                            a {
+                                                href = impactFormHref(id)
+                                                target = WindowTarget._blank
+                                                rel = "noopener"
+                                                title = "Open this form's entries in a new tab."
+                                                code { +id }
+                                            }
+                                        } else {
+                                            code { +id }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 external interface SandboxSectionProps : Props {

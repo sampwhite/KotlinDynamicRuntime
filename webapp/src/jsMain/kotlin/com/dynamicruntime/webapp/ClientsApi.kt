@@ -19,6 +19,8 @@ import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientPresentationFields
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
+import com.dynamicruntime.common.gedra.IMP
+import com.dynamicruntime.common.gedra.ImpactKind
 import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
@@ -857,18 +859,129 @@ object ClientsApi {
     /**
      * Publishes [clientId]'s configuration [name] and reloads the client (issue #1001), so a published-only client
      * runs what was just published. For a sandbox, its parent's: the full-scope surface names the parent; the scoped
-     * one, called in the sandbox, acts on the parent already (#930).
+     * one, called in the sandbox, acts on the parent already (#930). A publish that would affect the client's stored
+     * data is refused unless [acknowledgeImpact] (issue #935); [impactOf] reads the report off that refusal.
      */
-    suspend fun publishBundle(clientId: String, name: String, acrossClients: Boolean) {
+    suspend fun publishBundle(clientId: String, name: String, acrossClients: Boolean, acknowledgeImpact: Boolean = false) {
+        val request = publishBundleRequest(clientId, name, acrossClients, acknowledgeImpact)
+        Http.sendApi("POST", request.path, request.body)
         if (acrossClients) {
-            val owner = sandboxParentOf(clientId) ?: clientId
-            Http.sendApi("POST", ACEP.bundlePublish, mapOf(CFEP.client to owner, CFEP.name to name))
-            Http.sendApi("POST", ACEP.reload, mapOf(CFEP.client to owner))
+            Http.sendApi("POST", ACEP.reload, mapOf(CFEP.client to (sandboxParentOf(clientId) ?: clientId)))
         } else {
-            Http.sendApi("POST", CFEP.bundlePublish, mapOf(CFEP.name to name))
             Http.sendApi("POST", CFEP.reload, emptyMap())
         }
     }
+
+    /** What publishing [clientId]'s configuration [name] would do to the client's stored data (issue #935). */
+    suspend fun bundleImpact(clientId: String, name: String, acrossClients: Boolean): ImpactReportView {
+        val path = if (acrossClients) {
+            ACEP.bundleImpact + queryString(mapOf(CFEP.client to (sandboxParentOf(clientId) ?: clientId), CFEP.name to name))
+        } else {
+            CFEP.bundleImpact + queryString(mapOf(CFEP.name to name))
+        }
+        return parseImpactReport(Http.getApi(path)[EP.item].toJsonMapOrEmpty())
+    }
+}
+
+/** A request's path and body. */
+class ApiRequest(val path: String, val body: Map<String, Any?>)
+
+/**
+ * The publish of [clientId]'s configuration [name] (issues #1001, #935): the full-scope surface naming the owner --
+ * a sandbox's parent, since a sandbox holds none of its own -- or the scoped one; with [acknowledgeImpact] when the
+ * caller has seen the impact report and goes ahead. Pure, and covered under `jsNodeTest`.
+ */
+fun publishBundleRequest(clientId: String, name: String, acrossClients: Boolean, acknowledgeImpact: Boolean): ApiRequest {
+    val body = buildMap {
+        if (acrossClients) put(CFEP.client, sandboxParentOf(clientId) ?: clientId)
+        put(CFEP.name, name)
+        if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
+    }
+    return ApiRequest(if (acrossClients) ACEP.bundlePublish else CFEP.bundlePublish, body)
+}
+
+/** One finding of a publish impact report (issue #935): rows a publish would affect the same way. */
+class ImpactFindingView(
+    val kind: String,
+    val traitId: String?,
+    val workflowId: String?,
+    val taskId: String?,
+    val count: Int,
+    val sampleIds: List<String>,
+)
+
+/**
+ * What publishing one configuration would do to its client's stored data (issue #935): the rows [scanned], whether the
+ * client stores [tooLarge] a number to examine, and the [findings] -- only what the publish would break.
+ */
+class ImpactReportView(
+    val client: String,
+    val name: String,
+    val version: Int,
+    val scanned: Int,
+    val tooLarge: Boolean,
+    val findings: List<ImpactFindingView>,
+) {
+    /** Whether a publish needs acknowledging: as the backend decides it. */
+    val blocks: Boolean get() = tooLarge || findings.isNotEmpty()
+}
+
+/** A report as the wire carries it -- from the report endpoint, or a refused publish's `extraData`. Pure. */
+fun parseImpactReport(raw: Map<String, Any?>): ImpactReportView = ImpactReportView(
+    client = raw[IMP.client].toOptStr().orEmpty(),
+    name = raw[IMP.name].toOptStr().orEmpty(),
+    version = (raw[IMP.version] as? Number)?.toInt() ?: 0,
+    scanned = (raw[IMP.scanned] as? Number)?.toInt() ?: 0,
+    tooLarge = raw[IMP.tooLarge] == true,
+    findings = raw[IMP.findings].toJsonListOfMaps().map {
+        ImpactFindingView(
+            kind = it[IMP.kind].toOptStr().orEmpty(),
+            traitId = it[IMP.traitId].toOptStr(),
+            workflowId = it[IMP.workflowId].toOptStr(),
+            taskId = it[IMP.taskId].toOptStr(),
+            count = (it[IMP.count] as? Number)?.toInt() ?: 0,
+            sampleIds = it[IMP.sampleIds].toJsonListOfStrings(),
+        )
+    },
+)
+
+/** The report a publish was refused over (issue #935), or null for any other error. Pure. */
+fun impactOf(e: Throwable): ImpactReportView? {
+    val api = e as? ApiError ?: return null
+    if (api.errorCode != IMP.refusedCode) return null
+    return parseImpactReport(api.extraData[IMP.report].toJsonMapOrEmpty())
+}
+
+/** One finding as a sentence for the dialog (issue #935): how many forms, and what would happen to them. Pure. */
+fun impactFindingText(f: ImpactFindingView): String {
+    val one = f.count == 1
+    val forms = if (one) "1 form" else "${f.count} forms"
+    fun verb(single: String, plural: String) = if (one) single else plural
+    return when (f.kind) {
+        ImpactKind.traitGone.name ->
+            "$forms ${verb("holds", "hold")} entries of trait ${f.traitId}, which the client would no longer support."
+        ImpactKind.dataInvalid.name ->
+            "$forms ${verb("holds", "hold")} entries of trait ${f.traitId} that would no longer be valid, and could " +
+                "not be edited until they are fixed."
+        ImpactKind.workflowGone.name ->
+            "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which would no longer exist."
+        ImpactKind.stateStranded.name ->
+            "$forms ${verb("is", "are")} at task ${f.taskId} of workflow ${f.workflowId}, which the workflow would " +
+                "no longer define."
+        else -> "$forms would be affected (${f.kind})."
+    }
+}
+
+/**
+ * The sentence heading the impact dialog (issue #935): too many rows to examine, nothing found, or how many kinds of
+ * harm were. Pure.
+ */
+fun impactSummary(report: ImpactReportView): String = when {
+    report.tooLarge -> "This client stores more forms than an impact check examines, so what publishing " +
+        "${report.name} would do to them is unknown."
+    report.findings.isEmpty() -> "Publishing ${report.name} changes nothing the client's ${report.scanned} stored " +
+        "form(s) rely on."
+    else -> "Publishing ${report.name} would affect forms ${report.client} already stores:"
 }
 
 /**
@@ -900,8 +1013,11 @@ fun bundleLiveText(bundle: ConfigSummaryView, publishedOnly: Boolean): String = 
 /**
  * What a bundle row offers (issue #1001): [publish] when publishing is offered, else a [note] saying why not, or what
  * publishing does -- and, where publishing belongs on the client's sandbox, [sandboxClient] to link to it.
+ * [checkImpact] offers the publish impact report (issue #935) on a draft whose publishing would change what the
+ * client runs: beside Publish, and on a client with a sandbox beside the note too, where the report's forms can be
+ * opened (a session in the sandbox cannot read its parent's).
  */
-class BundleAction(val publish: Boolean, val note: String?, val sandboxClient: String? = null)
+class BundleAction(val publish: Boolean, val note: String?, val sandboxClient: String? = null, val checkImpact: Boolean = false)
 
 /**
  * What the detail's configuration row for [bundle] offers, on the page of the client [row] (issue #1001). Nothing for
@@ -914,8 +1030,21 @@ fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction 
     bundle.published -> BundleAction(false, null)
     row == null -> BundleAction(false, null)
     row.staticHere -> BundleAction(false, "This client takes nothing stored on this node, so publishing changes nothing.")
-    row.hasSandbox -> BundleAction(false, "Publish from its sandbox, after previewing it there.", sandboxClient = sandboxOf(row.clientId))
-    row.sandboxOf != null -> BundleAction(true, "Publishing makes it live in ${row.sandboxOf}.")
+    row.hasSandbox -> BundleAction(
+        false, "Publish from its sandbox, after previewing it there.", sandboxClient = sandboxOf(row.clientId), checkImpact = true,
+    )
+    row.sandboxOf != null -> BundleAction(true, "Publishing makes it live in ${row.sandboxOf}.", checkImpact = true)
+    // On its latest revision, publishing changes nothing it runs, so there is no impact to check.
     !row.publishedOnly -> BundleAction(true, "It runs its latest revision either way; publishing marks this one, and the next edit starts another.")
-    else -> BundleAction(true, null)
+    else -> BundleAction(true, null, checkImpact = true)
 }
+
+/**
+ * Whether the impact dialog may link its forms (issue #935): the forms are the report's client's -- a sandbox's
+ * parent's -- so they open for an administrator across clients, and from any page but a sandbox's, whose session is a
+ * user of the sandbox and cannot read them. Pure.
+ */
+fun impactFormsOpenable(acrossClients: Boolean, onSandboxPage: Boolean): Boolean = acrossClients || !onSandboxPage
+
+/** Where a form of an impact report opens: the raw trait editor (issue #935). Pure. */
+fun impactFormHref(gedraId: String): String = hashHref(listOf(HP.page to pageEditForm, HP.gedra to gedraId))

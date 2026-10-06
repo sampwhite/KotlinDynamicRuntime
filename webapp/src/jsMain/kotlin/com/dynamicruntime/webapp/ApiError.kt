@@ -10,6 +10,9 @@ import kotlin.coroutines.cancellation.CancellationException
  * [fromFragment] (the envelope's `errorFromFragment`) is the pivot: `true` means the message is designed,
  * user-facing copy rendered from a Markdown fragment -- safe to show, and Markdown-render, as an *expected*
  * error. `false` means a raw/internal message, to be suppressed or clearly marked as raw (see [userFacingError]).
+ *
+ * [extraData] is the envelope's area-specific bag, for a caller that keys off [errorCode] and needs more than the
+ * message -- a publish refused over its impact carries the report there (issue #935).
  */
 class ApiError(
     override val message: String,
@@ -17,6 +20,7 @@ class ApiError(
     val status: Int?,
     val errorCode: String?,
     val traceId: String?,
+    val extraData: Map<String, Any?> = emptyMap(),
 ) : Throwable(message)
 
 /**

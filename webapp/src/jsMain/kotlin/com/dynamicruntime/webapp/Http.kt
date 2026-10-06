@@ -8,6 +8,7 @@ import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.jsonMapOrNull
 import com.dynamicruntime.common.util.jsonMapResult
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import kotlinx.coroutines.await
 import kotlin.coroutines.cancellation.CancellationException
@@ -327,6 +328,7 @@ object Http {
                 status = (env?.get(EP.status) as? Number)?.toInt() ?: (response.status as? Number)?.toInt(),
                 errorCode = env?.get(EP.errorCode) as? String,
                 traceId = traceId,
+                extraData = env?.get(EP.extraData).toJsonMapOrEmpty(),
             ))
         }
         return ApiResult.Ok(text)
