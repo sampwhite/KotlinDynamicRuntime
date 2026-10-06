@@ -112,6 +112,35 @@ object DSV {
     const val workflowId = "workflowId"
     const val typeName = "typeName"
     const val field = "field"
+
+    // --- the shared editor (issue #1029) ---
+
+    /**
+     * In the definition read of a trait or type: the client's workflows whose pages show it, each `{ workflowId,
+     * label }` -- what an edit of the shared definition reaches.
+     */
+    const val usedBy = "usedBy"
+    const val label = "label"
+
+    /** In the definition read: by field, the workflows that override that field's copy with a variant of their own. */
+    const val variantFields = "variantFields"
+
+    /** In the definition read: whether this caller may edit the shared definition here -- see [canEdit]'s rules. */
+    const val canEditShared = "canEditShared"
+
+    /** In the definition read, when [canEditShared] is false: why, and which [DesignRefusal] it is. */
+    const val sharedRefusal = "sharedRefusal"
+    const val sharedRefusalCode = "sharedRefusalCode"
+
+    /** In the definition read, and sent back with a shared edit: a stamp of the stored entry it was drawn from. */
+    const val sharedBasedOn = "sharedBasedOn"
+
+    /** Sets a field's shared copy and choices in the client's own definition (a POST). */
+    const val sharedFieldEdit = "/${SECT.clientAdmin}/design/sharedField"
+    const val sharedFieldEditType = "DesignSharedFieldEdit"
+
+    /** The field's choices as they should stand: every existing value kept (relabeled or not), new ones added. */
+    const val options = "options"
 }
 
 /**
@@ -120,8 +149,11 @@ object DSV {
  */
 @Suppress("EnumEntryName")
 enum class DesignRefusal {
-    /** The workflow is declared in source, or globally: there is no stored definition here to write its copy to. */
+    /** The workflow -- or, for the shared editor, the definition -- is declared in source: not this client's to edit here. */
     declaredInSource,
+
+    /** The definition is declared globally, for every client (issue #1029): not one client's to edit. */
+    declaredGlobally,
 
     /** The client runs its published configuration, so a saved change would not show on the page until published. */
     publishedOnly,
