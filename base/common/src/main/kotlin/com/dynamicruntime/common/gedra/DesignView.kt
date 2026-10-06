@@ -229,11 +229,14 @@ object DesignView {
      * Makes a Design View save (issues #984, #1029): [patch] applied to the client's stored config [configName], where
      * and as the Clients page's editors save ([ClientStoredEdit]) -- in a sandbox's parent's config as a draft its
      * sandbox shows, otherwise published and live at once, with a publish the trial refuses undone. Refused first by
-     * [saveRefusal]'s rules. Trial-checked like every config write, and reloaded and announced.
+     * [saveRefusal]'s rules. Trial-checked like every config write, and reloaded and announced. With [impact] at
+     * [ImpactGate.refuse], a live save that would affect the client's stored data is refused with the impact report
+     * and undone (issue #1040).
      */
     internal fun saveEdit(
         cxt: KdrCxt,
         configName: String,
+        impact: ImpactGate = ImpactGate.unchecked,
         patch: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
     ) {
         saveRefusal(cxt, configName)?.let { throw KdrException.mkInput(it.message) }
@@ -251,6 +254,7 @@ object DesignView {
             cxt, target, written,
             undo = { svc.patchConfig(target.bound, configId) { before } },
             restorePublished = holder.isPublished,
+            impact = impact,
         )
     }
 
@@ -489,13 +493,19 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
             }
             field(
                 DSV.options,
-                "The field's choices as they should stand, each {value, label}: every existing value kept, relabeled or " +
-                    "not, and new ones added. Absent to leave them as they are.",
+                "The field's choices as they should stand, each {value, label}: relabeled, added or removed. A value " +
+                    "left out is removed, which the client's stored forms are checked against first. Absent to leave " +
+                    "them as they are.",
             ) {
                 type = SCT.array
                 items { type = SCT.kObject }
             }
             field(DSV.sharedBasedOn, "The stamp of the entry the edit was made against, from the definition read.", required = true)
+            field(
+                IMP.acknowledgeImpact,
+                "Save a removal of choices although stored forms hold them (issue #1040); without it, such a save is " +
+                    "refused with the impact report.",
+            ) { type = SCT.boolean }
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
@@ -504,6 +514,7 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
             (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
             (request[DSV.options] as? List<*>)?.map { (it as? Map<*, *>)?.toJsonMap().orEmpty() },
             request.getReqNonBlankStr(DSV.sharedBasedOn),
+            acknowledgeImpact = request[IMP.acknowledgeImpact] == true,
         )
         linkedMapOf(DSV.sharedBasedOn to stamp)
     }

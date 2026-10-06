@@ -45,11 +45,19 @@ object ClientStoredEdit {
 
     /**
      * Makes a save take effect: published and live ([publishAndReload]), or -- a draft -- the owner reloaded, which
-     * rebuilds its sandbox from the latest revision while a published-only owner keeps running what it published.
+     * rebuilds its sandbox from the latest revision while a published-only owner keeps running what it published. A
+     * draft is not judged by [impact]: nothing reaches the owner's data until it is published, and publishing judges it.
      */
-    fun takeEffect(cxt: KdrCxt, target: EditTarget, written: GedraConfigRow, undo: () -> Unit, restorePublished: Boolean = false): ConfigReloadResult =
+    fun takeEffect(
+        cxt: KdrCxt,
+        target: EditTarget,
+        written: GedraConfigRow,
+        undo: () -> Unit,
+        restorePublished: Boolean = false,
+        impact: ImpactGate = ImpactGate.unchecked,
+    ): ConfigReloadResult =
         if (target.draft) SandboxEdits.reloadParent(cxt, target.client)
-        else publishAndReload(cxt, target.bound, target.client, written, undo, restorePublished)
+        else publishAndReload(cxt, target.bound, target.client, written, undo, restorePublished, impact)
 
     /** The stored config of the bound client's that holds its definition (`clientDef`), or null when none does. */
     fun definitionHolder(bound: KdrCxt): GedraConfigRow? =
@@ -121,9 +129,22 @@ object ClientStoredEdit {
      * the change is not left in a draft that the next edit would publish. The undo is itself a further unpublished
      * revision, equal to the published one; with [restorePublished] -- for a config that was published before the
      * edit -- it is published too, so the config is as it was rather than a draft the next edit is refused for.
+     *
+     * With [impact] at [ImpactGate.refuse], a save that would affect the data the client already stores is refused
+     * with the impact report, and undone the same way (issue #1040). It is judged before the publish whatever the
+     * client's tier, since the save is what makes the change live ([ConfigImpact.requireNone]'s `asSave`).
      */
-    fun publishAndReload(cxt: KdrCxt, bound: KdrCxt, client: String, written: GedraConfigRow, undo: () -> Unit, restorePublished: Boolean = false): ConfigReloadResult {
+    fun publishAndReload(
+        cxt: KdrCxt,
+        bound: KdrCxt,
+        client: String,
+        written: GedraConfigRow,
+        undo: () -> Unit,
+        restorePublished: Boolean = false,
+        impact: ImpactGate = ImpactGate.unchecked,
+    ): ConfigReloadResult {
         try {
+            if (impact == ImpactGate.refuse) ConfigImpact.requireNone(bound, client, written, asSave = true)
             GedraConfigService.get(bound).publish(bound, written.configId, trial = true)
         } catch (e: KdrException) {
             undo()

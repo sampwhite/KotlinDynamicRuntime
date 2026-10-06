@@ -75,6 +75,9 @@ class ImpactReportTest {
         assertTrue(large.blocks)
         assertTrue(impactSummary(large).contains("unknown"))
         assertTrue(impactSummary(parseImpactReport(wire)).endsWith("already stores:"))
+        // A caller other than publish names its own change (issue #1040).
+        assertTrue(impactSummary(parseImpactReport(wire), "Removing hotel").startsWith("Removing hotel would affect forms"))
+        assertTrue(impactSummary(large, "Removing hotel").contains("what removing hotel would do"))
     }
 
     @Test

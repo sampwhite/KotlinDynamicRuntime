@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignOrigin
+import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SCT
@@ -336,5 +337,37 @@ class DesignViewTest {
         val facts = parseSharedFacts(sharedRead + (DSV.sharedCopyRefusals to mapOf("phone" to "Not in its list.")))!!
         assertEquals(mapOf("phone" to "Not in its list."), facts.copyRefusals)
         assertEquals(emptyMap(), parseSharedFacts(sharedRead)!!.copyRefusals)
+    }
+
+    // --- removing a choice (issue #1040) ---
+
+    @Test
+    fun aRemovedChoiceIsLeftOutAndNamed() {
+        val start = listOf(ChoiceRow("office", "At the office", false), ChoiceRow("hotel", "A hotel", false), ChoiceRow("park", "A park", false))
+        val rows = listOf(start[0], ChoiceRow("venue", "A venue", isNew = true))
+        assertEquals(listOf("hotel", "park"), removedChoiceValues(start, rows))
+        assertEquals(listOf("office", "venue"), sharedOptionsPayload(rows).map { it[SCH.value] })
+        assertEquals(emptyList(), removedChoiceValues(start, start))
+        assertEquals(emptyList(), removedChoiceValues(null, rows))
+    }
+
+    @Test
+    fun aRemovalIsSaidBeforeTheSave() {
+        assertEquals("Removing hotel", removingPhrase(listOf("hotel")))
+        assertEquals("Removing office, hotel and park", removingPhrase(listOf("office", "hotel", "park")))
+        assertEquals(
+            "Removing hotel: saving first checks whether the client's stored forms hold it.",
+            removingNote(listOf("hotel")),
+        )
+        assertNull(removingNote(emptyList()))
+    }
+
+    @Test
+    fun saveAnywayAcknowledgesTheImpactAndAPlainSaveDoesNot() {
+        val options = listOf(mapOf<String, Any?>(SCH.value to "office", SCH.label to "At the office"))
+        val plain = sharedFieldBody("client.demo.Request", "venue", null, options, "abc123", acknowledgeImpact = false)
+        assertEquals(setOf(DSV.typeName, DSV.field, DSV.options, DSV.sharedBasedOn), plain.keys)
+        val anyway = sharedFieldBody("client.demo.Request", "venue", null, options, "abc123", acknowledgeImpact = true)
+        assertEquals(true, anyway[IMP.acknowledgeImpact])
     }
 }

@@ -21,10 +21,12 @@ import com.dynamicruntime.common.util.toOptStr
  * only a definition the client **declares in its own stored configuration** -- never one declared globally, in
  * source, or a client's alteration of a shared type (#1011).
  *
- * What it changes: a field's layout copy in its type's own `g-layout`, and its choices -- relabeling one, or adding
- * one. Adding a choice is a widening, which is why it belongs here and never in a workflow variant. Removing a
- * choice, or changing a choice's value, is refused: stored forms may hold the old value, which needs the impact
- * report of #935 first.
+ * What it changes: a field's layout copy in its type's own `g-layout`, and its choices -- relabeling, adding, or
+ * removing one. Adding a choice is a widening, which is why it belongs here and never in a workflow variant. Removing
+ * one is the owner changing its own declaration, not a narrowing (there is no layer above it to be a subset of): what
+ * is at stake is the stored forms holding the value, so a removal is checked against them with #935's impact report
+ * and saved only when none is affected or the caller acknowledges it (issue #1040). Changing a value is a removal and
+ * an addition; stored forms are never rewritten.
  */
 object DesignSharedEdit {
     /**
@@ -135,9 +137,11 @@ object DesignSharedEdit {
     /**
      * Sets [field] of the type [typeName] -- in the definition the client declares -- to have the layout [entry] (when
      * given) and the choices [options] (when given), for every workflow on the client (issue #1029). Refused unless
-     * the definition is the client's own ([refusal]), when it has changed since [basedOn] (409), and when [options]
-     * would remove a choice or change one's value. Saved as every Design View save is ([DesignView.saveEdit]): published
-     * and live, or a draft its sandbox shows. Returns the new stamp.
+     * the definition is the client's own ([refusal]), and when it has changed since [basedOn] (409). [options] that
+     * remove a choice are checked against the client's stored forms (issue #1040): refused with the impact report when
+     * any holds a removed value, unless [acknowledgeImpact]. Saved as every Design View save is
+     * ([DesignView.saveEdit]): published and live, or a draft its sandbox shows -- which the check leaves to its
+     * publish. Returns the new stamp.
      */
     fun setSharedField(
         cxt: KdrCxt,
@@ -146,6 +150,7 @@ object DesignSharedEdit {
         entry: Map<String, Any?>?,
         options: List<Map<String, Any?>>?,
         basedOn: String,
+        acknowledgeImpact: Boolean = false,
     ): String {
         val config = DesignView.typeLayers(cxt, cxt.client, typeName).declaredBy
         refusal(cxt, config)?.let { throw KdrException.mkInput(it.message) }
@@ -156,7 +161,16 @@ object DesignSharedEdit {
         }
         val slot = if (trait != null) CCT.traitDef else CCT.schemaDef
         val key = trait?.traitId ?: typeName
-        DesignView.saveEdit(cxt, config.name) { slots ->
+        val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
+        // Judged against the entry as drawn; were it to change before the lock, the stamp check refuses the save.
+        val removes = options != null &&
+            removedChoices(storedEntry(readCxt, config, slot, key)?.get(bodyField(slot)).toJsonMapOrEmpty(), field, options).isNotEmpty()
+        val impact = when {
+            !removes -> ImpactGate.unchecked
+            acknowledgeImpact -> ImpactGate.acknowledged
+            else -> ImpactGate.refuse
+        }
+        DesignView.saveEdit(cxt, config.name, impact) { slots ->
             val entries = slots[slot].orEmpty()
             val at = entries.indexOfFirst { it[keyField(slot)] == key }
             if (at < 0) throw KdrException("No $slot entry '$key' in '${config.name}'.", code = EXC.notFound)
@@ -170,7 +184,6 @@ object DesignSharedEdit {
             val rewritten = withSharedField(body, field, entry, options)
             slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewritten) else e })
         }
-        val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
         return storedEntry(readCxt, config, slot, key)?.let { stampOf(it) } ?: ""
     }
 }
@@ -178,9 +191,9 @@ object DesignSharedEdit {
 /**
  * [body] -- a type's authored body -- with [field]'s layout entry set to [entry] (replaced whole, or appended when the
  * layout has none for it and only annotates -- a `reorder` or `authoritative` layout's list is never extended) and
- * its choices set to [options], each only when given (issue #1029). Every existing choice's
- * value must still be among [options] -- relabeling is free, adding is allowed, removing or changing a value is refused
- * -- and [field] must already have choices to be given new ones. Pure, so a test pins it.
+ * its choices set to [options], each only when given (issue #1029). The choices may be relabeled, added and removed
+ * (#1040 -- what a removal does to stored forms is the save's to check, see [removedChoices]), but at least one must
+ * remain, and [field] must already have choices to be given new ones. Pure, so a test pins it.
  */
 fun withSharedField(
     body: Map<String, Any?>,
@@ -209,21 +222,15 @@ fun withSharedField(
         out[SCH.layout] = layout
     }
     if (options != null) {
-        val current = (property[SCH.options] as? List<*>)
-            ?: throw KdrException.mkInput("Field '$field' has no choices to edit; giving it some would change what it accepts.")
-        val currentValues = current.mapNotNull { (it as? Map<*, *>)?.get(SCH.value).toOptStr() }
+        if (property[SCH.options] !is List<*>) {
+            throw KdrException.mkInput("Field '$field' has no choices to edit; giving it some would change what it accepts.")
+        }
         val newValues = options.map { it[SCH.value].toOptStr()?.trim().orEmpty() }
         if (newValues.any { it.isEmpty() } || options.any { it[SCH.label].toOptStr().isNullOrBlank() }) {
             throw KdrException.mkInput("Every choice needs a value and a label.")
         }
         if (newValues.toSet().size != newValues.size) throw KdrException.mkInput("Two choices have the same value.")
-        val dropped = currentValues.filter { it !in newValues }
-        if (dropped.isNotEmpty()) {
-            throw KdrException.mkInput(
-                "Removing a choice or changing its value is not offered here, since stored forms may hold it: " +
-                    dropped.joinToString(", ") { "'$it'" } + ".",
-            )
-        }
+        if (newValues.isEmpty()) throw KdrException.mkInput("A field with choices keeps at least one.")
         val newProperty = LinkedHashMap(property.toJsonMapOrEmpty())
         newProperty[SCH.options] = options.map { linkedMapOf(SCH.label to it[SCH.label].toOptStr()!!.trim(), SCH.value to it[SCH.value].toOptStr()!!.trim()) }
         out[SCH.properties] = LinkedHashMap(properties).also { it[field] = newProperty }
@@ -246,4 +253,14 @@ fun sharedCopyRefusal(body: Map<String, Any?>, field: String): String? {
     val owns = if (mode == SLM.authoritative) "which fields the form shows and their order" else "the form's field order"
     return "This type's layout decides $owns, and '$field' is not in its list. Giving it copy here would add it to " +
         "that list for every workflow, which the shared editor does not do."
+}
+
+/**
+ * The values of [field]'s choices in the type body [body] that [options] leave out (issue #1040): what a shared edit
+ * removes, and so what stored forms may hold that would no longer validate. Empty when the field has no choices. Pure.
+ */
+fun removedChoices(body: Map<String, Any?>, field: String, options: List<Map<String, Any?>>): List<String> {
+    val current = (body[SCH.properties].toJsonMapOrEmpty()[field].toJsonMapOrEmpty()[SCH.options] as? List<*>).orEmpty()
+    val kept = options.mapNotNull { it[SCH.value].toOptStr()?.trim() }.toSet()
+    return current.mapNotNull { (it as? Map<*, *>)?.get(SCH.value).toOptStr() }.filter { it !in kept }
 }

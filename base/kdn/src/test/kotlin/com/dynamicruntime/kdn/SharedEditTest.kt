@@ -3,8 +3,11 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientSandboxEdit
+import com.dynamicruntime.common.gedra.ConfigImpact
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.DesignRefusal
 import com.dynamicruntime.common.gedra.DesignSharedEdit
@@ -15,7 +18,10 @@ import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.IMP
+import com.dynamicruntime.common.gedra.ImpactKind
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
@@ -23,12 +29,16 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.simulation.DesignDemo
 import com.dynamicruntime.common.simulation.provisionDesignDemo
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -59,6 +69,15 @@ class SharedEditTest : StringSpec({
     )["item"].toJsonMapOrEmpty()[GDF.gedraId].toOptStr()!!
 
     fun requestView() = admin.getData(viewPath, design)
+    fun configRow() = GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("setup", client), GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName))
+    // A request form, created through the request workflow, holding [venue]; its gedra id.
+    fun requestForm(title: String, venue: String, by: TestUser = admin, owner: String = client): String = by.postData(
+        clientPath(GEP.workflowSave, owner),
+        mapOf(
+            WFD.workflowId to DesignDemo.requestWorkflow, GDF.taskId to DesignDemo.describeTask, GDF.saveId to DesignDemo.submitSave,
+            GDF.entries to listOf(mapOf("traitId" to DesignDemo.eventRequest, "data" to mapOf(DesignDemo.title to title, DesignDemo.venue to venue))),
+        ),
+    )["item"].toJsonMapOrEmpty()[GDF.gedraId].toOptStr()!!
     fun reviewView() = admin.getData(viewPath, design + mapOf(GDF.gedraId to formId))
     fun label(view: Map<String, Any?>, type: String, field: String): String? =
         view["fieldLayouts"].toJsonMapOrEmpty()[type].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
@@ -137,19 +156,92 @@ class SharedEditTest : StringSpec({
         )["item"].toJsonMapOrEmpty()[GDF.gedraId].toOptStr() shouldNotBe null
     }
 
-    "removing a choice or changing its value is refused, with the reason" {
+    "a free-text field gains no choices, and a field with choices keeps at least one" {
         val basedOn = traitRead()[DSV.sharedBasedOn] as String
-        val withoutOutdoors = venueOptions().filter { it[SCH.value] != "outdoors" }
-        admin.expectError(400, DSV.sharedFieldEdit, sharedArgs(dataType, DesignDemo.venue, null, withoutOutdoors, basedOn))
-            .toString() shouldContain "stored forms may hold it"
-        val renamed = venueOptions().map { if (it[SCH.value] == "office") it + (SCH.value to "hq") else it }
-        admin.expectError(400, DSV.sharedFieldEdit, sharedArgs(dataType, DesignDemo.venue, null, renamed, basedOn))
-            .toString() shouldContain "'office'"
         // A free-text field gains no choices here: that would narrow what it accepts.
         admin.expectError(
             400, DSV.sharedFieldEdit,
             sharedArgs(dataType, DesignDemo.title, null, listOf(mapOf(SCH.value to "a", SCH.label to "A")), basedOn),
         ).toString() shouldContain "has no choices"
+        admin.expectError(400, DSV.sharedFieldEdit, sharedArgs(dataType, DesignDemo.venue, null, emptyList(), basedOn))
+            .toString() shouldContain "at least one"
+    }
+
+    // Removing a choice (issue #1040): checked against the forms the client stores, whatever its tier.
+
+    "removing a choice no stored form holds saves at once" {
+        requestForm("Planning day", "hotel")
+        shared(dataType, DesignDemo.venue, options = venueOptions().filter { it[SCH.value] != "office" })
+        venueOptions().map { it[SCH.value] } shouldNotContain "office"
+    }
+
+    "removing one a stored form holds is refused with the report and undone, and saves acknowledged" {
+        val picnic = requestForm("Summer picnic", "park")
+        val withoutPark = venueOptions().filter { it[SCH.value] != "park" }
+        val refused = admin.expectError(
+            EXC.badInput, DSV.sharedFieldEdit,
+            sharedArgs(dataType, DesignDemo.venue, null, withoutPark, traitRead()[DSV.sharedBasedOn] as String),
+        )
+        refused[EP.errorCode] shouldBe IMP.refusedCode
+        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "Save again acknowledging"
+        val finding = refused[EP.extraData].toJsonMapOrEmpty()[IMP.report].toJsonMapOrEmpty()[IMP.findings].toJsonListOfMaps().single()
+        finding[IMP.kind] shouldBe ImpactKind.dataInvalid.name
+        finding[IMP.sampleIds].toJsonListOfStrings() shouldContain picnic
+        // Undone: the choice is still offered, and the configuration is left published, not a draft.
+        venueOptions().map { it[SCH.value] } shouldContain "park"
+        configRow()?.isPublished shouldBe true
+
+        admin.postData(
+            DSV.sharedFieldEdit,
+            sharedArgs(dataType, DesignDemo.venue, null, withoutPark, traitRead()[DSV.sharedBasedOn] as String) +
+                (IMP.acknowledgeImpact to true),
+        )
+        venueOptions().map { it[SCH.value] } shouldNotContain "park"
+    }
+
+    "a changed value is a removal and an addition, and the report names the forms holding the old one" {
+        val gala = requestForm("Winter gala", "hotel")
+        val renamed = venueOptions().map { if (it[SCH.value] == "hotel") mapOf(SCH.value to "conference", SCH.label to "A conference center") else it }
+        val refused = admin.expectError(
+            EXC.badInput, DSV.sharedFieldEdit,
+            sharedArgs(dataType, DesignDemo.venue, null, renamed, traitRead()[DSV.sharedBasedOn] as String),
+        )
+        refused[EP.extraData].toJsonMapOrEmpty()[IMP.report].toJsonMapOrEmpty()[IMP.findings].toJsonListOfMaps()
+            .single()[IMP.sampleIds].toJsonListOfStrings() shouldContain gala
+    }
+
+    "a client running only its published configuration is checked the same way" {
+        GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, true)
+        try {
+            val withoutHotel = venueOptions().filter { it[SCH.value] != "hotel" }
+            admin.expectError(
+                EXC.badInput, DSV.sharedFieldEdit,
+                sharedArgs(dataType, DesignDemo.venue, null, withoutHotel, traitRead()[DSV.sharedBasedOn] as String),
+            )[EP.errorCode] shouldBe IMP.refusedCode
+        } finally {
+            GedraConfigService.get(cxt).setPublishedOnly(cxt.mkSubContext("setup", client), client, false)
+        }
+    }
+
+    "in a sandbox a removal is a draft, and its impact shows when that draft is published" {
+        val parent = provisionDesignDemo(cxt, "sbx1040").clients.single()
+        val parentAdmin = TestUser.create(cxt, "designer@$parent.test", level = ROLE.admin, userClient = parent)
+        val held = requestForm("Retreat", "hotel", parentAdmin, parent)
+        ClientSandboxEdit.set(cxt.mkSubContext("setup", parent), parent, true)
+        parentAdmin.postData(AEP.openSandbox, emptyMap())
+
+        val sandboxView = parentAdmin.getData(clientPath(GEP.workflowView, sandboxOf(parent)), design)
+        val sandboxType = sandboxView[DSV.designBlock].toJsonMapOrEmpty()[DSV.types].toJsonMapOrEmpty()
+            .entries.first { it.value.toJsonMapOrEmpty()[DSV.key] == DesignDemo.eventRequest }.key
+        val read = parentAdmin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))
+        val options = read[DSV.entry].toJsonMapOrEmpty()[CCT.dataSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()[DesignDemo.venue]
+            .toJsonMapOrEmpty()[SCH.options].toJsonListOfMaps().filter { it[SCH.value] != "hotel" }
+        // Saved without a word: nothing reaches the parent's forms until the draft is published.
+        parentAdmin.postData(DSV.sharedFieldEdit, sharedArgs(sandboxType, DesignDemo.venue, null, options, read[DSV.sharedBasedOn] as String))
+
+        val report = ConfigImpact.report(cxt.mkSubContext("setup", parent), parent, DesignDemo.configName)
+        report.findings.single().kind shouldBe ImpactKind.dataInvalid
+        report.findings.single().rows shouldContain held
     }
 
     "an edit based on an entry that has since changed is refused" {
@@ -186,8 +278,7 @@ class SharedEditTest : StringSpec({
 
     "a shared save publishes, so the client's configuration is left with no draft" {
         shared(dataType, DesignDemo.backupPlan, mapOf(SL.label to "If it rains"))
-        val row = GedraConfigService.get(cxt).readLatest(cxt.mkSubContext("setup", client), GedraId.of(GedraConfigType.configDoc, client, DesignDemo.configName))
-        row?.isPublished shouldBe true
+        configRow()?.isPublished shouldBe true
     }
 
     // The reconciliation with the Clients page's editors (issue #1026): Design View saves publish as theirs do, so after

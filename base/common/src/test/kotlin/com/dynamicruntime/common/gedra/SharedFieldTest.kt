@@ -53,6 +53,21 @@ class SharedFieldTest : StringSpec({
         sharedCopyRefusal(mapOf(SCH.properties to emptyMap<String, Any?>()), "note") shouldBe null
     }
 
+    "choices may be removed, and the values removed are named; a field keeps at least one" {
+        val withVenues = body(null).let { b ->
+            val props = (b[SCH.properties] as Map<*, *>).toMutableMap()
+            props["venue"] = mapOf(SCH.type to "string", SCH.options to listOf(mapOf(SCH.label to "Office", SCH.value to "office"), mapOf(SCH.label to "Hotel", SCH.value to "hotel")))
+            b + (SCH.properties to props)
+        }
+        val onlyHotel = listOf<Map<String, Any?>>(mapOf(SCH.value to "hotel", SCH.label to "Hotel"))
+        val out = withSharedField(withVenues, "venue", null, onlyHotel)
+        (((out[SCH.properties] as Map<*, *>)["venue"] as Map<*, *>)[SCH.options] as List<*>).size shouldBe 1
+        removedChoices(withVenues, "venue", onlyHotel) shouldBe listOf("office")
+        removedChoices(withVenues, "venue", onlyHotel + mapOf(SCH.value to "office", SCH.label to "Office")) shouldBe emptyList()
+        removedChoices(withVenues, "title", onlyHotel) shouldBe emptyList()
+        shouldThrow<KdrException> { withSharedField(withVenues, "venue", null, emptyList()) }.message.orEmpty() shouldContain "at least one"
+    }
+
     "a choices-only edit of a field the layout leaves out writes no layout entry" {
         val options = listOf<Map<String, Any?>>(mapOf(SCH.value to "office", SCH.label to "At the office"), mapOf(SCH.value to "park", SCH.label to "A park"))
         val out = withSharedField(body(SLM.authoritative), "venue", null, options)

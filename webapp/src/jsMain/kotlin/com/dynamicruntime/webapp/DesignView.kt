@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCH
@@ -451,7 +452,8 @@ fun choiceRowsOf(fieldSchema: Any?): List<ChoiceRow>? =
 
 /**
  * The choices a shared edit sends, from the editor's [rows]: every row with a value, a blank label read as the value.
- * The backend refuses a removed or changed value, which the editor never produces -- an existing row's value is fixed.
+ * A value left out is removed (issue #1040); an existing row's value is fixed, so a changed value arrives as a removal
+ * and an addition.
  */
 fun sharedOptionsPayload(rows: List<ChoiceRow>): List<Map<String, Any?>> =
     rows.filter { it.value.isNotBlank() }.map {
@@ -461,3 +463,43 @@ fun sharedOptionsPayload(rows: List<ChoiceRow>): List<Map<String, Any?>> =
 /** Whether the editor's copy [values] differ from [start]'s, key by key, blanks and absent alike (issue #1029). */
 fun copyChanged(start: Map<String, Any?>, values: Map<String, String>): Boolean =
     editableCopyKeys.any { key -> start[key].toOptStr()?.trim().orEmpty() != values[key]?.trim().orEmpty() }
+
+/** The values of [start]'s choices that [rows] no longer carry: what a save would remove (issue #1040). Pure. */
+fun removedChoiceValues(start: List<ChoiceRow>?, rows: List<ChoiceRow>): List<String> {
+    val kept = rows.map { it.value.trim() }.toSet()
+    return start.orEmpty().map { it.value }.filter { it !in kept }
+}
+
+/** "Removing hotel" / "Removing hotel and outdoors" -- what a save removes, as the impact report's subject. Pure. */
+fun removingPhrase(values: List<String>): String = "Removing " + when (values.size) {
+    0 -> "these choices"
+    1 -> values.single()
+    else -> values.dropLast(1).joinToString(", ") + " and " + values.last()
+}
+
+/** The editor's note while choices are marked for removal, or null when none is. Pure. */
+fun removingNote(values: List<String>): String? =
+    if (values.isEmpty()) null
+    else "${removingPhrase(values)}: saving first checks whether the client's stored forms hold " +
+        "${if (values.size == 1) "it" else "them"}."
+
+/**
+ * The body of a shared-field edit (issue #1029): the copy [entry] and the [options], each only when given, with
+ * [acknowledgeImpact] -- the dialog's **Save anyway** -- when a removal's impact report has been seen (issue #1040).
+ * Pure.
+ */
+fun sharedFieldBody(
+    typeName: String,
+    field: String,
+    entry: Map<String, Any?>?,
+    options: List<Map<String, Any?>>?,
+    basedOn: String,
+    acknowledgeImpact: Boolean,
+): Map<String, Any?> = buildMap {
+    put(DSV.typeName, typeName)
+    put(DSV.field, field)
+    entry?.let { put(DSV.entry, it) }
+    options?.let { put(DSV.options, it) }
+    put(DSV.sharedBasedOn, basedOn)
+    if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
+}

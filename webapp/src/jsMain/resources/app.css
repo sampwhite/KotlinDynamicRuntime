@@ -1175,6 +1175,7 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .dv-edit { margin-top: 6px; }
 .dv-edit-row { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; align-items: center; margin: 6px 0; }
 .dv-shared, .dv-fallback { grid-column: 2; margin: 0; color: var(--text-faint); font-size: 12px; overflow-wrap: anywhere; }
+.dv-choice-label { display: flex; gap: 4px; align-items: center; }
 .dv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .dv-json-edit { width: 100%; }
 

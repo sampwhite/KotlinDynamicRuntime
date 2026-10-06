@@ -13,8 +13,10 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
 import react.FC
+import react.Fragment
 import react.Key
 import react.Props
+import react.create
 import react.dom.html.ReactHTML.aside
 import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.details
@@ -62,7 +64,8 @@ object DesignApi {
     /**
      * Sets [field] of [typeName] -- in the definition the client declares -- to the layout [entry] and the choices
      * [options], each when given, for every workflow on the client (issue #1029), as an edit of the entry stamped
-     * [basedOn]. A refusal (a stale stamp, a removed choice) comes back as the result's refusal.
+     * [basedOn]. A refusal comes back as the result's refusal: a stale stamp, or -- for a removed choice stored forms
+     * hold -- the impact report ([impactOf]), which [acknowledgeImpact] goes past (issue #1040).
      */
     suspend fun setSharedField(
         typeName: String,
@@ -70,15 +73,9 @@ object DesignApi {
         entry: Map<String, Any?>?,
         options: List<Map<String, Any?>>?,
         basedOn: String,
+        acknowledgeImpact: Boolean = false,
     ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
-        "POST", DSV.sharedFieldEdit,
-        buildMap {
-            put(DSV.typeName, typeName)
-            put(DSV.field, field)
-            entry?.let { put(DSV.entry, it) }
-            options?.let { put(DSV.options, it) }
-            put(DSV.sharedBasedOn, basedOn)
-        },
+        "POST", DSV.sharedFieldEdit, sharedFieldBody(typeName, field, entry, options, basedOn, acknowledgeImpact),
     )
 }
 
@@ -628,7 +625,9 @@ external interface SharedFieldSectionProps : Props {
 /**
  * The field's **shared** definition (issue #1029): where it is used, which workflows keep their own copy of it, and --
  * opened deliberately, never as an option beside a workflow's Save -- its copy and choices edited for every workflow.
- * A choice can be relabeled or added; an existing value stays as it is, since stored forms may hold it.
+ * A choice can be relabeled, added or removed; an existing value is not edited in place -- a change of value is a
+ * removal and an addition. A save that removes a choice stored forms hold is refused with the impact report, shown in
+ * a dialog with **Save anyway** (issue #1040).
  */
 private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
     val facts = props.facts
@@ -640,7 +639,39 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
     var rows by useState(startRows.orEmpty())
     var saving by useState(false)
     var failure by useState<DisplayError?>(null)
+    var impact by useState<ImpactReportView?>(null)
     val copyRefusal = facts.copyRefusals[target.name]
+    val removing = removedChoiceValues(startRows, rows)
+
+    fun save(acknowledge: Boolean) {
+        saving = true
+        failure = null
+        designScope.launch {
+            // Only what changed is sent: copy that was not touched sends no entry, so a choices-only save never writes
+            // a layout entry the type's layout did not have.
+            val result = DesignApi.setSharedField(
+                props.typeName, target.name,
+                copyEntryFrom(start, target.name, values).takeIf { copyChanged(start, values) },
+                startRows?.let { sharedOptionsPayload(rows) }, facts.basedOn, acknowledgeImpact = acknowledge,
+            )
+            saving = false
+            val refused = result.failureOrNull()
+            val refusedOver = refused?.let { impactOf(it) }
+            when {
+                refusedOver != null -> impact = refusedOver
+                refused != null -> {
+                    impact = null
+                    failure = userFacingError(refused)
+                }
+                else -> {
+                    impact = null
+                    editing = false
+                    props.onSaved()
+                    props.session.afterEdit()
+                }
+            }
+        }
+    }
 
     div {
         className = ClassName("dv-edit")
@@ -730,11 +761,29 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                                     +row.value
                                 }
                             }
-                            Input {
-                                value = row.label
-                                placeholder = "label"
-                                onChange = { e -> rows = rows.mapIndexed { j, r -> if (j == i) ChoiceRow(r.value, e.target.value as String, r.isNew) else r } }
+                            div {
+                                className = ClassName("dv-choice-label")
+                                Input {
+                                    value = row.label
+                                    placeholder = "label"
+                                    onChange = { e -> rows = rows.mapIndexed { j, r -> if (j == i) ChoiceRow(r.value, e.target.value as String, r.isNew) else r } }
+                                }
+                                Button {
+                                    size = "small"
+                                    type = "link"
+                                    // A field with choices keeps at least one.
+                                    disabled = rows.size <= 1
+                                    asDynamic()["aria-label"] = "Remove ${row.value.ifBlank { "this choice" }}"
+                                    onClick = { rows = rows.filterIndexed { j, _ -> j != i } }
+                                    +"Remove"
+                                }
                             }
+                        }
+                    }
+                    removingNote(removing)?.let {
+                        p {
+                            className = ClassName("dv-note")
+                            +it
                         }
                     }
                     div {
@@ -746,6 +795,10 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                             +"Add a choice"
                         }
                     }
+                    p {
+                        className = ClassName("dv-caption")
+                        +"To change a value, remove the choice and add a new one."
+                    }
                 }
                 div {
                     className = ClassName("dv-actions")
@@ -753,28 +806,7 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                         type = "primary"
                         size = "small"
                         loading = saving
-                        onClick = {
-                            saving = true
-                            failure = null
-                            designScope.launch {
-                                // Only what changed is sent: copy that was not touched sends no entry, so a choices-only
-                                // save never writes a layout entry the type's layout did not have.
-                                val result = DesignApi.setSharedField(
-                                    props.typeName, target.name,
-                                    copyEntryFrom(start, target.name, values).takeIf { copyChanged(start, values) },
-                                    startRows?.let { sharedOptionsPayload(rows) }, facts.basedOn,
-                                )
-                                saving = false
-                                val refused = result.failureOrNull()
-                                if (refused != null) {
-                                    failure = userFacingError(refused)
-                                } else {
-                                    editing = false
-                                    props.onSaved()
-                                    props.session.afterEdit()
-                                }
-                            }
-                        }
+                        onClick = { save(acknowledge = false) }
                         +"Save for every workflow"
                     }
                     Button {
@@ -787,5 +819,25 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
             }
         }
         failure?.let { errorText("Couldn't save the shared definition.", it) }
+    }
+    // The stored forms a removal would leave invalid (issue #1040), with the way past it.
+    Modal {
+        open = impact != null
+        title = "Some stored forms hold ${if (removing.size == 1) "this choice" else "these choices"}"
+        onCancel = { impact = null }
+        footer = Fragment.create {
+            Button {
+                onClick = { impact = null }
+                +"Cancel"
+            }
+            Button {
+                type = "primary"
+                danger = true
+                loading = saving
+                onClick = { save(acknowledge = true) }
+                +"Save anyway"
+            }
+        }
+        impact?.let { impactReportBody(it, formsOpenable = true, doing = removingPhrase(removing)) }
     }
 }
