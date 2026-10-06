@@ -611,7 +611,11 @@ reason.
 An administrator's switch in the app bar (`Design`) turns the workflow pages into an annotated view: each trait
 block and field is outlined on hover with its id, a click opens a side inspector (`DesignInspector.kt`) with the
 definition behind it, where it was declared, and its authored JSON, and the fields the form leaves out are drawn
-as hatched ghosts saying why. Read-only for now; editing is a later slice.
+as hatched ghosts saying why. A field's copy -- label, description, hint -- can be edited there as **this workflow's
+own** (issue #984, `WorkflowCopyEditor`): the edit is written into the workflow's stored definition as an alteration
+of the field's type, shows on that workflow's pages only, and **Reset to shared** removes it. It is offered only
+where the workflow is the client's own stored definition and the client runs its latest revision; elsewhere the
+inspector says why, from the block's `editRefusal`.
 
 - **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
   request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
