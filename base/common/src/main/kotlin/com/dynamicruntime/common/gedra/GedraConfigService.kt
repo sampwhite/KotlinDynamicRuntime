@@ -14,7 +14,6 @@ import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.startup.SchemaCollector
-import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr

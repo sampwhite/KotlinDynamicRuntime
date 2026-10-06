@@ -75,6 +75,7 @@ object IMP {
  * configuration the client runs now and would not be under the candidate -- a row that already has the problem is
  * not the publish's doing, and is not reported.
  */
+@Suppress("EnumEntryName")
 enum class ImpactKind {
     /** An entry's trait is one the client would no longer support: its entries stop being validated or offered. */
     traitGone,
