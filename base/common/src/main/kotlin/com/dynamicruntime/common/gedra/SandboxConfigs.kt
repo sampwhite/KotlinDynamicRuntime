@@ -1,7 +1,10 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * How a **sandbox** client's configuration is made from its parent's (issue #928, the Shadow Sandbox #925).
@@ -19,9 +22,17 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
  * shares its parent's namespaces rather than claiming any (see `GedraConfigCollector`), which also keeps a colon
  * out of every type name.
  *
- * The order of the layers is the order they are handed to the collector, and a later layer's definitions win:
- * the parent's source first, then the sandbox's own source overlays (issue #940, none yet), then the parent's
- * stored revisions -- every source layer below every stored one, as for any client.
+ * The order of the layers is the order they are handed to the collector, and a later layer's overlays win: the
+ * parent's source first, then the sandbox's own source **overlays**, then the parent's stored revisions -- every
+ * source layer below every stored one, as for any client. A later layer's copy and menu overlays win by that order
+ * (#916); a trait or workflow is held to its first definition, as within any client.
+ *
+ * **Source overlays** (issue #940) are configs source code files under the sandbox: a change for the sandbox only,
+ * seen on the real deployment beside the real client without touching it -- in effect a per-client feature flag,
+ * promoted by moving the code into the parent's source. They author into the parent's namespace, so that move
+ * renames nothing; they are taken only for a parent whose definition asks for a sandbox, and a part of one that
+ * repeats the parent's source ([overlayRepeats]) is reported, since a leftover from a promotion is how one goes
+ * stale. A static parent's sandbox in production is its source and its overlays, with no stored layer.
  *
  * **A parent that extends a template** (issue #945): the parent's copies of the template are not carried over --
  * they are the loader's, not the parent's source, so they are left out with its stored configs. The derived
@@ -99,6 +110,64 @@ object SandboxConfigs {
     fun parentsWithSandboxes(configs: GedraConfigCollector): List<String> =
         configs.configs.mapNotNull { it.client }.filter { it.sandbox && !isSandboxClient(it.clientId) }
             .map { it.clientId }.distinct()
+
+    /**
+     * What [overlay] repeats of the parent's source configuration [parentSource] (issue #940), each named as a person
+     * reads it ("trait 'x'", "copy 'home: home.brand'"): an entry the parent's source defines identically, and for
+     * copy a key whose value the parent's source sets the same. Compared as stored entries, which carry no client, so
+     * the overlay's and the parent's line up although they are filed under different clients. A config that cannot
+     * be written as entries (one declaring state or config traits, which no client's may) contributes nothing.
+     */
+    fun overlayRepeats(overlay: GedraConfig, parentSource: List<GedraConfig>): List<String> {
+        val mine = entriesOrNull(overlay) ?: return emptyList()
+        val theirs = parentSource.mapNotNull { entriesOrNull(it) }
+        fun slotOf(slot: String) = theirs.flatMap { it[slot].orEmpty() }
+        val out = mutableListOf<String>()
+        for ((slot, entries) in mine) {
+            if (slot == CCT.clientDef) continue
+            if (slot == CCT.fragmentDef) {
+                val parentCopy = slotOf(slot)
+                for (entry in entries) {
+                    val fileId = entry[CCT.fileId].toOptStr() ?: continue
+                    val parentContent = parentCopy.filter { it[CCT.fileId].toOptStr() == fileId }.map { it[CCT.content].toJsonMapOrEmpty() }
+                    for ((ns, keys) in entry[CCT.content].toJsonMapOrEmpty()) {
+                        for ((key, value) in keys.toJsonMapOrEmpty()) {
+                            if (parentContent.any { it[ns].toJsonMapOrEmpty()[key] == value }) out.add("copy '$fileId: $ns.$key'")
+                        }
+                    }
+                }
+                continue
+            }
+            val parentEntries = slotOf(slot)
+            for (entry in entries) {
+                if (entry in parentEntries) out.add(describe(slot, entry))
+            }
+        }
+        return out
+    }
+
+    private fun entriesOrNull(config: GedraConfig): Map<String, List<Map<String, Any?>>>? =
+        try {
+            gedraConfigToEntries(config)
+        } catch (_: KdrException) {
+            null
+        }
+
+    /** An entry of [slot] as a person names it: its kind and its id. */
+    private fun describe(slot: String, entry: Map<String, Any?>): String {
+        val id = listOf(CCT.traitId, CCT.workflowId, CCT.reportId, CCT.typeName, CCT.blockId, CCT.name)
+            .firstNotNullOfOrNull { entry[it].toOptStr() }
+        val kind = when (slot) {
+            CCT.traitDef -> "trait"
+            CCT.workflowDef -> "workflow"
+            CCT.reportDef -> "report"
+            CCT.schemaDef -> "type"
+            CCT.uiBlockDef -> "block"
+            CCT.cfactDef -> "cfact"
+            else -> slot
+        }
+        return if (id != null) "$kind '$id'" else kind
+    }
 
     private fun FragmentSource.reboundTo(sandbox: String): FragmentSource = refiled(client = client?.let { sandbox })
 

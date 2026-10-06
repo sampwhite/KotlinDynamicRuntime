@@ -8,6 +8,7 @@ import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.logging.LogStartup
 
 /**
@@ -120,6 +121,13 @@ object InstanceRegistry {
                     // Same loop, so every config is present before any service binds -- which is what lets
                     // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
                     for (config in component.gedraConfigs(cxt)) {
+                        // An overlay filed under a sandbox (issue #940) is a layer of the sandbox's configuration,
+                        // which its build assembles -- not a config taken now. Its fragment and UiBlock overlays go
+                        // with it when the sandbox takes it.
+                        if (isSandboxClient(config.gedraId.client)) {
+                            collector.sandboxOverlays.add(config)
+                            continue
+                        }
                         // A config's fragment overlays travel with the config, so they are taken only when it is
                         // (issue #456) -- a bundle whose checks just failed must not still change what its
                         // client's people read.

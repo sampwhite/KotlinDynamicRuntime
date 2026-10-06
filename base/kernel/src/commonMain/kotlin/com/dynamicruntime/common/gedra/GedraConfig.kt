@@ -765,12 +765,15 @@ fun gedraConfig(
                 "name from code, so it has to be usable as a variable name.",
         )
     }
-    // A sandbox owns no configuration -- it runs its parent's (issue #927) -- so nothing is filed under one. Every
-    // authored config, source, stored or imported, is built here, which makes this the one place to say so.
-    sandboxParentOf(client)?.let { parent ->
-        throw KdrException.mkConv(
-            "Config '$name' cannot be filed under the sandbox '$client': a sandbox owns no configuration and runs " +
-                "its parent's, so configuration for it is written to '$parent'.",
+    // A sandbox owns no *stored* configuration -- it runs its parent's (issue #927) -- so nothing stored or imported
+    // is filed under one. Source code may file an **overlay** under it (issue #940): a change carried for the sandbox
+    // only, layered between the parent's source and its stored revisions. Every authored config is built here,
+    // which makes this the one place to say so.
+    // An input error: only a write or an import builds a stored config, so a request named the sandbox.
+    sandboxParentOf(client)?.takeIf { origin == GedraConfigOrigin.stored }?.let { parent ->
+        throw KdrException.mkInput(
+            "Config '$name' cannot be stored under the sandbox '$client': a sandbox owns no stored configuration and " +
+                "runs its parent's, so configuration for it is written to '$parent'.",
         )
     }
     // The name and client are handed to the builder rather than stamped onto what it produced: a contribution

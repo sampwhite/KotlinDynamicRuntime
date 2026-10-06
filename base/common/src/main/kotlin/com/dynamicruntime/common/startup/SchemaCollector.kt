@@ -65,6 +65,14 @@ class SchemaCollector(
     val gedraConfigs: GedraConfigCollector = GedraConfigCollector()
 
     /**
+     * Source configs filed under a **sandbox** (issue #940): a change source code carries for the sandbox only. Held
+     * apart from [gedraConfigs] rather than taken as they arrive, because they are a layer of the sandbox's
+     * configuration -- above its parent's source, below its parent's stored revisions -- which the sandbox's build
+     * assembles (`GedraConfigLoadService.sandboxConfigs`), and only for a parent whose definition asks for one.
+     */
+    val sandboxOverlays: MutableList<GedraConfig> = mutableListOf()
+
+    /**
      * Callbacks that produce a choice list when the schema is rendered, keyed by the id a
      * `g-optionsSource` names (issue #413).
      *
@@ -363,6 +371,7 @@ class SchemaCollector(
         c.endpoints.addAll(endpoints)
         c.tables.addAll(tables)
         c.gedraConfigs.absorbAll(gedraConfigs)
+        c.sandboxOverlays.addAll(sandboxOverlays)
         c.optionsProviders.putAll(optionsProviders)
         c.cfacts.putAll(cfacts)
         c.cfactSources.putAll(cfactSources)
