@@ -14,14 +14,19 @@ import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
+import com.dynamicruntime.common.gedra.formDocsQueryDefName
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
 /**
@@ -77,6 +82,25 @@ class UsageRuleBootCheckTest : StringSpec({
         }
         thrown.fullMessage() shouldContain ReservedFieldUsageComponent.reservedTrait
         thrown.fullMessage() shouldContain "reserved forms-listing field"
+    }
+
+    "the same usage only warns in warn mode: the column stays and the parameter is dropped (issue #987)" {
+        // The trait is named for the cursor field, which the listing's type does not declare -- the framework
+        // appends it to a cursor-paged listing -- so only the generator leaving it out keeps it off the type.
+        val cxt = Startup.mkTestBootCxt(
+            "reservedUsageWarn", "reservedUsageWarnTest",
+            mapOf(
+                ReservedFieldUsageComponent.loadFlag.name to "true",
+                GCFG.checkEnvVar.name to BootCheckMode.warn.name,
+            ),
+            additionalComponents = listOf(ReservedFieldUsageComponent()),
+        )
+        val schema = SchemaService.get(cxt)
+        val client = ReservedFieldUsageComponent.reservedClient
+        schema.traitUsagesFor(client).map { it.traitId } shouldBe listOf(ReservedFieldUsageComponent.reservedTrait)
+        val query = schema.storeFor(client).types.getValue(formDocsQueryDefName()).properties.keys
+        query shouldNotContain ReservedFieldUsageComponent.reservedTrait
+        query shouldContain EP.offset
     }
 })
 
@@ -135,8 +159,8 @@ class ReservedFieldUsageComponent : ComponentDefinition {
                 property("value", "A value.")
             }
             // A string usage on a trait id that is a reserved listing field name mints an exact parameter of the
-            // same name (`offset`), which would overwrite the listing's paging field -- the collision #538 refuses.
-            traitUsage(reservedTrait, "Offset", $$"${value}", UsageKind.string)
+            // same name (`after`), the field a cursor-paged listing is given -- the collision #538 refuses.
+            traitUsage(reservedTrait, "After", $$"${value}", UsageKind.string)
         },
     )
 
@@ -146,10 +170,10 @@ class ReservedFieldUsageComponent : ComponentDefinition {
             "KDR_LOAD_RESERVED_USAGE_FIXTURE", group = ENVGRP.application, defaultDoc = "off",
             description = "Test-only flag that loads the reserved-field-usage fixture component regardless of environment.",
         )
-        // The offset paging field's name -- a usage on a trait so named collides with it. Referencing the
+        // The cursor field's name (issue #987) -- a usage on a trait so named collides with it. Referencing the
         // constant keeps the collision a compile-time fact: rename EP.offset and this fixture stops compiling
         // rather than silently declaring a trait that collides with nothing.
-        const val reservedTrait = EP.offset
+        const val reservedTrait = EP.after
         const val reservedEntry = "ReservedUsageEntry"
         const val reservedClient = "reservedusageclient"
     }

@@ -2,6 +2,8 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
@@ -63,8 +65,17 @@ class GedraSearchParam(
  * The search parameters [usages] contribute, in declaration order. A `string` gives an exact parameter named
  * for the trait (the design's "the trait id becomes a search parameter") and, when [ClientTraitUsage.substring]
  * is set, a `<traitId>Contains` beside it; a `number` or `date` gives `<traitId>Min` and `<traitId>Max`.
+ *
+ * A parameter whose name the listing keeps for itself ([reservedQueryFieldNames]) is **not** among them (issue
+ * #987): it is left out here, at the one place every reader starts from, so the advertised schema and the
+ * predicate drop it together -- a predicate that still read it would filter by the listing's own `offset`.
+ * The usage keeps its column; [searchParamCollisions] is what reports it.
  */
-fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = buildList {
+fun gedraSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> =
+    mintedSearchParams(usages).filter { it.name !in reservedQueryFieldNames }
+
+/** Every parameter [usages] would mint by name alone, a reserved name included -- see [gedraSearchParams]. */
+private fun mintedSearchParams(usages: List<ClientTraitUsage>): List<GedraSearchParam> = buildList {
     for (usage in usages) {
         fun param(role: SearchRole) = GedraSearchParam(usage.traitId + role.nameSuffix, usage.label, usage.traitId, role, usage.kind)
         when (usage.kind) {
@@ -165,22 +176,29 @@ private fun boundDescription(param: GedraSearchParam): String {
 fun formDocsQueryDefName(): String = qualifyTypeName(GEP.formDocsQuery, GEP.gedraNamespace)
 
 /**
- * The listing query's **stable** field names -- the paging offset, the appended limit, the user filter, the
- * free-text term, and the include-users flag -- which a generated search parameter must not take. A usage whose
- * search parameter would land on one of these is refused at boot ([searchParamCollisions]); this guards the
- * merge regardless, so a slipped-through one cannot silently rewrite a stable field's schema.
+ * The listing query's **stable** field names -- every field the query type declares for itself, and the two the
+ * framework appends when the endpoint's input resolves: the page `limit`, and the cursor `after` (issue #987) of
+ * a cursor-paged listing. A generated search parameter must not take one. `after` is held ahead of need: the
+ * forms listing pages by offset today, and reserving the name now means a later move to cursor paging cannot
+ * turn a client's trait name into a refused boot.
+ *
+ * The one list (issue #987): [gedraSearchParams] leaves these names out, [searchParamCollisions] reports the
+ * usage that asked for one, and the webapp reads the same set to tell a trait search box from the listing's own
+ * controls. A field added to the query type belongs here too, which `FormDocsQueryReservedTest` holds.
  */
-val reservedQueryFieldNames: Set<String> =
-    setOf(EP.offset, EP.limit, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir)
+val reservedQueryFieldNames: Set<String> = setOf(
+    EP.offset, EP.limit, EP.after, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir,
+    GDF.withStates, GDF.withWorkflowSummary, SVY.surveyStatus, WAGG.workflowId, WAGG.workflowState,
+)
 
 /**
- * The search parameter names [usages] would generate that collide with a [reservedQueryFieldNames] entry -- the
- * boot check behind the guard in [withSearchProperties]. A `string` usage on a trait named `user` (say) mints an
- * exact parameter `user`, which would otherwise overwrite the listing's own user filter. Empty is the ordinary
- * case; a non-empty result is a client-config mistake to report.
+ * The search parameter names [usages] ask for that are a [reservedQueryFieldNames] entry -- the boot check. A
+ * `string` usage on a trait named `user` (say) asks for an exact parameter `user`, the listing's own user
+ * filter; [gedraSearchParams] leaves it out, so the trait shows as a column and cannot be searched. Empty is the
+ * ordinary case; a non-empty result is a client-config mistake to report.
  */
 fun searchParamCollisions(usages: List<ClientTraitUsage>): List<String> =
-    gedraSearchParams(usages).map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
+    mintedSearchParams(usages).map { it.name }.filter { it in reservedQueryFieldNames }.distinct()
 
 /**
  * The trait ids [usages] name more than once (issue #681), in first-seen order and without repeats -- the boot
@@ -199,9 +217,9 @@ fun duplicateUsageTraitIds(usages: List<ClientTraitUsage>): List<String> =
  * contribute nothing, so a scope with no usages shares the base rather than a distinct-but-equal copy -- which
  * is what lets the per-client build hand back the global type when a client's search fields do not differ.
  *
- * A search property never **overwrites** a stable field the base already declares ([reservedQueryFieldNames]):
- * the base keeps it, and the colliding usage is left unsearchable rather than allowed to rewrite the paging or
- * user-filter schema. The boot check refuses such a usage; this is the structural backstop for one that slips.
+ * A search property never **overwrites** a field the base already declares: the base keeps it. That cannot
+ * arise while every base field is in [reservedQueryFieldNames], which [gedraSearchParams] leaves out; this is
+ * the structural backstop for a field added to the type and not to the list.
  */
 fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<String, Any?> {
     val base = baseDef.toJsonMapOrEmpty()

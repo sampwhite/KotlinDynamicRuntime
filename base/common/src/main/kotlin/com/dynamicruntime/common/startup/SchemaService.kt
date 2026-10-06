@@ -331,9 +331,9 @@ class SchemaService : ServiceInitializer {
      * usages they judge.
      *
      * - A **search parameter colliding with a reserved forms-listing field** (issue #538): a usage on a trait
-     *   named `user`, say, mints an exact parameter `user` that would otherwise overwrite the listing's own user
-     *   filter. `withSearchProperties` keeps the reserved field regardless, so the effect is a silently
-     *   unsearchable trait -- worth reporting so the client learns their usage did not take.
+     *   named `user`, say, asks for an exact parameter `user`, the listing's own user filter. `gedraSearchParams`
+     *   leaves a reserved name out regardless, so the effect is a silently unsearchable trait -- worth reporting
+     *   so the client learns their usage did not take. The cursor field `after` is among them (issue #987).
      * - **Two usage rules for one trait id** (issue #681): the presentation model is keyed by trait id
      *   throughout -- the display-value map, the search predicate's value lookup, the sort's column resolution,
      *   and the frontend's column key -- so a second usage does not add a second column; it silently collides

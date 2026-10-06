@@ -1,14 +1,11 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EI
-import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.gedra.GDF
-import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.SearchRole
 import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.decodeSearchParam
+import com.dynamicruntime.common.gedra.reservedQueryFieldNames
 import com.dynamicruntime.common.gedra.workflow.SVY
-import com.dynamicruntime.common.gedra.workflow.WAGG
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import react.FC
@@ -19,18 +16,6 @@ import react.useEffect
 import react.useRef
 import react.useState
 import web.cssom.ClassName
-
-/** The fields on the reserved side of the listing query -- paging, the user and client scope, the free-text
- *  term, the include-users and with-states flags, the sort column and direction, and the survey-status filter
- *  (#666, #668, #694, #695) -- not trait search fields, and never shown as one; the user and client scopes and
- *  the survey status have their own controls. */
-private val reservedQueryFields = setOf(
-    EP.offset, EP.limit, EI.user, EI.client, EI.q, EI.includeUsers, GSORT.sort, GSORT.sortDir, GDF.withStates,
-    SVY.surveyStatus,
-    // The workflow column's summary request (issue #791) and the workflow pages' drill-down (issue #792): flags and
-    // a filter with their own presentation, never trait search boxes.
-    GDF.withWorkflowSummary, WAGG.workflowId, WAGG.workflowState,
-)
 
 /**
  * The chip for an applied survey-status filter (issue #695), `Status: Valid`, or null when none is applied --
@@ -139,7 +124,8 @@ fun searchGroups(inputSchema: Map<String, Any?>): List<SearchGroup> {
     val properties = inputSchema[SCH.properties].toJsonMapOrEmpty()
     val drafts = LinkedHashMap<String, Draft>()
     for ((name, body) in properties) {
-        if (name in reservedQueryFields) continue
+        // The listing's own fields (the kernel's list, shared with the backend's check): never a trait search box.
+        if (name in reservedQueryFieldNames) continue
         val prop = body.toJsonMapOrEmpty()
         val shape = decodeSearchParam(name, prop, properties.keys)
         val draft = drafts.getOrPut(shape.traitId) { Draft(shape.traitId, shape.kind) }
