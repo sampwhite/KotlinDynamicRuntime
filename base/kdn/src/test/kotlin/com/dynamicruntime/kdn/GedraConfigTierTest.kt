@@ -25,7 +25,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 
 /**
- * The configuration protection tiers (issue #617): what the runtime **consumes** by tier -- free takes the
+ * The configuration protection tiers (issue #617): what the runtime **consumes** by tier -- latest takes the
  * latest revision, published-only takes the latest published one -- and that a `staticConfig` client is no tier
  * of its own outside production (issue #824). Verified through the tier-aware consumption read
  * (`currentConfigs`), which the reload loads from; its own client per case.
@@ -52,13 +52,13 @@ class GedraConfigTierTest : StringSpec({
         svc().currentConfigs(asClient(client), client).flatMap { it.entriesBySlot()[CCT.traitDef].orEmpty() }
             .mapNotNull { it[CCT.traitId] as? String }
 
-    "the free tier consumes the latest revision, published or not" {
-        val client = "tierfree"
+    "the latest tier consumes the latest revision, published or not" {
+        val client = "tierlatest"
         write(client, "fA")                 // v1, unpublished
         consumedTraits(client) shouldContain "fA"
         svc().publish(asClient(client), GedraId.of(GedraConfigType.configDoc, client, "${client}cfg"))
         write(client, "fA", "fB")           // v2, unpublished, on top of published v1
-        // Free (no toggle): the latest revision, so the unpublished v2 with fB.
+        // Latest (no toggle): the latest revision, so the unpublished v2 with fB.
         consumedTraits(client) shouldContain "fB"
     }
 
@@ -74,7 +74,7 @@ class GedraConfigTierTest : StringSpec({
             it shouldContain "pA"
             it shouldNotContain "pB"
         }
-        // Toggling back to free brings the unpublished revision back into consumption.
+        // Toggling back to latest brings the unpublished revision back into consumption.
         svc().setPublishedOnly(asClient(client), client, false)
         consumedTraits(client) shouldContain "pB"
     }
@@ -94,9 +94,9 @@ class GedraConfigTierTest : StringSpec({
         GedraConfigService.get(own).publishedOnly(admin.cxt, admin.selfClient()!!) shouldBe true
     }
 
-    // `staticConfig` is not a tier (issue #824): outside production a static client is an ordinary one, free by
+    // `staticConfig` is not a tier (issue #824): outside production a static client is an ordinary one, on the latest tier by
     // default and toggled like any other. What it does in production is StaticConfigTest's.
-    "outside production a static client is free by default and toggles like any other" {
+    "outside production a static client is on the latest tier by default and toggles like any other" {
         val tcxt = Startup.mkTestBootCxt(
             "gedraCfgTierStatic", "gedraCfgTierStaticTest",
             mapOf(StaticClientComponent.loadFlag.name to "true", "KDR_DB_NAME" to "cfgTier_static"),

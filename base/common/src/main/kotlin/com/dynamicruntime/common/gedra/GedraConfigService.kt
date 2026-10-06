@@ -14,7 +14,6 @@ import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.startup.SchemaCollector
-import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
@@ -320,8 +319,17 @@ class GedraConfigService : ServiceInitializer {
      * the way a write is (issue #843): refused if a trial reload with this revision live would find a problem the
      * client does not already have. For any other client the revision is already what it runs, and was judged
      * when written.
+     *
+     * With [impact] set to [ImpactGate.refuse], it is refused too when making the revision live would affect the data
+     * the client already stores (issue #935, [ConfigImpact]), unless the caller has [ImpactGate.acknowledged] it. As
+     * with the trial, only a published-only client's publish can: for any other, the report is empty.
      */
-    fun publish(cxt: KdrCxt, configClassId: GedraId, trial: Boolean = false): GedraConfigRow {
+    fun publish(
+        cxt: KdrCxt,
+        configClassId: GedraId,
+        trial: Boolean = false,
+        impact: ImpactGate = ImpactGate.unchecked,
+    ): GedraConfigRow {
         val configId = configClassId.revisionClass()
         requireNotStaticHere(cxt, configId.client, "publishing its stored configuration")
         val wcxt = boundToClient(cxt, configId.client)
@@ -348,6 +356,8 @@ class GedraConfigService : ServiceInitializer {
                     "Configuration '${configId.baseId}' was not published",
                 )
             }
+            // Judged under the lock, on the revision just stamped, so no write can land between the report and the publish.
+            if (impact == ImpactGate.refuse) ConfigImpact.requireNone(wcxt, configId.client, stamped)
             stamped
         }
     }

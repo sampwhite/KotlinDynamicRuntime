@@ -285,7 +285,7 @@ class GedraConfigWriteTrialTest : StringSpec({
         admin.postData(ACEP.bundleWrite, writeBody(flow(client, "${client}Topic")))
         publish(client, "flow")
         // 'flow' moves to a second trait that only the latest 'defs' declares, and is published while 'defs' is
-        // not -- which the free tier allows, since what it runs is the latest set.
+        // not -- which the latest tier allows, since what it runs is the latest set.
         admin.postData(ACEP.bundleWrite, writeBody(defs(client, "${client}Topic", "${client}Other")))
         admin.postData(ACEP.bundleWrite, writeBody(flow(client, "${client}Other")))
         publish(client, "flow")

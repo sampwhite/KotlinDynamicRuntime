@@ -13,7 +13,7 @@ import kotlin.time.Instant
 /**
  * The configuration **protection tier** (issue #617), read and written on the [GCT.gedraConfigControl] table.
  *
- * There are two tiers: a client consumes its latest revision (**free**), or only its latest **published**
+ * There are two tiers: a client consumes its latest revision (**latest**), or only its latest **published**
  * revision (**published-only**), the runtime state toggled per client per environment. The word "protected" is
  * avoided on purpose: `AdminEndpoints` already uses `selfProtected` for self-role edits, and one word reading
  * two ways is what #611 asked to settle.

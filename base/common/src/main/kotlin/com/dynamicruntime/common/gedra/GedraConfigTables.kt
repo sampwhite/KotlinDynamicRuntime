@@ -72,7 +72,7 @@ object GC {
     /**
      * Whether this client, in this environment, consumes only its **published** configuration (issue #617). The
      * runtime state, toggled per client per environment (`ClientDef.staticConfig` is not a tier, issue #824).
-     * Absent (no row) means the free tier -- the latest revision.
+     * Absent (no row) means the latest tier -- the latest revision.
      */
     const val publishedOnly = "publishedOnly"
 
@@ -168,7 +168,7 @@ fun gedraConfigTables(cxt: KdrCxt): List<KdrTable> =
         // The protection tier (#617): one row per (client, environment) saying whether that client, in that
         // environment, consumes only its published configuration. Deployment-shared like the config rows and
         // owned by the client, never narrower -- `forClient()` for the same reason the config tables take it.
-        // Absent means the free tier, so a client that has never toggled needs no row.
+        // Absent means the latest tier, so a client that has never toggled needs no row.
         table(GCT.gedraConfigControl, "One client's configuration protection tier in one environment (#617).") {
             column(GC.environment, "The environment this tier applies in.", required = true)
             column(GC.publishedOnly, "Whether this client consumes only its published configuration here.") {

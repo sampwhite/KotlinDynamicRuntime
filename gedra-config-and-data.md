@@ -316,6 +316,24 @@ node last loaded them:
 `GedraConfigService.writeConfig` itself does not trial unless asked (`trial = true`), so a test can still store a
 flawed config on purpose to exercise the forgiving load.
 
+**Judged against the stored data, at publish** (issue #935). The trial says whether a candidate configuration is
+*valid*; nothing in it says what the candidate does to the rows the client already stores. A sandbox tries a change
+against its own data, so a change can look fine there and still hurt the client's when published, which for a
+published-only client is the promotion step. So the publish endpoints also compute an **impact report**
+(`ConfigImpact`): the candidate is built the way a trial builds it, and every live row is judged under the
+configuration the client runs now and under the candidate. Only what the candidate breaks is reported:
+
+- a trait in use the client would no longer support;
+- an entry that would no longer validate, so every later edit of its form is refused;
+- a workflow a form takes part in that would no longer exist;
+- a task a form's recorded state names that its workflow would no longer define.
+
+A non-empty report refuses the publish, carrying the report, unless the caller acknowledges it. The report is per
+configuration, matching publish. Stored state is compared against the candidate's workflows rather than derived
+again, since a trial's workflows carry no functions to run, so a state the candidate would only derive
+*differently* is not reported. Past `KDR_IMPACT_SCAN_LIMIT` rows nothing is examined, and the report says so; a
+publish then asks for acknowledgement all the same.
+
 A **component's** schema fault follows the source rule: it refuses the boot outside production, and in production
 the faulty keyword, message or layout is dropped and the node serves. A global document that will not compile still
 refuses everywhere.
