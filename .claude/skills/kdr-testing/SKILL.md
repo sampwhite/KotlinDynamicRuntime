@@ -270,7 +270,8 @@ kdr-probe                                             # lists the scenarios
 kdr-probe catalog-diff                                # what each rung is shown by /schema/endpoints
 kdr-probe access-matrix /health /admin/users          # callers x paths -> status codes
 kdr-probe grant-then-call                             # grant a rung to a live session, re-probe it
-kdr-probe report-demo                                 # creates acme and globex forms for the sample reports (#1005)
+kdr-probe design-demo [suffix]                        # runs the design-demo simulation (#997)
+kdr-probe report-demo                                 # runs the report-demo simulation: sample report data (#1005)
 kdr-probe call --as operator GET /operator/system/info # one request, no session to keep
 kdr-probe --url http://localhost:7099 catalog-diff    # somewhere other than the default 7071
 ```
@@ -296,6 +297,27 @@ and a `FAILED` line distinguishes an instance that could not be reached from a d
 Scenarios print as they go, so a run that dies partway leaves output that reads as a short but finished report
 — and piping through `grep` or `tail` loses the exit code. **Absence of the completion line means the report is
 incomplete however complete it looks.**
+
+## Simulations: canned scenarios a person can set up (issue #997)
+
+A **simulation** provisions a scenario -- clients, users, data -- on a test instance in one call, the way the tests do,
+so a person doing UAT (or reviewing a page) can set it up and look. It is a `forTestingOnly` endpoint declared with
+`simulationEndpoint(name, description, inputFields) { cxt, request -> SimulationReport }` (`common/simulation`), at
+`/fixture/simulate/<name>`, tagged `simulation`. Its report says what it provisioned, the users to sign in as (each
+with a purpose) and where to start; the webapp's **Simulations** page and `kdr-probe <name>` both read it.
+
+- **Declare it in the component that owns what it provisions.** One that depends on nothing lives in `common`'s
+  `simulation` package (`design-demo`); one over a component's own clients or data lives in that component and uses
+  its constants (`sample`'s `report-demo`). The declaration is the registration: a node without the component does
+  not offer it.
+- **Provision with `Simulations`.** `provisionConfig` writes, reloads **and announces**, so the config reaches every
+  node -- never `writeConfig` plus `reloadClient` alone, which reaches only this one. `provisionUser` finds or
+  creates a user without signing in as them; `createForm` creates a form owned by one.
+- **Keep the work in a plain function** the handler calls (`provisionDesignDemo`), so a test calls it in-process.
+- **Say in the description** what a rerun does (rewrites config; adds data) and any simulation it could conflict
+  with. Simulations may build on each other; nothing guards against a conflict but that sentence.
+- A probe scenario that runs a simulation is one `runSimulation(cxt, name, input)` call -- never a second way of
+  provisioning the same thing.
 
 ## Several nodes at once: the multi-node harness
 

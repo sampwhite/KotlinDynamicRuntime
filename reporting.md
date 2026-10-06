@@ -189,8 +189,8 @@ The sample component declares four reports:
 - **globex `yearlyNotes`** — the keyed `yearly` trait read whole three ways (every year, how many, the latest) and
   one year's note picked by its key, `form.sample:yearly[2024].note`.
 
-A fresh node has no forms, so each runs empty. `kdr-probe --url <the node> report-demo` (the flag goes before the
-scenario) creates some against a test
-instance that loads the sample: 32 acme forms over three owners, five auditors and five reporting years (some with no
+A fresh node has no forms, so each runs empty. The `report-demo` simulation (issue #997) creates some on a test
+instance that loads the sample -- run it from the webapp's **Simulations** page, or `kdr-probe --url <the node>
+report-demo` (the flag goes before the scenario): 32 acme forms over three owners, five auditors and five reporting years (some with no
 audit, some with open findings) and 10 globex forms with one to four yearly records — a second page of a detail run
 and several groups of a grouped one. Each run adds forms; an in-memory node needs it again after a restart.

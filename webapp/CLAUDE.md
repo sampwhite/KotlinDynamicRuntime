@@ -478,8 +478,8 @@ pure half -- parsers, the run's query, the table's columns, a cell's text, the p
   whatever somebody typed into a form, and a spreadsheet would run it as a formula. `walkReportRun` is `suspend`,
   and its tests return `GlobalScope.promise { … }`, which the Node runner awaits -- the way to test suspend logic
   here without a coroutine test library.
-- **Data to look at**: `kdr-probe --url <your server> report-demo` creates acme and globex forms and prints how to
-  sign in as an acme administrator.
+- **Data to look at**: the `report-demo` simulation creates acme and globex forms -- run it from the **Simulations**
+  page, which then signs you in as an acme administrator in one click, or `kdr-probe --url <your server> report-demo`.
 
 ## Buttons and links on the form surfaces (issue #726)
 
@@ -629,8 +629,19 @@ inspector says why, from the block's `editRefusal`.
   with no ghost to say so.
 - **Only the workflow form is marked.** It provides `DesignViewContext`; every other `SchemaForm` (the catalog,
   the raw editors) sees null and draws exactly as before.
-- **Seeing it.** `kdr-probe --url http://localhost:7072 design-demo` writes the `designdemo` client -- defined in
-  data, so its definitions show as the client's own -- and prints how to sign in as its administrator.
+- **Seeing it.** The `design-demo` simulation writes the `designdemo` client -- defined in data, so its definitions
+  show as the client's own. Run it from the **Simulations** page (below), with a suffix for a fresh copy
+  (`designdemouat`), and sign in as its designer in one click; or `kdr-probe --url http://localhost:7072 design-demo`.
+
+## The Simulations page (issue #997)
+
+`#page=simulations`, offered on a test instance only (the menu item is gated on `kdr:isTestInstance`; the route is
+Home elsewhere): the simulations the node offers, from `/fixture/simulations` -- the catalog's shape, parsed with
+`parseCatalog`, and not narrowed to the published API, since on a test instance simulations are for anyone testing it.
+Each gets its input form from its schema (the same `SchemaForm` and `checkInput` the endpoint catalog uses) and a
+**Run**; the run's report becomes **Sign in as …** buttons, which post `/fixture/becomeUser` and `afterSessionChange`
+to the report's start page -- no reload. The pure half (`SimulationsApi.kt`: the report, the sign-in body, the start
+page) is covered by `SimulationsTest`. What a simulation is, and how to add one, is in the `kdr-testing` skill.
 
 ## Errors: never a blank page (issue #223)
 
