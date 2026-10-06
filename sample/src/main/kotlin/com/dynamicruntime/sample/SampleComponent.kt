@@ -24,6 +24,7 @@ import com.dynamicruntime.sample.gedra.ExpenseTotalDeriver
 import com.dynamicruntime.sample.gedra.TraitPresenceByYearDeriver
 import com.dynamicruntime.sample.gedra.sampleClients
 import com.dynamicruntime.sample.gedra.sampleTraits
+import com.dynamicruntime.sample.simulation.SampleSimulations
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.startup.SchemaCollector
@@ -72,6 +73,8 @@ class SampleComponent : ComponentDefinition {
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
         collector.addModule(SampleFileService.schema(cxt))
         collector.addModule(GedraFixtureEndpoints.schema(cxt))
+        // The sample's simulations (issue #997): test-only, and offered only where the sample's clients exist.
+        collector.addModule(SampleSimulations.schema(cxt))
         // The demo state derivation (issue #599); it runs only for a test-instance client that opts in via
         // `testFeatures` (acme does), so registering it here is harmless everywhere else.
         collector.addStateDeriver(TraitPresenceByYearDeriver)

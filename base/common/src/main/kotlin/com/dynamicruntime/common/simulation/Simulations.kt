@@ -35,6 +35,8 @@ class SimulationUser(
     val persona: String?,
     /** What this user is for, in a few words: "the designer", "an owner". */
     val purpose: String,
+    /** Roles beyond the level -- `allClients`, say -- which signing in as them must ask for too. */
+    val capabilities: List<String> = emptyList(),
 ) {
     fun toJsonMap(): Map<String, Any?> = buildMap {
         put(SIM.email, email)
@@ -42,6 +44,7 @@ class SimulationUser(
         put(SIM.level, level)
         persona?.let { put(SIM.persona, it) }
         put(SIM.purpose, purpose)
+        if (capabilities.isNotEmpty()) put(SIM.capabilities, capabilities)
     }
 }
 
@@ -92,17 +95,21 @@ object Simulations {
         client: String,
         level: String,
         name: String? = null,
+        capabilities: List<String> = emptyList(),
     ): AuthUserRow {
         val service = UserService.get(cxt)
         service.checkInit(cxt)
         return service.authFormHandler.findOrProvisionUser(
-            cxt, email, level, capabilities = emptyList(), failIfUserAlreadyExists = false, client = client, name = name,
+            cxt, email, level, capabilities, failIfUserAlreadyExists = false, client = client, name = name,
         ).row
     }
 
-    /** The [SimulationUser] a report lists for [row], provisioned at [level], with what it is [purpose] for. */
-    fun reported(row: AuthUserRow, level: String, purpose: String): SimulationUser =
-        SimulationUser(row.primaryId, row.client, level, row.persona, purpose)
+    /**
+     * The [SimulationUser] a report lists for [row], provisioned at [level] (with any [capabilities]), with what it is
+     * [purpose] for.
+     */
+    fun reported(row: AuthUserRow, level: String, purpose: String, capabilities: List<String> = emptyList()): SimulationUser =
+        SimulationUser(row.primaryId, row.client, level, row.persona, purpose, capabilities)
 
     /**
      * A form document carrying [entries], created as [owner] in their client -- owned by them, as their own create
@@ -165,6 +172,10 @@ private fun defineSimulationReportTypes(builder: SchModuleBuilder) {
         property(SIM.level, "The user's access level.", required = true) { for (rung in RoleLadder.ordered) option(rung) }
         property(SIM.persona, "The user's persona.")
         property(SIM.purpose, "What this user is for, in a few words.", required = true)
+        property(SIM.capabilities, "Roles beyond the level, such as allClients, which signing in as them asks for too.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
     }
     builder.type(SIM.reportType) {
         type = SCT.kObject

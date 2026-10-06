@@ -51,6 +51,9 @@ object SIM {
     const val persona = "persona"
     const val purpose = "purpose"
 
+    /** Roles beyond the level, such as `allClients`; absent when there are none. */
+    const val capabilities = "capabilities"
+
     // --- inputs a simulation may take ---
 
     /**

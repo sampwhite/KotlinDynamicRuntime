@@ -26,9 +26,9 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
-import com.dynamicruntime.script.ReportDemo
-import com.dynamicruntime.script.reportDemoAcmeEntries
-import com.dynamicruntime.script.reportDemoGlobexEntries
+import com.dynamicruntime.sample.simulation.ReportDemo
+import com.dynamicruntime.sample.simulation.reportDemoAcmeEntries
+import com.dynamicruntime.sample.simulation.reportDemoGlobexEntries
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -337,11 +337,8 @@ class ReportEndpointTest : StringSpec({
             )[EP.errorMessage].toOptStr().shouldNotBeNull() shouldContain "different query"
         }
     }
-    // Last: it adds the demo's forms. The probe names the sample's traits by literal (it cannot see this module), so
-    // this is what fails when the two drift apart.
-    "the probe's demo entries are ones the sample accepts, and give the examples something to show" {
-        ReportDemo.acme shouldBe SC.acme
-        ReportDemo.globex shouldBe SC.globex
+    // Last: it adds the demo's forms -- the report-demo simulation's entries (issue #997).
+    "the report demo's entries are ones the sample accepts, and give the examples something to show" {
         val before = (page(admin, mapOf(RRUN.reportId to SC.formRoster))[EP.numAvailable] as Number).toInt()
         for (n in 0 until ReportDemo.acmeForms) create(owner, SC.acme, *reportDemoAcmeEntries(n).toTypedArray())
         for (n in 0 until ReportDemo.globexForms) create(globexOwner, SC.globex, *reportDemoGlobexEntries(n).toTypedArray())
