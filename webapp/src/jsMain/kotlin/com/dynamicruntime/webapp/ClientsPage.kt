@@ -56,7 +56,8 @@ private val clientsScope = MainScope()
  * the overview's facts for it, its definition as the scoped retrieve answers, the issues its checks forgave, and
  * the stored configurations this node holds for it. The definition is asked for on its own, keyed on the open id,
  * so a deep link works before the listing has loaded and a client this node does not carry still shows what the
- * listing knows above the retrieve's honest 404. Editing a client and designing its workflows (#903) will open here.
+ * listing knows above the retrieve's honest 404. Its definition is edited in place (`DefinitionEditor`, issue
+ * #1026) for a client defined in stored configuration.
  */
 @Suppress("UnnecessaryVariable")
 val ClientsPage = FC<Props> {
@@ -247,6 +248,14 @@ private fun ChildrenBuilder.clientDetail(
         backToListing(HMENU.pageClients)
         h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
         for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) readOnlyField(label, value)
+        // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
+        if (def != null && definitionEditable(row)) {
+            DefinitionEditor {
+                this.clientId = clientId
+                info = def.info
+                this.onChanged = onChanged
+            }
+        }
         // The client's named reports (issue #1007) -- for a client this node carries, which is what has any to run.
         // Named by client only for an administrator who looks across them; a scoped one's reports are their own.
         if (row?.status == ClientStatus.present.name) {
@@ -355,7 +364,106 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
         }
-        // Editing the client, and designing its workflows, land here (#903, later slices).
+    }
+}
+
+external interface DefinitionEditorProps : Props {
+    var clientId: String
+    var info: Map<String, Any?>
+    var onChanged: () -> Unit
+}
+
+/**
+ * The definition editor (issue #1026): **Edit definition** opens the presentation fields -- name, note, domain
+ * prefix, custom domain, web resources, suggested user labels -- seeded from the definition as read
+ * ([definitionDraftOf]); Save sends only what changed ([definitionEditRequest]) and is offered only when something
+ * did; Cancel drops the draft. The fields the platform sets (#820) and the structural ones are not here: they stay
+ * in the read-only rows above. A save takes effect as the copy and menu editors' do -- live, or a draft for a
+ * client with a sandbox, which the note says ([savedNote]) -- and [DefinitionEditorProps.onChanged] re-reads the
+ * page and the shell, so the heading and the listing row follow the new name. A refusal is shown in the backend's
+ * words under the fields, the draft kept, so it can be corrected rather than retyped.
+ */
+private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
+    var editing by useState(false)
+    var draft by useState(definitionDraftOf(props.info))
+    var busy by useState(false)
+    var editError by useState<DisplayError?>(null)
+    var note by useState<String?>(null)
+    // A new client under the same editor: nothing of the previous one's editing state carries over.
+    useEffect(props.clientId) {
+        editing = false
+        editError = null
+        note = null
+    }
+
+    fun open() {
+        draft = definitionDraftOf(props.info)
+        editing = true
+        editError = null
+        note = null
+    }
+
+    fun save() {
+        val request = definitionEditRequest(props.clientId, props.info, draft)
+        if (!definitionEditChanges(request)) return
+        busy = true
+        editError = null
+        clientsScope.launch {
+            try {
+                val result = ClientsApi.setDefinition(request)
+                note = savedNote("Saved the definition to ${result.configName}.", result.mode)
+                editing = false
+                props.onChanged()
+            } catch (e: Throwable) {
+                editError = userFacingError(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    if (!editing) {
+        p {
+            Button {
+                size = "small"
+                onClick = { open() }
+                +"Edit definition"
+            }
+        }
+    } else {
+        val request = definitionEditRequest(props.clientId, props.info, draft)
+        textField("Name", draft.name, disabled = busy) { v -> draft = draft.copy(name = v) }
+        textField("Description", draft.description, disabled = busy) { v -> draft = draft.copy(description = v) }
+        textField("Domain prefix", draft.domainPrefix, disabled = busy) { v -> draft = draft.copy(domainPrefix = v) }
+        textField("Custom domain", draft.customDomain, disabled = busy) { v -> draft = draft.copy(customDomain = v) }
+        textField("Web resources", draft.webResourcesId, disabled = busy) { v -> draft = draft.copy(webResourcesId = v) }
+        textField("User labels", draft.labelsText, disabled = busy) { v -> draft = draft.copy(labelsText = v) }
+        p {
+            className = ClassName("subtitle")
+            +"Labels are comma-separated; each is matched exactly as written."
+        }
+        p {
+            Button {
+                type = "primary"
+                loading = busy
+                disabled = !definitionEditChanges(request)
+                onClick = { save() }
+                +"Save"
+            }
+            Button {
+                type = "link"
+                disabled = busy
+                onClick = { editing = false; editError = null }
+                +"Cancel"
+            }
+        }
+        editError?.let { errorText("Couldn't save the definition.", it) }
+    }
+    note?.let {
+        p {
+            className = ClassName("subtitle")
+            +it
+        }
     }
 }
 

@@ -224,6 +224,65 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         mapOf(CLD.client to result.client, CLD.sandbox to result.sandbox, CLD.publishedOnly to result.publishedOnly)
     }
 
+    type(CLD.definitionEditResultTypeName) {
+        type = SCT.kObject
+        description = "What a definition edit did (issue #1026): where it landed, the definition as stored now, and how it took effect."
+        property(CLD.client, "The client.", required = true)
+        property(COV.configName, "The stored configuration the change landed in.", required = true)
+        property(CLD.definition, "The client's stored definition after the edit.", required = true) { ref(CLD.infoTypeQualified) }
+        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
+            option(EDM.live, "Live")
+            option(EDM.draft, "Draft")
+        }
+        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing.", required = true) {
+            type = SCT.array
+            items { ref(CLD.configIssueTypeQualified) }
+        }
+    }
+
+    generalEndpoint(
+        UADEP.clientDefinitionSet,
+        "Edits a client's definition (issue #1026): its name, note, domain prefix, custom domain, web resources and " +
+            "suggested user labels -- the fields a client presents with, and only those; the environments it is " +
+            "enabled in, the template it extends and the traits it includes are not edited here, and the fields only " +
+            "a platform operator sets (#820) are not among the inputs. An absent field is left as it is; a blank one " +
+            "clears it (the name may not be blank). Written to the client's stored definition under the config lock, " +
+            "refused when a trial reload finds a new problem, then published and reloaded; for a client with a Shadow " +
+            "Sandbox (issue #930) saved as a draft instead -- written and reloaded, not published -- so its sandbox " +
+            "shows it and it goes live once published. Refused for a client defined in source code (its definition " +
+            "is edited there), for a sandbox (its definition is its parent's), and while the definition's " +
+            "configuration has somebody's unpublished changes, which a live save would publish.",
+        HttpMethod.POST,
+        outputRef = CLD.definitionEditResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(CLD.client)
+            // `emptyIsAbsent = false` throughout: a blank is a value here -- it clears the field (or, for the name, is
+            // refused) -- where the default would drop it and leave the field as it was.
+            field(CLD.name, "The name presented to users as the name of the client.") { emptyIsAbsent = false }
+            field(CLD.description, "An internal note about who, what or why; blank clears it.") { emptyIsAbsent = false }
+            field(CLD.domainPrefix, "A prefix on a core domain that routes to this client; blank clears it.") { emptyIsAbsent = false }
+            field(CLD.customDomain, "A whole hostname the client configured for itself; blank clears it.") { emptyIsAbsent = false }
+            field(CLD.webResourcesId, "The package of web resources the client presents; blank clears it.") { emptyIsAbsent = false }
+            field(CLD.userLabels, "The user labels the client suggests, each once and trimmed; empty clears them.") {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[CLD.client].toOptStr())
+        // Only the fields the caller sent: an absent one is left as it is.
+        val fields = ClientPresentationFields.names.filter { request.containsKey(it) }.associateWith { request[it] }
+        val result = ClientDefinitionEdit.set(c, client, fields)
+        mapOf(
+            CLD.client to client,
+            COV.configName to result.configName,
+            CLD.definition to result.info,
+            CPY.mode to result.mode,
+            CPY.issues to result.issues.map { it.toWireMap() },
+        )
+    }
+
     itemEndpoint(
         UADEP.clientDefinition,
         "One client's definition, as `/admin/client/definition` answers it: the caller's own client, or the one " +

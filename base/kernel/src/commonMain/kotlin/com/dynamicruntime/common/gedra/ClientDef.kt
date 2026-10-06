@@ -112,6 +112,21 @@ object ClientOperatorFields {
         }
 }
 
+/**
+ * The [ClientDef] fields a client's administrator edits from the Clients page (issue #1026): what the client
+ * presents and where it is reached -- its name, its note, its routing, its web resources, and the user labels it
+ * suggests. Nothing structural: the environments it is enabled in, the template it extends, the traits it includes
+ * and its preload stay read-only there, since a change to any of them moves what the client holds or where it
+ * runs. The operator-only fields ([ClientOperatorFields]) are never among them. Declared here, in one place, so
+ * the editor and the endpoint's input are the same set, and a field joining or leaving it is one line.
+ */
+object ClientPresentationFields {
+    /** The editable fields, as [CLD] keys, in the order an editor draws them. */
+    val names: List<String> = listOf(
+        CLD.name, CLD.description, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.userLabels,
+    )
+}
+
 /** Names and field keys for a client definition (issue #343). */
 @Suppress("ConstPropertyName")
 object CLD {
@@ -171,6 +186,10 @@ object CLD {
 
     /** Schema type name for the sandbox edit's result (issue #932). */
     const val sandboxResultTypeName = "ClientSandboxResult"
+    /** Schema type name for the definition edit's result (issue #1026). */
+    const val definitionEditResultTypeName = "ClientDefinitionEditResult"
+    /** On the definition edit's result: the stored definition after the edit ([infoTypeName]); [client] there is the id. */
+    const val definition = "definition"
 
     /** Schema type name for the [ClientDef.toInfo] dump. */
     const val infoTypeName = "ClientInfo"

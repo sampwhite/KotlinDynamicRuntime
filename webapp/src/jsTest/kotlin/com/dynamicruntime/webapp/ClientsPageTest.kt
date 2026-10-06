@@ -403,6 +403,66 @@ class ClientsPageTest {
         )
     }
 
+    // --- editing the definition (issue #1026) ----------------------------------------------------------------
+
+    private val storedInfo = mapOf(
+        CLD.clientId to "globex", CLD.name to "Globex", CLD.description to "A note.", CLD.domainPrefix to "globex",
+        CLD.userLabels to listOf("reviewer", "auditor"),
+    )
+
+    @Test
+    fun theDraftOpensOnTheDefinitionAndTheRequestCarriesOnlyWhatChanged() {
+        val draft = definitionDraftOf(storedInfo)
+        assertEquals("Globex", draft.name)
+        assertEquals("", draft.customDomain)
+        assertEquals("reviewer, auditor", draft.labelsText)
+        // Untouched: nothing but the client.
+        val same = definitionEditRequest("globex", storedInfo, draft)
+        assertEquals(mapOf(CLD.client to "globex"), same)
+        assertEquals(false, definitionEditChanges(same))
+        // A rename trimmed, the note cleared (sent blank, so the backend clears it), the labels re-read as a list --
+        // each once and trimmed -- and the fields left alone not sent.
+        val edited = draft.copy(name = " Globex Corp ", description = "  ", labelsText = "auditor, reviewer ,auditor,,")
+        val request = definitionEditRequest("globex", storedInfo, edited)
+        assertEquals(true, definitionEditChanges(request))
+        assertEquals(
+            mapOf(CLD.client to "globex", CLD.name to "Globex Corp", CLD.description to "", CLD.userLabels to listOf("auditor", "reviewer")),
+            request,
+        )
+        // A label line that only re-spells the same list is not a change.
+        assertEquals(listOf("reviewer", "auditor"), labelsOfText(" reviewer,auditor , reviewer"))
+        assertEquals(false, definitionEditChanges(definitionEditRequest("globex", storedInfo, draft.copy(labelsText = " reviewer,auditor "))))
+    }
+
+    @Test
+    fun theEditorIsOfferedOnlyWhereASaveCouldLand() {
+        fun row(status: String = ClientStatus.present.name, origin: String = GedraConfigOrigin.stored.name, sandboxOf: String? = null, staticHere: Boolean = false) =
+            ClientOverview("globex", "Globex", status, origin, 1, 0, 0, 0, 0, false, emptyList(), 0, 0, sandboxOf = sandboxOf, staticHere = staticHere)
+        assertEquals(true, definitionEditable(row()))
+        // A source definition is edited in source; a sandbox's is its parent's; a static client takes nothing stored;
+        // a client this node does not carry has nothing to reload; and before the listing answers there is no row.
+        assertEquals(false, definitionEditable(row(origin = GedraConfigOrigin.source.name)))
+        assertEquals(false, definitionEditable(row(sandboxOf = "globex")))
+        assertEquals(false, definitionEditable(row(staticHere = true)))
+        assertEquals(false, definitionEditable(row(status = ClientStatus.dropped.name)))
+        assertEquals(false, definitionEditable(null))
+    }
+
+    @Test
+    fun theDefinitionEditResultParses() {
+        val result = parseDefinitionEditResult(
+            mapOf(
+                COV.configName to "main", CLD.definition to mapOf(CLD.name to "Globex Corp"), CPY.mode to EDM.draft,
+                CPY.issues to listOf(mapOf(GCI.message to "Old problem."), mapOf("other" to 1)),
+            ),
+        )
+        assertEquals("main", result.configName)
+        assertEquals("Globex Corp", result.info[CLD.name])
+        assertEquals(EDM.draft, result.mode)
+        assertEquals(listOf("Old problem."), result.issues)
+        assertEquals(EDM.live, parseDefinitionEditResult(emptyMap()).mode)
+    }
+
     // --- editing the menu (issue #919) ---------------------------------------------------------------------
 
     private fun menuRow(id: String, base: String?, label: String?, baseCond: String?, cond: String?, stored: Boolean = false, parent: String? = null) =

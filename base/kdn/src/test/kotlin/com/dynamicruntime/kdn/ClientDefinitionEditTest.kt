@@ -1,0 +1,151 @@
+package com.dynamicruntime.kdn
+
+import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.COV
+import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+
+/**
+ * Editing a client's definition from the Clients page (issue #1026): the presentation fields of its stored
+ * definition, written under the config lock and made to take effect as the copy and menu editors' saves are -- live
+ * at once, or a draft for a client with a sandbox (issue #930). The operator-only fields (#820) are not inputs at
+ * all, so naming one is refused by the input's shape. One booted instance; a client per case.
+ */
+class ClientDefinitionEditTest : StringSpec({
+    val cxt = Startup.mkTestBootCxt("clientDefEdit1026", "clientDefEdit1026")
+    val svc = GedraConfigService.get(cxt)
+
+    /** Defines [client] in stored configuration, published and reloaded; with a sandbox when asked. */
+    fun defineClient(client: String, sandbox: Boolean = false) {
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 10260L }
+        svc.writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = "Client $client", description = "Before.", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                        domainPrefix = client, userLabels = listOf("reviewer"), sandbox = sandbox,
+                    ),
+                )
+            },
+        )
+        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        GedraConfigReload.reloadClient(cxt, client)
+    }
+
+    fun present(client: String): ClientDef = ClientService.get(cxt).present(client)!!
+
+    fun mainPublished(client: String): Boolean? =
+        svc.readLatest(cxt.mkSubContext("check", client), GedraId.of(GedraConfigType.configDoc, client, "main"))?.isPublished
+
+    "a client's administrator renames it, and the change is published, live, and read back" {
+        val client = "defeditlive"
+        defineClient(client)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+
+        val saved = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "  Renamed  ", CLD.userLabels to listOf("auditor", " reviewer ", "auditor")))
+        saved[CLD.client] shouldBe client
+        saved[COV.configName] shouldBe "main"
+        saved[CPY.mode] shouldBe EDM.live
+        val stored = saved[CLD.definition].toJsonMapOrEmpty()
+        stored[CLD.name] shouldBe "Renamed"
+        stored[CLD.userLabels].toJsonListOfStrings() shouldBe listOf("auditor", "reviewer")
+        // What was not sent is as it was; what the client runs now is the edit.
+        stored[CLD.description] shouldBe "Before."
+        present(client).name shouldBe "Renamed"
+        present(client).userLabels shouldBe listOf("auditor", "reviewer")
+        mainPublished(client) shouldBe true
+        admin.getItem(UADEP.clientDefinition)[CLD.client].toJsonMapOrEmpty()[CLD.name] shouldBe "Renamed"
+
+        // A blank clears an optional field; an empty list clears the labels; the name may not be blank.
+        val cleared = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.description to "", CLD.domainPrefix to " ", CLD.userLabels to emptyList<String>()))
+        val after = cleared[CLD.definition].toJsonMapOrEmpty()
+        after.containsKey(CLD.description) shouldBe false
+        after.containsKey(CLD.domainPrefix) shouldBe false
+        after.containsKey(CLD.userLabels) shouldBe false
+        present(client).description shouldBe null
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to " "))
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, emptyMap())
+    }
+
+    "a field only the platform sets is not an input: naming it is refused, not dropped (issue #820)" {
+        val client = "defeditoper"
+        defineClient(client)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to "X", CLD.audience to ClientAudience.internal.name))
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to "X", CLD.enabledEnvironments to listOf(ENV.unit)))
+        present(client).name shouldBe "Client $client"
+    }
+
+    "a source-defined client, a sandbox, a foreign draft, and another administrator's client are refused" {
+        val client = "defeditref"
+        defineClient(client, sandbox = true)
+        val full = TestUser.createFullAdmin(cxt, "full@$client.test")
+        // The full administrator's own client is declared in source code: edited there.
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to full.selfClient(), CLD.name to "X"))
+            .toString() shouldContain "source code"
+        // A sandbox's definition is its parent's.
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to sandboxOf(client), CLD.name to "X"))
+            .toString() shouldContain "sandbox"
+        // A client administrator names only their own client.
+        val other = "defeditother"
+        defineClient(other)
+        val chief = TestUser.create(cxt, "chief@$other.test", level = ROLE.admin, userClient = other)
+        chief.expectError(EXC.notAuthorized, UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.name to "X"))
+        // Somebody's unpublished change to the definition's configuration would go live with a save: refused.
+        svc.writeConfig(
+            cxt.mkSubContext("draft", other).also { it.userId = 10261L },
+            gedraConfig(cxt, "main", clientNamespace(other), other) {
+                defineClient(
+                    ClientDef(
+                        clientId = other, name = "Drafted $other", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+            },
+        )
+        chief.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to "X")).toString() shouldContain "unpublished"
+        present(other).name shouldBe "Client $other"
+    }
+
+    "a client with a sandbox saves a draft its sandbox shows, live once published (issue #930)" {
+        val client = "defeditdraft"
+        defineClient(client, sandbox = true)
+        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+
+        val saved = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "Draft Name"))
+        saved[CPY.mode] shouldBe EDM.draft
+        saved[CLD.definition].toJsonMapOrEmpty()[CLD.name] shouldBe "Draft Name"
+        // The client runs what it published; its sandbox, derived from the latest, carries the new name.
+        present(client).name shouldBe "Client $client"
+        present(sandboxOf(client)).name shouldBe "Draft Name (sandbox)"
+        mainPublished(client) shouldBe false
+
+        admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to "main"))
+        admin.postData(CFEP.reload, emptyMap())
+        present(client).name shouldBe "Draft Name"
+    }
+})

@@ -131,6 +131,14 @@ object UADEP {
     const val clientSandbox = "/${SECT.clientAdmin}/client/sandbox"
 
     /**
+     * Edits a client's definition from the Clients page (issue #1026): its presentation fields
+     * (`ClientPresentationFields`), written to its stored definition and made to take effect as the copy and menu
+     * editors' saves are -- live, or a draft for a client with a sandbox. The caller's own client unless they may
+     * name another.
+     */
+    const val clientDefinitionSet = "/${SECT.clientAdmin}/client/definition/set"
+
+    /**
      * The copy and interface one client's own configuration changes (issue #916) -- fragment keys and UiBlock
      * items, each with the value it replaces and the config that set it. Scoped as [clientDefinition] is.
      */

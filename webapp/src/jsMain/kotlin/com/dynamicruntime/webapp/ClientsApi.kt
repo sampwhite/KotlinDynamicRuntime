@@ -23,6 +23,7 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -697,6 +698,82 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
     }
 }
 
+// --- editing the definition (issue #1026) ---------------------------------------------------------------------
+
+/**
+ * What the definition editor holds (issue #1026): the presentation fields (`ClientPresentationFields`) as text, the
+ * user labels as one comma-separated line. Seeded from the definition by [definitionDraftOf]; what differs from it
+ * is what [definitionEditRequest] sends.
+ */
+data class ClientDefinitionDraft(
+    val name: String,
+    val description: String,
+    val domainPrefix: String,
+    val customDomain: String,
+    val webResourcesId: String,
+    val labelsText: String,
+)
+
+/** The draft the editor opens on: [info]'s fields as text, an absent one blank. Pure, and covered under `jsNodeTest`. */
+fun definitionDraftOf(info: Map<String, Any?>): ClientDefinitionDraft = ClientDefinitionDraft(
+    name = info[CLD.name].toOptStr().orEmpty(),
+    description = info[CLD.description].toOptStr().orEmpty(),
+    domainPrefix = info[CLD.domainPrefix].toOptStr().orEmpty(),
+    customDomain = info[CLD.customDomain].toOptStr().orEmpty(),
+    webResourcesId = info[CLD.webResourcesId].toOptStr().orEmpty(),
+    labelsText = info[CLD.userLabels].toJsonListOfStrings().joinToString(", "),
+)
+
+/** The labels a comma-separated line names, each once and trimmed -- the rule a client's list is held to. */
+fun labelsOfText(text: String): List<String> = normalizeUserLabels(text.split(','))
+
+/**
+ * The request that saves [draft] for [clientId]: the client, and **only the fields that differ** from [info], the
+ * definition the draft was seeded from -- a text field trimmed, a cleared one sent blank (the backend clears it),
+ * the labels as a list. Empty beyond the client when nothing changed, which is when Save has nothing to do.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun definitionEditRequest(clientId: String, info: Map<String, Any?>, draft: ClientDefinitionDraft): Map<String, Any?> {
+    val out = linkedMapOf<String, Any?>(CLD.client to clientId)
+    fun text(key: String, value: String) {
+        val now = value.trim()
+        if (now != info[key].toOptStr().orEmpty()) out[key] = now
+    }
+    text(CLD.name, draft.name)
+    text(CLD.description, draft.description)
+    text(CLD.domainPrefix, draft.domainPrefix)
+    text(CLD.customDomain, draft.customDomain)
+    text(CLD.webResourcesId, draft.webResourcesId)
+    val labels = labelsOfText(draft.labelsText)
+    if (labels != info[CLD.userLabels].toJsonListOfStrings()) out[CLD.userLabels] = labels
+    return out
+}
+
+/** Whether a [definitionEditRequest] asks for anything. */
+fun definitionEditChanges(request: Map<String, Any?>): Boolean = request.size > 1
+
+/**
+ * Whether the detail offers the definition editor for the client [row] describes (issue #1026): one this node
+ * carries, defined in **stored** configuration (a source definition is edited in source), not a sandbox (its
+ * definition is its parent's), and not static here (a static client takes nothing stored). The backend refuses
+ * each of these in its own words; this only spares showing an editor that cannot save. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun definitionEditable(row: ClientOverview?): Boolean =
+    row != null && row.status == ClientStatus.present.name && row.origin == GedraConfigOrigin.stored.name &&
+        row.sandboxOf == null && !row.staticHere
+
+/** What a definition edit did (issue #1026), and how it took effect -- live, or a draft its sandbox runs (issue #930). */
+class DefinitionEditResult(val configName: String, val info: Map<String, Any?>, val issues: List<String>, val mode: String = EDM.live)
+
+/** The set result as a [DefinitionEditResult]. Pure, and covered under `jsNodeTest`. */
+fun parseDefinitionEditResult(results: Map<String, Any?>): DefinitionEditResult = DefinitionEditResult(
+    configName = results[COV.configName].toOptStr().orEmpty(),
+    info = results[CLD.definition].toJsonMapOrEmpty(),
+    issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
+    mode = results[CPY.mode].toOptStr() ?: EDM.live,
+)
+
 /** The clients endpoints (issue #905): the scoped surface, which both kinds of administrator reach. */
 object ClientsApi {
     /** The clients this administrator oversees, as the overview lists them. */
@@ -714,6 +791,13 @@ object ClientsApi {
     suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
         Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
             .toJsonMapOrEmpty()[CLD.sandbox] == true
+
+    /**
+     * Saves a client's definition edit (issue #1026) -- [request] from [definitionEditRequest] -- and makes it take
+     * effect: live, or a draft for a client with a sandbox; the backend refuses what its trial faults.
+     */
+    suspend fun setDefinition(request: Map<String, Any?>): DefinitionEditResult =
+        parseDefinitionEditResult(Http.sendApi("POST", UADEP.clientDefinitionSet, request)[EP.results].toJsonMapOrEmpty())
 
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =

@@ -434,6 +434,20 @@ reload path as a copy edit (a draft, likewise, for a client with a sandbox), lan
 the table says so. Blocks other than the home menu (the sample's nav) stay read-only under "Other interface
 changes". Wire names: `MNU` in the kernel.
 
+**Editing the definition** (issue #1026, `DefinitionEditor` in `ClientsPage.kt`): under the summary rows of a client
+defined in **stored** configuration (`definitionEditable`: present, origin stored, not a sandbox, not static here --
+the backend refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
+definition** opens the presentation fields -- name, description, domain prefix, custom domain, web resources,
+user labels as one comma line (`labelsOfText`) -- seeded from the definition (`definitionDraftOf`). Save posts
+`/clientAdmin/client/definition/set` (`ClientsApi.setDefinition`) with **only the fields that changed**
+(`definitionEditRequest`; a cleared field goes as blank, which the backend clears, and Save is disabled while
+nothing differs), the same write-trial-publish-reload path as a copy edit, a draft likewise for a client with a
+sandbox (`savedNote` says which). The structural fields (environments, template, included traits, preload) and the
+platform's (#820) are not inputs of the endpoint at all, so the editor never offers them: they stay in the read-only
+rows, the platform's marked "(set by the platform)". A success bumps the refresh generation, so the heading, the
+listing row and the shell follow the new name. The editable set is the kernel's `ClientPresentationFields`, which
+the endpoint's input and this editor both read.
+
 Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
 not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,
 who administers only their own users (#805) -- is shown as it came, through `LoadStateCard`'s `errorLead`. The
