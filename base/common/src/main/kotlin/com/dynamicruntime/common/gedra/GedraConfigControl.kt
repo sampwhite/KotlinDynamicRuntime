@@ -20,13 +20,17 @@ import kotlin.time.Instant
  *
  * `ClientDef.staticConfig` is **not** a third tier (issue #824). A static client takes nothing from the database
  * in production -- its definition is its source alone, implicitly published -- and outside production it is an
- * ordinary client with an ordinary tier; see `GedraConfigService.isStaticHere`. The tier is the toggled state:
+ * ordinary client with an ordinary tier; see `GedraConfigService.isStaticHere`. The tier is the toggled state, or a
+ * definition asking for a Shadow Sandbox (issue #930) -- in source, or in the client's published revision:
  *
  * ```
  * publishedOnly(client) = the toggled state for (client, environment)
+ *                         || [sourceAsksForSandbox] || [publishedAsksForSandbox]
  * ```
  *
- * The loader (#614) and the reload (#616) consult this; the config-editing reads (`readLatest`, `listConfigs`) do
+ * The loader (#614) and the reload (#616) consult this -- the boot load as the toggled set plus those two rules, a
+ * reload through `GedraConfigService.publishedOnly`; a boot that read the toggle alone ran a sandbox's parent on its
+ * drafts after every restart (issue #935); the config-editing reads (`readLatest`, `listConfigs`) do
  * **not** -- an administrator editing a client's config must still see the editable latest, whatever tier the
  * client runs at.
  *
@@ -35,6 +39,20 @@ import kotlin.time.Instant
  * the service -- and both must resolve the tier the same way.
  */
 object GedraConfigControl {
+    /** Whether source [configs] define [client] asking for a Shadow Sandbox (issue #930). */
+    fun sourceAsksForSandbox(configs: List<GedraConfig>, client: String): Boolean =
+        configs.any { !it.isStored && it.gedraId.client == client && it.client?.sandbox == true }
+
+    /**
+     * Whether one client's stored config rows, grouped by config class ([classRows]), hold a **published** definition
+     * asking for a Shadow Sandbox (issue #930). The published one decides, not the latest -- see
+     * `GedraConfigService.asksForSandbox`.
+     */
+    fun publishedAsksForSandbox(classRows: Collection<List<Map<String, Any?>>>): Boolean = classRows.any { rows ->
+        val published = latestPublishedRow(rows) ?: return@any false
+        GedraConfigRow.extract(published) { GedraId.parse(it) }.entriesBySlot()[CCT.clientDef]?.firstOrNull()?.get(CLD.sandbox) == true
+    }
+
     /**
      * The clients that consume published-only in [env] by their **toggled state** alone (issue #617) -- one row
      * per client, read as a set.

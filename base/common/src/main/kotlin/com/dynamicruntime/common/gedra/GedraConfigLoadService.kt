@@ -394,11 +394,8 @@ class GedraConfigLoadService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) {
             rows = sqlCxt.sqlDb.queryStatement(cxt, stmt, emptyMap())
         }
-        // Which clients consume published-only here (issue #617): their toggled state. A class of a published-only
-        // client takes its latest *published* revision, and loads nothing when it has none.
         val env = cxt.instanceConfig.env
-        val publishedOnly =
-            controlTable?.let { GedraConfigControl.publishedOnlyClients(cxt, sqlCxt, it, env) } ?: emptySet()
+        val toggled = controlTable?.let { GedraConfigControl.publishedOnlyClients(cxt, sqlCxt, it, env) } ?: emptySet()
         // A static client takes nothing stored in production (issue #824). At boot every collected config is a
         // source one, so `staticClients` reads the whole set. Its rows are left unread, and it is said so.
         val static =
@@ -409,6 +406,16 @@ class GedraConfigLoadService : ServiceInitializer {
             .groupBy { it[GC.configId].toOptStr() ?: "" }
             .filterKeys { it.isNotEmpty() }
             .values
+        // Which clients consume published-only here: their toggled state (issue #617), or their source or published
+        // definition asking for a Shadow Sandbox (issue #930) -- the rule a reload applies through
+        // `GedraConfigService.publishedOnly`. A class of a published-only client takes its latest *published*
+        // revision, and loads nothing when it has none.
+        val sourceConfigs = collector().gedraConfigs.configs
+        val publishedOnly = toggled + classes.groupBy { it.first()[PF.client].toOptStr().orEmpty() }
+            .filter { (client, classRows) ->
+                client.isNotEmpty() &&
+                    (GedraConfigControl.sourceAsksForSandbox(sourceConfigs, client) || GedraConfigControl.publishedAsksForSandbox(classRows))
+            }.keys
         val consumed = classes.mapNotNull { classRows ->
             val client = classRows.first()[PF.client].toOptStr()
             if (client != null && client in publishedOnly) latestPublishedRow(classRows) else latestRevisionRow(classRows)
