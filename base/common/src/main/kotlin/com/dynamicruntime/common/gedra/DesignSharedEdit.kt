@@ -21,7 +21,7 @@ import com.dynamicruntime.common.util.toOptStr
  * only a definition the client **declares in its own stored configuration** -- never one declared globally, in
  * source, or a client's alteration of a shared type (#1011).
  *
- * What it changes: a field's layout copy in its type's own `g-layout`, and its choices -- relabeling, adding or
+ * What it changes: a field's layout copy in its type's own `g-layout`, and its choices -- relabeling, adding, or
  * removing one. Adding a choice is a widening, which is why it belongs here and never in a workflow variant. Removing
  * one is the owner changing its own declaration, not a narrowing (there is no layer above it to be a subset of): what
  * is at stake is the stored forms holding the value, so a removal is checked against them with #935's impact report

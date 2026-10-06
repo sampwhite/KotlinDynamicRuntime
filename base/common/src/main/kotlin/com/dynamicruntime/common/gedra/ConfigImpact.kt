@@ -46,6 +46,7 @@ import com.dynamicruntime.common.util.toOptStr
  * publish then asks for acknowledgement as for any finding. A batch job (#867) is the way past the limit, once a
  * client that large needs one.
  */
+@Suppress("ConstPropertyName")
 object ConfigImpact {
     /** The most rows one report examines; past it the report examines none. */
     val scanLimitEnvVar = EnvVarDef(
@@ -192,6 +193,7 @@ object ConfigImpact {
  * an editor's copy or menu change, a definition's sandbox flag -- [refuse] to refuse one whose report finds anything,
  * [acknowledged] for a caller who has seen the report and goes ahead.
  */
+@Suppress("EnumEntryName")
 enum class ImpactGate { unchecked, refuse, acknowledged }
 
 /** A publish impact report (issue #935); see [ConfigImpact]. The wire names are [IMP]'s. */
