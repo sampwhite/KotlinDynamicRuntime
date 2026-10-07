@@ -179,7 +179,8 @@ cannot be interpreted; unknown behavior means data would be stored looking proce
 Four things the `Sch*` layer did not have when this was written, and has since gained (`SchVariants`,
 `SchCondition`, `g-primaryKey`, `g-derived`). `SchType` had no variant or conditional representation, and
 the parser **ignores** a keyword it does not recognize — deliberately, since being strict about standard
-keywords would reject documents a stock validator accepts.
+keywords would reject documents a stock validator accepts. (A keyword it *does* read is another matter: its value
+is held to its shape, issue #1053, so `type: "strng"` is refused rather than read as no type at all.)
 
 So none of this breaks an existing document; support is purely additive. The cost of not having it was
 quieter and worse: a `oneOf` written then parsed, constrained nothing, and reported no failure. A document could

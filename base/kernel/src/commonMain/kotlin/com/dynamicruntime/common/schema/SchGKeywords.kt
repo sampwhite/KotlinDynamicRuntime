@@ -19,20 +19,18 @@ import com.dynamicruntime.common.util.Problem
  * `g-errors`' keys, `g-layout`'s vocabulary) keep those checks; this is only the first gate.
  */
 object SchGKeywords {
-    private class Shape(val described: String, val accepts: (Any?) -> Boolean)
+    private val boolean = SchKeywordShapes.boolean
+    private val text = SchKeywordShapes.text
+    private val textList = SchKeywordShapes.textList
+    private val list = SchKeywordShapes.list
+    private val obj = SchKeywordShapes.obj
 
-    private val boolean = Shape("true or false") { it is Boolean }
-    private val text = Shape("text") { it is String }
-    private val textList = Shape("a list of text") { it is List<*> && it.all { e -> e is String } }
-    private val list = Shape("a list") { it is List<*> }
-    private val obj = Shape("an object") { it is Map<*, *> }
-
-    private val shapes: Map<String, Shape> = linkedMapOf(
+    private val shapes: Map<String, SchKeywordShape> = linkedMapOf(
         SCH.allowCoerce to boolean,
         SCH.emptyIsAbsent to boolean,
         SCH.visibleOnly to boolean,
         SCH.outerWhitespace to text,
-        SCH.derived to Shape("true, false or an object") { it is Boolean || it is Map<*, *> },
+        SCH.derived to SchKeywordShape("true, false or an object") { it is Boolean || it is Map<*, *> },
         SCH.schemaDocument to boolean,
         SCH.options to list,
         SCH.openOptions to boolean,
@@ -41,7 +39,7 @@ object SchGKeywords {
         SCH.optionsSource to text,
         SCH.visibleWhen to text,
         SCH.errors to obj,
-        SCH.presentation to Shape("one of ${PRES.all.sorted()}") { it is String && it in PRES.all },
+        SCH.presentation to SchKeywordShape("one of ${PRES.all.sorted()}") { it is String && it in PRES.all },
         SCH.layout to obj,
         SCH.merge to obj,
         SCH.appliesTo to textList,
@@ -69,7 +67,7 @@ object SchGKeywords {
             )
         if (shape.accepts(value)) return null
         return Problem(
-            SchemaError.badValue, "$where sets '$keyword' to ${describe(value)}; it must be ${shape.described}.",
+            SchemaError.badValue, "$where sets '$keyword' to ${describeSchemaValue(value)}; it must be ${shape.described}.",
         )
     }
 
@@ -84,11 +82,5 @@ object SchGKeywords {
     /** Every problem among [map]'s own keys (not its children's), in key order. */
     fun problems(where: String, map: Map<String, Any?>): List<Problem> =
         map.entries.mapNotNull { (key, value) -> problem(where, key, value) }
-
-    private fun describe(value: Any?): String = when (value) {
-        is String -> "'$value'"
-        is Map<*, *> -> "an object"
-        is List<*> -> "a list"
-        else -> value.toString()
-    }
 }
+

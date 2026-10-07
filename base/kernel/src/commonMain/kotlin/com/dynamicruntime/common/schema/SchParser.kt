@@ -30,6 +30,10 @@ import com.dynamicruntime.common.util.toOptDouble
  * denylist, not an allowlist: any other keyword stays allowed. Our own `g-` keywords are the opposite -- a closed
  * list, checked by [SchGKeywords].
  *
+ * **A keyword we do read is held to its shape** ([SchStdKeywords], issue #1053): `type: "strng"`, `required:
+ * "name"`, `properties: []` and `additionalProperties: "no"` are each refused by name, where each used to be read as
+ * though the keyword were absent -- the same silence, reached by a typo in a value rather than in a key.
+ *
  * @return the newly parsed types keyed by fully qualified name.
  */
 fun parseSchemaTypes(
@@ -323,6 +327,9 @@ fun parseNode(
     // fails the parse rather than being read leniently.
     SchGKeywords.problems(where, map).firstOrNull()?.let { throw it.toException() }
     refusedKeywordProblem(where, map)?.let { throw it.toException() }
+    // And the standard keywords read below are held to their shapes (issue #1053), so the lenient reads that follow
+    // -- `as? Boolean`, `is Map`, `is List` -- only ever meet a value of the right kind, or none.
+    SchStdKeywords.problems(where, map).firstOrNull()?.let { throw it.toException() }
     val properties = LinkedHashMap<String, SchProperty>()
     val rawProps = map[SCH.properties]
     if (rawProps is Map<*, *>) {
@@ -732,10 +739,16 @@ fun readErrorMessages(raw: Any?, typeName: String?): Parsed<Map<String, String>>
 @KdrPrivate
 fun parseProperty(name: String, map: Map<String, Any?>, state: SchParseState, depth: Int): SchProperty {
     state.enter("${SCH.properties}.$name")
-    // The keywords on the property itself, which a `$ref` property's target never sees (issue #822).
-    SchGKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw it.toException() }
-    // And the refused standard ones (issue #823), which would otherwise be ignored beside a `$ref`.
-    refusedKeywordProblem("Property '$name'", map)?.let { throw it.toException() }
+    val ref = map[SCH.dRef].toOptStr()
+    if (ref != null) {
+        // The keywords on the property itself, which a `$ref` property's target never sees (issue #822); the
+        // refused standard ones (issue #823), which would otherwise be ignored beside a `$ref`; and the standard
+        // ones read here -- its description, its title, the `$ref` itself (issue #1053). Only beside a `$ref`: an
+        // inline property's own map is the node `parseNode` is handed below, which runs the same three checks.
+        SchGKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw it.toException() }
+        refusedKeywordProblem("Property '$name'", map)?.let { throw it.toException() }
+        SchStdKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw it.toException() }
+    }
     val description = map[SCH.description].toOptStr()
     // On the property, not only its value type -- see [SchProperty.title] for why a `$ref` field needs its own.
     val title = map[SCH.title].toOptStr()
@@ -746,7 +759,6 @@ fun parseProperty(name: String, map: Map<String, Any?>, state: SchParseState, de
     // Read before the split too (issue #564): a visibility gate beside a `$ref` belongs to the use site, and it
     // must reach the parsed property so the frontend -- which re-parses the served schema -- can evaluate it.
     val visibleWhen = map[SCH.visibleWhen].toOptStr()
-    val ref = map[SCH.dRef].toOptStr()
     if (ref != null) {
         val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation, visibleWhen)
         state.pendingRefs.add(PendingRef(prop, state.path().orEmpty())) // valueType bound in the resolution pass

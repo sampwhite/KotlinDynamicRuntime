@@ -298,7 +298,15 @@ for the data; fail-fast is for the schema author.
 
 The standard keywords follow the same line from the other side (issue #823). One we read is enforced exactly --
 the length, size and numeric bounds (`exclusiveMinimum` / `exclusiveMaximum` included), `pattern`, `uniqueItems`,
-`const`, `required`. A handful that would imply behavior we do not have, or that duplicate a construct of ours,
+`const`, `required` -- and is **held to its shape** (`SchStdKeywords`, issue #1053): `type: "strng"`, `required:
+"name"`, `properties: []` and `additionalProperties: "no"` are refused by name, where each used to be read as though
+the keyword were absent, so that a typo in a *value* turned validation off as silently as a misspelled `g-` key
+does. It is the same closed-shape rule, kept to the keywords we interpret, and it lands the same way: the boot
+fails in source, a client's write is refused, and at load the one keyword is dropped and reported -- which for most
+of them changes nothing about how the definition validates, since dropping it is how it was already being read (the
+few that used to stop the whole type compiling now cost the keyword instead of the type). Some of what is refused is
+legal JSON Schema this layer does not read -- a list of types, a schema for `additionalProperties`, a tuple of
+`items`, `true` standing for a schema -- and the refusal says so, rather than wording it as a typo. A handful that would imply behavior we do not have, or that duplicate a construct of ours,
 are **refused** by name rather than ignored: `enum` (use `g-options`), `allOf`, `anyOf`, `not`,
 `dependentSchemas`, and a `oneOf` without a discriminator. Any other standard or unknown keyword stays allowed --
 a denylist, deliberately, so a document may carry keywords of its own as documentation. `pattern` is ECMA-262, as

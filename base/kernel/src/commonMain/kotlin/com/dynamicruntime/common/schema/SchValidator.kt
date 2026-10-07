@@ -1097,9 +1097,10 @@ fun coerceStringToObject(
  *
  * **The parser is not a complete validator, so this is not either**, and the gap is worth naming because #316
  * exists to catch bad schemas: `parseSchemaTypes` leaves a *bare, top-level* `$ref` unresolved (it resolves
- * refs only in property, item, and branch positions), and it does not reject an unrecognized `type` value. A
- * caller that needs those rejected -- the config write endpoint (#613) -- has to add the check; this reports
- * only what the parser refuses.
+ * refs only in property, item, and branch positions). A caller that needs that rejected -- the config write
+ * endpoint (#613) -- has to add the check; this reports only what the parser refuses. (An unrecognized `type`
+ * value was once the other gap named here; the parser refuses one now, with every other wrongly shaped keyword
+ * it reads -- issue #1053.)
  *
  * The same shape as [validateDate]: parse, and turn the parser's refusal into one [SchFailCode.badValue]
  * carrying it as the cause. **One** failure, not a list -- the parser stops at the first defect, unlike the
