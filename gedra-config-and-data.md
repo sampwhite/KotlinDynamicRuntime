@@ -302,11 +302,12 @@ refused over the other).
 client's own administrators write through them -- so before a write's slots are reassembled they pass a gate
 (`configSlotFailures`, run by `reassembleForWrite`, which the bundle write, the import and `patchConfig` all go
 through). Today the gate is the **client definition**: a `kdr:clientDef` is validated against its schema
-(`ClientInfo`, compiled as `ClientDefSchema`), and an unknown key, a missing field, a value of the wrong type or a
+(`WrittenClientInfo`, compiled as `ClientDefSchema`), and an unknown key, a missing field, a value of the wrong type or a
 choice that is not one is a 400 whose message names each path and what is wrong there, with the failures also
 structured under `extraData.failures` as a request's own input failures are (`kdr:clientDef.enabledEnvironments[1]`).
 A conversion fault the reassembly itself finds in a written body -- a client id holding a colon -- is a 400 for the
-same reason. **The rule and the response are separate**: what a valid definition is does not depend on where it
+same reason, with the fault kept as its cause and its extra data (a parser's code and position) carried up; a fault
+not marked a conversion is still a server error, until the other slots are gated too. **The rule and the response are separate**: what a valid definition is does not depend on where it
 arrives, and what happens to an invalid one does. A write is refused; a row already stored is read by the lenient
 reader (`ClientDef.fromInfo`, through `reassembleGedraConfig`), so the deploy that tightens a rule strands nobody.
 

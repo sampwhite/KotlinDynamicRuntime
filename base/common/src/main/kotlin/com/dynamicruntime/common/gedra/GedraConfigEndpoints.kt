@@ -369,10 +369,9 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // 404 for a missing config is `patchConfig`'s.
     val edited = svc.patchConfig(c, configId(c, name), trial = true) { current ->
         applyConfigSlotEdits(current, edits, pk).also { patched ->
-            // Gated before the definition is read here (issue #1051): one the edits left malformed is refused as
-            // that, by `patchConfig`'s own gate too, rather than misread into a definition nobody wrote.
-            requireWritableSlots(c, name, patched)
-            requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { ClientDef.fromInfo(it) })
+            // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not judged
+            // here: `patchConfig` gates the edited slots next, and refuses it as what it is.
+            requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { readClientDef(c, it).def })
         }
     }
     return bundleOf(c, edited)
@@ -453,7 +452,7 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
             preparedByClient.getOrPut(client) { mutableListOf() }.add(prepared)
         } catch (e: Throwable) {
             // One bad bundle is reported, not fatal (issue #733) -- the restore continues.
-            failures.add(dropNulls(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to (e.message ?: "unknown error"))))
+            failures.add(dropNulls(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to importFailureText(e))))
             if (client != null) unpreparedClients.add(client)
         }
     }
@@ -480,7 +479,7 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
             }
             affected.add(client)
         } catch (e: Throwable) {
-            val message = e.message ?: "unknown error"
+            val message = importFailureText(e)
             for (name in names) {
                 failures.add(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to message))
             }
@@ -512,6 +511,13 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
         ACEP.reloaded to reloaded,
     )
 }
+
+/**
+ * What an import says of a bundle that failed: the error's whole chain of messages (a refusal that wraps the fault
+ * it found says whose it is, and its cause what is wrong -- issue #1051), since `failures` carries text and nothing else.
+ */
+private fun importFailureText(e: Throwable): String =
+    (e as? KdrException)?.fullMessage()?.ifEmpty { null } ?: e.message ?: "unknown error"
 
 /**
  * A bundle's slots with `${CLD.testFeatures}` removed from its `clientDef` entry (issue #733), paired with the

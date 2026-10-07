@@ -216,7 +216,7 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | `/clientAdmin/config/publishedOnly` | POST | set the protection tier |
 
 Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `GedraConfigEndpointTest.kt` is the
-reference. **A written `kdr:clientDef` must be a valid `ClientInfo`** (issue #1051): build it with
+reference. **A written `kdr:clientDef` must be a valid `WrittenClientInfo`** (issue #1051): build it with
 `ClientDef(...).toInfo()` rather than by hand, since an unknown key, a missing field (`enabledEnvironments`
 included) or a flag that is not a boolean is a 400 naming the path -- on the bundle write, the patch and the import
 (`ClientDefGateTest.kt`). A test that needs a malformed definition *stored* cannot get one through these endpoints;

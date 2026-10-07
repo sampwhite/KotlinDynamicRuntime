@@ -36,6 +36,8 @@ import com.dynamicruntime.common.util.toOptStr
  */
 fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogNamespace) {
     ClientDef.defineInfoType(this)
+    // And the form a write must give one in (issue #1051), which the `kdr:clientDef` slot's declaration refers to.
+    ClientDef.defineInfoType(this, written = true)
 
     listEndpoint(
         ADEP.clients,

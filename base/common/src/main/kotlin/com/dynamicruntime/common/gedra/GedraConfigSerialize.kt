@@ -2,7 +2,6 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.KdrCxtBase
-import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -11,8 +10,8 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.childPath
+import com.dynamicruntime.common.schema.inputFailuresException
 import com.dynamicruntime.common.schema.qualifyTypeName
-import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.schema.refTargetName
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -108,14 +107,19 @@ fun configSlotFailures(cxt: KdrCxtBase, entriesBySlot: Map<String, List<Map<Stri
 
 /**
  * [reassembleGedraConfig] for a configuration arriving in a **write** (issue #1051): its slots pass
- * [configSlotFailures] first, and a fault anywhere in it is the writer's -- a 400 -- rather than the server's.
+ * [configSlotFailures] first, and what the reassembly finds wrong with the body is the writer's -- a 400 --
+ * rather than the server's.
  *
  * - A slot that fails its shape is refused with every failure: the message names each path and what is wrong
- *   there, and the failures travel structured under `extraData` ([EP.failures]), as a request's own input
- *   failures do.
- * - A conversion fault the reassembly itself throws -- a client id holding a colon, a workflow that does not
- *   parse -- is the same kind of mistake, made in the body rather than in a field, so it is rethrown as bad input
- *   with its message kept. From stored rows the same fault stays what it is: nobody sent those.
+ *   there, and the failures travel structured under `extraData` ([inputFailuresException]), as a request's own
+ *   input failures do.
+ * - A **conversion** fault the reassembly throws -- a client id holding a colon, a workflow that does not parse
+ *   -- is the same kind of mistake, made in the body rather than in a field, so it is rethrown as bad input: the
+ *   fault itself kept as the cause, its extra data (a parser's code and position) carried up. Only those: a
+ *   fault that is not marked a conversion is still a server error here, and one a slot's own shape should have
+ *   caught first (the other slots are not gated yet).
+ *
+ * From stored rows a conversion fault stays what it is: nobody sent those.
  *
  * Every write path reassembles through this -- the bundle write, the import, and `patchConfig` -- and the load
  * does not, so a row a write once accepted still loads.
@@ -132,9 +136,11 @@ fun reassembleForWrite(
         reassembleGedraConfig(cxt, name, namespace, client, entriesBySlot)
     } catch (e: KdrException) {
         if (e.code != EXC.internalError || e.activity != ACT.conversion) throw e
-        // Its message is kept in this one's rather than as a cause: the wire message gathers a chain of causes, which
-        // would say it twice, and an import reports a bundle's failure by the message alone.
-        throw KdrException("Configuration '$name' cannot be written: ${e.message}", null, EXC.badInput, e.source, e.activity)
+        // The fault says what is wrong; this says whose it is. A reader of the error takes both from
+        // `fullMessage`, which gathers the chain.
+        throw KdrException(
+            "Configuration '$name' cannot be written.", e, EXC.badInput, e.source, e.activity, LinkedHashMap(e.extraData),
+        )
     }
 }
 
@@ -144,9 +150,7 @@ fun requireWritableSlots(cxt: KdrCxtBase, name: String, entriesBySlot: Map<Strin
     if (failures.isEmpty()) return
     // Each message is a sentence of its own, so they are set side by side rather than joined by punctuation.
     val detail = failures.joinToString(" ") { "${it.path}: ${it.message}" }
-    throw KdrException.mkInput("Configuration '$name' cannot be written: $detail").also {
-        it.extraData[EP.failures] = failures.map { f -> f.toWireMap() }
-    }
+    throw inputFailuresException("Configuration '$name' cannot be written: $detail", failures)
 }
 
 /**

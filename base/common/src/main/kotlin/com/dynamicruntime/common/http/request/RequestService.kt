@@ -31,8 +31,8 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.schema.failureSummary
+import com.dynamicruntime.common.schema.inputFailuresException
 import com.dynamicruntime.common.schema.parseSchemaTypes
-import com.dynamicruntime.common.schema.toWireMap
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -618,9 +618,7 @@ class RequestService : ServiceInitializer {
             // (issue #198). They are already structured -- path, code, message, the schema's own wording, the
             // valid options -- and flattening that into English made a caller parse prose to find out which
             // field was wrong. The message keeps a readable summary for a log line; the detail is in the bag.
-            throw KdrException.mkInput(failureSummary(result.failures)).also {
-                it.extraData[EP.failures] = result.failures.map { f -> f.toWireMap() }
-            }
+            throw inputFailuresException(failureSummary(result.failures), result.failures)
         }
 
         val requestData = result.value?.toJsonMap() ?: emptyMap()

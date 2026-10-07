@@ -167,6 +167,14 @@ fun failureSummary(failures: List<SchFailure>): String {
 }
 
 /**
+ * A bad-input error (400) that says [message] and carries [failures] structured, under [EP.failures] of its extra
+ * data (issue #198) -- how every refusal of schema-invalid input is reported, a request's own fields and a written
+ * configuration's slots alike (issue #1051), so a caller reads one shape wherever the input was judged.
+ */
+fun inputFailuresException(message: String, failures: List<SchFailure>): KdrException =
+    KdrException.mkInput(message).also { it.extraData[EP.failures] = failures.map { f -> f.toWireMap() } }
+
+/**
  * The schema's wording for [code] on this field: the specific message, else the field's `default`, else null
  * to leave the validator's own words in place. Three levels deep and deliberately no deeper — the built-in
  * message *is* the global default, so a type-level layer would buy nothing that is not already covered.

@@ -3,20 +3,25 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientDefSchema
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.gedra.configSlotFailures
+import com.dynamicruntime.common.gedra.coreConfigTraits
 import com.dynamicruntime.common.gedra.readClientDef
+import com.dynamicruntime.common.gedra.reassembleForWrite
 import com.dynamicruntime.common.gedra.reassembleGedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SchFailCode
@@ -25,12 +30,14 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
  * The client definition gate (issue #1051): a `kdr:clientDef` arriving in a configuration **write** is validated
@@ -83,6 +90,25 @@ class ClientDefGateTest : StringSpec({
         codes(good + (CLD.userLabels to listOf("reviewer", " reviewer "))) shouldBe mapOf(CLD.userLabels to SchFailCode.badValue)
         // Every failure is reported, not the first.
         codes(good - CLD.name + ("extra" to 1) + (CLD.preload to "yes")).keys shouldBe setOf(CLD.name, "extra", CLD.preload)
+        // A key a request may carry off-contract is not one a definition may: it would be accepted and then gone.
+        codes(good + ("_enabledEnvironments" to listOf(ENV.unit)) + ("\$note" to "x")) shouldBe
+            mapOf("_enabledEnvironments" to SchFailCode.additionalProperty, "\$note" to SchFailCode.additionalProperty)
+    }
+
+    "the written form is a type of its own beside the answered one, and only it closes the environments" {
+        val types = cxt.getSchema().types
+        fun envItems(typeName: String) = types.getValue(typeName).properties.getValue(CLD.enabledEnvironments).valueType.itemType.shouldNotBeNull()
+        // One declaration makes both, so they hold the same fields and offer the same environments...
+        types.getValue(CLD.writtenInfoTypeQualified).properties.keys shouldBe types.getValue(CLD.infoTypeQualified).properties.keys
+        envItems(CLD.writtenInfoTypeQualified).options.shouldNotBeNull().map { it.value } shouldBe ENV.names
+        envItems(CLD.infoTypeQualified).options.shouldNotBeNull().map { it.value } shouldBe ENV.names
+        // ...and differ in whether a name that is none of them may stand: an answer has to be able to carry a
+        // stored client's mistake, and a write is refused for it.
+        envItems(CLD.writtenInfoTypeQualified).openOptions shouldBe false
+        envItems(CLD.infoTypeQualified).openOptions shouldBe true
+        // The gate judges by the written one, and the slot's declaration names it.
+        ClientDefSchema.defType(cxt).name shouldBe CLD.writtenInfoTypeQualified
+        coreConfigTraits(cxt).defs.getValue("kdr.core.ClientDefEntry").toString() shouldContain CLD.writtenInfoTypeQualified
     }
 
     "what is already stored is still read leniently: the load does not pass the gate" {
@@ -132,8 +158,16 @@ class ClientDefGateTest : StringSpec({
             setOf("${CCT.clientDef}.${CLD.name}")
         // So is a fault the reassembly itself finds -- here a sandbox's id, which only the system makes: a
         // conversion fault in source, and from a writer bad input, with what is wrong kept.
-        admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(client, info(client) + (CLD.clientId to "$client:sandbox")))[EP.errorMessage]
-            .toString() shouldContain "holds a colon"
+        val colon = admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(client, info(client) + (CLD.clientId to "$client:sandbox")))
+        colon[EP.errorMessage].toString() shouldContain "Configuration 'main' cannot be written."
+        colon[EP.errorMessage].toString() shouldContain "holds a colon"
+        // The fault is kept as the cause -- its stack for the log, its extra data carried up -- not flattened to text.
+        val refusal = shouldThrow<KdrException> {
+            reassembleForWrite(cxt, "main", clientNamespace(client), client, mapOf(CCT.clientDef to listOf(info(client) + (CLD.clientId to "$client:sandbox"))))
+        }
+        refusal.code shouldBe EXC.badInput
+        refusal.cause.shouldBeInstanceOf<KdrException>().code shouldBe EXC.internalError
+        refusal.activity shouldBe ACT.conversion
 
         // The definition as it should be is written, and the client it defines comes to be.
         admin.postData(ACEP.bundleWrite, writeBody(client, info(client)))[CFEP.version] shouldBe 1
@@ -198,12 +232,15 @@ class ClientDefGateTest : StringSpec({
                 ACEP.bundlesField to listOf(
                     writeBody(bad, info(bad) + ("owner" to "nobody")),
                     writeBody(good, info(good)),
+                    // A fault the reassembly finds: the import's text says what it is, not only whose.
+                    writeBody("gateimportcolon", info("gateimportcolon") + (CLD.clientId to "gateimportcolon:sandbox")),
                 ),
             ),
         )
-        val failure = result[ACEP.failures].toJsonListOfMaps().single()
-        failure[CFEP.client] shouldBe bad
-        failure[ACEP.message].toString() shouldContain "${CCT.clientDef}.owner"
+        val failures = result[ACEP.failures].toJsonListOfMaps().associate { it[CFEP.client].toString() to it[ACEP.message].toString() }
+        failures.keys shouldBe setOf(bad, "gateimportcolon")
+        failures.getValue(bad) shouldContain "${CCT.clientDef}.owner"
+        failures.getValue("gateimportcolon") shouldContain "holds a colon"
         result[ACEP.written].toJsonListOfMaps().mapNotNull { it[CFEP.client].toOptStr() } shouldBe listOf(good)
         ClientService.get(cxt).known(bad) shouldBe null
         ClientService.get(cxt).known(good).shouldNotBeNull()
