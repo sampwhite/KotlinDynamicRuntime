@@ -221,7 +221,9 @@ class GedraConfigService : ServiceInitializer {
                 ?: throw KdrException("No configuration '${configId.baseId}' for client '${configId.client}'.", code = EXC.notFound)
             val edited = applyEdits(latest.entriesBySlot())
             // Gate and reassemble, exactly as the bundle write does (issue #1051); then write the whole edited set.
-            val config = reassembleForWrite(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited)
+            // The gate judges what the edits changed: the revision as it stood is handed to it (issue #1052).
+            val stored = latest.entriesBySlot()
+            val config = reassembleForWrite(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited, stored)
             checkWritableConfig(wcxt, config)
             val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true)
             if (trial) trialWritten(wcxt, listOf(written))

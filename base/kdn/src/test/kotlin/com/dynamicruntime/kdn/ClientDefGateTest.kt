@@ -123,7 +123,7 @@ class ClientDefGateTest : StringSpec({
         // One client a configuration: a second entry would be silently lost.
         configSlotFailures(cxt, mapOf(CCT.clientDef to listOf(info("a"), info("b")))).single().path shouldBe CCT.clientDef
         // No definition, nothing to refuse.
-        configSlotFailures(cxt, mapOf(CCT.cfactDef to listOf(mapOf(CCT.name to "x")))).shouldBeEmpty()
+        configSlotFailures(cxt, mapOf(CCT.cfactDef to listOf(mapOf(CCT.name to "x", CCT.group to "g", CCT.description to "d")))).shouldBeEmpty()
     }
 
     "a bundle write of a malformed definition is a 400 naming each path, and stores nothing" {
@@ -178,7 +178,8 @@ class ClientDefGateTest : StringSpec({
     "a patch that leaves the definition malformed is refused, and one that keeps it sound is not" {
         val admin = fullAdmin()
         val client = "gatepatch"
-        admin.postData(ACEP.bundleWrite, writeBody(client, info(client)))
+        // `postData` returns a call's results and does not assert it succeeded, so each one here is checked.
+        admin.postData(ACEP.bundleWrite, writeBody(client, info(client)))[CFEP.version] shouldBe 1
 
         fun patch(data: Map<String, Any?>): Map<String, Any?> = mapOf(
             CFEP.client to client, CFEP.name to "main",
@@ -207,7 +208,8 @@ class ClientDefGateTest : StringSpec({
         stored[CLD.name] shouldBe "Gate $client"
 
         // A sound patch of the same slot goes through, and of another slot too: the whole config is gated, and passes.
-        admin.postData(ACEP.bundlePatch, patch(mapOf(CLD.description to "Patched")))
+        admin.postData(ACEP.bundlePatch, patch(mapOf(CLD.description to "Patched")))[CFEP.slots]
+            .toJsonMapOrEmpty()[CCT.clientDef].toJsonListOfMaps().single()[CLD.description] shouldBe "Patched"
         admin.postData(
             ACEP.bundlePatch,
             mapOf(

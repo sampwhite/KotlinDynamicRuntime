@@ -183,6 +183,19 @@ fun inputFailuresException(message: String, failures: List<SchFailure>): KdrExce
     KdrException.mkInput(message).also { it.extraData[EP.failures] = failures.map { f -> f.toWireMap() } }
 
 /**
+ * A failure for each key of [data] the validator lets through as **off-contract** -- one starting with `_` or `$`,
+ * which on a request is a caller's own annotation and is never an additional property (issue #1051).
+ *
+ * For input that is **stored in a canonical form**, where there is no such thing: the key would be accepted and
+ * then gone, which is the silent drop a strict reading exists to end. A caller holding such input adds these to
+ * what [validate] found. Only [data]'s own keys: a `$ref` inside a schema body, or a key inside free content, is
+ * that content's business.
+ */
+fun offContractKeyFailures(data: Map<String, Any?>): List<SchFailure> =
+    data.keys.filter { it.startsWith("_") || it.startsWith("$") }
+        .map { SchFailure(it, SchFailCode.additionalProperty, "Additional property '$it' is not allowed.") }
+
+/**
  * The schema's wording for [code] on this field: the specific message, else the field's `default`, else null
  * to leave the validator's own words in place. Three levels deep and deliberately no deeper — the built-in
  * message *is* the global default, so a type-level layer would buy nothing that is not already covered.

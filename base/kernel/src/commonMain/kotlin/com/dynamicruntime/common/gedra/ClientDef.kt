@@ -10,6 +10,7 @@ import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.schema.coerceAndValidate
+import com.dynamicruntime.common.schema.offContractKeyFailures
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.user.normalizeUserLabels
@@ -736,9 +737,7 @@ class ClientDefRead(val def: ClientDef?, val failures: List<SchFailure>)
  */
 fun readClientDef(cxt: KdrCxtBase, raw: Map<String, Any?>): ClientDefRead {
     val result = coerceAndValidate(ClientDefSchema.defType(cxt), raw)
-    val offContract = raw.keys.filter { it.startsWith("_") || it.startsWith("$") }
-        .map { SchFailure(it, SchFailCode.additionalProperty, "Additional property '$it' is not allowed.") }
-    val failures = result.failures + offContract
+    val failures = result.failures + offContractKeyFailures(raw)
     if (failures.isNotEmpty()) return ClientDefRead(null, failures)
     val m = result.value.toJsonMapOrEmpty()
     ClientDef.userLabelsFault(m[CLD.clientId].toOptStr().orEmpty(), m[CLD.userLabels].toJsonListOfStrings())?.let {

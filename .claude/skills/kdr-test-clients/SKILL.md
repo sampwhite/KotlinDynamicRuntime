@@ -219,8 +219,13 @@ Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `Gedra
 reference. **A written `kdr:clientDef` must be a valid `WrittenClientInfo`** (issue #1051): build it with
 `ClientDef(...).toInfo()` rather than by hand, since an unknown key, a missing field (`enabledEnvironments`
 included) or a flag that is not a boolean is a 400 naming the path -- on the bundle write, the patch and the import
-(`ClientDefGateTest.kt`). A test that needs a malformed definition *stored* cannot get one through these endpoints;
-it reads one with `reassembleGedraConfig`, the load's lenient reader. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
+(`ClientDefGateTest.kt`). **Every other slot entry is held to its declared shape too** (issue #1052,
+`ConfigSlotGateTest.kt`): a cfact needs its `group` and `description`, a flag is a boolean, a usage rule's `display`
+must parse. Build a bundle's slots with `gedraConfigToEntries(gedraConfig(...) { ... })` rather than by hand where
+you can. A test that needs a malformed entry *stored* cannot get one through these endpoints: it stores a built
+config with `GedraConfigService.writeConfig` (which gates nothing), or reads one with `reassembleGedraConfig`, the
+load's lenient reader. And **`TestUser.postData` does not assert the call succeeded** -- it returns the `results` of
+whatever came back -- so assert something of the result, or a refused write passes silently. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A client on the **latest** tier loads its latest revision
 whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
 (`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is
