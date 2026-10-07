@@ -33,7 +33,7 @@ import io.kotest.matchers.string.shouldContain
 
 /**
  * Form requirements (issue #1022): a workflow's layout asks for more than the schema -- a field it requires, a shorter
- * list of choices -- on its own save and in its own task status, and nowhere else. One client, one event type and
+ * list of choices -- on its own save and in its own task status, and nowhere else. One client, one event type, and
  * two workflows over it: `plan`, its creation workflow, asks for the attendees and the rain plan and offers only the
  * park and the office; `review`, a survey, asks for the attendees. A plain form create -- a general data edit --
  * is held to the schema alone, which is how "saved elsewhere" is made here.

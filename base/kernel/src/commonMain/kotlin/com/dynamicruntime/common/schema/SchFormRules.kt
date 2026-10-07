@@ -95,10 +95,11 @@ private fun collectFormFailures(
                 }
             }
         }
-        when {
-            value is Map<*, *> && vt.properties.isNotEmpty() ->
+        when (value) {
+            is Map<*, *> if vt.properties.isNotEmpty() ->
                 collectFormFailures(vt, layouts, value, at, out, depth + 1)
-            value is List<*> -> vt.itemType?.takeIf { it.properties.isNotEmpty() }?.let { item ->
+
+            is List<*> -> vt.itemType?.takeIf { it.properties.isNotEmpty() }?.let { item ->
                 value.forEachIndexed { i, element ->
                     if (element is Map<*, *>) collectFormFailures(item, layouts, element, indexPath(at, i), out, depth + 1)
                 }
