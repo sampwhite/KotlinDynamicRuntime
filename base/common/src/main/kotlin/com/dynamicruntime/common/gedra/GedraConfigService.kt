@@ -19,8 +19,13 @@ import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
-/** One config for [GedraConfigService.writeConfigs] to store, with its own [impliedDelete] (see the service note). */
-class ConfigWrite(val config: GedraConfig, val impliedDelete: Boolean = true)
+/**
+ * One config for [GedraConfigService.writeConfigs] to store, with its own [impliedDelete] (see the service note).
+ * [mustBeNew] makes the write a **create**: refused with a 409 when the config's class already has a revision. It is
+ * judged under the client's lock, with the revision the write would otherwise replace in hand, so two creates of one
+ * config cannot both succeed -- which a check made before the write cannot promise (issue #1054).
+ */
+class ConfigWrite(val config: GedraConfig, val impliedDelete: Boolean = true, val mustBeNew: Boolean = false)
 
 /**
  * Stores a client [GedraConfig] as a versioned config row, and publishes a revision (issue #633): the write
@@ -95,6 +100,15 @@ class GedraConfigService : ServiceInitializer {
         slotPrimaryKeys = coreConfigTraits(cxt).configTraits.mapValues { it.value.primaryKey }
     }
 
+    /**
+     * Whether the client [bound] is bound to **exists**, loaded or not: this node knows of it -- declared anywhere,
+     * present here or not -- or it has stored configuration, which a client written and not yet reloaded does. The
+     * one answer the admin config endpoints refuse a typo'd id by (issue #685) and a create refuses a taken one by
+     * (issue #1054), so the two cannot come to disagree about whether a client is there.
+     */
+    fun clientExists(bound: KdrCxt): Boolean =
+        ClientService.get(bound).known(bound.client) != null || listConfigs(bound).isNotEmpty()
+
     /** The config slots a bundle may carry -- the config-trait ids (issue #627), for refusing an unknown one. */
     fun knownSlots(): Set<String> = slotPrimaryKeys.keys
 
@@ -122,8 +136,10 @@ class GedraConfigService : ServiceInitializer {
          * deliberately (a test storing a flawed config to exercise the forgiving load).
          */
         trial: Boolean = false,
+        /** Refuse the write, with a 409, when the config already has a revision: see [ConfigWrite.mustBeNew]. */
+        mustBeNew: Boolean = false,
     ): GedraConfigRow =
-        writeConfigs(cxt, config.gedraId.client, listOf(ConfigWrite(config, impliedDelete)), trial).single()
+        writeConfigs(cxt, config.gedraId.client, listOf(ConfigWrite(config, impliedDelete, mustBeNew)), trial).single()
 
     /**
      * Stores several configs of one [client] in **one** transaction under the client's lock (issue #843), each as
@@ -154,6 +170,13 @@ class GedraConfigService : ServiceInitializer {
             val written = writes.map { write ->
                 val configId = write.config.gedraId.revisionClass()
                 val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                if (write.mustBeNew && latest != null) {
+                    throw KdrException(
+                        "Configuration '${configId.baseId}' of client '$client' already exists; it was to be created, " +
+                            "not replaced.",
+                        code = EXC.conflict,
+                    )
+                }
                 writeRevisionUnderLock(wcxt, sqlCxt, table, configId, write.config, latest, write.impliedDelete)
             }
             if (trial) trialWritten(wcxt, written)

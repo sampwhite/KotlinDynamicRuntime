@@ -215,6 +215,11 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | `/clientAdmin/config/bundle` / `/bundles` | GET | fetch one / list this client's configs |
 | `/clientAdmin/config/publishedOnly` | POST | set the protection tier |
 
+**To create a client over HTTP, use `POST /admin/client/create`** (`ADEP.clientCreate`, issue #1054; a full-scope
+admin): typed fields in, and the client written, published and present on return -- no bundle to build and no reload
+to remember. `ClientCreateEndpointTest.kt` is the reference. The bundle write still creates one, and is what adds
+its traits and workflows afterwards.
+
 Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `GedraConfigEndpointTest.kt` is the
 reference. **A written `kdr:clientDef` must be a valid `WrittenClientInfo`** (issue #1051): build it with
 `ClientDef(...).toInfo()` rather than by hand, since an unknown key, a missing field (`enabledEnvironments`
