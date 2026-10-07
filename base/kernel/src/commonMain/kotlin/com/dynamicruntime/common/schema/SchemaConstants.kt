@@ -382,6 +382,15 @@ object SCH {
     const val merge = "g-merge"
 
     /**
+     * On a named type -- a top-level `$defs` entry -- the qualified name of the type it **extends** (issue #990): the
+     * type is that base plus its own body, merged before the document is parsed, so it is served and validated as
+     * one resolved type. Consumed by the resolution; anywhere else it is refused. A client's extension extends the
+     * base as that client has it; a global one is resolved once, so it does not follow a client's alteration of its
+     * base (see `SchemaService`).
+     */
+    const val extends = "g-extends"
+
+    /**
      * The gedra kinds a trait's entry type applies to -- a gedra concept the schema carries without reading (see
      * `GE.appliesTo`, which names it). Declared here so the schema layer's list of its own keywords is whole
      * ([SchGKeywords], issue #822).

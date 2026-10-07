@@ -272,6 +272,16 @@ open class SchTypeBuilder(
     }
 
     /**
+     * Declares this named type as an **extension** of [base] (issue #990): the base's body plus what this block adds --
+     * properties merged by default (a named one added or replacing the base's), the layout merged by field, every
+     * other key replacing. Resolved before the document is parsed, so it is served and validated as one type. A bare
+     * [base] resolves within this builder's [namespace]; a dotted name is used as-is. Only for a top-level type.
+     */
+    fun extends(base: String) {
+        data[SCH.extends] = qualifyTypeName(base, namespace)
+    }
+
+    /**
      * Makes this schema a `$ref` to another type. A bare [name] resolves within
      * this builder's [namespace]; a dotted name (e.g. "core.Count") is used as-is.
      */

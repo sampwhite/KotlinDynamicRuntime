@@ -28,6 +28,19 @@ enum class SchemaError : ProblemCode {
      */
     misplacedKeyword,
 
+    /**
+     * A schema key beside a `$ref` (issue #990), which the `$ref` would leave doing nothing: a `$ref` takes its type
+     * whole. A type that differs from another is declared as a named type that extends it (`g-extends`).
+     */
+    refSibling,
+
+    /**
+     * An extension that cannot be resolved (issue #990): a base that is not there, that itself extends another, or
+     * that is not an object type; `g-extends` anywhere but the top of a named type; or an extension of a type its own
+     * configuration also alters.
+     */
+    badExtends,
+
     /** A keyword whose value has the wrong shape: text where true/false belongs, a bound that is not a number. */
     badValue,
 

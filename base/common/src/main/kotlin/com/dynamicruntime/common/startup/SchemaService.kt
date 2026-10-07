@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.annotation.KdrPrivate
@@ -215,6 +216,9 @@ class SchemaService : ServiceInitializer {
         // faulty keyword, message or layout is dropped and the node serves, as every other source-config check
         // does there. A document that will not *compile* still refuses everywhere -- the node cannot do its job
         // without one.
+        // Extensions first (issue #990): a type declared as another plus a delta is resolved before anything judges
+        // it, so the repair, the parse and the served schema all see one resolved type.
+        resolveGlobalExtensions(cxt, collected)
         repairGlobalDefs(cxt, collected, repairContext(collected, cfacts.global))
         var types = parseSchemaTypes(collected.defs)
         if (dropFaultyGlobalLayouts(cxt, collected, types)) types = parseSchemaTypes(collected.defs)
@@ -465,6 +469,27 @@ class SchemaService : ServiceInitializer {
         DefRepairContext(collected.optionsProviders.keys.toSet()) { expression ->
             visibleWhenExpressionProblem(expression, registry ?: cfactsFor(null))
         }
+
+    /**
+     * Resolves every global **extension** onto its base ([resolveExtensions], issue #990), in place, each one that
+     * cannot be reported as source config -- refused outside production, and in production dropped.
+     *
+     * Resolved **once, on the global document**, so a global extension is a fixed type every client shares: a client
+     * that alters the base does not change the extension with it. A client narrowing `kdr.B` therefore leaves
+     * `kdr.A`, which extends it, accepting what the client narrowed away. Deliberate for now -- following each client's
+     * base would make a global type vary by client without being altered -- and a client wanting the narrowing on the
+     * extension too alters the extension as well.
+     */
+    private fun resolveGlobalExtensions(cxt: KdrCxt, collected: SchemaCollector) {
+        val resolved = resolveExtensions(collected.defs)
+        if (resolved.defs === collected.defs) return
+        val issues = mutableListOf<GedraConfigIssue>()
+        for ((name, problem) in resolved.refused) {
+            reportConfigProblem(cxt, globalTypeIssue(collected, name, problem.message, "Dropping '$name'."), issues)
+        }
+        collected.defs.clear()
+        collected.defs.putAll(resolved.defs)
+    }
 
     /**
      * Repairs every **global** type as a client's own are repaired ([repairTypeDef], issue #841), in place, each
