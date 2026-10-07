@@ -7,11 +7,11 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.analyzeTemplate
 
 /**
- * Field copy **pulled from a fragment file** (issue #1010): a layout's label, description or hint written as
+ * Field copy **pulled from a fragment file** (issue #1010): a layout's label, description, or hint written as
  * `%{@t("namespace.key")}`, whose words live at a fragment key rather than in the definition. Those words are the
  * client's to change as data -- a copy override (#918), what the Clients page's copy editor writes -- even where the
  * definition itself is global or declared in source, which Design View cannot edit. So the definition read names, per
- * field and copy slot, the keys a slot pulls and their wording, and the inspector edits the **shared wording** at
+ * field and copy slot, the keys a slot pulls, and their wording, and the inspector edits the **shared wording** at
  * each key through the copy endpoints.
  *
  * The slots read are the client's **own layout** for each type -- what every workflow inherits, the shared level.
@@ -24,7 +24,7 @@ object DesignPulledCopy {
     /**
      * `{ typeName -> { field -> { slot -> { mixed, keys: [...] } } } }` for every slot of [typeNames]' layouts, as the
      * client of [cxt] has them, that pulls a fragment key: whether the slot is the pull alone or [DSV.mixed] with other
-     * text, and per key its file, namespace and key, the value this client reads and the shipped value, and -- when
+     * text, and per key its file, namespace, and key, the value this client reads and the shipped value, and -- when
      * the client's own configuration sets it -- where ([COV.origin]) and, for a stored value over a source one, the
      * source value a reset returns to. Empty when nothing is pulled.
      */
@@ -83,9 +83,9 @@ object DesignPulledCopy {
         if (MarkdownFragmentService.backendPassPrefix !in text) return emptyList()
         return text.analyzeTemplate(MarkdownFragmentService.backendPassPrefix).refs.mapNotNull { ref ->
             val parts = ref.key.split('.')
-            when {
-                parts.size == 3 -> Triple(parts[0], parts[1], parts[2])
-                parts.size == 2 && defaultFileId != null -> Triple(defaultFileId, parts[0], parts[1])
+            when (parts.size) {
+                3 -> Triple(parts[0], parts[1], parts[2])
+                2 if defaultFileId != null -> Triple(defaultFileId, parts[0], parts[1])
                 else -> null
             }
         }.distinct()
