@@ -118,7 +118,7 @@ object MultiNodeJobs {
     private fun work(run: JobRunCxt, key: String): JobTaskResult {
         val cxt = run.cxt
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, MNJ.topic)
-        val table = cxt.getSchema().tables[MNJ.workTable] ?: throw KdrException("${MNJ.workTable} is not registered.")
+        val table = cxt.getGlobalSchema().tables[MNJ.workTable] ?: throw KdrException("${MNJ.workTable} is not registered.")
         val execId = cxt.mkUniqueId()
         val row = linkedMapOf<String, Any?>(
             MNJ.execId to execId, MNJ.jobType to run.launch.jobType, MNJ.launchName to run.launch.name,
@@ -188,7 +188,7 @@ object MultiNodeJobs {
 
     private fun readExecutions(cxt: KdrCxt, jobType: String, launchName: String?): List<WorkExecution> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, MNJ.topic)
-        val table = cxt.getSchema().tables[MNJ.workTable] ?: throw KdrException("${MNJ.workTable} is not registered.")
+        val table = cxt.getGlobalSchema().tables[MNJ.workTable] ?: throw KdrException("${MNJ.workTable} is not registered.")
         val byLaunch = if (launchName != null) " and c:${MNJ.launchName} = :${MNJ.launchName}" else ""
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qMultiNodeWork${if (launchName != null) "ByLaunch" else ""}", table.columns,

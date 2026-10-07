@@ -134,7 +134,7 @@ class GedraConfigSyncTest : StringSpec({
         // The dispatcher runs checkSync (issue #618) only for an endpoint marked needsClientConfig, so the
         // trigger is opt-in rather than a blanket per-request cost. The form surface, which validates against a
         // client's configured schema, opts in; health, which does not, stays off.
-        val endpoints = nodeA.getSchema().endpoints
+        val endpoints = nodeA.getGlobalSchema().endpoints
         endpoints["/gedra/formDoc/create:POST"]?.needsClientConfig shouldBe true
         endpoints["/gedra/formDoc:GET"]?.needsClientConfig shouldBe true
         endpoints["/health:GET"]?.needsClientConfig shouldBe false
@@ -163,11 +163,11 @@ class GedraConfigSyncTest : StringSpec({
         ClientSyncService.get(nodeA).announceAndMark(nodeA, nc, result.marker)
 
         val ncKey = "/gedra/$nc/formDoc/create:POST"
-        nodeA.getSchema().endpoints[ncKey]?.needsClientConfig shouldBe true   // A minted the copy on its reload
-        nodeB.getSchema().endpoints[ncKey] shouldBe null                      // B has never seen this client
+        nodeA.getGlobalSchema().endpoints[ncKey]?.needsClientConfig shouldBe true   // A minted the copy on its reload
+        nodeB.getGlobalSchema().endpoints[ncKey] shouldBe null                      // B has never seen this client
 
         Thread.sleep(ClientSyncService.checkThrottleMs + 50)
         ClientSyncService.get(nodeB).checkSync(nodeB)
-        nodeB.getSchema().endpoints[ncKey]?.needsClientConfig shouldBe true   // now present after the sync
+        nodeB.getGlobalSchema().endpoints[ncKey]?.needsClientConfig shouldBe true   // now present after the sync
     }
 })

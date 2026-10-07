@@ -64,7 +64,7 @@ class UserService : ServiceInitializer {
 
     // --- AuthIdentities (issue #747) ------------------------------------------
 
-    private fun authIdentitiesTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.authIdentities]
+    private fun authIdentitiesTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[UT.authIdentities]
         ?: throw KdrException("AuthIdentities table is not registered in the schema store.")
 
     /** The identity with [identityId], cache-first, or null. */
@@ -371,10 +371,10 @@ class UserService : ServiceInitializer {
 
     // --- AuthUsers queries --------------------------------------------------
 
-    private fun authUsersTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.authUsers]
+    private fun authUsersTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[UT.authUsers]
         ?: throw KdrException("AuthUsers table is not registered in the schema store.")
 
-    private fun authUserDevicesTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.authUserDevices]
+    private fun authUserDevicesTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[UT.authUserDevices]
         ?: throw KdrException("AuthUserDevices table is not registered in the schema store.")
 
     /**
@@ -818,7 +818,7 @@ class UserService : ServiceInitializer {
      *  the audit record, which is the surviving (disabled, obfuscated) `AuthUsers` tombstone. */
     private fun deleteRowsForIdentity(cxt: KdrCxt, tableName: String, identityId: String) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
-        val table = cxt.getSchema().tables[tableName]
+        val table = cxt.getGlobalSchema().tables[tableName]
             ?: throw KdrException("$tableName table is not registered in the schema store.")
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "dPurge$tableName", table.columns,
@@ -849,7 +849,7 @@ class UserService : ServiceInitializer {
 
     // --- LinkedUsers: external identities -----------------------------------
 
-    private fun linkedUsersTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[UT.linkedUsers]
+    private fun linkedUsersTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[UT.linkedUsers]
         ?: throw KdrException("LinkedUsers table is not registered in the schema store.")
 
     /**

@@ -65,7 +65,7 @@ class GedraDataExtraTest : StringSpec({
         val stray = "futureKey"
         val strayValue = mapOf("from" to "a newer node")
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
-        val table = cxt.getSchema().tables.getValue(GDT.gedraData)
+        val table = cxt.getGlobalSchema().tables.getValue(GDT.gedraData)
         val plant = SqlStmtUtil.prepareSql(
             sqlCxt, "plantExtraKey", table.columns,
             "update t:${GDT.gedraData} set c:${GD.data} = :${GD.data}, c:${PF.updatedAt} = :${PF.updatedAt} " +
@@ -113,7 +113,7 @@ class GedraDataExtraTest : StringSpec({
         // Nothing writes the key yet (the save endpoint, #535, will), so it is planted the way a stray key is.
         val ref = WfRef(GedraId.of(GedraConfigType.configDoc, client, "gextraForms", "3"), "createForm")
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
-        val table = cxt.getSchema().tables.getValue(GDT.gedraData)
+        val table = cxt.getGlobalSchema().tables.getValue(GDT.gedraData)
         val plant = SqlStmtUtil.prepareSql(
             sqlCxt, "plantCreationRef", table.columns,
             "update t:${GDT.gedraData} set c:${GD.data} = :${GD.data}, c:${PF.updatedAt} = :${PF.updatedAt} " +

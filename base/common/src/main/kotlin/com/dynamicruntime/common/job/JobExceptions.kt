@@ -215,7 +215,7 @@ object JobExceptionRows {
 
     /** Refuses an entry that does not match the declared [JOBX.entryType]: a job may record only what is declared. */
     private fun checkEntry(cxt: KdrCxt, data: Map<String, Any?>) {
-        val type = cxt.getSchema().types["${JOBEP.namespace}.${JOBX.entryType}"]
+        val type = cxt.getGlobalSchema().types["${JOBEP.namespace}.${JOBX.entryType}"]
             ?: throw KdrException("The ${JOBX.entryType} type is not in the schema.")
         val failures = validate(type, data)
         if (failures.isNotEmpty()) {
@@ -253,6 +253,6 @@ object JobExceptionRows {
         return row
     }
 
-    private fun table(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[JOBX.jobExceptions]
+    private fun table(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[JOBX.jobExceptions]
         ?: throw KdrException("${JOBX.jobExceptions} table is not registered in the schema store.")
 }

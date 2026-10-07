@@ -87,7 +87,7 @@ class GedraConfigTablesTest : StringSpec({
 
         val classId = GedraId.of(GedraConfigType.configDoc, "acme", "main")
         val rev3 = classId.withRevision(3)
-        val content = cxt.getSchema().tables.getValue(GCT.gedraConfig)
+        val content = cxt.getGlobalSchema().tables.getValue(GCT.gedraConfig)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         // The lock is taken on the client; the row written inside it is keyed by the revision.
         SqlTopicTranProvider.executeTopicTran(sqlCxt, "storeRevision", null, mapOf(PF.client to cxt.client)) {

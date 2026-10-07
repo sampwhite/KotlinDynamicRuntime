@@ -670,10 +670,11 @@ user. Those conveniences are administrative, and `public` grants no administrato
 
 ## The per-client schema
 
-Fetching the current schema becomes a **method on the context** (not yet: `cxt.getSchema()` returns the global
-store and a variant comes from `SchemaService.storeFor(client)`; issue #946), and the `SchemaService` holds a
-variant of the schema stack per client, with cloning limited to what a client actually modified so a variant
-costs what it changed rather than the size of the schema.
+Fetching the current schema is a **method on the context** (issue #946): `cxt.getClientSchema()` returns the store of
+the client bound to the context -- its variant, or the global store when it varies nothing -- and
+`cxt.getGlobalSchema()` the global store, which endpoint resolution uses deliberately (`SchemaService.storeFor` says
+why). The `SchemaService` holds a variant of the schema stack per client, with cloning limited to what a client
+actually modified so a variant costs what it changed rather than the size of the schema.
 
 **Anonymous callers get the default global schema**; they need one and have no client to take it from.
 **`public` uses the global schema exactly**, per the identity case above.

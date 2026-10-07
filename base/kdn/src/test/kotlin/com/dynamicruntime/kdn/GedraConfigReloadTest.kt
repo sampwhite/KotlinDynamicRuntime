@@ -85,9 +85,9 @@ class GedraConfigReloadTest : StringSpec({
         // A request memoizes the global store on first read; a reload publishes a new one, and this request
         // goes on seeing the old.
         val request = cxt.mkSubContext("inflight", client)
-        val started = request.getSchema()
+        val started = request.getGlobalSchema()
         storeAndReload(client, "rlGamma", "rlDelta")
-        request.getSchema() shouldBeSameInstanceAs started
+        request.getGlobalSchema() shouldBeSameInstanceAs started
         schema().schemaStore shouldNotBeSameInstanceAs started
     }
 

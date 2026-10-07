@@ -426,7 +426,7 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     // --- statements & lookups -----------------------------------------------
 
     /** The table definition from the schema store. */
-    fun tableOf(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[params.tableName]
+    fun tableOf(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[params.tableName]
         ?: throw KdrException(
             "Table ${params.tableName} is not registered in the schema store, so it cannot be cached.",
         )
