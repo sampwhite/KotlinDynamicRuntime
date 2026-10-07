@@ -86,7 +86,8 @@ fun requiredGateProblem(where: String, property: String): String =
  * absent, and numbers compare by value -- so sending null or "" cannot clear a stored value either.
  *
  * A field whose gate the caller passes, or that has none, is taken as sent; its nested object fields are judged the
- * same way, and a list's elements index by index against the stored list's. Removing a container that still holds a
+ * same way, a list's elements index by index against the stored list's, and a map's entries (issue #1055) key by
+ * key against the stored map's. Removing a container that still holds a
  * value the caller cannot see -- leaving out a nested object or list, or dropping list elements -- is a change to
  * that value, and refused like one ([holdsGatedValue]). A list reordered by someone who cannot see a gated field in
  * its elements is judged as the positions now stand.
@@ -107,6 +108,38 @@ fun keepGatedFields(
     }
     val out = LinkedHashMap(incoming)
     val refused = mutableListOf<String>()
+
+    /**
+     * [incomingValue] -- an object of [valueType], or a list of them -- with the gated fields inside it kept as
+     * they are stored: an object's by a pass of its own, a list's elements index by index against the stored list's.
+     */
+    fun keepNested(valueType: SchType, storedValue: Any?, incomingValue: Any?, at: String): Any? {
+        if (incomingValue is Map<*, *>) {
+            val inner = keepGatedFields(
+                valueType, (storedValue as? Map<*, *>)?.toJsonMapOrEmpty(), incomingValue.toJsonMapOrEmpty(),
+                allows, at, depth + 1,
+            )
+            refused.addAll(inner.refused)
+            return inner.data
+        }
+        val itemType = valueType.itemType ?: return incomingValue
+        val incomingList = incomingValue as? List<*> ?: return incomingValue
+        val storedList = storedValue as? List<*>
+        val kept = incomingList.mapIndexed { i, element ->
+            val m = element as? Map<*, *> ?: return@mapIndexed element
+            val inner = keepGatedFields(
+                itemType, (storedList?.getOrNull(i) as? Map<*, *>)?.toJsonMapOrEmpty(), m.toJsonMapOrEmpty(),
+                allows, "$at[$i]", depth + 1,
+            )
+            refused.addAll(inner.refused)
+            inner.data
+        }
+        // Elements dropped off the end take their gated values with them.
+        storedList?.drop(incomingList.size)?.forEachIndexed { j, dropped ->
+            if (holdsGatedValue(itemType, dropped, allows, depth + 1)) refused.add("$at[${incomingList.size + j}]")
+        }
+        return kept
+    }
     for ((name, prop) in type.properties) {
         val at = if (path.isEmpty()) name else "$path.$name"
         val storedValue = stored?.get(name)
@@ -124,37 +157,39 @@ fun keepGatedFields(
         }
         val valueType = prop.valueType
         when {
-            incomingValue is Map<*, *> && valueType.properties.isNotEmpty() -> {
-                val inner = keepGatedFields(
-                    valueType, (storedValue as? Map<*, *>)?.toJsonMapOrEmpty(), incomingValue.toJsonMapOrEmpty(),
-                    allows, at, depth + 1,
-                )
-                out[name] = inner.data
-                refused.addAll(inner.refused)
-            }
-            incomingValue is List<*> && valueType.itemType?.properties?.isNotEmpty() == true -> {
-                val itemType = valueType.itemType!!
-                val storedList = storedValue as? List<*>
-                out[name] = incomingValue.mapIndexed { i, element ->
-                    val m = element as? Map<*, *> ?: return@mapIndexed element
-                    val inner = keepGatedFields(
-                        itemType, (storedList?.getOrNull(i) as? Map<*, *>)?.toJsonMapOrEmpty(), m.toJsonMapOrEmpty(),
-                        allows, "$at[$i]", depth + 1,
-                    )
-                    refused.addAll(inner.refused)
-                    inner.data
-                }
-                // Elements dropped off the end take their gated values with them.
-                storedList?.drop(incomingValue.size)?.forEachIndexed { j, dropped ->
-                    if (holdsGatedValue(itemType, dropped, allows, depth + 1)) refused.add("$at[${incomingValue.size + j}]")
-                }
-            }
+            nestsFields(valueType, incomingValue) -> out[name] = keepNested(valueType, storedValue, incomingValue, at)
             // The container left out (or emptied) altogether: a hidden value inside it would go with it.
             gateComparable(incomingValue, depth + 1) == null && holdsGatedValue(valueType, storedValue, allows, depth + 1) ->
                 refused.add(at)
         }
     }
+    // A map's entries (issue #1055): every key the type does not declare holds a value of the map's value type,
+    // judged key by key against the stored map's.
+    type.additionalValueType?.let { entryType ->
+        for ((key, incomingValue) in incoming) {
+            if (key in type.properties || !nestsFields(entryType, incomingValue)) continue
+            out[key] = keepNested(entryType, stored?.get(key), incomingValue, if (path.isEmpty()) key else "$path.$key")
+        }
+        // An entry left out takes with it any value in it the caller cannot see, as a dropped list element does.
+        stored?.forEach { (key, storedValue) ->
+            if (key !in type.properties && gateComparable(incoming[key], depth + 1) == null &&
+                holdsGatedValue(entryType, storedValue, allows, depth + 1)
+            ) {
+                refused.add(if (path.isEmpty()) key else "$path.$key")
+            }
+        }
+    }
     return SchGatedWrite(out, refused)
+}
+
+/** Whether [type] is an object with fields of its own to judge: declared ones, or a map's entries (issue #1055). */
+private fun holdsFields(type: SchType): Boolean = type.properties.isNotEmpty() || type.additionalValueType != null
+
+/** Whether [value] is something [keepGatedFields] walks into for [valueType]: an object with fields, or a list of them. */
+private fun nestsFields(valueType: SchType, value: Any?): Boolean = when (value) {
+    is Map<*, *> -> holdsFields(valueType)
+    is List<*> -> valueType.itemType?.let { holdsFields(it) } == true
+    else -> false
 }
 
 /**
@@ -175,7 +210,10 @@ fun holdsGatedValue(type: SchType, value: Any?, allows: (expression: String) -> 
             } else {
                 holdsGatedValue(prop.valueType, child, allows, depth + 1)
             }
-        }
+        } || type.additionalValueType?.let { entryType ->
+            // A map's entries (issue #1055): each undeclared key's value is one of the map's value type.
+            value.any { (key, entry) -> key !in type.properties && holdsGatedValue(entryType, entry, allows, depth + 1) }
+        } == true
         is List<*> -> type.itemType?.let { item -> value.any { holdsGatedValue(item, it, allows, depth + 1) } } ?: false
         else -> false
     }

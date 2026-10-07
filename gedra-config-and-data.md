@@ -307,8 +307,7 @@ is not one is a 400 whose message names each path and what is wrong there, with 
 `extraData.failures` as a request's own input failures are. A path names the slot, the entry by its **key**, and the
 field: `kdr:clientDef.enabledEnvironments[1]`, `kdr:cfactDef[ready].group`. Beyond the shapes, the gate asks what a
 shape cannot say: the client definition's own rules (`readClientDef`, against `WrittenClientInfo`), that a usage
-rule's `display` is a template that parses, that a fragment overlay's `content` is namespace to key to text, and
-that no type is declared twice in `kdr:schemaDef`, where the second would silently replace the first (a repeat in
+rule's `display` is a template that parses, and that no type is declared twice in `kdr:schemaDef`, where the second would silently replace the first (a repeat in
 another slot is either legal -- two overlays of one file are two layers -- or refused already as what it is).
 
 **Only what a write changes is judged.** The gate is handed the configuration's revision as it stands, and an

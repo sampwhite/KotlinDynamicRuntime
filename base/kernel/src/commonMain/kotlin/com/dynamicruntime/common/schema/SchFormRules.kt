@@ -95,14 +95,35 @@ private fun collectFormFailures(
                 }
             }
         }
-        when (value) {
-            is Map<*, *> if vt.properties.isNotEmpty() ->
-                collectFormFailures(vt, layouts, value, at, out, depth + 1)
+        collectNestedFormFailures(vt, layouts, value, at, out, depth)
+    }
+    // A map's entries (issue #1055): each is a value of the map's value type, judged under that type's layout.
+    type.additionalValueType?.let { entryType ->
+        for ((key, value) in data) {
+            if (key !is String || key in type.properties) continue
+            collectNestedFormFailures(entryType, layouts, value, childPath(path, key), out, depth)
+        }
+    }
+}
 
-            is List<*> -> vt.itemType?.takeIf { it.properties.isNotEmpty() }?.let { item ->
-                value.forEachIndexed { i, element ->
-                    if (element is Map<*, *>) collectFormFailures(item, layouts, element, indexPath(at, i), out, depth + 1)
-                }
+/** Whether [type] is an object with fields of its own to judge: declared ones, or a map's entries. */
+private fun holdsFields(type: SchType): Boolean = type.properties.isNotEmpty() || type.additionalValueType != null
+
+/** The form failures inside [value], a nested object of [vt] or a list of them, reported under [at]. */
+private fun collectNestedFormFailures(
+    vt: SchType,
+    layouts: Map<String, SchLayout>,
+    value: Any?,
+    at: String,
+    out: MutableList<SchFailure>,
+    depth: Int,
+) {
+    when (value) {
+        is Map<*, *> if holdsFields(vt) -> collectFormFailures(vt, layouts, value, at, out, depth + 1)
+
+        is List<*> -> vt.itemType?.takeIf { holdsFields(it) }?.let { item ->
+            value.forEachIndexed { i, element ->
+                if (element is Map<*, *>) collectFormFailures(item, layouts, element, indexPath(at, i), out, depth + 1)
             }
         }
     }

@@ -305,8 +305,8 @@ does. It is the same closed-shape rule, kept to the keywords we interpret, and i
 fails in source, a client's write is refused, and at load the one keyword is dropped and reported -- which for most
 of them changes nothing about how the definition validates, since dropping it is how it was already being read (the
 few that used to stop the whole type compiling now cost the keyword instead of the type). Some of what is refused is
-legal JSON Schema this layer does not read -- a list of types, a schema for `additionalProperties`, a tuple of
-`items`, `true` standing for a schema -- and the refusal says so, rather than wording it as a typo. A handful that would imply behavior we do not have, or that duplicate a construct of ours,
+legal JSON Schema this layer does not read -- a list of types, a tuple of `items`, `true` standing for a schema --
+and the refusal says so, rather than wording it as a typo. A handful that would imply behavior we do not have, or that duplicate a construct of ours,
 are **refused** by name rather than ignored: `enum` (use `g-options`), `allOf`, `anyOf`, `not`,
 `dependentSchemas`, and a `oneOf` without a discriminator. Any other standard or unknown keyword stays allowed --
 a denylist, deliberately, so a document may carry keywords of its own as documentation. `pattern` is ECMA-262, as

@@ -75,7 +75,7 @@ fun repairTypeDef(
 
     // Rebuilds as it walks; an unrepaired type is handed back by identity below, so the copies cost nothing
     // that matters. [isSchema] says whether the node is at a place the parser reads as a schema -- the type, a
-    // property, an `items`, a `oneOf` branch. The walk below goes into every map and list, since a `g-` key is ours
+    // property, an `items`, a map's value schema (`additionalProperties`), a `oneOf` branch. The walk below goes into every map and list, since a `g-` key is ours
     // wherever it turns up; a standard keyword's shape is judged only in a schema, because the same word in a
     // `default`, a `const` or a keyword of the document's own is data (`{"type": "refund"}`), not a keyword.
     fun repairNode(at: String, node: Map<String, Any?>, requiredHere: Boolean, isSchema: Boolean): Map<String, Any?> {
@@ -194,7 +194,10 @@ fun repairTypeDef(
                             childBody
                         }
                     }
-                value is Map<*, *> -> repairNode(at, value.toJsonMap(), requiredHere = false, isSchema && key == SCH.items)
+                value is Map<*, *> -> repairNode(
+                    at, value.toJsonMap(), requiredHere = false,
+                    isSchema = isSchema && (key == SCH.items || key == SCH.additionalProperties),
+                )
                 value is List<*> -> value.map {
                     if (it is Map<*, *>) repairNode(at, it.toJsonMap(), requiredHere = false, isSchema && key == SCH.oneOf) else it
                 }

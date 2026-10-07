@@ -422,6 +422,16 @@ class FieldErrors(
     fun messagesAt(path: String): List<SchFailure> = byPath[path] ?: emptyList()
 
     /**
+     * The failures to show under a field drawn as **one control over a whole object** -- the JSON editor an object
+     * with no declared fields gets, a map's among them (issue #1055): those at [path], then those below it, each led
+     * by where in the object it is. The control has no slot per key, so without this a failure inside a map's entry
+     * would be marked nowhere and named only in the listing at the foot of the page.
+     */
+    fun messagesWithin(path: String): List<SchFailure> = messagesAt(path) +
+        all.filter { it.path != path && isPathAtOrBelow(it.path, path) }
+            .map { it.copy(message = "${it.path.substring(path.length).trimStart('.')}: ${it.message}") }
+
+    /**
      * Failures below [path] whose next key down is not one of [declared] — reported against a property this
      * object does not have, so no field of its own will ever be drawn for it. Grouped by their own path, so
      * each gets one addressable place to appear.
@@ -1104,7 +1114,9 @@ private fun ChildrenBuilder.renderField(
         return
     }
 
-    val messages = errors.messagesAt(path)
+    // An object reaching here has no declared fields and is one control: a failure below it -- inside a map's
+    // entry -- is shown with the field, where the person editing it is.
+    val messages = if (vt.jsonType == SCT.kObject) errors.messagesWithin(path) else errors.messagesAt(path)
     fieldFrame(name, prop, required, path, messages, opts, copy, value = value, prefill = prefill) {
         widget(
             vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },

@@ -438,6 +438,22 @@ open class SchTypeBuilder(
     }
 
     /**
+     * Makes this an object that is a **map** (issue #1055): free keys, each holding a value of the schema [build]
+     * declares -- JSON Schema's `additionalProperties` given as a schema. What `items` is to an array's elements,
+     * for an object's undeclared properties: `mapOfValues { type = SCT.string }` is a map of names to text, and
+     * one nested in another a map of maps. Sets the type to an object; properties declared beside it are
+     * validated as themselves.
+     *
+     * Named for what it makes rather than for the keyword, since the keyword's other use -- true or false, whether
+     * a record admits keys it does not declare -- is [additionalProperties], and one name for both would read as a
+     * switch where this is a declaration.
+     */
+    fun mapOfValues(build: SchTypeBuilder.() -> Unit) {
+        type = SCT.kObject
+        data[SCH.additionalProperties] = SchTypeBuilder(cxt, namespace).apply(build).data
+    }
+
+    /**
      * Strips leading/trailing whitespace from this string value on **every** path (issues #541, #765):
      * `g-outerWhitespace: "trim"`. Endpoint input is already trimmed by default, so reach for this only to force
      * the strip on the output/stored path too; for ordinary input free text the default already covers it.

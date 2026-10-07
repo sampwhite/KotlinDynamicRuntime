@@ -182,6 +182,13 @@ the parser **ignores** a keyword it does not recognize — deliberately, since b
 keywords would reject documents a stock validator accepts. (A keyword it *does* read is another matter: its value
 is held to its shape, issue #1053, so `type: "strng"` is refused rather than read as no type at all.)
 
+A fifth came later (issue #1055): **an object that is a map**. `additionalProperties` given as a schema, rather
+than as true or false, says what every undeclared property's value must be -- free keys, typed values, which is what
+a fragment's namespaces and a schema's own `properties` are. Before it, a map of author-chosen names could only be
+declared as an untyped object, which accepted anything. `SchType.additionalValueType` holds the value type; the
+validator reports a failure under the entry's key (`content.home.title`), and treats every key as an entry -- the
+`_` and `$` prefixes that exempt a key from a record's rules mean nothing in a map, whose keys are data.
+
 So none of this breaks an existing document; support is purely additive. The cost of not having it was
 quieter and worse: a `oneOf` written then parsed, constrained nothing, and reported no failure. A document could
 already claim to be a discriminated union and be enforcing nothing at all, which was the strongest argument

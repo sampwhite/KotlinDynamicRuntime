@@ -156,18 +156,59 @@ type("Order") {
 **Held to its shape** (`SchStdKeywords`, issue #1053). Every standard keyword this layer reads must have a value
 of the right kind, or the parse fails naming the keyword and the type or property: `type` is one of the seven `SCT`
 values (a *list* of types is not supported); `required` is a list of names; `properties` an object whose values are
-schema objects (a `null` is a property not set); `items` an object; `additionalProperties` true or false; `oneOf` a
-list; `title`, `description`, `format` and `$ref` text; a bound a number (or text that spells one, as it always
+schema objects (a `null` is a property not set); `items` an object; `additionalProperties` true, false or a schema
+object; `oneOf` a list; `title`, `description`, `format` and `$ref` text; a bound a number (or text that spells one, as it always
 read). Most of these used to be read as though the keyword were absent -- `type: "strng"` constrained nothing.
 A keyword the layer does **not** read is still the document's own, whatever its value. Some refusals are of legal
-JSON Schema this layer does not read (a schema for `additionalProperties`, a tuple of `items`, `true`/`false` as a
-schema), and their messages say so.
+JSON Schema this layer does not read (a tuple of `items`, `true`/`false` as a schema), and their messages say so.
 
 **Refused by name** at parse -- on a type, a property, or beside a `$ref`: `enum` (use `options`), `allOf`,
 `anyOf`, `not` (legal only inside an `if`/`then`/`else` clause), `dependentSchemas`, and, as before, `oneOf`
 without a `discriminator`. A **denylist**: any other keyword this layer does not read stays allowed, so a document
 may carry its own. A client's alteration of a type may not change any of these (they take part in validation);
 it extends instead.
+
+## Maps: free keys, typed values (issue #1055)
+
+An object is one of three things, and the third is declared with `mapOfValues`:
+
+| shape | meaning | how |
+|---|---|---|
+| closed record | only the declared keys | the default once a type declares properties |
+| open record | declared keys typed, any others passed through | `additionalProperties = true` |
+| **map** | free keys, each value of a declared shape | `mapOfValues { … }` |
+
+```kotlin
+val defs = schemaDefs(cxt, "abc.shop") {
+    type("Line") {
+        type = SCT.kObject
+        property("item", "What was bought.", required = true)
+        property("count", "How many.") { type = SCT.integer }
+    }
+    type("Order") {
+        type = SCT.kObject
+        property("labels", "Free labels, each some text.") { mapOfValues { type = SCT.string } }
+        property("lines", "The lines, by a key the buyer chose.") { mapOfValues { ref("Line") } }
+        property("copy", "Wording, by namespace and then by key.") { mapOfValues { mapOfValues { type = SCT.string } } }
+    }
+}
+```
+
+It writes JSON Schema's own `additionalProperties` given as a schema -- no `g-` keyword, nothing to transform on
+export -- and is to an object's undeclared properties what `items` is to an array's elements: each value is validated
+and coerced against it, and a failure is reported under the entry's key (`lines.gift.count`). Three things follow
+from the keys being **data** rather than part of a contract:
+
+- **No key is off-contract.** `_` and `$` exempt a key from a *record's* rules; in a map every key is an entry.
+- **An entry is validated as it stands**, as an array's element is: an empty text is a value, not an absence.
+- **A client may not change a map's value type**, as it may not change `items`: it takes part in validation, so an
+  alteration that touches it is refused (`changesKeyword`), and the client extends the type instead.
+
+A type may declare properties *and* `mapOfValues`: the declared ones are validated as themselves, every other key
+against the value type. `SchType.additionalValueType` is what the parser makes of it (null for an object that is
+not a map). Field gates (`visibleWhen`) and a form's requirements are enforced inside a map's entries as they are
+inside a list's elements. A form draws a map as it draws any object with no declared fields -- a JSON editor -- and
+shows a failure inside an entry under the field, led by the entry's key (`FieldErrors.messagesWithin`).
 
 ## Choice lists: written down, or sourced at render time
 

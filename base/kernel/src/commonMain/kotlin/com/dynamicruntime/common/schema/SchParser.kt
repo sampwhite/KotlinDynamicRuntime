@@ -75,6 +75,12 @@ fun parseSchemaTypesInto(
         item.array.itemType = registry[item.refName]
             ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$${item.refName}'.")
     }
+    // And a map's value type whose `additionalProperties` was a $ref, the same way (issue #1055).
+    for (value in state.pendingMapValueRefs) {
+        state.at(value.path)
+        value.map.additionalValueType = registry[value.refName]
+            ?: throw schemaFault(SchemaError.unknownRef, $$"Schema $ref to unknown type '$${value.refName}'.")
+    }
     // Bind a union's branches for the same reason: a branch is normally a $ref, and one of them may refer
     // back to the union itself. Done a whole union at a time so the branches land in the order the document
     // declared them, mixed inline and $ref included -- "branch 3" in a boot-check message has to be the
@@ -103,6 +109,10 @@ class PendingRef(val prop: SchProperty, val path: String)
 /** An array [SchType] whose `items` is a `$ref` ([refName]), awaiting binding in the resolution pass. */
 @KdrPrivate
 class PendingItemRef(val array: SchType, val refName: String, val path: String)
+
+/** A map [SchType] whose `additionalProperties` is a `$ref` ([refName]), awaiting binding in the resolution pass. */
+@KdrPrivate
+class PendingMapValueRef(val map: SchType, val refName: String, val path: String)
 
 /** One declared branch: parsed in place ([inline]) or named for the resolution pass ([refName]). */
 @KdrPrivate
@@ -356,6 +366,22 @@ fun parseNode(
             state.exit()
         }
     }
+    // The value schema of a map (issue #1055): `additionalProperties` given as a schema. Read as `items` is, a
+    // `$ref` deferred to the resolution pass. True or false is the record's own switch, read below.
+    val rawAdditional = map[SCH.additionalProperties]
+    var additionalValueType: SchType? = null
+    var additionalRefName: String? = null
+    if (rawAdditional is Map<*, *>) {
+        val additionalMap = rawAdditional.toJsonMap()
+        val additionalRef = additionalMap[SCH.dRef].toOptStr()
+        if (additionalRef != null) {
+            additionalRefName = refTargetName(additionalRef)
+        } else {
+            state.enter(SCH.additionalProperties)
+            additionalValueType = parseNode(null, additionalMap, state, depth + 1)
+            state.exit()
+        }
+    }
     val jsonType = map[SCH.type].toOptStr()
     val format = map[SCH.format].toOptStr()
     val variants = parseVariants(name, map, state, depth)
@@ -377,8 +403,9 @@ fun parseNode(
         description = map[SCH.description].toOptStr(),
         properties = properties,
         required = parseRequired(map[SCH.required]),
-        // Default false when the type declares properties, true when it declares none (generic map).
-        additionalProperties = (map[SCH.additionalProperties] as? Boolean) ?: properties.isEmpty(),
+        // Default false when the type declares properties, true when it declares none (generic map). A schema
+        // there makes the object a map of such values: undeclared properties are what it is for.
+        additionalProperties = (rawAdditional as? Boolean) ?: (rawAdditional is Map<*, *> || properties.isEmpty()),
         itemType = itemType,
         options = parseOptions(where, map[SCH.options], jsonType, format),
         openOptions = map[SCH.openOptions] == true,
@@ -401,7 +428,13 @@ fun parseNode(
         primaryKey = (map[SCH.primaryKey] as? List<*>)?.mapNotNull { it.toOptStr() } ?: emptyList(),
         // A display hint only (issue #540): carried through unread by validation, for a read-only renderer.
         presentation = map[SCH.presentation].toOptStr(),
+        additionalValueType = additionalValueType,
     )
+    if (additionalRefName != null) {
+        state.pendingMapValueRefs.add(
+            PendingMapValueRef(schType, additionalRefName, childPath(state.path().orEmpty(), SCH.additionalProperties)),
+        )
+    }
     if (itemRefName != null) {
         state.pendingItemRefs.add(PendingItemRef(schType, itemRefName, childPath(state.path().orEmpty(), SCH.items)))
     }
