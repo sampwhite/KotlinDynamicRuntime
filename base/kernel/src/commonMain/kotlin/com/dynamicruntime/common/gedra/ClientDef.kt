@@ -258,6 +258,9 @@ object CLD {
     /** Schema type name for what creating a client answers (issue #1054). */
     const val createResultTypeName = "ClientCreateResult"
 
+    /** On a create's result: why loading the created client failed on this node, when it did. */
+    const val loadFailure = "loadFailure"
+
     /**
      * The id of the options source behind the create input's `extendsFromClientId` (issue #1054): the template
      * clients a client made from data may extend. Here for the reason [clientOptions] is.

@@ -149,9 +149,13 @@ decides when a client is made (`ClientCreateFields`) -- not `staticConfig`, whic
 `includedTraits` and `testFeatures`, which are added through the client's configuration afterwards. So the endpoint
 catalog draws a form from it, with the environments and the templates there are as choices. The definition is
 written as the client's first stored configuration (`main`), published, and the client loaded; it is present at
-once on a node whose environment it is enabled in. The create adds one rule of its own -- an id that is taken, in
-source or in stored configuration, is a 409 -- and is otherwise refused for exactly what a bundle write of the same
-definition would be, in the same words, because it goes through that write.
+once on a node whose environment it is enabled in, and stored but not present on one it is not (the result says
+which). The create adds one rule of its own -- an id that is taken, in source or in stored configuration, is a 409
+-- and is otherwise refused for exactly what a bundle write of the same definition would be, in the same words,
+because it goes through that write. The rule is kept by the write itself, under the client's lock
+(`ConfigWrite.mustBeNew`), so two creates of one id cannot both succeed. Once the definition is published the
+client exists whatever becomes of loading it: a load that fails is reported in the result (`loadFailure`), not
+thrown, since an error would send the caller to create it again.
 
 As part of the client definition, the client declares the traits it supports. `includedTraits` names the ones it
 takes as they stand; a trait the client alters, extends or defines is supported **without a second mention**, so

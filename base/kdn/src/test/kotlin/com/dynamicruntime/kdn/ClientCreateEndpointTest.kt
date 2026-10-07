@@ -7,6 +7,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
@@ -14,9 +15,15 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientCreate
 import com.dynamicruntime.common.gedra.ClientCreateFields
+import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
@@ -26,6 +33,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -136,7 +144,7 @@ class ClientCreateEndpointTest : StringSpec({
         refusal(EXC.badInput, body("bad1054", CLD.customDomain to "forms.holder1054.example")) shouldContain
             "is client 'holder1054''s; a domain routes to one client"
         // A sandbox is made by the system from its parent, never created.
-        refusal(EXC.badInput, body("holder1054:sandbox")) shouldContain "cannot be stored under the sandbox"
+        refusal(EXC.badInput, body("holder1054:sandbox")) shouldContain "is a sandbox's id"
         // None of the refusals left anything behind: the id is still free, and a sound create takes it.
         ClientService.get(cxt).known("bad1054") shouldBe null
         admin.expectError(EXC.notFound, ACEP.bundle, args = mapOf(CFEP.client to "bad1054", CFEP.name to CLD.definitionConfigName))
@@ -155,6 +163,49 @@ class ClientCreateEndpointTest : StringSpec({
         def.webResourcesId shouldBe "tplres"
         // A client asking for a sandbox runs only what is published; the create published it, so it is present.
         def.sandbox shouldBe true
+        // Its sandbox is live now, and so an id this node knows -- which is still a sandbox's id, said as that
+        // rather than as a client that already exists.
+        ClientService.get(cxt).known("kid1054:sandbox").shouldNotBeNull()
+        refusal(EXC.badInput, body("kid1054:sandbox")) shouldContain "made by the system from its parent, 'kid1054'"
+    }
+
+    "a create-only write is refused once the configuration exists, judged under the client's lock" {
+        // What stops two creates of one id from both succeeding: the check a create makes first cannot, since both
+        // may pass it before either writes. The write itself refuses the second, with the first as it was.
+        val client = "race1054"
+        val writer = cxt.mkSubContext("raceWrite", client).also { it.userId = 10541L }
+        val svc = GedraConfigService.get(cxt)
+        fun definition(name: String) = gedraConfig(cxt, CLD.definitionConfigName, clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = name, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local),
+                ),
+            )
+        }
+        svc.writeConfig(writer, definition("First"), mustBeNew = true).version shouldBe 1
+        shouldThrow<KdrException> { svc.writeConfig(writer, definition("Second"), mustBeNew = true) }.code shouldBe EXC.conflict
+        val stored = svc.readLatest(writer, GedraId.of(GedraConfigType.configDoc, client, CLD.definitionConfigName)).shouldNotBeNull()
+        stored.version shouldBe 1
+        stored.entriesBySlot().getValue(CCT.clientDef).single()[CLD.name] shouldBe "First"
+        // An ordinary write of the same configuration is the edit it always was.
+        svc.writeConfig(writer, definition("Edited")).entriesBySlot().getValue(CCT.clientDef).single()[CLD.name] shouldBe "Edited"
+    }
+
+    "a client created for environments this node is not in is stored, not present, and still taken" {
+        // A development node, where a client enabled only for local work and the unit tests is not carried.
+        val dev = Startup.mkBootCxt(
+            "clientCreateDev", "clientCreateDevTest",
+            mapOf(ACFG.env to ENV.dev, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true, "KDR_DB_NAME" to "clientCreateDev1054"),
+        )
+        val actor = dev.mkSubContext("createActor", CL.hub).also { it.userId = 10542L }
+        val result = ClientCreate.create(actor, body("elsewhere1054"))
+        result.present shouldBe false
+        result.loadFailure shouldBe null
+        result.info[CLD.enabledEnvironments] shouldBe listOf(ENV.unit, ENV.local)
+        ClientService.get(dev).present("elsewhere1054") shouldBe null
+        // Stored and published all the same, so the id is taken: a second create is refused, not written over it.
+        shouldThrow<KdrException> { ClientCreate.create(actor, body("elsewhere1054")) }.code shouldBe EXC.conflict
     }
 
     "the input is a schema a form can be drawn from: the create fields, with their choices" {

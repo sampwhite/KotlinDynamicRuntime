@@ -1031,6 +1031,11 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             type = SCT.array
             items { ref(CLD.configIssueTypeQualified) }
         }
+        property(
+            CLD.loadFailure,
+            "Present when the client was created -- stored and published -- but loading it on this node failed: " +
+                "why. The create is not to be repeated; the client is reloaded once the cause is mended.",
+        )
     }
 
     generalEndpoint(
@@ -1048,12 +1053,15 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         inputRef = CLD.createTypeName,
     ) { c, request ->
         val result = ClientCreate.create(c, request)
-        mapOf(
-            CLD.client to result.client,
-            COV.configName to result.configName,
-            CLD.definition to result.info,
-            CLD.present to result.present,
-            CLD.issues to result.issues.map { it.toWireMap() },
+        dropNulls(
+            linkedMapOf(
+                CLD.client to result.client,
+                COV.configName to result.configName,
+                CLD.definition to result.info,
+                CLD.present to result.present,
+                CLD.issues to result.issues.map { it.toWireMap() },
+                CLD.loadFailure to result.loadFailure,
+            ),
         )
     }
 }
@@ -1074,10 +1082,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
 private fun adminConfigCxt(c: KdrCxt, request: Map<String, Any?>, requireExisting: Boolean = true): KdrCxt {
     val client = request.getReqNonBlankStr(CFEP.client)
     val ac = c.mkSubContext("adminConfig", client)
-    if (requireExisting &&
-        ClientService.get(ac).known(client) == null &&
-        GedraConfigService.get(ac).listConfigs(ac).isEmpty()
-    ) {
+    if (requireExisting && !GedraConfigService.get(ac).clientExists(ac)) {
         throw KdrException(
             "No client '$client': it is not present and has no stored configuration. Write its configuration first.",
             code = EXC.notFound,

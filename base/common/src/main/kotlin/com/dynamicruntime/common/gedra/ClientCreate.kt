@@ -13,7 +13,11 @@ import com.dynamicruntime.common.util.toOptStr
  * Creating a client from data (issue #1054): its definition written as its first stored configuration, published,
  * and the client loaded -- one call, where it used to be a hand-built bundle write followed by a reload.
  *
- * It adds no rule of its own beyond "the id is not taken". The definition goes through the write every definition
+ * It adds no rule of its own beyond "the id is not taken" -- and that one is kept twice: asked before anything is
+ * built, so a taken id is refused in words that say who holds it, and enforced by the write itself, under the
+ * client's lock (`ConfigWrite.mustBeNew`), so two creates of one id cannot both succeed whichever asked first.
+ *
+ * The definition goes through the write every definition
  * goes through: the slot gate (`reassembleForWrite`, issue #1051) holds it to its schema, `writeConfig` to the
  * write's own guards (its namespace, a domain no other client holds) and to a trial reload, which is where the
  * rules that need the deployment's other clients are judged -- that its id is well-formed, its environments a legal
@@ -31,6 +35,12 @@ object ClientCreate {
         val present: Boolean,
         /** What the load found in the client's configuration and forgave; empty for a definition that is sound. */
         val issues: List<GedraConfigIssue>,
+        /**
+         * Why loading the client failed on this node, when it did -- after the definition was stored and published,
+         * so the client **was** created. Said in the result rather than thrown: an error would send the caller to
+         * create it again, and be refused for an id they would then have no way of knowing they held.
+         */
+        val loadFailure: String? = null,
     )
 
     /**
@@ -41,38 +51,69 @@ object ClientCreate {
      */
     fun create(cxt: KdrCxt, request: Map<String, Any?>): Result {
         val client = request[CLD.clientId].toOptStr().orEmpty()
-        val bound = cxt.mkSubContext("clientCreate", client)
-        val svc = GedraConfigService.get(bound)
-        ClientService.get(cxt).known(client)?.let {
-            val where = if (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source) "source code" else "stored configuration"
-            throw KdrException("Client '$client' already exists: it is defined in $where.", code = EXC.conflict)
-        }
-        // Written and never loaded -- a definition a check dropped, or a configuration that was never published: the
-        // id is taken all the same, and what holds it is mended or published through the configuration endpoints.
-        if (svc.listConfigs(bound).isNotEmpty()) {
-            throw KdrException(
-                "Client '$client' already has stored configuration, though this node does not carry the client. " +
-                    "Its configuration is published, or mended, through the configuration endpoints.",
-                code = EXC.conflict,
+        // First, since a live sandbox's id is one this node knows: it would otherwise read as a client that exists.
+        sandboxParentOf(client)?.let { parent ->
+            throw KdrException.mkInput(
+                "'$client' is a sandbox's id. A sandbox is made by the system from its parent, '$parent', when that " +
+                    "client asks for one; it is never created.",
             )
         }
+        val bound = cxt.mkSubContext("clientCreate", client)
+        val svc = GedraConfigService.get(bound)
+        if (svc.clientExists(bound)) throw taken(cxt, client)
         val slots = mapOf(CCT.clientDef to listOf(definitionOf(request)))
         val name = CLD.definitionConfigName
-        val written = svc.writeConfig(bound, reassembleForWrite(bound, name, clientNamespace(client), client, slots), trial = true)
+        val config = reassembleForWrite(bound, name, clientNamespace(client), client, slots)
+        val written = try {
+            svc.writeConfig(bound, config, trial = true, mustBeNew = true)
+        } catch (e: KdrException) {
+            // The id was free when asked and taken by the time the write held the lock: another create of it.
+            if (e.code != EXC.conflict) throw e
+            throw KdrException(
+                "Client '$client' already exists: its definition was written while this create was under way.", e, EXC.conflict,
+            )
+        }
         // Published, so the client loads whatever its tier: one asking for a sandbox runs only what is published.
         // The write's trial judged this very definition, alone, so the publish has nothing new to refuse; were it
-        // to, the configuration stays written and unpublished, which the second refusal above then names.
+        // to, the configuration stays written and unpublished, and a second create is told the id has one.
         val published = svc.publish(bound, written.configId, trial = true)
-        val reload = GedraConfigReload.reloadClient(cxt, client)
-        ClientSyncService.get(cxt).announceReload(cxt, reload)
+        // From here the client exists, whatever becomes of loading it: a failure is the result's to say.
+        var loadFailure: String? = null
+        val issues = try {
+            val reload = GedraConfigReload.reloadClient(cxt, client)
+            ClientSyncService.get(cxt).announceReload(cxt, reload)
+            reload.issues
+        } catch (e: Exception) {
+            LogGedra.error(cxt, "Client '$client' was created, but loading it failed.", e)
+            loadFailure = e.message ?: "The load failed."
+            emptyList()
+        }
         return Result(
             client = client,
             configName = name,
             // Redacted as every stored read is (`testFeatures` off a test instance, #696).
             info = published.slotsForEmission(cxt.instanceConfig.isTestInstance)[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty(),
             present = ClientService.get(cxt).present(client) != null,
-            issues = reload.issues,
+            issues = issues,
+            loadFailure = loadFailure,
         )
+    }
+
+    /**
+     * The refusal for an id that is taken, saying who holds it: a client this node knows, defined in source code or
+     * in stored configuration -- or stored configuration this node has not made a client of, a definition a check
+     * dropped or one never published, which is mended or published through the configuration endpoints.
+     */
+    private fun taken(cxt: KdrCxt, client: String): KdrException {
+        val clients = ClientService.get(cxt)
+        val message = if (clients.known(client) != null) {
+            val where = if (clients.originOf(client) == GedraConfigOrigin.source) "source code" else "stored configuration"
+            "Client '$client' already exists: it is defined in $where."
+        } else {
+            "Client '$client' already has stored configuration, though this node does not carry the client. Its " +
+                "configuration is published, or mended, through the configuration endpoints."
+        }
+        return KdrException(message, code = EXC.conflict)
     }
 
     /** The definition [request] asks for, as the `kdr:clientDef` slot holds one: its [ClientCreateFields] that were given. */
