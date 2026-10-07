@@ -5,6 +5,7 @@ import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.childPath
 import com.dynamicruntime.common.schema.inputFailuresException
@@ -59,7 +60,8 @@ object ConfigSlotShapes {
  * What is wrong with the slots of a configuration about to be **written**, each failure located by its slot, its
  * entry and the path within it (`kdr:clientDef.enabledEnvironments[0]`, `kdr:cfactDef[ready].group`) -- empty when
  * nothing is. An entry is named by its **key** rather than its place, so a failure reads the same wherever the
- * entry sits; one with no key is named by place (`[#2]`), and its missing key is among its failures.
+ * entry sits; one with no key is named by place, counted from 0 as an array's items are (`[#1]` is the second),
+ * and its missing key is among its failures.
  *
  * **Only what the write changes is judged.** [stored] is the configuration's revision as it stands, when it has
  * one: an entry the write carries unchanged -- the same key, the same content -- is not judged again, and neither
@@ -74,12 +76,15 @@ object ConfigSlotShapes {
  * - **A usage rule's `display`** must be a template that parses: it is evaluated per row with its failures
  *   swallowed, so a malformed one blanks its column for every row and says nothing.
  * - **A fragment overlay's `content`** is namespace to key to text, which the schema layer cannot yet state.
- * - **A key held twice in one slot** is refused where the second would silently replace the first.
+ * - **A type declared twice** (`kdr:schemaDef`) is refused: the second would silently replace the first. No other
+ *   slot is held to one entry a key, because elsewhere a repeat is either legal -- two overlays of one fragment
+ *   file or one UiBlock are two layers -- or refused already, by the reassembly or the trial, as what it is.
  *
  * **Two things are left to the trial reload that follows**, which judges them in the document they belong to and
  * by what the client already has:
- * - **A schema body** (`schema`, `dataSchema`) is only required to be an object. Parsed on its own it would be
- *   refused for naming a sibling type of the same client, or for being an alteration of a global type.
+ * - **A schema body** (`schema`, `dataSchema`) is only required to be an object, and is not parsed here
+ *   ([SchOpts.schemaDocumentsUnparsed]). Parsed on its own it would be refused for naming a sibling type of the
+ *   same client, or for being an alteration of a global type.
  * - **A report's `definition`** is only required to be an object. One that does not read is kept as stored and
  *   reported (`GedraConfig.unreadReports`), so a configuration may already hold one; the trial refuses a new one.
  */
@@ -116,12 +121,12 @@ private fun slotFailures(
     val out = mutableListOf<SchFailure>()
     entries.forEachIndexed { i, entry ->
         val key = keyOf(entry)
-        val at = "$slot[${key ?: "#${i + 1}"}]"
+        val at = "$slot[${key ?: "#$i"}]"
         val held = if (key == null) emptyList() else storedByKey[key].orEmpty()
-        // A second entry under one key: the reassembly would keep one and say nothing of the other. A report is
-        // the exception -- its second is kept as stored and reported, not lost -- and so is a key already held twice.
-        if (key != null && !seen.add(key) && slot != CCT.reportDef && held.size <= 1) {
-            out.add(SchFailure(at, SchFailCode.badValue, "is the slot's second entry keyed '$key'; a key names one entry."))
+        // A second type under one name: the reassembly would keep the later and say nothing of the earlier. Only
+        // there -- see the function's note -- and not for a name the stored revision already holds twice.
+        if (slot == CCT.schemaDef && key != null && !seen.add(key) && held.size <= 1) {
+            out.add(SchFailure(at, SchFailCode.badValue, "is the second type named '$key'; it would silently replace the first."))
         }
         if (entry in held) return@forEachIndexed
         out.addAll(entryFailures(cxt, slot, type, entry).map { it.under(at) })
@@ -135,7 +140,7 @@ private fun SchFailure.under(parent: String): SchFailure = copy(path = if (path.
 /** What is wrong with one [entry] of [slot], by path within it. */
 private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: Map<String, Any?>): List<SchFailure> {
     if (slot == CCT.clientDef) return readClientDef(cxt, entry).failures
-    val shape = validate(type, entry).filterNot { leftToTheTrial(slot, it) }
+    val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, it) }
     val beyond = when (slot) {
         CCT.usageDef -> displayFailures(entry[CCT.display])
         CCT.fragmentDef -> fragmentContentFailures(entry[CCT.content])
@@ -145,17 +150,15 @@ private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: M
     return shape + offContractKeyFailures(entry) + beyond
 }
 
+/** How the gate validates an entry: a schema body is taken as the object it is, its parse being the trial's. */
+private val unparsedBodies = SchOpts(schemaDocumentsUnparsed = true)
+
 /**
- * Whether [failure] is one of the two things the gate leaves to the trial reload (see [configSlotFailures]): the
- * parse of a schema body, which the validator reports with the parser's refusal as its cause, and anything
- * *inside* a report's definition.
+ * Whether [failure] is what the gate leaves to the trial reload of a report (see [configSlotFailures]): anything
+ * *inside* its definition. That the definition is there, and is an object, stays the gate's.
  */
-private fun leftToTheTrial(slot: String, failure: SchFailure): Boolean = when (slot) {
-    CCT.schemaDef -> failure.path == CCT.schema && failure.cause != null
-    CCT.traitDef -> failure.path == CCT.dataSchema && failure.cause != null
-    CCT.reportDef -> failure.path.startsWith("${CCT.definition}.") || failure.path.startsWith("${CCT.definition}[")
-    else -> false
-}
+private fun leftToTheTrial(slot: String, failure: SchFailure): Boolean =
+    slot == CCT.reportDef && (failure.path.startsWith("${CCT.definition}.") || failure.path.startsWith("${CCT.definition}["))
 
 /** What is wrong with a usage rule's `display` as a template -- one failure per defect, so they are fixed in one pass. */
 private fun displayFailures(display: Any?): List<SchFailure> = (display as? String)?.checkTemplateSyntax().orEmpty().map {
@@ -183,6 +186,9 @@ private fun fragmentContentFailures(content: Any?): List<SchFailure> {
     return out
 }
 
+/** How many failures a refusal's message names; all of them are in its structured `failures`. */
+private const val failuresNamedInMessage = 10
+
 /**
  * Throws the write's refusal -- a 400 carrying [configSlotFailures] -- when the slots of configuration [name] have
  * any that [stored], its revision as it stands, does not already have.
@@ -195,7 +201,10 @@ fun requireWritableSlots(
 ) {
     val failures = configSlotFailures(cxt, entriesBySlot, stored)
     if (failures.isEmpty()) return
-    // Each message is a sentence of its own, so they are set side by side rather than joined by punctuation.
-    val detail = failures.joinToString(" ") { "${it.path}: ${it.message}" }
-    throw inputFailuresException("Configuration '$name' cannot be written: $detail", failures)
+    // Each message is a sentence of its own, so they are set side by side rather than joined by punctuation. The
+    // message names the first few and how many more there are: every one of them travels structured, and a
+    // write of several hundred malformed entries should not make a message of several hundred sentences.
+    val named = failures.take(failuresNamedInMessage).joinToString(" ") { "${it.path}: ${it.message}" }
+    val more = (failures.size - failuresNamedInMessage).takeIf { it > 0 }?.let { " And $it more." }.orEmpty()
+    throw inputFailuresException("Configuration '$name' cannot be written: $named$more", failures)
 }

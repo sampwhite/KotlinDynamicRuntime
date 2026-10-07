@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
@@ -22,6 +23,7 @@ import com.dynamicruntime.common.gedra.UsageKind
 import com.dynamicruntime.common.gedra.configSlotFailures
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
+import com.dynamicruntime.common.gedra.requireWritableSlots
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
@@ -30,12 +32,14 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 
 /**
  * The config slot gate (issue #1052): every slot entry a configuration **write** brings is held to the shape
@@ -71,7 +75,8 @@ class ConfigSlotGateTest : StringSpec({
         malformed.single().code shouldBe SchFailCode.badValue
         malformed.single().message shouldContain "not a template that parses"
         // An entry with no key is named by its place, and its missing key is among its failures.
-        codes(CCT.usageDef, usage(), usage() - CCT.traitId) shouldBe mapOf("${CCT.usageDef}[#2].${CCT.traitId}" to SchFailCode.missingRequired)
+        // By place, counted from 0 as an array's items are: `[#1]` is the second entry.
+        codes(CCT.usageDef, usage(), usage() - CCT.traitId) shouldBe mapOf("${CCT.usageDef}[#1].${CCT.traitId}" to SchFailCode.missingRequired)
     }
 
     "a cfact, a fragment overlay and a UiBlock overlay are each held to their shapes" {
@@ -94,7 +99,12 @@ class ConfigSlotGateTest : StringSpec({
 
         codes(CCT.uiBlockDef, mapOf(CCT.blockId to "kdr:app", CCT.content to mapOf("menu" to emptyList<Any>()))).shouldBeEmpty()
         codes(CCT.uiBlockDef, mapOf(CCT.blockId to "kdr:app", CCT.content to "menu")).keys shouldBe setOf("${CCT.uiBlockDef}[kdr:app].${CCT.content}")
-        codes(CCT.uiBlockDef, mapOf(CCT.content to emptyMap<String, Any?>())).keys shouldBe setOf("${CCT.uiBlockDef}[#1].${CCT.blockId}")
+        codes(CCT.uiBlockDef, mapOf(CCT.content to emptyMap<String, Any?>())).keys shouldBe setOf("${CCT.uiBlockDef}[#0].${CCT.blockId}")
+        // Two overlays of one file, or of one block, are two layers: a repeat there is legal, and the serializer
+        // writes one entry a layer.
+        val layer = fragment(mapOf("home" to mapOf("title" to "Welcome")))
+        codes(CCT.fragmentDef, layer, fragment(mapOf("home" to mapOf("lede" to "Hello")))).shouldBeEmpty()
+        codes(CCT.cfactDef, cfact(), cfact()).shouldBeEmpty()
     }
 
     "a trait declaration and a schema type are held to their envelopes, and their bodies left to the trial" {
@@ -116,7 +126,9 @@ class ConfigSlotGateTest : StringSpec({
         fun type(schema: Any?) = mapOf(CCT.typeName to "client.x.Person", CCT.schema to schema)
         codes(CCT.schemaDef, type(sibling)).shouldBeEmpty()
         codes(CCT.schemaDef, type(listOf("x"))).keys shouldBe setOf("${CCT.schemaDef}[client.x.Person].${CCT.schema}")
-        codes(CCT.schemaDef, mapOf(CCT.schema to emptyMap<String, Any?>())).keys shouldBe setOf("${CCT.schemaDef}[#1].${CCT.typeName}")
+        codes(CCT.schemaDef, mapOf(CCT.schema to emptyMap<String, Any?>())).keys shouldBe setOf("${CCT.schemaDef}[#0].${CCT.typeName}")
+        // A body is not parsed here at all: one no parser would take is still the trial's to refuse.
+        codes(CCT.schemaDef, type(mapOf(SCH.oneOf to listOf(mapOf(SCH.type to SCT.string))))).shouldBeEmpty()
         // A second type under one name would silently replace the first.
         codes(CCT.schemaDef, type(mapOf(SCH.type to SCT.kObject)), type(mapOf(SCH.type to SCT.string))) shouldBe
             mapOf("${CCT.schemaDef}[client.x.Person]" to SchFailCode.badValue)
@@ -158,10 +170,18 @@ class ConfigSlotGateTest : StringSpec({
         // Without the stored revision -- a first write -- everything is judged.
         configSlotFailures(cxt, stored).map { it.path }.toSet() shouldBe
             setOf("${CCT.cfactDef}[old].${CCT.group}", "${CCT.cfactDef}[old].${CCT.description}")
-        // A key the stored revision already holds twice is not refused for it; a new duplicate is.
-        val twice = mapOf(CCT.cfactDef to listOf(cfact("dup"), cfact("dup")))
+        // A type the stored revision already declares twice is not refused for it; a new repeat is.
+        fun person(type: String) = mapOf(CCT.typeName to "client.x.Person", CCT.schema to mapOf(SCH.type to type))
+        val twice = mapOf(CCT.schemaDef to listOf(person(SCT.kObject), person(SCT.string)))
         configSlotFailures(cxt, twice, twice).shouldBeEmpty()
-        configSlotFailures(cxt, twice, stored).map { it.path } shouldBe listOf("${CCT.cfactDef}[dup]")
+        configSlotFailures(cxt, twice, stored).map { it.path } shouldBe listOf("${CCT.schemaDef}[client.x.Person]")
+        // The message names the first few failures and counts the rest; all of them travel structured.
+        val many = mapOf(CCT.cfactDef to (1..12).map { mapOf(CCT.name to "c$it", CCT.group to "g") })
+        val refusal = shouldThrow<KdrException> { requireWritableSlots(cxt, "big", many) }
+        refusal.message.shouldNotBeNull() shouldContain "${CCT.cfactDef}[c10].${CCT.description}"
+        refusal.message.shouldNotBeNull() shouldNotContain "${CCT.cfactDef}[c11]"
+        refusal.message.shouldNotBeNull() shouldContain "And 2 more."
+        refusal.extraData[EP.failures].toJsonListOfMaps().size shouldBe 12
     }
 
     "every configuration this node declares in source passes the gate in its stored form" {
@@ -216,7 +236,7 @@ class ConfigSlotGateTest : StringSpec({
             ),
         )
         failuresOf(refused).keys shouldBe setOf(
-            "${CCT.usageDef}[${GT.name}].${CCT.display}", "${CCT.usageDef}[${GT.name}]", "${CCT.usageDef}[${GT.name}].${CCT.kind}",
+            "${CCT.usageDef}[${GT.name}].${CCT.display}", "${CCT.usageDef}[${GT.name}].${CCT.kind}",
             "${CCT.cfactDef}[ready].${CCT.group}", "${CCT.cfactDef}[ready].${CCT.description}", "${CCT.cfactDef}[ready].${CCT.toFrontend}",
         )
         refused[EP.errorMessage].toString() shouldContain "Configuration 'listing' cannot be written"

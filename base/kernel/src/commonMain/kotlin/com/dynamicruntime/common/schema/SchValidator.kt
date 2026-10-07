@@ -409,6 +409,14 @@ data class SchOpts(
      * parse: honest for a standalone check, and a caller with a live store passes that store's types.
      */
     val existingTypes: Map<String, SchType> = emptyMap(),
+    /**
+     * Take a `g-schemaDocument` value as the object it is, **without parsing it** (issue #1052). For a caller that
+     * holds a schema body apart from the document it belongs to -- one entry of a configuration being written --
+     * where parsing it alone would refuse it for naming a sibling type, or for being an alteration of another
+     * type, and where the whole document is compiled and judged right after. That it is an object is still
+     * checked; that it is a schema is then the later check's to say, and this run makes no claim about it.
+     */
+    val schemaDocumentsUnparsed: Boolean = false,
 ) {
     /**
      * These options with [skipCompleteness] set to [v] -- the same instance when it already matches, so the
@@ -1110,6 +1118,7 @@ fun validateSchemaDocument(
         failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object).", value = value))
         return value
     }
+    if (opts.schemaDocumentsUnparsed) return value
     try {
         parseSchemaTypes(mapOf(schemaDocumentCandidate to body), opts.existingTypes)
     } catch (e: KdrException) {

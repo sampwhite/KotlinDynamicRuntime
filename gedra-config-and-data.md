@@ -308,12 +308,15 @@ is not one is a 400 whose message names each path and what is wrong there, with 
 field: `kdr:clientDef.enabledEnvironments[1]`, `kdr:cfactDef[ready].group`. Beyond the shapes, the gate asks what a
 shape cannot say: the client definition's own rules (`readClientDef`, against `WrittenClientInfo`), that a usage
 rule's `display` is a template that parses, that a fragment overlay's `content` is namespace to key to text, and
-that no key is held twice in a slot where the second would silently replace the first.
+that no type is declared twice in `kdr:schemaDef`, where the second would silently replace the first (a repeat in
+another slot is either legal -- two overlays of one file are two layers -- or refused already as what it is).
 
 **Only what a write changes is judged.** The gate is handed the configuration's revision as it stands, and an
 entry the write carries unchanged is not judged again -- the trial reload's rule, for its reason: a fault a stored
 configuration already has must not refuse an unrelated write to it, and a shape tightened by a later release must
 strand nobody. Changing such an entry and leaving it at fault is refused; mending it is how it stops being one.
+"As it stands" means on **this node**: an import that restores another deployment's configuration is judged against
+what the target holds, so an old fault it carries across is refused there and mended at its source.
 
 **Two things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
 body** (`kdr:schemaDef.schema`, `kdr:traitDef.dataSchema`) need only be an object here, since parsed on its own it

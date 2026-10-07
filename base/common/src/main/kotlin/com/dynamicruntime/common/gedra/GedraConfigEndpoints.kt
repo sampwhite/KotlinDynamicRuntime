@@ -408,9 +408,12 @@ private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
  * across its configs, so bundles that are only sound as a set -- one declaring the client, another the traits its
  * workflows collect -- must be judged as the set, and a client whose set is refused keeps none of it. One client's
  * refusal does not stop the others. On a non-test node a bundle's `testFeatures` are stripped and logged rather
- * than refused -- the other half of the single-client write's refuse. Affected clients are then reloaded (unless
- * asked not to) so the import is live and a brand-new client becomes present. Returns what was written, stripped,
- * reloaded, and could not be applied.
+ * than refused -- the other half of the single-client write's refuse. A bundle is held to the slot shapes as any
+ * write is (issue #1052), judged against what **this** node already holds of it: a restore from another deployment
+ * that carries an entry at fault is refused for that client, each path named, and is mended at its source --
+ * deliberately, since an import that carried faults across would be how they spread. Affected clients are then
+ * reloaded (unless asked not to) so the import is live and a brand-new client becomes present. Returns what was
+ * written, stripped, reloaded, and could not be applied.
  */
 private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
