@@ -43,7 +43,9 @@ import io.kotest.matchers.string.shouldContain
  * (the `kdr:name` trait's data: one required `name`, at most 128 characters).
  */
 class ExtendsTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("extends990", "extends990")
+    // One instance for every case, carrying the component whose global extension the last case reads: a suite boots
+    // many instances into one test JVM, each retaining its schema store, so a spec takes no second one it can avoid.
+    val cxt = Startup.mkTestBootCxt("extends990", "extends990", additionalComponents = listOf(GlobalExtensionComponent()))
     val nameData = "kdr.core.NameData"
 
     fun write(client: String, config: String, defineIt: Boolean, trial: Boolean = false, build: GedraConfigBuilder.() -> Unit): GedraConfig {
@@ -205,10 +207,7 @@ class ExtendsTest : StringSpec({
     }
 
     "a component's global extension is resolved before the global document is parsed, and served resolved" {
-        val withComponent = Startup.mkTestBootCxt(
-            "extends990global", "extends990global", additionalComponents = listOf(GlobalExtensionComponent()),
-        )
-        val store = SchemaService.get(withComponent).schemaStore
+        val store = SchemaService.get(cxt).schemaStore
         store.types.getValue("ext990.Wide").properties.keys shouldBe setOf("a", "extra")
         (store.servedDefs.getValue("ext990.Wide") as Map<*, *>).containsKey(SCH.extends) shouldBe false
     }
