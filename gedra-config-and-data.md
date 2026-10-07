@@ -298,6 +298,19 @@ and refuses the change with a 400 listing anything it finds that the client's co
 problem the client already has does not block an unrelated write (or fixing one of two broken configs would be
 refused over the other).
 
+**A written slot is held to its shape first** (issue #1051). These endpoints are the outward-facing ones -- a
+client's own administrators write through them -- so before a write's slots are reassembled they pass a gate
+(`configSlotFailures`, run by `reassembleForWrite`, which the bundle write, the import and `patchConfig` all go
+through). Today the gate is the **client definition**: a `kdr:clientDef` is validated against its schema
+(`WrittenClientInfo`, compiled as `ClientDefSchema`), and an unknown key, a missing field, a value of the wrong type or a
+choice that is not one is a 400 whose message names each path and what is wrong there, with the failures also
+structured under `extraData.failures` as a request's own input failures are (`kdr:clientDef.enabledEnvironments[1]`).
+A conversion fault the reassembly itself finds in a written body -- a client id holding a colon -- is a 400 for the
+same reason, with the fault kept as its cause and its extra data (a parser's code and position) carried up; a fault
+not marked a conversion is still a server error, until the other slots are gated too. **The rule and the response are separate**: what a valid definition is does not depend on where it
+arrives, and what happens to an invalid one does. A write is refused; a row already stored is read by the lenient
+reader (`ClientDef.fromInfo`, through `reassembleGedraConfig`), so the deploy that tightens a rule strands nobody.
+
 The unit is the **client**, not the config. A client's definition is spread across its configs (its `clientDef` in
 one, the traits its workflows collect in another), and a stored config depends only on source code and its own
 client's other configs, never another client's. So every config write takes the **client's** lock (on the

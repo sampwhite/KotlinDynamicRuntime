@@ -2,9 +2,15 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.exception.ACT
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.childPath
+import com.dynamicruntime.common.schema.inputFailuresException
 import com.dynamicruntime.common.schema.qualifyTypeName
 import com.dynamicruntime.common.schema.refTargetName
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -75,9 +81,85 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
 }
 
 /**
+ * What is wrong with the slots of a configuration about to be **written** (issue #1051), each failure located by
+ * its slot and the path within the entry (`kdr:clientDef.enabledEnvironments[0]`) -- empty when nothing is.
+ *
+ * The gate a client configuration write passes before it is reassembled: these endpoints are the ones a client's
+ * own administrators write through, so a slot is held to its declared shape and a fault is refused by name. Today
+ * that is the client definition, read strictly ([readClientDef]): [reassembleGedraConfig] reads one leniently,
+ * past an unknown key and a flag that is not a boolean, which is right for a row already stored and would let a
+ * typo in a write become a different client than the one written.
+ */
+fun configSlotFailures(cxt: KdrCxtBase, entriesBySlot: Map<String, List<Map<String, Any?>>>): List<SchFailure> {
+    val defs = entriesBySlot[CCT.clientDef].orEmpty()
+    // Single-instance: the reassembly reads the first entry and no other, so a second would be silently lost.
+    if (defs.size > 1) {
+        return listOf(
+            SchFailure(
+                CCT.clientDef, SchFailCode.badValue,
+                "holds ${defs.size} entries; a configuration defines one client, in one entry.",
+            ),
+        )
+    }
+    val def = defs.firstOrNull() ?: return emptyList()
+    return readClientDef(cxt, def).failures.map { it.copy(path = childPath(CCT.clientDef, it.path)) }
+}
+
+/**
+ * [reassembleGedraConfig] for a configuration arriving in a **write** (issue #1051): its slots pass
+ * [configSlotFailures] first, and what the reassembly finds wrong with the body is the writer's -- a 400 --
+ * rather than the server's.
+ *
+ * - A slot that fails its shape is refused with every failure: the message names each path and what is wrong
+ *   there, and the failures travel structured under `extraData` ([inputFailuresException]), as a request's own
+ *   input failures do.
+ * - A **conversion** fault the reassembly throws -- a client id holding a colon, a workflow that does not parse
+ *   -- is the same kind of mistake, made in the body rather than in a field, so it is rethrown as bad input: the
+ *   fault itself kept as the cause, its extra data (a parser's code and position) carried up. Only those: a
+ *   fault that is not marked a conversion is still a server error here, and one a slot's own shape should have
+ *   caught first (the other slots are not gated yet).
+ *
+ * From stored rows a conversion fault stays what it is: nobody sent those.
+ *
+ * Every write path reassembles through this -- the bundle write, the import, and `patchConfig` -- and the load
+ * does not, so a row a write once accepted still loads.
+ */
+fun reassembleForWrite(
+    cxt: KdrCxtBase,
+    name: String,
+    namespace: String,
+    client: String,
+    entriesBySlot: Map<String, List<Map<String, Any?>>>,
+): GedraConfig {
+    requireWritableSlots(cxt, name, entriesBySlot)
+    return try {
+        reassembleGedraConfig(cxt, name, namespace, client, entriesBySlot)
+    } catch (e: KdrException) {
+        if (e.code != EXC.internalError || e.activity != ACT.conversion) throw e
+        // The fault says what is wrong; this says whose it is. A reader of the error takes both from
+        // `fullMessage`, which gathers the chain.
+        throw KdrException(
+            "Configuration '$name' cannot be written.", e, EXC.badInput, e.source, e.activity, LinkedHashMap(e.extraData),
+        )
+    }
+}
+
+/** Throws the write's refusal -- a 400 carrying [configSlotFailures] -- when the slots of configuration [name] have any. */
+fun requireWritableSlots(cxt: KdrCxtBase, name: String, entriesBySlot: Map<String, List<Map<String, Any?>>>) {
+    val failures = configSlotFailures(cxt, entriesBySlot)
+    if (failures.isEmpty()) return
+    // Each message is a sentence of its own, so they are set side by side rather than joined by punctuation.
+    val detail = failures.joinToString(" ") { "${it.path}: ${it.message}" }
+    throw inputFailuresException("Configuration '$name' cannot be written: $detail", failures)
+}
+
+/**
  * A [GedraConfig] reassembled from its stored [entriesBySlot] (issue #613): re-runs the `gedraConfig(...)`
  * builder so every generated type is manufactured exactly as source would, rather than stored and reloaded. The
  * identity comes from the row -- [name], [namespace] and [client] -- not from the entries.
+ *
+ * The reader of what is **stored**, so it is forgiving of the client definition's shape (`ClientDef.fromInfo`).
+ * A write goes through [reassembleForWrite], which gates the slots first.
  */
 fun reassembleGedraConfig(
     cxt: KdrCxtBase,

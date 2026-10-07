@@ -18,7 +18,8 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  * says:
  *
  * - **[CCT.clientDef]** -- the client definition, single-instance, by **reference** to the canonical
- *   `ClientInfo` ([CLD.infoTypeQualified]).
+ *   `WrittenClientInfo` ([CLD.writtenInfoTypeQualified]): the definition as a write must give it (issue #1051),
+ *   which is `ClientInfo` with the list of environments closed.
  * - **[CCT.traitDef]** -- a data trait's **declaration**, by trait id. The DSL inputs are stored (`traitId`,
  *   `typeName`, `appliesTo`, `primaryKey`, description, and the data shape as a `schemaDocument()`), **not** the
  *   `<Name>Entry`/`<Name>Data` types the declaration generates: a trait is a declaration re-run on load, not a
@@ -44,8 +45,8 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  * ### Referencing, not copying
  *
  * The client, workflow and report slots reference the canonical shapes rather than redeclaring them, so a field
- * added to the real `ClientInfo`, `WfDef` or `ClientReport` reaches the stored form with no second declaration to
- * remember. The refs resolve at boot, where every component's `$defs` are compiled together (`clientCatalogSchema`
+ * added to the real `ClientInfo` (whose one declaration makes its written form too), `WfDef` or `ClientReport`
+ * reaches the stored form with no second declaration to remember. The refs resolve at boot, where every component's `$defs` are compiled together (`clientCatalogSchema`
  * and the workflow and report definition schemas are always present).
  *
  * ### The storage vocabulary
@@ -57,7 +58,7 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
 fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.configName, GCFG.globalNamespace) {
     configTrait(
         "ClientDefEntry", CCT.clientDef, setOf(GedraConfigType.configDoc),
-        dataType = CLD.infoTypeQualified,
+        dataType = CLD.writtenInfoTypeQualified,
         description = "The client this configuration defines, as a stored entry.",
     )
     configTrait(

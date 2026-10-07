@@ -240,12 +240,13 @@ class GedraConfigTest : StringSpec({
         val config = coreConfigTraits(cxt)
         // The client and workflow traits *refer to* the canonical types rather than redeclaring them, so this
         // config's types resolve only beside those -- how they are compiled at boot, and what `existingTypes`
-        // is for. The client trait names `clientCatalog.ClientInfo`, not a local copy.
+        // is for. The client trait names `clientCatalog.WrittenClientInfo` -- the definition as a write must give
+        // it (issue #1051) -- not a local copy.
         val canonical = parseSchemaTypes(
-            WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+            WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + ClientDefSchema.defs(cxt),
         )
         val types = parseSchemaTypes(config.defs, existingTypes = canonical)
-        types.getValue("kdr.core.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.infoTypeQualified
+        types.getValue("kdr.core.ClientDefEntry").properties.getValue(GE.data).refName shouldBe CLD.writtenInfoTypeQualified
         // A trait declaration stores its data shape as a parsed schema document (the trait-vs-schema line), not
         // the entry types it generates -- and #316's schema slot does the same for a directly-declared type.
         val traitData = types.getValue("kdr.core.TraitDefEntry").properties.getValue(GE.data).valueType
@@ -259,7 +260,7 @@ class GedraConfigTest : StringSpec({
     "a trait-declaration slot stores the declaration inputs, bounding appliesTo to the data kinds" {
         val config = coreConfigTraits(cxt)
         val canonical = parseSchemaTypes(
-            WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+            WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + ClientDefSchema.defs(cxt),
         )
         val traitData = parseSchemaTypes(config.defs, existingTypes = canonical)
             .getValue("kdr.core.TraitDefEntry").properties.getValue(GE.data).valueType
@@ -277,7 +278,7 @@ class GedraConfigTest : StringSpec({
         val types = parseSchemaTypes(
             coreConfigTraits(cxt).defs,
             existingTypes = parseSchemaTypes(
-                WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this) },
+                WfDefSchema.defs(cxt) + ReportDefSchema.defs(cxt) + ClientDefSchema.defs(cxt),
             ),
         )
         fun slotData(entryType: String) = types.getValue("kdr.core.$entryType").properties.getValue(GE.data).valueType

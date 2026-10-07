@@ -339,11 +339,11 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     val namespace = request[CFEP.namespaceField].toOptStr()
         ?: throw KdrException.mkInput("A configuration bundle must name its '${CFEP.namespaceField}'.")
     val slots = slotsOf(request[CFEP.slots], GedraConfigService.get(c).knownSlots())
-    // Reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are validated as
-    // source would be), then write it. The config id is built from `c.client`, so on the `/admin` surface the
-    // bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new client is
-    // created over the API (its `clientDef` slot, made present by the next reload).
-    val config = reassembleGedraConfig(c, name, namespace, c.client, slots)
+    // Gate the slots and reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are
+    // validated as source would be), then write it. The config id is built from `c.client`, so on the `/admin`
+    // surface the bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new
+    // client is created over the API (its `clientDef` slot, made present by the next reload).
+    val config = reassembleForWrite(c, name, namespace, c.client, slots)
     requireOperatorFieldsKept(c, config.client)
     // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
@@ -369,7 +369,9 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // 404 for a missing config is `patchConfig`'s.
     val edited = svc.patchConfig(c, configId(c, name), trial = true) { current ->
         applyConfigSlotEdits(current, edits, pk).also { patched ->
-            requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { ClientDef.fromInfo(it) })
+            // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not judged
+            // here: `patchConfig` gates the edited slots next, and refuses it as what it is.
+            requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { readClientDef(c, it).def })
         }
     }
     return bundleOf(c, edited)
@@ -444,13 +446,13 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
                     strippedFeatures = features
                 }
             }
-            val config = reassembleGedraConfig(c.mkSubContext("configImport", client), name, namespace, client, slots)
+            val config = reassembleForWrite(c.mkSubContext("configImport", client), name, namespace, client, slots)
             val impliedDelete = bundle[CFEP.impliedDelete] as? Boolean ?: true
             val prepared = Prepared(ConfigWrite(config, impliedDelete), strippedFeatures)
             preparedByClient.getOrPut(client) { mutableListOf() }.add(prepared)
         } catch (e: Throwable) {
             // One bad bundle is reported, not fatal (issue #733) -- the restore continues.
-            failures.add(dropNulls(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to (e.message ?: "unknown error"))))
+            failures.add(dropNulls(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to importFailureText(e))))
             if (client != null) unpreparedClients.add(client)
         }
     }
@@ -477,7 +479,7 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
             }
             affected.add(client)
         } catch (e: Throwable) {
-            val message = e.message ?: "unknown error"
+            val message = importFailureText(e)
             for (name in names) {
                 failures.add(linkedMapOf(CFEP.client to client, CFEP.name to name, ACEP.message to message))
             }
@@ -509,6 +511,13 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
         ACEP.reloaded to reloaded,
     )
 }
+
+/**
+ * What an import says of a bundle that failed: the error's whole chain of messages (a refusal that wraps the fault
+ * it found says whose it is, and its cause what is wrong -- issue #1051), since `failures` carries text and nothing else.
+ */
+private fun importFailureText(e: Throwable): String =
+    (e as? KdrException)?.fullMessage()?.ifEmpty { null } ?: e.message ?: "unknown error"
 
 /**
  * A bundle's slots with `${CLD.testFeatures}` removed from its `clientDef` entry (issue #733), paired with the

@@ -125,6 +125,23 @@ For the client configuration itself, the client has the following attributes.
 * `organizations` - A complex definition of organizations associated with this client, we will implement this
  at a later date.
 
+**The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
+once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.
+`WrittenClientInfo` -- compiled on its own as `ClientDefSchema`, and what the `kdr:clientDef` slot is declared as --
+is what a definition arriving as data in a configuration write is validated against before anything reads it. The
+schema states the definition's **shape**: its keys and no others (not even the `_` and `$` keys a request may carry
+off-contract: a definition is stored in its canonical form, so one would be accepted and then gone), each one's type
+(a flag is a boolean, not text that reads like one), and the choices of `usageType`, `audience` and each entry of
+`enabledEnvironments`. A fault is a 400 naming each path. The two types differ in one thing: an *answer* leaves the
+environments an open list, since a stored client naming one that does not exist is dropped by the load and still
+answers its definition read, with the issue that says why. It does not state what a definition means beside the
+deployment's other clients, which only code that sees them can judge and which stays where it was: the id's
+characters and its being the config's own, the environment set being a legal one, the extended client existing
+and being a template, a domain not being another client's (`checkClientDefs`, the write's own guards, and the
+trial reload). A definition declared in source is built by its constructor and never passes the schema; a
+definition already stored is read leniently, as it always was, so a tightened rule refuses a write and never a
+client that is already there.
+
 As part of the client definition, the client declares the traits it supports. `includedTraits` names the ones it
 takes as they stand; a trait the client alters, extends or defines is supported **without a second mention**, so
 that list is a minimum rather than a total. The computed result -- the included list with its groups expanded,
