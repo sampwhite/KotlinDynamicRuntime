@@ -318,4 +318,17 @@ class DesignEditTest : StringSpec({
         edit(dataType, DesignDemo.venue, null)
         admin.postData(save, request(DesignDemo.venue to "outdoors", DesignDemo.backupPlan to "Tents"))[WSF.saved] shouldBe true
     }
+
+    // An administrator of every client opening another client's form designs it in that client (the client is named,
+    // since their own -- `hub` -- holds none of its definitions); a client's own administrator may not name another.
+    "an administrator of every client designs another client's form by naming it, and nobody else may" {
+        val everyClient = TestUser.createFullAdmin(cxt, "every@hub1048.test")
+        val read = everyClient.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest, DSV.client to client))
+        read[DSV.entry].toJsonMapOrEmpty()[CCT.traitId] shouldBe DesignDemo.eventRequest
+        everyClient.postData(DSV.layoutEntryEdit, editArgs(dataType, DesignDemo.title, mapOf(SL.label to "Named from the hub")) + (DSV.client to client))
+        label(requestView(), dataType, DesignDemo.title) shouldBe "Named from the hub"
+        edit(dataType, DesignDemo.title, null)
+
+        admin.expectError(403, DSV.definition, args = mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest, DSV.client to "hub"))
+    }
 })

@@ -59,6 +59,12 @@ object DSV {
     /** Reads one definition by address: its authored entry and where it was declared. Client-scoped admin. */
     const val definition = "/${SECT.clientAdmin}/design/definition"
 
+    /**
+     * On the Design View endpoints: the client whose form the page draws, for an administrator who may see every
+     * client and has opened another client's form; absent, the caller's own. Anyone else naming another is refused.
+     */
+    const val client = "client"
+
     /** The schema namespace the Design View endpoint types live in. */
     const val namespace = "kdr.designView"
     const val definitionType = "DesignDefinition"

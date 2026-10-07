@@ -39,8 +39,8 @@ private val designScope = MainScope()
 
 /** The Design View definition read (issue #972): one definition's authored entry and where it was declared. */
 object DesignApi {
-    suspend fun definition(slot: String, key: String): Map<String, Any?> =
-        Http.getApi(DSV.definition + queryString(mapOf(DSV.slot to slot, DSV.key to key)))[EP.item].toJsonMapOrEmpty()
+    suspend fun definition(slot: String, key: String, client: String?): Map<String, Any?> =
+        Http.getApi(DSV.definition + queryString(definitionQuery(slot, key, client)))[EP.item].toJsonMapOrEmpty()
 
     /**
      * Sets the workflow's own layout entry for [field] of [typeName] to [entry], or clears it when [entry] is null
@@ -53,6 +53,7 @@ object DesignApi {
         field: String,
         entry: Map<String, Any?>?,
         basedOn: String,
+        client: String?,
     ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
         "POST", DSV.layoutEntryEdit,
         buildMap {
@@ -61,6 +62,7 @@ object DesignApi {
             put(DSV.field, field)
             entry?.let { put(DSV.entry, it) }
             put(DSV.basedOn, basedOn)
+            client?.let { put(DSV.client, it) }
         },
     )
 
@@ -76,9 +78,10 @@ object DesignApi {
         entry: Map<String, Any?>?,
         options: List<Map<String, Any?>>?,
         basedOn: String,
-        acknowledgeImpact: Boolean = false,
+        acknowledgeImpact: Boolean,
+        client: String?,
     ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
-        "POST", DSV.sharedFieldEdit, sharedFieldBody(typeName, field, entry, options, basedOn, acknowledgeImpact),
+        "POST", DSV.sharedFieldEdit, sharedFieldBody(typeName, field, entry, options, basedOn, acknowledgeImpact, client),
     )
 }
 
@@ -163,7 +166,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
         if (cacheKey == null || cacheKey in loaded) return@useEffect
         designScope.launch {
             // A definition that will not load is said in the panel; the page stays usable.
-            val result = apiResult { DesignApi.definition(a.slot, a.key) }
+            val result = apiResult { DesignApi.definition(a.slot, a.key, session.client) }
             loaded = loaded + (cacheKey to LoadedDefinition(result.valueOrNull(), result.failureOrNull()?.let { userFacingError(it) }))
         }
     }
@@ -512,7 +515,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
         saving = true
         failure = null
         designScope.launch {
-            val result = DesignApi.setLayoutEntry(session.workflowId, owner.typeName, target.name, entry, session.design.basedOn)
+            val result = DesignApi.setLayoutEntry(session.workflowId, owner.typeName, target.name, entry, session.design.basedOn, session.client)
             saving = false
             val refused = result.failureOrNull()
             if (refused != null) {
@@ -739,6 +742,7 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                 props.typeName, target.name,
                 copyEntryFrom(start, target.name, values).takeIf { copyChanged(start, values) },
                 startRows?.let { sharedOptionsPayload(rows) }, facts.basedOn, acknowledgeImpact = acknowledge,
+                client = props.session.client,
             )
             saving = false
             val refused = result.failureOrNull()

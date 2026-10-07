@@ -452,4 +452,12 @@ class DesignViewTest {
         assertTrue(formRequiredUnavailable(requirementTypes.properties.getValue("total"))!!.contains("works this field out"))
         assertNull(formRequiredUnavailable(requirementTypes.properties.getValue("venue")))
     }
+
+    @Test
+    fun anotherClientsFormIsNamedOnEveryDesignViewCall() {
+        assertEquals(mapOf(DSV.slot to "traitDef", DSV.key to "eventRequest"), definitionQuery("traitDef", "eventRequest", null))
+        assertEquals("acme", definitionQuery("traitDef", "eventRequest", "acme")[DSV.client])
+        assertEquals("acme", sharedFieldBody("client.acme.Event", "venue", null, null, "abc", acknowledgeImpact = false, client = "acme")[DSV.client])
+        assertNull(sharedFieldBody("client.acme.Event", "venue", null, null, "abc", acknowledgeImpact = false)[DSV.client])
+    }
 }

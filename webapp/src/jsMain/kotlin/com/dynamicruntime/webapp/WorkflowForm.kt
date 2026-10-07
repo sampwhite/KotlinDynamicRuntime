@@ -225,7 +225,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val designSession = wf.design?.takeIf { designViewRequested() }?.let {
         DesignSession(
             it, designSelected, { t -> designSelected = t }, designShowAllIds, designShowHidden,
-            workflowId = wf.workflowId, afterEdit = { props.onDesignEdited?.invoke() },
+            // The form's client when it is another client's (issue #714's surface client): Design View reads and
+            // saves there, as the view and the save do.
+            workflowId = wf.workflowId, client = props.client, afterEdit = { props.onDesignEdited?.invoke() },
         )
     }
     // The inspector is fixed to the window's right edge; the page makes room for it rather than being covered.

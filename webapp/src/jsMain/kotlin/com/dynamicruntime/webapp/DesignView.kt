@@ -318,6 +318,12 @@ class DesignSession(
     /** The workflow the page draws (issue #984): what an edit of its copy names. */
     val workflowId: String = "",
     /**
+     * The client whose form the page draws, when it is not the caller's own -- an administrator who sees every client
+     * opening another client's form -- else null. Every Design View read and save names it, since that form's
+     * workflows and definitions are its client's ([DSV.client]).
+     */
+    val client: String? = null,
+    /**
      * Re-reads the page's view in place after an edit has saved (issue #984), so the change shows without a reload
      * and unsaved form values survive. A no-op where the page has none.
      */
@@ -326,7 +332,7 @@ class DesignSession(
     val trait: WfTraitView? = null,
 ) {
     fun forTrait(t: WfTraitView): DesignSession =
-        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, afterEdit, t)
+        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, client, afterEdit, t)
 
     fun isSelected(target: DesignTarget): Boolean = selected?.id == target.id
 
@@ -566,6 +572,7 @@ fun sharedFieldBody(
     options: List<Map<String, Any?>>?,
     basedOn: String,
     acknowledgeImpact: Boolean,
+    client: String? = null,
 ): Map<String, Any?> = buildMap {
     put(DSV.typeName, typeName)
     put(DSV.field, field)
@@ -573,4 +580,15 @@ fun sharedFieldBody(
     options?.let { put(DSV.options, it) }
     put(DSV.sharedBasedOn, basedOn)
     if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
+    client?.let { put(DSV.client, it) }
+}
+
+/**
+ * The query of a Design View definition read: the definition's [slot] and [key], and the [client] whose form the
+ * page draws when it is not the caller's own ([DesignSession.client]). Pure.
+ */
+fun definitionQuery(slot: String, key: String, client: String?): Map<String, Any?> = buildMap {
+    put(DSV.slot, slot)
+    put(DSV.key, key)
+    client?.let { put(DSV.client, it) }
 }

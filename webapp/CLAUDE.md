@@ -736,6 +736,10 @@ client shares and what is this client's own, however it was assembled.
   reason, Design View draws it as a ghost. **A new rule that hides a field goes into `fieldHiddenReason`**, never
   as a fresh `return@forEach` in the render loop -- a rule added there would hide the field from Design View too,
   with no ghost to say so.
+- **Another client's form is designed in its own client.** An administrator who sees every client can open any
+  client's form, and its workflows and definitions are that client's, not theirs (`hub`, usually). So the session
+  carries the form's client (`DesignSession.client`, the page's surface client) and every Design View read and save
+  names it (`DSV.client`); the backend binds the request to it, and refuses it from anyone else (`overseenClient`).
 - **Only the workflow form is marked.** It provides `DesignViewContext`; every other `SchemaForm` (the catalog,
   the raw editors) sees null and draws exactly as before.
 - **Seeing it.** The `design-demo` simulation writes the `designdemo` client -- defined in data, so its definitions
