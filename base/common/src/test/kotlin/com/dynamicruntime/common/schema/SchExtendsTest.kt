@@ -23,7 +23,7 @@ class SchExtendsTest : StringSpec({
         SCH.required to listOf("a"),
         SCH.layout to mapOf(SL.schemaFields to listOf(mapOf(SL.field to "a", SL.label to "Alpha"), mapOf(SL.field to "b", SL.label to "Beta"))),
     )
-    fun extension(vararg entries: Pair<String, Any?>) = mapOf<String, Any?>(SCH.extends to "kdr.B", *entries)
+    fun extension(vararg entries: Pair<String, Any?>) = mapOf(SCH.extends to "kdr.B", *entries)
     fun resolve(ext: Map<String, Any?>) = resolveExtensions(mapOf("kdr.B" to base, "client.acme.A" to ext))
     fun props(resolved: ExtensionsResolved) = (resolved.defs.getValue("client.acme.A") as Map<*, *>)[SCH.properties] as Map<*, *>
 
@@ -108,7 +108,7 @@ class SchExtendsTest : StringSpec({
     val target = mapOf<String, Any?>("kdr.T" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("n" to prop())))
     fun withType(body: Map<String, Any?>) = target + ("kdr.Holder" to body)
 
-    "schema keys beside a property's \$ref are refused, naming the key; its use-site annotations still parse" {
+    $$"schema keys beside a property's $ref are refused, naming the key; its use-site annotations still parse" {
         val refused = shouldThrow<KdrException> {
             parseSchemaTypes(
                 withType(
@@ -126,7 +126,7 @@ class SchExtendsTest : StringSpec({
             .getValue("kdr.Holder").properties.getValue("t").title shouldBe "Target"
     }
 
-    "schema keys beside an items \$ref, or a union branch's, are refused too" {
+    $$"schema keys beside an items $ref, or a union branch's, are refused too" {
         shouldThrow<KdrException> {
             parseSchemaTypes(withType(mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to refT, SCH.maxLength to 3))))
         }.message.orEmpty() shouldContain "'${SCH.maxLength}'"
