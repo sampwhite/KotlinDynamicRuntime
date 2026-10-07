@@ -14,8 +14,7 @@ import io.kotest.matchers.string.shouldContain
  * The standard keywords this layer reads are held to their shapes (issue #1053): a value of the wrong kind fails the
  * parse by name -- where it used to be read as though the keyword were absent, so that a typo in a value turned
  * validation off and nothing said so. A keyword the layer does not read stays a document's own business, and a
- * client's stored definition is repaired rather than refused: the keyword goes, and the definition means what it
- * meant.
+ * client's stored definition is repaired rather than refused: the keyword goes, and the fault costs only itself.
  */
 class SchStdKeywordsTest : StringSpec({
 
@@ -32,8 +31,16 @@ class SchStdKeywordsTest : StringSpec({
         message.shouldNotBeNull() shouldContain "Property 'v' sets 'type' to 'strng'"
         message shouldContain "one of string, number, integer, boolean, array, object, null"
         refusal(mapOf(SCH.type to 5L)).shouldNotBeNull() shouldContain "sets 'type' to 5"
-        // A list of types is legal JSON Schema and not read here: said, rather than left to look like a typo.
+        // A list of types is legal JSON Schema and not read here: said, rather than left to look like a typo. So
+        // are a schema for undeclared properties, a schema per item, and true or false standing for a schema.
         refusal(mapOf(SCH.type to listOf(SCT.string, SCT.kNull))).shouldNotBeNull() shouldContain "a list of types is not supported"
+        refusal(mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.type to SCT.string))).shouldNotBeNull()
+            .let { it shouldContain "valid JSON Schema and is not supported here"; it shouldContain "true or false" }
+        refusal(mapOf(SCH.type to SCT.array, SCH.items to listOf(mapOf(SCH.type to SCT.string)))).shouldNotBeNull() shouldContain
+            "a schema per position is not supported"
+        refusal(mapOf(SCH.type to SCT.array, SCH.items to true)).shouldNotBeNull() shouldContain "an empty object accepts anything"
+        refusal(mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("any" to true))).shouldNotBeNull()
+            .let { it shouldContain "declares property 'any' as true"; it shouldContain "not supported here" }
         for (type in listOf(SCT.string, SCT.number, SCT.integer, SCT.boolean, SCT.array, SCT.kObject, SCT.kNull)) {
             refusal(mapOf(SCH.type to type)) shouldBe null
         }
@@ -108,10 +115,10 @@ class SchStdKeywordsTest : StringSpec({
 
     val context = DefRepairContext(emptySet()) { null }
 
-    "a client's stored definition is repaired, not refused: the keyword goes and the definition means what it meant" {
+    "a client's stored definition is repaired, not refused: the keyword goes and the rest of the definition stands" {
         val body = mapOf(
             SCH.type to SCT.kObject,
-            SCH.required to listOf("name", 5L),
+            SCH.required to listOf("name", 5L, listOf("x")),
             SCH.additionalProperties to "no",
             SCH.properties to mapOf(
                 "name" to mapOf(SCH.type to "strng", SCH.minLength to "three", SCH.maxLength to "64"),
@@ -124,16 +131,18 @@ class SchStdKeywordsTest : StringSpec({
         repairs.map { it.message }.let { messages ->
             messages.size shouldBe 6
             messages.single { "'additionalProperties'" in it } shouldContain "Type 'client.x.Card' sets"
-            messages.single { "in 'required'" in it } shouldContain "lists 5"
+            messages.single { "in 'required'" in it } shouldContain "lists 5, a list"
             messages.single { "property 'junk'" in it } shouldContain "must be an object"
             messages.single { "'type'" in it } shouldContain "Type 'client.x.Card' property 'name'"
             messages.single { "'minLength'" in it } shouldContain "'three'"
             messages.single { "'format'" in it } shouldContain "property 'tags'"
         }
         repairs.all { it.degradedTo.startsWith("Dropping") } shouldBe true
-        // What is left is what the lenient reading made of it: the name still required, the bad property and the
-        // keywords at fault gone, and everything sound kept -- the bound that reads as a number among it.
-        repaired[SCH.required] shouldBe listOf("name")
+        repairs.single { "in 'required'" in it.message }.degradedTo shouldContain "that part of 'required'"
+        // What is left of `required` is exactly what the lenient reading made of it -- the names its entries spell,
+        // a number read as its text -- and the bad property and the keywords at fault are gone, with everything
+        // sound kept: the bound that reads as a number among it.
+        repaired[SCH.required] shouldBe listOf("name", "5")
         repaired.containsKey(SCH.additionalProperties) shouldBe false
         val properties = repaired[SCH.properties] as Map<*, *>
         properties.keys shouldBe setOf("name", "tags")
@@ -141,7 +150,7 @@ class SchStdKeywordsTest : StringSpec({
         properties["tags"] shouldBe mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.string))
         // And it now parses, to the type it was read as before.
         val card = parseSchemaTypes(mapOf("client.x.Card" to repaired)).getValue("client.x.Card")
-        card.required shouldBe setOf("name")
+        card.required shouldBe setOf("name", "5")
         card.additionalProperties shouldBe false
         card.properties.getValue("name").valueType.jsonType shouldBe null
         // A sound definition is handed back as it was.

@@ -3,13 +3,14 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.Problem
 import com.dynamicruntime.common.util.toOptDoubleResult
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * The **standard** keywords this layer reads, and the shape each one's value must take (issue #1053).
  *
  * What [SchGKeywords] is for our own keywords, for JSON Schema's. The parser used to read these leniently, and a
- * value of the wrong shape was not refused but read as though the keyword were absent: `type: "strng"` was kept and
- * then constrained nothing, `required: "name"` required nothing, `properties: []` made an open object, and
+ * value of the wrong shape was mostly not refused but read as though the keyword were absent: `type: "strng"` was
+ * kept and then constrained nothing, `required: "name"` required nothing, `properties: []` made an open object, and
  * `additionalProperties: "no"` fell to the default. A typo turned validation off, and nothing said so.
  *
  * **Only keywords we interpret.** A keyword this layer does not read stays the document's own -- a stock
@@ -17,40 +18,49 @@ import com.dynamicruntime.common.util.toOptDoubleResult
  * Schema defines. And only a keyword's **shape**: whether it applies to the type it sits on, and what it means
  * there, are the parser's own checks (a `pattern` on an integer, a `oneOf` with no discriminator).
  *
+ * **Some of what is refused is legal JSON Schema that this layer does not read**: a list of types, a schema for
+ * `additionalProperties`, a tuple of `items`, `true` or `false` standing for a schema. Those are said to be what
+ * they are -- valid, and not supported here -- rather than worded as the typo the rest are.
+ *
  * One list, read two ways, as [SchGKeywords] is: the parser refuses a problem outright (`parseSchemaTypes`
  * throws, naming the keyword and the type or property), and the repair of a client's stored definitions drops the
- * keyword and reports it. The drop is chosen to **reproduce how the value was read before** -- which was as absent
- * -- so a stored definition means after the repair exactly what it meant, with the fault now on the client's issue
- * list. Where only part of a value is at fault, only that part goes ([salvaged]).
+ * keyword -- or only the part of it at fault ([salvaged]) -- and reports it, so the fault costs only itself.
+ *
+ * **What a repair changes about a stored definition.** For most of these, nothing: the value was read as absent,
+ * and absent is what dropping it leaves (`required` keeps exactly the names it was read as holding). Three were not
+ * read as absent but made the whole type fail to compile, and so be dropped whole: a bound that is not a number, a
+ * `$ref` that is a number or a flag, and a type that is no type beside `g-options`. Such a type now loads without
+ * the keyword instead -- the smaller cost, by the rule the rest of the repair follows -- and the client's issue list
+ * says what was dropped.
  *
  * A JSON `null` reads as the keyword not being set.
  */
 object SchStdKeywords {
-    private class Shape(val described: String, val accepts: (Any?) -> Boolean)
-
     private val types = listOf(SCT.string, SCT.number, SCT.integer, SCT.boolean, SCT.array, SCT.kObject, SCT.kNull)
 
-    private val text = Shape("text") { it is String }
-    private val boolean = Shape("true or false") { it is Boolean }
-    private val obj = Shape("a schema object") { it is Map<*, *> }
+    private val text = SchKeywordShapes.text
 
     // A bound has always been read as a number or as text that spells one, so that is what it may be: refusing
     // `"5"` now would be a rule nobody was told about, and reading it as no bound would loosen a stored schema.
-    private val number = Shape("a number") { it is Number || it is String && it.isNotBlank() && it.toOptDoubleResult() is Parsed.Ok }
+    private val number = SchKeywordShape("a number") {
+        it is Number || it is String && it.isNotBlank() && it.toOptDoubleResult() is Parsed.Ok
+    }
 
-    private val shapes: Map<String, Shape> = linkedMapOf(
-        SCH.type to Shape("one of ${types.joinToString(", ")}") { it is String && it in types },
+    private val shapes: Map<String, SchKeywordShape> = linkedMapOf(
+        SCH.type to SchKeywordShape("one of ${types.joinToString(", ")}") { it is String && it in types },
         SCH.format to text,
         SCH.title to text,
         SCH.description to text,
         SCH.dRef to text,
-        SCH.required to Shape("a list of property names") { it is List<*> && it.all { e -> e is String } },
+        SCH.required to SchKeywordShape("a list of property names") { it is List<*> && it.all { e -> e is String } },
         // A null is a property not set, as a null keyword is: an alteration merged into a global type removes one
         // that way (issue #985), and the parser has always read past it.
-        SCH.properties to Shape("an object of schema objects") { it is Map<*, *> && it.values.all { v -> v == null || v is Map<*, *> } },
-        SCH.items to obj,
-        SCH.additionalProperties to boolean,
-        SCH.oneOf to Shape("a list") { it is List<*> },
+        SCH.properties to SchKeywordShape("an object of schema objects") {
+            it is Map<*, *> && it.values.all { v -> v == null || v is Map<*, *> }
+        },
+        SCH.items to SchKeywordShape("a schema object") { it is Map<*, *> },
+        SCH.additionalProperties to SchKeywordShapes.boolean,
+        SCH.oneOf to SchKeywordShapes.list,
         SCH.minimum to number,
         SCH.maximum to number,
         SCH.minLength to number,
@@ -61,13 +71,10 @@ object SchStdKeywords {
         SCH.maxProperties to number,
     )
 
-    /** Every standard keyword whose shape is checked. */
-    val keywords: Set<String> get() = shapes.keys
-
     /**
      * What is wrong with [keyword] set to [value] on [where] (a type or property, for the message), or null when
-     * nothing is: a value not of its keyword's shape ([SchemaError.badValue]). Null for a keyword that is not one
-     * of [keywords] -- not ours to judge.
+     * nothing is: a value not of its keyword's shape ([SchemaError.badValue]). Null for a keyword this table does
+     * not hold -- not ours to judge.
      */
     fun problem(where: String, keyword: String, value: Any?): Problem? {
         if (value == null) return null
@@ -82,30 +89,44 @@ object SchStdKeywords {
 
     /**
      * What is left of a wrongly shaped [value] of [keyword] when only **part** of it is at fault, or null when the
-     * whole keyword goes: a `properties` object keeps the properties whose schema is an object, and a `required`
-     * list its names. Each is what the lenient reading kept of it, so the repair that stores this changes nothing
-     * about what the definition means.
+     * whole keyword goes. Each is exactly what the lenient reading made of it: a `properties` object keeps the
+     * properties whose schema is an object, and a `required` list the names its entries spell -- a number or a flag
+     * was read as its text -- without the entries that spell none.
      */
     fun salvaged(keyword: String, value: Any?): Any? = when {
         keyword == SCH.properties && value is Map<*, *> -> value.filterValues { it == null || it is Map<*, *> }
-        keyword == SCH.required && value is List<*> -> value.filterIsInstance<String>()
+        keyword == SCH.required && value is List<*> -> value.mapNotNull { it.toOptStr() }
         else -> null
     }
 
-    private fun message(where: String, keyword: String, value: Any?, shape: Shape): String = when {
+    private fun message(where: String, keyword: String, value: Any?, shape: SchKeywordShape): String = when {
         // The part at fault, named: "sets 'properties' to an object" would say nothing.
         keyword == SCH.properties && value is Map<*, *> -> {
             val (name, body) = value.entries.first { it.value != null && it.value !is Map<*, *> }
-            "$where declares property '$name' as ${describeSchemaValue(body)}; a property's schema must be an object."
+            "$where declares property '$name' as ${describeSchemaValue(body)}; a property's schema must be an object." +
+                (if (body is Boolean) " $booleanSchema" else "")
         }
         keyword == SCH.required && value is List<*> -> {
             val bad = value.filter { it !is String }.joinToString(", ") { describeSchemaValue(it) }
             "$where lists $bad in '${SCH.required}'; each entry must be a property's name, as text."
         }
-        // Legal JSON Schema, and not read here: said, rather than left to look like a typo.
+        // The rest of these are legal JSON Schema, and not read here: said, rather than left to look like a typo.
         keyword == SCH.type && value is List<*> ->
             "$where sets '${SCH.type}' to a list; a list of types is not supported. Declare the one type it is: a " +
                 "property that may be absent is simply not required."
+        keyword == SCH.additionalProperties && value is Map<*, *> ->
+            "$where sets '${SCH.additionalProperties}' to a schema; a schema for undeclared properties is valid JSON " +
+                "Schema and is not supported here. It must be true or false: true admits any undeclared property."
+        keyword == SCH.items && value is List<*> ->
+            "$where sets '${SCH.items}' to a list; a schema per position is not supported. Declare the one schema " +
+                "every item takes."
+        keyword == SCH.items && value is Boolean ->
+            "$where sets '${SCH.items}' to $value; it must be a schema object. $booleanSchema"
         else -> "$where sets '$keyword' to ${describeSchemaValue(value)}; it must be ${shape.described}."
     }
+
+    /** What to write in place of JSON Schema's `true` / `false` schemas, which this layer does not read. */
+    private const val booleanSchema =
+        "True or false standing for a schema is valid JSON Schema and is not supported here: an empty object " +
+            "accepts anything."
 }

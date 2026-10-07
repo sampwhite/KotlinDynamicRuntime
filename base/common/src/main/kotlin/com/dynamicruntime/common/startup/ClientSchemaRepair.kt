@@ -53,8 +53,9 @@ class DefRepairContext(
  *   goes;
  * - a standard keyword this layer reads whose value has the wrong shape ([SchStdKeywords], issue #1053) -- a `type`
  *   that is no type, a `required` that is not a list: the keyword goes, or only the part of it at fault (a property
- *   whose schema is not an object, a `required` entry that is not a name). Each is what the lenient reading made
- *   of it, so the definition means what it meant, and now says what is wrong with it.
+ *   whose schema is not an object, a `required` entry that is not a name). For most that is how the value was
+ *   already read, so the definition validates as it did and now says what is wrong with it; the few that used to
+ *   stop the whole type compiling ([SchStdKeywords] names them) now cost the keyword rather than the type.
  *
  * The checks are the boot's own -- the same messages, from the same helpers -- run on the **raw** definition,
  * where a keyword can still be removed; the boot's later passes over the compiled document then find nothing in
@@ -85,10 +86,10 @@ fun repairTypeDef(
                 val kept = SchStdKeywords.salvaged(key, value)
                 if (kept == null) {
                     out.remove(key)
-                    repairs.add(DefRepair(problem.message, "Dropping '$key', which was read as if it were absent."))
+                    repairs.add(DefRepair(problem.message, "Dropping '$key'; the rest of the definition stands."))
                 } else {
                     out[key] = kept
-                    repairs.add(DefRepair(problem.message, "Dropping that part of '$key', which was read past."))
+                    repairs.add(DefRepair(problem.message, "Dropping that part of '$key'; the rest of it stands."))
                 }
             }
         }

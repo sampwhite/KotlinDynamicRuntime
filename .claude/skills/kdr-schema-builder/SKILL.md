@@ -158,8 +158,10 @@ of the right kind, or the parse fails naming the keyword and the type or propert
 values (a *list* of types is not supported); `required` is a list of names; `properties` an object whose values are
 schema objects (a `null` is a property not set); `items` an object; `additionalProperties` true or false; `oneOf` a
 list; `title`, `description`, `format` and `$ref` text; a bound a number (or text that spells one, as it always
-read). Each of these used to be read as though the keyword were absent -- `type: "strng"` constrained nothing.
-A keyword the layer does **not** read is still the document's own, whatever its value.
+read). Most of these used to be read as though the keyword were absent -- `type: "strng"` constrained nothing.
+A keyword the layer does **not** read is still the document's own, whatever its value. Some refusals are of legal
+JSON Schema this layer does not read (a schema for `additionalProperties`, a tuple of `items`, `true`/`false` as a
+schema), and their messages say so.
 
 **Refused by name** at parse -- on a type, a property, or beside a `$ref`: `enum` (use `options`), `allOf`,
 `anyOf`, `not` (legal only inside an `if`/`then`/`else` clause), `dependentSchemas`, and, as before, `oneOf`
@@ -432,7 +434,7 @@ mode: stored config is forgiven everywhere but `unit` (`KDR_STORED_CONFIG_CHECK`
 | unregistered `g-optionsSource`, or one beside `options` | the keyword (the field takes free input, or keeps its options) |
 | bad `g-visibleWhen`, or one on a required property | the keyword (the field shows for everyone) |
 | a `g-errors` message that cannot render, or an unknown code | that message |
-| a standard keyword of the wrong shape (`type: "strng"`, `required: "name"`, issue #1053) | the keyword -- or only the part at fault: a property whose schema is not an object, a `required` entry that is not a name. What it meant is unchanged: that is how it was already read |
+| a standard keyword of the wrong shape (`type: "strng"`, `required: "name"`, issue #1053) | the keyword -- or only the part at fault: a property whose schema is not an object, a `required` entry that is not a name. For most that is how it was already read, so the definition validates as it did; a bound that is not a number, a non-text `$ref`, or a non-type beside `g-options` used to stop the whole type compiling and now costs only the keyword |
 | a client-written `g-layout` that fails the layout check | that layout |
 | a type that will not compile (an unresolvable `$ref`) | that type change -- and a trait whose type it was, which then leaves the client's supported set |
 | a client cfact redeclaring a global one, or declared twice | that declaration |

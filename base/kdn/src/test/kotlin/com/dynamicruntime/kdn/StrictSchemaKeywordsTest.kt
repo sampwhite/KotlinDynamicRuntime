@@ -33,7 +33,7 @@ import io.kotest.matchers.string.shouldContain
  * A client's own schema is held to the shapes of the standard keywords it uses (issue #1053), by the two readings
  * of one list: **a write is refused** for a keyword of the wrong shape -- the trial reload finds it, as it finds any
  * new problem -- and **a definition already stored still loads**, the keyword dropped and the fault recorded on the
- * client, meaning exactly what it meant when it was read leniently.
+ * client, validating as it did when it was read leniently.
  *
  * One shared instance with the stored-config check at `warn`, the forgiving path a unit test opts into: the stored
  * definitions here are flawed on purpose.
