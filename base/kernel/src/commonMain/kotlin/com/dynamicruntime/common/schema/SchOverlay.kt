@@ -101,7 +101,7 @@ fun overlayTypeOutcome(typeName: String, base: Map<String, Any?>, overlay: Map<S
  * exactly as it is for a layout the alteration does not touch (pruned on delivery), not a fault of the client's. An
  * entry the alteration wrote itself is kept, so a client naming a field its type lacks is still told.
  */
-private fun withoutStrandedLayoutEntries(merged: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
+internal fun withoutStrandedLayoutEntries(merged: Map<String, Any?>, overlay: Map<String, Any?>): Map<String, Any?> {
     val layout = merged[SCH.layout] as? Map<*, *> ?: return merged
     val ownLayout = overlay[SCH.layout] as? Map<*, *> ?: return merged
     val properties = (merged[SCH.properties] as? Map<*, *>)?.keys ?: return merged

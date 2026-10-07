@@ -195,6 +195,12 @@ enum class DesignRefusal {
      * Clients page's editors do (issue #1026) -- would take live with it. Publish or revert that configuration first.
      */
     unpublishedChanges,
+
+    /**
+     * The shared editor's definition is an extension (issue #990): stored as its base plus a delta, so it is edited
+     * through its configuration, not field by field here.
+     */
+    extendsType,
 }
 
 /**

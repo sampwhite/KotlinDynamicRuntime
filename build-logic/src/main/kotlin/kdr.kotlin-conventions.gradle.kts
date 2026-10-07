@@ -45,8 +45,10 @@ tasks.withType<Test>().configureEach {
     // Gradle's default test-worker heap is 512m, and a suite here boots many in-memory instances into one
     // worker JVM -- each retaining its own schema store -- so the default sat right at the edge: adding a
     // couple of state traits (issue #794) was enough to tip `:base:kdn:test` into OutOfMemoryError. Raised
-    // once, here, rather than per module, so every suite gets the same headroom.
-    maxHeapSize = "1g"
+    // here, rather than per module, so every suite gets the same headroom. 1g was outgrown in turn by #990's
+    // extension tests: `InstanceRegistry` keeps every instance a suite boots for the life of the JVM, so the
+    // suite's heap only grows, and raising the ceiling postpones rather than ends this.
+    maxHeapSize = "1536m"
 }
 
 

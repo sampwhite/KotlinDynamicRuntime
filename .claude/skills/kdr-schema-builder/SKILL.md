@@ -418,6 +418,40 @@ kernel's `parseDeliveredLayouts` (the same strict parser the boot ran) into `Cat
 Outside the schema package the delivered form is always named `fieldLayout(s)`, so a search finds exactly it —
 not the task layout (`WfTask.layout`), a page layout, or prose.
 
+## Extensions: a named type as another plus a delta (`g-extends`, issue #990)
+
+A **new** named type may be declared as an extension of another, instead of being written out in full or composed
+by a `$ref` property: `type("Wide") { extends("kdr.B"); property("extra", "…") }`, which writes
+`"g-extends": "kdr.B"` at the top of the `$defs` entry (a bare name resolves in the builder's namespace).
+
+- **Resolved before parsing** (`resolveExtensions`, `SchExtends.kt`), by #985's merger with `extensionMergeSpec`:
+  **`properties` merges by default** -- a named property is added or replaces the base's whole, `{}` keeps it, `null`
+  removes it, and an unnamed one is the base's, including any the base gains later; `"g-merge": { "properties":
+  "restate" }` states the whole set instead. `g-layout` merges by field, as an alteration's does; every other key
+  replaces (so a `required` the extension writes replaces the base's).
+- **A new name, so no narrowing check**: nothing that refers to the base sees the extension, and it may widen. It is
+  checked as an ordinary type once resolved, and a trait uses it like any named type (`dataType = "client.acme.Wide"`).
+- **A client's view of the base**: a client's extension resolves on the client's composed document, after its
+  alterations, so it extends the base as this client has it. A component's (global) extension resolves on the global
+  document, before the global repair and parse -- **once**, so it does not follow a client's alteration of its base:
+  a client that narrows `kdr.B` leaves a global `kdr.A` extending it accepting what was narrowed away, unless the
+  client alters `kdr.A` too.
+- **Design View's shared editor refuses an extension** (`DesignRefusal.extendsType`): its stored entry is only the
+  delta, so the fields it inherits are not there to edit. It is changed through its configuration, where writing
+  the delta's own `g-layout` merges with the base's by field.
+- **The served schema carries the resolved type**; `g-extends` and `g-merge` never reach `SchType` or a reader.
+- **Refused**: an unknown base, a base that is itself an extension (no chains), a base that is not an object type, a
+  merge choice the spec does not offer, `g-extends` anywhere but the top of a new named type (an alteration keeps the
+  name it alters, so it cannot extend), and an extension of a type its **own** configuration also alters (another of
+  the client's configurations altering it is fine). Strict outside production for source config and in unit tests
+  for stored config; otherwise the extension is dropped and reported, as any client definition fault is.
+
+**A `$ref` takes its type whole.** A schema key beside a `$ref` -- `properties`, `type`, `maxLength` -- used to parse
+clean and do nothing; it is now refused at all three sites (a property, an array's `items`, a union branch), naming
+the key and pointing to `g-extends`. What may stand beside a `$ref` is what the site reads about its own use: a
+`description` and `title` anywhere, and on a property `g-optionalContents`, `g-presentation` and `g-visibleWhen`
+(plus `$comment` and other off-contract annotations).
+
 ## A client's own definitions: dropped, not refused (issue #841)
 
 The boot checks above refuse the boot for a fault in a **component's** schema -- outside production; in production

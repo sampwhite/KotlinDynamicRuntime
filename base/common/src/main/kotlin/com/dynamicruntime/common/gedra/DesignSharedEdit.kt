@@ -19,7 +19,7 @@ import com.dynamicruntime.common.util.toOptStr
  * Design View's **shared editor** (issue #1029): editing a field's definition for every workflow on the client, as
  * opposed to a workflow's own variant (#984). It is the *shared* half of the two-level model (#1013), and it edits
  * only a definition the client **declares in its own stored configuration** -- never one declared globally, in
- * source, or a client's alteration of a shared type (#1011).
+ * source, or a client's alteration of a shared type (#1011), or an extension (#990), stored as its base plus a delta.
  *
  * What it changes: a field's layout copy in its type's own `g-layout`, and its choices -- relabeling, adding, or
  * removing one. Adding a choice is a widening, which is why it belongs here and never in a workflow variant. Removing
@@ -39,21 +39,21 @@ object DesignSharedEdit {
             DSV.usedBy to whereUsed(cxt, typeNames),
             DSV.variantFields to variantFields(cxt, typeNames),
         )
-        val refusal = refusal(cxt, declaredBy)
+        var refusal = refusal(cxt, declaredBy)
+        // Read where the configuration lives: a sandbox's rows are its parent's (issue #930).
+        val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
+        val stored = if (refusal == null) storedEntry(readCxt, declaredBy!!, slot, key) else null
+        val body = stored?.get(bodyField(slot)).toJsonMapOrEmpty()
+        refusal = refusal ?: extensionRefusal(body)
         out[DSV.canEditShared] = refusal == null
         if (refusal != null) {
             out[DSV.sharedRefusal] = refusal.message
             out[DSV.sharedRefusalCode] = refusal.code.name
-        } else {
-            // Read where the configuration lives: a sandbox's rows are its parent's (issue #930).
-            val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-            storedEntry(readCxt, declaredBy!!, slot, key)?.let { stored ->
-                out[DSV.sharedBasedOn] = stampOf(stored)
-                // Said before Save rather than after it (issue #1039).
-                val body = stored[bodyField(slot)].toJsonMapOrEmpty()
-                out[DSV.sharedCopyRefusals] = body[SCH.properties].toJsonMapOrEmpty().keys
-                    .mapNotNull { field -> sharedCopyRefusal(body, field)?.let { field to it } }.toMap()
-            }
+        } else if (stored != null) {
+            out[DSV.sharedBasedOn] = stampOf(stored)
+            // Said before Save rather than after it (issue #1039).
+            out[DSV.sharedCopyRefusals] = body[SCH.properties].toJsonMapOrEmpty().keys
+                .mapNotNull { field -> sharedCopyRefusal(body, field)?.let { field to it } }.toMap()
         }
         return out
     }
@@ -79,6 +79,20 @@ object DesignSharedEdit {
             )
         }
         return DesignView.saveRefusal(cxt, declaredBy.name)
+    }
+
+    /**
+     * Why the stored type [body] cannot be edited here, or null when it can: an **extension** (issue #990) is stored
+     * as its base plus a delta, so most of what the page shows -- the fields it inherits, and their choices -- is not
+     * in the entry this editor would change. It is edited through its configuration, where the delta is written.
+     */
+    fun extensionRefusal(body: Map<String, Any?>): EditRefusal? {
+        val base = body[SCH.extends].toOptStr() ?: return null
+        return EditRefusal(
+            DesignRefusal.extendsType,
+            "This type extends '$base', so it is stored as that type plus what it changes, and is edited through its " +
+                "configuration rather than here.",
+        )
     }
 
     /**
@@ -174,13 +188,15 @@ object DesignSharedEdit {
             val entries = slots[slot].orEmpty()
             val at = entries.indexOfFirst { it[keyField(slot)] == key }
             if (at < 0) throw KdrException("No $slot entry '$key' in '${config.name}'.", code = EXC.notFound)
+            val body = entries[at][bodyField(slot)].toJsonMapOrEmpty()
+            // Before the stamp: drawing the page again would not make an extension editable here.
+            extensionRefusal(body)?.let { throw KdrException.mkInput(it.message) }
             if (stampOf(entries[at]) != basedOn) {
                 throw KdrException(
                     "'$key' has changed since this page was drawn; reload it and make the change again.",
                     code = EXC.conflict,
                 )
             }
-            val body = entries[at][bodyField(slot)].toJsonMapOrEmpty()
             val rewritten = withSharedField(body, field, entry, options)
             slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewritten) else e })
         }
