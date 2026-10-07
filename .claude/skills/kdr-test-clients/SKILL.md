@@ -216,7 +216,11 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 | `/clientAdmin/config/publishedOnly` | POST | set the protection tier |
 
 Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `GedraConfigEndpointTest.kt` is the
-reference. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
+reference. **A written `kdr:clientDef` must be a valid `ClientInfo`** (issue #1051): build it with
+`ClientDef(...).toInfo()` rather than by hand, since an unknown key, a missing field (`enabledEnvironments`
+included) or a flag that is not a boolean is a 400 naming the path -- on the bundle write, the patch and the import
+(`ClientDefGateTest.kt`). A test that needs a malformed definition *stored* cannot get one through these endpoints;
+it reads one with `reassembleGedraConfig`, the load's lenient reader. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A client on the **latest** tier loads its latest revision
 whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
 (`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is

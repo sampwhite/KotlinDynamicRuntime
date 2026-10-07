@@ -339,11 +339,11 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     val namespace = request[CFEP.namespaceField].toOptStr()
         ?: throw KdrException.mkInput("A configuration bundle must name its '${CFEP.namespaceField}'.")
     val slots = slotsOf(request[CFEP.slots], GedraConfigService.get(c).knownSlots())
-    // Reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are validated as
-    // source would be), then write it. The config id is built from `c.client`, so on the `/admin` surface the
-    // bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new client is
-    // created over the API (its `clientDef` slot, made present by the next reload).
-    val config = reassembleGedraConfig(c, name, namespace, c.client, slots)
+    // Gate the slots and reassemble the bundle into a GedraConfig (which re-runs the builder, so its contents are
+    // validated as source would be), then write it. The config id is built from `c.client`, so on the `/admin`
+    // surface the bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new
+    // client is created over the API (its `clientDef` slot, made present by the next reload).
+    val config = reassembleForWrite(c, name, namespace, c.client, slots)
     requireOperatorFieldsKept(c, config.client)
     // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
@@ -369,6 +369,9 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // 404 for a missing config is `patchConfig`'s.
     val edited = svc.patchConfig(c, configId(c, name), trial = true) { current ->
         applyConfigSlotEdits(current, edits, pk).also { patched ->
+            // Gated before the definition is read here (issue #1051): one the edits left malformed is refused as
+            // that, by `patchConfig`'s own gate too, rather than misread into a definition nobody wrote.
+            requireWritableSlots(c, name, patched)
             requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { ClientDef.fromInfo(it) })
         }
     }
@@ -444,7 +447,7 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
                     strippedFeatures = features
                 }
             }
-            val config = reassembleGedraConfig(c.mkSubContext("configImport", client), name, namespace, client, slots)
+            val config = reassembleForWrite(c.mkSubContext("configImport", client), name, namespace, client, slots)
             val impliedDelete = bundle[CFEP.impliedDelete] as? Boolean ?: true
             val prepared = Prepared(ConfigWrite(config, impliedDelete), strippedFeatures)
             preparedByClient.getOrPut(client) { mutableListOf() }.add(prepared)

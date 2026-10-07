@@ -1,12 +1,20 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
+import com.dynamicruntime.common.schema.coerceAndValidate
+import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /**
@@ -553,9 +561,13 @@ data class ClientDef(
          * A [ClientDef] from a stored [toInfo] dump (issue #613) -- the inverse of [toInfo], for reassembling a
          * client definition off a config row. Reads what [toInfo] writes, `testFeatures` included (issue #696):
          * the raw stored value is reassembled here, and `ClientService` neutralizes it on a non-test instance
-         * (`checkClientDefs`), so this stays context-free. Fields absent from the map take their declared
-         * defaults. The map is assumed schema-valid (the slot validated it against `ClientInfo`), so a required
-         * field missing is a fault.
+         * (`checkClientDefs`), so this stays context-free.
+         *
+         * **The lenient reader, for what is already stored.** It checks nothing but that the id, the name and the
+         * two choices are there: an unknown key is read past, a flag that is not a boolean reads as false, and an
+         * absent list as empty. That is right for a row a write once accepted -- a load reports and degrades, it
+         * does not refuse -- and wrong for a definition arriving in a write, which goes through
+         * [readClientDef] first (issue #1051): validated against [ClientDefSchema], every failure named.
          */
         fun fromInfo(m: Map<String, Any?>): ClientDef = ClientDef(
             clientId = m[CLD.clientId].toOptStr() ?: throw KdrException.mkConv("A stored client has no '${CLD.clientId}'."),
@@ -580,8 +592,16 @@ data class ClientDef(
             values.firstOrNull { it.name == name }
                 ?: throw KdrException.mkConv("A stored client's '$field' is '$name', not one of ${values.map { it.name }}.")
 
-        /** The shape of the [toInfo] dump. */
-        fun defineInfoType(builder: SchTypesBuilder) {
+        /**
+         * The shape of the [toInfo] dump.
+         *
+         * One declaration, read in two directions (issue #1051). As the type the client endpoints **answer** with,
+         * the environments are an open list: a stored client naming an environment that does not exist is dropped
+         * by the load and still answers its definition read, with the issue that says why, so the answer has to be
+         * able to carry the name. [written] closes the list -- what [ClientDefSchema] compiles for a definition
+         * arriving in a write, where a name that is no environment is a typo to refuse.
+         */
+        fun defineInfoType(builder: SchTypesBuilder, written: Boolean = false) {
             builder.type(CLD.infoTypeName) {
                 type = SCT.kObject
                 description = "A client this deployment carries, as it was declared."
@@ -599,15 +619,24 @@ data class ClientDef(
                     options(ClientAudience.entries)
                 }
                 property(CLD.webResourcesId, "Identifies the package of web resources the client presents.")
+                // The environments there are ([ENV.names]), as choices (issue #1051): a form drawn from this type
+                // offers the real ones, and a written definition is held to them.
                 property(CLD.enabledEnvironments, "The environments the client is enabled in.", required = true) {
                     type = SCT.array
-                    items { type = SCT.string }
+                    items {
+                        ENV.names.forEach { option(it) }
+                        if (!written) openOptions()
+                    }
                 }
+                // The flags are booleans and nothing else (`allowCoerce = false`, issue #1051): this is a definition,
+                // not a query string, and "yes" for a flag is a mistake to name rather than a value to guess at.
                 property(CLD.preload, "Whether the client's caches are computed before the node reports ready.") {
                     type = SCT.boolean
+                    allowCoerce = false
                 }
                 property(CLD.staticConfig, "Whether, in production, the client takes nothing from the database.") {
                     type = SCT.boolean
+                    allowCoerce = false
                 }
                 property(CLD.extendsFromClientId, "The client whose definitions this one is built on top of.")
                 property(CLD.domainPrefix, "A prefix on a core domain that routes to this client.")
@@ -629,8 +658,61 @@ data class ClientDef(
                 }
                 property(CLD.sandbox, "Whether the client has a sandbox beside it, running its latest configuration.") {
                     type = SCT.boolean
+                    allowCoerce = false
                 }
             }
         }
     }
 }
+
+/**
+ * The schema a client definition arriving as data is validated against (issue #1051): the `ClientInfo` type
+ * [ClientDef.defineInfoType] declares -- the one the client endpoints answer with -- compiled on its own in its
+ * **written** form, as `ReportDefSchema` and the workflow definition schema are compiled. One declaration, so a
+ * definition is judged by the shape it is read back in; the written form differs only in closing the list of
+ * environments, which an answer must leave open. Not published: the catalog serves `ClientInfo` as answered.
+ *
+ * What it states is the definition's **shape**: its keys and no others, each one's type, the choices of
+ * `usageType`, `audience` and each environment. What a definition means beside the deployment's other clients --
+ * that its id is well-formed and its own, that the template it extends exists, that its environments make a legal
+ * set, that no other client holds its domain -- is `checkClientDefs`' and the write's, which see those clients.
+ * The id's characters are among those rather than a `pattern` here: this type also describes a sandbox's derived
+ * `<parent>:sandbox` id on the way out.
+ */
+object ClientDefSchema {
+    /** The `$defs` of the definition schema, under [CLD.catalogNamespace]. */
+    fun defs(cxt: KdrCxtBase): Map<String, Any?> =
+        schemaDefs(cxt, CLD.catalogNamespace) { ClientDef.defineInfoType(this, written = true) }
+
+    // Parsed once and kept, as the report and workflow definition schemas are: it is a constant of the runtime.
+    private var parsed: Map<String, SchType>? = null
+
+    /** The compiled types, keyed by qualified name. */
+    fun types(cxt: KdrCxtBase): Map<String, SchType> = parsed ?: parseSchemaTypes(defs(cxt)).also { parsed = it }
+
+    /** The compiled definition type. */
+    fun defType(cxt: KdrCxtBase): SchType = types(cxt).getValue(CLD.infoTypeQualified)
+}
+
+/** A client definition read from data (issue #1051): the [def], or every [failures] entry that kept it from being one. */
+class ClientDefRead(val def: ClientDef?, val failures: List<SchFailure>)
+
+/**
+ * A client definition from its JSON form, **strictly** (issue #1051): [raw] validated against [ClientDefSchema]
+ * -- an unknown key, a missing field, a value of the wrong type and a choice that is not one are each a failure,
+ * by path -- and only then built. What a write of a definition goes through; a load of one already stored reads
+ * it with [ClientDef.fromInfo].
+ *
+ * The one rule the class itself keeps, that the suggested user labels are each written once and trimmed, is
+ * reported the same way, under `userLabels`, rather than thrown as the conversion fault it is in source.
+ */
+fun readClientDef(cxt: KdrCxtBase, raw: Map<String, Any?>): ClientDefRead {
+    val result = coerceAndValidate(ClientDefSchema.defType(cxt), raw)
+    if (result.failures.isNotEmpty()) return ClientDefRead(null, result.failures)
+    return try {
+        ClientDefRead(ClientDef.fromInfo(result.value.toJsonMapOrEmpty()), emptyList())
+    } catch (e: KdrException) {
+        ClientDefRead(null, listOf(SchFailure(CLD.userLabels, SchFailCode.badValue, e.message ?: "The definition could not be read.")))
+    }
+}
+
