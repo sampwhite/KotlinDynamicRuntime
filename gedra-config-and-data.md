@@ -298,16 +298,35 @@ and refuses the change with a 400 listing anything it finds that the client's co
 problem the client already has does not block an unrelated write (or fixing one of two broken configs would be
 refused over the other).
 
-**A written slot is held to its shape first** (issue #1051). These endpoints are the outward-facing ones -- a
-client's own administrators write through them -- so before a write's slots are reassembled they pass a gate
-(`configSlotFailures`, run by `reassembleForWrite`, which the bundle write, the import and `patchConfig` all go
-through). Today the gate is the **client definition**: a `kdr:clientDef` is validated against its schema
-(`WrittenClientInfo`, compiled as `ClientDefSchema`), and an unknown key, a missing field, a value of the wrong type or a
-choice that is not one is a 400 whose message names each path and what is wrong there, with the failures also
-structured under `extraData.failures` as a request's own input failures are (`kdr:clientDef.enabledEnvironments[1]`).
+**A written slot is held to its shape first** (issues #1051, #1052). These endpoints are the outward-facing ones --
+a client's own administrators write through them -- so before a write's slots are reassembled they pass a gate
+(`configSlotFailures` in `ConfigSlotGate.kt`, run by `reassembleForWrite`, which the bundle write, the import and
+`patchConfig` all go through). **Every slot entry is validated against the shape `coreConfigTraits` declares for its
+slot** (compiled as `ConfigSlotShapes`): an unknown key, a missing field, a value of the wrong type or a choice that
+is not one is a 400 whose message names each path and what is wrong there, with the failures also structured under
+`extraData.failures` as a request's own input failures are. A path names the slot, the entry by its **key**, and the
+field: `kdr:clientDef.enabledEnvironments[1]`, `kdr:cfactDef[ready].group`. Beyond the shapes, the gate asks what a
+shape cannot say: the client definition's own rules (`readClientDef`, against `WrittenClientInfo`), that a usage
+rule's `display` is a template that parses, that a fragment overlay's `content` is namespace to key to text, and
+that no type is declared twice in `kdr:schemaDef`, where the second would silently replace the first (a repeat in
+another slot is either legal -- two overlays of one file are two layers -- or refused already as what it is).
+
+**Only what a write changes is judged.** The gate is handed the configuration's revision as it stands, and an
+entry the write carries unchanged is not judged again -- the trial reload's rule, for its reason: a fault a stored
+configuration already has must not refuse an unrelated write to it, and a shape tightened by a later release must
+strand nobody. Changing such an entry and leaving it at fault is refused; mending it is how it stops being one.
+"As it stands" means on **this node**: an import that restores another deployment's configuration is judged against
+what the target holds, so an old fault it carries across is refused there and mended at its source.
+
+**Two things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
+body** (`kdr:schemaDef.schema`, `kdr:traitDef.dataSchema`) need only be an object here, since parsed on its own it
+would be refused for naming a sibling type or for being an alteration of a global one; and what is **inside a
+report's definition**, since one that does not read is kept as stored and reported, so a configuration may already
+hold one. The trial refuses a new one of either.
+
 A conversion fault the reassembly itself finds in a written body -- a client id holding a colon -- is a 400 for the
 same reason, with the fault kept as its cause and its extra data (a parser's code and position) carried up; a fault
-not marked a conversion is still a server error, until the other slots are gated too. **The rule and the response are separate**: what a valid definition is does not depend on where it
+not marked a conversion is still a server error. **The rule and the response are separate**: what a valid definition is does not depend on where it
 arrives, and what happens to an invalid one does. A write is refused; a row already stored is read by the lenient
 reader (`ClientDef.fromInfo`, through `reassembleGedraConfig`), so the deploy that tightens a rule strands nobody.
 

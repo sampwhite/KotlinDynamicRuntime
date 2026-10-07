@@ -183,6 +183,19 @@ fun inputFailuresException(message: String, failures: List<SchFailure>): KdrExce
     KdrException.mkInput(message).also { it.extraData[EP.failures] = failures.map { f -> f.toWireMap() } }
 
 /**
+ * A failure for each key of [data] the validator lets through as **off-contract** -- one starting with `_` or `$`,
+ * which on a request is a caller's own annotation and is never an additional property (issue #1051).
+ *
+ * For input that is **stored in a canonical form**, where there is no such thing: the key would be accepted and
+ * then gone, which is the silent drop a strict reading exists to end. A caller holding such input adds these to
+ * what [validate] found. Only [data]'s own keys: a `$ref` inside a schema body, or a key inside free content, is
+ * that content's business.
+ */
+fun offContractKeyFailures(data: Map<String, Any?>): List<SchFailure> =
+    data.keys.filter { it.startsWith("_") || it.startsWith("$") }
+        .map { SchFailure(it, SchFailCode.additionalProperty, "Additional property '$it' is not allowed.") }
+
+/**
  * The schema's wording for [code] on this field: the specific message, else the field's `default`, else null
  * to leave the validator's own words in place. Three levels deep and deliberately no deeper — the built-in
  * message *is* the global default, so a type-level layer would buy nothing that is not already covered.
@@ -396,6 +409,14 @@ data class SchOpts(
      * parse: honest for a standalone check, and a caller with a live store passes that store's types.
      */
     val existingTypes: Map<String, SchType> = emptyMap(),
+    /**
+     * Take a `g-schemaDocument` value as the object it is, **without parsing it** (issue #1052). For a caller that
+     * holds a schema body apart from the document it belongs to -- one entry of a configuration being written --
+     * where parsing it alone would refuse it for naming a sibling type, or for being an alteration of another
+     * type, and where the whole document is compiled and judged right after. That it is an object is still
+     * checked; that it is a schema is then the later check's to say, and this run makes no claim about it.
+     */
+    val schemaDocumentsUnparsed: Boolean = false,
 ) {
     /**
      * These options with [skipCompleteness] set to [v] -- the same instance when it already matches, so the
@@ -1097,6 +1118,7 @@ fun validateSchemaDocument(
         failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object).", value = value))
         return value
     }
+    if (opts.schemaDocumentsUnparsed) return value
     try {
         parseSchemaTypes(mapOf(schemaDocumentCandidate to body), opts.existingTypes)
     } catch (e: KdrException) {

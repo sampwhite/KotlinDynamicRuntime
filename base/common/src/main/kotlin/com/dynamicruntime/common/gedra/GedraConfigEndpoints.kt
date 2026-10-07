@@ -343,13 +343,17 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // validated as source would be), then write it. The config id is built from `c.client`, so on the `/admin`
     // surface the bound client is what the bundle is filed under -- an unwritten client id here is how a brand-new
     // client is created over the API (its `clientDef` slot, made present by the next reload).
-    val config = reassembleForWrite(c, name, namespace, c.client, slots)
+    // The gate judges what the bundle changes (issue #1052), so the revision it replaces is handed to it: a
+    // bundle read, edited and written back is not refused for a fault it already had.
+    val svc = GedraConfigService.get(c)
+    val stored = svc.readLatest(c, configId(c, name))?.entriesBySlot()
+    val config = reassembleForWrite(c, name, namespace, c.client, slots, stored)
     requireOperatorFieldsKept(c, config.client)
     // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
     val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
     // Strict at write (issue #843): refused when a trial reload of the client with it in place finds a new problem.
-    return bundleOf(c, GedraConfigService.get(c).writeConfig(c, config, impliedDelete, trial = true))
+    return bundleOf(c, svc.writeConfig(c, config, impliedDelete, trial = true))
 }
 
 private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -404,9 +408,12 @@ private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
  * across its configs, so bundles that are only sound as a set -- one declaring the client, another the traits its
  * workflows collect -- must be judged as the set, and a client whose set is refused keeps none of it. One client's
  * refusal does not stop the others. On a non-test node a bundle's `testFeatures` are stripped and logged rather
- * than refused -- the other half of the single-client write's refuse. Affected clients are then reloaded (unless
- * asked not to) so the import is live and a brand-new client becomes present. Returns what was written, stripped,
- * reloaded, and could not be applied.
+ * than refused -- the other half of the single-client write's refuse. A bundle is held to the slot shapes as any
+ * write is (issue #1052), judged against what **this** node already holds of it: a restore from another deployment
+ * that carries an entry at fault is refused for that client, each path named, and is mended at its source --
+ * deliberately, since an import that carried faults across would be how they spread. Affected clients are then
+ * reloaded (unless asked not to) so the import is live and a brand-new client becomes present. Returns what was
+ * written, stripped, reloaded, and could not be applied.
  */
 private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
@@ -446,7 +453,9 @@ private fun cfgImportBody(c: KdrCxt, request: Map<String, Any?>): Map<String, An
                     strippedFeatures = features
                 }
             }
-            val config = reassembleForWrite(c.mkSubContext("configImport", client), name, namespace, client, slots)
+            val bound = c.mkSubContext("configImport", client)
+            val stored = svc.readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, name))?.entriesBySlot()
+            val config = reassembleForWrite(bound, name, namespace, client, slots, stored)
             val impliedDelete = bundle[CFEP.impliedDelete] as? Boolean ?: true
             val prepared = Prepared(ConfigWrite(config, impliedDelete), strippedFeatures)
             preparedByClient.getOrPut(client) { mutableListOf() }.add(prepared)

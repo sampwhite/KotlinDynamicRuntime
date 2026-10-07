@@ -46,8 +46,16 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  *
  * The client, workflow and report slots reference the canonical shapes rather than redeclaring them, so a field
  * added to the real `ClientInfo` (whose one declaration makes its written form too), `WfDef` or `ClientReport`
- * reaches the stored form with no second declaration to remember. The refs resolve at boot, where every component's `$defs` are compiled together (`clientCatalogSchema`
- * and the workflow and report definition schemas are always present).
+ * reaches the stored form with no second declaration to remember. The refs resolve where these shapes are compiled
+ * -- `ConfigSlotShapes`, beside the three definition schemas -- since this config is not one a component contributes
+ * to the schema store.
+ *
+ * ### Held to at write
+ *
+ * These shapes are what a client configuration **write** is held to (issue #1052): `configSlotFailures` validates
+ * each entry a write brings against its slot's shape, and adds the few rules a shape cannot state. A flag here is a
+ * boolean and nothing else (`allowCoerce = false`), since the reassembly reads anything else as false. What is
+ * already stored is still read leniently.
  *
  * ### The storage vocabulary
  *
@@ -75,15 +83,14 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     ) {
         property(CCT.traitId, "The trait this usage rule is for.", required = true)
         property(CCT.label, "The column label the listing shows.", required = true)
-        // A string-script template, stored as text -- but unlike `dataSchema`/`schema`, which parse their body
-        // via `schemaDocument()`, nothing checks this expression here. It matters because a malformed one fails
-        // *silently*: `TraitUsage` evaluates it with `evalTemplate` under a `runCatching { }.getOrDefault("")`,
-        // so a typo blanks the column for every row rather than surfacing. The write path (#627) should
-        // parse-validate it (`checkTemplateSyntax`) at store time, the way it validates a schema body.
+        // A string-script template, stored as text. A malformed one fails *silently* -- it is evaluated per row with
+        // its failures swallowed, so a typo blanks the column for every row rather than surfacing -- which is why a
+        // write parse-checks it (`checkTemplateSyntax`, in `configSlotFailures`, issue #1052): a shape cannot say it.
         property(CCT.display, "The string-script expression evaluated against the trait's data for the value.", required = true)
         property(CCT.kind, "How the value reads -- what a search treats it as.") { options(UsageKind.entries) }
         property(CCT.substring, "For a string value, whether the search also offers a substring match.") {
             type = SCT.boolean
+            allowCoerce = false
         }
     }
     configTrait(
@@ -120,6 +127,8 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         primaryKey = listOf(CCT.fileId),
     ) {
         property(CCT.fileId, "The fragment file this overlays.", required = true)
+        // Namespace to key to text. Declared an open object because the schema layer has no map of free keys to
+        // typed values yet (issue #1055); a write checks the two tiers by hand (`configSlotFailures`).
         property(CCT.content, "The overlay content: a two-tier map of namespace to key to value.", required = true) {
             type = SCT.kObject
         }
@@ -140,7 +149,10 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.name, "The cfact name this configuration declares.", required = true)
         property(CCT.group, "The cfact's group.", required = true)
         property(CCT.description, "What the cfact means.", required = true)
-        property(CCT.toFrontend, "Whether the cfact is delivered to the frontend.") { type = SCT.boolean }
+        property(CCT.toFrontend, "Whether the cfact is delivered to the frontend.") {
+            type = SCT.boolean
+            allowCoerce = false
+        }
     }
 }
 
