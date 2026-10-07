@@ -232,6 +232,23 @@ Until then every substitution is "print this", which no type can get wrong.
   check can run with nobody present. Deferred because the shipped copy reads five paths in total and none of
   them compute, so a check with nothing to find would be tested against invented cases only.
 
+## When a customer wants detailed provenance, including "where used", in the configuration UI
+
+Today the copy editor (#1062) says *who set* a key -- the config, source or stored, or the template it came from --
+and, per file, where the application shows it (`shownOn`). It does not say what *uses* a key. The trigger is a
+customer asking for that: which workflow, layout or mail a piece of copy appears in, before they change it.
+
+- **"Used by" rows for backend keys** *(from #1062's follow-ups).* The boot checks already find every layout and
+  workflow-label `%{@t("file.ns.key")}` pull (`layoutPullProblems`, `LayoutCheckService`, `WorkflowRegistry`) and
+  the pulls between fragment files (`MarkdownFragmentService.checkFragments`, kept as edges for cycle detection).
+  Inverted into an index, they would give a key a "used by: workflow X's label for field Y" row. Covers backend
+  files only (mail, the workflow help files); which page reads a *frontend* key is a string literal in the webapp
+  (`copy.t("home", "brand", …)`) and would need usage tracking, which this deliberately does not add.
+- **Author notes as key documentation** *(from #1062's follow-ups).* The `/- … -/` comment written just above a
+  key in a `.md` file often says what it is for, and the parser strips it (`stripFragmentComments`). Kept as the
+  key's note and shown in the copy editor, it is authored documentation rather than tracking. Sparse today
+  (auth.md: 7 comments for 62 keys), so it would come with a pass writing the missing ones.
+
 ## When a frontend change breaks a page its author did not open
 
 Today the practice is that whoever changes the front end drives it in a browser and looks. That holds while
