@@ -412,3 +412,28 @@ component copy and that is enough. Design and full rationale live in the fragmen
   consumer exists, and building it now would be a second way to do a solved thing. Ripples into `SchType`, the
   UiBlock merge, and both render paths when built. Revisit sooner if component content (not just a client's) is
   ever authored as data, or a preload/bundling path needs the static pull-set.
+
+## When a client declared in source needs its definitions changed as data
+
+A real client, not a sample, whose configuration is declared in **source** and which needs a workflow's copy,
+requirements or choices changed -- or another part of a source-declared definition overridden -- as stored data,
+without a code change. A client defined in data already gets all of it: workflow variants from Design View
+(#984), with form requirements and restated choices in the layout (#1022, #1048). Today the sample's `acme` is the
+only client this would serve.
+
+- **Targeted overlays of source-declared definitions** *(#1011, parked 2026-10-05, deferred here 2026-10-07).*
+  Let a client's stored configuration alter what its own source declares, without cloning it:
+  - **A workflow variant for a source-declared workflow.** A stored config declaring the same workflow id is a
+    collision today and is dropped, so Design View refuses to edit such a form. The first step would admit only
+    a workflow's `types` with layout, which since #1022 and #1048 carries requirements and restated choices as
+    well as copy.
+  - **A stored alteration of a type the client's source declares**, merged by #985's merger rather than
+    replacing it whole. #990's `g-extends` partly eases this: an extension follows its source base without
+    drifting, but under a new name that traits must point to.
+
+  Deferred on complexity: it adds a new concept for authors, an overlay entry in stored configuration, and today
+  it would mainly serve a sample. The design constraints in #1011 stand for when it resumes:
+  - an overlay is explicit, names its target, and is never a redeclaration;
+  - what may be overlaid is declared per part by a `MergeSpec`;
+  - addressing tasks, saves, eligibility and labels stays deferred, in a shape that does not foreclose a keyed
+    merge on task ids.
