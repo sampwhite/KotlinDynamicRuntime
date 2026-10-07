@@ -8,7 +8,8 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Editing one key of a client's copy (issue #918): the write behind `POST /clientAdmin/client/copy/set` and `/reset`.
+ * Editing a client's copy (issue #918): the write behind `POST /clientAdmin/client/copy/set` and `/reset`, one key each,
+ * and `/apply`, several keys of one file in one save (issue #1062) -- the first two are a batch of one.
  *
  * ### Where an edit lands
  *
@@ -25,12 +26,12 @@ import com.dynamicruntime.common.util.toOptStr
  * draft is published or reverted first. The `copy` config is this editor's own, so a draft there is its own doing
  * (a publish that was refused) and is simply completed.
  *
- * ### One key at a time, under the lock
+ * ### Only the keys changed, under the lock
  *
- * A `fragmentDef` entry holds a file's whole content map, so a one-key change is a merge **inside** that map, done
- * by `GedraConfigService.patchConfig` under the client's config lock over the revision as it stands there -- never
- * from a map the caller read earlier. So the file's other keys, and a key another administrator changed a moment
- * ago, are kept.
+ * A `fragmentDef` entry holds a file's whole content map, so a change of some keys is a merge **inside** that map,
+ * done by `GedraConfigService.patchConfig` under the client's config lock over the revision as it stands there --
+ * never from a map the caller read earlier. So the file's other keys, and a key another administrator changed a
+ * moment ago, are kept. A batch lands in **one** config ([apply]), so it is one publish and takes effect at once.
  *
  * ### Live at once, or a draft
  *
@@ -90,46 +91,87 @@ object ClientCopyEdit {
         val mode: String = EDM.live,
     )
 
-    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it take effect: live, or a draft. */
-    fun set(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String, value: String): Result {
-        requireShippedKey(cxt, fileId, namespace, key)
-        // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
-        val target = ClientStoredEdit.target(cxt, client, "copyEdit")
-        val bound = target.bound
-        val owner = target.client
-        val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, owner, fileId, namespace, key) ?: ClientStoredEdit.editConfig(bound, owner)
-        if (holder == null) {
-            // The first edit of a file no stored config overlays, with no `copy` config yet: created with just this key.
-            val written = ClientStoredEdit.createEditConfig(bound, owner) {
-                fragmentOverlay(fileId, mapOf(namespace to mapOf(key to value)))
-            }
-            return goLive(cxt, target, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, null) })
-        }
-        ClientStoredEdit.requireNoForeignDraft(target, holder, "a copy edit")
-        val before = storedValue(holder, fileId, namespace, key)
-        val written = patchKey(svc, bound, holder, fileId, namespace, key, value)
-        return goLive(cxt, target, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
+    /** One change of a batch ([apply]): a [value] to set, or -- null -- a reset of the client's stored value. */
+    class Change(val namespace: String, val key: String, val value: String?)
+
+    /** What one key of a batch now reads for the client, and whether a stored value still sets it. */
+    class Applied(val namespace: String, val key: String, val value: String?, val stored: Boolean)
+
+    /** What a batch did: the config it landed in, and what each key changed now reads. */
+    class ApplyResult(
+        val configName: String,
+        val keys: List<Applied>,
+        val buildId: String?,
+        val issues: List<GedraConfigIssue>,
+        val mode: String,
+    ) {
+        /** The one key of a single set or reset, as [Result]. */
+        fun only(): Result = keys.single().let { Result(configName, it.value, it.stored, buildId, issues, mode) }
     }
+
+    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it take effect: live, or a draft. */
+    fun set(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String, value: String): Result =
+        apply(cxt, client, fileId, listOf(Change(namespace, key, value))).only()
 
     /**
      * Removes [client]'s stored value for [key] and makes that take effect, live or as a draft. A 400 when no stored
      * layer sets it: a value from the client's source config, or the shipped copy, is not something data can take
      * away.
      */
-    fun reset(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String): Result {
+    fun reset(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String): Result =
+        apply(cxt, client, fileId, listOf(Change(namespace, key, null))).only()
+
+    /**
+     * Sets and resets several keys of one file for [client] in one save (issue #1062), so they take effect together:
+     * one patch, one trial, one publish and reload -- or one draft -- and, when the publish is refused, one undo
+     * putting every key back. Each key is judged as [set] and [reset] judge one: a set must name a shipped key, a reset
+     * a key a stored value sets, and a key may be changed once.
+     *
+     * The keys land in one stored config: the one already setting any of them, else the first overlaying the file,
+     * else [CPY.copyConfigName] -- so a new key joins the batch's other keys. Keys that **two** stored configs hold
+     * are refused, naming both: saving them would publish each config on its own, which is not one save.
+     */
+    fun apply(cxt: KdrCxt, client: String, fileId: String, changes: List<Change>): ApplyResult {
+        if (changes.isEmpty()) throw KdrException.mkInput("No changes to apply to the fragment file '$fileId'.")
+        changes.groupBy { it.namespace to it.key }.entries.firstOrNull { it.value.size > 1 }?.let { (at, _) ->
+            throw KdrException.mkInput("'$fileId: ${at.first}.${at.second}' is changed more than once; a save changes each key once.")
+        }
+        for (c in changes) if (c.value != null) requireShippedKey(cxt, fileId, c.namespace, c.key)
+        // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
         val target = ClientStoredEdit.target(cxt, client, "copyEdit")
         val bound = target.bound
+        val owner = target.client
         val svc = GedraConfigService.get(bound)
-        val holder = holderOf(bound, target.client, fileId, namespace, key)?.takeIf { storedValue(it, fileId, namespace, key) != null }
-            ?: throw KdrException.mkInput(
-                "No stored value sets '$fileId: $namespace.$key' for client '${target.client}'; what it reads comes from " +
+        val onFile = configsOverlaying(bound, owner, fileId)
+        val held = changes.associateWith { c -> onFile.firstOrNull { storedValue(it, fileId, c.namespace, c.key) != null } }
+        held.entries.firstOrNull { it.key.value == null && it.value == null }?.key?.let { c ->
+            throw KdrException.mkInput(
+                "No stored value sets '$fileId: ${c.namespace}.${c.key}' for client '$owner'; what it reads comes from " +
                     "source code or the shipped copy, which a reset cannot remove.",
             )
+        }
+        val holders = held.values.filterNotNull().distinctBy { it.configId }
+        if (holders.size > 1) {
+            throw KdrException.mkInput(
+                "The keys of '$fileId' being changed are held by more than one stored configuration of client '$owner' " +
+                    "(${holders.joinToString(", ") { "'${it.configId.baseId}'" }}), and saving them together would " +
+                    "publish each on its own. Save the keys of one configuration at a time.",
+            )
+        }
+        val edits = changes.associate { (it.namespace to it.key) to it.value }
+        val holder = holders.singleOrNull() ?: onFile.firstOrNull() ?: ClientStoredEdit.editConfig(bound, owner)
+        if (holder == null) {
+            // The first edit of a file no stored config overlays, with no `copy` config yet: created with just these
+            // keys -- all sets, since a reset here has nothing stored to remove and was refused above.
+            val content = LinkedHashMap<String, MutableMap<String, String>>()
+            for (c in changes) content.getOrPut(c.namespace) { linkedMapOf() }[c.key] = c.value.orEmpty()
+            val written = ClientStoredEdit.createEditConfig(bound, owner) { fragmentOverlay(fileId, content) }
+            return goLive(cxt, target, written, fileId, changes, undo = { patchKeys(svc, bound, written, fileId, edits.mapValues { null }) })
+        }
         ClientStoredEdit.requireNoForeignDraft(target, holder, "a copy edit")
-        val before = storedValue(holder, fileId, namespace, key)
-        val written = patchKey(svc, bound, holder, fileId, namespace, key, value = null)
-        return goLive(cxt, target, written, fileId, namespace, key, undo = { patchKey(svc, bound, written, fileId, namespace, key, before) })
+        val before = changes.associate { (it.namespace to it.key) to storedValue(holder, fileId, it.namespace, it.key) }
+        val written = patchKeys(svc, bound, holder, fileId, edits)
+        return goLive(cxt, target, written, fileId, changes, undo = { patchKeys(svc, bound, written, fileId, before) })
     }
 
     /** Refuses a key no shipped file declares: an overlay of it would be stored and never read (an orphan). */
@@ -144,15 +186,9 @@ object ClientCopyEdit {
         }
     }
 
-    /**
-     * The stored config of [client]'s an edit of [key] belongs in: one whose `fragmentDef` entry for [fileId] already
-     * sets the key, else one that overlays the file at all; null when none does.
-     */
-    private fun holderOf(bound: KdrCxt, client: String, fileId: String, namespace: String, key: String): GedraConfigRow? {
-        val onFile = GedraConfigService.get(bound).listConfigs(bound)
-            .filter { it.client == client && fragmentEntry(it.entriesBySlot(), fileId) != null }
-        return onFile.firstOrNull { storedValue(it, fileId, namespace, key) != null } ?: onFile.firstOrNull()
-    }
+    /** The stored configs of [client]'s whose `fragmentDef` overlays [fileId], in listing order. */
+    private fun configsOverlaying(bound: KdrCxt, client: String, fileId: String): List<GedraConfigRow> =
+        GedraConfigService.get(bound).listConfigs(bound).filter { it.client == client && fragmentEntry(it.entriesBySlot(), fileId) != null }
 
     private fun fragmentEntry(slots: Map<String, List<Map<String, Any?>>>, fileId: String): Map<String, Any?>? =
         slots[CCT.fragmentDef]?.firstOrNull { it[CCT.fileId].toOptStr() == fileId }
@@ -162,18 +198,16 @@ object ClientCopyEdit {
         fragmentEntry(row.entriesBySlot(), fileId)?.get(CCT.content).toJsonMapOrEmpty()[namespace].toJsonMapOrEmpty()[key].toOptStr()
 
     /**
-     * Patches [row] so its `fragmentDef` entry for [fileId] holds [key] = [value] -- or, with a null value, no longer
-     * holds it; an entry left with no keys is dropped, so the config does not carry an empty overlay. The merge runs
-     * inside `patchConfig`, over the revision as it stands under the lock.
+     * Patches [row] so its `fragmentDef` entry for [fileId] holds each of [edits]' keys at its value -- or, for a null
+     * value, no longer holds the key; an entry left with no keys is dropped, so the config does not carry an empty
+     * overlay. The merge runs inside `patchConfig`, over the revision as it stands under the lock.
      */
-    private fun patchKey(
+    private fun patchKeys(
         svc: GedraConfigService,
         bound: KdrCxt,
         row: GedraConfigRow,
         fileId: String,
-        namespace: String,
-        key: String,
-        value: String?,
+        edits: Map<Pair<String, String>, String?>,
     ): GedraConfigRow = svc.patchConfig(bound, row.configId, trial = true) { current ->
         val out = LinkedHashMap<String, List<Map<String, Any?>>>(current)
         val entries = current[CCT.fragmentDef].orEmpty().toMutableList()
@@ -184,9 +218,12 @@ object ClientCopyEdit {
                 content[ns] = keys.toJsonMapOrEmpty().mapValues { it.value.toOptStr().orEmpty() }
             }
         }
-        val nsKeys = LinkedHashMap(content[namespace].orEmpty())
-        if (value != null) nsKeys[key] = value else nsKeys.remove(key)
-        if (nsKeys.isEmpty()) content.remove(namespace) else content[namespace] = nsKeys
+        for ((address, value) in edits) {
+            val (namespace, key) = address
+            val nsKeys = LinkedHashMap(content[namespace].orEmpty())
+            if (value != null) nsKeys[key] = value else nsKeys.remove(key)
+            if (nsKeys.isEmpty()) content.remove(namespace) else content[namespace] = nsKeys
+        }
         val entry = linkedMapOf<String, Any?>(CCT.fileId to fileId, CCT.content to content)
         ClientStoredEdit.storeEntry(out, CCT.fragmentDef, entries, at, entry, emptied = content.isEmpty())
         out
@@ -194,24 +231,28 @@ object ClientCopyEdit {
 
     /**
      * Makes [written] take effect ([ClientStoredEdit.takeEffect]: live, or a draft) and reads back what the people of
-     * the client it shows for now read -- the client's when live, its sandbox's for a draft.
+     * the client it shows for now read of each changed key -- the client's when live, its sandbox's for a draft.
      */
     private fun goLive(
         cxt: KdrCxt,
         target: ClientStoredEdit.EditTarget,
         written: GedraConfigRow,
         fileId: String,
-        namespace: String,
-        key: String,
+        changes: List<Change>,
         undo: () -> Unit,
-    ): Result {
+    ): ApplyResult {
         val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo)
         val effective = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, fileId, target.readsAs)
-        return Result(
+        return ApplyResult(
             configName = written.configId.baseId,
-            value = effective?.content?.get(namespace)?.get(key),
-            // From the row just written, which is the one that decides it.
-            stored = storedValue(written, fileId, namespace, key) != null,
+            keys = changes.map {
+                Applied(
+                    it.namespace, it.key,
+                    value = effective?.content?.get(it.namespace)?.get(it.key),
+                    // From the row just written, which is the one that decides it.
+                    stored = storedValue(written, fileId, it.namespace, it.key) != null,
+                )
+            },
             buildId = effective?.buildId,
             issues = reload.issues,
             mode = target.mode,

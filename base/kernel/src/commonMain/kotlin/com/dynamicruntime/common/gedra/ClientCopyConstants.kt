@@ -20,8 +20,24 @@ object CPY {
     /** Removes a client's stored value for one key, and makes that live -- or a draft, for a client with a sandbox. */
     const val resetPath = "/${SECT.clientAdmin}/client/copy/reset"
 
+    /**
+     * Sets or resets several keys of one fragment file for a client in one save (issue #1062): one trial, one publish
+     * and one reload, so the changes take effect together -- or a draft, for a client with a sandbox.
+     */
+    const val applyPath = "/${SECT.clientAdmin}/client/copy/apply"
+
     const val keyTypeName = "CopyKey"
     const val resultTypeName = "CopyEditResult"
+    const val changeTypeName = "CopyChange"
+    const val applyResultTypeName = "CopyApplyResult"
+    const val appliedTypeName = "CopyApplied"
+
+    /** The apply request's list of changes, and the result's list of what each key now reads. */
+    const val changes = "changes"
+    const val keys = "keys"
+
+    /** A change's flag: remove the client's stored value for the key rather than set one. */
+    const val reset = "reset"
 
     /**
      * The stored configuration an administrator's copy edits land in when no stored config of the client's already

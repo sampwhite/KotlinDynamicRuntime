@@ -402,39 +402,56 @@ sees sandbox rows.
 
 **Copy & menu** (issue #917): what a client's own configuration changes about what its people see, from
 `GET /clientAdmin/client/overrides` (`ClientsApi.overrides`, parsed by the pure `parseClientOverrides`; the wire
-names are the kernel's `COV`). The detail's "Copy & menu" section draws two tables: the copy the client rewords
-(`file: namespace.key`, the shipped value, the client's, "Set by" as `config (source|stored)` -- `setByText` --
-or `config (template <id>)` for a value the client inherits from the template it extends, issue #945; a
-stored change over the client's own source value shows "was: …", and an orphan -- a key no shipped file declares,
-so the value is never read -- is flagged), and the interface items it changes (`menuChangeText`: added, hidden,
-shown, renamed, reordered; `blockValueText`; the shipped label rides on the row as `baseLabel`, so a row that only
-hides an item still names it; "Set by" names every config that set a field, a stored one first -- `blockSetByText`).
-Every value is Markdown and renders with `MarkdownInline`, then clamped to one line by `.cell-clamp` with the whole
-on hover -- clamped after rendering, never cut before it, since a cut through a link would show its syntax. The listing's **Customized** column says how much (`customizedText`, "3 copy,
+names are the kernel's `COV`). Each copy row says who set the key -- `config (source|stored)`, `setByText`, or
+`config (template <id>)` for a value the client inherits from the template it extends, issue #945 -- the shipped
+value, and for a stored change over the client's own source value that source value; an orphan is a key no shipped
+file declares, so its value is never read. The copy is drawn by the file view below; the interface items the client
+changes are a table (`menuChangeText`: added, hidden, shown, renamed, reordered; `blockValueText`; the shipped label
+rides on the row as `baseLabel`, so a row that only hides an item still names it; "Set by" names every config that
+set a field, a stored one first -- `blockSetByText`), each value rendered with `MarkdownInline` and clamped to one
+line by `.cell-clamp` with the whole on hover -- clamped after rendering, never cut before it, since a cut through a
+link would show its syntax. The listing's **Customized** column says how much (`customizedText`, "3 copy,
 2 menu" -- "menu" because every block a client can overlay today is one) and links to the detail; an `allClients`
 administrator also gets **Copy & menu across clients** (`ov=1` on the same route, `overridesAcrossHref`): one
 retrieve per listed client, grouped by the pure `overridesAcrossClients` into file-or-block → key → the clients
 overriding it. A scoped administrator has one client and is never shown that view, whatever the hash says.
 
-**Editing the copy** (issue #918, `CopyEditor` in `ClientsPage.kt`): each copy row has **Edit** and, for a stored
-value only, **Reset** -- data cannot remove what source code or the shipped file says, so a source-set key is
-overridden (its `sourceValue` shows as "was: …") and reset returns to it. **Add an override** fetches
-`/clientAdmin/client/copy/keys` (`ClientsApi.copyKeys`; every shipped key with the client's value, backend files
-included, since `mail` is never served) and offers file → namespace → key, minus what the client already sets
-(`addableCopyKeys`), with the current value as the starting text; the File choice groups the files the
-application shows first, each with where (`copyFileChoices`, `copyFileLabel`, from the keys' `shownOn`), and the
-rest under "Not shown by this application" (issue #933) -- and a Copy row of such a file is marked "(not shown
-here)", since its override is served but changes nothing anyone sees on this app. Save posts `/clientAdmin/client/copy/set`
-(`copyEditRequest`; the editor's hint says which template syntax the file takes, by its `audience` --
-`copySyntaxHint`, issue #1001), which writes the client's stored config (the one already overlaying the file, else `copy`,
-created on first use), trial-checks it, publishes and reloads -- one call, live at once; for a client with a Shadow
-Sandbox (issue #930) -- which is always published-only -- it instead saves a **draft** of the parent's configuration
-and reloads, so the sandbox shows it and publishing is the explicit step, and the result's `mode` (`EDM.live` / `EDM.draft`) says which, which
-`savedNote` turns into the note; called in the sandbox, it edits the parent's -- and the backend's
-refusal of a faulted value (a raw `%{...}` in a frontend file, an unresolved pull in a backend one) is shown in
-its words under the editor. A success bumps the refresh generation, so the page re-reads the client and the
-shell re-reads its copy: a changed `home.brand` appears in the app bar without a reload. Wire names: `COV`
-(addresses) and `CPY` (paths, `stored`, `buildId`, `issues`, `mode`), both in the kernel.
+**Editing the copy** (issues #918, #1062; `CopyFileEditor`, its pure half `CopyFileView.kt`, covered by
+`CopyFileViewTest`): the client's copy **file by file**. It reads `/clientAdmin/client/copy/keys`
+(`ClientsApi.copyKeys`; every shipped key with the client's value, backend files included, since `mail` is never
+served) and joins each key to its overrides row (`copyKeyRows`, which also places each orphan in its file). Choosing
+a **File** -- the files the application shows first, each with where (`copyFileChoices`, `copyFileLabel`, from the
+keys' `shownOn`), the rest under "Not shown by this application" (issue #933), which the view repeats over such a
+file -- lays out every namespace and key with the value the client reads, in a panel of its own so the file reads
+apart from the rest of the page (`.copy-file`: a shade darker than the card, headed in a tint of the accent by the
+file, where it is shown and its key count -- `copyFileCountText`). Each value is rendered as Markdown in a box that
+scrolls on its own past a few lines (`.copy-value`), or **As written** per key; placeholders and pulls show as written,
+since there is nothing to fill them from. **Find** searches every file's keys *and values* instead (`copyRowMatches`,
+`copyFileGroups`) -- an administrator usually knows the words on screen, not the key -- and **Only changed** keeps
+the keys the client's configuration sets. The view opens on **no** file (`copyViewOpenFile`): a preselected one read as
+nothing having been chosen, and choosing it again changed nothing. With no file chosen, **Only changed** lists every
+file's changed keys -- the client's customizations at a glance (`copyViewSpansFiles`). A changed key says who set it (`copyRowStatus`), with "What it replaces"
+(the shipped value, and the source value a reset returns to) a click away.
+
+**Edit** opens the key's text with a **Preview** (the hint says which template syntax the file takes, by its
+`audience` -- `copySyntaxHint`, issue #1001); **Reset**, for a stored value only, removes it -- data cannot remove
+what source code or the shipped file says (`copyRowOffersReset`). Neither saves: each is a **pending** change
+(`pendingAfterEdit`; typed back to the value it is no change), marked down the key's left edge with a **Revert**, and
+the panel shows it as it will read once saved (`copyRowShownValue`). A sticky bar saves every pending change to the
+file **together** -- `POST /clientAdmin/client/copy/apply` (`copyApplyRequest`), one stored config (the one already
+setting any of the keys, else the first overlaying the file, else `copy`, created on first use), one trial, one
+publish and reload, so the changes go live at once -- or discards them. A save is of one file, so while one file has
+pending changes another's keys are not editable (`copyRowEditable`), and opening a key's editor makes its file the
+chosen one. For a client with a Shadow Sandbox (issue #930) -- always published-only -- the save is a **draft** of
+the parent's configuration that the sandbox shows, and the result's `mode` (`EDM.live` / `EDM.draft`) says which,
+which `copyAppliedNote` turns into the note; called in the sandbox, it edits the parent's. A batch the checks fault
+(a raw `%{...}` in a frontend file, an unresolved pull in a backend one) is refused whole and nothing changes; the
+refusal shows under the bar in the backend's words, the keys it names marked (`copyKeysNamedIn` -- its findings lead
+with `namespace.key`), and the changes stay to correct. While anything is pending, leaving the client's page asks
+first (`LeaveGuard`). A success bumps the refresh generation, so the page re-reads the client and its keys, and the
+shell re-reads its copy: a changed `home.brand` appears in the app bar without a reload. The one-key `/copy/set` and
+`/copy/reset` remain, each a batch of one; Design View's shared wording (#1010) saves through them. Wire names: `COV`
+(addresses) and `CPY` (paths, `changes`, `reset`, `keys`, `stored`, `buildId`, `issues`, `mode`), both in the kernel.
 
 **Editing the menu** (issue #919, `MenuEditor` in `ClientsPage.kt`): the detail's "Menu" table lists every home-menu
 item for the client from `/clientAdmin/client/menu/items` (`ClientsApi.menuItems`; shipped and effective label
