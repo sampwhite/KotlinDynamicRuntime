@@ -608,7 +608,11 @@ button:hover { background: var(--accent-bright); }
 button.ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
 
 .count { min-width: 48px; text-align: center; font-size: 1.5rem; font-weight: 700; }
-input {
+/* A text box, not a checkbox or radio: antd draws those over an invisible native input stretched across the box,
+   and this rule's min-width once stretched it 180px wide, so a click beside a checkbox -- in the label field of
+   Design View's "Choices on this form" -- toggled the box instead (issue #1048). Inside `:where` so the rule keeps a
+   bare `input`'s specificity, which antd's own `.ant-input` styles are meant to beat. */
+input:where(:not([type=checkbox]):not([type=radio])) {
     flex: 1;
     min-width: 180px;
     padding: 10px 14px;

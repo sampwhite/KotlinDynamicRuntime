@@ -295,4 +295,27 @@ class DesignEditTest : StringSpec({
         block(requestView())[DSV.canEdit] shouldBe true
         block(requestView()).containsKey(DSV.editRefusalCode) shouldBe false
     }
+
+    // The workflow copy editor's form requirements (issue #1048): saved into the workflow's own entry, beside its copy.
+    "a form requirement saved from the editor holds on that workflow's save, and reset removes it" {
+        val save = clientPath(GEP.workflowSave, client)
+        fun request(vararg data: Pair<String, Any?>) = mapOf(
+            WFD.workflowId to DesignDemo.requestWorkflow, GDF.taskId to DesignDemo.describeTask, GDF.saveId to DesignDemo.submitSave,
+            GDF.entries to listOf(mapOf("traitId" to DesignDemo.eventRequest, "data" to mapOf(DesignDemo.title to "Picnic", *data))),
+        )
+        edit(dataType, DesignDemo.catering, mapOf(SL.required to true))
+        edit(dataType, DesignDemo.venue, mapOf(SL.label to "Venue", SL.choices to listOf(mapOf(SL.value to "office"), mapOf(SL.value to "hotel", SL.label to "A conference hotel"))))
+        val fields = requestView()["fieldLayouts"].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[SL.schemaFields].toJsonListOfMaps()
+        fields.single { it[SL.field] == DesignDemo.catering }[SL.required] shouldBe true
+        fields.single { it[SL.field] == DesignDemo.venue }[SL.choices].toJsonListOfMaps().map { it[SL.value] } shouldBe listOf("office", "hotel")
+
+        admin.expectError(400, save, request(DesignDemo.venue to "office")).toString() shouldContain "catering"
+        admin.expectError(400, save, request(DesignDemo.venue to "outdoors", DesignDemo.catering to true, DesignDemo.backupPlan to "Tents"))
+            .toString() shouldContain "not offered on this form"
+        admin.postData(save, request(DesignDemo.venue to "hotel", DesignDemo.catering to false))[WSF.saved] shouldBe true
+
+        edit(dataType, DesignDemo.catering, null)
+        edit(dataType, DesignDemo.venue, null)
+        admin.postData(save, request(DesignDemo.venue to "outdoors", DesignDemo.backupPlan to "Tents"))[WSF.saved] shouldBe true
+    }
 })
