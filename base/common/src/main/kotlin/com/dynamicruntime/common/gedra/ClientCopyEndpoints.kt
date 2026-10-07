@@ -8,12 +8,14 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getReqNonBlankStr
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * Editing a client's copy (issue #918): the keys an administrator may override for a client, and the set and reset
- * of one -- each written to the client's stored configuration, trial-checked, published, and made live at once, or
- * for a client with a Shadow Sandbox saved as a draft its sandbox shows (issue #930; see [ClientCopyEdit]). In the
+ * Editing a client's copy (issue #918): the keys an administrator may override for a client, the set and reset of
+ * one, and the save of several keys of a file at once (issue #1062) -- each written to the client's stored
+ * configuration, trial-checked, published, and made live at once, or for a client with a Shadow Sandbox saved as a
+ * draft its sandbox shows (issue #930; see [ClientCopyEdit]). In the
  * `clientAdmin` section and scoped as the client overview's retrieves are: the caller's own client unless they may
  * name another. App-only, as the overview is: the fragment service is what it reads and writes through.
  */
@@ -45,6 +47,44 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         }
         property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the " +
             "change itself was refused if it added one.", required = true) {
+            type = SCT.array
+            items { ref(CLD.configIssueTypeQualified) }
+        }
+    }
+
+    type(CPY.changeTypeName) {
+        type = SCT.kObject
+        description = "One key of a batch: the value to set it to, or a reset of the client's stored value."
+        property(COV.namespaceField, "The namespace within the file.", required = true)
+        property(COV.key, "The key within the namespace.", required = true)
+        property(COV.value, "The value, as Markdown; absent for a reset.") { emptyIsAbsent = false }
+        property(CPY.reset, "Remove the client's stored value for the key instead of setting one.") { type = SCT.boolean }
+    }
+    type(CPY.appliedTypeName) {
+        type = SCT.kObject
+        description = "What one key of a batch now reads for the client."
+        property(COV.namespaceField, "The namespace within the file.", required = true)
+        property(COV.key, "The key within the namespace.", required = true)
+        property(COV.value, "The value the client now reads; absent when nothing sets the key any more.") { emptyIsAbsent = false }
+        property(CPY.stored, "Whether a stored value still sets the key.", required = true) { type = SCT.boolean }
+    }
+    type(CPY.applyResultTypeName) {
+        type = SCT.kObject
+        description = "What a batch of copy changes did: where it was written, and what each key changed now reads."
+        property(COV.client, "The client.", required = true)
+        property(COV.fileId, "The fragment file.", required = true)
+        property(COV.configName, "The stored configuration the changes landed in.", required = true)
+        property(CPY.keys, "Each key changed, in the order given, with what it now reads.", required = true) {
+            type = SCT.array
+            items { ref(CPY.appliedTypeName) }
+        }
+        property(CPY.buildId, "The build id the file's content for this client is now served under.")
+        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
+            option(EDM.live, "Live")
+            option(EDM.draft, "Draft")
+        }
+        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the " +
+            "save itself was refused if it added one.", required = true) {
             type = SCT.array
             items { ref(CLD.configIssueTypeQualified) }
         }
@@ -112,6 +152,57 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
             c, client, request.getReqNonBlankStr(COV.fileId), request.getReqNonBlankStr(COV.namespaceField),
             request.getReqNonBlankStr(COV.key),
         ).toWireMap(client, request)
+    }
+
+    generalEndpoint(
+        CPY.applyPath,
+        "Sets or resets several keys of one fragment file for a client in one save (issue #1062), so they take effect " +
+            "together: written into one stored configuration -- the one already setting any of the keys, else the " +
+            "first overlaying the file, else '${CPY.copyConfigName}' -- trial-checked once, then published and " +
+            "reloaded once; a refused publish puts every key back. Each change is judged as a set or reset of one key " +
+            "is, and a key may be changed once. Keys held by two stored configurations are refused, since saving them " +
+            "would publish each on its own. For a client with a Shadow Sandbox (issue #930) the save is a draft its " +
+            "sandbox shows.",
+        HttpMethod.POST,
+        outputRef = CPY.applyResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(COV.client)
+            field(COV.fileId, "The fragment file.", required = true)
+            field(CPY.changes, "The keys to change, each set to a value or reset.", required = true) {
+                type = SCT.array
+                items { ref(CPY.changeTypeName) }
+            }
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[COV.client].toOptStr())
+        val fileId = request.getReqNonBlankStr(COV.fileId)
+        val changes = request[CPY.changes].toJsonListOfMaps().map { change ->
+            val namespace = change.getReqNonBlankStr(COV.namespaceField)
+            val key = change.getReqNonBlankStr(COV.key)
+            val value = change[COV.value].toOptStr()
+            val reset = change[CPY.reset] == true
+            if (reset == (value != null)) {
+                throw KdrException.mkInput("'$fileId: $namespace.$key' needs either a '${COV.value}' or '${CPY.reset}', not both.")
+            }
+            ClientCopyEdit.Change(namespace, key, value)
+        }
+        val result = ClientCopyEdit.apply(c, client, fileId, changes)
+        linkedMapOf<String, Any?>(
+            COV.client to client,
+            COV.fileId to fileId,
+            COV.configName to result.configName,
+            CPY.keys to result.keys.map {
+                linkedMapOf<String, Any?>(COV.namespaceField to it.namespace, COV.key to it.key).also { out ->
+                    if (it.value != null) out[COV.value] = it.value
+                    out[CPY.stored] = it.stored
+                }
+            },
+        ).also { out ->
+            if (result.buildId != null) out[CPY.buildId] = result.buildId
+            out[CPY.mode] = result.mode
+            out[CPY.issues] = result.issues.map { it.toWireMap() }
+        }
     }
 }
 

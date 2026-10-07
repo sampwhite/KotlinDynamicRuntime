@@ -290,9 +290,6 @@ fun parseClientOverrides(item: Map<String, Any?>): ClientOverridesView = ClientO
     },
 )
 
-/** A copy row's address as the tables show it: `file: namespace.key`. */
-fun copyKeyText(row: CopyOverrideView): String = "${row.fileId}: ${row.namespace}.${row.key}"
-
 /**
  * What an interface row is within its block: the item's key, "(new item)" for one added with no key, the path of
  * an object outside a list, or "(block)" for the block's own fields. Pure, and covered under `jsNodeTest`.
@@ -432,7 +429,7 @@ const val notShownNote = "Not shown by this application"
 class CopyFileChoice(val fileId: String, val shownOn: String?)
 
 /**
- * The files the picker offers, from the keys it may add (issue #933): the ones the application shows first, each
+ * The files the File choice offers, from the keys (issue #933): the ones the application shows first, each
  * with where, then the ones it does not -- offered still, since a deployment's own frontend may read a file by
  * URL, but set apart under [notShownNote]. Pure, and covered under `jsNodeTest`.
  */
@@ -463,8 +460,8 @@ fun copySyntaxHint(audience: String): String = when (audience) {
 }
 
 /**
- * What a set or reset did (issue #918): where it landed, what the client now reads, and how it took effect -- an
- * `EDM` value, live or a draft its sandbox runs (issue #930).
+ * What a one-key set or reset did (issue #918): where it landed, what the client now reads, and how it took effect --
+ * an `EDM` value, live or a draft its sandbox runs (issue #930). Design View's shared wording (#1010) saves this way.
  */
 class CopyEditResult(val configName: String, val value: String?, val stored: Boolean, val issues: List<String>, val mode: String = EDM.live)
 
@@ -485,29 +482,11 @@ fun savedNote(done: String, mode: String): String =
     if (mode == EDM.draft) "$done Saved as a draft: the client's sandbox shows it, and it goes live once published." else done
 
 /**
- * The request that sets or resets one key for a client (issue #918): its address, the client, and -- for a set -- the
- * value. Pure, and covered under `jsNodeTest`.
- */
-fun copyEditRequest(clientId: String, fileId: String, namespace: String, key: String, value: String?): Map<String, Any?> =
-    linkedMapOf<String, Any?>(COV.client to clientId, COV.fileId to fileId, COV.namespaceField to namespace, COV.key to key)
-        .also { if (value != null) it[COV.value] = value }
-
-/**
  * Whether a copy row offers a reset (issue #918): only a **stored** value is data's to remove. A row set in source
  * shows its value and can be overridden, and once overridden the stored value resets to the source one -- the
  * report's `sourceValue`. Pure, and covered under `jsNodeTest`.
  */
 fun copyRowResettable(row: CopyOverrideView): Boolean = row.origin == GedraConfigOrigin.stored.name
-
-/**
- * The keys not yet overridden for the client, as an "add an override" picker offers them (issue #918): every
- * shipped key minus the ones the client already sets, grouped by file then namespace in listing order. Pure, and
- * covered under `jsNodeTest`.
- */
-fun addableCopyKeys(keys: List<CopyKeyView>, overridden: List<CopyOverrideView>): List<CopyKeyView> {
-    val taken = overridden.map { Triple(it.fileId, it.namespace, it.key) }.toSet()
-    return keys.filterNot { Triple(it.fileId, it.namespace, it.key) in taken }
-}
 
 /** One home-menu item as a client sees it (issue #919): a row of `/clientAdmin/client/menu/items`. */
 class MenuItemView(
@@ -823,13 +802,13 @@ object ClientsApi {
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())
 
-    /** Sets one key's value for a client and makes it live (issue #918); the backend refuses a value its trial faults. */
-    suspend fun setCopy(clientId: String, fileId: String, namespace: String, key: String, value: String): CopyEditResult =
-        parseCopyEditResult(Http.sendApi("POST", CPY.setPath, copyEditRequest(clientId, fileId, namespace, key, value))[EP.results].toJsonMapOrEmpty())
-
-    /** Removes a client's stored value for one key and makes that live (issue #918). */
-    suspend fun resetCopy(clientId: String, fileId: String, namespace: String, key: String): CopyEditResult =
-        parseCopyEditResult(Http.sendApi("POST", CPY.resetPath, copyEditRequest(clientId, fileId, namespace, key, null))[EP.results].toJsonMapOrEmpty())
+    /**
+     * Saves the pending changes to one file of a client's copy together (issue #1062) -- [order] being the file's keys
+     * as the view lists them -- and makes them live, or a draft for a client with a sandbox; the backend refuses a
+     * batch any of whose values its trial faults, and then nothing changes.
+     */
+    suspend fun applyCopy(clientId: String, pending: Map<CopyAddress, PendingCopy>, order: List<CopyAddress>): CopyApplyResult =
+        parseCopyApplyResult(Http.sendApi("POST", CPY.applyPath, copyApplyRequest(clientId, pending, order))[EP.results].toJsonMapOrEmpty())
 
     /** The home menu's items for a client (issue #919): shipped and effective label and condition. */
     suspend fun menuItems(clientId: String): List<MenuItemView> =

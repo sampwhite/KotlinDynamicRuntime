@@ -210,7 +210,7 @@ class ClientsPageTest {
     fun theOverridesParseAndDropWhatIsNotOne() {
         val acme = acmeOverrides()
         assertEquals("acme", acme.clientId)
-        assertEquals(listOf("home: home.brand", "home: home.renamed"), acme.copy.map { copyKeyText(it) })
+        assertEquals(listOf("home: home.brand", "home: home.renamed"), acme.copy.map { "${it.fileId}: ${it.namespace}.${it.key}" })
         val brand = acme.copy[0]
         assertEquals("KDR" to "Acme Co", brand.baseValue to brand.value)
         assertEquals("ACME KDR", brand.sourceValue)
@@ -334,7 +334,7 @@ class ClientsPageTest {
     // --- editing the copy (issue #918) ---------------------------------------------------------------------
 
     @Test
-    fun theCopyKeysParseAndTheAddablesLeaveOutWhatIsAlreadyOverridden() {
+    fun theCopyKeysParseAndTheFilesAreOfferedShownOnesFirst() {
         val keys = parseCopyKeys(
             listOf(
                 mapOf(COV.fileId to "sampleContent", COV.namespaceField to "welcome", COV.key to "title", COV.audience to "frontend", COV.value to "Welcome"),
@@ -348,25 +348,11 @@ class ClientsPageTest {
         assertEquals(listOf("sampleContent:welcome.title", "home:home.brand", "home:home.title", "mail:common.footer"), keys.map { "${it.fileId}:${it.namespace}.${it.key}" })
         assertEquals("backend", keys[3].audience)
         assertEquals(null, keys[0].shownOn)
-        // acme already overrides home.brand: the picker offers the rest.
-        val addable = addableCopyKeys(keys, acmeOverrides().copy)
-        assertEquals(listOf("sampleContent:welcome.title", "home:home.title", "mail:common.footer"), addable.map { "${it.fileId}:${it.namespace}.${it.key}" })
-        // The files the picker offers: shown ones first, each saying where; the fixture last, with nothing (issue #933).
-        val files = copyFileChoices(addable)
+        // The files the File choice offers: shown ones first, each saying where; the fixture last, with nothing (issue #933).
+        val files = copyFileChoices(keys)
         assertEquals(listOf("home", "mail", "sampleContent"), files.map { it.fileId })
         assertEquals(listOf("home \u2014 the app bar", "mail \u2014 the mails", "sampleContent"), files.map { copyFileLabel(it) })
         assertEquals(null, files[2].shownOn)
-    }
-
-    @Test
-    fun aSetOrResetRequestCarriesTheAddressAndTheValueOnlyWhenSetting() {
-        assertEquals(
-            mapOf(COV.client to "acme", COV.fileId to "home", COV.namespaceField to "home", COV.key to "brand", COV.value to "Acme Co"),
-            copyEditRequest("acme", "home", "home", "brand", "Acme Co"),
-        )
-        // An empty value is a value; only null means "no value" (a reset).
-        assertEquals("", copyEditRequest("acme", "home", "home", "brand", "")[COV.value])
-        assertEquals(false, copyEditRequest("acme", "home", "home", "brand", null).containsKey(COV.value))
     }
 
     @Test
