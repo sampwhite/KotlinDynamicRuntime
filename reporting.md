@@ -203,6 +203,9 @@ oldest days deleted as a new snapshot is written; today's are all kept until the
 button cannot push the nightly series out. The snapshots of a report since removed from the configuration stay
 listable under its id.
 
+The webapp's Reports page shows a report's history as a bar chart over days (its **History** view), with the
+metric to chart, a table of the same numbers, and **Snapshot now**; `webapp/CLAUDE.md` describes it.
+
 **Client-wide only.** Both endpoints are in the `clientAdmin` section and scoped as the run is, and both refuse an
 administrator whose administration is confined to an organization: their own runs narrow to their organization's
 forms, and a snapshot would show them the client's totals.

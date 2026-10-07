@@ -516,6 +516,44 @@ pure half -- parsers, the run's query, the table's columns, a cell's text, the p
   here without a coroutine test library.
 - **Data to look at**: the `report-demo` simulation creates acme and globex forms -- run it from the **Simulations**
   page, which then signs you in as an acme administrator in one click, or `kdr-probe --url <your server> report-demo`.
+  `report-history-demo` does the same and adds five dated days of snapshots, landing on the History view.
+
+**The History view** (issue #1037; `view=history`, the third button beside Per form and Grouped): a report's stored
+snapshots (`GET /clientAdmin/report/history`, #1034) as a bar chart over days, with **Snapshot now**
+(`POST /clientAdmin/report/snapshot`). No run is fetched behind it, and it has neither Group by nor Must have: a
+snapshot is always the report's own setup. The pure half is `ReportHistoryApi.kt` (covered by `ReportHistoryTest`);
+`ReportHistoryPanel.kt` draws it. It is the webapp's first chart, hand-drawn SVG (`react.dom.svg`, no chart
+library), and these are the rules it was built to:
+
+- **What can be charted** (`historyMetrics`): the count of forms, then each rolled-up column whose result is a
+  number and that the report does not group by. A rolled-up date is a moment, not a height, so it is not offered.
+- **One snapshot a day** (`latestPerDay`), and **only the current definition's**: each snapshot says whether it was
+  taken under the report as bound now (`sameDefinition`), and one that was not is counted in a note, not charted.
+- **A group's colour is its place, never its rank.** `historySeries` orders groups as first seen, oldest day first,
+  so switching metric or one group overtaking another repaints nothing. Past eight groups, the eight with the most
+  forms on the latest day are kept; the rest fold into a grey **Other** bar when the metric adds up (a count, a
+  sum) and are left to a note when it does not (an average). Only there can a new snapshot repaint -- a group
+  entering the kept eight takes its first-seen place among them -- since eight colours cannot be a fixed place for
+  a ninth group; switching metric still repaints nothing.
+- **The palette is validated, not picked**: `--chart-1..8` in `app.css` are a fixed categorical order checked as a
+  set against the card surface for colour-vision separation and contrast. Do not re-order them or add a ninth hue
+  by eye. Text never wears a series colour; a swatch beside it does.
+- **Laid out in real pixels** (`historyChartLayout`, at the panel's measured width via a `ResizeObserver`), not a
+  `viewBox` scaled to fit, so axis text keeps its size in a narrow pane. Bars are at most 24 wide with 2 between
+  neighbours, rounded at the data end and square at the baseline (`barPath`); ticks are clean numbers
+  (`niceTickStep`); when the days are too many for a readable bar, only the latest that fit are drawn and a line
+  says so.
+- **Nothing is hover-only.** Each bar's hit target is its whole column of the plot, is focusable, and shows the
+  same readout on focus as on hover; the table under the chart holds every day and every number the readout shows.
+  To the keyboard the chart is **one Tab stop** (the latest day's first bar) with the arrows, Home and End moving
+  among the bars (`historyBarStep`, a roving `tabindex`) -- sixty bars are not sixty stops on the way to the table.
+  The plot's `svg` is a `group`, never an `img`: an image's children do not exist for a screen reader, and the
+  bars' named hit targets are its children.
+- **A Kotlin trap this view hit**: inside an antd `Button { }` builder, `loading = x` assigns a *local* named
+  `loading` if the component has one (a `var loading by useState(...)`), not the button's property -- which sets
+  state during render and crashes with React's "too many re-renders". Name such state something else, or write
+  `this.loading`. A function *parameter* does the same (`onFocus: (...) -> Unit` beside a `rect { onFocus = ... }`),
+  though that one the compiler catches: a parameter cannot be assigned.
 
 ## Buttons and links on the form surfaces (issue #726)
 

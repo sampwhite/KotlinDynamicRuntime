@@ -52,6 +52,8 @@ class ReportInfo(
     val configName: String,
     /** The template the report was copied from, for a client built on one. */
     val template: String?,
+    /** Whether the nightly job stores snapshots of the report (issue #1033). */
+    val history: Boolean = false,
 ) {
     /** How the report opens: grouped when it declares what to group by, otherwise one row per form. */
     val defaultMode: ReportMode get() = if (groupBy.isEmpty()) ReportMode.detail else ReportMode.aggregate
@@ -86,6 +88,7 @@ fun parseReportListing(envelope: Map<String, Any?>): ReportListing = ReportListi
             excludeEmpty = r[RRUN.excludeEmpty].toJsonListOfStrings(),
             configName = r[RRUN.configName].toOptStr().orEmpty(),
             template = r[RRUN.template].toOptStr(),
+            history = r[RRUN.history] == true,
         )
     },
     issues = envelope[EP.summary].toJsonMapOrEmpty()[RRUN.issues].toJsonListOfMaps().mapNotNull { issue ->
@@ -112,18 +115,19 @@ class ReportRunRow(val gedraId: String?, val group: Map<String, Any?>, val count
 /** One page of a run. [next] is the cursor of the page after it, null on the last. */
 class ReportRunPage(val rows: List<ReportRunRow>, val numAvailable: Int, val next: String?, val summary: ReportRunSummary)
 
+/** One row of a run off the wire: a run's page holds them, and so does a stored snapshot (issue #1037). */
+fun parseRunRow(row: Map<String, Any?>): ReportRunRow = ReportRunRow(
+    gedraId = row[RRUN.gedraId].toOptStr(),
+    group = row[RRUN.group].toJsonMapOrEmpty(),
+    count = (row[RRUN.count] as? Number)?.toInt(),
+    values = row[RRUN.values].toJsonMapOrEmpty(),
+)
+
 /** The run endpoint's envelope ([UADEP.reportRun]) as a [ReportRunPage]. */
 fun parseRunPage(envelope: Map<String, Any?>): ReportRunPage {
     val summary = envelope[EP.summary].toJsonMapOrEmpty()
     return ReportRunPage(
-        rows = envelope[EP.items].toJsonListOfMaps().map { row ->
-            ReportRunRow(
-                gedraId = row[RRUN.gedraId].toOptStr(),
-                group = row[RRUN.group].toJsonMapOrEmpty(),
-                count = (row[RRUN.count] as? Number)?.toInt(),
-                values = row[RRUN.values].toJsonMapOrEmpty(),
-            )
-        },
+        rows = envelope[EP.items].toJsonListOfMaps().map { parseRunRow(it) },
         numAvailable = (envelope[EP.numAvailable] as? Number)?.toInt() ?: 0,
         next = envelope[EP.next].toOptStr(),
         summary = ReportRunSummary(
@@ -306,17 +310,27 @@ fun reportModeOf(hashValue: String?): ReportMode? = when (hashValue) {
 fun reportModeParam(mode: ReportMode): String = if (mode == ReportMode.aggregate) reportModeGrouped else reportModeDetail
 
 /**
- * The link to the Reports page: [client]'s reports (the caller's own when null), open at [reportId] when given, in
- * [mode] when given -- absent, the report opens the way it declares.
+ * Whether a hash's `view` asks for the report's **history** (issue #1037) rather than a run of it: its stored
+ * snapshots, charted. Not a run mode -- the run endpoint knows nothing of it -- so it is asked beside [reportModeOf],
+ * which answers null for it.
  */
-fun reportsHref(client: String? = null, reportId: String? = null, mode: ReportMode? = null): String = hashHref(
-    buildList {
-        add(HP.page to HMENU.pageReports)
-        client?.let { add(HP.client to it) }
-        reportId?.let { add(HP.report to it) }
-        mode?.let { add(HP.reportView to reportModeParam(it)) }
-    },
+fun reportViewIsHistory(hashValue: String?): Boolean = hashValue == HMENU.reportViewHistory
+
+/**
+ * The link to the Reports page: [client]'s reports (the caller's own when null), open at [reportId] when given, in
+ * [mode] when given -- absent, the report opens the way it declares -- or, with [history], on its History view.
+ */
+fun reportsHref(client: String? = null, reportId: String? = null, mode: ReportMode? = null, history: Boolean = false): String = hashHref(
+    reportsHashParams(client, reportId, if (history) HMENU.reportViewHistory else mode?.let { reportModeParam(it) }),
 )
+
+/** The Reports page's hash for [client], [reportId] and a `view` value: what a link carries and what the page writes. */
+fun reportsHashParams(client: String?, reportId: String?, view: String?): List<Pair<String, String>> = buildList {
+    add(HP.page to HMENU.pageReports)
+    client?.let { add(HP.client to it) }
+    reportId?.let { add(HP.report to it) }
+    view?.let { add(HP.reportView to it) }
+}
 
 /**
  * The link from a detail row to its form, on the forms page. For an administrator looking across clients the forms

@@ -1192,6 +1192,61 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .reports-paging { margin-top: 10px; }
 .reports-download { margin: 6px 0 2px; }
 .reports-download p { margin: 0; }
+
+/* The Reports page's History view (issue #1037): a report's snapshots as a bar chart over days.
+   The series colours are a categorical set in a FIXED order -- a group's colour is its place among the groups, never
+   its rank -- validated as a set against the card surface (--surface-raised) for colour-vision separation and
+   contrast: a re-order or a new hue has to be validated again, not eyeballed. Slot 6 sits just under 3:1 on the
+   card, which is why the table under the chart is always there. Text never wears a series colour; a swatch beside
+   it does. */
+.reports-run {
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+    --chart-7: #9085e9;
+    --chart-8: #e66767;
+}
+.rh-c0 { --rh-color: var(--chart-1); }
+.rh-c1 { --rh-color: var(--chart-2); }
+.rh-c2 { --rh-color: var(--chart-3); }
+.rh-c3 { --rh-color: var(--chart-4); }
+.rh-c4 { --rh-color: var(--chart-5); }
+.rh-c5 { --rh-color: var(--chart-6); }
+.rh-c6 { --rh-color: var(--chart-7); }
+.rh-c7 { --rh-color: var(--chart-8); }
+/* The groups past the chart's limit, folded into one: grey, since it is not a series of its own. */
+.rh-other { --rh-color: var(--text-faint); }
+.rh-title { margin: 14px 0 6px; font-size: 14px; font-weight: 600; color: var(--text); }
+.rh-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 8px; color: var(--text-dim); font-size: 13px; }
+.rh-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.rh-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--rh-color); flex: none; }
+/* Sized in pixels by the component, to the pane's measured width: laid out at its real size, never scaled to it. */
+.rh-chart { position: relative; max-width: 100%; transition: opacity .15s; }
+/* A refetch keeps the frame: the last chart stays, dimmed, until its replacement arrives. */
+.rh-chart.rh-refetching { opacity: .55; }
+.rh-svg { display: block; overflow: visible; }
+.rh-bar { fill: var(--rh-color); }
+.rh-bar.rh-hot { filter: brightness(1.3); }
+/* Recessive: hairlines one step off the surface, solid; the zero line a step firmer. */
+.rh-grid { stroke: var(--border); stroke-width: 1; opacity: .55; }
+.rh-baseline { stroke: var(--text-faint); stroke-width: 1; }
+.rh-tick { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.rh-hit { fill: transparent; cursor: default; outline: none; }
+.rh-hit:focus-visible { stroke: var(--accent-bright); stroke-width: 1; }
+.rh-tip {
+    position: absolute; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none; z-index: 2;
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-page);
+    color: var(--text-dim); font-size: 12px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+}
+.rh-tip strong { display: block; color: var(--text); font-size: 14px; }
+.rh-tip-series { display: flex; align-items: center; gap: 6px; }
+/* A short stroke of the series colour keys the readout's row, where a filled box would be a mark's weight of ink. */
+.rh-key { width: 12px; height: 3px; border-radius: 2px; background: var(--rh-color); flex: none; }
+.rh-tip-date { color: var(--text-muted); }
+.rh-table { margin-top: 12px; }
 /* One line per row: a report has many narrow columns, and wrapped timestamps make each row four lines tall. The table
    scrolls sideways inside `.op-table-scroll` instead. */
 .reports-run .op-table th, .reports-run .op-table td { white-space: nowrap; }

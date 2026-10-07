@@ -55,7 +55,8 @@ private class ReportShown(val key: String, val page: ReportRunPage)
  * Which client and which report are **where the page is** -- they ride the hash (`c`, `rpt`) and are reached by
  * ordinary links, so Back steps through them, as the Clients page does. Whether the open report is shown per form or
  * grouped rides the hash too (`view`), so the page always shows what its address says; what it groups by and what a
- * form must have are the page's own state for that report.
+ * form must have are the page's own state for that report. `view=history` shows the report's stored snapshots as a
+ * chart instead of running it (`ReportHistoryPanel`, issue #1037).
  *
  * **Paging goes forward only.** A page is fetched after the cursor the previous one handed back (`next`, sent as
  * `after`), and there is no Previous: a cursor says where the next page starts and nothing about the one before, so
@@ -152,7 +153,9 @@ val ReportsPage = FC<Props> {
     // One page of the open report. Keyed on everything that makes the query, and on the cursor: a new cursor is the
     // next page of the same walk, and anything else is a new walk -- whose paging key no longer matches, so it
     // starts from the top. Within a walk the rows on screen stay until the next page arrives.
-    val runnable = report != null
+    // Not while the History view is up: it shows the stored snapshots, and a run behind it would be read for nothing.
+    val historyView = reportViewIsHistory(hash[HP.reportView])
+    val runnable = report != null && !historyView
     useEffect(runnable, pagingKey, page.after, generation) {
         val token = (latestRun.current ?: 0) + 1
         latestRun.current = token
@@ -236,15 +239,15 @@ val ReportsPage = FC<Props> {
         // The mode goes to the address, which is where the page reads it from; the lists are the session's. Writing
         // the hash fires no event, so setting the lists -- a new object even when they are unchanged -- is also what
         // makes the page read the address again.
-        replaceHash(
-            buildList {
-                add(HP.page to HMENU.pageReports)
-                client?.let { add(HP.client to it) }
-                reportId?.let { add(HP.report to it) }
-                add(HP.reportView to reportModeParam(next.mode))
-            },
-        )
+        replaceHash(reportsHashParams(client, reportId, reportModeParam(next.mode)))
         choice = ReportListsChoice(reportKey, next.groupBy, next.excludeEmpty)
+    }
+
+    fun showHistory() {
+        // The address says History; the lists set on this report are kept for the way back, and setting them again
+        // is what makes the page read the address (writing the hash fires no event).
+        replaceHash(reportsHashParams(client, reportId, HMENU.reportViewHistory))
+        choice = ReportListsChoice(reportKey, lists?.groupBy, lists?.excludeEmpty)
     }
 
     val current = config
@@ -288,33 +291,40 @@ val ReportsPage = FC<Props> {
                         }
                         report != null -> {
                             reportHeading(report)
-                            reportControls(report, setup, running, ::changeSetup)
-                            reportDownload(download?.takeIf { it.key == pagingKey }, ::startDownload)
-                            runError?.let {
-                                errorText("Couldn't run the report.", it)
-                                // A cursor outlives neither a changed report nor a reloaded configuration: the way
-                                // out of either is the same -- the first page of the run as it now is.
-                                if (page.after != null) {
-                                    Button {
-                                        type = "link"
-                                        onClick = { paging = null }
-                                        +"Start again from the first page"
-                                    }
-                                }
-                            }
-                            val shown = runPage
-                            if (shown == null) {
-                                if (runError == null) p {
-                                    className = ClassName("subtitle")
-                                    +"Running…"
+                            reportControls(report, setup, running, historyView, ::changeSetup, ::showHistory)
+                            if (historyView) {
+                                ReportHistoryPanel {
+                                    this.client = client
+                                    this.report = report
                                 }
                             } else {
-                                reportTable(shown, client)
-                                reportPagingBar(
-                                    shown, page.before, running,
-                                    onFirst = { paging = null },
-                                    onNext = { shown.next?.let { paging = ReportPaging(pagingKey, it, page.before + shown.rows.size) } },
-                                )
+                                reportDownload(download?.takeIf { it.key == pagingKey }, ::startDownload)
+                                runError?.let {
+                                    errorText("Couldn't run the report.", it)
+                                    // A cursor outlives neither a changed report nor a reloaded configuration: the way
+                                    // out of either is the same -- the first page of the run as it now is.
+                                    if (page.after != null) {
+                                        Button {
+                                            type = "link"
+                                            onClick = { paging = null }
+                                            +"Start again from the first page"
+                                        }
+                                    }
+                                }
+                                val shown = runPage
+                                if (shown == null) {
+                                    if (runError == null) p {
+                                        className = ClassName("subtitle")
+                                        +"Running…"
+                                    }
+                                } else {
+                                    reportTable(shown, client)
+                                    reportPagingBar(
+                                        shown, page.before, running,
+                                        onFirst = { paging = null },
+                                        onNext = { shown.next?.let { paging = ReportPaging(pagingKey, it, page.before + shown.rows.size) } },
+                                    )
+                                }
                             }
                         }
                     }
@@ -419,11 +429,19 @@ private fun ChildrenBuilder.reportHeading(report: ReportInfo) {
 }
 
 /**
- * How the report is shown: per form or grouped; in a grouped run, what it groups by; and the columns a form must
- * have a value for. Each list starts at the report's own and is the user's from the first change -- including
- * emptied, which asks for none rather than for the report's own again.
+ * How the report is shown: per form, grouped, or its [history]; in a grouped run, what it groups by; and the columns
+ * a form must have a value for. Each list starts at the report's own and is the user's from the first change --
+ * including emptied, which asks for none rather than for the report's own again. The History view has neither list:
+ * a snapshot is always the report's own setup.
  */
-private fun ChildrenBuilder.reportControls(report: ReportInfo, setup: ReportRunSetup, busy: Boolean, change: (ReportRunSetup) -> Unit) {
+private fun ChildrenBuilder.reportControls(
+    report: ReportInfo,
+    setup: ReportRunSetup,
+    busy: Boolean,
+    history: Boolean,
+    change: (ReportRunSetup) -> Unit,
+    showHistory: () -> Unit,
+) {
     fun options(columns: List<ReportColumnInfo>): Array<dynamic> = columns.map { c ->
         val option: dynamic = js("({})")
         option.label = c.label
@@ -435,21 +453,32 @@ private fun ChildrenBuilder.reportControls(report: ReportInfo, setup: ReportRunS
 
     div {
         className = ClassName("row reports-controls")
+        // Which of the three is on: History when the address says so, else the run's mode.
+        val detailOn = !history && setup.mode == ReportMode.detail
+        val groupedOn = !history && setup.mode == ReportMode.aggregate
         Button {
-            type = if (setup.mode == ReportMode.detail) "primary" else "default"
+            type = if (detailOn) "primary" else "default"
             size = "small"
-            disabled = busy && setup.mode != ReportMode.detail
-            onClick = { if (setup.mode != ReportMode.detail) change(ReportRunSetup(ReportMode.detail, setup.groupBy, setup.excludeEmpty)) }
+            disabled = busy && !detailOn
+            onClick = { if (!detailOn) change(ReportRunSetup(ReportMode.detail, setup.groupBy, setup.excludeEmpty)) }
             +"Per form"
         }
         Button {
-            type = if (setup.mode == ReportMode.aggregate) "primary" else "default"
+            type = if (groupedOn) "primary" else "default"
             size = "small"
-            disabled = busy && setup.mode != ReportMode.aggregate
-            onClick = { if (setup.mode != ReportMode.aggregate) change(ReportRunSetup(ReportMode.aggregate, setup.groupBy, setup.excludeEmpty)) }
+            disabled = busy && !groupedOn
+            onClick = { if (!groupedOn) change(ReportRunSetup(ReportMode.aggregate, setup.groupBy, setup.excludeEmpty)) }
             +"Grouped"
         }
-        if (setup.mode == ReportMode.aggregate) {
+        Button {
+            type = if (history) "primary" else "default"
+            size = "small"
+            disabled = busy && !history
+            onClick = { if (!history) showHistory() }
+            +"History"
+        }
+        if (history) return@div
+        if (groupedOn) {
             span {
                 className = ClassName("type-hint")
                 +"Group by:"
