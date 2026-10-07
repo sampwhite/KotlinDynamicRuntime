@@ -95,7 +95,7 @@ class InstanceConfigService : ServiceInitializer {
      */
     fun getConfig(cxt: KdrCxt, configName: String): Map<String, Any?>? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
-        val table = cxt.getSchema().tables[tableName]
+        val table = cxt.getGlobalSchema().tables[tableName]
             ?: throw KdrException("InstanceConfig table is not registered in the schema store.")
         val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
         val keys = mapOf(

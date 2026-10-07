@@ -264,6 +264,6 @@ object JobTraceRows {
         }
     }
 
-    private fun table(cxt: KdrCxt) = cxt.getSchema().tables[JOBT.jobTrace]
+    private fun table(cxt: KdrCxt) = cxt.getGlobalSchema().tables[JOBT.jobTrace]
         ?: throw KdrException("${JOBT.jobTrace} table is not registered in the schema store.")
 }

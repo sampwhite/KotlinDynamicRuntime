@@ -34,7 +34,7 @@ class TopicStartupInitTest : StringSpec({
     "every topic the schema store declares is created, not just the one a test happens to use" {
         val cxt = Startup.mkTestBootCxt("topicInitAll", "topicInitAllTest")
         val service = SqlTopicService.get(cxt)
-        val declared = cxt.getSchema().tables.values.map { it.topic }.toSet()
+        val declared = cxt.getGlobalSchema().tables.values.map { it.topic }.toSet()
         declared.forEach { service.topics.keys shouldContain it }
     }
 })

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.cfact.CFactRegistries
 import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.cfact.buildCFactRegistries
 import com.dynamicruntime.common.cfact.referencedNames
+import com.dynamicruntime.common.context.ClientSchemaSource
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -96,7 +97,7 @@ import com.dynamicruntime.common.util.toJsonMap
  * aggregation, without dn's builder-keyword resolution pass, because kd2's endpoint and
  * type schema are already realized eagerly by the `Sch*` builders.
  */
-class SchemaService : ServiceInitializer {
+class SchemaService : ServiceInitializer, ClientSchemaSource {
     override val serviceName: String = SchemaService.serviceName
 
     @KdrPrivate
@@ -112,7 +113,7 @@ class SchemaService : ServiceInitializer {
      * the same configuration -- so they change together or not at all. A reader that has read the reference
      * holds a consistent set for as long as it likes; a reload assembles a new one off to the side and swaps
      * it in, the pattern `InternCache` uses. A request already in flight keeps the store it started with,
-     * because `KdrCxt.getSchema` memoizes per request.
+     * because `KdrCxt.getGlobalSchema` memoizes per request.
      */
     class SchemaSnapshot(
         val store: KdrSchemaStore,
@@ -889,6 +890,8 @@ class SchemaService : ServiceInitializer {
     private fun publish(cxt: KdrCxt, next: SchemaSnapshot) {
         snapshot = next
         cxt.instanceConfig.put(KdrSchemaStore.key, next.store)
+        // Where `KdrCxt.getClientSchema` resolves a client's store: this service, which reads the live snapshot.
+        cxt.instanceConfig.put(KdrSchemaStore.clientSourceKey, this)
         cxt.schemaStore = next.store
     }
 
@@ -973,7 +976,8 @@ class SchemaService : ServiceInitializer {
     /**
      * The compiled schema [client] sees: their variant, or the global store when they have none (issue #356).
      *
-     * **Not what `KdrCxt.getSchema` returns, and deliberately.** That stays global, because `RequestService`
+     * What `KdrCxt.getClientSchema` returns for the context's bound client (issue #946). **Not what
+     * `KdrCxt.getGlobalSchema` returns, and deliberately.** That stays global, because `RequestService`
      * resolves each endpoint's input and output types through it and caches them **keyed by path** -- so an
      * endpoint has to mean one type for every caller or the cache is unsound. `client-definition.md` settles
      * the split as case (a): permissive at the edge, strict where it is stored. The published type stays
@@ -983,7 +987,7 @@ class SchemaService : ServiceInitializer {
      * answer, which is what lets `SqlTopicService` read the table catalog at boot before any client exists
      * and anonymous callers be served without a special case.
      */
-    fun storeFor(client: String?): KdrSchemaStore {
+    override fun storeFor(client: String?): KdrSchemaStore {
         val store = schemaStore
         return if (client == null) store else clientStores[client] ?: store
     }
@@ -1387,7 +1391,7 @@ class SchemaService : ServiceInitializer {
                 // reason (a store built by hand, outside a running dispatcher).
                 schema = client?.let {
                     (cxt.instanceConfig.get(serviceName) as? SchemaService)?.storeFor(it)
-                } ?: cxt.getSchema(),
+                } ?: cxt.getGlobalSchema(),
             )
         }
 

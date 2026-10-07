@@ -15,7 +15,7 @@ import com.dynamicruntime.common.sql.KdrTable
  * i.e., "path:method"), and [tables] (keyed by [KdrTable.tableName]). It is built
  * once at startup by the schema service from the collected schema and published
  * into the instance config, from where [get] retrieves it. A context caches a
- * reference to it (see [KdrCxt.getSchema]) because it is fundamental to most
+ * reference to it (see [KdrCxt.getGlobalSchema]) because it is fundamental to most
  * processing.
  *
  * The raw [defs] are retained alongside the compiled [types] because the
@@ -64,10 +64,22 @@ class KdrSchemaStore(
         /** Instance-config key under which the compiled store is published. */
         const val key = "KdrSchemaStore"
 
+        /** Instance-config key under which the [ClientSchemaSource] -- the schema service -- is published (issue #946). */
+        const val clientSourceKey = "KdrClientSchemaSource"
+
         /**
          * Returns the compiled schema store from the instance config, or an empty
          * store when none has been built (e.g., a simple, non-booted context).
          */
         fun get(cxt: KdrCxt): KdrSchemaStore = cxt.instanceConfig.get(key) as? KdrSchemaStore ?: KdrSchemaStore()
     }
+}
+
+/**
+ * Where a context finds the schema a client runs under (issue #946): the client's variant, or the global store when
+ * it varies nothing. Implemented by `SchemaService`, which holds the variants, and published into the instance config
+ * under [KdrSchemaStore.clientSourceKey]; declared here so the context reads it without depending on the startup layer.
+ */
+fun interface ClientSchemaSource {
+    fun storeFor(client: String?): KdrSchemaStore
 }

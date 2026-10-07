@@ -96,7 +96,7 @@ class ClientDefGateTest : StringSpec({
     }
 
     "the written form is a type of its own beside the answered one, and only it closes the environments" {
-        val types = cxt.getSchema().types
+        val types = cxt.getGlobalSchema().types
         fun envItems(typeName: String) = types.getValue(typeName).properties.getValue(CLD.enabledEnvironments).valueType.itemType.shouldNotBeNull()
         // One declaration makes both, so they hold the same fields and offer the same environments...
         types.getValue(CLD.writtenInfoTypeQualified).properties.keys shouldBe types.getValue(CLD.infoTypeQualified).properties.keys

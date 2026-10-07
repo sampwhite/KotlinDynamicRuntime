@@ -349,7 +349,7 @@ class RequestService : ServiceInitializer {
         //
         // Nothing contributes endpoints after that: schema is collected from components, before any service
         // runs, and compiled by the startup tier. So reading it in the first pass sees the whole set.
-        val unruled = cxt.getSchema().endpoints.values
+        val unruled = cxt.getGlobalSchema().endpoints.values
             .map { sectionOf(it.path) }.distinct().sorted()
             .filter { it !in sectionRulesMap }
         if (unruled.isNotEmpty()) {
@@ -414,7 +414,7 @@ class RequestService : ServiceInitializer {
         // publicApi out of is the privileged and internal sections (admin, operator, node, clientAdmin,
         // clientOperator), where a published mark would hide the very thing the audit exists to surface.
         val publishableSections = userSections + "auth"
-        val published = cxt.getSchema().endpoints.values.filter { it.publicApi }
+        val published = cxt.getGlobalSchema().endpoints.values.filter { it.publicApi }
         val misplaced = published.filter { sectionOf(it.path) !in publishableSections }.map { it.path }.sorted()
         if (misplaced.isNotEmpty()) {
             val problem = "${misplaced.joinToString(", ") { "'$it'" }} " +
@@ -534,7 +534,7 @@ class RequestService : ServiceInitializer {
                 // Endpoints are keyed by "path:method" (KdrEndpoint.collationKey) on the context-root-stripped
                 // application path, so endpoint definitions never carry the context root.
                 val key = "$appPath:$method"
-                var endpoint = cxt.getSchema().endpoints[key]
+                var endpoint = cxt.getGlobalSchema().endpoints[key]
                 // Bring this node current with its peers (issue #618) when the endpoint consumes client
                 // configuration -- opt-in, so health, ops and auth traffic touch nothing -- OR when nothing
                 // matched: a peer may have added this client's endpoints (#611) and this node has not caught up,
@@ -542,11 +542,11 @@ class RequestService : ServiceInitializer {
                 // waiting; a no-op on a node with no config surface (an edge).
                 if (endpoint == null || endpoint.needsClientConfig) {
                     ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
-                    // A sync may have reloaded and published a new schema store. getSchema caches per context, so
+                    // A sync may have reloaded and published a new schema store. getGlobalSchema caches per context, so
                     // drop the cached one and re-resolve -- to serve the fresh configuration in this same request,
                     // and to find an endpoint the reload just added.
                     cxt.schemaStore = null
-                    endpoint = cxt.getSchema().endpoints[key]
+                    endpoint = cxt.getGlobalSchema().endpoints[key]
                 }
                 if (endpoint != null) {
                     executeEndpoint(cxt, handler, endpoint)
@@ -592,7 +592,7 @@ class RequestService : ServiceInitializer {
      * before this runs.
      */
     private fun typesFor(cxt: KdrCxt, endpoint: KdrEndpoint): KdrSchemaStore {
-        val client = endpoint.client ?: return cxt.getSchema()
+        val client = endpoint.client ?: return cxt.getGlobalSchema()
         return SchemaService.get(cxt).storeFor(client)
     }
 

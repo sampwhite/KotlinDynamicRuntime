@@ -207,8 +207,18 @@ class KdrCxt(
      */
     var clientFromPath: String? = null
 
-    /** Cached read-only schema store; lazily populated via [getSchema]. */
+    /**
+     * Cached read-only global schema store; lazily populated via [getGlobalSchema]. Setting it -- to null, to drop it
+     * after a reload, or to a new store -- drops the cached client store too, since that was resolved alongside it.
+     */
     var schemaStore: KdrSchemaStore? = null
+        set(value) {
+            field = value
+            clientSchema = null
+        }
+
+    /** The client store [getClientSchema] last resolved, and the client it was resolved for. */
+    private var clientSchema: Pair<String, KdrSchemaStore>? = null
 
     /**
      * Whether this context's life is bounded to a single transaction (issue #687), set only by
@@ -237,6 +247,8 @@ class KdrCxt(
         sub.org = if (client == this.client) org else null
         sub.locals.putAll(locals)
         sub.schemaStore = schemaStore
+        // Kept only while it is for the sub context's client; [getClientSchema] would re-resolve it otherwise anyway.
+        sub.clientSchema = clientSchema?.takeIf { it.first == client }
         sub.clientFromPath = clientFromPath
         sub.forwardedFor = forwardedFor
         // The channel's env auth is a fact about the request, so it travels with a sub context of it -- the
@@ -308,8 +320,13 @@ class KdrCxt(
         this.org = userProfile.org
     }
 
-    /** Returns the schema store, lazily creating and caching it on first access. */
-    fun getSchema(): KdrSchemaStore {
+    /**
+     * The **global** schema store -- the one every client shares before any client's configuration varies it --
+     * lazily read and cached on first access. Endpoint resolution uses this one deliberately (see
+     * `SchemaService.storeFor`): it caches each endpoint's types keyed by path, so a path must mean one type for every
+     * caller. For the schema the context's client runs under, use [getClientSchema].
+     */
+    fun getGlobalSchema(): KdrSchemaStore {
         val existing = schemaStore
         if (existing != null) {
             return existing
@@ -317,6 +334,21 @@ class KdrCxt(
         val created = KdrSchemaStore.get(this)
         schemaStore = created
         return created
+    }
+
+    /**
+     * The schema store of the client **currently bound to this context** ([client]) -- its variant, or the global
+     * store when it varies nothing (issue #946). That is the bound client, not the acting user's own: a context is
+     * re-bound to operate on another client's data (`mkSubContext(name, client)`, a per-client endpoint copy), and
+     * this follows it. Cached per context and keyed on the client, so a re-bound context resolves afresh; dropped
+     * with [schemaStore]. On a node with no schema service it is the global store.
+     */
+    fun getClientSchema(): KdrSchemaStore {
+        val bound = client
+        clientSchema?.let { (forClient, store) -> if (forClient == bound) return store }
+        val store = (instanceConfig.get(KdrSchemaStore.clientSourceKey) as? ClientSchemaSource)?.storeFor(bound) ?: getGlobalSchema()
+        clientSchema = bound to store
+        return store
     }
 
     /**

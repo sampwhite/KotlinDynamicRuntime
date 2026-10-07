@@ -40,14 +40,14 @@ class StartupTest : StringSpec({
         // The startup service ran and is published under its name.
         val service = SchemaService.get(cxt)
 
-        val schema = cxt.getSchema()
+        val schema = cxt.getGlobalSchema()
         // Types contributed by BOTH the common (via NodeService) and kdn components are present.
         schema.types shouldContainKey "kdr.node.Health"
         schema.types shouldContainKey "kdr.kdn.RuntimeInfo"
         // The health endpoint contributed by NodeService is indexed by its collation key (path:method).
         schema.endpoints shouldContainKey "/health:GET"
         // The store the context exposes is the one the service compiled.
-        cxt.getSchema() shouldBe service.schemaStore
+        cxt.getGlobalSchema() shouldBe service.schemaStore
 
         // Logging is on in a unit test now (issue #524): a sink is installed and info-level is enabled, where
         // a unit boot previously installed no sink and dropped every backend log call.

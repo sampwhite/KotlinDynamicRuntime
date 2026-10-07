@@ -149,7 +149,7 @@ fun bootInstance(
     )
 
     LogStartup.info(cxt, "Booted instance '$instanceName' with app config: ${appConfig.data}")
-    val schema = cxt.getSchema()
+    val schema = cxt.getGlobalSchema()
     LogStartup.info(cxt, "Booted instance: ${schema.types.size} schema types, ${schema.endpoints.size} endpoints.")
 
     return cxt

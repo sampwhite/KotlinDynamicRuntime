@@ -82,7 +82,7 @@ class SqlTopicService : ServiceInitializer {
      * rather than `isActive = false`, or the switched-off component still gets its tables.
      */
     override fun checkReady(cxt: KdrCxt) {
-        for (topicName in cxt.getSchema().tables.values.map { it.topic }.toSet()) {
+        for (topicName in cxt.getGlobalSchema().tables.values.map { it.topic }.toSet()) {
             getOrCreateTopic(cxt, topicName)
         }
     }
@@ -95,7 +95,7 @@ class SqlTopicService : ServiceInitializer {
         topics[topicName]?.let { return it }
         synchronized(topics) {
             topics[topicName]?.let { return it }
-            val tables = cxt.getSchema().tables.values.filter { it.topic == topicName }
+            val tables = cxt.getGlobalSchema().tables.values.filter { it.topic == topicName }
             if (tables.isEmpty()) {
                 return null
             }
@@ -110,7 +110,7 @@ class SqlTopicService : ServiceInitializer {
     /**
      * Reconciles [topicName] from an **explicit** [tables] list and caches it, for the boot-time stored-config
      * load (issue #614) that must read a topic **before** the schema store exists. The ordinary
-     * [getOrCreateTopic] reads its tables from `cxt.getSchema()`, which is empty until `SchemaService.checkInit`
+     * [getOrCreateTopic] reads its tables from `cxt.getGlobalSchema()`, which is empty until `SchemaService.checkInit`
      * compiles the store -- and the load has to run before that, so the configs are in the collector when the
      * store is built. This takes the topic's whole table set from the collector instead, so the read does not
      * depend on the store; and because it caches into [topics], a later [getOrCreateTopic] returns this same
@@ -183,7 +183,7 @@ class SqlTopicService : ServiceInitializer {
 
         /** Handler for `/operator/db/tables`: dump every registered table's attributes, sorted by name. */
         fun listTables(cxt: KdrCxt): List<Map<String, Any?>> =
-            cxt.getSchema().tables.values
+            cxt.getGlobalSchema().tables.values
                 .sortedBy { it.tableName }
                 .map { it.toJsonMap() } // KdrTable owns its own serialization
     }

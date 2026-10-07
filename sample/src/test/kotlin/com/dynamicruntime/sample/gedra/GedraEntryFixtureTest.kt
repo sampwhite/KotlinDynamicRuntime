@@ -228,7 +228,7 @@ class GedraEntryFixtureTest : StringSpec({
 
     // Manufactured after every component contributed, and an ordinary type by the time anything reads it.
     "the union is assembled from the traits that bind to form documents" {
-        val union = cxt.getSchema().types[unionName].shouldNotBeNull()
+        val union = cxt.getGlobalSchema().types[unionName].shouldNotBeNull()
         val variants = union.variants.shouldNotBeNull()
         // Four branches, from two components -- the runtime's own trait beside the sample's, which is what
         // makes this a union rather than a wrapper around one type. Ordered by trait id, so the document does
@@ -246,7 +246,7 @@ class GedraEntryFixtureTest : StringSpec({
     // document because the emitted schema declares the default branch, and our reading should not disagree
     // with what we publish.
     "the same union reads strictly or leniently, as the reader asks" {
-        val union = cxt.getSchema().types.getValue(unionName)
+        val union = cxt.getGlobalSchema().types.getValue(unionName)
         val unknown = mapOf<String, Any?>(GE.traitId to "notATraitThisNodeKnows", GE.data to emptyMap<String, Any?>())
 
         coerceAndValidate(union, unknown, SchOpts(forInput = true)).failures.shouldBeEmpty()

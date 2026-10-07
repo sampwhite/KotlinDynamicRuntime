@@ -179,10 +179,10 @@ class GedraDataService : ServiceInitializer {
         compareByDescending<Map<String, Any?>> { it[PF.updatedAt].toOptInstant() ?: Instant.DISTANT_PAST }
             .thenByDescending { it[GD.gedraId].toOptStr() ?: "" }
 
-    internal fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraData]
+    internal fun gedraDataTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[GDT.gedraData]
         ?: throw KdrException("${GDT.gedraData} table is not registered in the schema store.")
 
-    internal fun gedraStatesTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GDT.gedraDataStates]
+    internal fun gedraStatesTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[GDT.gedraDataStates]
         ?: throw KdrException("${GDT.gedraDataStates} table is not registered in the schema store.")
 
     /**

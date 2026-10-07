@@ -27,7 +27,7 @@ import kotlin.time.Instant
 object ClientSyncTracking {
     /** The markers as they stand: client id -> newest-config date. */
     fun readMarkers(cxt: KdrCxt, sqlCxt: SqlCxt): Map<String, Instant> {
-        val table = cxt.getSchema().tables[CSY.clientSyncTracking]
+        val table = cxt.getGlobalSchema().tables[CSY.clientSyncTracking]
             ?: throw KdrException("${CSY.clientSyncTracking} table is not registered in the schema store.")
         var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {

@@ -194,7 +194,7 @@ object ReportSnapshotRows {
 
     private const val dayMs = 24L * 60 * 60 * 1000
 
-    private fun table(cxt: KdrCxt) = cxt.getSchema().tables[RHT.reportSnapshot]
+    private fun table(cxt: KdrCxt) = cxt.getGlobalSchema().tables[RHT.reportSnapshot]
         ?: throw KdrException("${RHT.reportSnapshot} table is not registered in the schema store.")
 }
 

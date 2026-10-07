@@ -115,7 +115,7 @@ class GedraConfigService : ServiceInitializer {
     /** Each config slot's primary-key fields (issue #732): how a per-slot patch addresses one entry in a slot. */
     fun configSlotPrimaryKeys(): Map<String, List<String>> = slotPrimaryKeys
 
-    private fun configTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GCT.gedraConfig]
+    private fun configTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[GCT.gedraConfig]
         ?: throw KdrException("${GCT.gedraConfig} table is not registered in the schema store.")
 
     /**
@@ -566,7 +566,7 @@ class GedraConfigService : ServiceInitializer {
     )
 
     /** The [GCT.gedraConfigControl] table from the schema store, where a client's protection tier is stored (#617). */
-    private fun controlTable(cxt: KdrCxt): KdrTable = cxt.getSchema().tables[GCT.gedraConfigControl]
+    private fun controlTable(cxt: KdrCxt): KdrTable = cxt.getGlobalSchema().tables[GCT.gedraConfigControl]
         ?: throw KdrException("${GCT.gedraConfigControl} table is not registered in the schema store.")
 
     /**

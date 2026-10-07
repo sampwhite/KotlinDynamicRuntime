@@ -293,7 +293,7 @@ object JobStatusRows {
     /** Every client row [jobType] has (a dry run's, when [dryRun]), ordered by client. */
     fun readClients(cxt: KdrCxt, jobType: String, dryRun: Boolean = false): List<JobStatusRow> {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, jobTopic)
-        val table = cxt.getSchema().tables[JOB.jobClientStatus]
+        val table = cxt.getGlobalSchema().tables[JOB.jobClientStatus]
             ?: throw KdrException("${JOB.jobClientStatus} table is not registered in the schema store.")
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qJobClientsByType", table.columns,
@@ -327,7 +327,7 @@ object JobStatusRows {
 
     private fun readRow(cxt: KdrCxt, tableName: String, key: Map<String, Any?>): JobStatusRow? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, jobTopic)
-        val table = cxt.getSchema().tables[tableName]
+        val table = cxt.getGlobalSchema().tables[tableName]
             ?: throw KdrException("$tableName table is not registered in the schema store.")
         var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
