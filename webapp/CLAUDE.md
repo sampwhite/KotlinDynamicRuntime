@@ -128,7 +128,12 @@ Current UI-config endpoints:
   its place -- **Acme Sandbox**, on screen however far a page scrolls, as the bar is -- whose popover says what the
   sandbox runs and offers **Back to Acme**, a switch to the person's own user there (`SandboxShell.kt`:
   `showOpenSandbox`, `sandboxChipLabel`, `sandboxInfoText`, `sandboxWayBack`). The UI word is "sandbox"; "Shadow" is
-  the feature's internal name and appears in no UI text.
+  the feature's internal name and appears in no UI text. In a sandbox the whole page says so too (issue #1049): the
+  shell marks the page root (`data-sandbox`, `markPageSandbox`), and `app.css` turns the page behind the cards a mid
+  teal (`--sandbox-page`; the page itself only -- the inset wells that share `--surface-page` stay slate) and draws a
+  band along the top edge -- outside a sandbox there is neither. And since a cue that shows only
+  in a sandbox protects nobody who wrongly believes they are in one, every delete confirmation names where it acts,
+  from the form's or user's own client (`deleteTargetText`: "acme (live data)" or "acme's sandbox").
 - **Invitations** (issue #751), anonymous like the rest of the auth flow: an administrator's create for an
   address that is not their own -- new, or another person's -- provisions an unclaimed user and mails a link
   to `#page=invite&token=<token>` (built under `KDR_PUBLIC_URL`, else the request's scheme and host). The

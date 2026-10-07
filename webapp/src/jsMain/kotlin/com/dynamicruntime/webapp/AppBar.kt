@@ -204,6 +204,9 @@ val AppBar = FC<AppBarProps> { props ->
                 return@launch
             }
             config = cfg
+            // Tint the page while in a sandbox (issue #1049) -- set from a loaded config only, so a failed refresh
+            // leaves the page as it was rather than dropping the signal.
+            markPageSandbox(pageInSandbox(cfg))
             // The wordmark is a client's to change (issue #456), so it is re-read when the caller changes, not
             // only on mount. A stale build id (a rolling deploy) recovers silently via the shared retry.
             val loaded = apiResult {

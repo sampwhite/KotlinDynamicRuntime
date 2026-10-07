@@ -75,6 +75,35 @@
        Deep enough that --text keeps its contrast against it, so no text colour changes with the bar. */
     --surface-admin: #422006;
     --border-admin: #d97706;
+
+    /* The sandbox's colors (issue #1049): teal, apart from the indigo accent, the admin bar's amber and the success
+       green, so the sandbox never reads as one of those. The band, and the page behind the cards. */
+    --sandbox: #14b8a6;
+    --sandbox-page: oklch(0.45 0.08 190);
+}
+
+/* In a sandbox (issue #1049): the page behind the cards turns teal, and a band runs along the top edge above
+   everything, so being in a sandbox shows at a glance -- on a screen share, in a cropped screenshot -- and not only
+   in the bar's chip. Outside a sandbox there is neither. The attribute is set by the shell from its config
+   (`markPageSandbox`).
+
+   The page's own background only, not --surface-page: that token is also the inset wells inside the cards (inputs,
+   code, chips), where text sits, and they stay as they are. No text sits on the page itself -- every page draws its
+   content on a card -- so the tint answers to no text contrast and can be a mid-tone, bold enough to read on a call,
+   with the slate cards standing out on it as panels. */
+:root[data-sandbox] body {
+    background: var(--sandbox-page);
+}
+:root[data-sandbox] body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--sandbox);
+    z-index: 1100;
+    pointer-events: none;
 }
 
 * { box-sizing: border-box; }
