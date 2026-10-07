@@ -62,4 +62,27 @@ class SandboxShellTest {
         assertEquals(1L, sandboxWayBack(of, users.filter { it.userId != 2L })?.userId)
         assertNull(sandboxWayBack(of, users.filter { it.client != "acme" }))
     }
+
+    // Issue #1049: the page is marked only in a sandbox; a loading shell config marks nothing.
+    @Test
+    fun thePageIsMarkedOnlyInASandbox() {
+        assertTrue(pageInSandbox(config(state = mapOf(HFLD.sandboxOf to "acme"))))
+        assertFalse(pageInSandbox(config()))
+        assertFalse(pageInSandbox(null))
+    }
+
+    // Issue #1049: a delete names where it acts, from the thing's own client -- live data, or a sandbox.
+    @Test
+    fun aDeleteNamesTheClientItActsInAndWhetherItIsLive() {
+        assertEquals("acme (live data)", deleteTargetText("acme"))
+        assertEquals("acme's sandbox", deleteTargetText("acme:sandbox"))
+        assertEquals("Delete this form from acme (live data)?", deleteFormQuestion("gd.fd.acme.e20261007120000000AbCd"))
+        assertEquals("Delete this form from acme's sandbox?", deleteFormQuestion("gd.fd.acme:sandbox.e20261007120000000AbCd"))
+        // An id that does not parse names nothing rather than guessing.
+        assertEquals("Delete this form?", deleteFormQuestion(null))
+        // A cross-client listing's row names its own form's client, not the page's.
+        assertEquals("Delete from globex (live data)?", deleteRowQuestion("gd.fd.globex.e20261007120000000AbCd"))
+        assertEquals("Delete?", deleteRowQuestion("not an id"))
+        assertEquals("Delete this user from acme's sandbox?", deleteUserQuestion("acme:sandbox"))
+    }
 }

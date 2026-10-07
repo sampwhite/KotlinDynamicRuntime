@@ -879,6 +879,10 @@ val Users = FC<Props> {
                             +"Delete user…"
                         }
                     } else {
+                        span {
+                            className = ClassName("subtitle")
+                            editing?.let { +deleteUserQuestion(it.client) }
+                        }
                         Button {
                             danger = true
                             loading = busy

@@ -470,31 +470,25 @@ private val FormRowActions = FC<FormRowActionsProps> { props ->
             }
         }
         if (props.canDelete) {
-            if (props.confirming) {
-                span {
-                    className = ClassName("subtitle")
-                    +"Delete?"
-                }
+            // A popover anchored to the link rather than an inline question (issue #1049): the actions column can sit
+            // past a narrow window's edge, and an inline question there left its answers off screen. It opens to the
+            // link's left, level with its row, so it stays inside the table's drawn area -- opening below ran past the
+            // bottom of a short table -- and antd flips it when that would leave the visible area. It names where
+            // the delete acts.
+            Popconfirm {
+                title = deleteRowQuestion(props.id)
+                okText = "Delete"
+                cancelText = "Cancel"
+                placement = "left"
+                open = props.confirming
+                onOpenChange = { open -> if (open) props.onArmDelete(props.id) else props.onCancelDelete() }
+                onConfirm = { props.onConfirmDelete(props.id) }
+                okButtonProps = js("({ danger: true })")
                 Button {
                     type = "link"
                     size = "small"
                     danger = true
                     loading = props.deleting
-                    onClick = { props.onConfirmDelete(props.id) }
-                    +"Yes"
-                }
-                Button {
-                    type = "link"
-                    size = "small"
-                    onClick = { props.onCancelDelete() }
-                    +"Cancel"
-                }
-            } else {
-                Button {
-                    type = "link"
-                    size = "small"
-                    danger = true
-                    onClick = { props.onArmDelete(props.id) }
                     +"Delete"
                 }
             }

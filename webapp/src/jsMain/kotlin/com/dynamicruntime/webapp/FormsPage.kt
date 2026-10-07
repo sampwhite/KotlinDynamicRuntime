@@ -620,7 +620,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                             } else {
                                 span {
                                     className = ClassName("subtitle")
-                                    +"Delete this form?"
+                                    +deleteFormQuestion(viewingId)
                                 }
                                 Button {
                                     danger = true

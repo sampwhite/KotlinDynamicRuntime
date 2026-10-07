@@ -241,6 +241,11 @@ external val Popover: ComponentType<PopoverProps>
  * antd's confirm popover (issue #832): wraps a control, and asks before [onConfirm] runs -- an approval, which cannot
  * be taken back. [title] is the question, [okText]/[cancelText] its answers; [disabled] lets the wrapped control act
  * as though unwrapped (it never opens).
+ *
+ * Anchored to the wrapped control rather than centered (issue #1049): [placement] says which side and edge it opens
+ * from ("bottomRight" opens below, its right edge on the control's), and antd flips it when that would leave the
+ * visible area. [open] with [onOpenChange] makes it controlled -- a click outside or Cancel asks to close.
+ * [okButtonProps] is antd's props object for the answer button (`danger`, `loading`).
  */
 external interface PopconfirmProps : PropsWithChildren {
     var title: dynamic
@@ -249,6 +254,10 @@ external interface PopconfirmProps : PropsWithChildren {
     var cancelText: String?
     var onConfirm: (() -> Unit)?
     var disabled: Boolean?
+    var open: Boolean?
+    var onOpenChange: ((Boolean) -> Unit)?
+    var placement: String?
+    var okButtonProps: dynamic
 }
 
 external val Popconfirm: ComponentType<PopconfirmProps>
