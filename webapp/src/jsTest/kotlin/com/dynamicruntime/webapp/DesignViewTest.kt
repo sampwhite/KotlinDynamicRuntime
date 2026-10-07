@@ -12,9 +12,11 @@ import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Design View's pure pieces (issue #972): the field plan both presentations follow, the walk from a field's data path
@@ -369,5 +371,93 @@ class DesignViewTest {
         assertEquals(setOf(DSV.typeName, DSV.field, DSV.options, DSV.sharedBasedOn), plain.keys)
         val anyway = sharedFieldBody("client.demo.Request", "venue", null, options, "abc123", acknowledgeImpact = true)
         assertEquals(true, anyway[IMP.acknowledgeImpact])
+    }
+
+    // --- a workflow form's own requirements (issue #1048) ---
+
+    private val requirementTypes = parseSchemaTypes(
+        mapOf(
+            "client.demo.Event" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    "venue" to mapOf(
+                        SCH.type to SCT.string,
+                        SCH.options to listOf(
+                            mapOf(SCH.value to "office", SCH.label to "At the office"),
+                            mapOf(SCH.value to "hotel", SCH.label to "A hotel"),
+                            mapOf(SCH.value to "park", SCH.label to "A park"),
+                        ),
+                    ),
+                    "note" to mapOf(SCH.type to SCT.string, SCH.visibleWhen to "kdr:hasAdminLevel"),
+                    "total" to mapOf(SCH.type to SCT.number, SCH.derived to true),
+                ),
+            ),
+        ),
+    ).getValue("client.demo.Event")
+    private val venueType = requirementTypes.properties.getValue("venue").valueType
+
+    @Test
+    fun choiceRowsStartFromTheEntryOrOfferEverything() {
+        val all = formChoiceRowsOf(venueType, emptyMap())!!
+        assertEquals(listOf("office", "hotel", "park"), all.map { it.value })
+        // Every label filled in from the schema's, ready to change: a customized list owns its copy.
+        assertTrue(all.all { it.offered && it.label == it.schemaLabel })
+        // Restated: the offered ones first, in the entry's order, with its labels; the rest after, not offered.
+        val restated = formChoiceRowsOf(
+            venueType,
+            mapOf(SL.choices to listOf(mapOf(SL.value to "park", SL.label to "Outdoors"), mapOf(SL.value to "office"))),
+        )!!
+        assertEquals(listOf("park" to true, "office" to true, "hotel" to false), restated.map { it.value to it.offered })
+        assertEquals("Outdoors", restated.first().label)
+        // A restated choice with no label of its own, and one not offered, show the schema's.
+        assertEquals("At the office", restated[1].label)
+        assertEquals("A hotel", restated.last().label)
+        assertNull(formChoiceRowsOf(requirementTypes.properties.getValue("note").valueType, emptyMap()))
+    }
+
+    @Test
+    fun theSavedEntryKeepsTheCopyAndWritesOnlyWhatTheFormAdds() {
+        val start = mapOf(SL.field to "venue", SL.label to "Venue", SL.required to true)
+        val copy = mapOf(SL.label to "Venue", SL.description to "", SL.hint to "")
+        val everything = formChoiceRowsOf(venueType, emptyMap())!!
+        // The schema's list as it is: no `choices`, so the form follows the schema's list. Unrequired: no key.
+        assertEquals(mapOf(SL.field to "venue", SL.label to "Venue"), formEntryFrom(start, "venue", copy, required = false, rows = everything))
+        // Customized -- one choice dropped, one relabeled -- the list is written in full, every label with it.
+        val fewer = everything.map { if (it.value == "hotel") FormChoiceRow(it.value, it.schemaLabel, false, it.label) else it }
+            .map { if (it.value == "park") FormChoiceRow(it.value, it.schemaLabel, true, " Outdoors ") else it }
+        assertEquals(
+            mapOf(
+                SL.field to "venue", SL.label to "Venue", SL.required to true,
+                SL.choices to listOf(
+                    mapOf(SL.value to "office", SL.label to "At the office"),
+                    mapOf(SL.value to "park", SL.label to "Outdoors"),
+                ),
+            ),
+            formEntryFrom(start, "venue", copy, required = true, rows = fewer),
+        )
+        // A relabel alone customizes the list too; a label cleared takes the schema's back.
+        val relabeled = everything.map { if (it.value == "office") FormChoiceRow(it.value, it.schemaLabel, true, "Head office") else it }
+            .map { if (it.value == "hotel") FormChoiceRow(it.value, it.schemaLabel, true, "  ") else it }
+        assertEquals(
+            listOf("Head office", "A hotel", "A park"),
+            formEntryFrom(start, "venue", copy, required = false, rows = relabeled)[SL.choices].toJsonListOfMaps().map { it[SL.label] },
+        )
+        assertEquals("A form offers at least one choice.", formChoicesProblem(everything.map { FormChoiceRow(it.value, it.schemaLabel, false, "") }))
+        assertNull(formChoicesProblem(fewer))
+    }
+
+    @Test
+    fun aFieldNobodyCouldAlwaysFillInIsNotOfferedRequired() {
+        assertTrue(formRequiredUnavailable(requirementTypes.properties.getValue("note"))!!.contains("cannot see"))
+        assertTrue(formRequiredUnavailable(requirementTypes.properties.getValue("total"))!!.contains("works this field out"))
+        assertNull(formRequiredUnavailable(requirementTypes.properties.getValue("venue")))
+    }
+
+    @Test
+    fun anotherClientsFormIsNamedOnEveryDesignViewCall() {
+        assertEquals(mapOf(DSV.slot to "traitDef", DSV.key to "eventRequest"), definitionQuery("traitDef", "eventRequest", null))
+        assertEquals("acme", definitionQuery("traitDef", "eventRequest", "acme")[DSV.client])
+        assertEquals("acme", sharedFieldBody("client.acme.Event", "venue", null, null, "abc", acknowledgeImpact = false, client = "acme")[DSV.client])
+        assertNull(sharedFieldBody("client.acme.Event", "venue", null, null, "abc", acknowledgeImpact = false)[DSV.client])
     }
 }

@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.offeredChoices
@@ -38,8 +39,8 @@ private val designScope = MainScope()
 
 /** The Design View definition read (issue #972): one definition's authored entry and where it was declared. */
 object DesignApi {
-    suspend fun definition(slot: String, key: String): Map<String, Any?> =
-        Http.getApi(DSV.definition + queryString(mapOf(DSV.slot to slot, DSV.key to key)))[EP.item].toJsonMapOrEmpty()
+    suspend fun definition(slot: String, key: String, client: String?): Map<String, Any?> =
+        Http.getApi(DSV.definition + queryString(definitionQuery(slot, key, client)))[EP.item].toJsonMapOrEmpty()
 
     /**
      * Sets the workflow's own layout entry for [field] of [typeName] to [entry], or clears it when [entry] is null
@@ -52,6 +53,7 @@ object DesignApi {
         field: String,
         entry: Map<String, Any?>?,
         basedOn: String,
+        client: String?,
     ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
         "POST", DSV.layoutEntryEdit,
         buildMap {
@@ -60,6 +62,7 @@ object DesignApi {
             put(DSV.field, field)
             entry?.let { put(DSV.entry, it) }
             put(DSV.basedOn, basedOn)
+            client?.let { put(DSV.client, it) }
         },
     )
 
@@ -75,9 +78,10 @@ object DesignApi {
         entry: Map<String, Any?>?,
         options: List<Map<String, Any?>>?,
         basedOn: String,
-        acknowledgeImpact: Boolean = false,
+        acknowledgeImpact: Boolean,
+        client: String?,
     ): ApiResult<Map<String, Any?>> = Http.sendApiResult(
-        "POST", DSV.sharedFieldEdit, sharedFieldBody(typeName, field, entry, options, basedOn, acknowledgeImpact),
+        "POST", DSV.sharedFieldEdit, sharedFieldBody(typeName, field, entry, options, basedOn, acknowledgeImpact, client),
     )
 }
 
@@ -162,7 +166,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
         if (cacheKey == null || cacheKey in loaded) return@useEffect
         designScope.launch {
             // A definition that will not load is said in the panel; the page stays usable.
-            val result = apiResult { DesignApi.definition(a.slot, a.key) }
+            val result = apiResult { DesignApi.definition(a.slot, a.key, session.client) }
             loaded = loaded + (cacheKey to LoadedDefinition(result.valueOrNull(), result.failureOrNull()?.let { userFacingError(it) }))
         }
     }
@@ -486,6 +490,10 @@ external interface WorkflowCopyEditorProps : Props {
  * every other workflow draws from too. Shows what the override replaces, says when the shared copy has changed since,
  * and offers **Reset to shared**. A save is the server's to refuse (a stale page, an entry the layout checks reject),
  * and the refusal is said here.
+ *
+ * Beside the copy, the form's own requirements (issue #1048, the keys of #1022): **Required on this form**, and for a
+ * field with a closed list, **Choices on this form** -- which of the schema's choices this form offers, and its label
+ * for each. They save into the same entry, so changing one keeps the copy, and Reset removes them with it.
  */
 private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
     val session = props.session
@@ -497,6 +505,8 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
     var editing by useState(false)
     var asJson by useState(false)
     var values by useState(editableCopyKeys.associateWith { start[it].toOptStr().orEmpty() })
+    var required by useState(start[SL.required] == true)
+    var choiceRows by useState(formChoiceRowsOf(target.prop.valueType, start))
     var jsonText by useState(start.toJsonStr())
     var saving by useState(false)
     var failure by useState<DisplayError?>(null)
@@ -505,7 +515,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
         saving = true
         failure = null
         designScope.launch {
-            val result = DesignApi.setLayoutEntry(session.workflowId, owner.typeName, target.name, entry, session.design.basedOn)
+            val result = DesignApi.setLayoutEntry(session.workflowId, owner.typeName, target.name, entry, session.design.basedOn, session.client)
             saving = false
             val refused = result.failureOrNull()
             if (refused != null) {
@@ -575,6 +585,11 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                         }
                     }
                 }
+                formRequirementControls(
+                    target, required, choiceRows,
+                    onRequired = { required = it },
+                    onRows = { choiceRows = it },
+                )
             }
             div {
                 className = ClassName("dv-actions")
@@ -592,7 +607,12 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                                 save(entry.toJsonMapOrEmpty())
                             }
                         } else {
-                            save(copyEntryFrom(start, target.name, values))
+                            val problem = formChoicesProblem(choiceRows)
+                            if (problem != null) {
+                                failure = DisplayError.expected(problem)
+                            } else {
+                                save(formEntryFrom(start, target.name, values, required, choiceRows))
+                            }
                         }
                     }
                     +"Save"
@@ -600,7 +620,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                 Button {
                     size = "small"
                     onClick = {
-                        if (!asJson) jsonText = copyEntryFrom(start, target.name, values).toJsonStr()
+                        if (!asJson) jsonText = formEntryFrom(start, target.name, values, required, choiceRows).toJsonStr()
                         asJson = !asJson
                     }
                     +(if (asJson) "Edit as a form" else "Edit as JSON")
@@ -617,6 +637,64 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
             }
         }
         failure?.let { errorText("Couldn't save the copy.", it) }
+    }
+}
+
+/**
+ * The workflow copy editor's form requirements (issue #1048): a **Required on this form** checkbox -- shown checked and
+ * locked when the data itself requires the field, and replaced by the reason when no form may require it -- and, for a
+ * field with a closed list, one row per schema choice: offered or not, with the form's label for it, filled in from the
+ * schema's to be changed. The editor keeps the choices' order; a list ordered by hand keeps its order.
+ */
+private fun ChildrenBuilder.formRequirementControls(
+    target: DesignTarget.Field,
+    required: Boolean,
+    rows: List<FormChoiceRow>?,
+    onRequired: (Boolean) -> Unit,
+    onRows: (List<FormChoiceRow>) -> Unit,
+) {
+    p {
+        className = ClassName("dv-caption")
+        +"Form requirements \u2014 what this form asks for beyond the data"
+    }
+    val unavailable = formRequiredUnavailable(target.prop)
+    if (unavailable != null) {
+        p {
+            className = ClassName("dv-note")
+            +unavailable
+        }
+    } else {
+        div {
+            className = ClassName("dv-actions")
+            Checkbox {
+                // Already required by the data: nothing for the form to add, so shown but not changeable.
+                checked = required || target.required
+                disabled = target.required
+                onChange = { e -> onRequired(e.target.checked == true) }
+                +(if (target.required) "Required on this form (the data requires it)" else "Required on this form")
+            }
+        }
+    }
+    if (rows == null) return
+    p {
+        className = ClassName("dv-caption")
+        +"Choices on this form"
+    }
+    rows.forEachIndexed { i, row ->
+        div {
+            className = ClassName("dv-edit-row")
+            Checkbox {
+                checked = row.offered
+                onChange = { e -> onRows(rows.mapIndexed { j, r -> if (j == i) FormChoiceRow(r.value, r.schemaLabel, e.target.checked == true, r.label) else r }) }
+                +row.value
+            }
+            Input {
+                value = row.label
+                placeholder = row.schemaLabel
+                disabled = !row.offered
+                onChange = { e -> onRows(rows.mapIndexed { j, r -> if (j == i) FormChoiceRow(r.value, r.schemaLabel, r.offered, e.target.value as String) else r }) }
+            }
+        }
     }
 }
 
@@ -664,6 +742,7 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                 props.typeName, target.name,
                 copyEntryFrom(start, target.name, values).takeIf { copyChanged(start, values) },
                 startRows?.let { sharedOptionsPayload(rows) }, facts.basedOn, acknowledgeImpact = acknowledge,
+                client = props.session.client,
             )
             saving = false
             val refused = result.failureOrNull()

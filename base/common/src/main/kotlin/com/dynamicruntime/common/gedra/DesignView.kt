@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -463,11 +464,12 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
                 type = SCT.kObject
             }
             field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
+            designClientField()
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val stamp = DesignView.setLayoutEntry(
-            c, request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
+            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request.getReqNonBlankStr(DSV.field), (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
             request.getReqNonBlankStr(DSV.basedOn),
         )
@@ -506,11 +508,12 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
                 "Save a removal of choices although stored forms hold them (issue #1040); without it, such a save is " +
                     "refused with the impact report.",
             ) { type = SCT.boolean }
+            designClientField()
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val stamp = DesignSharedEdit.setSharedField(
-            c, request.getReqNonBlankStr(DSV.typeName), request.getReqNonBlankStr(DSV.field),
+            designCxt(c, request), request.getReqNonBlankStr(DSV.typeName), request.getReqNonBlankStr(DSV.field),
             (request[DSV.entry] as? Map<*, *>)?.toJsonMap(),
             (request[DSV.options] as? List<*>)?.map { (it as? Map<*, *>)?.toJsonMap().orEmpty() },
             request.getReqNonBlankStr(DSV.sharedBasedOn),
@@ -527,9 +530,26 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         inputFields = {
             field(DSV.slot, "The config slot.", required = true) { for (s in DesignView.readableSlots) option(s) }
             field(DSV.key, "The entry's key in that slot.", required = true)
+            designClientField()
         },
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
-        DesignView.definition(c, request.getReqNonBlankStr(DSV.slot), request.getReqNonBlankStr(DSV.key))
+        DesignView.definition(designCxt(c, request), request.getReqNonBlankStr(DSV.slot), request.getReqNonBlankStr(DSV.key))
     }
+}
+
+/** The Design View endpoints' [DSV.client] input: the client whose form the page draws. */
+private fun InputFieldsBuilder.designClientField() =
+    overseenClientField(DSV.client, "The client whose form the page draws; the caller's own when absent.")
+
+/**
+ * The context a Design View request acts in: the caller's, or -- when it names [DSV.client] -- one bound to that
+ * client, which only an administrator who may see every client may name ([overseenClient]). The page names it when
+ * such an administrator has opened another client's form, since its workflows and definitions are that client's,
+ * not the caller's own (`hub`, usually).
+ */
+private fun designCxt(c: KdrCxt, request: Map<String, Any?>): KdrCxt {
+    val named = request[DSV.client].toOptStr() ?: return c
+    val client = overseenClient(c, named)
+    return if (client == c.client) c else c.mkSubContext("design", client)
 }

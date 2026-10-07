@@ -318,6 +318,12 @@ class DesignSession(
     /** The workflow the page draws (issue #984): what an edit of its copy names. */
     val workflowId: String = "",
     /**
+     * The client whose form the page draws, when it is not the caller's own -- an administrator who sees every client
+     * opening another client's form -- else null. Every Design View read and save names it, since that form's
+     * workflows and definitions are its client's ([DSV.client]).
+     */
+    val client: String? = null,
+    /**
      * Re-reads the page's view in place after an edit has saved (issue #984), so the change shows without a reload
      * and unsaved form values survive. A no-op where the page has none.
      */
@@ -326,7 +332,7 @@ class DesignSession(
     val trait: WfTraitView? = null,
 ) {
     fun forTrait(t: WfTraitView): DesignSession =
-        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, afterEdit, t)
+        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, client, afterEdit, t)
 
     fun isSelected(target: DesignTarget): Boolean = selected?.id == target.id
 
@@ -376,6 +382,77 @@ fun copyFallback(key: String, name: String, prop: SchProperty): CopyFallback = w
     SL.hint -> boundHintText(prop.valueType)?.let { CopyFallback(it, "Blank: forms show the field's range.") }
         ?: CopyFallback(null, "Blank: forms show no hint.")
     else -> CopyFallback(null, "")
+}
+
+// --- a workflow form's own requirements (issue #1048) ---------------------------------------------------------------
+
+/**
+ * One of the schema's choices as the workflow copy editor's "Choices on this form" lists it (issue #1048): whether
+ * the form [offered] it, and the form's [label] for it -- the schema's ([schemaLabel]) until someone changes it.
+ */
+class FormChoiceRow(val value: String, val schemaLabel: String, val offered: Boolean, val label: String)
+
+/**
+ * The editor's choice rows for a field of type [vt] whose layout entry is [entry] (issue #1048), or null when the
+ * field has no closed list for a form to restate. Each row starts with its label filled in -- the entry's, else the
+ * schema's -- since a form customizing its list owns all of it, copy included. With no `choices` in the entry, every
+ * choice is offered. With some, the offered ones come first in the entry's order -- the editor does not reorder,
+ * but keeps an order written by hand -- then the rest in the schema's, not offered. Pure.
+ */
+fun formChoiceRowsOf(vt: SchType, entry: Map<String, Any?>): List<FormChoiceRow>? {
+    val options = vt.options?.takeIf { !vt.openOptions } ?: return null
+    val restated = (entry[SL.choices] as? List<*>)?.map { it.toJsonMapOrEmpty() }
+        ?: return options.map { FormChoiceRow(it.value, it.label, offered = true, label = it.label) }
+    val byValue = options.associateBy { it.value }
+    val offered = restated.mapNotNull { c ->
+        val value = c[SL.value].toOptStr() ?: return@mapNotNull null
+        byValue[value]?.let { FormChoiceRow(value, it.label, offered = true, label = c[SL.label].toOptStr() ?: it.label) }
+    }
+    val listed = offered.map { it.value }.toSet()
+    return offered + options.filter { it.value !in listed }.map { FormChoiceRow(it.value, it.label, offered = false, label = it.label) }
+}
+
+/**
+ * The layout entry the workflow copy editor saves (issue #1048): [copyEntryFrom]'s, with the form's requirements set
+ * from the controls -- [required] written only when true, and the choices from [rows] (null for a field without a
+ * closed list, which keeps what [start] has). Rows as the schema has them -- every choice offered, under its own
+ * label -- write no `choices`, so the form follows the schema's list again, choices it gains later included. Any
+ * other rows write the list in **full**: each offered choice with its label, a blank one taking the schema's. A
+ * form that customizes its list is controlling exactly what it shows, so it does not inherit a later relabel. Pure.
+ */
+fun formEntryFrom(
+    start: Map<String, Any?>,
+    field: String,
+    values: Map<String, String>,
+    required: Boolean,
+    rows: List<FormChoiceRow>?,
+): Map<String, Any?> {
+    val out = LinkedHashMap(copyEntryFrom(start, field, values))
+    if (required) out[SL.required] = true else out.remove(SL.required)
+    if (rows != null) {
+        fun labelOf(row: FormChoiceRow) = row.label.trim().ifEmpty { row.schemaLabel }
+        if (rows.all { it.offered && labelOf(it) == it.schemaLabel }) {
+            out.remove(SL.choices)
+        } else {
+            out[SL.choices] = rows.filter { it.offered }.map { linkedMapOf<String, Any?>(SL.value to it.value, SL.label to labelOf(it)) }
+        }
+    }
+    return out
+}
+
+/** Why the editor's choice rows cannot be saved, or null when they can: a form offers at least one choice. Pure. */
+fun formChoicesProblem(rows: List<FormChoiceRow>?): String? =
+    if (rows != null && rows.none { it.offered }) "A form offers at least one choice." else null
+
+/**
+ * Why "Required on this form" is not offered for [prop] (issue #1048), or null when it is: a field nobody at the form
+ * could always fill in, which the layout's load check refuses (#1022) -- so the editor says so rather than letting
+ * the save be refused. Pure.
+ */
+fun formRequiredUnavailable(prop: SchProperty): String? = when {
+    prop.valueType.derived -> "The server works this field out, so no form asks for it."
+    prop.visibleWhen != null -> "Some people cannot see this field, so a form cannot require it."
+    else -> null
 }
 
 /** Where a workflow's override of [field] in [typeName] lives in its definition (issue #984), for people and tools. */
@@ -495,6 +572,7 @@ fun sharedFieldBody(
     options: List<Map<String, Any?>>?,
     basedOn: String,
     acknowledgeImpact: Boolean,
+    client: String? = null,
 ): Map<String, Any?> = buildMap {
     put(DSV.typeName, typeName)
     put(DSV.field, field)
@@ -502,4 +580,15 @@ fun sharedFieldBody(
     options?.let { put(DSV.options, it) }
     put(DSV.sharedBasedOn, basedOn)
     if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
+    client?.let { put(DSV.client, it) }
+}
+
+/**
+ * The query of a Design View definition read: the definition's [slot] and [key], and the [client] whose form the
+ * page draws when it is not the caller's own ([DesignSession.client]). Pure.
+ */
+fun definitionQuery(slot: String, key: String, client: String?): Map<String, Any?> = buildMap {
+    put(DSV.slot, slot)
+    put(DSV.key, key)
+    client?.let { put(DSV.client, it) }
 }

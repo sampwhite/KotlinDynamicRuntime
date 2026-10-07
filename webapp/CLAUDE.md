@@ -700,7 +700,14 @@ somebody's unpublished changes (`unpublishedChanges`) -- and a draft of the pare
 one with a sandbox, whose own page points to the sandbox instead (`publishedOnly`). The two kinds of editor therefore
 never leave each other a draft to refuse. A field's summary keeps what the data requires apart from what this form
 asks for (issue #1022): **Required by the data** beside **Required on this form** and **Choices on this form**, the
-form's requirements from its layout entry -- read-only for now; the controls are #1048.
+form's requirements from its layout entry. The workflow copy editor sets them (issue #1048,
+`formRequirementControls`): a **Required on this form** checkbox -- locked when the data already requires the field,
+and replaced by the reason on a derived or `g-visibleWhen` field, which the load check refuses -- and, for a field
+with a closed list, a row per schema choice, offered or not, with the form's label for it, filled in from the
+schema's. They save into the workflow's own entry beside its copy (`formEntryFrom`), so Reset to shared removes them
+too. The schema's list left as it is writes no `choices`; any change -- a choice dropped, one relabeled -- writes the
+list in **full**, every label with it: a form customizing its choices controls exactly what it shows, and does not
+inherit a later relabel. The editor keeps the list's order rather than offering to change it.
 
 The **shared definition** -- what every workflow on the client draws -- is edited separately (issue #1029,
 `SharedFieldSection`), behind a deliberate **Edit the shared definition** button and never as an option beside a
@@ -729,6 +736,10 @@ client shares and what is this client's own, however it was assembled.
   reason, Design View draws it as a ghost. **A new rule that hides a field goes into `fieldHiddenReason`**, never
   as a fresh `return@forEach` in the render loop -- a rule added there would hide the field from Design View too,
   with no ghost to say so.
+- **Another client's form is designed in its own client.** An administrator who sees every client can open any
+  client's form, and its workflows and definitions are that client's, not theirs (`hub`, usually). So the session
+  carries the form's client (`DesignSession.client`, the page's surface client) and every Design View read and save
+  names it (`DSV.client`); the backend binds the request to it, and refuses it from anyone else (`overseenClient`).
 - **Only the workflow form is marked.** It provides `DesignViewContext`; every other `SchemaForm` (the catalog,
   the raw editors) sees null and draws exactly as before.
 - **Seeing it.** The `design-demo` simulation writes the `designdemo` client -- defined in data, so its definitions
