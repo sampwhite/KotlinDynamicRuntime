@@ -1,9 +1,11 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.DesignOrigin
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
@@ -460,6 +462,102 @@ fun overridePath(typeName: String, field: String): String =
     "${CCT.definition}.${WFD.types}[\"$typeName\"].${SCH.layout}.${SL.schemaFields}[$field]"
 
 val DesignViewContext = createContext<DesignSession?>(null)
+
+// --- shared wording: copy pulled from a fragment file (issue #1010) -------------------------------------------------
+
+/**
+ * One fragment key a copy slot pulls (issue #1010), as the definition read names it: its address, the words this
+ * client reads ([value]) and the shipped ones ([baseValue]), and -- when the client's own configuration sets the key --
+ * where ([origin], a `GedraConfigOrigin` name) and the client's source value a stored one overrides ([sourceValue]).
+ */
+class PulledKey(
+    val fileId: String,
+    val namespace: String,
+    val key: String,
+    val value: String?,
+    val baseValue: String?,
+    val origin: String?,
+    val sourceValue: String?,
+) {
+    /** The key as a person names it: `namespace.key`. */
+    val name: String get() = "$namespace.$key"
+}
+
+/** A copy slot that pulls fragment keys: the [pulls], and whether it is [mixed] with other text. */
+class PulledSlot(val mixed: Boolean, val pulls: List<PulledKey>)
+
+/**
+ * The pulled copy of [field] of [typeName] in a definition [read] (issue #1010), by copy slot (`label`,
+ * `description`, `hint`); empty when the field's copy pulls nothing. Pure.
+ */
+fun pulledCopyOf(read: Map<String, Any?>?, typeName: String, field: String): Map<String, PulledSlot> =
+    read?.get(DSV.pulledCopy).toJsonMapOrEmpty()[typeName].toJsonMapOrEmpty()[field].toJsonMapOrEmpty()
+        .mapValues { (_, raw) ->
+            val slot = raw.toJsonMapOrEmpty()
+            PulledSlot(
+                mixed = slot[DSV.mixed] == true,
+                pulls = slot[DSV.pulls].toJsonListOfMaps().map {
+                    PulledKey(
+                        fileId = it[COV.fileId].toOptStr().orEmpty(),
+                        namespace = it[COV.namespaceField].toOptStr().orEmpty(),
+                        key = it[COV.key].toOptStr().orEmpty(),
+                        value = it[COV.value].toOptStr(),
+                        baseValue = it[COV.baseValue].toOptStr(),
+                        origin = it[COV.origin].toOptStr(),
+                        sourceValue = it[COV.sourceValue].toOptStr(),
+                    )
+                },
+            )
+        }
+
+/** Why a definition [read]'s shared wording may not be changed from here (issue #1010), or null when it may. Pure. */
+fun sharedWordingRefusalOf(read: Map<String, Any?>?): String? = read?.get(DSV.sharedWordingRefusal).toOptStr()
+
+/**
+ * The line under a shared wording input (issue #1010): which wording it is, whose, and how far an edit reaches --
+ * `Shared wording "questionnaire.topicHelp" (formHelp) -- this client's own; shipped: "…". Used wherever that wording
+ * appears, in every workflow.` Pure.
+ */
+fun pulledSourceLine(pull: PulledKey): String {
+    val whose = when (pull.origin) {
+        null -> "the shipped wording"
+        GedraConfigOrigin.source.name -> "this client's own, set in its source configuration"
+        else -> "this client's own" + (pull.baseValue?.takeIf { it != pull.value }?.let { "; shipped: \"$it\"" } ?: "")
+    }
+    return "Shared wording \"${pull.name}\" (${pull.fileId}) \u2014 $whose. Used wherever that wording appears, in every workflow."
+}
+
+/**
+ * What **reset** says for [pull] (issue #1010), or null when there is nothing for data to remove: only a value the
+ * client's **stored** configuration sets can be reset, back to its source value when it overrides one, else to the
+ * shipped wording -- the copy endpoint's own rule (#918). Pure.
+ */
+fun pulledResetLabel(pull: PulledKey): String? = when {
+    pull.origin != GedraConfigOrigin.stored.name -> null
+    pull.sourceValue != null -> "Back to the source wording"
+    else -> "Back to shipped"
+}
+
+/**
+ * The words a copy slot shows as inherited in the workflow copy editor (issue #1010): a pull alone reads as its
+ * key's words and names the key; anything else is shown as written. Pure.
+ */
+fun inheritedCopyText(written: String, slot: PulledSlot?): String {
+    val pull = slot?.pulls?.singleOrNull()
+    return if (slot == null || slot.mixed || pull == null) written else "${pull.value ?: written} (shared wording ${pull.name})"
+}
+
+/**
+ * The body of a shared wording save or reset (issue #1010): the key's address, the [value] for a save, and the
+ * [client] whose form the page draws when it is not the caller's own. Pure.
+ */
+fun sharedWordingRequest(pull: PulledKey, value: String?, client: String?): Map<String, Any?> = buildMap {
+    client?.let { put(COV.client, it) }
+    put(COV.fileId, pull.fileId)
+    put(COV.namespaceField, pull.namespace)
+    put(COV.key, pull.key)
+    value?.let { put(COV.value, it) }
+}
 
 // --- the shared editor (issue #1029) ---------------------------------------------------------------------------------
 

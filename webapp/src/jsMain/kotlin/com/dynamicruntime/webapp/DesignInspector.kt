@@ -2,7 +2,9 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchOption
@@ -72,6 +74,16 @@ object DesignApi {
      * [basedOn]. A refusal comes back as the result's refusal: a stale stamp, or -- for a removed choice stored forms
      * hold -- the impact report ([impactOf]), which [acknowledgeImpact] goes past (issue #1040).
      */
+    /**
+     * Sets this client's **shared wording** at a fragment key a field's copy pulls (issue #1010) -- the Clients page's
+     * copy override (#918) -- or, with a null [value], removes the client's stored value. Live, or a draft for a client
+     * with a sandbox; the result says which.
+     */
+    suspend fun setSharedWording(pull: PulledKey, value: String?, client: String?): ApiResult<CopyEditResult> = apiResult {
+        val path = if (value == null) CPY.resetPath else CPY.setPath
+        parseCopyEditResult(Http.sendApi("POST", path, sharedWordingRequest(pull, value, client))[EP.results].toJsonMapOrEmpty())
+    }
+
     suspend fun setSharedField(
         typeName: String,
         field: String,
@@ -160,14 +172,18 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
     // Bumped when a save changes a definition the panel has read (the shared editor, issue #1029): its cached read is
     // dropped, and the key alone would not change, so this is what makes the read run again.
     var rereads by useState(0)
+    // Reads a save has made stale: re-read, with the old one kept on screen meanwhile, so a section the read draws --
+    // and what it was just telling the user, a saved note -- does not vanish and come back (issue #1010).
+    var stale by useState<Set<String>>(emptySet())
     val cacheKey = address?.let { "${it.slot}|${it.key}" }
     useEffect(cacheKey, rereads) {
         val a = address ?: return@useEffect
-        if (cacheKey == null || cacheKey in loaded) return@useEffect
+        if (cacheKey == null || (cacheKey in loaded && cacheKey !in stale)) return@useEffect
         designScope.launch {
             // A definition that will not load is said in the panel; the page stays usable.
             val result = apiResult { DesignApi.definition(a.slot, a.key, session.client) }
             loaded = loaded + (cacheKey to LoadedDefinition(result.valueOrNull(), result.failureOrNull()?.let { userFacingError(it) }))
+            stale = stale - cacheKey
         }
     }
     val definition = cacheKey?.let { loaded[it] }
@@ -221,6 +237,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         this.session = session
                         this.target = selected
                         authored = (address?.let { authoredLayoutEntry(it, definition, selected) })
+                        pulled = pulledCopyOf(definition.response, owner.typeName, selected.name)
                     }
                 } else if (design.editRefusal != null) {
                     // Not editable here: what the workflow's own copy is, if it has one -- and why there is no control,
@@ -229,10 +246,26 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                     div {
                         className = ClassName("dv-edit")
                         overrideFacts(edit)
-                        edit?.let { sharedCopyFacts(it.inherited) }
+                        edit?.let { sharedCopyFacts(it.inherited, pulledCopyOf(definition?.response, owner.typeName, selected.name)) }
                         p {
                             className = ClassName("dv-note")
                             +design.editRefusal
+                        }
+                    }
+                }
+                // Copy pulled from fragment files (issue #1010): the client's shared wording at each key, editable whatever
+                // the definition's origin, since a copy override is the client's own data.
+                val pulled = pulledCopyOf(definition?.response, owner.typeName, selected.name)
+                if (pulled.isNotEmpty()) {
+                    SharedWordingSection {
+                        key = "${selected.id}|wording".unsafeCast<Key>()
+                        this.session = session
+                        this.pulled = pulled
+                        this.shown = props.view.fieldLayouts[owner.typeName]?.fieldFor(selected.name)
+                        this.refusal = sharedWordingRefusalOf(definition?.response)
+                        onSaved = {
+                            cacheKey?.let { stale = stale + it }
+                            rereads += 1
                         }
                     }
                 }
@@ -248,9 +281,10 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         this.typeName = owner.typeName
                         this.fieldSchema = subtreeAt(definition?.response?.get(DSV.entry).toJsonMapOrEmpty(), address.path)
                         this.authored = authoredLayoutEntry(address, definition, selected)
+                        this.pulled = pulled
                         // The read is cached per definition, so a shared save -- which changes it -- drops it to re-read.
                         onSaved = {
-                            cacheKey?.let { loaded = loaded - it }
+                            cacheKey?.let { stale = stale + it }
                             rereads += 1
                         }
                     }
@@ -468,8 +502,9 @@ private fun ChildrenBuilder.overrideFacts(edit: LayoutEdit?) {
  * The shared copy a workflow's override replaces, for a reader who cannot edit it here -- the editor shows the same
  * beside each of its inputs. [inherited] is null when the shared layout has no entry for the field.
  */
-private fun ChildrenBuilder.sharedCopyFacts(inherited: Map<String, Any?>?) {
-    val copy = editableCopyKeys.mapNotNull { key -> inherited?.get(key).toOptStr()?.let { key to it } }
+private fun ChildrenBuilder.sharedCopyFacts(inherited: Map<String, Any?>?, pulled: Map<String, PulledSlot>) {
+    // A pulled slot reads as its words, naming the shared wording, never as its template (issue #1010).
+    val copy = editableCopyKeys.mapNotNull { key -> inherited?.get(key).toOptStr()?.let { key to inheritedCopyText(it, pulled[key]) } }
     if (copy.isEmpty()) {
         fact("Shared copy", "none")
         return
@@ -482,6 +517,8 @@ external interface WorkflowCopyEditorProps : Props {
     var target: DesignTarget.Field
     /** The type's own layout entry for the field, when the definition read has one -- where an edit starts. */
     var authored: Map<String, Any?>?
+    /** The field's copy slots that pull a fragment key (issue #1010), so an inherited pull reads as its words. */
+    var pulled: Map<String, PulledSlot>?
 }
 
 /**
@@ -565,7 +602,7 @@ private val WorkflowCopyEditor = FC<WorkflowCopyEditorProps> { props ->
                             +humanizeFieldName(key)
                         }
                         // Blank, the page shows the shared copy -- or, with none, the field's own (issue #1039).
-                        val sharedValue = shared?.get(key).toOptStr()
+                        val sharedValue = shared?.get(key).toOptStr()?.let { inheritedCopyText(it, props.pulled?.get(key)) }
                         val fallback = copyFallback(key, target.name, target.prop)
                         Input {
                             value = values[key].orEmpty()
@@ -698,6 +735,156 @@ private fun ChildrenBuilder.formRequirementControls(
     }
 }
 
+external interface SharedWordingSectionProps : Props {
+    var session: DesignSession
+    /** The field's pulled copy slots, from the definition read. */
+    var pulled: Map<String, PulledSlot>
+    /** The field's copy as the page shows it -- for a mixed slot, the composed words. */
+    var shown: SchLayoutField?
+    /** Why the wording may not be changed from here (a client with a sandbox is changed from it), or null. */
+    var refusal: String?
+    var onSaved: () -> Unit
+}
+
+/**
+ * The field's **shared wording** (issue #1010): each fragment key its copy pulls, edited at the key -- this client's
+ * copy override (#918), the Clients page's path -- so it changes everywhere the key is used, in every workflow. The
+ * user sees words, never the `%{@t(...)}` template; a slot that mixes a pull with other text is shown as composed,
+ * with each key it pulls editable beneath. Offered whatever the definition's origin: an override is the client's own
+ * data even for a definition declared globally or in source.
+ */
+private val SharedWordingSection = FC<SharedWordingSectionProps> { props ->
+    div {
+        className = ClassName("dv-edit")
+        h3 { +"Shared wording" }
+        p {
+            className = ClassName("dv-note")
+            +"This field's copy comes from shared wording. Changing it changes this client's wording wherever it is used."
+        }
+        props.refusal?.let {
+            p {
+                className = ClassName("dv-note")
+                +it
+            }
+        }
+        for (slot in editableCopyKeys) {
+            val pulled = props.pulled[slot] ?: continue
+            if (pulled.mixed) {
+                div {
+                    className = ClassName("dv-edit-row")
+                    span {
+                        className = ClassName("dv-fact-name")
+                        +humanizeFieldName(slot)
+                    }
+                    span { +shownCopy(props.shown, slot).orEmpty() }
+                    p {
+                        className = ClassName("dv-fallback")
+                        +"Combines shared wording with other text; the shared part is below."
+                    }
+                }
+            }
+            for (pull in pulled.pulls) {
+                SharedWordingRow {
+                    key = "$slot|${pull.fileId}|${pull.name}".unsafeCast<Key>()
+                    this.session = props.session
+                    this.label = if (pulled.mixed) pull.name else humanizeFieldName(slot)
+                    this.pull = pull
+                    this.editable = props.refusal == null
+                    this.onSaved = props.onSaved
+                }
+            }
+        }
+    }
+}
+
+/** [field]'s copy in [slot], as the page shows it. */
+private fun shownCopy(field: SchLayoutField?, slot: String): String? = when (slot) {
+    SL.label -> field?.label
+    SL.description -> field?.description
+    else -> field?.hint
+}
+
+external interface SharedWordingRowProps : Props {
+    var session: DesignSession
+    var label: String
+    var pull: PulledKey
+    /** False where the wording is changed elsewhere (the client's sandbox): the words and their source, no controls. */
+    var editable: Boolean
+    var onSaved: () -> Unit
+}
+
+/** One key's shared wording: its words, where they come from, and **Save shared wording** / reset (issue #1010). */
+private val SharedWordingRow = FC<SharedWordingRowProps> { props ->
+    val pull = props.pull
+    var value by useState(pull.value.orEmpty())
+    var saving by useState(false)
+    var note by useState<String?>(null)
+    var failure by useState<DisplayError?>(null)
+
+    fun save(newValue: String?) {
+        saving = true
+        failure = null
+        note = null
+        designScope.launch {
+            val result = DesignApi.setSharedWording(pull, newValue, props.session.client)
+            saving = false
+            val refused = result.failureOrNull()
+            if (refused != null) {
+                failure = userFacingError(refused)
+            } else {
+                note = savedNote(if (newValue == null) "Back to the earlier wording." else "Saved.", result.valueOrNull()?.mode ?: EDM.live)
+                props.onSaved()
+                props.session.afterEdit()
+            }
+        }
+    }
+
+    div {
+        className = ClassName("dv-edit-row")
+        span {
+            className = ClassName("dv-fact-name")
+            +props.label
+        }
+        Input {
+            this.value = value
+            placeholder = pull.baseValue
+            disabled = !props.editable
+            onChange = { e -> value = e.target.value as String }
+        }
+        p {
+            className = ClassName("dv-shared")
+            +pulledSourceLine(pull)
+        }
+    }
+    if (props.editable) div {
+        className = ClassName("dv-actions")
+        Button {
+            type = "primary"
+            size = "small"
+            loading = saving
+            disabled = value.trim().isEmpty() || value == pull.value.orEmpty()
+            onClick = { save(value) }
+            +"Save shared wording"
+        }
+        pulledResetLabel(pull)?.let { resetLabel ->
+            Button {
+                size = "small"
+                type = "link"
+                disabled = saving
+                onClick = { save(null) }
+                +resetLabel
+            }
+        }
+    }
+    note?.let {
+        p {
+            className = ClassName("dv-note")
+            +it
+        }
+    }
+    failure?.let { errorText("Couldn't save the shared wording.", it) }
+}
+
 external interface SharedFieldSectionProps : Props {
     var session: DesignSession
     var target: DesignTarget.Field
@@ -708,6 +895,8 @@ external interface SharedFieldSectionProps : Props {
     var fieldSchema: Any?
     /** The type's own layout entry for the field, when it has one -- where a copy edit starts. */
     var authored: Map<String, Any?>?
+    /** The field's copy slots that pull a fragment key (issue #1010): shown, not offered, here. */
+    var pulled: Map<String, PulledSlot>?
     var onSaved: () -> Unit
 }
 
@@ -811,6 +1000,23 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
                 for (key in editableCopyKeys) {
                     // A blank input is the field's own wording, not nothing: say what the form shows instead.
                     val fallback = copyFallback(key, target.name, target.prop)
+                    // A slot pulled from a fragment file is shared wording, edited at its key in its own section
+                    // (issue #1010); overwriting the pull with literal text here would silently drop it.
+                    props.pulled?.get(key)?.let { slot ->
+                        div {
+                            className = ClassName("dv-edit-row")
+                            span {
+                                className = ClassName("dv-fact-name")
+                                +humanizeFieldName(key)
+                            }
+                            span { +inheritedCopyText(start[key].toOptStr().orEmpty(), slot) }
+                            p {
+                                className = ClassName("dv-fallback")
+                                +"Shared wording: change it under Shared wording."
+                            }
+                        }
+                        continue
+                    }
                     div {
                         className = ClassName("dv-edit-row")
                         span {

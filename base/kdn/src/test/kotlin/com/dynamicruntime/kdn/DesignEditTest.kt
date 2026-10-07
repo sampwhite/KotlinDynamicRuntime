@@ -235,7 +235,7 @@ class DesignEditTest : StringSpec({
         for (declared in listOf(declaredIn(client, clientNamespace(client)), declaredIn("global", "kdr.inCode984"))) {
             val refusal = DesignView.editRefusal(clientCxt, declared)
             refusal?.code shouldBe DesignRefusal.declaredInSource
-            refusal?.message.orEmpty() shouldContain "copy overrides"
+            refusal?.message.orEmpty() shouldContain "shared wording"
         }
     }
 

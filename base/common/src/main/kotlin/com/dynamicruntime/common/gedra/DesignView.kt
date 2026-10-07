@@ -179,8 +179,8 @@ object DesignView {
      * Why this caller may not edit [declared]'s copy here, or null when they may (issue #984): the workflow must be
      * the client's own stored definition, since a workflow's own copy is written into its definition and a workflow
      * declared in source (or a global one) has none here to write to -- overlaying one is issue #1011, and copy it
-     * pulls from a fragment file is the client's copy overrides' to change. Then the rules every Design View save
-     * shares with the Clients page's editors ([saveRefusal]).
+     * pulls from a fragment file is the client's shared wording to change (#1010, [DesignPulledCopy]). Then the
+     * rules every Design View save shares with the Clients page's editors ([saveRefusal]).
      */
     fun editRefusal(cxt: KdrCxt, declared: WfDeclared): EditRefusal? {
         val bundle = declared.bundle
@@ -188,8 +188,8 @@ object DesignView {
             return EditRefusal(
                 DesignRefusal.declaredInSource,
                 "Workflow '${declared.def.workflowId}' is declared in source, not in this client's stored configuration, so copy " +
-                    "just for this workflow cannot be saved here yet. Copy it pulls from a fragment file can be changed in the " +
-                    "client's copy overrides, for every workflow that uses it.",
+                    "just for this workflow cannot be saved here yet. Copy it pulls from a fragment file can be changed here " +
+                    "as this client's shared wording, for every workflow that uses it.",
             )
         }
         return saveRefusal(cxt, bundle.name)
@@ -365,6 +365,19 @@ object DesignView {
                 ),
             )
         }
+        // The copy the client's layout pulls from fragment files (issue #1010): editable as the client's shared wording,
+        // whatever the definition's origin.
+        if (read.typeNames.isNotEmpty()) {
+            DesignPulledCopy.facts(cxt, read.typeNames).takeIf { it.isNotEmpty() }?.let { pulled ->
+                out[DSV.pulledCopy] = pulled
+                // The rule every Design View save keeps (#1026): a client with a sandbox is changed from its sandbox,
+                // where the draft shows. A copy edit lands in the editors' own config, so no foreign draft is at stake.
+                saveRefusal(cxt, CPY.copyConfigName)?.let {
+                    out[DSV.sharedWordingRefusal] = it.message
+                    out[DSV.sharedWordingRefusalCode] = it.code.name
+                }
+            }
+        }
         read.altered?.let { (typeName, alteration) ->
             out[DSV.alteredBy] = layer(alteration) + linkedMapOf(
                 DSV.slot to CCT.schemaDef,
@@ -443,6 +456,13 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         property(DSV.sharedCopyRefusals, "By field, why it cannot be given shared copy; a field not named here can.") {
             type = SCT.kObject
         }
+        property(
+            DSV.pulledCopy,
+            "By type, field and copy slot, the fragment keys the client's layout pulls, with their wording -- what the " +
+                "client may change as shared wording.",
+        ) { type = SCT.kObject }
+        property(DSV.sharedWordingRefusal, "Why the shared wording may not be changed from here, when it may not.")
+        property(DSV.sharedWordingRefusalCode, "Which of the closed set of reasons that is.") { options(DesignRefusal.entries) }
     }
 
     type(DSV.layoutEntryEditType) {

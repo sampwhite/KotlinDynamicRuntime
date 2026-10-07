@@ -726,6 +726,21 @@ definition read (`parseSharedFacts`); the save is `/clientAdmin/design/sharedFie
 #1013): where it is declared, and the client configuration altering it when one does -- the reader sees what every
 client shares and what is this client's own, however it was assembled.
 
+**Shared wording** (issue #1010, `SharedWordingSection`): field copy **pulled from a fragment file** --
+`%{@t("questionnaire.topicHelp")}` in a label, description or hint -- is edited at its key, as the client's copy
+override (#918, the Clients page's `/clientAdmin/client/copy/set` and `/reset`), so the change reaches everywhere the
+key is used, in every workflow. It is offered whatever the definition's origin -- a global or source-declared
+definition included, which nothing else in Design View can edit -- since an override is the client's own data. It
+keeps the rule every Design View save keeps (#1026): a client with a sandbox changes its wording from the sandbox,
+where the draft shows, so its own page shows the words with the reason (`DSV.sharedWordingRefusal`). The
+definition read names, per type, field and slot, the keys a slot pulls with the words the client reads and the shipped
+ones (`DSV.pulledCopy`, `pulledCopyOf`); the user sees **words, never the template**, with a source line naming the
+wording and whose it is (`pulledSourceLine`), **Save shared wording**, and a reset only where the client's stored
+configuration sets the key (`pulledResetLabel`). A slot mixing a pull with other text shows composed, read-only, with
+each key editable beneath. Elsewhere a pull reads as its words too: the workflow copy editor's "Shared:" line and the
+read-only facts (`inheritedCopyText`), and the shared editor shows a pulled slot read-only rather than offer to
+overwrite the pull with literal text.
+
 - **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
   request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
   administrator, adding a `design` block to the workflow view -- an address and origin for every type the page

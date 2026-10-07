@@ -147,6 +147,23 @@ object DSV {
      */
     const val sharedCopyRefusals = "sharedCopyRefusals"
 
+    /**
+     * In the definition read of a trait or type (issue #1010): `{ typeName -> { field -> { slot -> … } } }`, the copy
+     * slots of the client's layout that pull a fragment key -- whether the slot is the pull alone or [mixed] with other
+     * text, and the keys it [pulls], each with its file, namespace and key, the value the client reads and the shipped
+     * one, and where the client's own configuration sets it. What the inspector's Shared wording section edits.
+     */
+    const val pulledCopy = "pulledCopy"
+    const val mixed = "mixed"
+    const val pulls = "pulls"
+
+    /**
+     * In the definition read, beside [pulledCopy]: why the shared wording may not be changed from here, and which
+     * [DesignRefusal] it is -- a client with a sandbox previews its changes there, so its own page points to it.
+     */
+    const val sharedWordingRefusal = "sharedWordingRefusal"
+    const val sharedWordingRefusalCode = "sharedWordingRefusalCode"
+
     /** Sets a field's shared copy and choices in the client's own definition (a POST). */
     const val sharedFieldEdit = "/${SECT.clientAdmin}/design/sharedField"
     const val sharedFieldEditType = "DesignSharedFieldEdit"

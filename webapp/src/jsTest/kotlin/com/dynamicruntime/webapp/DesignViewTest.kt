@@ -1,7 +1,9 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.schema.SCH
@@ -459,5 +461,77 @@ class DesignViewTest {
         assertEquals("acme", definitionQuery("traitDef", "eventRequest", "acme")[DSV.client])
         assertEquals("acme", sharedFieldBody("client.acme.Event", "venue", null, null, "abc", acknowledgeImpact = false, client = "acme")[DSV.client])
         assertNull(sharedFieldBody("client.acme.Event", "venue", null, null, "abc", acknowledgeImpact = false)[DSV.client])
+    }
+
+    // --- shared wording: copy pulled from a fragment file (issue #1010) ---
+
+    private val wordingRead = mapOf(
+        DSV.pulledCopy to mapOf(
+            "client.demo.Request" to mapOf(
+                "title" to mapOf(
+                    SL.description to mapOf(
+                        DSV.mixed to false,
+                        DSV.pulls to listOf(
+                            mapOf(
+                                COV.fileId to "formHelp", COV.namespaceField to "questionnaire", COV.key to "topicHelp",
+                                COV.value to "Ours", COV.baseValue to "Shipped", COV.origin to "stored",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun pulledCopyIsReadByTypeFieldAndSlot() {
+        val slot = pulledCopyOf(wordingRead, "client.demo.Request", "title").getValue(SL.description)
+        assertEquals(false, slot.mixed)
+        val pull = slot.pulls.single()
+        assertEquals("questionnaire.topicHelp", pull.name)
+        assertEquals("Ours", pull.value)
+        assertTrue(pulledCopyOf(wordingRead, "client.demo.Request", "venue").isEmpty())
+        assertTrue(pulledCopyOf(null, "client.demo.Request", "title").isEmpty())
+        assertNull(sharedWordingRefusalOf(wordingRead))
+        assertEquals("Edit it from the sandbox.", sharedWordingRefusalOf(wordingRead + (DSV.sharedWordingRefusal to "Edit it from the sandbox.")))
+    }
+
+    @Test
+    fun theSourceLineSaysWhoseWordingItIsAndHowFarAnEditReaches() {
+        val ours = PulledKey("formHelp", "questionnaire", "topicHelp", "Ours", "Shipped", GedraConfigOrigin.stored.name, null)
+        assertEquals(
+            "Shared wording \"questionnaire.topicHelp\" (formHelp) \u2014 this client's own; shipped: \"Shipped\". " +
+                "Used wherever that wording appears, in every workflow.",
+            pulledSourceLine(ours),
+        )
+        val shipped = PulledKey("formHelp", "questionnaire", "topicHelp", "Shipped", "Shipped", null, null)
+        assertTrue(pulledSourceLine(shipped).contains("the shipped wording"))
+        val inSource = PulledKey("formHelp", "questionnaire", "topicHelp", "Source", "Shipped", GedraConfigOrigin.source.name, null)
+        assertTrue(pulledSourceLine(inSource).contains("set in its source configuration"))
+        // Reset is the stored value's alone: back to the source wording when it overrides one, else to shipped.
+        assertEquals("Back to shipped", pulledResetLabel(ours))
+        assertEquals("Back to the source wording", pulledResetLabel(PulledKey("f", "n", "k", "Ours", "Shipped", GedraConfigOrigin.stored.name, "Source")))
+        assertNull(pulledResetLabel(shipped))
+        assertNull(pulledResetLabel(inSource))
+    }
+
+    @Test
+    fun anInheritedPullReadsAsItsWordsAndAMixedSlotAsWritten() {
+        val slot = pulledCopyOf(wordingRead, "client.demo.Request", "title").getValue(SL.description)
+        assertEquals("Ours (shared wording questionnaire.topicHelp)", inheritedCopyText("%{@t(\"questionnaire.topicHelp\")}", slot))
+        assertEquals("Plain", inheritedCopyText("Plain", null))
+        assertEquals("%{@t(\"a.b\")} and more", inheritedCopyText("%{@t(\"a.b\")} and more", PulledSlot(true, slot.pulls)))
+    }
+
+    @Test
+    fun aSharedWordingSaveNamesTheKeyAndTheFormsClient() {
+        val pull = PulledKey("formHelp", "questionnaire", "topicHelp", "Ours", "Shipped", null, null)
+        assertEquals(
+            mapOf(COV.fileId to "formHelp", COV.namespaceField to "questionnaire", COV.key to "topicHelp", COV.value to "New"),
+            sharedWordingRequest(pull, "New", null),
+        )
+        val reset = sharedWordingRequest(pull, null, "acme")
+        assertEquals("acme", reset[COV.client])
+        assertTrue(COV.value !in reset)
     }
 }
