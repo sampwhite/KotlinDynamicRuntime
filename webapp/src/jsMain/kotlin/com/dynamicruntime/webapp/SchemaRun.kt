@@ -1,10 +1,16 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.offeredChoices
+import com.dynamicruntime.common.schema.formRequirementFailures
+import com.dynamicruntime.common.schema.SchOption
+import com.dynamicruntime.common.schema.SchLayoutField
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * The outcome of checking a set of form values against an endpoint's **input** type: the [failures] to show,
@@ -39,4 +45,30 @@ class InputCheck(val failures: List<SchFailure>, val coerced: Any?) {
 fun checkInput(type: SchType, values: Map<String, Any?>): InputCheck {
     val result = coerceAndValidate(type, values, SchOpts(keepAdditionalProperties = true, forInput = true))
     return InputCheck(result.failures, result.value)
+}
+
+/**
+ * [checkInput], then the **form requirements** of a workflow's form (issue #1022) under its field [layouts]: a field
+ * its layout requires, a choice it does not offer. Judged over the coerced values, as the backend judges what it
+ * receives, by the same kernel rule ([formRequirementFailures]) the workflow's save and task status run -- so a page
+ * never sends what its form would refuse, nor refuses what the backend would accept.
+ */
+fun checkFormInput(type: SchType, values: Map<String, Any?>, layouts: Map<String, SchLayout>): InputCheck {
+    val check = checkInput(type, values)
+    val form = formRequirementFailures(type, layouts, check.coerced as? Map<*, *> ?: values)
+    return if (form.isEmpty()) check else InputCheck(check.failures + form, check.coerced)
+}
+
+/**
+ * The choices a form's choice control lists for a field of type [vt] under its layout entry [entry] (issue #1022):
+ * the choices the form offers ([offeredChoices]), and -- when the field already holds a [value] the schema allows but
+ * the form does not offer, saved elsewhere -- that value too, labeled from the schema and marked, so it reads as what
+ * it is rather than as a bare value. Null when the field has no closed list. Pure.
+ */
+fun formChoiceList(vt: SchType, entry: SchLayoutField?, value: Any?): List<SchOption>? {
+    val offered = offeredChoices(vt, entry) ?: return null
+    val held = value.toOptStr()?.takeIf { it.isNotBlank() } ?: return offered
+    if (offered.any { it.value == held }) return offered
+    val fromSchema = vt.options?.firstOrNull { it.value == held } ?: return offered
+    return offered + SchOption(held, "${fromSchema.label} (not offered on this form)")
 }

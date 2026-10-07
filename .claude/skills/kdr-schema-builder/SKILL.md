@@ -310,7 +310,7 @@ is equivalent):
 ```
 
 - The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`, `errors`,
-  `defaultMode`, `fragmentFileId`, `strings`, `mode`). The parser is **strict**: an unknown key on the block or
+  `defaultMode`, `required`, `choices`, `fragmentFileId`, `strings`, `mode`). The parser is **strict**: an unknown key on the block or
   on an entry, a present block with no entries, or a non-object value all fail the boot — a layout must never
   parse clean and render nothing.
 - **Field order and membership** (`mode`, issue #777): who owns *which* fields render and *in what order* — the
@@ -333,6 +333,18 @@ is equivalent):
   default, later other sources) is presented: `SLDM.filled` (shown in the control, marked) or `SLDM.offer` (an
   empty control beside a "use it" affordance). A closed set (a bad value fails the boot); absent leaves the
   surface's own default (`filled`). It is about the *field*, not the source, so it never names `prefill`.
+- **Form requirements** (`required`, `choices`, issue #1022): what *this form* asks for beyond the schema --
+  `field(name, required = true)`, and `field(name, choices = listOf(SchLayoutChoice("park", "Outdoors"), …))`, a
+  **restated** list of the schema's choices (which, in what order, with the form's labels). They never change what
+  data is valid: they are checked by one kernel rule, `formRequirementFailures` (`SchFormRules.kt`), on a
+  workflow's save, in its task status and on the page, and never by a general data edit. **A workflow does not
+  alter schema** -- this is how a workflow asks for a field or offers fewer choices, through its `types`
+  alteration's `g-layout`. They apply on top of the schema's conditionals: `required` is ignored while the
+  schema's `if`/`then`/`else` withdraws the field, and the form offers only the choices the schema currently offers
+  (`offeredChoices`, the one place the two lists meet). `required` only adds (`false` is refused); `choices` must
+  name values the schema offers, on a field with a closed list; and a field nobody could always fill in (derived,
+  or gated by `g-visibleWhen`) may not be required -- all checked at load. A workflow entry replaces the shared
+  entry for that field whole, so restate its copy beside a requirement.
 - **Form-level strings** (`strings`, issue #641): a `{ LAYSTR-name → copy }` block of overridable wording a form
   shows for the type as a whole rather than for one field — declared with `string(LAYSTR.key, "...")`. The keys
   are the closed `LAYSTR` vocabulary (an unknown one fails the boot, like every other layout key); the default

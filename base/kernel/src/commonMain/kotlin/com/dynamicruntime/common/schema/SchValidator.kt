@@ -128,6 +128,12 @@ data class SchFailure(
      * someone for a score wants whatever the schema author wrote instead.
      */
     val userMessage: String? = null,
+    /**
+     * A **form requirement**, not the schema's (issue #1022): the data is valid, but the form it was judged for asks
+     * for more -- a field its layout requires, a choice it does not offer ([formRequirementFailures]). The codes are
+     * the schema's own, so a layout's `errors` override words both kinds alike; this is what tells them apart.
+     */
+    val formRequirement: Boolean = false,
 )
 
 /**
@@ -152,6 +158,8 @@ fun SchFailure.toWireMap(): Map<String, Any?> {
     options?.let { opts ->
         out[EP.failureOptions] = opts.map { linkedMapOf(SCH.value to it.value, SCH.label to it.label) }
     }
+    // Written only when set: a schema failure -- every one a plain validation reports -- carries nothing new.
+    if (formRequirement) out[EP.failureFormRequirement] = true
     return out
 }
 

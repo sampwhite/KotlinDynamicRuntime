@@ -693,7 +693,9 @@ where the workflow is the client's own stored definition; elsewhere the inspecto
 #1026): published and live at once for a client without a sandbox -- so it is refused while the config carries
 somebody's unpublished changes (`unpublishedChanges`) -- and a draft of the parent's config, shown by the sandbox, for
 one with a sandbox, whose own page points to the sandbox instead (`publishedOnly`). The two kinds of editor therefore
-never leave each other a draft to refuse.
+never leave each other a draft to refuse. A field's summary keeps what the data requires apart from what this form
+asks for (issue #1022): **Required by the data** beside **Required on this form** and **Choices on this form**, the
+form's requirements from its layout entry -- read-only for now; the controls are #1048.
 
 The **shared definition** -- what every workflow on the client draws -- is edited separately (issue #1029,
 `SharedFieldSection`), behind a deliberate **Edit the shared definition** button and never as an option beside a

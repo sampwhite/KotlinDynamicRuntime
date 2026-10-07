@@ -468,14 +468,19 @@ private fun comparableValue(value: Any?): Any? = when (value) {
  * invalid -- and since the save refuses it, the server never sees that state and the two cannot disagree over
  * a saved form.
  */
-fun localTaskStatus(task: WfTaskView, values: Map<String, Map<String, Any?>>): WfTaskStatus {
+fun localTaskStatus(
+    task: WfTaskView,
+    values: Map<String, Map<String, Any?>>,
+    /** The workflow's field layouts, whose form requirements count as the server's do (issue #1022). */
+    layouts: Map<String, SchLayout> = emptyMap(),
+): WfTaskStatus {
     val missing = mutableListOf<String>()
     val problems = mutableListOf<WfProblem>()
     for (trait in task.traits) {
         val working = values[trait.traitId] ?: emptyMap()
         // An optional trait left empty has nothing to judge. A required one is judged by its schema, empty or not.
         if (!trait.required && comparableValues(working).isEmpty()) continue
-        val failures = checkInput(trait.type, working).failures
+        val failures = checkFormInput(trait.type, working, layouts).failures
         if (failures.any { it.code == SchFailCode.missingRequired }) missing.add(trait.traitId)
         failures.filter { it.code != SchFailCode.missingRequired }
             .forEach { problems.add(WfProblem(trait.traitId, it.path, it.userMessage ?: it.message)) }

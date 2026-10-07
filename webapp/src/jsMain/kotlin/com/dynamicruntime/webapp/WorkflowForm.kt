@@ -303,7 +303,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // A trait locked for this caller (issue #857) is not theirs to send: it stays as stored, and a save that
         // named it would be refused whole.
         val checks = task.traits.filterNot { it.traitId in wf.lockedTraits }
-            .associate { it.traitId to checkInput(it.type, valuesOf(it.traitId)) }
+            .associate { it.traitId to checkFormInput(it.type, valuesOf(it.traitId), wf.fieldLayouts) }
         failuresByTrait = failuresByTrait + checks.mapValues { it.value.failures }
         wholeChecked = wholeChecked + checks.keys
         if (checks.values.any { it.failures.isNotEmpty() }) return
@@ -392,13 +392,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // panel shows the committed fields' failures now and the rest once the trait is checked as a whole.
     fun onFieldCommit(trait: WfTraitView, path: String) {
         committedByTrait = committedByTrait + (trait.traitId to (committedByTrait[trait.traitId].orEmpty() + path))
-        failuresByTrait = failuresByTrait + (trait.traitId to checkInput(trait.type, valuesOf(trait.traitId)).failures)
+        failuresByTrait = failuresByTrait + (trait.traitId to checkFormInput(trait.type, valuesOf(trait.traitId), wf.fieldLayouts).failures)
     }
 
     // Leaving a task in the rail checks it as a whole (issue #718): the user is done with it for now, so what
     // it still needs shows when they come back, and the mark reflects the check straight away.
     fun checkWholeTask(task: WfTaskView) {
-        failuresByTrait = failuresByTrait + task.traits.associate { it.traitId to checkInput(it.type, valuesOf(it.traitId)).failures }
+        failuresByTrait = failuresByTrait + task.traits.associate { it.traitId to checkFormInput(it.type, valuesOf(it.traitId), wf.fieldLayouts).failures }
         wholeChecked = wholeChecked + task.traits.map { it.traitId }
     }
 
@@ -407,7 +407,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     // a required field drops the check at once; otherwise the server's verdict from the view (re-read after a save),
     // which stays the authority for anything the kernel check cannot see.
     fun statusFor(task: WfTaskView, unsaved: Boolean): WfTaskStatus? =
-        if (unsaved) localTaskStatus(task, valuesByTrait) else task.status
+        if (unsaved) localTaskStatus(task, valuesByTrait, wf.fieldLayouts) else task.status
 
     // An approval task drawn in its own way (issue #832): once approved, who approved it and when; before, the prompt
     // and -- for a reviewer -- the button, which asks first, since an approval cannot be taken back. Anyone else is

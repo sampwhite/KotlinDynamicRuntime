@@ -26,8 +26,10 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * What began as copy overrides ([SchLayoutField.label] / `description` / `hint`) and the block's
  * [fragmentFileId] has since grown the error override (#588), the default-presentation mode (#709), form-level
- * [strings] (#641), and — [mode] (#777) — authority over field order and membership, decided by the kernel's
- * `orderedFieldNames`. The model is delivered to every friendly surface ([deliveredLayouts]) and parsed back on
+ * [strings] (#641), [mode] (#777) — authority over field order and membership, decided by the kernel's
+ * `orderedFieldNames` — and a form's own requirements (#1022): a field it requires, a restated list of choices.
+ * Those never change what data is valid ([formRequirementFailures]); they are how a workflow, which does not alter
+ * schema, asks its form for more. The model is delivered to every friendly surface ([deliveredLayouts]) and parsed back on
  * the frontend ([parseDeliveredLayouts]), which now renders it.
  *
  * **Two things are called "layout"; always qualify which** (issue #834). This is the *field* layout: the fields
@@ -138,6 +140,18 @@ class SchLayoutField(
      * source. Null leaves the surface's own default (`filled`); the mode a field never defaults is simply unset.
      */
     val defaultMode: String? = null,
+    /**
+     * A **form requirement** (issue #1022): this form asks for the field, though the schema may not. It never
+     * changes what data is valid -- see [formRequirementFailures] -- and only adds: a layout cannot make optional
+     * a field the schema requires, so the key is `true` or absent.
+     */
+    val required: Boolean = false,
+    /**
+     * The choices this form offers (issue #1022), **restated** whole: which of the schema's choices, in what order,
+     * and their copy on this form. Null leaves the schema's list as it is. Each value is one the schema offers; the
+     * form shows only those the schema offers for the data entered so far ([offeredChoices]).
+     */
+    val choices: List<SchLayoutChoice>? = null,
 ) : JsonMappable {
     /** The entry as written in a `schemaFields` list; see [SchLayout.toJsonMap]. */
     override fun toJsonMap(): Map<String, Any?> {
@@ -148,6 +162,24 @@ class SchLayoutField(
         hint?.let { out[SL.hint] = it }
         if (errors.isNotEmpty()) out[SL.errors] = errors
         defaultMode?.let { out[SL.defaultMode] = it }
+        if (required) out[SL.required] = true
+        choices?.let { list -> out[SL.choices] = list.map { it.toJsonMap() } }
+        return out
+    }
+}
+
+/**
+ * One choice a form offers in a [SchLayoutField.choices] list (issue #1022): a [value] the schema offers, with the
+ * form's own [label] and [description] for it -- each absent to keep the schema's label, or no description. The
+ * shape the later verbose choice display grows (an extended description, an image): the strict parser makes each
+ * an added key.
+ */
+class SchLayoutChoice(val value: String, val label: String? = null, val description: String? = null) : JsonMappable {
+    override fun toJsonMap(): Map<String, Any?> {
+        val out = LinkedHashMap<String, Any?>()
+        out[SL.value] = value
+        label?.let { out[SL.label] = it }
+        description?.let { out[SL.description] = it }
         return out
     }
 }
@@ -174,13 +206,16 @@ class SchLayoutBuilder(
     }
 
     /** One field's overrides; each is optional. The [errors] block (issue #588) declares the form's wording per
-     *  [SchFailCode], reusing `g-errors`' own [SchErrors] builder so the named-per-code functions are identical. */
+     *  [SchFailCode], reusing `g-errors`' own [SchErrors] builder so the named-per-code functions are identical.
+     *  [required] and [choices] are the form's requirements (issue #1022). */
     fun field(
         name: String,
         label: String? = null,
         description: String? = null,
         hint: String? = null,
         defaultMode: String? = null,
+        required: Boolean = false,
+        choices: List<SchLayoutChoice>? = null,
         errors: (SchErrors.() -> Unit)? = null,
     ) {
         val errMap = errors?.let { block ->
@@ -188,7 +223,7 @@ class SchLayoutBuilder(
             SchErrors(data).block()
             data.mapValues { it.value.toOptStr().orEmpty() }
         } ?: emptyMap()
-        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode))
+        fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices))
     }
 
     /** The finished block, as the JSON `g-layout` value. */
@@ -268,6 +303,15 @@ object SL {
     /** On a [schemaFields] entry: how a supplied default for the field is presented (issue #709); one of [SLDM]. */
     const val defaultMode = "defaultMode"
 
+    /** On a [schemaFields] entry: `true` when this form asks for the field (issue #1022) -- a form requirement. */
+    const val required = "required"
+
+    /** On a [schemaFields] entry: the choices this form offers, restated (issue #1022); each a [choiceKeys] object. */
+    const val choices = "choices"
+
+    /** On a [choices] entry: the schema's value it offers. Its [label] and [description] are the form's copy for it. */
+    const val value = "value"
+
     /** On the block: the fragment file its `${'$'}{…}` substitutions resolve against. */
     const val fragmentFileId = "fragmentFileId"
 
@@ -287,7 +331,10 @@ object SL {
     val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings, mode)
 
     /** Every key a [schemaFields] entry may carry. */
-    val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode)
+    val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode, required, choices)
+
+    /** Every key a [choices] entry may carry. */
+    val choiceKeys: Set<String> = setOf(value, label, description)
 }
 
 /**
@@ -462,7 +509,27 @@ fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayou
                 }
             }
         }
-        SchLayoutField(field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode)
+        // A form requirement only adds (issue #1022): `true`, or absent. `false` would read as making a field optional,
+        // which a layout cannot do, so it is refused rather than ignored.
+        val required = when (val r = m[SL.required]) {
+            null, true -> r == true
+            else -> {
+                problems.add(
+                    layoutProblem(
+                        LayoutError.badValue,
+                        "$where: field '$field' has '${SL.required}' $r; a layout only adds a requirement, so it is " +
+                            "true or absent.",
+                        "$at.${SL.required}",
+                    ),
+                )
+                false
+            }
+        }
+        val choices = readLayoutChoices(where, field, m[SL.choices], "$at.${SL.choices}", problems)
+        SchLayoutField(
+            field, m[SL.label].toOptStr(), m[SL.description].toOptStr(), m[SL.hint].toOptStr(), errors, defaultMode,
+            required, choices,
+        )
     }
     val strings = readLayoutStrings(where, raw[SL.strings], problems)
     val mode = when (val modeStr = raw[SL.mode].toOptStr()) {
@@ -516,6 +583,36 @@ private fun readLayoutStrings(where: String, raw: Any?, problems: MutableList<Pr
         }
     }
     return out
+}
+
+/**
+ * Reads a field entry's `choices` list (issue #1022), adding to [problems] what is wrong with it: absent reads as
+ * null (the schema's list stands); otherwise a non-empty list of objects, each with a non-blank `value` that no other
+ * entry repeats, and only [SL.choiceKeys]. Whether each value is one the schema offers is the load check's
+ * ([layoutFieldProblems]), which holds the type.
+ */
+private fun readLayoutChoices(where: String, field: String, raw: Any?, at: String, problems: MutableList<Problem>): List<SchLayoutChoice>? {
+    if (raw == null) return null
+    if (raw !is List<*> || raw.isEmpty()) {
+        problems.add(layoutProblem(LayoutError.badValue, "$where: field '$field' has '${SL.choices}' that is not a non-empty list.", at))
+        return null
+    }
+    val seen = HashSet<String>()
+    return raw.mapIndexedNotNull { i, element ->
+        val entryAt = "$at[$i]"
+        val m = (element as? Map<*, *>)?.toJsonMapOrEmpty() ?: run {
+            problems.add(layoutProblem(LayoutError.badValue, "$where: field '$field' has a choice that is not an object.", entryAt))
+            return@mapIndexedNotNull null
+        }
+        unknownKeysProblem(where, "a '${SL.choices}' entry", m.keys, SL.choiceKeys, entryAt)?.let { problems.add(it) }
+        val value = m[SL.value] as? String
+        if (value.isNullOrBlank() || !seen.add(value)) {
+            val why = if (value.isNullOrBlank()) "has no '${SL.value}'" else "repeats the value '$value'"
+            problems.add(layoutProblem(LayoutError.badValue, "$where: field '$field' has a choice that $why.", "$entryAt.${SL.value}"))
+            return@mapIndexedNotNull null
+        }
+        SchLayoutChoice(value, m[SL.label].toOptStr(), m[SL.description].toOptStr())
+    }
 }
 
 private fun unknownKeysProblem(
@@ -659,7 +756,68 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
     }
     if (undeclared.isNotEmpty()) return undeclared
 
-    return authoritativeLayoutProblems(where, layout, type)
+    return formRequirementProblems(where, layout, type) + authoritativeLayoutProblems(where, layout, type)
+}
+
+/**
+ * The problems with [layout]'s **form requirements** against [type] (issue #1022):
+ *  - `choices` on a field the schema gives no closed list of choices, or naming a value the schema does not offer --
+ *    a form restates the schema's choices; it cannot make up its own;
+ *  - `required` on a field nobody at the form could fill in: one the server derives, or one a `g-visibleWhen` hides
+ *    from some callers -- the same rule that keeps `g-visibleWhen` off a schema-required field. A field the schema
+ *    withdraws only for some answers (`if`/`then`/`else`) is fine: the requirement is ignored while it is withdrawn.
+ */
+fun formRequirementProblems(where: String, layout: SchLayout, type: SchType): List<Problem> {
+    val problems = mutableListOf<Problem>()
+    for ((i, field) in layout.fields.withIndex()) {
+        val prop = type.properties[field.field] ?: continue
+        val at = "${SL.schemaFields}[$i]"
+        field.choices?.let { choices ->
+            val offered = prop.valueType.options
+            if (offered == null || prop.valueType.openOptions) {
+                problems.add(
+                    layoutProblem(
+                        LayoutError.choicesWithoutOptions,
+                        "$where: '${SCH.layout}' gives field '${field.field}' '${SL.choices}', but the schema gives it no " +
+                            "closed list of choices to restate.",
+                        "$at.${SL.choices}",
+                    ),
+                )
+            } else {
+                val values = offered.map { it.value }.toSet()
+                choices.forEachIndexed { j, choice ->
+                    if (choice.value !in values) {
+                        problems.add(
+                            layoutProblem(
+                                LayoutError.notAChoice,
+                                "$where: '${SCH.layout}' offers '${choice.value}' for field '${field.field}', which the " +
+                                    "schema does not offer (it offers ${values.joinToString(", ")}).",
+                                "$at.${SL.choices}[$j].${SL.value}",
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        if (field.required) {
+            val why = when {
+                prop.valueType.derived -> "the server derives it"
+                prop.visibleWhen != null -> "its '${SCH.visibleWhen}' hides it from some callers"
+                else -> null
+            }
+            why?.let {
+                problems.add(
+                    layoutProblem(
+                        LayoutError.requiredUnfillable,
+                        "$where: '${SCH.layout}' requires field '${field.field}', but $it, so the form could not always " +
+                            "be saved.",
+                        "$at.${SL.required}",
+                    ),
+                )
+            }
+        }
+    }
+    return problems
 }
 
 /**
@@ -994,6 +1152,15 @@ enum class LayoutError : ProblemCode {
 
     /** An authoritative layout leaving out a field the type may require, so the form could not be submitted. */
     omitsRequired,
+
+    /** A field entry's `choices` on a field the schema gives no closed list of choices (issue #1022). */
+    choicesWithoutOptions,
+
+    /** A field entry's `choices` naming a value the schema does not offer (issue #1022). */
+    notAChoice,
+
+    /** A field entry's `required` on a field nobody at the form could always fill in (issue #1022). */
+    requiredUnfillable,
 
     /** Copy whose `${'$'}{…}` or `%{…}` template does not parse. */
     malformedTemplate,

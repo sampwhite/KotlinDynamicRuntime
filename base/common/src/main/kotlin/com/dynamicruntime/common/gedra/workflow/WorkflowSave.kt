@@ -55,6 +55,9 @@ fun saveWorkflow(
     entries.mapNotNull { it[GE.traitId].toOptStr() }.firstOrNull { it !in declaredTraits }?.let {
         throw KdrException.mkInput("Task '$taskId' does not collect the trait '$it'.")
     }
+    // What this workflow's form asks for beyond the schema (issue #1022): refused here as the page refuses it, so a
+    // call made around the page is held to the same form. Never asked of a general data edit.
+    WorkflowFormRules.requireMet(cxt, declared, declaredTraits, entries)
 
     return when (save.kind) {
         WfSaveKind.create -> {
