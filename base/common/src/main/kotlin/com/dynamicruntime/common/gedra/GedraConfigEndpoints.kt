@@ -10,7 +10,9 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchTypeBuilder
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.getReqNonBlankStr
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -996,6 +998,64 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             field(ACEP.reloadField, "Whether to reload the affected clients after writing (default true).") { type = SCT.boolean }
         },
     ) { c, request -> cfgImportBody(c, request) }
+
+    // --- creating a client (issue #1054) ---------------------------------------------------------------------------
+    //
+    // Here, with the surface that writes a named client's configuration, because that is what it does: the bundle
+    // write above for one slot, with its input typed. The input is the definition's own declaration for the fields a
+    // create takes, so a form can be drawn from it and nothing is declared twice.
+    ClientDef.defineCreateType(this)
+
+    // The templates a client made from data may extend: defined in source code, and of the template kind -- what
+    // the load's own rule admits (`extendsProblem`). A choice list for a form; the rule is still the load's.
+    optionsProvider(CLD.templateOptions) { c, _ ->
+        val clients = ClientService.get(c)
+        clients.declaredClients()
+            .filter { it.usageType == ClientUsageType.template && clients.originOf(it.clientId) == GedraConfigOrigin.source }
+            .map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+    }
+
+    type(CLD.createResultTypeName) {
+        type = SCT.kObject
+        description = "What creating a client did (issue #1054): where its definition was written, the definition as stored, and whether this node carries the client."
+        property(CLD.client, "The client created.", required = true)
+        property(COV.configName, "The stored configuration its definition was written to.", required = true)
+        property(CLD.definition, "The client's stored definition.", required = true) { ref(CLD.infoTypeQualified) }
+        property(
+            CLD.present,
+            "Whether this node carries the client now. False for one not enabled in this node's environment: it is " +
+                "stored, and present wherever it is enabled.",
+            required = true,
+        ) { type = SCT.boolean }
+        property(CLD.issues, "What the load found in the client's configuration and forgave.", required = true) {
+            type = SCT.array
+            items { ref(CLD.configIssueTypeQualified) }
+        }
+    }
+
+    generalEndpoint(
+        ADEP.clientCreate,
+        "Creates a client (issue #1054): writes its definition as its first stored configuration ('" +
+            CLD.definitionConfigName + "'), publishes it and loads the client, so it is present at once wherever " +
+            "this node's environment is one it is enabled in. The definition is held to what any written definition " +
+            "is -- its schema, a domain no other client holds, a trial load that judges its id, its environments " +
+            "and the template it extends -- and refused for the same reasons, in the same words. Refused with a 409 " +
+            "for an id that is taken, by a client in source code or in stored configuration. What a definition does " +
+            "not hold at creation -- its traits, its workflows, its test features -- is added through its " +
+            "configuration afterwards.",
+        HttpMethod.POST,
+        outputRef = CLD.createResultTypeName,
+        inputRef = CLD.createTypeName,
+    ) { c, request ->
+        val result = ClientCreate.create(c, request)
+        mapOf(
+            CLD.client to result.client,
+            COV.configName to result.configName,
+            CLD.definition to result.info,
+            CLD.present to result.present,
+            CLD.issues to result.issues.map { it.toWireMap() },
+        )
+    }
 }
 
 /**

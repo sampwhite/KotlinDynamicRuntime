@@ -147,6 +147,20 @@ object ClientPresentationFields {
     fun isList(name: String): Boolean = name == CLD.userLabels
 }
 
+/**
+ * The fields a client is **created** with (issue #1054), as [CLD] keys: everything a definition holds that
+ * somebody decides when a client is made. Not among them: `staticConfig`, which only a
+ * definition in source code may set; `preload`, `includedTraits` and `testFeatures`, which belong to the client's
+ * configuration and are set through it once the client exists. Declared here, in one place, so the endpoint's
+ * input type and the code that reads a request are the same set.
+ */
+object ClientCreateFields {
+    val names: List<String> = listOf(
+        CLD.clientId, CLD.name, CLD.description, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
+        CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.userLabels, CLD.sandbox,
+    )
+}
+
 /** Names and field keys for a client definition (issue #343). */
 @Suppress("ConstPropertyName")
 object CLD {
@@ -237,6 +251,24 @@ object CLD {
 
     /** [writtenInfoTypeName] qualified by [catalogNamespace]: what the `kdr:clientDef` slot's data is declared as. */
     const val writtenInfoTypeQualified = "$catalogNamespace.$writtenInfoTypeName"
+
+    /** Schema type name for the input of the create-client endpoint (issue #1054): [ClientCreateFields], written. */
+    const val createTypeName = "ClientCreate"
+
+    /** Schema type name for what creating a client answers (issue #1054). */
+    const val createResultTypeName = "ClientCreateResult"
+
+    /**
+     * The id of the options source behind the create input's `extendsFromClientId` (issue #1054): the template
+     * clients a client made from data may extend. Here for the reason [clientOptions] is.
+     */
+    const val templateOptions = "clientTemplateOptions"
+
+    /**
+     * The name of the stored configuration a created client's definition is written to (issue #1054): the client's
+     * first, and the one its definition editors then find it in.
+     */
+    const val definitionConfigName = "main"
 
     /**
      * The id under which the clients-a-caller-may-name choice list is registered (issue #413).
@@ -628,61 +660,89 @@ data class ClientDef(
                 } else {
                     "A client this deployment carries, as it was declared."
                 }
-                property(CLD.clientId, "The client's unique key, embedded in every gedra id it owns.", required = true)
-                // `emptyIsAbsent = false`: an empty name is a real, handled state (`clientLabel` falls back to the
-                // id), so it must not read as a missing required field and fail validation (issue #672 review).
-                property(CLD.name, "The name presented to users as the name of the client.", required = true) {
-                    emptyIsAbsent = false
+                infoProperties(written)
+            }
+        }
+
+        /**
+         * The input of the create-client endpoint (issue #1054): the written form's properties, as they are
+         * declared for it, for [ClientCreateFields] only -- so what a create is held to is what any write of a
+         * definition is held to, for the fields a create takes. `extendsFromClientId` offers the templates there
+         * are ([CLD.templateOptions]); what a client may extend is still judged where it always was.
+         */
+        fun defineCreateType(builder: SchTypesBuilder) {
+            builder.type(CLD.createTypeName) {
+                type = SCT.kObject
+                description = "A client to create: what its definition is to hold."
+                infoProperties(written = true, only = ClientCreateFields.names.toSet(), offerTemplates = true)
+            }
+        }
+
+        /**
+         * The definition's properties, declared once for every type that holds them: all of them, or [only] the
+         * ones named. [written] closes the list of environments; [offerTemplates] sources the choices of
+         * `extendsFromClientId`, for a form.
+         */
+        private fun SchTypeBuilder.infoProperties(written: Boolean, only: Set<String>? = null, offerTemplates: Boolean = false) {
+            fun prop(name: String, description: String, required: Boolean = false, build: SchTypeBuilder.() -> Unit = {}) {
+                if (only == null || name in only) property(name, description, required, build)
+            }
+            prop(CLD.clientId, "The client's unique key, embedded in every gedra id it owns.", required = true)
+            // `emptyIsAbsent = false`: an empty name is a real, handled state (`clientLabel` falls back to the
+            // id), so it must not read as a missing required field and fail validation (issue #672 review).
+            prop(CLD.name, "The name presented to users as the name of the client.", required = true) {
+                emptyIsAbsent = false
+            }
+            prop(CLD.description, "An internal note about who, what or why.")
+            prop(CLD.usageType, "What the client is for.", required = true) {
+                options(ClientUsageType.entries)
+            }
+            prop(CLD.audience, "Whose client this is: ours, or somebody else's.", required = true) {
+                options(ClientAudience.entries)
+            }
+            prop(CLD.webResourcesId, "Identifies the package of web resources the client presents.")
+            // The environments there are ([ENV.names]), as choices (issue #1051): a form drawn from this type
+            // offers the real ones, and a written definition is held to them.
+            prop(CLD.enabledEnvironments, "The environments the client is enabled in.", required = true) {
+                type = SCT.array
+                items {
+                    ENV.names.forEach { option(it) }
+                    if (!written) openOptions()
                 }
-                property(CLD.description, "An internal note about who, what or why.")
-                property(CLD.usageType, "What the client is for.", required = true) {
-                    options(ClientUsageType.entries)
-                }
-                property(CLD.audience, "Whose client this is: ours, or somebody else's.", required = true) {
-                    options(ClientAudience.entries)
-                }
-                property(CLD.webResourcesId, "Identifies the package of web resources the client presents.")
-                // The environments there are ([ENV.names]), as choices (issue #1051): a form drawn from this type
-                // offers the real ones, and a written definition is held to them.
-                property(CLD.enabledEnvironments, "The environments the client is enabled in.", required = true) {
-                    type = SCT.array
-                    items {
-                        ENV.names.forEach { option(it) }
-                        if (!written) openOptions()
-                    }
-                }
-                // The flags are booleans and nothing else (`allowCoerce = false`, issue #1051): this is a definition,
-                // not a query string, and "yes" for a flag is a mistake to name rather than a value to guess at.
-                property(CLD.preload, "Whether the client's caches are computed before the node reports ready.") {
-                    type = SCT.boolean
-                    allowCoerce = false
-                }
-                property(CLD.staticConfig, "Whether, in production, the client takes nothing from the database.") {
-                    type = SCT.boolean
-                    allowCoerce = false
-                }
-                property(CLD.extendsFromClientId, "The client whose definitions this one is built on top of.")
-                property(CLD.domainPrefix, "A prefix on a core domain that routes to this client.")
-                property(CLD.customDomain, "A whole hostname the client configured for itself.")
-                property(CLD.includedTraits, "Trait ids and group names the client takes as they stand.") {
-                    type = SCT.array
-                    items { type = SCT.string }
-                }
-                property(
-                    CLD.testFeatures,
-                    "Test/demo feature names, honored only on a test instance (stripped elsewhere).",
-                ) {
-                    type = SCT.array
-                    items { type = SCT.string }
-                }
-                property(CLD.userLabels, "User labels the client suggests; a label editor offers them, without binding to them.") {
-                    type = SCT.array
-                    items { type = SCT.string }
-                }
-                property(CLD.sandbox, "Whether the client has a sandbox beside it, running its latest configuration.") {
-                    type = SCT.boolean
-                    allowCoerce = false
-                }
+            }
+            // The flags are booleans and nothing else (`allowCoerce = false`, issue #1051): this is a definition,
+            // not a query string, and "yes" for a flag is a mistake to name rather than a value to guess at.
+            prop(CLD.preload, "Whether the client's caches are computed before the node reports ready.") {
+                type = SCT.boolean
+                allowCoerce = false
+            }
+            prop(CLD.staticConfig, "Whether, in production, the client takes nothing from the database.") {
+                type = SCT.boolean
+                allowCoerce = false
+            }
+            prop(CLD.extendsFromClientId, "The client whose definitions this one is built on top of.") {
+                if (offerTemplates) optionsSource(CLD.templateOptions)
+            }
+            prop(CLD.domainPrefix, "A prefix on a core domain that routes to this client.")
+            prop(CLD.customDomain, "A whole hostname the client configured for itself.")
+            prop(CLD.includedTraits, "Trait ids and group names the client takes as they stand.") {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+            prop(
+                CLD.testFeatures,
+                "Test/demo feature names, honored only on a test instance (stripped elsewhere).",
+            ) {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+            prop(CLD.userLabels, "User labels the client suggests; a label editor offers them, without binding to them.") {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+            prop(CLD.sandbox, "Whether the client has a sandbox beside it, running its latest configuration.") {
+                type = SCT.boolean
+                allowCoerce = false
             }
         }
     }

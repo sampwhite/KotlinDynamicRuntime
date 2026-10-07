@@ -58,6 +58,13 @@ object ADEP {
     const val clients = "/${SECT.admin}/clients"
 
     /**
+     * Creates a client from data (issue #1054): its definition written as its first stored configuration, published
+     * and loaded. Full-scope, as every client's creation is the platform operator's: there is no client to be the
+     * administrator of until it exists.
+     */
+    const val clientCreate = "/${SECT.admin}/client/create"
+
+    /**
      * One client's full definition — its attributes, its traits (with their data schema), its trait-usage rules,
      * and its workflow ids — for an `allClients` admin who needs to see or act in another client's rules (issue
      * #672). Full-scope only, the same reason [clients] is: it names a client the caller need not belong to.
