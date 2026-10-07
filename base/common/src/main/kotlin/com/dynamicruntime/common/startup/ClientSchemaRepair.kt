@@ -5,6 +5,7 @@ import com.dynamicruntime.common.schema.LayoutError
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchGKeywords
+import com.dynamicruntime.common.schema.SchStdKeywords
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
@@ -49,7 +50,11 @@ class DefRepairContext(
  * - a `g-errors` entry keyed by no failure code, or whose template could not render right: that message goes, and
  *   the failure falls back to the validator's own wording;
  * - an unknown `g-` key, or one of ours whose value has the wrong shape ([SchGKeywords], issue #822): the keyword
- *   goes.
+ *   goes;
+ * - a standard keyword this layer reads whose value has the wrong shape ([SchStdKeywords], issue #1053) -- a `type`
+ *   that is no type, a `required` that is not a list: the keyword goes, or only the part of it at fault (a property
+ *   whose schema is not an object, a `required` entry that is not a name). Each is what the lenient reading made
+ *   of it, so the definition means what it meant, and now says what is wrong with it.
  *
  * The checks are the boot's own -- the same messages, from the same helpers -- run on the **raw** definition,
  * where a keyword can still be removed; the boot's later passes over the compiled document then find nothing in
@@ -68,9 +73,25 @@ fun repairTypeDef(
     val repairs = mutableListOf<DefRepair>()
 
     // Rebuilds as it walks; an unrepaired type is handed back by identity below, so the copies cost nothing
-    // that matters.
-    fun repairNode(at: String, node: Map<String, Any?>, requiredHere: Boolean): Map<String, Any?> {
+    // that matters. [isSchema] says whether the node is at a place the parser reads as a schema -- the type, a
+    // property, an `items`, a `oneOf` branch. The walk below goes into every map and list, since a `g-` key is ours
+    // wherever it turns up; a standard keyword's shape is judged only in a schema, because the same word in a
+    // `default`, a `const` or a keyword of the document's own is data (`{"type": "refund"}`), not a keyword.
+    fun repairNode(at: String, node: Map<String, Any?>, requiredHere: Boolean, isSchema: Boolean): Map<String, Any?> {
         val out = LinkedHashMap(node)
+        if (isSchema) {
+            for ((key, value) in node) {
+                val problem = SchStdKeywords.problem(at, key, value) ?: continue
+                val kept = SchStdKeywords.salvaged(key, value)
+                if (kept == null) {
+                    out.remove(key)
+                    repairs.add(DefRepair(problem.message, "Dropping '$key', which was read as if it were absent."))
+                } else {
+                    out[key] = kept
+                    repairs.add(DefRepair(problem.message, "Dropping that part of '$key', which was read past."))
+                }
+            }
+        }
         // An unknown `g-` key, or one of ours with a value of the wrong shape (issue #822): the keyword goes, and the
         // rest of the definition stands. First, so the checks below read only well-shaped keywords.
         for ((key, value) in node) {
@@ -167,21 +188,22 @@ fun repairTypeDef(
                 key == SCH.properties && value is Map<*, *> ->
                     value.toJsonMap().mapValuesTo(LinkedHashMap()) { (child, childBody) ->
                         if (childBody is Map<*, *>) {
-                            repairNode("$where property '$child'", childBody.toJsonMap(), child in required)
+                            repairNode("$where property '$child'", childBody.toJsonMap(), child in required, isSchema)
                         } else {
                             childBody
                         }
                     }
-                value is Map<*, *> -> repairNode(at, value.toJsonMap(), requiredHere = false)
-                value is List<*> ->
-                    value.map { if (it is Map<*, *>) repairNode(at, it.toJsonMap(), requiredHere = false) else it }
+                value is Map<*, *> -> repairNode(at, value.toJsonMap(), requiredHere = false, isSchema && key == SCH.items)
+                value is List<*> -> value.map {
+                    if (it is Map<*, *>) repairNode(at, it.toJsonMap(), requiredHere = false, isSchema && key == SCH.oneOf) else it
+                }
                 else -> value
             }
         }
         return out
     }
 
-    val repaired = repairNode(where, body, requiredHere = false)
+    val repaired = repairNode(where, body, requiredHere = false, isSchema = true)
     return (if (repairs.isEmpty()) body else repaired) to repairs
 }
 

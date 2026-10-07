@@ -30,6 +30,10 @@ import com.dynamicruntime.common.util.toOptDouble
  * denylist, not an allowlist: any other keyword stays allowed. Our own `g-` keywords are the opposite -- a closed
  * list, checked by [SchGKeywords].
  *
+ * **A keyword we do read is held to its shape** ([SchStdKeywords], issue #1053): `type: "strng"`, `required:
+ * "name"`, `properties: []` and `additionalProperties: "no"` are each refused by name, where each used to be read as
+ * though the keyword were absent -- the same silence, reached by a typo in a value rather than in a key.
+ *
  * @return the newly parsed types keyed by fully qualified name.
  */
 fun parseSchemaTypes(
@@ -323,6 +327,9 @@ fun parseNode(
     // fails the parse rather than being read leniently.
     SchGKeywords.problems(where, map).firstOrNull()?.let { throw it.toException() }
     refusedKeywordProblem(where, map)?.let { throw it.toException() }
+    // And the standard keywords read below are held to their shapes (issue #1053), so the lenient reads that follow
+    // -- `as? Boolean`, `is Map`, `is List` -- only ever meet a value of the right kind, or none.
+    SchStdKeywords.problems(where, map).firstOrNull()?.let { throw it.toException() }
     val properties = LinkedHashMap<String, SchProperty>()
     val rawProps = map[SCH.properties]
     if (rawProps is Map<*, *>) {
@@ -736,6 +743,8 @@ fun parseProperty(name: String, map: Map<String, Any?>, state: SchParseState, de
     SchGKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw it.toException() }
     // And the refused standard ones (issue #823), which would otherwise be ignored beside a `$ref`.
     refusedKeywordProblem("Property '$name'", map)?.let { throw it.toException() }
+    // And the standard ones it reads here -- its description, its title, the `$ref` itself (issue #1053).
+    SchStdKeywords.problems("Property '$name'", map).firstOrNull()?.let { throw it.toException() }
     val description = map[SCH.description].toOptStr()
     // On the property, not only its value type -- see [SchProperty.title] for why a `$ref` field needs its own.
     val title = map[SCH.title].toOptStr()

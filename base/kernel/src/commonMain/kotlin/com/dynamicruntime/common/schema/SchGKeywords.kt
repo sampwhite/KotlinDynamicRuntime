@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.schema
 
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.util.Problem
 
 /**
@@ -69,7 +70,7 @@ object SchGKeywords {
             )
         if (shape.accepts(value)) return null
         return Problem(
-            SchemaError.badValue, "$where sets '$keyword' to ${describe(value)}; it must be ${shape.described}.",
+            SchemaError.badValue, "$where sets '$keyword' to ${describeSchemaValue(value)}; it must be ${shape.described}.",
         )
     }
 
@@ -84,11 +85,13 @@ object SchGKeywords {
     /** Every problem among [map]'s own keys (not its children's), in key order. */
     fun problems(where: String, map: Map<String, Any?>): List<Problem> =
         map.entries.mapNotNull { (key, value) -> problem(where, key, value) }
+}
 
-    private fun describe(value: Any?): String = when (value) {
-        is String -> "'$value'"
-        is Map<*, *> -> "an object"
-        is List<*> -> "a list"
-        else -> value.toString()
-    }
+/** How a keyword's wrongly shaped value is named in a refusal: text quoted, a container by its kind, the rest as it prints. */
+@KdrPrivate
+fun describeSchemaValue(value: Any?): String = when (value) {
+    is String -> "'$value'"
+    is Map<*, *> -> "an object"
+    is List<*> -> "a list"
+    else -> value.toString()
 }
