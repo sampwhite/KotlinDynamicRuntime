@@ -182,13 +182,10 @@ fun keepGatedFields(
     return SchGatedWrite(out, refused)
 }
 
-/** Whether [type] is an object with fields of its own to judge: declared ones, or a map's entries (issue #1055). */
-private fun holdsFields(type: SchType): Boolean = type.properties.isNotEmpty() || type.additionalValueType != null
-
 /** Whether [value] is something [keepGatedFields] walks into for [valueType]: an object with fields, or a list of them. */
 private fun nestsFields(valueType: SchType, value: Any?): Boolean = when (value) {
-    is Map<*, *> -> holdsFields(valueType)
-    is List<*> -> valueType.itemType?.let { holdsFields(it) } == true
+    is Map<*, *> -> valueType.holdsFields()
+    is List<*> -> valueType.itemType?.holdsFields() == true
     else -> false
 }
 
@@ -244,12 +241,3 @@ fun gateComparable(value: Any?, depth: Int = 0): Any? {
 /** What [keepGatedFields] makes of a write: the [data] to store, and the gated fields the caller tried to change. */
 class SchGatedWrite(val data: Map<String, Any?>, val refused: List<String>)
 
-/** Limits of the `g-visibleWhen` write rule (issue #830). */
-@Suppress("ConstPropertyName")
-object SGATE {
-    /** How deep [keepGatedFields] follows nested objects and lists before refusing the value. */
-    const val maxDepth = 30
-
-    /** Below this a double holds every whole number exactly, so [gateComparable] may read `2.0` as `2`. */
-    const val exactWholeLimit = 9.0e15
-}

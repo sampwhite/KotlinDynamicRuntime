@@ -32,6 +32,48 @@ class MapFieldErrorsTest {
     ).getValue("f.Order")
 
     @Test
+    fun aMapIsNamedForItsValues() {
+        // "(object)" said nothing of what an entry holds, which is all a map declares.
+        assertEquals("map of integer", typeWord(order.properties.getValue("scores").valueType))
+        assertEquals("map of map of string", typeWord(order.properties.getValue("copy").valueType))
+        assertEquals("string", typeWord(order.properties.getValue("title").valueType))
+        // A map whose values are the map itself is named a few levels down and no further.
+        val folder = parseSchemaTypes(
+            mapOf("f.Folder" to mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.dRef to "#/\$defs/f.Folder"))),
+        ).getValue("f.Folder")
+        assertEquals("map of map of map of map", typeWord(folder))
+    }
+
+    @Test
+    fun anOutlineExpandsWhatAMapsEntriesHold() {
+        val types = parseSchemaTypes(
+            mapOf(
+                "f.Line" to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("text" to mapOf(SCH.type to SCT.string))),
+                "f.Cart" to mapOf(
+                    SCH.type to SCT.kObject,
+                    SCH.properties to mapOf(
+                        "lines" to mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.dRef to "#/\$defs/f.Line")),
+                        "list" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "#/\$defs/f.Line")),
+                        // Declared fields and a value type: its own fields are what the outline shows.
+                        "tally" to mapOf(
+                            SCH.type to SCT.kObject,
+                            SCH.properties to mapOf("kind" to mapOf(SCH.type to SCT.string)),
+                            SCH.additionalProperties to mapOf(SCH.type to SCT.integer),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val cart = types.getValue("f.Cart")
+        fun element(name: String) = outlineElement(cart.properties.getValue(name).valueType)
+        assertEquals("f.Line", element("lines")?.name)
+        assertEquals("f.Line", element("list")?.name)
+        assertEquals(null, element("tally"))
+        assertEquals(null, outlineElement(cart.properties.getValue("lines").valueType.additionalValueType!!))
+        assertEquals("map of object", typeWord(cart.properties.getValue("lines").valueType))
+    }
+
+    @Test
     fun aMapIsDrawnAsOneJsonControl() {
         // No declared fields of its own, so the form draws it as it draws any such object.
         assertEquals(ControlKind.JsonMap, controlKind(order.properties.getValue("scores").valueType, required = false, editable = true))

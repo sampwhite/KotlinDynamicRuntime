@@ -159,6 +159,63 @@ class SchMapValuesTest : StringSpec({
         repaired[SCH.additionalProperties] shouldBe mapOf(SCH.minLength to 2L)
     }
 
+    "a fault in a value schema or an item schema is said to be there, not on the type that holds it" {
+        // The type itself is well formed -- `type: object` -- so "Type 'm.Bad' sets 'type' to 'strng'" would send
+        // its author to the wrong line.
+        fun refusal(holder: Map<String, Any?>) = shouldThrow<KdrException> { parseSchemaTypes(mapOf("m.Bad" to holder)) }.message.orEmpty()
+        val misspelt = mapOf(SCH.type to "strng")
+        refusal(mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to misspelt)) shouldContain
+            "Type 'm.Bad' (in its value schema) sets 'type' to 'strng'"
+        refusal(mapOf(SCH.type to SCT.array, SCH.items to misspelt)) shouldContain
+            "Type 'm.Bad' (in its item schema) sets 'type' to 'strng'"
+        refusal(
+            mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf("by" to mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to misspelt)),
+            ),
+        ) shouldContain "Property 'by' (in its value schema) sets 'type' to 'strng'"
+        // The repair of a stored definition reports it in the same words.
+        fun repair(holder: Map<String, Any?>) =
+            repairTypeDef("Type 'client.x.Tally'", holder, DefRepairContext(emptySet()) { null }).second.single().message
+        repair(mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to misspelt)) shouldContain
+            "Type 'client.x.Tally' (in its value schema) sets 'type' to 'strng'"
+        repair(mapOf(SCH.type to SCT.array, SCH.items to misspelt)) shouldContain
+            "Type 'client.x.Tally' (in its item schema) sets 'type' to 'strng'"
+    }
+
+    "a type is declared a map or given the switch, not both" {
+        // Both write `additionalProperties`, so the later used to win in silence: a map quietly closed, or a
+        // closed record quietly made a map.
+        shouldThrow<KdrException> {
+            schemaDefs(cxt, "m") {
+                type("Both") {
+                    mapOfValues { type = SCT.string }
+                    additionalProperties = false
+                }
+            }
+        }.message.orEmpty() shouldContain "not both"
+        shouldThrow<KdrException> {
+            schemaDefs(cxt, "m") {
+                type("Both") {
+                    additionalProperties = true
+                    mapOfValues { type = SCT.string }
+                }
+            }
+        }.message.orEmpty() shouldContain "not both"
+        // Each alone reads back as it was set, and the switch reads as unset on a map.
+        schemaDefs(cxt, "m") {
+            type("Open") {
+                type = SCT.kObject
+                additionalProperties = true
+                additionalProperties shouldBe true
+            }
+            type("Map") {
+                mapOfValues { type = SCT.string }
+                additionalProperties shouldBe null
+            }
+        }.getValue("m.Open").toJsonMapOrEmpty()[SCH.additionalProperties] shouldBe true
+    }
+
     "the served closure follows a reference in a map's value schema" {
         val closure = collectDefs(listOf(mapOf(SCH.dRef to "#/\$defs/m.Book")), defs)
         closure.keys shouldBe setOf("m.Book", "m.Person")
@@ -217,6 +274,41 @@ class SchMapValuesTest : StringSpec({
             .refused.shouldBeEmpty()
         holdsGatedValue(order, stored, failsAdmin) shouldBe true
         holdsGatedValue(order, mapOf("lines" to mapOf("b" to mapOf("text" to "two"))), failsAdmin) shouldBe false
+    }
+
+    "a gated field inside a map's entry is left out of what a caller who cannot see it is shown" {
+        val value = mapOf(
+            "title" to "T",
+            "lines" to mapOf("a" to mapOf("text" to "one", "cost" to 5L), "b" to mapOf("text" to "two")),
+        )
+        // The whole object, as one control over it would show it: `cost` is gone from the entry that held it.
+        hideGatedFields(order, value, failsAdmin) shouldBe
+            mapOf("title" to "T", "lines" to mapOf("a" to mapOf("text" to "one"), "b" to mapOf("text" to "two")))
+        // And the map alone, which is what its own control is handed.
+        hideGatedFields(order.properties.getValue("lines").valueType, value["lines"], failsAdmin) shouldBe
+            mapOf("a" to mapOf("text" to "one"), "b" to mapOf("text" to "two"))
+        // What was shown, written back, keeps what was hidden: the round trip the view is for.
+        val shown = hideGatedFields(order, value, failsAdmin).toJsonMapOrEmpty()
+        val written = keepGatedFields(order, value, shown, failsAdmin)
+        written.refused.shouldBeEmpty()
+        written.data shouldBe value
+        // Nothing hidden is nothing copied: a caller who passes the gate, a value holding no gated field, and
+        // text part way through being typed are each handed back as they are.
+        (hideGatedFields(order, value, { true }) === value) shouldBe true
+        val ungated = mapOf("lines" to mapOf("b" to mapOf("text" to "two")))
+        (hideGatedFields(order, ungated, failsAdmin) === ungated) shouldBe true
+        hideGatedFields(order, "{ \"lines\": ", failsAdmin) shouldBe "{ \"lines\": "
+        // In a list's elements too, and a value nested without end is refused rather than followed.
+        val listed = parseSchemaTypes(
+            mapOf("g.Batch" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.dRef to "#/\$defs/g.Line"))),
+            existingTypes = gated,
+        ).getValue("g.Batch")
+        hideGatedFields(listed, listOf(mapOf("text" to "one", "cost" to 5L), mapOf("text" to "two")), failsAdmin) shouldBe
+            listOf(mapOf("text" to "one"), mapOf("text" to "two"))
+        val folder = types.getValue("m.Folder")
+        var deep: Map<String, Any?> = mapOf("note" to "leaf")
+        repeat(SGATE.maxDepth) { deep = mapOf("children" to mapOf("in" to deep)) }
+        shouldThrow<KdrException> { hideGatedFields(folder, deep, failsAdmin) }.message.orEmpty() shouldContain "nests deeper"
     }
 
     "a form's requirement of a type is judged in every entry of a map of it" {

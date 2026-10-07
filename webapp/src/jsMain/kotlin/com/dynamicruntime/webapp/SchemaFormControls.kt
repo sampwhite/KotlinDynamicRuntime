@@ -4,6 +4,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.hideGatedFields
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonStr
@@ -198,7 +199,10 @@ internal fun ChildrenBuilder.widget(
             markInvalid(asDynamic(), describedBy)
         }
         ControlKind.JsonMap -> JsonObjectField {
-            this.value = value
+            // One control over a whole object -- a map among them (issue #1055) -- has no box per field to leave
+            // undrawn, so the fields a gate hides from this caller are left out of what it is handed. A write
+            // keeps a gated field that is absent as it was stored, so the round trip is the hidden box's.
+            this.value = hideGatedFields(vt, value, opts.gateAllows)
             this.describedBy = describedBy
             this.onEmit = emit
             this.onCommit = commit

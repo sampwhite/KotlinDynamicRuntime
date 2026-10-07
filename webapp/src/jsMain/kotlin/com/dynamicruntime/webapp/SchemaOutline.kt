@@ -105,8 +105,9 @@ private fun ChildrenBuilder.outlineField(name: String, prop: SchProperty, requir
     prop.description?.let { desc(it) }
     boundHint(vt)
 
-    // Expand structure: an object's fields, an array-of-object's element fields, or a choice field's options.
-    val element = if (vt.jsonType == SCT.array) vt.itemType else null
+    // Expand structure: an object's fields, an array-of-object's element fields, a map's value fields, or a
+    // choice field's options.
+    val element = outlineElement(vt)
     when {
         // `isStructuredObject` rather than a properties check, so a union expands here too: its fields live on
         // its branches, so it has none of its own and would otherwise render as a bare "(object)".
@@ -116,6 +117,15 @@ private fun ChildrenBuilder.outlineField(name: String, prop: SchProperty, requir
         element?.options != null -> optionList(element.options!!)
     }
 }
+
+/**
+ * The type a field's outline expands beneath it when the field's own type has no structure to show: what an
+ * array holds in each item, or a map in each entry (issue #1055) -- a map's values are all it declares, so an
+ * outline that stopped at "(object)" documented nothing of it. An object that also declares fields is expanded
+ * as itself.
+ */
+internal fun outlineElement(vt: SchType): SchType? =
+    if (vt.jsonType == SCT.array) vt.itemType else vt.additionalValueType.takeIf { vt.properties.isEmpty() }
 
 /** Renders a nested object's structure indented, guarding against a self-/mutually-referential type. */
 private fun ChildrenBuilder.outlineNested(type: SchType, seen: Set<String>) {

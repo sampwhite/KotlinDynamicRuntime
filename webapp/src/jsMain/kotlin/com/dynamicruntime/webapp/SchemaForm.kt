@@ -1708,9 +1708,12 @@ fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>, opts
     }
 }
 
+/** How many maps deep [typeWord] names a map's values ("map of map of string") before it says only "map". */
+internal const val maxTypeWordDepth = 3
+
 /** The field's type named in words, e.g. "string", "boolean", "date", "choice", "list". Internal (not private)
  *  so `ControlKindTest` can pin the choice-vs-open-choice reading it shares with [controlKind] (issue #781). */
-internal fun typeWord(vt: SchType): String = when {
+internal fun typeWord(vt: SchType, depth: Int = 0): String = when {
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> "file"
     // "open choice" rather than "choice": the word has to carry that the list is not the whole of what is
     // allowed, or the outline documents a constraint the endpoint does not have.
@@ -1724,6 +1727,11 @@ internal fun typeWord(vt: SchType): String = when {
     vt.jsonType == SCT.integer -> "integer"
     vt.jsonType == SCT.number -> "number"
     vt.jsonType == SCT.string -> "string"
+    // A map (issue #1055): free keys, each a value of one kind -- which is what a reader needs to know of it. An
+    // object that also declares fields is named for those, and its outline shows them. A map's values may be the
+    // map itself, by reference, so the naming stops a few levels down.
+    vt.properties.isEmpty() && vt.additionalValueType != null ->
+        if (depth >= maxTypeWordDepth) "map" else "map of ${typeWord(vt.additionalValueType!!, depth + 1)}"
     else -> vt.jsonType ?: "value"
 }
 

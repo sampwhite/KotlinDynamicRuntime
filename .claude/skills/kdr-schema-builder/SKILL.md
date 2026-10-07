@@ -206,9 +206,18 @@ from the keys being **data** rather than part of a contract:
 
 A type may declare properties *and* `mapOfValues`: the declared ones are validated as themselves, every other key
 against the value type. `SchType.additionalValueType` is what the parser makes of it (null for an object that is
-not a map). Field gates (`visibleWhen`) and a form's requirements are enforced inside a map's entries as they are
-inside a list's elements. A form draws a map as it draws any object with no declared fields -- a JSON editor -- and
-shows a failure inside an entry under the field, led by the entry's key (`FieldErrors.messagesWithin`).
+not a map), and `SchType.holdsFields()` is the one answer to "does this object have fields to walk into" -- declared
+ones or a map's entries -- that the walkers below share. One type says `mapOfValues` **or** `additionalProperties`
+true/false, since both write the one keyword: declaring both is refused rather than the later quietly winning. A
+fault in a value schema is named as being there (`Type 'abc.shop.Order' (in its value schema) sets …`), as one in
+an item schema is.
+
+Field gates (`visibleWhen`) and a form's requirements are enforced inside a map's entries as they are inside a
+list's elements. A form draws a map as it draws any object with no declared fields -- a JSON editor -- which has no
+box per field to leave undrawn, so the editor is handed the value **without** the fields a gate hides from the
+caller (`hideGatedFields`, in the kernel; a write keeps a gated field that is left out as it was stored). A failure
+inside an entry shows under the field, led by the entry's key (`FieldErrors.messagesWithin`), and the read-only
+outline names a map for its values ("map of integer") and expands a structured value type beneath it.
 
 ## Choice lists: written down, or sourced at render time
 

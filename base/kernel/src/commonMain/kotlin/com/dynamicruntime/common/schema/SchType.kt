@@ -217,6 +217,13 @@ class SchType(
 )
 
 /**
+ * Whether this is an object with fields of its own to walk into: declared ones, or a map's entries (issue #1055).
+ * The one answer the walkers that judge a value field by field share -- a form's requirements, a field's gate on a
+ * write -- so that a shape one of them learns to walk is one they all do.
+ */
+fun SchType.holdsFields(): Boolean = properties.isNotEmpty() || additionalValueType != null
+
+/**
  * The modes of the `g-outerWhitespace` keyword (issues #541, #765), resolved from its [SOWS] wire values. An
  * enum rather than a string because it is a genuinely closed operational set the validator switches on -- the
  * kind of use enums are kept for here. Entries are lower-case-first to match the wire spelling ([SOWS.trim] /

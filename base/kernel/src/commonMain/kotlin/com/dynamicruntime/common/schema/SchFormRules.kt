@@ -106,9 +106,6 @@ private fun collectFormFailures(
     }
 }
 
-/** Whether [type] is an object with fields of its own to judge: declared ones, or a map's entries. */
-private fun holdsFields(type: SchType): Boolean = type.properties.isNotEmpty() || type.additionalValueType != null
-
 /** The form failures inside [value], a nested object of [vt] or a list of them, reported under [at]. */
 private fun collectNestedFormFailures(
     vt: SchType,
@@ -119,9 +116,9 @@ private fun collectNestedFormFailures(
     depth: Int,
 ) {
     when (value) {
-        is Map<*, *> if holdsFields(vt) -> collectFormFailures(vt, layouts, value, at, out, depth + 1)
+        is Map<*, *> if vt.holdsFields() -> collectFormFailures(vt, layouts, value, at, out, depth + 1)
 
-        is List<*> -> vt.itemType?.takeIf { holdsFields(it) }?.let { item ->
+        is List<*> -> vt.itemType?.takeIf { it.holdsFields() }?.let { item ->
             value.forEachIndexed { i, element ->
                 if (element is Map<*, *>) collectFormFailures(item, layouts, element, indexPath(at, i), out, depth + 1)
             }
