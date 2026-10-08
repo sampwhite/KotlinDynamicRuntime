@@ -309,6 +309,33 @@ Lee — pat@x.test [Member B]", `scopeUserLabel`), read from the identity view t
 forms is still named, and one of a person's several users is told apart as the badge tells it. A scope typed as an
 address says who already and gets no such line.
 
+## The forms listing is named for whose forms it shows (issue #1091)
+
+"My forms" for a caller who lists only their own; "Forms" for one who administers a client, whose listing is every
+form in it. Three places say it and all three agree: the **menu entry**, the **page heading** and the **back link**
+from a form.
+
+- **One rule, asked twice.** The backend's `AdminRules.isClientAdministrator` -- which is also how far the caller's
+  reads reach (`ReadScopeRules.forCaller`). The menu asks it as a cfact (`kdr:administersClient`): two entries for
+  the one page, mutually exclusive, `HMENU.forms` "My forms" and `HMENU.clientForms` "Forms". The page is told it
+  as the home config's `administersClient` feature. **Not** `canManageUsers` and not the admin level: both are true
+  for a `public` self-administrator, who reads only their own forms.
+- **The page is called what its menu entry is called.** The page reads its name from the shell, not from a fetch of
+  its own (`ShellFacts`, `useShellFacts`): `App` provides what the app bar's config read said (`shellFactsOf`), which
+  includes the label of whichever entry of the caller's menu routes to the forms listing. So the heading and the back
+  link follow a client's renaming of the entry, and a move between pages names the page at once. With no such entry
+  (a client hid it) the name falls back on the caller's fact, and until the shell has been told -- a moment after a
+  hard reload, or for good if its config could not be read -- it is "Forms", which is true whoever is looking
+  (`formsListingName`).
+- **`backToListing` draws a component** (`BackLink`) so its label can follow the context; `backLabel(page, facts)` is
+  the pure rule. Every other listing has one name.
+- **The page's own copy says "the forms", never "your forms"** (`formsLoadFailureLead`, the raw editor's hint): it is
+  read by administrators looking at other people's forms as often as by their owners.
+- **Reports is offered by the same fact** (`administersClient`): its endpoints admit a client's administrator, so a
+  `public` self-administrator is offered neither it nor the Clients entries.
+- **Two ids to a client's menu overlay.** A rename or a hide of `forms` keeps meaning what the client's ordinary
+  users see; `clientForms` is its administrators' entry, listed beside it in the Clients page's menu editor.
+
 ## The forms listing across clients (issues #668, #714)
 
 An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client column,
@@ -389,8 +416,8 @@ is one click away from the named one.
 
 **The menu says what the page will open.** The home menu declares two items for the one page, mutually exclusive by
 cfact as the two Debug entries are: `HMENU.clients`, "Clients", for an administrator who sees across clients
-(`isDeploymentAdmin`), and `HMENU.myClient`, "My client", for any other administrator -- "Clients" promised a list
-that is no longer there. Both route to `pageClients`, so the app bar's current-page match is unchanged. They are two
+(`isDeploymentAdmin`), and `HMENU.myClient`, "My client", for any other administrator of a client
+(`administersClient`, issue #1091) -- "Clients" promised a list that is no longer there. Both route to `pageClients`, so the app bar's current-page match is unchanged. They are two
 ids to a client's menu overlay: a rename or a hide of `clients` does not touch `myClient`, which the Clients page's
 menu editor lists beside it. Two callers keep the old path: an `allClients` administrator, who has a listing, and a
 `public` self-administrator, whom the overview endpoint refuses -- shown as that refusal rather than as a detail that
@@ -531,9 +558,9 @@ the endpoint's input and this editor both read.
 Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
 not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,
 who administers only their own users (#805) -- is shown as it came, through `LoadStateCard`'s `errorLead`. The
-menu is gated on the admin level like Users -- "Clients" or "My client" by whether the caller sees across clients
-(issue #1082) -- so a `public` self-administrator is offered "My client" and refused on the page; the endpoint is the
-authority. The detail view (`c=<id>`, issue #906) and, later, editing a client and
+menu offers the page to a caller who administers a client -- "Clients" or "My client" by whether they see across
+clients (issue #1082) -- so a `public` self-administrator, who administers none, is offered neither (issue #1091).
+The page still refuses them honestly if they reach it by its address; the endpoint is the authority. The detail view (`c=<id>`, issue #906) and, later, editing a client and
 designing its workflows (#903) open from this page.
 
 ## The Reports page (issue #1007)
@@ -558,7 +585,8 @@ pure half -- parsers, the run's query, the table's columns, a cell's text, the p
   endpoint requires -- another query's cursor is a 400. The "Forms 26–32 of 32" line counts rows as the walk goes
   (`reportRangeText`), since a cursor carries no offset.
 - **A detail row's "Open" link goes to the forms page**, which owns its hash and its ways home, so its back link
-  reads "← My forms"; the way back to the report is the browser's Back. Do not add a `from=reports`: the forms
+  reads "← Forms" (the listing's name for an administrator, issue #1091); the way back to the report is the
+  browser's Back. Do not add a `from=reports`: the forms
   page drops any `from` that is not a forms listing.
 - **A grouped run's table** is what it grouped by, a **Forms** count, then each rolled-up column headed with its
   rollup, "Total (sum)" (`reportTableColumns`). A group with no value reads "(none)"; any other empty cell a dash.

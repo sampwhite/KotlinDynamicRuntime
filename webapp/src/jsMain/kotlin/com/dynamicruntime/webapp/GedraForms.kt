@@ -429,6 +429,12 @@ fun userPickLabel(name: String?, username: String, email: String): String {
 }
 
 /**
+ * What a failed load of the forms listing says first. "The forms", not "your forms" (issue #1091): the listing is an
+ * administrator's client's as often as it is the caller's own, and this is true of both.
+ */
+const val formsLoadFailureLead = "Couldn't load the forms."
+
+/**
  * The user id the forms listing is confined to, when the scope names its user that way (issue #1081) -- which is
  * how a link from the Users page does, since an id is one user where an address is a person. Null for an address,
  * a blank, or no scope at all. Pure, covered under `jsNodeTest`.

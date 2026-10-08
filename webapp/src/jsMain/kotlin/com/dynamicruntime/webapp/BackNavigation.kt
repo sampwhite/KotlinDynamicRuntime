@@ -2,6 +2,8 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HMENU
 import react.ChildrenBuilder
+import react.Props
+import react.FC
 import react.dom.html.ReactHTML.a
 import web.cssom.ClassName
 
@@ -26,7 +28,8 @@ class BackListing(val page: String, val label: String)
 val backListings: Map<String, BackListing> = listOf(
     BackListing(HMENU.pageDocs, "Documents"),
     BackListing(HMENU.pageOperator, "Operator"),
-    BackListing(HMENU.pageForms, "My forms"),
+    // Named for the caller by [backLabel] (issue #1091); this is its name for one who lists only their own.
+    BackListing(HMENU.pageForms, formsListingName(ShellFacts(administersClient = false))),
     // The workflow pages (issue #792): the aggregate, and a workflow's own listing of forms under it.
     BackListing(HMENU.pageWorkflows, "Workflows"),
     BackListing(pageWorkflowForms, "Workflow forms"),
@@ -44,8 +47,13 @@ val backListings: Map<String, BackListing> = listOf(
 fun backTarget(from: String?, fallback: String): String =
     if (from != null && from in backListings) from else fallback
 
-/** The label a back link shows for [page]: the listing's own name, or the page id when it is not a listing. */
-fun backLabel(page: String): String = backListings[page]?.label ?: page
+/**
+ * The label a back link shows for [page]: the listing's own name, or the page id when it is not a listing. The
+ * forms listing is named for the caller ([formsListingName], issue #1091), from what the shell knows of them
+ * ([facts]) -- what their menu calls it.
+ */
+fun backLabel(page: String, facts: ShellFacts = ShellFacts()): String =
+    if (page == HMENU.pageForms) formsListingName(facts) else backListings[page]?.label ?: page
 
 /** The href that opens [childPage] from [listing], carrying [HP.from] so the child can find its way back. */
 fun childHref(childPage: String, listing: String, vararg extra: Pair<String, String>): String =
@@ -58,9 +66,23 @@ fun childHref(childPage: String, listing: String, vararg extra: Pair<String, Str
  */
 fun ChildrenBuilder.backToListing(fallback: String, forward: List<Pair<String, String>> = emptyList()) {
     val target = backTarget(hashParams()[HP.from], fallback)
+    BackLink {
+        this.target = target
+        href = hashHref(listOf(HP.page to target) + forward)
+    }
+}
+
+private external interface BackLinkProps : Props {
+    var target: String
+    var href: String
+}
+
+/** The link itself: a component, so that its label can follow what the shell knows of the caller (issue #1091). */
+private val BackLink = FC<BackLinkProps> { props ->
+    val facts = useShellFacts()
     a {
         className = ClassName("back-link")
-        href = hashHref(listOf(HP.page to target) + forward)
-        +"← ${backLabel(target)}"
+        href = props.href
+        +"← ${backLabel(props.target, facts)}"
     }
 }

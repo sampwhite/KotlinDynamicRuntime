@@ -104,6 +104,13 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             property(HFEAT.canSeeAllClients, "Whether the caller administers across clients (holds allClients).", required = true) {
                 type = SCT.boolean
             }
+            property(
+                HFEAT.administersClient,
+                "Whether the caller administers a client -- their own or every one -- and so lists more than their own rows (issue #1091).",
+                required = true,
+            ) {
+                type = SCT.boolean
+            }
             property(HFEAT.hasSurvey, "Whether the caller's client declares a survey workflow (issue #695) -- the forms list then offers its survey-status filter.", required = true) {
                 type = SCT.boolean
             }
@@ -156,6 +163,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 HFEAT.inlineLinks to c.layoutFlag(HCFG.homeInlineLinks, default = false),
                 HFEAT.canManageUsers to AdminRules.canManageUsers(c),
                 HFEAT.canSeeAllClients to AdminRules.canSeeAllClients(c),
+                // The rule the menu's "Forms" / "My forms" entries ask as a cfact (issue #1091), so they agree.
+                HFEAT.administersClient to AdminRules.isClientAdministrator(c),
                 // The caller's own client's registry (issue #695): a cross-client admin working in another
                 // client's surface reads that client's rows, but the filter keys on where the caller belongs.
                 HFEAT.hasSurvey to (WorkflowService.get(c).forClient(c.client).survey != null),
@@ -252,17 +261,19 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
         // The clients an administrator oversees (issue #905), as two entries for the one page, mutually exclusive by
         // cfact as the two "Debug" entries are, so only ever one shows (issue #1082). An administrator who sees across
-        // clients gets a listing, and "Clients". Any other administrator oversees one client, and the page opens it
-        // directly -- so their entry says "My client", since "Clients" promised a list that is not there. A `public`
-        // self-administrator is offered that one and refused on the page, the shape Users has -- the endpoint is the
-        // authority (#805).
+        // clients gets a listing, and "Clients". Any other administrator of a client oversees that one, and the page
+        // opens it directly -- so their entry says "My client", since "Clients" promised a list that is not there. A
+        // `public` self-administrator administers no client (issue #805) and is offered neither (issue #1091): the
+        // page would only refuse them.
         menuItem(HMENU.clients, "Clients", UiRoute(HMENU.pageClients), cfactExpression = "${CFACTS.isDeploymentAdmin},${CFACTS.app}")
         menuItem(
             HMENU.myClient, "My client", UiRoute(HMENU.pageClients),
-            cfactExpression = "${CFACTS.hasAdminLevel},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
+            cfactExpression = "${CFACTS.administersClient},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
         )
-        // The client's named reports (issue #981), gated as Clients is: the endpoints are the authority.
-        menuItem(HMENU.reports, "Reports", UiRoute(HMENU.pageReports), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
+        // The client's named reports (issue #981), offered to whoever administers a client -- the caller the report
+        // endpoints admit, so a `public` self-administrator is not offered a page that would refuse them (issue
+        // #1091). The endpoints stay the authority.
+        menuItem(HMENU.reports, "Reports", UiRoute(HMENU.pageReports), cfactExpression = "${CFACTS.administersClient},${CFACTS.app}")
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under
         // it, plus an "Overview" landing page that explains each. Parent and children share the one cfact
         // (isDeploymentOperator), so a non-operator sees neither the header nor an orphaned child, and the
@@ -307,7 +318,19 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // far it reaches is a scope question the endpoints answer, not a menu one (issue #408). Only "My forms"
         // is an entry: the list is the hub for the whole lifecycle, so creating a form is reached by its
         // "New form" button rather than a second, redundant nav item (issue #417).
-        menuItem(HMENU.forms, "My forms", UiRoute(HMENU.pageForms), cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}")
+        //
+        // Two entries for the one page, mutually exclusive by cfact (issue #1091): the listing is named for whose
+        // forms it shows. A caller who administers a client lists every form in it -- "Forms". Everyone else lists
+        // their own -- "My forms" -- which is written by exclusion on purpose: whatever kind of caller is invented
+        // later reads their own forms until something says they read more.
+        menuItem(
+            HMENU.forms, "My forms", UiRoute(HMENU.pageForms),
+            cfactExpression = "${CFACTS.loggedIn},~${CFACTS.administersClient},${CFACTS.app}",
+        )
+        menuItem(
+            HMENU.clientForms, "Forms", UiRoute(HMENU.pageForms),
+            cfactExpression = "${CFACTS.administersClient},${CFACTS.app}",
+        )
         // The workflow pages (issue #792): off by default -- a client with normal workflows turns it on by overlaying
         // this item with a real condition (the sample's acme does), the way an overlay turns an item off.
         menuItem(HMENU.workflows, "Workflows", UiRoute(HMENU.pageWorkflows), cfactExpression = CFACT.neverName)

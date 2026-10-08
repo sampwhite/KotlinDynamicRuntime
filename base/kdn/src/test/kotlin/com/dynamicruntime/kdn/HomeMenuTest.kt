@@ -3,6 +3,8 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.app.EnvAuthOp
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.home.HFEAT
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HACT
@@ -103,9 +105,37 @@ class HomeMenuTest : StringSpec({
             page(HMENU.myClient, "My client", HMENU.pageClients),
             page(HMENU.reports, "Reports", HMENU.pageReports),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
-            page(HMENU.forms, "My forms", HMENU.pageForms),
+            // Their listing is every form in their client, not only their own (issue #1091).
+            page(HMENU.clientForms, "Forms", HMENU.pageForms),
             page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
+    }
+
+    "the forms listing has one menu entry, named for whose forms it shows" {
+        fun entries(user: TestUser) =
+            menuIn(user.getData(HEP.homeUiConfig)).filter { it[UIB.action] == HMENU.pageForms }.map { it[HFLD.id] to it[HFLD.label] }
+        fun administers(user: TestUser) = user.getData(HEP.homeUiConfig)[UIC.features].toJsonMapOrEmpty()[HFEAT.administersClient]
+        // A client's administrator, of one client or of all, lists more than their own forms.
+        val scoped = TestUser.create(cxt, "forms-one@example.com", level = ROLE.admin)
+        entries(scoped) shouldBe listOf(HMENU.clientForms to "Forms")
+        entries(TestUser.createFullAdmin(cxt, "forms-root@example.com")) shouldBe listOf(HMENU.clientForms to "Forms")
+        // Everyone else lists their own -- an administrator in `public` among them, who reaches only their own users
+        // however the admin level reads.
+        val member = TestUser.create(cxt, "forms-member@example.com", level = ROLE.user)
+        entries(member) shouldBe listOf(HMENU.forms to "My forms")
+        val publicAdmin = TestUser.create(cxt, "forms-public@example.com", level = ROLE.admin, userClient = CL.public)
+        entries(publicAdmin) shouldBe listOf(HMENU.forms to "My forms")
+        // The page is told the same thing the menu was, so its heading agrees with the entry that led to it.
+        administers(scoped) shouldBe true
+        administers(member) shouldBe false
+        administers(publicAdmin) shouldBe false
+        // And that administrator is offered neither entry for the Clients page, nor Reports, each of which would
+        // only refuse them -- while Users, where they administer their own users, is still theirs.
+        val offered = menuIn(publicAdmin.getData(HEP.homeUiConfig)).map { it[UIB.action] }
+        offered shouldNotContain HMENU.pageClients
+        offered shouldNotContain HMENU.pageReports
+        offered shouldContain HMENU.pageUsers
+        menuIn(scoped.getData(HEP.homeUiConfig)).map { it[UIB.action] } shouldContain HMENU.pageReports
     }
 
     "the Clients page has one menu entry, named for what it opens: a listing, or the caller's one client" {

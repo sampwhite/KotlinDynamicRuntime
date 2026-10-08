@@ -43,6 +43,8 @@ val App = FC<Props> {
     // state -- the only reset a page can get when the hash does not change, since setting the hash to itself
     // fires no `hashchange`. Tuple form for the same reason as `refresh`: the bump is a functional update.
     val (revisit, setRevisit) = useState(0)
+    // What the shell knows of the caller that pages name themselves by (issue #1091), as the app bar reads it.
+    val (shellFacts, setShellFacts) = useState(ShellFacts())
     // A newer web-app version detected on a response (issue #136); drives the reload affordance below. The
     // reaction is non-destructive: we never reload out from under the user, only offer it and reload on a
     // navigation (a safe point) or an explicit click.
@@ -115,124 +117,130 @@ val App = FC<Props> {
 
     RefreshContext.Provider {
         value = RefreshBus(refresh) { setRefresh { it + 1 } }
-        ConfigProvider {
-            theme = darkTheme
+        // What the shell knows of the caller, for the pages to name themselves by (issue #1091).
+        ShellFactsContext.Provider {
+            value = shellFacts
+            ConfigProvider {
+                theme = darkTheme
 
-            // The backstop (issue #223). The page boundary further down is the one that normally catches, and
-            // it is better: it keeps the navigation alive. This one exists for what that cannot see -- the
-            // shell itself, the app bar, the banner below -- so that NOTHING renders a blank page, and so no
-            // future chrome added up here has to remember to be guarded. React runs the innermost boundary
-            // that matches, so adding this changes nothing about how a page failure behaves.
-            //
-            // It is deliberately NOT keyed: there is no navigation left to reset it on, which is exactly why
-            // its fallback offers a reload instead of telling you to go elsewhere.
-            ErrorBoundary {
-                fallback = ShellErrorFallback
-                onError = ::reportRenderFailure
+                // The backstop (issue #223). The page boundary further down is the one that normally catches, and
+                // it is better: it keeps the navigation alive. This one exists for what that cannot see -- the
+                // shell itself, the app bar, the banner below -- so that NOTHING renders a blank page, and so no
+                // future chrome added up here has to remember to be guarded. React runs the innermost boundary
+                // that matches, so adding this changes nothing about how a page failure behaves.
+                //
+                // It is deliberately NOT keyed: there is no navigation left to reset it on, which is exactly why
+                // its fallback offers a reload instead of telling you to go elsewhere.
+                ErrorBoundary {
+                    fallback = ShellErrorFallback
+                    onError = ::reportRenderFailure
 
-                if (updateAvailable) {
-                    div {
-                        className = ClassName("update-banner")
-                        span { +"A new version of the app is available." }
-                        button {
-                            className = ClassName("update-banner-reload")
-                            onClick = { reloadWebApp() }
-                            +"Reload"
+                    if (updateAvailable) {
+                        div {
+                            className = ClassName("update-banner")
+                            span { +"A new version of the app is available." }
+                            button {
+                                className = ClassName("update-banner-reload")
+                                onClick = { reloadWebApp() }
+                                +"Reload"
+                            }
                         }
                     }
-                }
-                AppBar {
-                    this.currentPage = menuPageOf(page)
-                    this.onRevisit = { setRevisit { it + 1 } }
-                    this.envAuthSuppressible = envAuthSuppressible
-                    this.envAuthActing = envAuthActing
-                    this.envAuthDebug = envAuthDebug
-                }
-                div {
-                    className = ClassName("app-content")
-                    // The boundary wraps the page, NOT the root, so a render failure costs the page and not the
-                    // navigation above it -- someone (or a test) can click away from a broken screen instead of
-                    // being stranded on it (issue #223).
-                    //
-                    // Keyed on the page for a reason that is easy to miss: React never resets a boundary on its
-                    // own, so without this the fallback would survive the navigation it invites you to make, and
-                    // every later page would show the earlier page's failure. The key remounts it on a page
-                    // change, which is exactly when the failure stops being relevant.
-                    //
-                    // The debug tools are the one place `page` alone is too coarse: they all share `page=debug`
-                    // and differ only by the `tool` hash param (issue #517), so a faulted `tool=fault` would
-                    // otherwise keep showing its fallback after a `back` to the index -- the very outliving this
-                    // key exists to prevent. Folding the tool in remounts the boundary when it changes.
-                    //
-                    // The revisit count is folded in for the same reason from the other direction (issue #565):
-                    // choosing the current page from the menu changes nothing else -- not the hash, not `page` --
-                    // yet for a page that can be left waiting on something that will never come (a login code
-                    // for an address with no account), it is the one gesture that says "start over". Only the
-                    // pages in `restartOnRevisit` take it: a remount is not free elsewhere -- the catalog would
-                    // refetch its whole listing, Profile would drop a password-change code mid-entry, and every
-                    // page that registers a `hashchange` listener in `useEffectOnce` would leak one per click,
-                    // since `onHashChange` has no cleanup yet (deferred-work.md).
-                    ErrorBoundary {
-                        key = (
-                            page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "") +
-                                (if (page in restartOnRevisit) "#$revisit" else "")
-                        ).unsafeCast<Key>()
-                        fallback = ErrorFallback
-                        onError = ::reportRenderFailure
-                        when (page) {
-                            pageCatalog -> EndpointCatalog {}
-                            pageDocs -> DocsPage {}
-                            pageLogin -> AuthFlow { mode = pageLogin }
-                            pageRegister -> AuthFlow { mode = pageRegister }
-                            pageInvite -> InvitePage {}
-                            pageClaim -> AuthFlow { mode = pageClaim }
-                            pageProfile -> Profile {}
-                            pageUsers -> Users {}
-                            pageEnv -> EnvReferencePage {}
-                            pageOperator -> OperatorIndex {}
-                            pageBootChecks -> OperatorListPage {
-                                method = "GET"
-                                path = OPS.bootChecksPath
-                                title = "Boot checks"
-                                description = "Every check this node ran at startup, its mode, and what it found."
+                    AppBar {
+                        this.currentPage = menuPageOf(page)
+                        this.onRevisit = { setRevisit { it + 1 } }
+                        // Kept as it was when nothing changed, so a refresh that tells the same thing redraws nothing.
+                        this.onShellFacts = { told -> setShellFacts { held -> if (held == told) held else told } }
+                        this.envAuthSuppressible = envAuthSuppressible
+                        this.envAuthActing = envAuthActing
+                        this.envAuthDebug = envAuthDebug
+                    }
+                    div {
+                        className = ClassName("app-content")
+                        // The boundary wraps the page, NOT the root, so a render failure costs the page and not the
+                        // navigation above it -- someone (or a test) can click away from a broken screen instead of
+                        // being stranded on it (issue #223).
+                        //
+                        // Keyed on the page for a reason that is easy to miss: React never resets a boundary on its
+                        // own, so without this the fallback would survive the navigation it invites you to make, and
+                        // every later page would show the earlier page's failure. The key remounts it on a page
+                        // change, which is exactly when the failure stops being relevant.
+                        //
+                        // The debug tools are the one place `page` alone is too coarse: they all share `page=debug`
+                        // and differ only by the `tool` hash param (issue #517), so a faulted `tool=fault` would
+                        // otherwise keep showing its fallback after a `back` to the index -- the very outliving this
+                        // key exists to prevent. Folding the tool in remounts the boundary when it changes.
+                        //
+                        // The revisit count is folded in for the same reason from the other direction (issue #565):
+                        // choosing the current page from the menu changes nothing else -- not the hash, not `page` --
+                        // yet for a page that can be left waiting on something that will never come (a login code
+                        // for an address with no account), it is the one gesture that says "start over". Only the
+                        // pages in `restartOnRevisit` take it: a remount is not free elsewhere -- the catalog would
+                        // refetch its whole listing, Profile would drop a password-change code mid-entry, and every
+                        // page that registers a `hashchange` listener in `useEffectOnce` would leak one per click,
+                        // since `onHashChange` has no cleanup yet (deferred-work.md).
+                        ErrorBoundary {
+                            key = (
+                                page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "") +
+                                    (if (page in restartOnRevisit) "#$revisit" else "")
+                            ).unsafeCast<Key>()
+                            fallback = ErrorFallback
+                            onError = ::reportRenderFailure
+                            when (page) {
+                                pageCatalog -> EndpointCatalog {}
+                                pageDocs -> DocsPage {}
+                                pageLogin -> AuthFlow { mode = pageLogin }
+                                pageRegister -> AuthFlow { mode = pageRegister }
+                                pageInvite -> InvitePage {}
+                                pageClaim -> AuthFlow { mode = pageClaim }
+                                pageProfile -> Profile {}
+                                pageUsers -> Users {}
+                                pageEnv -> EnvReferencePage {}
+                                pageOperator -> OperatorIndex {}
+                                pageBootChecks -> OperatorListPage {
+                                    method = "GET"
+                                    path = OPS.bootChecksPath
+                                    title = "Boot checks"
+                                    description = "Every check this node ran at startup, its mode, and what it found."
+                                }
+                                pageSystemInfo -> OperatorObjectPage {
+                                    path = OPS.systemInfoPath
+                                    title = "System info"
+                                    description = "This node's identity, uptime, and JVM statistics."
+                                }
+                                pageDbTables -> OperatorListPage {
+                                    method = "GET"
+                                    path = OPS.dbTablesPath
+                                    title = "Database tables"
+                                    description = "Every database table registered for this instance."
+                                }
+                                pageFragmentsCheck -> OperatorListPage {
+                                    method = "GET"
+                                    path = OPS.fragmentsCheckPath
+                                    title = "Fragments check"
+                                    description = "The Markdown fragment files this node carries, and any problems found."
+                                }
+                                pageCacheState -> OperatorCacheStatePage {}
+                                pageCfacts -> CFactReferencePage {}
+                                pageNewForm -> CreationPage {}
+                                pageForms -> FormsPage {}
+                                pageWorkflows -> WorkflowsPage {}
+                                pageWorkflowForms -> FormsPage { listing = pageWorkflowForms }
+                                pageClients -> ClientsPage {}
+                                pageReports -> ReportsPage {}
+                                pageEditForm -> EditFormPage {}
+                                pageSurveyEdit -> SurveyEditPage {}
+                                pageCreateForUser -> CreateForUserPage {}
+                                // Resolved here rather than in `currentPage()` because the answer depends on the
+                                // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
+                                // flag is off, this falls through to Home, so the route does not exist rather than
+                                // being refused: nothing should acknowledge that a way to break the app is there
+                                // (issue #227).
+                                pageDebug -> if (debugAllowed) DebugPage {} else Home {}
+                                // A test instance's own page (issue #997); elsewhere the route does not exist.
+                                pageSimulations -> if (testInstance) SimulationsPage {} else Home {}
+                                else -> Home {}
                             }
-                            pageSystemInfo -> OperatorObjectPage {
-                                path = OPS.systemInfoPath
-                                title = "System info"
-                                description = "This node's identity, uptime, and JVM statistics."
-                            }
-                            pageDbTables -> OperatorListPage {
-                                method = "GET"
-                                path = OPS.dbTablesPath
-                                title = "Database tables"
-                                description = "Every database table registered for this instance."
-                            }
-                            pageFragmentsCheck -> OperatorListPage {
-                                method = "GET"
-                                path = OPS.fragmentsCheckPath
-                                title = "Fragments check"
-                                description = "The Markdown fragment files this node carries, and any problems found."
-                            }
-                            pageCacheState -> OperatorCacheStatePage {}
-                            pageCfacts -> CFactReferencePage {}
-                            pageNewForm -> CreationPage {}
-                            pageForms -> FormsPage {}
-                            pageWorkflows -> WorkflowsPage {}
-                            pageWorkflowForms -> FormsPage { listing = pageWorkflowForms }
-                            pageClients -> ClientsPage {}
-                            pageReports -> ReportsPage {}
-                            pageEditForm -> EditFormPage {}
-                            pageSurveyEdit -> SurveyEditPage {}
-                            pageCreateForUser -> CreateForUserPage {}
-                            // Resolved here rather than in `currentPage()` because the answer depends on the
-                            // app config, which arrives asynchronously -- see `debugAllowed` above. Where the
-                            // flag is off, this falls through to Home, so the route does not exist rather than
-                            // being refused: nothing should acknowledge that a way to break the app is there
-                            // (issue #227).
-                            pageDebug -> if (debugAllowed) DebugPage {} else Home {}
-                            // A test instance's own page (issue #997); elsewhere the route does not exist.
-                            pageSimulations -> if (testInstance) SimulationsPage {} else Home {}
-                            else -> Home {}
                         }
                     }
                 }

@@ -46,6 +46,14 @@ object HFEAT {
     const val canSeeAllClients = "canSeeAllClients"
 
     /**
+     * Whether this caller administers a **client** -- their own, or every one (issue #1091) -- which is whether
+     * their listings reach beyond their own rows. Distinct from [canManageUsers], true for an administrator in
+     * `public` who reaches only their own users: a surface named for whose rows it shows ("Forms" against "My
+     * forms") keys on this. The home menu asks the same rule as a cfact, so the menu and the page agree.
+     */
+    const val administersClient = "administersClient"
+
+    /**
      * Whether the caller may open their own client's **sandbox** (issue #931): an administrator of a client whose
      * definition asks for one, outside it -- what offers the shell's "Open sandbox" action. Asked by the rule the
      * open endpoint enforces (`openSandbox`), so the offer and the gate agree.
@@ -178,6 +186,14 @@ object HMENU {
     // No `newForm` item id: creating a form is reached from the "My forms" list, not a menu entry (issue #417).
     // The `pageNewForm` route below still exists -- the list's "New form" button navigates to it.
     const val forms = "forms"
+
+    /**
+     * The same forms listing for a caller who administers a client (issue #1091), whose listing is every form in
+     * it and not only their own: an item of its own so that its label can say "Forms". Shown instead of [forms],
+     * never beside it -- and under its own id, so a client's overlay of [forms] keeps meaning what its ordinary
+     * users see.
+     */
+    const val clientForms = "clientForms"
 
     /**
      * The workflow pages (issue #792). **Off by default** -- in the base menu under the never-true condition -- and
