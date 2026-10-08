@@ -298,6 +298,17 @@ and refuses the change with a 400 listing anything it finds that the client's co
 problem the client already has does not block an unrelated write (or fixing one of two broken configs would be
 refused over the other).
 
+**A schema body is held to its shape before that** (issue #1056). A type's `schema` and a trait's `dataSchema` are
+checked against the **schema for schema** as part of the write's own gate: every keyword whose value is not of its
+shape, every standard keyword this layer refuses and every misspelled `g-` keyword is a failure at its own path
+(`kdr:schemaDef[client.acme.Tally].schema.properties.cost.type`), all of them in one refusal, where the trial names
+the first it meets in a sentence. The schema for schema is **generated** from the keyword tables the parser reads
+(`SchStdKeywords`, `SchGKeywords`), which is the answer to the objection this layer once made to having one: a
+hand-kept copy would drift from the keywords, and a generated one has nothing to keep in step. It is served at
+`GET /schema/metaSchema`, in our own dialect, with the rules the dialect cannot state listed beside it. It is a
+first pass and not a verdict: what a reference resolves to, whether a keyword applies to its type, and what a
+client may narrow are still the parser's and the trial's, in their own words.
+
 **A written slot is held to its shape first** (issues #1051, #1052). These endpoints are the outward-facing ones --
 a client's own administrators write through them -- so before a write's slots are reassembled they pass a gate
 (`configSlotFailures` in `ConfigSlotGate.kt`, run by `reassembleForWrite`, which the bundle write, the import and

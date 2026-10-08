@@ -203,13 +203,19 @@ fun repairTypeDef(
                     }
                 // An item schema and a map's value schema are named as that: a fault in one is not the fault of the
                 // array or the map that holds it (issue #1055), and saying it of them points the author at the wrong line.
-                isSchema && value is Map<*, *> && (key == SCH.items || key == SCH.additionalProperties) -> repairNode(
+                // Which keywords hold a schema is the keyword table's to say (issue #1056), so a keyword that learns
+                // to hold one is walked here without being named here.
+                isSchema && value is Map<*, *> && SchStdKeywords.nodesIn(key, value).isNotEmpty() -> repairNode(
                     "$at (in its ${if (key == SCH.items) "item" else "value"} schema)", value.toJsonMap(),
                     requiredHere = false, isSchema = true,
                 )
                 value is Map<*, *> -> repairNode(at, value.toJsonMap(), requiredHere = false, isSchema = false)
                 value is List<*> -> value.map {
-                    if (it is Map<*, *>) repairNode(at, it.toJsonMap(), requiredHere = false, isSchema && key == SCH.oneOf) else it
+                    if (it is Map<*, *>) {
+                        repairNode(at, it.toJsonMap(), requiredHere = false, isSchema && SchStdKeywords.nodesIn(key, value).isNotEmpty())
+                    } else {
+                        it
+                    }
                 }
                 else -> value
             }

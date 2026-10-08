@@ -33,6 +33,10 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
+import com.dynamicruntime.common.schema.MSCH
+import com.dynamicruntime.common.schema.SchMetaSchema
+import com.dynamicruntime.common.schema.parseSchemaTypes
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.maps.shouldBeEmpty
@@ -107,7 +111,7 @@ class ConfigSlotGateTest : StringSpec({
         codes(CCT.cfactDef, cfact(), cfact()).shouldBeEmpty()
     }
 
-    "a trait declaration and a schema type are held to their envelopes, and their bodies left to the trial" {
+    "a trait declaration and a schema type are held to their envelopes, and their bodies to their shape" {
         fun trait(vararg change: Pair<String, Any?>) = mapOf(
             CCT.traitId to "note", CCT.typeName to "client.x.NoteEntry", CCT.appliesTo to listOf(GedraDataType.formDoc.name),
             CCT.dataSchema to mapOf(SCH.type to SCT.kObject),
@@ -129,6 +133,26 @@ class ConfigSlotGateTest : StringSpec({
         codes(CCT.schemaDef, mapOf(CCT.schema to emptyMap<String, Any?>())).keys shouldBe setOf("${CCT.schemaDef}[#0].${CCT.typeName}")
         // A body is not parsed here at all: one no parser would take is still the trial's to refuse.
         codes(CCT.schemaDef, type(mapOf(SCH.oneOf to listOf(mapOf(SCH.type to SCT.string))))).shouldBeEmpty()
+        // But it is held to its shape (issue #1056): every keyword at fault in it, at once, each at its own path --
+        // where the trial would name the first, in a sentence.
+        val misshapen = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf(
+                "name" to mapOf(SCH.type to "strng", SCH.allowCoerce to "yes"),
+                "tags" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.string, SCH.enum to listOf("a"))),
+            ),
+            SCH.required to "name",
+        )
+        val body = "${CCT.schemaDef}[client.x.Person].${CCT.schema}"
+        codes(CCT.schemaDef, type(misshapen)).keys shouldBe setOf(
+            "$body.properties.name.type", "$body.properties.name.${SCH.allowCoerce}", "$body.properties.tags.items.enum", "$body.required",
+        )
+        codes(CCT.traitDef, trait(CCT.dataSchema to misshapen)).keys.map { it.removePrefix("${CCT.traitDef}[note].${CCT.dataSchema}.") } shouldBe
+            listOf("properties.name.type", "properties.name.${SCH.allowCoerce}", "properties.tags.items.enum", "required")
+        // A stored body's own directive stands at its top -- whether it may is the assembly's to say -- and a
+        // property an alteration sets to null is one it removes.
+        codes(CCT.schemaDef, type(mapOf(SCH.extends to "client.x.Base", SCH.properties to mapOf("gone" to null)))).shouldBeEmpty()
+        codes(CCT.schemaDef, type(mapOf(SCH.extends to 5L))).keys shouldBe setOf("$body.${SCH.extends}")
         // A second type under one name would silently replace the first.
         codes(CCT.schemaDef, type(mapOf(SCH.type to SCT.kObject)), type(mapOf(SCH.type to SCT.string))) shouldBe
             mapOf("${CCT.schemaDef}[client.x.Person]" to SchFailCode.badValue)
@@ -259,6 +283,41 @@ class ConfigSlotGateTest : StringSpec({
         )
         imported[ACEP.failures].toJsonListOfMaps().single()[ACEP.message].toString() shouldContain "${CCT.cfactDef}[extra].grup"
         imported[ACEP.written].toJsonListOfMaps().shouldBeEmpty()
+
+        // A schema body's faults of shape (issue #1056): refused by the write itself, all of them, by path.
+        val person = "${CCT.schemaDef}[$ns.Person].${CCT.schema}"
+        val misshapen = admin.expectError(
+            EXC.badInput, ACEP.bundleWrite,
+            bundle(
+                "types",
+                mapOf(
+                    CCT.schemaDef to listOf(
+                        mapOf(
+                            CCT.typeName to "$ns.Person",
+                            CCT.schema to mapOf(
+                                SCH.type to SCT.kObject,
+                                SCH.properties to mapOf("name" to mapOf(SCH.type to "strng"), "age" to mapOf(SCH.type to SCT.integer, SCH.minimum to "young")),
+                                SCH.additionalProperties to "no",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        failuresOf(misshapen).keys shouldBe setOf("$person.properties.name.type", "$person.properties.age.minimum", "$person.additionalProperties")
+        misshapen[EP.errorMessage].toString() shouldContain "$person.properties.name.type: This schema sets 'type' to 'strng'"
+        admin.expectError(EXC.notFound, ACEP.bundle, args = mapOf(CFEP.client to client, CFEP.name to "types"))
+    }
+
+    "the schema for schema is served, generated from the tables the gate reads" {
+        val served = fullAdmin().getData(MSCH.path)
+        served[MSCH.nodeType] shouldBe MSCH.nodeTypeName
+        // What is served is the document itself, and it compiles to the type a body is validated against.
+        val types = parseSchemaTypes(served[SCH.dDefs].toJsonMapOrEmpty())
+        types.getValue(MSCH.nodeTypeName).properties.keys shouldBe SchMetaSchema.nodeType.properties.keys
+        served[MSCH.notStated].toJsonListOfMaps().map { it[MSCH.rule] }.toSet() shouldBe
+            setOf(MSCH.closedPrefix, MSCH.refusedKeyword, MSCH.eitherOf, MSCH.unsetEntry, MSCH.placement)
+        (served[MSCH.notChecked] as List<*>).shouldNotBeEmpty()
     }
 
     "a fault a stored configuration already has does not refuse an unrelated write to it" {

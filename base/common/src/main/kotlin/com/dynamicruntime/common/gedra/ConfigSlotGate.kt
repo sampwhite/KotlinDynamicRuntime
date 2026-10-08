@@ -81,9 +81,13 @@ object ConfigSlotShapes {
  *
  * **Two things are left to the trial reload that follows**, which judges them in the document they belong to and
  * by what the client already has:
- * - **A schema body** (`schema`, `dataSchema`) is only required to be an object, and is not parsed here
- *   ([SchOpts.schemaDocumentsUnparsed]). Parsed on its own it would be refused for naming a sibling type of the
- *   same client, or for being an alteration of a global type.
+ * - **A schema body** (`schema`, `dataSchema`) is held to its **shape** and is not parsed here
+ *   ([SchOpts.schemaDocumentsUnparsed]): every keyword in it whose value is not of the keyword's shape, every
+ *   keyword this layer refuses and every misspelled one of ours is a failure at its own path
+ *   (`kdr:schemaDef[Tally].schema.properties.cost.type`), all of them at once (issue #1056,
+ *   `SchMetaSchema.structureFailures`). What it means -- its references, what it narrows -- is the trial's:
+ *   parsed on its own it would be refused for naming a sibling type of the same client, or for being an
+ *   alteration of a global type.
  * - **A report's `definition`** is only required to be an object. One that does not read is kept as stored and
  *   reported (`GedraConfig.unreadReports`), so a configuration may already hold one; the trial refuses a new one.
  */

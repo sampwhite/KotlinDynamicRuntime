@@ -226,10 +226,16 @@ object SCH {
 
     /**
      * A property whose value is itself a **JSON Schema type body** (issue #316), validated by parsing it with
-     * the same parser the schema store uses rather than against a schema for schema -- which would be a large
-     * `$defs` pile to keep in step with every keyword, and subtly wrong the first time somebody forgot. The
-     * precedent is a date field, which validates by parsing rather than by describing ISO 8601. What the parser
-     * does not understand, the check does not claim to have checked. Declared with `schemaDocument()`.
+     * the same parser the schema store uses. The precedent is a date field, which validates by parsing rather than
+     * by describing ISO 8601. What the parser does not understand, the check does not claim to have checked.
+     * Declared with `schemaDocument()`.
+     *
+     * **Its shape is checked first, against the schema for schema** (issue #1056, [SchMetaSchema]): every keyword
+     * whose value is not of its shape, at once, each at its own path -- where the parser stops at the first. This
+     * layer once declined a schema for schema, because a hand-kept one "would be a large `$defs` pile to keep in
+     * step with every keyword, and subtly wrong the first time somebody forgot". That objection stands, and is why
+     * the one there is now is **generated** from the keyword tables the parser itself reads: it has nothing to
+     * keep in step. The parser stays the authority on everything a shape does not decide.
      */
     const val schemaDocument = "g-schemaDocument"
 

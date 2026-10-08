@@ -562,12 +562,14 @@ val refusedKeywords: Map<String, String> = linkedMapOf(
  * [where]; null when there is none.
  */
 @KdrPrivate
-fun refusedKeywordProblem(where: String, map: Map<String, Any?>): Problem? {
-    val keyword = refusedKeywords.keys.firstOrNull { it in map } ?: return null
-    return Problem(
-        SchemaError.refusedKeyword,
-        "$where uses '$keyword', which is not supported. ${refusedKeywords.getValue(keyword)}",
-    )
+fun refusedKeywordProblem(where: String, map: Map<String, Any?>): Problem? =
+    refusedKeywords.keys.firstOrNull { it in map }?.let { refusedKeywordProblem(where, it) }
+
+/** [keyword] at [where] as a [SchemaError.refusedKeyword] problem, when it is one of [refusedKeywords]; else null. */
+@KdrPrivate
+fun refusedKeywordProblem(where: String, keyword: String): Problem? {
+    val advice = refusedKeywords[keyword] ?: return null
+    return Problem(SchemaError.refusedKeyword, "$where uses '$keyword', which is not supported. $advice")
 }
 
 /**
