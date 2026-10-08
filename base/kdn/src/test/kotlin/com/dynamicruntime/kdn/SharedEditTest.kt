@@ -100,7 +100,8 @@ class SharedEditTest : StringSpec({
 
     "the definition read says where it is used and that it may be edited here" {
         val d = traitRead()
-        d[DSV.usedBy].toJsonListOfMaps().map { it[DSV.workflowId] }.toSet() shouldBe setOf(DesignDemo.requestWorkflow, DesignDemo.reviewWorkflow)
+        d[DSV.usedBy].toJsonListOfMaps().map { it[DSV.workflowId] }.toSet() shouldBe
+            setOf(DesignDemo.requestWorkflow, DesignDemo.reviewWorkflow, DesignDemo.logisticsWorkflow)
         d[DSV.canEditShared] shouldBe true
         (d[DSV.sharedBasedOn] as String).isNotBlank() shouldBe true
     }
@@ -134,6 +135,7 @@ class SharedEditTest : StringSpec({
         shared(dataType, DesignDemo.title, mapOf(SL.label to "What are we holding?"))
         label(requestView(), dataType, DesignDemo.title) shouldBe "Name it"
         label(reviewView(), dataType, DesignDemo.title) shouldBe "What are we holding?"
+        // The logistics workflow's list names the title too, keeping the shared copy -- so it is not a variant of it.
         traitRead()[DSV.variantFields].toJsonMapOrEmpty()[DesignDemo.title] shouldBe listOf(DesignDemo.requestWorkflow)
     }
 

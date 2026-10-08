@@ -869,6 +869,10 @@ parts of one questionnaire keep each other's answers.
 - **Seeing it.** The `design-demo` simulation writes the `designdemo` client -- defined in data, so its definitions
   show as the client's own. Run it from the **Simulations** page (below), with a suffix for a fresh copy
   (`designdemouat`), and sign in as its designer in one click; or `kdr-probe --url http://localhost:7072 design-demo`.
+  Its third workflow, **Plan the logistics** (issue #1071), is a normal one whose form shows only the fields it
+  arranges, so it and the **Event request** survey each save their own part of one request; its last step is a
+  reviewer's approval. The report's **reviewer** is an administrator carrying the client's `reviewer` label; the
+  designer, without it, sees that step as someone else's ("A reviewer approves the plan").
 
 ## The Simulations page (issue #997)
 

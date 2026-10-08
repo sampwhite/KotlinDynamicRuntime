@@ -11,6 +11,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.gedra.workflow.headingBasisKey
 import com.dynamicruntime.common.gedra.workflow.layoutEntryOf
 import com.dynamicruntime.common.gedra.workflow.layoutHeadingOf
@@ -189,11 +190,10 @@ object DesignView {
         val out = linkedMapOf<String, Any?>()
         for ((typeName, alteration) in declared.def.typeAlterations) {
             if (typeName !in store.defs) continue
-            val layout = alteration[SCH.layout] as? Map<*, *> ?: continue
             val basis = declared.def.typeBasis[typeName].orEmpty()
             val fields = linkedMapOf<String, Any?>()
-            for (raw in (layout[SL.schemaFields] as? List<*>).orEmpty()) {
-                val entry = (raw as? Map<*, *>)?.toJsonMap() ?: continue
+            // Only an entry carrying copy: a field the workflow's list merely names keeps the shared copy (issue #1071).
+            for (entry in copyOverrideEntries(alteration)) {
                 val field = entry[SL.field].toOptStr() ?: continue
                 val inherited = layoutEntryOf(clientStore, typeName, field)
                 val made = (basis[field] as? Map<*, *>)?.toJsonMap()

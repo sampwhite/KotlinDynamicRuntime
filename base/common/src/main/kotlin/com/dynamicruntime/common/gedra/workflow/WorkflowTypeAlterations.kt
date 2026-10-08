@@ -146,6 +146,19 @@ fun withShownFields(definition: Map<String, Any?>, typeName: String, fields: Lis
         }
     }
 
+/**
+ * The entries of a workflow's [alteration] of a type that give the workflow **its own copy** of a field (issues #984,
+ * #1071). Under a list that restates the fields (`reorder`, `authoritative`), an entry naming only its field keeps the
+ * inherited entry -- it places the field, and changes nothing about its copy -- so it is left out; under an annotating
+ * layout every entry replaces the inherited one, a bare one included. Pure.
+ */
+fun copyOverrideEntries(alteration: Map<String, Any?>): List<Map<String, Any?>> {
+    val layout = alteration[SCH.layout] as? Map<*, *> ?: return emptyList()
+    val restates = layout[SL.mode] == SLM.reorder || layout[SL.mode] == SLM.authoritative
+    return (layout[SL.schemaFields] as? List<*>).orEmpty().mapNotNull { it.toJsonMapOrEmpty().takeIf { e -> SL.field in e } }
+        .filter { e -> !restates || e.keys.any { it != SL.field } }
+}
+
 /** The fields a workflow's [alteration] of a type lists as its form's (issue #1071), or null when it chooses none. */
 fun shownFieldsOf(alteration: Map<String, Any?>?): List<String>? {
     val layout = alteration?.get(SCH.layout) as? Map<*, *> ?: return null

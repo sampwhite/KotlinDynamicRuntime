@@ -12,11 +12,16 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.traitDataTypeName
+import com.dynamicruntime.common.gedra.workflow.WFC
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.userHasLabel
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.SchLayoutBuilder
 import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.layout
@@ -39,8 +44,11 @@ import com.dynamicruntime.common.schema.layout
  * one answer (a conditional), a field whose fields come from a shared named type (`schemaDef`), a field with no layout
  * entry -- whose form copy is the field's own -- and one its type's layout leaves out of a list that decides the order
  * (issue #1039), and -- beside it in the task -- the global `kdr:name` trait, which no client edits in place. The
- * survey's form requires the headcount the request leaves optional, a form requirement (issue #1022). Its two workflows, a creation and a
- * survey, collect the same trait, which is what makes a workflow's own copy (issue #984) visible as its own.
+ * survey's form requires the headcount the request leaves optional, a form requirement (issue #1022). Its workflows, a
+ * creation, a survey and a normal one, collect the same trait, which is what makes a workflow's own copy (issue #984)
+ * visible as its own. The normal one, the logistics (issue #1071), shows only the fields it arranges, so it and the
+ * survey each save their own part of one request; its last step is a reviewer's approval, which a client
+ * administrator without the `reviewer` label -- the designer -- sees as someone else's.
  *
  * The `design-demo` probe scenario provisions it on a running node, and the Design View tests provision it in
  * theirs. A test asserts the demo's copy through the constants here (`titleLabel`, ...), not as literals, so the
@@ -68,6 +76,17 @@ object DesignDemo {
     const val describeTask = "describe"
     const val detailsTask = "details"
     const val submitSave = "submit"
+
+    // The logistics workflow (issue #1071): a second form over the same request, and a reviewer's approval.
+    const val logisticsWorkflow = "planLogistics"
+    const val arrangeTask = "arrange"
+    const val arrangeSave = "saveLogistics"
+    const val approveTask = "approvePlan"
+    const val planApproved = "planApproved"
+    const val reviewerLabel = "reviewer"
+
+    /** The fields the logistics form shows: the ones it arranges, and those the data requires (the title, the rain plan). */
+    val logisticsFields: List<String> = listOf(title, venue, backupPlan, catering)
 
     // The event request's fields.
     const val title = "title"
@@ -104,8 +123,11 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
                 // A global trait is supported only where a client includes it; its own traits need no mention.
                 includedTraits = listOf(GT.name),
+                // Whoever carries it approves a logistics plan (issue #1071).
+                userLabels = listOf(DesignDemo.reviewerLabel),
             ),
         )
+        cfact(DesignDemo.planApproved, "designDemo", "True, in the logistics workflow, once a reviewer has approved the plan.")
 
         // A shared type: declared once, referenced from the request -- so its fields belong to a `schemaDef` entry
         // rather than to the trait that uses it.
@@ -184,5 +206,43 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
                 trait(GT.name, required = false)
                 save("saveDetails", "Save the details", WfSaveKind.edit)
             }
+        }
+
+        // A second form over the same request (issue #1071), as a normal workflow -- a form is engaged in it. Its form
+        // shows only the fields it arranges (and those the data requires), so its save writes those and leaves the rest
+        // of the request -- what the survey above collects -- as it is. Then a reviewer approves: a step the designer
+        // does not carry the label for, so it is someone else's.
+        workflow(DesignDemo.logisticsWorkflow, WfEntry.normal) {
+            label = "Plan the logistics"
+            alterType(
+                "${clientNamespace(client)}.${traitDataTypeName("EventRequestEntry")}",
+                mapOf(
+                    SCH.layout to mapOf(
+                        SL.label to "Logistics",
+                        SL.mode to SLM.authoritative,
+                        SL.schemaFields to DesignDemo.logisticsFields.map { mapOf(SL.field to it) },
+                    ),
+                ),
+            )
+            task(DesignDemo.arrangeTask, "Arrange the venue and catering") {
+                trait(DesignDemo.eventRequest)
+                save(DesignDemo.arrangeSave, "Save the logistics", WfSaveKind.edit)
+            }
+            task(DesignDemo.approveTask, "Approve the plan") {
+                approval(DesignDemo.planApproved, "Check the venue and catering, then approve the plan.", "Approve the plan")
+                // A reviewer is whoever carries the client's `reviewer` label: the `kdr:reviewer` fact on this task.
+                function(userHasLabel { label = DesignDemo.reviewerLabel })
+                // Tried in order: approved; not yet its turn; a reviewer's to approve; anyone else waits.
+                display {
+                    whenCfacts(DesignDemo.planApproved) { text($$"The plan has been approved by ${approvedByName}.") }
+                    whenCfacts("~${WFC.isCta}") {
+                        text("The logistics must be saved before the plan is reviewed.")
+                        disabled = true
+                    }
+                    whenCfacts(WFC.reviewer) { defaultRendering() }
+                    otherwise { text("A reviewer approves the plan.") }
+                }
+            }
+            singleton(WSC.finished, DesignDemo.planApproved)
         }
     }
