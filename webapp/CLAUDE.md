@@ -296,8 +296,10 @@ rather than at runtime.
 is `userFormsHref`: the forms listing confined to that user **by id, never by address**. The listing's `user` takes
 either, but an address names a person, and the backend resolves it to their *default* user, which for somebody with
 users in two clients (or two personas in one) need not be the row the link was on. For an `allClients` administrator
-the link also carries the user's `client`, so the listing is drawn on that client's surface; a scoped
-administrator's carries none, as the Clients page's count links do not. `Client` is `clientDetailHref`, the one
+the link also carries the user's `client` -- when it is one this node carries (`userFormsSurface`, read off the
+page's `clientChoices`) -- so the listing is drawn on that client's surface; for a client not carried here it carries
+none, since a surface that does not exist would fail to load where the bare link still lists the user's forms. A
+scoped administrator's carries none either, as the Clients page's count links do not. `Client` is `clientDetailHref`, the one
 builder of `#page=clients&c=<id>`. The cell stops a click from also opening the row's editor (`onCell`, as the forms
 table's workflow cell does), and the column is pinned right with Status -- a column after a pinned one must be.
 They are links, not buttons: each goes somewhere and changes nothing. A `public` self-administrator is shown neither

@@ -93,18 +93,26 @@ class ClientsPageTest {
     }
 
     @Test
-    fun aUsersFormsLinkNamesTheUserByIdAndTheClientOnlyAcrossClients() {
+    fun aUsersFormsLinkNamesTheUserByIdAndAClientOnlyWhenOneIsChosen() {
         // By id: an address names a person, whose default user need not be the row the link is on.
-        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42", userFormsHref(42L, "acme", acrossClients = false))
-        // Across clients the listing is drawn on the user's client's surface, so the link chooses it too.
-        assertEquals(
-            "#${HP.page}=${HMENU.pageForms}&${EI.user}=42&${EI.client}=globex", userFormsHref(42L, "globex", acrossClients = true),
-        )
+        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42", userFormsHref(42L, surfaceClient = null))
+        // With a client chosen the listing is drawn on that client's surface.
+        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42&${EI.client}=globex", userFormsHref(42L, "globex"))
         // The page keeps both keys when it loads: the client chosen, the user within it.
         val search = formsInitialSearch(mapOf(HP.page to HMENU.pageForms, EI.user to "42", EI.client to "globex"), seeAllClients = true)
         assertEquals(mapOf(EI.user to "42", EI.client to "globex"), search)
-        // A row with no client (never the case for a stored user) still makes a link that works.
-        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42", userFormsHref(42L, "", acrossClients = true))
+    }
+
+    @Test
+    fun aFormsLinkChoosesOnlyAClientThisNodeCarries() {
+        val carried = setOf("hub", "acme", "globex")
+        assertEquals("globex", userFormsSurface("globex", carried))
+        // A user whose client is not carried here has no surface to draw; the link lists their forms without one.
+        assertEquals(null, userFormsSurface("retired", carried))
+        // A client-scoped administrator is told of no clients, and their listing is their own already.
+        assertEquals(null, userFormsSurface("acme", emptySet()))
+        // A row with no client (never the case for a stored user) chooses none.
+        assertEquals(null, userFormsSurface("", carried))
     }
 
     private fun acmeDefinition() = parseClientDefinition(

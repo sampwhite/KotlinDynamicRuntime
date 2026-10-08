@@ -203,15 +203,27 @@ fun clientDetailHref(clientId: String): String = hashHref(listOf(HP.page to HMEN
  * resolves it to their default user, which for somebody with users in two clients -- or two personas in one -- is
  * not necessarily the row the link was on. An id is that row.
  *
- * For an administrator who sees across clients the link also chooses the user's [client], so the listing is drawn
- * on that client's surface -- its columns and filters -- rather than the administrator's own; the page keeps both
- * keys when it loads (`formsInitialSearch`). A client-scoped administrator's listing is their client already, so
- * their link carries no client, as [clientFormsHref]'s does not. Pure, and covered under `jsNodeTest`.
+ * [surfaceClient] is the client the listing is to be drawn for ([userFormsSurface]), or null to choose none: the
+ * page keeps both keys when it loads (`formsInitialSearch`). Pure, and covered under `jsNodeTest`.
  */
-fun userFormsHref(userId: Long, client: String, acrossClients: Boolean): String = hashHref(
+fun userFormsHref(userId: Long, surfaceClient: String?): String = hashHref(
     listOf(HP.page to HMENU.pageForms, EI.user to userId.toString()) +
-        if (acrossClients && client.isNotEmpty()) listOf(EI.client to client) else emptyList(),
+        if (surfaceClient != null) listOf(EI.client to surfaceClient) else emptyList(),
 )
+
+/**
+ * The client a user's Forms link chooses on the forms listing (issue #1081), or null for none: the user's own
+ * [client] when it is among [carried], the clients this node carries as the page was told them. Choosing it draws
+ * the listing on that client's surface -- its columns and filters -- rather than the administrator's own.
+ *
+ * Null in the two cases where naming the client could only go wrong. A client-scoped administrator is told of no
+ * clients ([carried] is empty): their listing is their client already, and the page would drop the key, as
+ * [clientFormsHref] leaves it out. And a user whose client this node does **not** carry -- one not enabled in this
+ * environment, or dropped by a check -- has no surface to draw: the listing would fail to load, where without the
+ * key it lists that user's forms on the administrator's own surface, which is still every form they own. Pure, and
+ * covered under `jsNodeTest`.
+ */
+fun userFormsSurface(client: String, carried: Set<String>): String? = client.takeIf { it in carried }
 
 /**
  * How much a client customizes, as the listing's Customized column says it (issue #917): "3 copy, 2 menu", either

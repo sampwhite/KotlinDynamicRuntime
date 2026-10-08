@@ -47,6 +47,9 @@ external interface UserTableProps : Props {
      * of links, so neither is a detour through another page's filters.
      */
     var showLinks: Boolean
+
+    /** The clients this node carries, as the page was told them -- which a Forms link may choose ([userFormsSurface]). */
+    var carriedClients: Set<String>
 }
 
 val UserTable = FC<UserTableProps> { props ->
@@ -132,22 +135,24 @@ private fun userLinksColumn(props: UserTableProps): dynamic {
         cellProps.onClick = { event: dynamic -> event.stopPropagation() }
         cellProps
     }
+    // Read off the row itself -- its key is the user's id, and its client cell the client -- rather than found
+    // again among the users, once a row, on every render.
     c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic {
-        val user = props.users.firstOrNull { it.userId.toString() == record.key } ?: return null
+        val id = (record.key as? String)?.toLongOrNull() ?: return null
         return UserLinks.create {
-            userId = user.userId
-            client = user.client
-            acrossClients = props.showClient
+            userId = id
+            client = record[USF.client] as? String ?: ""
+            carriedClients = props.carriedClients
         }
     }
     return c
 }
 
-/** What [UserLinks] needs: whose links, and whether the caller sees across clients (so the forms link names one). */
+/** What [UserLinks] needs: whose links, and the clients this node carries (which the forms link may choose). */
 external interface UserLinksProps : Props {
     var userId: Long
     var client: String
-    var acrossClients: Boolean
+    var carriedClients: Set<String>
 }
 
 /**
@@ -159,7 +164,7 @@ val UserLinks = FC<UserLinksProps> { props ->
         className = ClassName("user-links")
         a {
             className = ClassName("wf-cell-link")
-            href = userFormsHref(props.userId, props.client, props.acrossClients)
+            href = userFormsHref(props.userId, userFormsSurface(props.client, props.carriedClients))
             title = "The forms this user owns."
             +"Forms"
         }

@@ -289,22 +289,26 @@ val FormsPage = FC<FormsPageProps> { props ->
         loadPage(ep, 0, applied, withSummary = withSummary)
     }
 
-    // A history move between the workflow's states (issue #792): the state is part of what identifies the page,
-    // so a switch pushed an entry, and Back lands on a hash whose state differs from the one applied. The page
-    // follows it, as it follows `g=` -- only when a drill key moved: a search change writes the hash in place
-    // and never reaches here as a difference, and an unrelated hash change (a form opened) leaves it alone.
     // The name behind a scope given as an id (issue #1081), read from the identity view the Users editor reads --
     // scoped like it, so it names only a user this caller administers. A failure leaves the bar as it was: the id.
+    // An answer is kept only while its scope is still the one applied: two reads may answer out of order, and the
+    // later answer for an earlier scope must not take the place of the name already shown.
     val appliedUser = appliedSearch[EI.user]?.ifBlank { null }
+    val scopeAsked = useRef<String>(null)
+    scopeAsked.current = appliedUser
     useEffect(appliedUser, canManageUsers) {
         val id = scopeUserId(appliedUser)
         if (id == null || appliedUser == null || !canManageUsers || scopeWho?.first == appliedUser) return@useEffect
         formsScope.launch {
             val label = apiResult { AdminApi.userIdentity(id) }.valueOrNull()?.let { scopeUserLabel(it.users, id) }
-            if (label != null) scopeWho = appliedUser to label
+            if (label != null && scopeAsked.current == appliedUser) scopeWho = appliedUser to label
         }
     }
 
+    // A history move between the workflow's states (issue #792): the state is part of what identifies the page,
+    // so a switch pushed an entry, and Back lands on a hash whose state differs from the one applied. The page
+    // follows it, as it follows `g=` -- only when a drill key moved: a search change writes the hash in place
+    // and never reaches here as a difference, and an unrelated hash change (a form opened) leaves it alone.
     useEffect(hashSearch) {
         val fromHash = hashSearch ?: return@useEffect
         val ep = listEndpoint ?: return@useEffect
