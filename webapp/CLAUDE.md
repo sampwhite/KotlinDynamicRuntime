@@ -304,10 +304,14 @@ builder of `#page=clients&c=<id>`. The cell stops a click from also opening the 
 table's workflow cell does), and the column is pinned right with Status -- a column after a pinned one must be.
 They are links, not buttons: each goes somewhere and changes nothing. A `public` self-administrator is shown neither
 (`userLinksOffered`): they read only their own forms and the Clients page refuses them, so both could only fail.
-The forms scope bar's box holds the id the link carried, and says who that is on a line beneath it ("User 12: Pat
-Lee — pat@x.test [Member B]", `scopeUserLabel`), read from the identity view the editor reads -- so a user with no
-forms is still named, and one of a person's several users is told apart as the badge tells it. A scope typed as an
-address says who already and gets no such line.
+The forms scope bar's box holds what was applied -- the id the link carried, or an address somebody typed -- and
+says who the listing is confined to on a line beneath it: "User 12: Pat Lee — pat@x.test [Member B]"
+(`scopeUserLabel`). That comes from **the listing itself** (issue #1095): its `summary` carries `scopeUser`, the user
+the server resolved the request's `user` to, so the name is of the rows on screen by construction, a user with no
+forms is still named, and there is no second request. It matters most for an address, which names a person: the
+server resolves it to their default user, and this line is the only thing that says which of their users that was.
+The bracket is the persona and its suffix (the client first, for an `allClients` administrator) -- always, since
+saying it costs a word where finding out whether the person has other users would cost a lookup.
 
 ## The forms listing is named for whose forms it shows (issue #1091)
 

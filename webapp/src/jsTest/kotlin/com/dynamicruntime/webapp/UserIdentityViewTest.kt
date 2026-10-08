@@ -10,10 +10,10 @@ import kotlin.test.assertTrue
 class UserIdentityViewTest {
     private fun user(
         id: Long, client: String, persona: String = PERSONA.member, suffix: String = "",
-        enabled: Boolean = true, registered: Boolean = true, name: String? = null,
+        enabled: Boolean = true, registered: Boolean = true,
     ) = AdminUser(
         userId = id, primaryId = "p@example.com", username = "@p", roles = listOf("user"), client = client,
-        persona = persona, personaSuffix = suffix, org = null, isEntity = false, name = name, enabled = enabled,
+        persona = persona, personaSuffix = suffix, org = null, isEntity = false, name = null, enabled = enabled,
         hasPassword = false, registered = registered, deleted = false,
     )
 
@@ -30,24 +30,6 @@ class UserIdentityViewTest {
         assertEquals(listOf(false, true, false), rows.map { it.selected })
         // Each says what tells it apart, as the badge does.
         assertEquals(listOf("public · Member", "hub · Member", "hub · Member B"), rows.map { it.label })
-    }
-
-    @Test
-    fun aScopeGivenAsAnIdIsNamed() {
-        // The forms listing's scope bar (issue #1081): a link from the Users page names its user by id, and the bar
-        // says who that is. An address says who already, so it is no id; neither is a blank.
-        assertEquals(42L, scopeUserId(" 42 "))
-        assertEquals(null, scopeUserId("p@example.com"))
-        assertEquals(null, scopeUserId(""))
-        assertEquals(null, scopeUserId(null))
-        // One user: the label a picked suggestion shows.
-        assertEquals("p@example.com", scopeUserLabel(listOf(user(1, CL.hub)), 1L))
-        assertEquals("Pat Lee — p@example.com", scopeUserLabel(listOf(user(1, CL.hub, name = "Pat Lee")), 1L))
-        // A person with several: which of them this is, as the badge says it.
-        val users = listOf(user(1, CL.public), user(2, CL.hub), user(3, CL.hub, suffix = "B"))
-        assertEquals("p@example.com [hub · Member B]", scopeUserLabel(users, 3L))
-        // Not among the users the caller was shown: nothing, rather than somebody else's name.
-        assertEquals(null, scopeUserLabel(users, 9L))
     }
 
     @Test

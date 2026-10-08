@@ -43,6 +43,7 @@ import com.dynamicruntime.common.schema.indexPath
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.humanizeFieldName
 
@@ -145,6 +146,11 @@ class FormsListPage(
      * one it has.
      */
     val workflowSummary: List<WorkflowSummaryEntry>? = null,
+    /**
+     * The user the listing is confined to (issue #1095), when the request named one: said by every page, so it is
+     * of these rows and no others. Null when the listing is everyone's the caller may see.
+     */
+    val scopeUser: ScopeUser? = null,
 )
 
 /**
@@ -435,24 +441,49 @@ fun userPickLabel(name: String?, username: String, email: String): String {
 const val formsLoadFailureLead = "Couldn't load the forms."
 
 /**
- * The user id the forms listing is confined to, when the scope names its user that way (issue #1081) -- which is
- * how a link from the Users page does, since an id is one user where an address is a person. Null for an address,
- * a blank, or no scope at all. Pure, covered under `jsNodeTest`.
+ * The user a forms listing is confined to, as the listing's own `summary` says them ([GDF.scopeUser], issue #1095):
+ * who the server resolved the request's `user` to. An id names one user; an address names a person, whom the server
+ * resolves to their default user -- so this is the only thing that says which of a person's users is on screen.
  */
-fun scopeUserId(applied: String?): Long? = applied?.trim()?.toLongOrNull()
+class ScopeUser(
+    val userId: Long,
+    /** The account's display name, when it has one that is not its email. */
+    val name: String?,
+    val email: String,
+    val client: String,
+    val persona: String,
+    val personaSuffix: String,
+)
 
 /**
- * Who the scope's user [userId] is, for the scope bar to say beside the id (issue #1081): the label a picked
- * suggestion shows ([userPickLabel]), and -- for a person with more than one user among [users], the identity's
- * users the caller administers -- what tells this one apart, in brackets as the identity badge says it
- * (`Demo Person — demo@x.test [Member B]`). Null when [users] does not hold the user, so the bar says nothing
- * rather than something wrong. Pure, covered under `jsNodeTest`.
+ * The listing envelope's `summary` as the user it is confined to, or null when it names none -- the request named
+ * no user -- or the block has no id to say which. Pure, covered under `jsNodeTest`.
  */
-fun scopeUserLabel(users: List<AdminUser>, userId: Long): String? {
-    val user = users.firstOrNull { it.userId == userId } ?: return null
-    val label = userPickLabel(user.name, user.username, user.primaryId)
-    val apart = identitySiblings(users, userId).firstOrNull { it.selected }?.label?.ifEmpty { null }
-    return if (apart == null) label else "$label [$apart]"
+fun parseScopeUser(summary: Any?): ScopeUser? {
+    val block = summary.toJsonMapOrEmpty()[GDF.scopeUser].toJsonMapOrEmpty()
+    return ScopeUser(
+        userId = block[DUF.userId].toOptLong() ?: return null,
+        name = block[DUF.name].toOptStr()?.ifBlank { null },
+        email = block[DUF.email].toOptStr().orEmpty(),
+        client = block[DUF.client].toOptStr().orEmpty(),
+        persona = block[DUF.persona].toOptStr().orEmpty(),
+        personaSuffix = block[DUF.personaSuffix].toOptStr().orEmpty(),
+    )
+}
+
+/**
+ * What the scope bar says of the user the listing is confined to (issue #1095), under its controls: which user, by
+ * id; who, by name and address; and what kind of user of that person's -- "User 2: Mem One — mem1@acme.test [Member
+ * B]". The id leads because it is the one thing an address typed into the box did not say. The bracket is the
+ * persona and its suffix, and before it the client for a caller who sees [acrossClients], since only they could be
+ * looking at another client's user. Always given, though most people have one user: it is what the listing was told,
+ * and saying it costs a word where finding out whether there are others would cost a lookup. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun scopeUserLabel(user: ScopeUser, acrossClients: Boolean): String {
+    val who = if (user.name == null || user.name == user.email) user.email else "${user.name} — ${user.email}"
+    val kind = listOfNotNull(user.client.takeIf { acrossClients && it.isNotEmpty() }, personaCell(user.persona, user.personaSuffix))
+    return "User ${user.userId}: $who [${kind.joinToString(" · ")}]"
 }
 
 /**

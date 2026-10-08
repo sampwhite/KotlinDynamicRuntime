@@ -1,5 +1,7 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.workflow.WCOL
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.GSORT
@@ -106,6 +108,34 @@ class GedraFormsTest {
         assertEquals("/gedra/acme/formDoc", findFormGetEndpoint(endpoints)?.path)
         // A surface without it: null, so the filter boxes stay plain text.
         assertNull(findFormValuesEndpoint(listOf(ep(HttpMethod.GET.name, "/gedra/acme/formDocs"))))
+    }
+
+    /**
+     * The user a listing is confined to (issue #1095), read off the listing's own `summary` and said under the scope
+     * bar: which user, who, and what kind of user of that person's.
+     */
+    @Test
+    fun namesTheUserAListingIsConfinedTo() {
+        fun summary(vararg fields: Pair<String, Any?>) = mapOf(GDF.scopeUser to mapOf(*fields))
+        val named = parseScopeUser(
+            summary(
+                DUF.userId to 2, DUF.name to "Mem One", DUF.email to "mem1@acme.test", DUF.client to "acme",
+                DUF.persona to PERSONA.member, DUF.personaSuffix to "B",
+            ),
+        )!!
+        assertEquals(2L, named.userId)
+        // The client only for a caller who could be looking at another client's user.
+        assertEquals("User 2: Mem One — mem1@acme.test [Member B]", scopeUserLabel(named, acrossClients = false))
+        assertEquals("User 2: Mem One — mem1@acme.test [acme · Member B]", scopeUserLabel(named, acrossClients = true))
+        // No name of its own, no suffix: the address stands alone, and the persona is still said.
+        val bare = parseScopeUser(summary(DUF.userId to 7, DUF.email to "sam@x.test", DUF.client to "hub", DUF.persona to PERSONA.admin))!!
+        assertEquals("User 7: sam@x.test [Admin]", scopeUserLabel(bare, acrossClients = false))
+        assertEquals("", bare.personaSuffix)
+        // A summary that names nobody -- the workflow column's alone, or none at all -- is nobody.
+        assertNull(parseScopeUser(mapOf(WCOL.workflows to emptyList<Any>())))
+        assertNull(parseScopeUser(null))
+        // A block that does not say which user says nothing the bar can use.
+        assertNull(parseScopeUser(summary(DUF.email to "sam@x.test")))
     }
 
     /**

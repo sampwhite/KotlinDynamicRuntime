@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypeBuilder
 
 /*
@@ -56,6 +57,16 @@ object GEP {
      * vary. Its stable fields (offset, user) are authored; the search fields are generated per scope.
      */
     const val formDocsQuery = "FormDocsQuery"
+
+    /**
+     * The forms listing's `summary` (issues #791, #1095): what is true of everything the query could return rather
+     * than of one page -- the workflows its workflow column may show (`WCOL.workflows`, when asked for), and the
+     * user the listing is confined to ([GDF.scopeUser], when it is confined to one).
+     */
+    const val formDocsSummary = "FormDocsSummary"
+
+    /** The user a listing is confined to, as its summary says them: a [DUF] block; see [GDF.scopeUser]. */
+    const val scopeUserType = "FormDocsScopeUser"
 
     /** Imports form documents from search output for a target user (issue #545). */
     const val formDocImport = "/gedra/formDoc/import"
@@ -254,6 +265,16 @@ object GDF {
     const val withWorkflowSummary = "withWorkflowSummary"
 
     /**
+     * In a listing's `summary` (issue #1095): **the user the listing is confined to**, when the request named one
+     * (`user`) -- who the server resolved that to. The request may name the user by id or by address, and an address
+     * names a *person*, whom the server resolves to their default user; without this a caller is shown one of that
+     * person's users' documents and never told which. Said by the listing itself, from the one resolution that
+     * confined the rows, so it cannot be a different user than the rows are of, and it costs no lookup. A [DUF]
+     * block with every field of it. Absent when the request named no user.
+     */
+    const val scopeUser = "scopeUser"
+
+    /**
      * A gedra's **state entries** (issue #600): a list of `StateEntry`s, attached to a listed form when
      * `withStates` is asked for, and the payload of the admin state endpoints. Derived -- read from the states
      * cache, neither sent to create nor stored on the data row -- and absent, not empty, when not requested.
@@ -284,6 +305,18 @@ object DUF {
 
     /** The user's email (their login id). */
     const val email = "email"
+
+    /** The user's numeric id: which user this is, where an email is a person who may have several (issue #1095). */
+    const val userId = "userId"
+
+    /** The client the user belongs to. */
+    const val client = "client"
+
+    /** The user's persona -- what kind of user this is (issue #750). */
+    const val persona = "persona"
+
+    /** What tells this user from the person's others of the same client and persona; absent when there is none. */
+    const val personaSuffix = "personaSuffix"
 }
 
 /**
@@ -299,6 +332,19 @@ object DUF {
 fun SchTypeBuilder.userBlockProperties() {
     property(DUF.name, "The user's display name, when it is not the email.")
     property(DUF.email, "The user's email (their login id).", required = true)
+}
+
+/**
+ * The properties of a block that says **which user** (issue #1095): [userBlockProperties], and what makes this one
+ * of a person's users and no other -- the id, the client, the persona and its suffix. For [GDF.scopeUser], where
+ * the point is to say which of a person's users a listing resolved an address to.
+ */
+fun SchTypeBuilder.identifiedUserBlockProperties() {
+    userBlockProperties()
+    property(DUF.userId, "The user's numeric id.", required = true) { type = SCT.integer }
+    property(DUF.client, "The client the user belongs to.", required = true)
+    property(DUF.persona, "The user's persona.", required = true)
+    property(DUF.personaSuffix, "What tells this user from the person's others of the same client and persona, when there is one.")
 }
 
 /** Field names for a patch's request and its answer (issue #337). Each name matches its value. */

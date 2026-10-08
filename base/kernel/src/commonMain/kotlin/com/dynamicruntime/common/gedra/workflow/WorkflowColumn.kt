@@ -12,9 +12,6 @@ import com.dynamicruntime.common.util.toOptStr
  */
 @Suppress("ConstPropertyName")
 object WCOL {
-    /** The summary's type name, under the gedra namespace. */
-    const val summaryType = "FormWorkflowSummary"
-
     /** One workflow the summary names; see [workflows]. */
     const val summaryWorkflowType = "FormWorkflowSummaryEntry"
 

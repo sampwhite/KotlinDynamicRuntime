@@ -278,7 +278,7 @@ own data only names by id. A list endpoint declares such a fact with `summaryRef
 delivered under **`summary`**, beside `items`:
 
 ```kotlin
-listEndpoint(GEP.formDocs, "…", outputRef = docType, hasMore = true, summaryRef = WCOL.summaryType) { c, req ->
+listEndpoint(GEP.formDocs, "…", outputRef = docType, hasMore = true, summaryRef = GEP.formDocsSummary) { c, req ->
     ListPage(items, numAvailable, hasMore, summary = if (wanted) computeSummary(c) else null)
 }
 ```

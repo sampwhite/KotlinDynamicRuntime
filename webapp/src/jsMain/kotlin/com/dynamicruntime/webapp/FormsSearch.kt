@@ -178,8 +178,9 @@ external interface FormsScopeBarProps : Props {
     var applied: String?
 
     /**
-     * Who [applied] is, when it names its user by id (issue #1081) -- a link from the Users page does -- so the bar
-     * says a name beside a number. Null when it is an address, which says who already, or not yet known.
+     * Who the list is confined to, as the listing itself said (issues #1081, #1095): which user [applied] was
+     * resolved to. For an id it puts a name to a number; for an address it says which of that person's users it
+     * meant. Null when no user is applied, or the listing has not answered.
      */
     var appliedWho: String?
 
@@ -257,14 +258,14 @@ val FormsScopeBar = FC<FormsScopeBarProps> { props ->
                 +"Show everyone"
             }
         }
-        // Who an id is, on a line of its own under the controls, so they never move to make room for a name.
-        // Shown while the box still holds what is applied: once something else is typed, the name is of the
-        // list on screen and no longer of the box.
+        // Who the list is confined to, on a line of its own under the controls, so they never move to make room
+        // for a name. Shown while the box still holds what is applied: once something else is typed, the name is
+        // of the list on screen and no longer of the box.
         val who = props.appliedWho
         if (who != null && props.value.trim() == props.applied?.trim()) {
             span {
                 className = ClassName("forms-scope-who")
-                +"User ${props.applied?.trim()}: $who"
+                +who
             }
         }
     }
