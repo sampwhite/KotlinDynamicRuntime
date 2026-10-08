@@ -653,7 +653,7 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                                         +"Publish from its "
                                         a {
                                             className = ClassName("wf-cell-link")
-                                            href = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
+                                            href = clientDetailHref(sandbox)
                                             if (!props.acrossClients) {
                                                 title = "Open the sandbox and show this configuration there."
                                                 onClick = { e ->
@@ -1300,7 +1300,7 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
                                     // The client's own page (issue #906): its definition, issues and stored configuration.
                                     a {
                                         className = ClassName("wf-cell-link")
-                                        href = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to c.clientId))
+                                        href = clientDetailHref(c.clientId)
                                         +clientLabel(c.clientId, c.name)
                                     }
                                     sandboxRowNote(c)?.let { note ->

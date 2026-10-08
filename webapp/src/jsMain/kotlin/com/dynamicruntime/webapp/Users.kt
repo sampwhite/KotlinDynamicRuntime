@@ -718,6 +718,23 @@ val Users = FC<Props> {
             } else {
                 readOnlyField("Client", draftClient.ifEmpty { "—" })
             }
+            // Where this user's forms and client are (issue #1081) -- for a user who exists, since a new one has
+            // neither yet, and to the callers the list offers the same links.
+            val open = editing
+            if (!creating && open != null && config?.user?.let { userLinksOffered(it) } == true) {
+                div {
+                    className = ClassName("row")
+                    span {
+                        className = ClassName("field-label")
+                        +"Go to"
+                    }
+                    UserLinks {
+                        userId = open.userId
+                        client = open.client
+                        acrossClients = config?.canSeeAllClients == true
+                    }
+                }
+            }
 
             // The persona (issue #750): frozen at creation, like the client, so a selector on create and plain
             // text afterward. Choosing one moves the access level to the persona's default, which the
@@ -1042,6 +1059,7 @@ val Users = FC<Props> {
                 }
                 UserTable {
                     this.showClient = showClient
+                    this.showLinks = config?.user?.let { userLinksOffered(it) } == true
                     this.users = users
                     this.sortBy = sortBy
                     this.descending = descending

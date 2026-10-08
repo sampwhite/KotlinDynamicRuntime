@@ -291,6 +291,22 @@ section gate.
 Paths, field names and the ladder all come from `base/kernel`, so a backend rename breaks compilation here
 rather than at runtime.
 
+**From a user to what is theirs** (issue #1081): each row ends in a **Go to** column -- `Forms · Client`, the
+`UserLinks` component -- and the editor of an existing user shows the same two links under its Client field. `Forms`
+is `userFormsHref`: the forms listing confined to that user **by id, never by address**. The listing's `user` takes
+either, but an address names a person, and the backend resolves it to their *default* user, which for somebody with
+users in two clients (or two personas in one) need not be the row the link was on. For an `allClients` administrator
+the link also carries the user's `client`, so the listing is drawn on that client's surface; a scoped
+administrator's carries none, as the Clients page's count links do not. `Client` is `clientDetailHref`, the one
+builder of `#page=clients&c=<id>`. The cell stops a click from also opening the row's editor (`onCell`, as the forms
+table's workflow cell does), and the column is pinned right with Status -- a column after a pinned one must be.
+They are links, not buttons: each goes somewhere and changes nothing. A `public` self-administrator is shown neither
+(`userLinksOffered`): they read only their own forms and the Clients page refuses them, so both could only fail.
+The forms scope bar's box holds the id the link carried, and says who that is on a line beneath it ("User 12: Pat
+Lee — pat@x.test [Member B]", `scopeUserLabel`), read from the identity view the editor reads -- so a user with no
+forms is still named, and one of a person's several users is told apart as the badge tells it. A scope typed as an
+address says who already and gets no such line.
+
 ## The forms listing across clients (issues #668, #714)
 
 An `allClients` admin's forms listing starts as the **cross-client view**: every client's rows, a Client column,

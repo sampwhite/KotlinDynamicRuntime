@@ -84,6 +84,29 @@ class ClientsPageTest {
         assertEquals("#${HP.page}=${HMENU.pageUsers}", clientUsersHref("acme", acrossClients = false))
     }
 
+    @Test
+    fun aClientsOwnPageIsOneAddress() {
+        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.client}=acme", clientDetailHref("acme"))
+        // A sandbox's id holds a colon, which a hash value must carry encoded.
+        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.client}=acme%3Asandbox", clientDetailHref("acme:sandbox"))
+        assertEquals(clientDetailHref("acme"), clientOverridesHref("acme"))
+    }
+
+    @Test
+    fun aUsersFormsLinkNamesTheUserByIdAndTheClientOnlyAcrossClients() {
+        // By id: an address names a person, whose default user need not be the row the link is on.
+        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42", userFormsHref(42L, "acme", acrossClients = false))
+        // Across clients the listing is drawn on the user's client's surface, so the link chooses it too.
+        assertEquals(
+            "#${HP.page}=${HMENU.pageForms}&${EI.user}=42&${EI.client}=globex", userFormsHref(42L, "globex", acrossClients = true),
+        )
+        // The page keeps both keys when it loads: the client chosen, the user within it.
+        val search = formsInitialSearch(mapOf(HP.page to HMENU.pageForms, EI.user to "42", EI.client to "globex"), seeAllClients = true)
+        assertEquals(mapOf(EI.user to "42", EI.client to "globex"), search)
+        // A row with no client (never the case for a stored user) still makes a link that works.
+        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42", userFormsHref(42L, "", acrossClients = true))
+    }
+
     private fun acmeDefinition() = parseClientDefinition(
         mapOf(
             CLD.client to mapOf(

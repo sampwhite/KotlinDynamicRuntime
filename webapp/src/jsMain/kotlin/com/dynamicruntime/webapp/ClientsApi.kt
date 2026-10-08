@@ -190,6 +190,30 @@ fun clientUsersHref(clientId: String, acrossClients: Boolean): String =
     hashHref(listOf(HP.page to HMENU.pageUsers) + if (acrossClients) listOf(USF.client to clientId) else emptyList())
 
 /**
+ * One client's own page (issue #906): its definition, issues and stored configuration. Any administrator who may
+ * see the client may open it -- a client-scoped one their own, which is the only one a link of theirs can name.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun clientDetailHref(clientId: String): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to clientId))
+
+/**
+ * Where a user's Forms link leads (issue #1081): the forms listing confined to that one user.
+ *
+ * **By id, never by address.** The listing's `user` takes either, but an address names a *person*: the backend
+ * resolves it to their default user, which for somebody with users in two clients -- or two personas in one -- is
+ * not necessarily the row the link was on. An id is that row.
+ *
+ * For an administrator who sees across clients the link also chooses the user's [client], so the listing is drawn
+ * on that client's surface -- its columns and filters -- rather than the administrator's own; the page keeps both
+ * keys when it loads (`formsInitialSearch`). A client-scoped administrator's listing is their client already, so
+ * their link carries no client, as [clientFormsHref]'s does not. Pure, and covered under `jsNodeTest`.
+ */
+fun userFormsHref(userId: Long, client: String, acrossClients: Boolean): String = hashHref(
+    listOf(HP.page to HMENU.pageForms, EI.user to userId.toString()) +
+        if (acrossClients && client.isNotEmpty()) listOf(EI.client to client) else emptyList(),
+)
+
+/**
  * How much a client customizes, as the listing's Customized column says it (issue #917): "3 copy, 2 menu", either
  * half alone, or a dash for none. "Menu" for the interface changes because every block a client can overlay today
  * is one. Pure, and covered under `jsNodeTest`.
@@ -394,7 +418,7 @@ fun overridesAcrossClients(byClient: List<Pair<String, ClientOverridesView>>): L
 }
 
 /** Where the Customized column leads (issue #917): the client's detail, where the Copy & menu section is. */
-fun clientOverridesHref(clientId: String): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to clientId))
+fun clientOverridesHref(clientId: String): String = clientDetailHref(clientId)
 
 /** The cross-client view of the overrides (issue #917), for an administrator who sees across clients. */
 fun overridesAcrossHref(): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.overrides to "1"))

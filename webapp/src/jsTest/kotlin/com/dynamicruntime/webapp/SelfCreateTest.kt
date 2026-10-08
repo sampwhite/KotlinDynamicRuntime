@@ -51,6 +51,15 @@ class SelfCreateTest {
     }
 
     @Test
+    fun aUsersLinksAreOfferedToAClientsAdministratorOnly() {
+        // The way to a user's forms and client (issue #1081): a public self-administrator reads only their own
+        // forms and is refused the Clients page, so for them both links could only fail.
+        assertTrue(!userLinksOffered(UserProfile(client = CL.public, roles = setOf(ROLE.user, ROLE.admin))))
+        assertTrue(userLinksOffered(UserProfile(client = CL.public, roles = setOf(ROLE.user, ROLE.admin, ROLE.allClients))))
+        assertTrue(userLinksOffered(UserProfile(client = "acme", roles = setOf(ROLE.user, ROLE.admin))))
+    }
+
+    @Test
     fun theSelfRecordIsItsOwnHashValue() {
         // Distinct from a plain create, so Back and Forward reopen the right form, and not a user id.
         assertNotEquals(HP.newRecord, HP.selfRecord)

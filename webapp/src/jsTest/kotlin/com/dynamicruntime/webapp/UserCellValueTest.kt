@@ -54,6 +54,8 @@ class UserCellValueTest {
     fun theIdentifyingColumnsArePinnedAndTheRestScroll() {
         for (field in listOf("userId", USF.email, USF.name, USF.client, USF.persona)) assertEquals("left", pinnedSide(field))
         assertEquals("right", pinnedSide("status"))
+        // The links column follows the pinned status, so it is pinned with it rather than sliding beneath it.
+        assertEquals("right", pinnedSide("links"))
         for (field in listOf(USF.registered.at, USF.activated.at, "type", "roles")) assertEquals(null, pinnedSide(field))
     }
 
