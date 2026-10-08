@@ -130,6 +130,8 @@ val FormsPage = FC<FormsPageProps> { props ->
     // draft, and paging/reloads carry the applied set so a filtered list stays filtered across pages.
     var searchDraft by useState<Map<String, String>>(emptyMap())
     var appliedSearch by useState<Map<String, String>>(emptyMap())
+    // What the shell knows of the caller (issue #1091): the page's heading is named by it.
+    val shell = useShellFacts()
     // Who the scope's user is, when the scope names them by id (issue #1081): the applied value it was read for,
     // and the label. Kept beside its key, so a slow answer for a scope since replaced is never shown for the new one.
     var scopeWho by useState<Pair<String, String>?>(null)
@@ -582,7 +584,8 @@ val FormsPage = FC<FormsPageProps> { props ->
                 }
             }
         } else {
-            h1 { +"My forms" }
+            // Named for whose forms it lists (issue #1091), as the menu entry that led here was.
+            h1 { +formsListingName(shell.administersClient) }
         }
         // The search beyond the listing's own identity (issue #792): on the workflow's listing the workflow and state
         // are not a narrowing of it, so "no forms match your search" and "nothing here at all" part on this.

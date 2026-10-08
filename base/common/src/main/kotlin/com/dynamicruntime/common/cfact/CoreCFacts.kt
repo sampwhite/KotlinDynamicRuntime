@@ -6,6 +6,7 @@ import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.user.AdminRules
 
 /** The friendly labels the built-in cfacts group under. Metadata: they affect nothing but presentation. */
 @Suppress("ConstPropertyName")
@@ -55,6 +56,14 @@ object CFACTS {
     /** The caller may reach the `clientOperator` section -- operator level, confined to their own scope (#488). */
     const val isClientOperator = "kdr:isClientOperator"
 
+    /**
+     * The caller administers a **client** -- their own, or every one (issue #1091): an administrator anywhere but the
+     * `public` placeholder, where an administrator reaches only their own users. A statement about **scope**, which
+     * neither the level ([hasAdminLevel], true in `public` too) nor a section says -- and deliberately not named
+     * after the `clientAdmin` section, which admits that `public` administrator for their own users' pages.
+     */
+    const val administersClient = "kdr:administersClient"
+
     /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
     const val hasEnvAuth = "kdr:hasEnvAuth"
 
@@ -100,6 +109,11 @@ object CFACTS {
  * [CFACTS.isDeploymentAdmin] was named here long before it was declared: a *core* cfact with neither a producer
  * nor a consumer is a row in every deployment's discovery listing that nothing uses. It arrived with the first thing
  * that needed it (issue #1000): hiding a `client` field from a caller who may not name another client.
+ *
+ * [CFACTS.administersClient] is the one statement about **scope alone** (issue #1091): whether the caller's
+ * administration reaches a client's rows at all, as opposed to their own users'. It is `AdminRules`' own answer
+ * (`isClientAdministrator`), which is also how far their reads reach (`ReadScopeRules.forCaller`) -- so a surface
+ * named for whose rows it shows ("Forms" against "My forms") asks it, and agrees with what it then lists.
  *
  * `isDeployment*`, and [CFACTS.isClientOperator], are statements about **a section**, and carry a rule: **a
  * cfact named after a section must ask that section**, through `RequestService.sectionAdmits`. That is what
@@ -194,6 +208,17 @@ fun addCoreCFacts(collector: SchemaCollector) {
         // Asked of the dispatcher, like `isDeploymentOperator`: the menu item offering the cfacts page and the
         // gate admitting a caller to it are then one answer.
     ) { RequestService.get(it).sectionAdmits(it.userProfile, SECT.clientOperator) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.administersClient, CFGRP.caller,
+            "True when the caller administers a client -- their own, or every one with `allClients`. An " +
+                "administrator in the `public` placeholder is not one: they reach their own users only (issue " +
+                "#805), so `${CFACTS.hasAdminLevel}` is true for them and this is not. It is what a caller's reads " +
+                "reach beyond their own rows by, so a surface named for whose rows it shows asks it.",
+        ),
+        // `AdminRules`' own answer rather than a restatement of it: the rule has a carve-out (`public`) that a
+        // second copy here would be the first place to forget.
+    ) { AdminRules.isClientAdministrator(it) }
     collector.addCFact(
         CFactDef(
             CFACTS.hasAdminLevel, CFGRP.caller,

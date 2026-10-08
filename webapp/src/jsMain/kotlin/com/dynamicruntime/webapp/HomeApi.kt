@@ -64,6 +64,12 @@ class HomeConfig(
     val sourceRepoBase: String?,
     /** Whether the caller may open their own client's sandbox (issue #931) -- offers the bar's "Open sandbox". */
     val canOpenSandbox: Boolean = false,
+    /**
+     * Whether the caller administers a client -- their own or every one (issue #1091) -- and so lists more than their
+     * own rows. What a page named for whose rows it shows keys on ([formsListingName]); false for an administrator in
+     * `public`, whom [canManageUsers] is true for.
+     */
+    val administersClient: Boolean = false,
     /** When the caller is in a client's sandbox (issue #931): which client's, for the marker and the way back. */
     val sandboxOf: SandboxOf? = null,
 )
@@ -113,6 +119,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         hasSurvey = config.features[HFEAT.hasSurvey] == true,
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
         canOpenSandbox = config.features[HFEAT.canOpenSandbox] == true,
+        administersClient = config.features[HFEAT.administersClient] == true,
         sandboxOf = (config.state[HFLD.sandboxOf] as? String)?.let { SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it) },
     )
 }

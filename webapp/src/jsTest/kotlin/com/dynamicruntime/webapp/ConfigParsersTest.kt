@@ -100,6 +100,7 @@ class ConfigParsersTest {
                     HFEAT.inlineLinks to true,
                     HFEAT.canManageUsers to true,
                     HFEAT.hasSurvey to true,
+                    HFEAT.administersClient to true,
                 ),
                 state = mapOf(
                     HFLD.links to listOf(
@@ -120,6 +121,14 @@ class ConfigParsersTest {
         // The client declares a survey (issue #695); absent reads as false like the other flags.
         assertTrue(cfg.hasSurvey)
         assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).hasSurvey)
+        // Whether their listings reach beyond their own rows (issue #1091); absent reads as false, as an older
+        // backend that does not say leaves a caller listing their own.
+        assertTrue(cfg.administersClient)
+        assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).administersClient)
+        // Its own flag, not the manage-users one beside it: an administrator in `public` has that and not this.
+        val publicAdmin = homeConfigFrom(uiConfig(features = mapOf(HFEAT.canManageUsers to true), state = emptyMap()))
+        assertTrue(publicAdmin.canManageUsers)
+        assertFalse(publicAdmin.administersClient)
 
         assertEquals(1, cfg.links.size)
         assertEquals("guide", cfg.links[0].docId)

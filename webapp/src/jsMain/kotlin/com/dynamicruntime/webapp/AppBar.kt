@@ -131,6 +131,12 @@ external interface AppBarProps : Props {
      * person means by it -- a login stranded at the code step is the case that found this.
      */
     var onRevisit: () -> Unit
+    /**
+     * Told what the shell config says of the caller, each time it is read (issue #1091): `App` provides it to the
+     * pages, which name themselves by it ([ShellFacts]). Not called when the config could not be read, so a failed
+     * refresh leaves the pages named as they were.
+     */
+    var onShellFacts: (ShellFacts) -> Unit
     /** Whether env auth exists on this channel -- decides whether the control is shown at all. */
     var envAuthSuppressible: Boolean
     /** Whether the session is currently *acting* env-authed -- decides what the control says. */
@@ -204,6 +210,7 @@ val AppBar = FC<AppBarProps> { props ->
                 return@launch
             }
             config = cfg
+            props.onShellFacts(ShellFacts(cfg.administersClient))
             // Tint the page while in a sandbox (issue #1049) -- set from a loaded config only, so a failed refresh
             // leaves the page as it was rather than dropping the signal.
             markPageSandbox(pageInSandbox(cfg))
