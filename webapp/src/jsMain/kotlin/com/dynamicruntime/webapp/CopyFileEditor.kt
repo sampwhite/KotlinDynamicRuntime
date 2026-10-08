@@ -25,6 +25,8 @@ private val copyFileScope = MainScope()
 
 external interface CopyFileEditorProps : Props {
     var clientId: String
+    /** Whether [clientId] is the client the Clients page opens with none named (issue #1082), so that address is its page too. */
+    var inPlace: Boolean
     /** The copy the client's configuration sets, from the overrides report: who set each key, and the orphans. */
     var overrides: List<CopyOverrideView>
     /** What a save calls once it has taken effect: the page re-reads, and so does the shell. */
@@ -96,10 +98,11 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     // The leave guard (issue #700): armed while changes are pending, so leaving the client's page -- in the app, or
     // by reload or a closed tab -- warns first. Moving within the page (the same client) is not a leave.
     val dirty = pending.isNotEmpty()
-    useEffect(dirty, props.clientId) {
+    useEffect(dirty, props.clientId, props.inPlace) {
         if (dirty) {
             val client = props.clientId
-            LeaveGuard.arm({ h -> h[HP.page] == HMENU.pageClients && h[HP.client] == client }) {
+            val inPlace = props.inPlace
+            LeaveGuard.arm({ h -> staysOnClientPage(h, client, inPlace) }) {
                 LeaveGuard.confirmLeave("You have unsaved copy changes for this client. Leave the page and lose them?")
             }
         } else {

@@ -99,12 +99,24 @@ class HomeMenuTest : StringSpec({
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.users, "Users", HMENU.pageUsers),
-            page(HMENU.clients, "Clients", HMENU.pageClients),
+            // One client to oversee, which the page opens directly (issue #1082): the entry says so.
+            page(HMENU.myClient, "My client", HMENU.pageClients),
             page(HMENU.reports, "Reports", HMENU.pageReports),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
             page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
+    }
+
+    "the Clients page has one menu entry, named for what it opens: a listing, or the caller's one client" {
+        fun entries(user: TestUser) =
+            menuIn(user.getData(HEP.homeUiConfig)).filter { it[UIB.action] == HMENU.pageClients }.map { it[HFLD.id] to it[HFLD.label] }
+        // Across clients there is a listing.
+        entries(TestUser.createFullAdmin(cxt, "menu-root@example.com")) shouldBe listOf(HMENU.clients to "Clients")
+        // One client: the page opens it, and a "Clients" entry would promise a list that is not there.
+        entries(TestUser.create(cxt, "menu-one@example.com", level = ROLE.admin)) shouldBe listOf(HMENU.myClient to "My client")
+        // Nobody who does not administer is offered either.
+        entries(TestUser.create(cxt, "menu-member@example.com", level = ROLE.user)) shouldBe emptyList()
     }
 
     "a deployment operator gets Environment and Client facts, and not Users" {
