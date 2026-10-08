@@ -378,6 +378,15 @@ client chosen or filtered for an `allClients` administrator, bare for a scoped o
 client already (the Users page draws no client filter for them, so a `client=` in the hash would be one they
 could not clear). The Workflows page takes no client, so that count is plain text until it does.
 
+**An administrator of one client opens it in place** (issue #1082): with no `c=` in the hash, a caller who may
+administer and does not see across clients is shown their own client's detail, not a listing of one row
+(`clientsOpenId`, pure). So `#page=clients` and `#page=clients&c=<their client>` are the same page for them, drawn
+with no `← Clients` link -- there is nothing behind it -- and the copy editor's leave guard treats both addresses as
+staying (`staysOnClientPage`). The menu item is unchanged data, so the app bar's current-page match and a client's
+menu overlay are untouched. Two callers keep the old path: an `allClients` administrator, who has a listing, and a
+`public` self-administrator, whom the overview endpoint refuses -- shown as that refusal rather than as a detail that
+would refuse piece by piece. Nothing is opened in place until the shell config has said who is asking.
+
 **One client** (`c=<id>`, issue #906) shows, on the same route with `← Clients` back: the listing's facts for it,
 its definition from `/clientAdmin/client/definition` (`clientSummaryRows`, drawn with `readOnlyField`; the
 operator-only `audience` and `usageType` (#820) are noted "(set by the platform)" for a scoped administrator, so

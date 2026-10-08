@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
@@ -195,6 +196,35 @@ fun clientUsersHref(clientId: String, acrossClients: Boolean): String =
  * Pure, and covered under `jsNodeTest`.
  */
 fun clientDetailHref(clientId: String): String = hashHref(listOf(HP.page to HMENU.pageClients, HP.client to clientId))
+
+/**
+ * Which client the Clients page shows (issue #1082), or null for the listing.
+ *
+ * A client the hash names ([hashClient], `c=<id>`) is the one, as it always was. With none named, an administrator
+ * of **one** client -- one who may administer and does not see across clients -- is shown that client, [ownClient],
+ * in place: their listing was a table of one row to click through on every visit, and the page they came for is
+ * the one behind it. An administrator who sees across clients gets the listing.
+ *
+ * Not for an administrator in `public` without `allClients`, who administers only their own users (issue #805):
+ * the overview endpoint refuses them, and the page says so in the endpoint's words rather than opening a detail
+ * that would refuse them piece by piece. And not before the shell has said who is asking -- [canManageUsers] and
+ * [canSeeAllClients] are false until then -- so nothing is fetched for a caller on a guess. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun clientsOpenId(hashClient: String?, canManageUsers: Boolean, canSeeAllClients: Boolean, ownClient: String): String? = when {
+    hashClient != null -> hashClient
+    canManageUsers && !canSeeAllClients && ownClient.isNotEmpty() && ownClient != CL.public -> ownClient
+    else -> null
+}
+
+/**
+ * Whether [hash] is still [clientId]'s own page (issue #1082), for a guard that asks before unsaved work is left:
+ * the Clients page naming that client -- or, when the client is the one the page opens [inPlace], naming none. So
+ * an administrator of one client is not asked whether to leave a page they are staying on, by a move between its
+ * two addresses. Pure, and covered under `jsNodeTest`.
+ */
+fun staysOnClientPage(hash: Map<String, String>, clientId: String, inPlace: Boolean): Boolean =
+    hash[HP.page] == HMENU.pageClients && (hash[HP.client] == clientId || inPlace && hash[HP.client] == null)
 
 /**
  * Where a user's Forms link leads (issue #1081): the forms listing confined to that one user.

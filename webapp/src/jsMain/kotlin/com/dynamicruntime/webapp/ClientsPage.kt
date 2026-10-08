@@ -63,6 +63,9 @@ private const val storedConfigurationId = "stored-configuration"
  * screen and says so above it: the page re-reads on every refresh generation, and a blip must not take away what
  * was being read.
  *
+ * An administrator of **one** client is shown that client in place of a listing of one row (issue #1082,
+ * [clientsOpenId]), with no way back, since there is nothing behind it.
+ *
  * With `c=<id>` (issue #906) it shows **one client** instead -- as Docs shows one document -- with `← Clients` back:
  * the overview's facts for it, its definition as the scoped retrieve answers, the issues its checks forgave, and
  * the stored configurations this node holds for it. The definition is asked for on its own, keyed on the open id,
@@ -81,8 +84,15 @@ val ClientsPage = FC<Props> {
     // A copy edit that went live bumps the generation (issue #918): this page re-reads the client, and the shell
     // re-reads its config and copy, so a changed wordmark shows in the app bar without a reload.
     val bump = useRefreshBump()
-    // The open client's detail (issue #906): read on its own, keyed on the id the hash names.
-    val openId = hashParams()[HP.client]
+    // The open client's detail (issue #906): read on its own, keyed on the id the hash names -- or, for an
+    // administrator of one client, that client, with none named (issue #1082). [inPlace] says the open client is the
+    // one this page shows with nothing named, so there is no listing behind it to go back to.
+    val caller = config
+    fun openFor(hashClient: String?) = clientsOpenId(
+        hashClient, caller?.canManageUsers == true, caller?.canSeeAllClients == true, caller?.user?.client.orEmpty(),
+    )
+    val openId = openFor(hashParams()[HP.client])
+    val inPlace = openId != null && openId == openFor(null)
     var definition by useState<ClientDefinitionView?>(null)
     var storedConfigs by useState<List<ConfigSummaryView>?>(null)
     // The definition's failure to load, or -- a designed answer, a 403 or 404 -- what the endpoint said instead.
@@ -225,7 +235,7 @@ val ClientsPage = FC<Props> {
         openId != null -> clientDetail(
             openId, rows?.firstOrNull { it.clientId == openId }, definition, storedConfigs,
             detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
-            onChanged = bump,
+            inPlace, onChanged = bump,
         )
         // The view across clients is the allClients administrator's; anyone else lands on their listing.
         acrossView && current.canSeeAllClients -> overridesAcross(rows, acrossRows, loadError, acrossError)
@@ -251,12 +261,18 @@ private fun ChildrenBuilder.clientDetail(
     overridesError: DisplayError?,
     overridesRefused: Boolean,
     acrossClients: Boolean,
+    /** Whether this client is the one the page opens with none named (issue #1082): the caller's one client. */
+    inPlace: Boolean,
     /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
     onChanged: () -> Unit,
 ) {
     div {
         className = ClassName("card wide")
-        backToListing(HMENU.pageClients)
+        // No way back to a listing that would only open this page again; a listing the page was opened *from*
+        // is still somewhere to go back to.
+        if (!inPlace || backTarget(hashParams()[HP.from], HMENU.pageClients) != HMENU.pageClients) {
+            backToListing(HMENU.pageClients)
+        }
         h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
         for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) readOnlyField(label, value)
         // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
@@ -383,6 +399,7 @@ private fun ChildrenBuilder.clientDetail(
                 h3 { +"Copy" }
                 CopyFileEditor {
                     this.clientId = clientId
+                    this.inPlace = inPlace
                     this.overrides = overrides.copy
                     this.onChanged = onChanged
                 }

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
@@ -101,6 +102,42 @@ class ClientsPageTest {
         // The page keeps both keys when it loads: the client chosen, the user within it.
         val search = formsInitialSearch(mapOf(HP.page to HMENU.pageForms, EI.user to "42", EI.client to "globex"), seeAllClients = true)
         assertEquals(mapOf(EI.user to "42", EI.client to "globex"), search)
+    }
+
+    @Test
+    fun anAdministratorOfOneClientOpensItInPlace() {
+        fun open(hash: String?, manages: Boolean = true, across: Boolean = false, own: String = "acme") =
+            clientsOpenId(hash, manages, across, own)
+        // No client named: the one client they have, where the listing was a table of one row.
+        assertEquals("acme", open(null))
+        // A sandbox is its user's one client too.
+        assertEquals("acme:sandbox", open(null, own = "acme:sandbox"))
+        // A client the hash names is the one shown, whoever asks: the endpoint says whether they may see it.
+        assertEquals("globex", open("globex"))
+        assertEquals("globex", open("globex", across = true))
+        // Across clients there is a listing to show.
+        assertEquals(null, open(null, across = true, own = "hub"))
+        // A public self-administrator administers only their own users: the listing's refusal is what they are shown.
+        assertEquals(null, open(null, own = CL.public))
+        assertEquals("hub", open(null, own = CL.hub))
+        // Nobody who may not administer, and nothing before the shell has said who is asking.
+        assertEquals(null, open(null, manages = false))
+        assertEquals(null, clientsOpenId(null, canManageUsers = false, canSeeAllClients = false, ownClient = ""))
+    }
+
+    @Test
+    fun aClientOpenInPlaceHasTwoAddresses() {
+        val named = mapOf(HP.page to HMENU.pageClients, HP.client to "acme")
+        val bare = mapOf(HP.page to HMENU.pageClients)
+        // Named, it is that client's page for anyone.
+        assertEquals(true, staysOnClientPage(named, "acme", inPlace = false))
+        assertEquals(false, staysOnClientPage(named, "globex", inPlace = false))
+        // With none named it is the listing -- except for the caller whose one client the page opens in place.
+        assertEquals(false, staysOnClientPage(bare, "acme", inPlace = false))
+        assertEquals(true, staysOnClientPage(bare, "acme", inPlace = true))
+        // In place or not, another client or another page is somewhere else.
+        assertEquals(false, staysOnClientPage(mapOf(HP.page to HMENU.pageClients, HP.client to "globex"), "acme", inPlace = true))
+        assertEquals(false, staysOnClientPage(mapOf(HP.page to HMENU.pageUsers), "acme", inPlace = true))
     }
 
     @Test
