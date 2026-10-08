@@ -417,6 +417,12 @@ data class SchOpts(
      * where parsing it alone would refuse it for naming a sibling type, or for being an alteration of another
      * type, and where the whole document is compiled and judged right after. That it is an object is still
      * checked; that it is a schema is then the later check's to say, and this run makes no claim about it.
+     *
+     * **Its shape is still checked** (issue #1056, [SchMetaSchema.structureFailures]), and for the same reason the
+     * body is not parsed alone, **a directive at its top stands**: a `g-extends` or `g-merge` there is read when the
+     * configuration's types are assembled -- a type's `schema` and a trait's `dataSchema` alike, each of which
+     * becomes a type of the document -- so whether it may be there is that assembly's to say. Both follow from the
+     * one fact this flag states: the body is a piece of a document, held apart from it.
      */
     val schemaDocumentsUnparsed: Boolean = false,
 ) {
@@ -1137,7 +1143,8 @@ fun validateSchemaDocument(
     }
     // Its shape first (issue #1056): every keyword at fault, each by its path, where the parse below stops at the
     // first and says it of the whole value. A body with such a fault is not parsed -- the parser would only repeat
-    // one of them -- and a caller that leaves the parse to someone else still gets this much.
+    // one of them -- and a caller that leaves the parse to someone else still gets this much. For that caller the
+    // body is a piece of a configuration, whose top may carry a directive the assembly reads (see the flag).
     val structural = SchMetaSchema.structureFailures(body.toJsonMap(), path, directivesStandAtTop = opts.schemaDocumentsUnparsed)
     if (structural.isNotEmpty()) {
         failures.addAll(structural)

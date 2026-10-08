@@ -96,6 +96,21 @@ object SchStdKeywords {
      */
     fun nodesIn(keyword: String, value: Any?): List<Pair<String, Map<*, *>>> = shapes[keyword]?.form?.nodesIn(value).orEmpty()
 
+    /** Whether [value] is **itself** a schema node under [keyword] (`items`, a map's value schema), not a holder of several. */
+    fun isNode(keyword: String, value: Any?): Boolean = nodesIn(keyword, value).any { (below, _) -> below.isEmpty() }
+
+    /**
+     * How a fault inside the schema [keyword] holds is placed, for a message that names the type or property
+     * holding it: "Type 'x' (in its item schema) sets ...". A fault there is not the holder's own (issue #1055), and
+     * saying it of the holder points its author at the wrong line. One wording, read by the parser and by the
+     * repair of a stored definition.
+     */
+    fun nodePlace(keyword: String): String = when (keyword) {
+        SCH.items -> "in its item schema"
+        SCH.additionalProperties -> "in its value schema"
+        else -> "in its '$keyword' schema"
+    }
+
     /**
      * What is left of a wrongly shaped [value] of [keyword] when only **part** of it is at fault, or null when the
      * whole keyword goes. Each is exactly what the lenient reading made of it: a `properties` object keeps the

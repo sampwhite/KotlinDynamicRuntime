@@ -366,7 +366,7 @@ fun parseNode(
         } else {
             state.enter(SCH.items)
             // Named for where it is: a fault in an item schema is not the array's own (issue #1055).
-            itemType = parseNode(null, itemsMap, state, depth + 1, where = "$where (in its item schema)")
+            itemType = parseNode(null, itemsMap, state, depth + 1, where = "$where (${SchStdKeywords.nodePlace(SCH.items)})")
             state.exit()
         }
     }
@@ -382,7 +382,7 @@ fun parseNode(
             additionalRefName = refTargetName(additionalRef)
         } else {
             state.enter(SCH.additionalProperties)
-            additionalValueType = parseNode(null, additionalMap, state, depth + 1, where = "$where (in its value schema)")
+            additionalValueType = parseNode(null, additionalMap, state, depth + 1, where = "$where (${SchStdKeywords.nodePlace(SCH.additionalProperties)})")
             state.exit()
         }
     }

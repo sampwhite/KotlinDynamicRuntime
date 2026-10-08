@@ -37,6 +37,8 @@ import com.dynamicruntime.common.schema.MSCH
 import com.dynamicruntime.common.schema.SchMetaSchema
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import io.kotest.matchers.collections.shouldNotBeEmpty
+import com.dynamicruntime.common.context.ClientSchemaSource
+import com.dynamicruntime.common.context.KdrSchemaStore
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.maps.shouldBeEmpty
@@ -307,6 +309,33 @@ class ConfigSlotGateTest : StringSpec({
         failuresOf(misshapen).keys shouldBe setOf("$person.properties.name.type", "$person.properties.age.minimum", "$person.additionalProperties")
         misshapen[EP.errorMessage].toString() shouldContain "$person.properties.name.type: This schema sets 'type' to 'strng'"
         admin.expectError(EXC.notFound, ACEP.bundle, args = mapOf(CFEP.client to client, CFEP.name to "types"))
+
+        // A directive at the top of a stored body stands at the gate because the assembly reads it there -- for a
+        // trait's data schema as for a type's, each of which becomes a type of the client's document. So an
+        // extension written either way is stored, and loads as the base plus the delta.
+        val extended = mapOf(SCH.extends to "$ns.Base", SCH.properties to mapOf("more" to mapOf(SCH.type to SCT.string)))
+        admin.postData(
+            ACEP.bundleWrite,
+            bundle(
+                "extended",
+                mapOf(
+                    CCT.schemaDef to listOf(
+                        mapOf(CCT.typeName to "$ns.Base", CCT.schema to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("name" to mapOf(SCH.type to SCT.string)))),
+                        mapOf(CCT.typeName to "$ns.Wider", CCT.schema to extended),
+                    ),
+                    CCT.traitDef to listOf(
+                        mapOf(
+                            CCT.traitId to "note", CCT.typeName to "$ns.NoteEntry", CCT.appliesTo to listOf(GedraDataType.formDoc.name),
+                            CCT.description to "A note.", CCT.dataSchema to extended,
+                        ),
+                    ),
+                ),
+            ),
+        )[CFEP.version] shouldBe 1
+        admin.postData(ACEP.reload, mapOf(CFEP.client to client))[CFEP.issues].toJsonListOfMaps().shouldBeEmpty()
+        val types = (cxt.instanceConfig.get(KdrSchemaStore.clientSourceKey) as ClientSchemaSource).storeFor(client).types
+        types.getValue("$ns.Wider").properties.keys shouldBe setOf("name", "more")
+        types.getValue("$ns.NoteData").properties.keys shouldBe setOf("name", "more")
     }
 
     "the schema for schema is served, generated from the tables the gate reads" {

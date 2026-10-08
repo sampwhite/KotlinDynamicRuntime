@@ -11,6 +11,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 
@@ -32,43 +33,44 @@ class SchMetaSchemaTest : StringSpec({
     fun parserRefuses(body: Map<String, Any?>): Boolean =
         runCatching { analyzeSchemaTypes(mapOf("t.Fixture" to body)).problems.isNotEmpty() }.getOrDefault(true)
 
-    // One fault of shape each: where the walk reports it, and whether our dialect can state the rule it breaks.
-    class Fault(val what: String, val body: Map<String, Any?>, val at: String, val stated: Boolean)
+    // One fault of shape each: where the walk reports it, and -- for a rule our dialect cannot state -- which listed
+    // rule covers it, with the keyword that rule must name (none for the closed list, which names what *is* ours).
+    class Fault(val what: String, val body: Map<String, Any?>, val at: String, val unstated: Pair<String, String?>? = null)
     val text = mapOf(SCH.type to SCT.string)
     val faults = listOf(
-        Fault("a type that is no type", obj("a" to mapOf(SCH.type to "strng")), "properties.a.type", stated = true),
-        Fault("a list of types", mapOf(SCH.type to listOf(SCT.string, SCT.kNull)), "type", stated = true),
-        Fault("required as text", obj("a" to text) + (SCH.required to "a"), "required", stated = true),
-        Fault("a number in required", obj("a" to text) + (SCH.required to listOf("a", 5L)), "required", stated = true),
-        Fault("properties as a list", mapOf(SCH.type to SCT.kObject, SCH.properties to listOf(text)), "properties", stated = true),
-        Fault("a property that is no schema", obj("a" to text, "b" to 5L), "properties", stated = true),
-        Fault("items as a list", obj("a" to mapOf(SCH.type to SCT.array, SCH.items to listOf(text))), "properties.a.items", stated = true),
-        Fault("a title that is not text", mapOf(SCH.type to SCT.string, SCH.title to 5L), "title", stated = true),
-        Fault("a reference that is not text", obj("a" to mapOf(SCH.dRef to 5L)), "properties.a.${SCH.dRef}", stated = true),
-        Fault("a bound that is no number", mapOf(SCH.type to SCT.integer, SCH.minimum to "low"), "minimum", stated = true),
-        Fault("a flag as text", mapOf(SCH.type to SCT.integer, SCH.allowCoerce to "yes"), SCH.allowCoerce, stated = true),
-        Fault("a key list that is not one", obj("a" to text) + (SCH.primaryKey to "a"), SCH.primaryKey, stated = true),
-        Fault("a presentation that is none", mapOf(SCH.type to SCT.string, SCH.presentation to "sparkly"), SCH.presentation, stated = true),
+        Fault("a type that is no type", obj("a" to mapOf(SCH.type to "strng")), "properties.a.type"),
+        Fault("a list of types", mapOf(SCH.type to listOf(SCT.string, SCT.kNull)), "type"),
+        Fault("required as text", obj("a" to text) + (SCH.required to "a"), "required"),
+        Fault("a number in required", obj("a" to text) + (SCH.required to listOf("a", 5L)), "required"),
+        Fault("properties as a list", mapOf(SCH.type to SCT.kObject, SCH.properties to listOf(text)), "properties"),
+        Fault("a property that is no schema", obj("a" to text, "b" to 5L), "properties"),
+        Fault("items as a list", obj("a" to mapOf(SCH.type to SCT.array, SCH.items to listOf(text))), "properties.a.items"),
+        Fault("a title that is not text", mapOf(SCH.type to SCT.string, SCH.title to 5L), "title"),
+        Fault("a reference that is not text", obj("a" to mapOf(SCH.dRef to 5L)), "properties.a.${SCH.dRef}"),
+        Fault("a bound that is no number", mapOf(SCH.type to SCT.integer, SCH.minimum to "low"), "minimum"),
+        Fault("a flag as text", mapOf(SCH.type to SCT.integer, SCH.allowCoerce to "yes"), SCH.allowCoerce),
+        Fault("a key list that is not one", obj("a" to text) + (SCH.primaryKey to "a"), SCH.primaryKey),
+        Fault("a presentation that is none", mapOf(SCH.type to SCT.string, SCH.presentation to "sparkly"), SCH.presentation),
         Fault(
             "a fault inside an item schema",
-            obj("a" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to "strng"))), "properties.a.items.type", stated = true,
+            obj("a" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to "strng"))), "properties.a.items.type",
         ),
         Fault(
             "a fault inside a union branch",
             mapOf(SCH.type to SCT.kObject, SCH.oneOf to listOf(obj("k" to text), obj("k" to mapOf(SCH.type to 7L)))),
-            "oneOf[1].properties.k.type", stated = true,
+            "oneOf[1].properties.k.type",
         ),
-        Fault("a branch that is no schema", mapOf(SCH.type to SCT.kObject, SCH.oneOf to listOf(obj("k" to text), "x")), "oneOf", stated = true),
+        Fault("a branch that is no schema", mapOf(SCH.type to SCT.kObject, SCH.oneOf to listOf(obj("k" to text), "x")), "oneOf"),
         // What our dialect has no keyword to say: the walk enforces each, and the document lists it instead.
-        Fault("additionalProperties as text", obj("a" to text) + (SCH.additionalProperties to "no"), "additionalProperties", stated = false),
+        Fault("additionalProperties as text", obj("a" to text) + (SCH.additionalProperties to "no"), "additionalProperties", unstated = MSCH.eitherOf to SCH.additionalProperties),
         Fault(
             "a fault inside a map's value schema",
-            mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.type to "strng")), "additionalProperties.type", stated = false,
+            mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.type to "strng")), "additionalProperties.type", unstated = MSCH.eitherOf to SCH.additionalProperties,
         ),
-        Fault("g-derived as a number", mapOf(SCH.type to SCT.string, SCH.derived to 5L), SCH.derived, stated = false),
-        Fault("a keyword of ours that is not one", mapOf(SCH.type to SCT.string, "g-requird" to true), "g-requird", stated = false),
-        Fault("a refused keyword", obj("a" to mapOf(SCH.type to SCT.string, SCH.enum to listOf("x"))), "properties.a.enum", stated = false),
-        Fault("a directive below the top", obj("a" to mapOf(SCH.extends to "t.Base")), "properties.a.${SCH.extends}", stated = false),
+        Fault("g-derived as a number", mapOf(SCH.type to SCT.string, SCH.derived to 5L), SCH.derived, unstated = MSCH.eitherOf to SCH.derived),
+        Fault("a keyword of ours that is not one", mapOf(SCH.type to SCT.string, "g-requird" to true), "g-requird", unstated = MSCH.closedPrefix to null),
+        Fault("a refused keyword", obj("a" to mapOf(SCH.type to SCT.string, SCH.enum to listOf("x"))), "properties.a.enum", unstated = MSCH.refusedKeyword to SCH.enum),
+        Fault("a directive below the top", obj("a" to mapOf(SCH.extends to "t.Base")), "properties.a.${SCH.extends}", unstated = MSCH.placement to SCH.extends),
     )
 
     "the document declares every keyword of both tables, and nothing else" {
@@ -114,17 +116,24 @@ class SchMetaSchemaTest : StringSpec({
     }
 
     "what the document can state it refuses at the same path, and what it cannot is listed as not stated" {
-        val listed = SchMetaSchema.notStated.flatMap { rule -> (rule[MSCH.keywords] as List<*>).map { it.toString() } }.toSet()
+        fun keywordsOf(rule: String) = SchMetaSchema.notStated.filter { it[MSCH.rule] == rule }.flatMap { it[MSCH.keywords] as List<*> }
         for (fault in faults) withClue(fault.what) {
-            if (fault.stated) {
+            val unstated = fault.unstated
+            if (unstated == null) {
                 // The document's failure is at the keyword, or -- a wrong entry in a list or a map -- just inside it.
                 documentPaths(fault.body).filter { isPathAtOrBelow(it, fault.at) }.shouldNotBeEmpty()
             } else {
                 documentPaths(fault.body).shouldBeEmpty()
-                val keyword = fault.at.substringAfterLast('.')
-                (keyword in listed || keyword.startsWith(SCH.gPrefix) || fault.at.startsWith(SCH.additionalProperties)) shouldBe true
+                // The rule that covers it is listed, and names the keyword -- or, for the closed list, does not hold
+                // the misspelling among ours.
+                val (rule, keyword) = unstated
+                keywordsOf(rule).shouldNotBeEmpty()
+                if (keyword != null) keywordsOf(rule) shouldContain keyword else keywordsOf(rule) shouldNotContain fault.at
             }
         }
+        // Every kind of rule the document leaves out has a fixture that breaks it, bar the one the walk does not enforce.
+        faults.mapNotNull { it.unstated?.first }.toSet() shouldBe
+            (SchMetaSchema.notStated.map { it[MSCH.rule] }.toSet() - MSCH.unsetEntry)
         // Each kind of rule is there, generated from the same tables.
         val rules = SchMetaSchema.notStated.groupBy { it[MSCH.rule] }
         rules.getValue(MSCH.closedPrefix).single()[MSCH.keywords] shouldBe SchGKeywords.keywords.sorted()
