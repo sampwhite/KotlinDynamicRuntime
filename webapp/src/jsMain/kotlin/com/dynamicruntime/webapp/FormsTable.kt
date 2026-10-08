@@ -23,6 +23,8 @@ import web.cssom.ClassName
 import com.dynamicruntime.common.gedra.GSORT
 import com.dynamicruntime.common.gedra.workflow.WfColumnCategory
 import com.dynamicruntime.common.schema.PSTAT
+import com.dynamicruntime.common.user.personaTag
+import com.dynamicruntime.common.user.userKeyLabel
 
 /**
  * The caller's form documents as an antd table: one row per form, most recently written first as the endpoint
@@ -230,6 +232,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             row.created = summary.createdAt ?: ""
             row.ownerName = summary.ownerName
             row.ownerEmail = summary.ownerEmail
+            row.ownerPersona = summary.ownerPersona
+            row.ownerPersonaSuffix = summary.ownerPersonaSuffix
+            row.ownerClient = summary.client
             // The Client column reads this under its `GSORT.client` dataIndex (issue #668).
             row[GSORT.client] = summary.client.ifBlank { "—" }
             // The workflow cell's items (issue #791), joined to the summary here so the cell only draws.
@@ -399,15 +404,22 @@ private val FormStatusCell = FC<FormStatusCellProps> { props ->
 /**
  * The User column (issue #562), for a caller who sees other users' documents: the owner's name with the email
  * in small type beneath, or the email alone. The backend sends `ownerName` only when the account has a name
- * that is not its email, so the cell renders what arrives rather than comparing the two.
+ * that is not its email, so the cell renders what arrives rather than comparing the two. After the first line --
+ * the name, or the email when there is none -- a small tag says which of the person's users owns it (issue #1097):
+ * `Admin`, `Member B` (`personaTag`; none for a plain member), a pill rather than bracketed text so it never reads as
+ * part of the name, with the full label (`userKeyLabel`) on hover.
  */
 private fun ownerColumn(sortColumn: String?, descending: Boolean): dynamic {
     // Sortable by the owner name (issue #666); the cell still renders the name-over-email block, so the sort key
     // is the column's `owner` dataIndex while the render reads `ownerName`/`ownerEmail` off the row.
-    val c = sortableColumn("User", GSORT.owner, 200, sortColumn, descending)
+    // 240 rather than 200 so a name and its persona tag (issue #1097) usually share the first line.
+    val c = sortableColumn("User", GSORT.owner, 240, sortColumn, descending)
     c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic = FormOwnerCell.create {
         name = record.ownerName as? String
         email = record.ownerEmail as? String
+        persona = record.ownerPersona as? String
+        personaSuffix = (record.ownerPersonaSuffix as? String).orEmpty()
+        client = (record.ownerClient as? String).orEmpty()
     }
     return c
 }
@@ -415,16 +427,35 @@ private fun ownerColumn(sortColumn: String?, descending: Boolean): dynamic {
 private external interface FormOwnerCellProps : Props {
     var name: String?
     var email: String?
+    var persona: String?
+    var personaSuffix: String
+    var client: String
 }
 
 private val FormOwnerCell = FC<FormOwnerCellProps> { props ->
     val email = props.email
     val name = props.name
-    when {
-        email == null -> +"—"
-        name == null -> +email
-        else -> div {
-            +name
+    if (email == null) {
+        +"—"
+        return@FC
+    }
+    val persona = props.persona
+    // The first line, whichever it is, carries the tag: so an owner with no name reads `ada@… (Admin)`.
+    fun ChildrenBuilder.firstLine(text: String) {
+        +text
+        val tag = persona?.let { personaTag(it, props.personaSuffix) } ?: return
+        // An ordinary space before the tag is where the line may break, so in a narrow column the tag moves whole to
+        // the next line rather than running past the cell's edge.
+        +" "
+        span {
+            className = ClassName("owner-persona")
+            title = userKeyLabel(props.client, persona, props.personaSuffix, name)
+            +tag
+        }
+    }
+    div {
+        firstLine(name ?: email)
+        if (name != null) {
             span {
                 className = ClassName("owner-email")
                 +email

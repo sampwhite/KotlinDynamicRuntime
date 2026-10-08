@@ -1374,8 +1374,10 @@ private fun gedraSortFor(
 }
 
 /**
- * The owner block attached to a listed row (issue #580, flat keys in #562): a `{name?, email}` map under
- * [GDF.owner]. The email always, and a display name only when the account has one that is not the email --
+ * The owner block attached to a listed row (issue #580, flat keys in #562): a `{name?, email, persona,
+ * personaSuffix?}` map under [GDF.owner]. The persona always and the personaSuffix when the user has one (issue
+ * #1097), so a person's admin and member users -- or a batch's `Member A` and `Member B` -- can be told apart. The
+ * email always, and a display name only when the account has one that is not the email --
  * `name`, else a chosen username (the `UserProfile.displayName` rule). A provisioned account with neither would
  * otherwise repeat its address as its name, and the column's rule is "the email, or the name with the email
  * beneath": sending the name only when it adds something lets the frontend render exactly that without comparing
@@ -1385,7 +1387,11 @@ private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
     if (owner == null) return emptyMap()
     val email = owner.primaryId
     val name = ownerSortName(owner)
-    val block = if (name == email) mapOf(DUF.email to email) else mapOf(DUF.name to name, DUF.email to email)
+    val block = linkedMapOf<String, Any?>()
+    if (name != email) block[DUF.name] = name
+    block[DUF.email] = email
+    block[DUF.persona] = owner.persona
+    if (owner.personaSuffix.isNotEmpty()) block[DUF.personaSuffix] = owner.personaSuffix
     return mapOf(GDF.owner to block)
 }
 

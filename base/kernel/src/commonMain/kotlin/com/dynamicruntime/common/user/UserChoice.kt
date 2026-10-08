@@ -43,12 +43,7 @@ data class UserChoice(
      * between a person's users; the name last because it usually does not. What a tooltip says; the bar shows
      * the shorter `qualifierWithin`. Pure, covered under `jsNodeTest`.
      */
-    fun label(): String {
-        val shownPersona = PERSONA.label(persona)
-        val key = if (personaSuffix.isEmpty()) "$client / $shownPersona" else "$client / $shownPersona $personaSuffix"
-        val shown = name?.trim()?.ifEmpty { null } ?: return key
-        return "$key -- $shown"
-    }
+    fun label(): String = userKeyLabel(client, persona, personaSuffix, name)
 
     /**
      * What tells this user from the others in [siblings], the person's users (issue #749): the client when
@@ -109,4 +104,31 @@ data class UserChoice(
             }
         }
     }
+}
+
+/**
+ * A user's persona and personaSuffix read as one term (issue #747): `Admin`, `Member B`, `Admin 2` -- the persona's
+ * label, then the suffix when there is one. Pure, covered under `jsNodeTest`.
+ */
+fun personaTerm(persona: String, personaSuffix: String): String =
+    if (personaSuffix.isEmpty()) PERSONA.label(persona) else "${PERSONA.label(persona)} $personaSuffix"
+
+/**
+ * The tag a listing puts beside a user to tell them apart (issue #1097): the [personaTerm], or null for a plain
+ * member with no suffix -- the default and the common case, which a column tagged on every row would bury. So what
+ * needs telling apart is what stands out: a person's admin user beside their member one, or `Member B` in a batch.
+ * Pure, covered under `jsNodeTest`.
+ */
+fun personaTag(persona: String, personaSuffix: String): String? =
+    if (persona == PERSONA.member && personaSuffix.isEmpty()) null else personaTerm(persona, personaSuffix)
+
+/**
+ * A user's full label: the client and [personaTerm], and the name when there is one -- `acme / Admin -- Ada
+ * Lovelace`, `acme / Member 2`. What the switcher's tooltip says ([UserChoice.label]) and a listing's tag shows on
+ * hover. Pure, covered under `jsNodeTest`.
+ */
+fun userKeyLabel(client: String, persona: String, personaSuffix: String, name: String?): String {
+    val key = "$client / ${personaTerm(persona, personaSuffix)}"
+    val shown = name?.trim()?.ifEmpty { null } ?: return key
+    return "$key -- $shown"
 }
