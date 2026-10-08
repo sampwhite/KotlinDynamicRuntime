@@ -45,7 +45,7 @@ import com.dynamicruntime.common.schema.layout
  * entry -- whose form copy is the field's own -- and one its type's layout leaves out of a list that decides the order
  * (issue #1039), and -- beside it in the task -- the global `kdr:name` trait, which no client edits in place. The
  * survey's form requires the headcount the request leaves optional, a form requirement (issue #1022). Its workflows, a
- * creation, a survey and a normal one, collect the same trait, which is what makes a workflow's own copy (issue #984)
+ * creation, a survey, and a normal one, collect the same trait, which is what makes a workflow's own copy (issue #984)
  * visible as its own. The normal one, the logistics (issue #1071), shows only the fields it arranges, so it and the
  * survey each save their own part of one request; its last step is a reviewer's approval, which a client
  * administrator without the `reviewer` label -- the designer -- sees as someone else's.
