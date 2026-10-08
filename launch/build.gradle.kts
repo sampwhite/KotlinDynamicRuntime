@@ -59,12 +59,32 @@ dependencies {
     multiNodeTestProject?.let { runtimeOnly(project(it.path)) }
 }
 
+// The webapp bundle (issue #1076): `:appui` publishes it as a jar of its own on `webappBundleElements`, and this
+// module puts it wherever the app runs or ships -- `run` and the main runtime classpath (which an IDE run through
+// Gradle uses), the start scripts and the distribution, and the pathing jar -- and nowhere a test runs, so no test
+// task pays for a production webapp build.
+val webappBundleDeps = configurations.dependencyScope("webappBundleDeps")
+val webappBundle = configurations.resolvable("webappBundle") { extendsFrom(webappBundleDeps.get()) }
+dependencies {
+    add(webappBundleDeps.name, project(mapOf("path" to ":appui", "configuration" to "webappBundleElements")))
+}
+sourceSets.main {
+    runtimeClasspath += files(webappBundle)
+}
+tasks.named<JavaExec>("run") {
+    classpath += files(webappBundle)
+}
+tasks.named<CreateStartScripts>("startScripts") {
+    classpath = classpath!! + files(webappBundle)
+}
+
 // The deployable distribution (`installDist` / `distZip`) leaves the multi-node test module out (issue #872): a
 // production node carries no fake jobs, rather than carrying them switched off.
 distributions {
     main {
         contents {
             exclude("**/multiNodeTest*.jar")
+            from(webappBundle) { into("lib") }
         }
     }
 }
@@ -106,8 +126,10 @@ tasks.register<Jar>("pathingJar") {
     // an input) every project and external dependency jar.
     dependsOn(tasks.jar)
     val runtimeClasspath = configurations.runtimeClasspath
+    val bundle = files(webappBundle)
     val ownJar = tasks.jar.flatMap { it.archiveFile }
     inputs.files(runtimeClasspath)
+    inputs.files(bundle)
     manifest {
         // A default Main-Class for `java -jar`; kdr-run overrides it by naming a class via `-cp <jar> <Class>`.
         attributes["Main-Class"] = application.mainClass.get()
@@ -116,7 +138,7 @@ tasks.register<Jar>("pathingJar") {
         // Resolve in the task action (not at configuration time) so an unrelated build does not pay for
         // dependency resolution. Class-Path entries are space-separated `file:` URIs, so paths with spaces are
         // encoded, and the JDK handles the manifest line-wrapping of the long value.
-        val jars = listOf(ownJar.get().asFile) + runtimeClasspath.get().files
+        val jars = listOf(ownJar.get().asFile) + runtimeClasspath.get().files + bundle.files
         manifest.attributes["Class-Path"] = jars.joinToString(" ") { it.toURI().toString() }
     }
 }
