@@ -1552,7 +1552,7 @@ class GedraDataService : ServiceInitializer {
 
     /** The entry union as [cxt]'s client sees it, or null on a node with no compiled schema for it. */
     private fun clientUnion(cxt: KdrCxt, kind: GedraDataType) =
-        SchemaService.get(cxt).storeFor(cxt.client)
+        cxt.getClientSchema()
             .types["${GCFG.globalNamespace}.${GU.unionName(kind)}"]
 
     /**

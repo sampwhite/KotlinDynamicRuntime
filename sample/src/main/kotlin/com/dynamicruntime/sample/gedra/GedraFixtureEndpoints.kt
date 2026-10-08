@@ -115,8 +115,9 @@ object GedraFixtureEndpoints {
     }
 
     /**
-     * Reports, under `_meta`, what the union knows and which branch each entry reached — the two facts the
-     * response itself cannot show, since a filled-out entry looks the same whichever branch accepted it.
+     * Reports, under `_meta`, what the union knows -- the caller's client's, its own traits included (issue #1072) --
+     * and which branch each entry reached: the two facts the response itself cannot show, since a filled-out entry
+     * looks the same whichever branch accepted it.
      *
      * A `_debug` tag rather than a permanent unit test, for the reason the tag exists: the same observation is
      * then reachable by somebody debugging a live instance, not only by a test that already knew what to ask.
@@ -125,7 +126,7 @@ object GedraFixtureEndpoints {
         if (!cxt.hasDebug(GFX.explainEntries)) {
             return
         }
-        val union = cxt.getGlobalSchema().types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+        val union = cxt.getClientSchema().types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
         val known = union?.variants?.values.orEmpty()
         cxt.request?.responseMeta?.put(
             GFX.entriesExplained,
