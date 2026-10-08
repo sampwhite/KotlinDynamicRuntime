@@ -210,7 +210,7 @@ val AppBar = FC<AppBarProps> { props ->
                 return@launch
             }
             config = cfg
-            props.onShellFacts(ShellFacts(cfg.administersClient))
+            props.onShellFacts(shellFactsOf(cfg))
             // Tint the page while in a sandbox (issue #1049) -- set from a loaded config only, so a failed refresh
             // leaves the page as it was rather than dropping the signal.
             markPageSandbox(pageInSandbox(cfg))

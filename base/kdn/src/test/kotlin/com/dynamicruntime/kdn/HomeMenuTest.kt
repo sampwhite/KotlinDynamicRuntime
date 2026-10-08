@@ -129,8 +129,13 @@ class HomeMenuTest : StringSpec({
         administers(scoped) shouldBe true
         administers(member) shouldBe false
         administers(publicAdmin) shouldBe false
-        // And that administrator is offered neither entry for the Clients page, which would only refuse them.
-        menuIn(publicAdmin.getData(HEP.homeUiConfig)).filter { it[UIB.action] == HMENU.pageClients } shouldBe emptyList()
+        // And that administrator is offered neither entry for the Clients page, nor Reports, each of which would
+        // only refuse them -- while Users, where they administer their own users, is still theirs.
+        val offered = menuIn(publicAdmin.getData(HEP.homeUiConfig)).map { it[UIB.action] }
+        offered shouldNotContain HMENU.pageClients
+        offered shouldNotContain HMENU.pageReports
+        offered shouldContain HMENU.pageUsers
+        menuIn(scoped.getData(HEP.homeUiConfig)).map { it[UIB.action] } shouldContain HMENU.pageReports
     }
 
     "the Clients page has one menu entry, named for what it opens: a listing, or the caller's one client" {

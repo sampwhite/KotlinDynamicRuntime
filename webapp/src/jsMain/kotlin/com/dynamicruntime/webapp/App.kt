@@ -150,7 +150,7 @@ val App = FC<Props> {
                         this.currentPage = menuPageOf(page)
                         this.onRevisit = { setRevisit { it + 1 } }
                         // Kept as it was when nothing changed, so a refresh that tells the same thing redraws nothing.
-                        this.onShellFacts = { told -> setShellFacts { held -> if (held.administersClient == told.administersClient) held else told } }
+                        this.onShellFacts = { told -> setShellFacts { held -> if (held == told) held else told } }
                         this.envAuthSuppressible = envAuthSuppressible
                         this.envAuthActing = envAuthActing
                         this.envAuthDebug = envAuthDebug

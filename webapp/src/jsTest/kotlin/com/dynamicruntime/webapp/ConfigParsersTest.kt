@@ -130,6 +130,25 @@ class ConfigParsersTest {
         assertTrue(publicAdmin.canManageUsers)
         assertFalse(publicAdmin.administersClient)
 
+        // What the shell tells the pages (issue #1091): the caller's fact, and the label of the menu entry that opens
+        // the forms listing -- whichever entry it is, by the page it routes to, and by the words the menu has for it.
+        fun facts(features: Map<String, Any?>, vararg menu: Map<String, Any?>) =
+            shellFactsOf(homeConfigFrom(uiConfig(features = features, state = mapOf(HFLD.menu to menu.toList()))))
+        val member = facts(emptyMap(), mapOf(HFLD.id to "forms", HFLD.label to "My forms", UIB.action to "forms"))
+        assertEquals(ShellFacts(administersClient = false, formsEntryLabel = "My forms"), member)
+        val admin = facts(
+            mapOf(HFEAT.administersClient to true),
+            mapOf(HFLD.id to "users", HFLD.label to "Users", UIB.action to "users"),
+            mapOf(HFLD.id to "clientForms", HFLD.label to "Audits", UIB.action to "forms"),
+        )
+        assertEquals(ShellFacts(administersClient = true, formsEntryLabel = "Audits"), admin)
+        assertEquals("Audits", formsListingName(admin))
+        // No entry for the page (a client hid it), or one with no words: the name falls back on the caller's fact.
+        assertEquals(null, facts(emptyMap(), mapOf(HFLD.id to "users", HFLD.label to "Users", UIB.action to "users")).formsEntryLabel)
+        assertEquals(null, facts(emptyMap(), mapOf(HFLD.id to "forms", HFLD.label to " ", UIB.action to "forms")).formsEntryLabel)
+        // A call is not a route to the page, whatever it is named.
+        assertEquals(null, facts(emptyMap(), mapOf(HFLD.id to "x", HFLD.label to "X", UIB.action to listOf("forms"))).formsEntryLabel)
+
         assertEquals(1, cfg.links.size)
         assertEquals("guide", cfg.links[0].docId)
         assertEquals("b7", cfg.links[0].buildId)

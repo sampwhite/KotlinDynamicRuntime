@@ -281,7 +281,7 @@ val EditFormPage = FC<Props> {
                     className = ClassName("subtitle")
                     +("Change an entry's fields, add a section for a new trait, or switch a section to delete. " +
                         "Save sends only the sections you leave in place; Reset drops what you have changed; " +
-                        "Done returns to your forms.")
+                        "Done returns to the forms listing.")
                 }
 
                 // The traits locked for this caller (issue #857): named, with the workflow locking each, so a refused

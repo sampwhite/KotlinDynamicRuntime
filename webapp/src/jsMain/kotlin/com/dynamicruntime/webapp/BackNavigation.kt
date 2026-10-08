@@ -29,7 +29,7 @@ val backListings: Map<String, BackListing> = listOf(
     BackListing(HMENU.pageDocs, "Documents"),
     BackListing(HMENU.pageOperator, "Operator"),
     // Named for the caller by [backLabel] (issue #1091); this is its name for one who lists only their own.
-    BackListing(HMENU.pageForms, formsListingName(administersClient = false)),
+    BackListing(HMENU.pageForms, formsListingName(ShellFacts(administersClient = false))),
     // The workflow pages (issue #792): the aggregate, and a workflow's own listing of forms under it.
     BackListing(HMENU.pageWorkflows, "Workflows"),
     BackListing(pageWorkflowForms, "Workflow forms"),
@@ -50,10 +50,10 @@ fun backTarget(from: String?, fallback: String): String =
 /**
  * The label a back link shows for [page]: the listing's own name, or the page id when it is not a listing. The
  * forms listing is named for the caller ([formsListingName], issue #1091), from what the shell knows of them
- * ([facts]) -- "Forms" for a client's administrator, whose listing is not only theirs.
+ * ([facts]) -- what their menu calls it.
  */
 fun backLabel(page: String, facts: ShellFacts = ShellFacts()): String =
-    if (page == HMENU.pageForms) formsListingName(facts.administersClient) else backListings[page]?.label ?: page
+    if (page == HMENU.pageForms) formsListingName(facts) else backListings[page]?.label ?: page
 
 /** The href that opens [childPage] from [listing], carrying [HP.from] so the child can find its way back. */
 fun childHref(childPage: String, listing: String, vararg extra: Pair<String, String>): String =

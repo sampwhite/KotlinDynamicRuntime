@@ -320,12 +320,19 @@ from a form.
   the one page, mutually exclusive, `HMENU.forms` "My forms" and `HMENU.clientForms` "Forms". The page is told it
   as the home config's `administersClient` feature. **Not** `canManageUsers` and not the admin level: both are true
   for a `public` self-administrator, who reads only their own forms.
-- **The page reads it from the shell, not from a fetch of its own** (`ShellFacts`, `useShellFacts`): `App` provides
-  what the app bar's config read said, so a move between pages names the page at once. Until the shell has been told
-  -- a moment after a hard reload, or for good if its config could not be read -- the name is "Forms", which is true
-  whoever is looking (`formsListingName(null)`).
+- **The page is called what its menu entry is called.** The page reads its name from the shell, not from a fetch of
+  its own (`ShellFacts`, `useShellFacts`): `App` provides what the app bar's config read said (`shellFactsOf`), which
+  includes the label of whichever entry of the caller's menu routes to the forms listing. So the heading and the back
+  link follow a client's renaming of the entry, and a move between pages names the page at once. With no such entry
+  (a client hid it) the name falls back on the caller's fact, and until the shell has been told -- a moment after a
+  hard reload, or for good if its config could not be read -- it is "Forms", which is true whoever is looking
+  (`formsListingName`).
 - **`backToListing` draws a component** (`BackLink`) so its label can follow the context; `backLabel(page, facts)` is
   the pure rule. Every other listing has one name.
+- **The page's own copy says "the forms", never "your forms"** (`formsLoadFailureLead`, the raw editor's hint): it is
+  read by administrators looking at other people's forms as often as by their owners.
+- **Reports is offered by the same fact** (`administersClient`): its endpoints admit a client's administrator, so a
+  `public` self-administrator is offered neither it nor the Clients entries.
 - **Two ids to a client's menu overlay.** A rename or a hide of `forms` keeps meaning what the client's ordinary
   users see; `clientForms` is its administrators' entry, listed beside it in the Clients page's menu editor.
 

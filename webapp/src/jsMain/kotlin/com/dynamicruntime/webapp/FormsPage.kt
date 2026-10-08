@@ -585,7 +585,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             }
         } else {
             // Named for whose forms it lists (issue #1091), as the menu entry that led here was.
-            h1 { +formsListingName(shell.administersClient) }
+            h1 { +formsListingName(shell) }
         }
         // The search beyond the listing's own identity (issue #792): on the workflow's listing the workflow and state
         // are not a narrowing of it, so "no forms match your search" and "nothing here at all" part on this.
@@ -596,7 +596,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 className = ClassName("subtitle")
                 +"Loading…"
             }
-            error != null -> errorText("Couldn't load your forms.", error!!)
+            error != null -> errorText(formsLoadFailureLead, error!!)
             cat == null || ep == null -> p {
                 className = ClassName("subtitle")
                 +"This account has no forms to list."
@@ -943,7 +943,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                         }
                     }
                 }
-                searchError?.let { errorText("Couldn't load your forms.", it) }
+                searchError?.let { errorText(formsLoadFailureLead, it) }
                 // A search that matched nothing: the box stays above so it can be changed or cleared, and a
                 // plain message stands in for the paging bar (there is nothing to page). After a failed reload
                 // the rows are whatever was on screen before, so nothing is said about what they match.
