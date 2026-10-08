@@ -1,9 +1,11 @@
 # Webapp static resources
 
 The app's shell, stylesheet and artwork. Authored **once** here and served by *both* shells: the webpack dev
-server serves this directory from the origin root, and `appui` embeds these files from `:webapp`'s
-distribution (see its `embedWebapp` task) to serve them same-origin under the app context root (`/wa`) in
-production. Only files `appui` lists are embedded; this README is not.
+server serves this directory from the origin root, and `appui` packages these files from `:webapp`'s
+distribution (see its `embedWebapp` and `webappJar` tasks) into `appui-webapp.jar`, to serve them same-origin under
+the app context root (`/wa`) in production. Only files `appui` lists are embedded; this README is not. `appui`'s
+tests read the stylesheet and artwork straight from this directory (its `testWebapp` task), with a placeholder in
+place of the bundle, so they need no webapp build.
 
 | File | Role |
 |------|------|

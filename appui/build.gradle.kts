@@ -1,8 +1,9 @@
 // `appui` — the JVM host that serves the self-contained webapp. It contributes no endpoints; its
 // AppUiService is a ContentServer (registered with the runtime's request dispatcher) that serves the browser
-// bundle under the `wa` context root. The Kotlin/JS front end itself lives in `:webapp`; this module embeds
-// that module's *production* bundle as classpath resources, so the running server — or a packaged jar — can
-// serve it with no separate webpack dev server and no API proxy (calls are same-origin with the runtime).
+// bundle under the `wa` context root. The Kotlin/JS front end itself lives in `:webapp`; this module packages
+// that module's *production* bundle as a jar of its own (`appui-webapp.jar`, see `webappJar` below), which
+// `:launch` puts on the running server's classpath, so it can serve it with no separate webpack dev server and no
+// API proxy (calls are same-origin with the runtime).
 plugins {
     id("kdr.kotlin-conventions")
 }
@@ -48,31 +49,68 @@ val webappDistTask = if (useDevWebapp) {
 }
 val webappDistDir = if (useDevWebapp) "dist/js/developmentExecutable" else "dist/js/productionExecutable"
 
+// The files the webapp authors and the distribution carries through verbatim: the stylesheet and the artwork. The
+// rasters are binary, so AppUiService serves them as bytes; a copy moves them unchanged (verified: md5 matches the
+// branding source through the webpack distribution). Named once, for the embedded bundle and the tests' (below).
+val webappAuthoredAssets = listOf(
+    "app.css", "favicon.svg", "brand-mark.svg", "favicon.ico", "favicon-32.png", "apple-touch-icon.png",
+)
+
 val embedWebapp = tasks.register<Sync>("embedWebapp") {
     description = "Embed the web application" + if (useDevWebapp) " (readable development build)" else ""
     dependsOn(webappDistTask)
     from(project(":webapp").layout.buildDirectory.dir(webappDistDir)) {
-        include(
-            // `webapp.js.map` matches nothing in the development build -- that one carries its source map
-            // INLINE as a data URI, which is most of why it is twelve times the size. A `Sync` rather than a
-            // `Copy` for exactly that reason: switching builds must *remove* the previous one's leftovers, or
-            // a stale production sourcemap would sit beside a development bundle claiming to describe it.
-            "webapp.js", "webapp.js.map", "app.css",
-            // Artwork. The rasters are binary, so AppUiService serves them as bytes; a Copy task moves them
-            // verbatim (verified: md5 matches the branding source through the webpack distribution).
-            "favicon.svg", "brand-mark.svg", "favicon.ico", "favicon-32.png", "apple-touch-icon.png",
-        )
+        // `webapp.js.map` matches nothing in the development build -- that one carries its source map
+        // INLINE as a data URI, which is most of why it is twelve times the size. A `Sync` rather than a
+        // `Copy` for exactly that reason: switching builds must *remove* the previous one's leftovers, or
+        // a stale production sourcemap would sit beside a development bundle claiming to describe it.
+        include(listOf("webapp.js", "webapp.js.map") + webappAuthoredAssets)
     }
     into(layout.buildDirectory.dir("webappResources/webapp"))
 }
 
+// The bundle ships as a jar of its own (issue #1076), published on a configuration of its own --
+// `webappBundleElements` -- that `:launch` asks for where the app runs or ships: `run` (and an IDE run through
+// Gradle), the start scripts and distribution, and the pathing jar behind `bin/kdr-run`. There it is laid out under
+// `webapp/` on the classpath exactly as before. It is deliberately **not** on `runtimeElements`, nor in this
+// module's main resources: then every test classpath reaching this module (its own, `:launch`'s, `:multiNodeTest`'s)
+// and even compiling this module's tests (the Kotlin plugin makes the main jar their friend module) would need the
+// bundle, and building it is a production Kotlin/JS compile and webpack -- about 22s of the gate after any kernel or
+// webapp change.
+val webappJar = tasks.register<Jar>("webappJar") {
+    description = "The web application bundle, as a jar of its own" + if (useDevWebapp) " (readable development build)" else ""
+    archiveClassifier.set("webapp")
+    from(embedWebapp) { into("webapp") }
+}
+
+configurations.consumable("webappBundleElements") {
+    outgoing.artifact(webappJar)
+}
+
+// `:appui:build` (and `assemble`) still rebuild the bundle, as the README's "after a front-end change" step relies on;
+// the gate runs `test`, which does not assemble.
+tasks.named("assemble") {
+    dependsOn(webappJar)
+}
+
+// The tests' bundle: this module's tests read the bundle's files, not what the compiler made of them -- a `webapp.js`
+// served as JavaScript and not blank, and the authored stylesheet and artwork byte for byte. So they read the
+// authored files copied straight from the webapp's sources, beside the placeholder
+// `src/test/resources/webapp/webapp.js`, rather than a built bundle.
+val testWebapp = tasks.register<Sync>("testWebapp") {
+    description = "The webapp's authored assets, for this module's tests"
+    from(project(":webapp").layout.projectDirectory.dir("src/jsMain/resources")) {
+        include(webappAuthoredAssets)
+    }
+    into(layout.buildDirectory.dir("testWebappResources/webapp"))
+}
+
 sourceSets {
-    main {
-        // The embedded bundle joins this module's resources, so it lands on the runtime classpath.
-        resources.srcDir(layout.buildDirectory.dir("webappResources"))
+    test {
+        resources.srcDir(layout.buildDirectory.dir("testWebappResources"))
     }
 }
 
-tasks.named("processResources") {
-    dependsOn(embedWebapp)
+tasks.named("processTestResources") {
+    dependsOn(testWebapp)
 }
