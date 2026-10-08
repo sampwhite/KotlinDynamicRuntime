@@ -367,23 +367,32 @@ unrestricted scope). The rules that follow from that:
 `#page=clients` lists the clients an administrator oversees, from `GET /clientAdmin/clients/overview`
 (`ClientsApi.listOverview`, rows parsed by the pure `parseClientOverview`): an `allClients` administrator sees
 every client the node knows of -- present, not enabled here, dropped by a check, or known only from stored
-configuration -- and a client-scoped one sees their own. It is the **scoped** surface on purpose: that section
-admits both kinds of administrator and an `allClients` holder is unconfined there, so the page needs no branch on
-who is asking beyond the line under its heading. Per row: the load status (`clientLoadText`), where the
+configuration. A client-scoped one is answered with their own client alone, and the page shows it as that
+client's detail rather than as a listing of one row (issue #1082, below). It is the **scoped** surface on purpose:
+that section admits both kinds of administrator and an `allClients` holder is unconfined there, so the calls need no
+branch on who is asking. Per row: the load status (`clientLoadText`), where the
 definition came from (`clientOriginText`: source, stored, and how many stored configurations are loaded), live
 forms, active users with the unclaimed ones told apart (`userCountText`), and workflows. Counts are client-wide
 and count active users only -- disabled and deleted users are never in the cache the count reads. A present
-client's Forms and Users counts link to the listings behind them (`clientFormsHref`, `clientUsersHref`): with the
-client chosen or filtered for an `allClients` administrator, bare for a scoped one, whose listings are their own
-client already (the Users page draws no client filter for them, so a `client=` in the hash would be one they
+client's Forms and Users counts link to the listings behind them (`clientFormsHref`, `clientUsersHref`), in the
+listing and again in the detail's summary (`clientSummaryHref`): with the client chosen or filtered for an
+`allClients` administrator, bare for a scoped one -- who meets them only in the summary -- whose listings are their
+own client already (the Users page draws no client filter for them, so a `client=` in the hash would be one they
 could not clear). The Workflows page takes no client, so that count is plain text until it does.
 
 **An administrator of one client opens it in place** (issue #1082): with no `c=` in the hash, a caller who may
 administer and does not see across clients is shown their own client's detail, not a listing of one row
 (`clientsOpenId`, pure). So `#page=clients` and `#page=clients&c=<their client>` are the same page for them, drawn
 with no `← Clients` link -- there is nothing behind it -- and the copy editor's leave guard treats both addresses as
-staying (`staysOnClientPage`). The menu item is unchanged data, so the app bar's current-page match and a client's
-menu overlay are untouched. Two callers keep the old path: an `allClients` administrator, who has a listing, and a
+staying (`staysOnClientPage`) -- which it must whatever else is done, since the menu item is that bare address and
+is one click away from the named one.
+
+**The menu says what the page will open.** The home menu declares two items for the one page, mutually exclusive by
+cfact as the two Debug entries are: `HMENU.clients`, "Clients", for an administrator who sees across clients
+(`isDeploymentAdmin`), and `HMENU.myClient`, "My client", for any other administrator -- "Clients" promised a list
+that is no longer there. Both route to `pageClients`, so the app bar's current-page match is unchanged. They are two
+ids to a client's menu overlay: a rename or a hide of `clients` does not touch `myClient`, which the Clients page's
+menu editor lists beside it. Two callers keep the old path: an `allClients` administrator, who has a listing, and a
 `public` self-administrator, whom the overview endpoint refuses -- shown as that refusal rather than as a detail that
 would refuse piece by piece. Nothing is opened in place until the shell config has said who is asking.
 
@@ -424,7 +433,7 @@ so a draft would change nothing -- and is refused for a source-defined client (i
 sandbox, and while that config has unpublished changes. A client with a sandbox runs only published configuration.
 A sandbox's own detail says whose it is. In the listing each sandbox follows its parent
 (`withSandboxesBesideParents`) with a "sandbox of <id>" note (`sandboxRowNote`); the overview rows carry
-`sandboxOf` and `hasSandbox`. A scoped administrator's listing is their own client, so only an `allClients` one
+`sandboxOf` and `hasSandbox`. A scoped administrator has no listing (issue #1082), so only an `allClients` one
 sees sandbox rows.
 
 **Copy & menu** (issue #917): what a client's own configuration changes about what its people see, from
@@ -522,8 +531,9 @@ the endpoint's input and this editor both read.
 Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
 not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,
 who administers only their own users (#805) -- is shown as it came, through `LoadStateCard`'s `errorLead`. The
-menu item is gated on the admin level like Users, so a `public` self-administrator is offered it and refused on the
-page; the endpoint is the authority. The detail view (`c=<id>`, issue #906) and, later, editing a client and
+menu is gated on the admin level like Users -- "Clients" or "My client" by whether the caller sees across clients
+(issue #1082) -- so a `public` self-administrator is offered "My client" and refused on the page; the endpoint is the
+authority. The detail view (`c=<id>`, issue #906) and, later, editing a client and
 designing its workflows (#903) open from this page.
 
 ## The Reports page (issue #1007)

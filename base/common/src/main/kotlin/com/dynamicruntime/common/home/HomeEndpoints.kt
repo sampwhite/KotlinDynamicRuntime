@@ -250,9 +250,17 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // offering the listing there would be an entry that opens onto nothing.
         menuItem(HMENU.docs, "Documents", UiRoute(HMENU.pageDocs), cfactExpression = CFACTS.app)
         menuItem(HMENU.users, "Users", UiRoute(HMENU.pageUsers), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
-        // The clients an administrator oversees (issue #905): gated as Users is. A `public` self-administrator is
-        // offered it and refused on the page, the shape Users has -- the endpoint is the authority (#805).
-        menuItem(HMENU.clients, "Clients", UiRoute(HMENU.pageClients), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
+        // The clients an administrator oversees (issue #905), as two entries for the one page, mutually exclusive by
+        // cfact as the two "Debug" entries are, so only ever one shows (issue #1082). An administrator who sees across
+        // clients gets a listing, and "Clients". Any other administrator oversees one client, and the page opens it
+        // directly -- so their entry says "My client", since "Clients" promised a list that is not there. A `public`
+        // self-administrator is offered that one and refused on the page, the shape Users has -- the endpoint is the
+        // authority (#805).
+        menuItem(HMENU.clients, "Clients", UiRoute(HMENU.pageClients), cfactExpression = "${CFACTS.isDeploymentAdmin},${CFACTS.app}")
+        menuItem(
+            HMENU.myClient, "My client", UiRoute(HMENU.pageClients),
+            cfactExpression = "${CFACTS.hasAdminLevel},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
+        )
         // The client's named reports (issue #981), gated as Clients is: the endpoints are the authority.
         menuItem(HMENU.reports, "Reports", UiRoute(HMENU.pageReports), cfactExpression = "${CFACTS.hasAdminLevel},${CFACTS.app}")
         // The Operator group (issue #540): a parent header and the deployment-operator diagnostic pages under

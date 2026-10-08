@@ -126,6 +126,49 @@ class ClientsPageTest {
     }
 
     @Test
+    fun aClientOpenInPlaceIsTheOneShownWithNoneNamed() {
+        fun inPlace(openId: String?, across: Boolean = false, own: String = "acme") =
+            clientOpenInPlace(openId, canManageUsers = true, canSeeAllClients = across, ownClient = own)
+        assertEquals(true, inPlace("acme"))
+        // Another client's address, which the endpoint will refuse them, is not their page.
+        assertEquals(false, inPlace("globex"))
+        // Across clients nothing is in place: there is a listing behind every detail, their own client's included.
+        assertEquals(false, inPlace("hub", across = true, own = "hub"))
+        assertEquals(false, inPlace(null))
+    }
+
+    @Test
+    fun aDetailOpenInPlaceOffersNoWayBackToItself() {
+        // The listing is behind every detail but the one open in place, where it would open this page again.
+        assertEquals(true, clientBackOffered(inPlace = false, from = null))
+        assertEquals(false, clientBackOffered(inPlace = true, from = null))
+        assertEquals(false, clientBackOffered(inPlace = true, from = HMENU.pageClients))
+        // A listing the page was opened from is still somewhere to go; an unknown one is not a listing.
+        assertEquals(true, clientBackOffered(inPlace = true, from = HMENU.pageUsers))
+        assertEquals(false, clientBackOffered(inPlace = true, from = "nowhere"))
+    }
+
+    @Test
+    fun theSummarysCountsLeadToTheListingsBehindThem() {
+        fun row(status: ClientStatus) = parseClientOverview(
+            listOf(mapOf(CLD.clientId to "acme", CLD.name to "Acme", CLD.status to status.name, CLD.forms to 3, CLD.users to 5)),
+        ).single()
+        val present = row(ClientStatus.present)
+        // As the listing's counts do: bare for the client's own administrator, the client chosen across clients.
+        assertEquals(clientFormsHref("acme", acrossClients = false), clientSummaryHref(summaryFormsRow, present, acrossClients = false))
+        assertEquals(clientUsersHref("acme", acrossClients = false), clientSummaryHref(summaryUsersRow, present, acrossClients = false))
+        assertEquals(clientFormsHref("acme", acrossClients = true), clientSummaryHref(summaryFormsRow, present, acrossClients = true))
+        // Every other row is a fact, and so are the counts of a client this node does not carry.
+        assertEquals(null, clientSummaryHref("Workflows", present, acrossClients = true))
+        val absent = ClientStatus.entries.first { it != ClientStatus.present }
+        assertEquals(null, clientSummaryHref(summaryFormsRow, row(absent), acrossClients = true))
+        assertEquals(null, clientSummaryHref(summaryFormsRow, null, acrossClients = true))
+        // The rows the links hang on are the ones the summary draws.
+        val labels = clientSummaryRows("acme", present, null, canSeeAllClients = false).map { it.first }
+        assertEquals(true, summaryFormsRow in labels && summaryUsersRow in labels)
+    }
+
+    @Test
     fun aClientOpenInPlaceHasTwoAddresses() {
         val named = mapOf(HP.page to HMENU.pageClients, HP.client to "acme")
         val bare = mapOf(HP.page to HMENU.pageClients)

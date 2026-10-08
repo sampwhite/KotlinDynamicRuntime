@@ -54,8 +54,8 @@ private const val storedConfigurationId = "stored-configuration"
 /**
  * The Clients page (issue #905): the clients an administrator oversees, each with where it stands on this node,
  * where its definition comes from, and what it holds. An `allClients` administrator sees every client this node
- * knows of -- present or not, with why not; a client-scoped one sees their own. One table for both: the second
- * simply has one row.
+ * knows of -- present or not, with why not -- as a listing. A client-scoped one oversees one client, and is shown
+ * it directly (issue #1082) rather than as a listing of one row.
  *
  * Denied honestly, in two layers as Users is: the shell's `canManageUsers` says whether to ask at all, and the
  * endpoint's own refusal -- a `public` self-administrator, who administers only their own users -- is shown as the
@@ -92,7 +92,9 @@ val ClientsPage = FC<Props> {
         hashClient, caller?.canManageUsers == true, caller?.canSeeAllClients == true, caller?.user?.client.orEmpty(),
     )
     val openId = openFor(hashParams()[HP.client])
-    val inPlace = openId != null && openId == openFor(null)
+    val inPlace = clientOpenInPlace(
+        openId, caller?.canManageUsers == true, caller?.canSeeAllClients == true, caller?.user?.client.orEmpty(),
+    )
     var definition by useState<ClientDefinitionView?>(null)
     var storedConfigs by useState<List<ConfigSummaryView>?>(null)
     // The definition's failure to load, or -- a designed answer, a 403 or 404 -- what the endpoint said instead.
@@ -237,9 +239,17 @@ val ClientsPage = FC<Props> {
             detailError, detailNote, storedError, overrides, overridesError, overridesRefused, current.canSeeAllClients,
             inPlace, onChanged = bump,
         )
-        // The view across clients is the allClients administrator's; anyone else lands on their listing.
+        // The view across clients, and the listing, are the allClients administrator's: a client's own
+        // administrator was shown their client above (issue #1082).
         acrossView && current.canSeeAllClients -> overridesAcross(rows, acrossRows, loadError, acrossError)
-        else -> clientsListing(rows, current.canSeeAllClients, loadError)
+        current.canSeeAllClients -> clientsListing(rows, loadError)
+        // Whoever is left has no listing and no client to open: a `public` self-administrator, in the moment
+        // before the overview's refusal arrives (drawn above, in its words) -- or its failure to load.
+        else -> LoadStateCard {
+            title = "Clients"
+            this.loadError = loadError
+            errorLead = "Couldn't load the clients."
+        }
     }
 }
 
@@ -270,11 +280,14 @@ private fun ChildrenBuilder.clientDetail(
         className = ClassName("card wide")
         // No way back to a listing that would only open this page again; a listing the page was opened *from*
         // is still somewhere to go back to.
-        if (!inPlace || backTarget(hashParams()[HP.from], HMENU.pageClients) != HMENU.pageClients) {
-            backToListing(HMENU.pageClients)
-        }
+        if (clientBackOffered(inPlace, hashParams()[HP.from])) backToListing(HMENU.pageClients)
         h1 { +clientLabel(clientId, row?.name ?: def?.info?.get(CLD.name).toOptStr().orEmpty()) }
-        for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) readOnlyField(label, value)
+        for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) {
+            // The counts lead to the listings behind them, as they do in the Clients listing -- which the caller
+            // of one client no longer passes through on the way here.
+            val href = clientSummaryHref(label, row, acrossClients)
+            if (href == null) readOnlyField(label, value) else linkedField(label, value, href)
+        }
         // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
         def?.stored?.let { stored ->
             if (definitionEditable(row)) {
@@ -1263,24 +1276,35 @@ private fun ChildrenBuilder.deniedCard(why: String) {
     }
 }
 
+/** A summary row whose value is a link: [readOnlyField]'s shape, for a count with a listing behind it. */
+private fun ChildrenBuilder.linkedField(label: String, value: String, href: String) {
+    div {
+        className = ClassName("row")
+        span {
+            className = ClassName("field-label")
+            +label
+        }
+        span { countCell(value, href) }
+    }
+}
+
 /**
- * The listing card: the heading, a line saying whose clients these are, and the table -- or the empty state. A
- * [loadError] with rows on screen is a failed refresh: said above the rows, which stay.
+ * The listing card, for an administrator who sees across clients (anyone else is shown their one client, issue
+ * #1082): the heading, a line saying whose clients these are, and the table -- or the empty state. A [loadError]
+ * with rows on screen is a failed refresh: said above the rows, which stay.
  */
-private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossClients: Boolean, loadError: DisplayError?) {
+private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, loadError: DisplayError?) {
     div {
         className = ClassName("card wide")
         h1 { +"Clients" }
         p {
             className = ClassName("subtitle")
-            +(if (acrossClients) "Every client this node knows of, present or not. " else "Your client, as this node carries it.")
-            // The view across clients (issue #917) is the allClients administrator's: a scoped one has one client.
-            if (acrossClients) {
-                a {
-                    className = ClassName("wf-cell-link")
-                    href = overridesAcrossHref()
-                    +"Copy & menu across clients"
-                }
+            +"Every client this node knows of, present or not. "
+            // The view across clients (issue #917).
+            a {
+                className = ClassName("wf-cell-link")
+                href = overridesAcrossHref()
+                +"Copy & menu across clients"
             }
         }
         loadError?.let { errorText(if (rows == null) "Couldn't load the clients." else "Couldn't refresh the clients; showing what was loaded.", it) }
@@ -1338,11 +1362,11 @@ private fun ChildrenBuilder.clientsListing(rows: List<ClientOverview>?, acrossCl
                                 val present = c.status == ClientStatus.present.name
                                 td {
                                     className = ClassName("op-num")
-                                    countCell(c.forms.toString(), clientFormsHref(c.clientId, acrossClients).takeIf { present })
+                                    countCell(c.forms.toString(), clientFormsHref(c.clientId, acrossClients = true).takeIf { present })
                                 }
                                 td {
                                     className = ClassName("op-num")
-                                    countCell(userCountText(c.users, c.unclaimedUsers), clientUsersHref(c.clientId, acrossClients).takeIf { present })
+                                    countCell(userCountText(c.users, c.unclaimedUsers), clientUsersHref(c.clientId, acrossClients = true).takeIf { present })
                                 }
                                 td { className = ClassName("op-num"); +workflowsText(c.workflowCount, c.hasSurvey) }
                                 // How much the client's own configuration changes (issue #917), leading to the detail's

@@ -154,6 +154,11 @@ object HMENU {
     const val users = "users"
     /** The clients listing (issue #905): the clients an administrator oversees, each with its status and counts. */
     const val clients = "clients"
+    /**
+     * The same page for an administrator of **one** client (issue #1082), where it opens that client rather than a
+     * listing: an item of its own so that its label can say so. Shown instead of [clients], never beside it.
+     */
+    const val myClient = "myClient"
     /** The named reports an administrator may run over their client's forms (issue #981). */
     const val reports = "reports"
     /** The simulations a test instance offers, to provision a canned scenario and sign in to it (issue #997). */

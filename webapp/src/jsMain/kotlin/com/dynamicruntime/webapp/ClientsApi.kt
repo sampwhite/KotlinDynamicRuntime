@@ -218,6 +218,22 @@ fun clientsOpenId(hashClient: String?, canManageUsers: Boolean, canSeeAllClients
 }
 
 /**
+ * Whether the open client [openId] is the one the Clients page shows with **none named** (issue #1082): the
+ * caller's one client, open in place. Then the page has no listing behind it, and both of its addresses -- with the
+ * client named and without -- are the same page. Pure, and covered under `jsNodeTest`.
+ */
+fun clientOpenInPlace(openId: String?, canManageUsers: Boolean, canSeeAllClients: Boolean, ownClient: String): Boolean =
+    openId != null && openId == clientsOpenId(null, canManageUsers, canSeeAllClients, ownClient)
+
+/**
+ * Whether a client's detail offers its way back (issue #1082). Not when it is open [inPlace] and the way back
+ * would be the Clients listing, which for that caller only opens this page again. A listing the page was opened
+ * *from* ([from], the hash's `from=`) is still somewhere to go back to. Pure, and covered under `jsNodeTest`.
+ */
+fun clientBackOffered(inPlace: Boolean, from: String?): Boolean =
+    !inPlace || backTarget(from, HMENU.pageClients) != HMENU.pageClients
+
+/**
  * Whether [hash] is still [clientId]'s own page (issue #1082), for a guard that asks before unsaved work is left:
  * the Clients page naming that client -- or, when the client is the one the page opens [inPlace], naming none. So
  * an administrator of one client is not asked whether to leave a page they are staying on, by a move between its
@@ -746,9 +762,29 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
             add("Workflows" to list(def.workflowIds))
         }
         row?.let {
-            add("Forms" to it.forms.toString())
-            add("Users" to userCountText(it.users, it.unclaimedUsers))
+            add(summaryFormsRow to it.forms.toString())
+            add(summaryUsersRow to userCountText(it.users, it.unclaimedUsers))
         }
+    }
+}
+
+/** The two rows of [clientSummaryRows] that count something with a listing behind it; see [clientSummaryHref]. */
+const val summaryFormsRow = "Forms"
+const val summaryUsersRow = "Users"
+
+/**
+ * Where a row of the client's summary leads, or null for one that is only a fact (issue #1082): the Forms and Users
+ * counts open the listings behind them, exactly as the same counts do in the Clients listing ([clientFormsHref],
+ * [clientUsersHref]) -- for a client this node carries, which is where those pages work. An administrator of one
+ * client lands on this summary and never sees the listing, so without this the counts would lead nowhere for the
+ * one caller who used to follow them. Pure, and covered under `jsNodeTest`.
+ */
+fun clientSummaryHref(label: String, row: ClientOverview?, acrossClients: Boolean): String? {
+    if (row == null || row.status != ClientStatus.present.name) return null
+    return when (label) {
+        summaryFormsRow -> clientFormsHref(row.clientId, acrossClients)
+        summaryUsersRow -> clientUsersHref(row.clientId, acrossClients)
+        else -> null
     }
 }
 
