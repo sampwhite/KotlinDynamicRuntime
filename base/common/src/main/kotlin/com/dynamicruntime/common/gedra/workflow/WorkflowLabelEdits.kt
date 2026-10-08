@@ -57,36 +57,21 @@ const val headingBasisKey: String = SCH.layout
  * (issue #1070): the `label` of its layout alteration of the type, which merges over the client's layout as a block
  * key -- replacing the shared heading -- while its field entries merge by field. [inherited] -- the client's heading
  * for the type, or null -- is recorded as the override's basis, and removed with it. An emptied alteration leaves no
- * trace, as [withLayoutEntry]'s does.
+ * trace ([withLayoutAlteration], which [withLayoutEntry] shares).
  */
 fun withLayoutHeading(
     definition: Map<String, Any?>,
     typeName: String,
     label: String?,
     inherited: String?,
-): Map<String, Any?> {
-    fun Any?.asMap(): LinkedHashMap<String, Any?> = LinkedHashMap(toJsonMapOrEmpty())
+): Map<String, Any?> = withLayoutAlteration(definition, typeName) { layout, typeBasis ->
     val text = label?.trim()?.takeIf { it.isNotEmpty() }
-    val types = definition[WFD.types].asMap()
-    val alteration = types[typeName].asMap()
-    val layout = alteration[SCH.layout].asMap()
     if (text == null) layout.remove(SL.label) else layout[SL.label] = text
-    if (layout.isEmpty()) alteration.remove(SCH.layout) else alteration[SCH.layout] = layout
-    if (alteration.isEmpty()) types.remove(typeName) else types[typeName] = alteration
-
-    val basis = definition[WFD.typeBasis].asMap()
-    val typeBasis = basis[typeName].asMap()
     if (text != null) {
         typeBasis[headingBasisKey] = linkedMapOf<String, Any?>().also { b -> inherited?.let { b[SL.label] = it } }
     } else {
         typeBasis.remove(headingBasisKey)
     }
-    if (typeBasis.isEmpty()) basis.remove(typeName) else basis[typeName] = typeBasis
-
-    val out = LinkedHashMap(definition)
-    if (types.isEmpty()) out.remove(WFD.types) else out[WFD.types] = types
-    if (basis.isEmpty()) out.remove(WFD.typeBasis) else out[WFD.typeBasis] = basis
-    return out
 }
 
 /** The heading of [typeName]'s `g-layout` as [defs] have it, or null when it has none (issue #1070). */

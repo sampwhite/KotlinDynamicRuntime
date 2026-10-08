@@ -104,21 +104,35 @@ fun withLayoutEntry(
     field: String,
     entry: Map<String, Any?>?,
     inherited: Map<String, Any?>?,
+): Map<String, Any?> = withLayoutAlteration(definition, typeName) { layout, typeBasis ->
+    val fields = (layout[SL.schemaFields] as? List<*>).orEmpty().filter { (it as? Map<*, *>)?.get(SL.field) != field }
+        .toMutableList()
+    if (entry != null) fields.add(LinkedHashMap(entry).also { it[SL.field] = field })
+    if (fields.isEmpty()) layout.remove(SL.schemaFields) else layout[SL.schemaFields] = fields
+    if (entry != null) typeBasis[field] = inherited?.let { LinkedHashMap(it) } ?: LinkedHashMap<String, Any?>() else typeBasis.remove(field)
+}
+
+/**
+ * [definition] -- a workflow definition's JSON form -- with its layout alteration of [typeName] rewritten by [edit],
+ * which is handed mutable copies of that alteration's `g-layout` and of the type's **basis** (`typeBasis`, what each
+ * override replaced) to change in place (issues #984, #1070). Whatever the edit leaves empty is removed -- the layout,
+ * the type's alteration and basis, and last of all the definition's `types` and `typeBasis` -- so an emptied override
+ * leaves no trace. Pure.
+ */
+internal fun withLayoutAlteration(
+    definition: Map<String, Any?>,
+    typeName: String,
+    edit: (layout: MutableMap<String, Any?>, typeBasis: MutableMap<String, Any?>) -> Unit,
 ): Map<String, Any?> {
     fun Any?.asMap(): LinkedHashMap<String, Any?> = LinkedHashMap(toJsonMapOrEmpty())
     val types = definition[WFD.types].asMap()
     val alteration = types[typeName].asMap()
     val layout = alteration[SCH.layout].asMap()
-    val fields = (layout[SL.schemaFields] as? List<*>).orEmpty().filter { (it as? Map<*, *>)?.get(SL.field) != field }
-        .toMutableList()
-    if (entry != null) fields.add(LinkedHashMap(entry).also { it[SL.field] = field })
-    if (fields.isEmpty()) layout.remove(SL.schemaFields) else layout[SL.schemaFields] = fields
-    if (layout.isEmpty()) alteration.remove(SCH.layout) else alteration[SCH.layout] = layout
-    if (alteration.isEmpty()) types.remove(typeName) else types[typeName] = alteration
-
     val basis = definition[WFD.typeBasis].asMap()
     val typeBasis = basis[typeName].asMap()
-    if (entry != null) typeBasis[field] = inherited?.let { LinkedHashMap(it) } ?: LinkedHashMap<String, Any?>() else typeBasis.remove(field)
+    edit(layout, typeBasis)
+    if (layout.isEmpty()) alteration.remove(SCH.layout) else alteration[SCH.layout] = layout
+    if (alteration.isEmpty()) types.remove(typeName) else types[typeName] = alteration
     if (typeBasis.isEmpty()) basis.remove(typeName) else basis[typeName] = typeBasis
 
     val out = LinkedHashMap(definition)
