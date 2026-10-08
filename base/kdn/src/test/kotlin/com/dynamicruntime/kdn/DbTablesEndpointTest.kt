@@ -1,7 +1,6 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.exception.EXC
-import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.sql.TI
 import com.dynamicruntime.common.user.TestUser
