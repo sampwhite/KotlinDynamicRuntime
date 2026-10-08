@@ -217,12 +217,14 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
 
 /**
  * What a column-header click sorts by: the clicked [field] in the [order] antd reports (`ascend` / `descend`),
- * or -- for the cancel click, which antd reports as a null order -- the console's default order. Null when the
- * click named no field, which is not a sort. Pure, covered under `jsNodeTest`.
+ * or -- for the cancel click, which antd reports as a null order -- the console's default order. The order is
+ * checked first because antd's cancel names **no field** either: the sorter it hands back has neither, and reading
+ * that as "not a sort" was why cancelling did nothing. Null only for an order with no field, which no click sends.
+ * Pure, covered under `jsNodeTest`.
  */
 fun sortAfterHeaderClick(field: String?, order: String?): Pair<String, Boolean>? = when {
-    field == null -> null
     order == null -> defaultUserSortKey to defaultUserSortDescending
+    field == null -> null
     else -> field to (order == "descend")
 }
 
@@ -316,15 +318,15 @@ private fun column(title: String, dataIndex: String, width: Int?): dynamic {
 
 /**
  * A [column] that sorts on the server: `sorter = true` hands the click to the table's `onChange` rather than
- * reordering locally, `sortOrder` shows the arrow when this is the active column (null otherwise), and
- * `sortDirections` keeps the header cycle to ascend<->descend so the order is never cleared to none.
+ * reordering locally, and `sortOrder` shows the arrow when this is the active column (null otherwise). The header
+ * cycles antd's way -- ascend, descend, then cancel -- and the cancel returns to the default order
+ * ([sortAfterHeaderClick]), as the forms listing's does.
  */
 private fun sortableColumn(
     title: String, sortKey: String, width: Int?, activeSort: String, descending: Boolean,
 ): dynamic {
     val c = column(title, sortKey, width)
     c.sorter = true
-    c.sortDirections = arrayOf("ascend", "descend")
     c.sortOrder = if (activeSort == sortKey) (if (descending) "descend" else "ascend") else null
     return c
 }

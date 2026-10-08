@@ -65,7 +65,10 @@ class UserCellValueTest {
         assertEquals("activatedAt" to false, sortAfterHeaderClick("activatedAt", "ascend"))
         assertEquals("activatedAt" to true, sortAfterHeaderClick("activatedAt", "descend"))
         assertEquals(defaultUserSortKey to defaultUserSortDescending, sortAfterHeaderClick("activatedAt", null))
-        assertEquals(null, sortAfterHeaderClick(null, null))
+        // antd's cancel names no field either: still the default order, not "no sort" (which made cancel do nothing).
+        assertEquals(defaultUserSortKey to defaultUserSortDescending, sortAfterHeaderClick(null, null))
+        // An order with no field is not a click anyone makes.
+        assertEquals(null, sortAfterHeaderClick(null, "ascend"))
     }
 
     @Test
