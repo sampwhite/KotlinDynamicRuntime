@@ -20,7 +20,7 @@ import io.kotest.matchers.shouldBe
  * the identity's facts and its other users -- confined to what the caller may administer.
  */
 class AdminIdentityTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("adminIdentity", "adminIdentityTest")
+    val cxt = TestInstances.default("adminIdentity")
     val full = TestUser.createFullAdmin(cxt, "identity-full@example.com")
 
     fun userIds(info: Map<String, Any?>): List<Any?> = info[ADF.users].toJsonListOfMaps().map { it[ADF.userId] }

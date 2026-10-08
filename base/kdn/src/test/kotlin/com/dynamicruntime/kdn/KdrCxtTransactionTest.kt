@@ -12,7 +12,7 @@ import io.kotest.matchers.shouldBe
  * on a request's own context (which would bleed the owner out) is refused.
  */
 class KdrCxtTransactionTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("kdrCxtTx", "kdrCxtTx")
+    val cxt = TestInstances.default("kdrCxtTx")
 
     "a plain context is not transaction-scoped; mkTransactionSubContext marks one that is" {
         cxt.transactionScoped shouldBe false

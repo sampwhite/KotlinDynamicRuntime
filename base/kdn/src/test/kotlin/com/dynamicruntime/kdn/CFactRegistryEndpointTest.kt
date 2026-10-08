@@ -25,7 +25,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class CFactRegistryEndpointTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("cfacts", "cfactsTest")
+    val cxt = TestInstances.default("cfacts")
 
     fun reference(user: TestUser): String =
         user.getItem(CFD.cfactsPath)[CFD.markdown].toOptStr().orEmpty()

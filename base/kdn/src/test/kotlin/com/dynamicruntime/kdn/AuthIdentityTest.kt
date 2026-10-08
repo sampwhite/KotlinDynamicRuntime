@@ -39,7 +39,7 @@ import io.kotest.matchers.shouldNotBe
  * is what a person sees.
  */
 class AuthIdentityTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("identity", "authIdentityTest")
+    val cxt = TestInstances.default("identity")
     val users = UserService.get(cxt)
 
     fun results(resp: Map<String, Any?>): Map<String, Any?> = resp[EP.results]?.toJsonMap()

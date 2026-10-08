@@ -51,6 +51,8 @@ class UsageRuleBootCheckTest : StringSpec({
 
     "two usages of one trait id refuse the boot in strict mode (issue #681)" {
         val thrown = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: DuplicateUsageComponent is expected to
+            // refuse it.
             Startup.mkTestBootCxt(
                 "dupUsageStrict", "dupUsageStrictTest",
                 mapOf(DuplicateUsageComponent.loadFlag.name to "true"),
@@ -81,6 +83,8 @@ class UsageRuleBootCheckTest : StringSpec({
         // A usage on a trait named like a reserved query field asks for a parameter of that name; the check
         // refuses rather than let the trait become silently unsearchable.
         val thrown = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: ReservedFieldUsageComponent is expected to
+            // refuse it.
             Startup.mkTestBootCxt(
                 "reservedUsageStrict", "reservedUsageStrictTest",
                 mapOf(ReservedFieldUsageComponent.loadFlag.name to "true"),
@@ -92,6 +96,8 @@ class UsageRuleBootCheckTest : StringSpec({
     }
 
     "the same usages only warn in warn mode: the columns stay, the parameters are dropped, paging works (issue #987)" {
+        // Its own instance (issue #1075): the boot is under test: what a warn-mode boot keeps and drops of
+        // ReservedFieldUsageComponent's usages.
         // One trait is named for the cursor field, which the listing's type does not declare -- the framework
         // appends it to a cursor-paged listing -- so only the generator leaving it out keeps it off the type.
         // The other is named for the paging offset, the case where a filter still reading the dropped parameter

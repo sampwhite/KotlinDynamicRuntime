@@ -44,9 +44,13 @@ class StaticConfigTest : StringSpec({
         emptyMap()
     }
 
+    // Its own instance (issue #1075): StaticClientComponent over a database of its own (`KDR_DB_NAME`), which the
+    // production boots restart against.
     fun bootUnit(name: String): KdrCxt =
         Startup.mkTestBootCxt(name, "${name}Test", overlay(ENV.unit), listOf(StaticClientComponent()))
 
+    // Its own instance (issue #1075): a production boot over that same database: what it takes from stored config at
+    // boot is under test.
     fun bootProd(name: String): KdrCxt =
         Startup.mkBootCxt(name, "${name}Test", overlay(ENV.prod), listOf(StaticClientComponent()))
 

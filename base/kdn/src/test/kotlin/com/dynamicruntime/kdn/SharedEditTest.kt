@@ -49,7 +49,7 @@ import io.kotest.matchers.string.shouldContain
  * whose two workflows collect the same trait.
  */
 class SharedEditTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("sharedEdit1029", "sharedEdit1029")
+    val cxt = TestInstances.default("sharedEdit1029")
     val client = provisionDesignDemo(cxt, "shared1029").clients.single()
     val admin = TestUser.create(cxt, "designer@$client.test", level = ROLE.admin, userClient = client)
     val design = mapOf(EP.view to DSV.design)

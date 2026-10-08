@@ -34,7 +34,7 @@ import io.kotest.matchers.shouldBe
  */
 class TestClientSkillExamplesTest : StringSpec({
     // One shared instance for the whole spec -- the technique is to create a client per scenario, not a node.
-    val cxt = Startup.mkTestBootCxt("skillTestClients", "skillTestClients")
+    val cxt = TestInstances.default("skillTestClients")
 
     // A sub-context in the client, with a userId so the write names who made it (optional: unset, it is the
     // system user).

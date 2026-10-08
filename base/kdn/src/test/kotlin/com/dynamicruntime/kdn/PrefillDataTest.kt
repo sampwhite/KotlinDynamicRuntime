@@ -44,7 +44,7 @@ import io.kotest.matchers.shouldBe
  * resolver's decoration are both exercised.
  */
 class PrefillDataTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("prefill679", "prefill679")
+    val cxt = TestInstances.default("prefill679")
     val client = "prefill679"
 
     fun asClient(): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }

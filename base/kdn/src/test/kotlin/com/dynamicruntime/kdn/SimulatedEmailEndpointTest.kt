@@ -25,7 +25,7 @@ import io.kotest.matchers.string.shouldContain
 class SimulatedEmailEndpointTest : StringSpec({
 
     "a test instance captures sent mail and serves it from /test/simulatedEmails" {
-        val cxt = Startup.mkTestBootCxt("simEmails", "simEmailsInst")
+        val cxt = TestInstances.default("simEmails")
         // A unit instance simulates by default, so this is captured rather than transmitted.
         MailService.get(cxt).sendEmail(cxt, "carol@example.com", "Hi", "Your verification code is 424242.")
         val client = TestHttpClient(cxt.instanceConfig)
@@ -42,6 +42,8 @@ class SimulatedEmailEndpointTest : StringSpec({
     // up under a name no secrets file holds, so this never sends for real on a developer's machine whose
     // secrets carry the genuine key; the record then shows the mail captured and not sent.
     "with the admin-domain opt-in and no provider key, mail is captured and not transmitted" {
+        // Its own instance (issue #1075): the admin-domain mail opt-in, an admin domain and a missing provider key, a
+        // setup no shared entry has.
         val cxt = Startup.mkTestBootCxt(
             "simEmailsOptIn", "simEmailsOptInInst",
             mapOf(

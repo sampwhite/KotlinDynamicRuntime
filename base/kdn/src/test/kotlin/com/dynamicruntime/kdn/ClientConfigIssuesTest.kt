@@ -12,7 +12,6 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCEL
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
@@ -21,7 +20,6 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -44,9 +42,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class ClientConfigIssuesTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt(
-        "cfgIssues", "clientConfigIssuesTest", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-    )
+    val cxt = TestInstances.storedConfigWarn("cfgIssues")
     val admin = TestUser.createFullAdmin(cxt, "chief@iss840.test")
 
     fun writer(client: String): KdrCxt = cxt.mkSubContext("issuesWrite", client).also { it.userId = 8400L }

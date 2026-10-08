@@ -40,6 +40,7 @@ import io.kotest.matchers.string.shouldNotContain
  * from that one source, rendered for the client of the user the mail is about, with the params sanitized.
  */
 class MailCopyTest : StringSpec({
+    // Its own instance (issue #1075): a public URL (`INVITE.publicUrl`), a setup no shared entry has.
     // A public URL, so the invitation's link is absolute -- a relative one is not a link anywhere, and the
     // HTML part rightly leaves it as text.
     val cxt = Startup.mkTestBootCxt("mailCopy", "mailCopyTest", mapOf(INVITE.publicUrl.name to "https://mail.test"))

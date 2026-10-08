@@ -25,14 +25,14 @@ import io.kotest.matchers.collections.shouldContain
 class TopicStartupInitTest : StringSpec({
 
     "the auth topic and its tables are created during startup, before any request" {
-        val cxt = Startup.mkTestBootCxt("topicInit", "topicInitTest")
+        val cxt = TestInstances.default("topicInit")
         val service = SqlTopicService.get(cxt)
         // Populated by checkReady, so it is already there without a single request having been made.
         service.topics.keys shouldContain authTopic
     }
 
     "every topic the schema store declares is created, not just the one a test happens to use" {
-        val cxt = Startup.mkTestBootCxt("topicInitAll", "topicInitAllTest")
+        val cxt = TestInstances.default("topicInitAll")
         val service = SqlTopicService.get(cxt)
         val declared = cxt.getGlobalSchema().tables.values.map { it.topic }.toSet()
         declared.forEach { service.topics.keys shouldContain it }

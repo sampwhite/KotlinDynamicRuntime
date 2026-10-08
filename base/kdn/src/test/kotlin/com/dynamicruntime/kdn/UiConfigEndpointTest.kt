@@ -24,7 +24,7 @@ class UiConfigEndpointTest : StringSpec({
     fun Map<String, Any?>.list(key: String): List<Any?> = getValue(key) as List<*>
 
     "auth ui config is anonymous-friendly and carries the fragments/features/state envelope" {
-        val cxt = Startup.mkTestBootCxt("uiAuth", "uiAuthTest")
+        val cxt = TestInstances.default("uiAuth")
 
         val cfg = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest("/auth/ui/config"))
         val frag = cfg.list(UIC.fragments).first()!!.toJsonMap()
@@ -41,7 +41,7 @@ class UiConfigEndpointTest : StringSpec({
     }
 
     "profile ui config is login-gated and reports password status" {
-        val cxt = Startup.mkTestBootCxt("uiProfile", "uiProfileTest")
+        val cxt = TestInstances.default("uiProfile")
 
         // Anonymous caller cannot reach the profile group.
         TestHttpClient(cxt.instanceConfig).sendGetRequest("/profile/ui/config").rptStatusCode shouldBe 401
@@ -57,7 +57,7 @@ class UiConfigEndpointTest : StringSpec({
     "fragmentBuildId is stable for a present file and null for an absent one" {
         // Its own instance: the build id is now read through the running service (issue #456), so this needs a
         // booted node rather than the static classpath read it used to be.
-        val cxt = Startup.mkTestBootCxt("uiBuildId", "uiBuildIdTest")
+        val cxt = TestInstances.default("uiBuildId")
         val first = MarkdownFragmentService.fragmentBuildId(cxt, "auth")
         first.shouldNotBeNull()
         MarkdownFragmentService.fragmentBuildId(cxt, "auth") shouldBe first // cached, same value

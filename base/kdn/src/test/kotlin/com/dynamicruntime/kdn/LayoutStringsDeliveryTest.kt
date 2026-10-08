@@ -13,7 +13,7 @@ import io.kotest.matchers.shouldBe
  */
 class LayoutStringsDeliveryTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("layoutStrings", "layoutStringsDeliveryTest")
+    val cxt = TestInstances.default("layoutStrings")
 
     fun delivered(strings: Map<String, String>): Map<String, Any?> {
         val block = mapOf(

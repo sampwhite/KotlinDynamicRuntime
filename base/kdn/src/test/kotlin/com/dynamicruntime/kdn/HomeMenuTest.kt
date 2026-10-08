@@ -37,7 +37,7 @@ import io.kotest.matchers.shouldBe
  */
 class HomeMenuTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("homeMenu", "homeMenuTest")
+    val cxt = TestInstances.default("homeMenu")
 
     /** A group header (a parent, issue #517/#540): id and label only -- no action, and the cfact is stripped
      *  by resolution. Drawn as the header its children drill down under. */
@@ -139,7 +139,7 @@ class HomeMenuTest : StringSpec({
 
     "the Debug affordance is absent without env auth, a flat call when env-authed, a drill-down in debug" {
         // A fresh env-auth context so the header/cookie transitions here do not touch the shared `cxt`.
-        val ecxt = Startup.mkTestBootCxt("homeMenuDebug", "homeMenuDebugTest")
+        val ecxt = TestInstances.default("homeMenuDebug")
         val client = TestHttpClient(ecxt.instanceConfig)
 
         // No env auth: neither the enable call nor the drill-down parent exists (both new cfacts are false).

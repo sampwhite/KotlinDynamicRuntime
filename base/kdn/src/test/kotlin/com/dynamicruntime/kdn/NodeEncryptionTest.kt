@@ -25,7 +25,7 @@ import io.kotest.matchers.shouldNotBe
 class NodeEncryptionTest : StringSpec({
 
     fun node(cxtName: String): NodeService =
-        NodeService.get(Startup.mkTestBootCxt(cxtName, "nodeEncryptionTest"))
+        NodeService.get(TestInstances.default(cxtName))
 
     "a booted instance can encrypt and decrypt strings through NodeService" {
         val node = node("enc")
@@ -38,7 +38,7 @@ class NodeEncryptionTest : StringSpec({
     }
 
     "the encryption key was persisted to the InstanceConfig table at startup" {
-        val cxt = Startup.mkTestBootCxt("encPersisted", "nodeEncryptionTest")
+        val cxt = TestInstances.default("encPersisted")
         val node = NodeService.get(cxt)
         val service = InstanceConfigService.get(cxt)
         // The auth-config row is in the database, under the active key's name, holding the encryption key.

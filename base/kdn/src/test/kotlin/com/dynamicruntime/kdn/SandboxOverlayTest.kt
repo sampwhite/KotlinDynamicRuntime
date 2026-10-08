@@ -45,6 +45,8 @@ import io.kotest.matchers.string.shouldContain
 class SandboxOverlayTest : StringSpec({
     // Source problems are reported rather than refusing the boot, so the reported cases can be looked at.
     val flags = mapOf(OverlayFixture.loadFlag.name to "true", GCFG.checkEnvVar.name to "warn")
+    // Its own instance (issue #1075): the boot is under test: what it loads and reports from OverlayFixture's source
+    // overlays (check at warn).
     val cxt = Startup.mkTestBootCxt("sandboxOverlay940", "sandboxOverlay940", flags, listOf(OverlayFixture()))
 
     fun known(node: KdrCxt, client: String, traitId: String): Boolean =
@@ -117,6 +119,8 @@ class SandboxOverlayTest : StringSpec({
     }
 
     "a static parent's sandbox shows its overlay in production" {
+        // Its own instance (issue #1075): a production boot with OverlayFixture: what that boot gives a static parent's
+        // sandbox is under test.
         val prod = Startup.mkBootCxt(
             "sandboxOverlayProd940", "sandboxOverlayProd940",
             flags + mapOf(ACFG.env to ENV.prod, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true),

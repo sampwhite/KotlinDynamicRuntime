@@ -6,13 +6,11 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.CLD
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -27,9 +25,7 @@ import io.kotest.matchers.shouldBe
  */
 class ClientVariantPresenceTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt(
-        "variantPresence", "clientVariantPresenceTest", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-    )
+    val cxt = TestInstances.storedConfigWarn("variantPresence")
 
     fun store(client: String, def: ClientDef) {
         val config = gedraConfig(cxt, "main", clientNamespace(client), client) {

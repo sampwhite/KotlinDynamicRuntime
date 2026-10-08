@@ -56,6 +56,8 @@ class JobSchedulerTest : StringSpec({
     /** A node with [defs] registered, its clock frozen at [at]. */
     fun node(vararg defs: JobDef, at: String = "2026-09-25T01:59:00Z", overlay: Map<String, Any?> = emptyMap()): KdrCxt {
         val n = boots.incrementAndGet()
+        // Its own instance (issue #1075): it runs the job scheduler, which is instance-wide (a tick considers every
+        // scheduled job), and sets the clock.
         val cxt = Startup.mkTestBootCxt("jobSched$n", "jobSchedulerTest$n", overlay, listOf(SchedFixture(defs.toList())))
         cxt.instanceConfig.clock.freeze()
         cxt.instanceConfig.clock.setAbsolute(Instant.parse(at))

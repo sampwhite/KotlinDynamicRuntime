@@ -51,7 +51,7 @@ class TestFeaturesBoundaryTest : StringSpec({
         }
 
     "on a test instance, a client written over the API round-trips its testFeatures and they are honored" {
-        val cxt = Startup.mkTestBootCxt("tf696api", "tf696api")
+        val cxt = TestInstances.default("tf696api")
         val client = "tf696api"
         GedraConfigService.get(cxt).writeConfig(asClient(cxt, client), clientWithTestFeatures(cxt, client))
         GedraConfigReload.reloadClient(cxt, client)
@@ -61,6 +61,8 @@ class TestFeaturesBoundaryTest : StringSpec({
     }
 
     "on a test instance, a boot-defined client keeps its testFeatures" {
+        // Its own instance (issue #1075): BoundaryFixture's boot-defined client: what the boot assembles for it on a
+        // test instance is under test.
         val cxt = Startup.mkTestBootCxt(
             "tf696bootTest", "tf696bootTest",
             mapOf(BoundaryFixture.loadFlag.name to "true"),
@@ -71,6 +73,8 @@ class TestFeaturesBoundaryTest : StringSpec({
     }
 
     "on a non-test instance, the same boot-defined client's testFeatures are neutralized" {
+        // Its own instance (issue #1075): BoundaryFixture's boot-defined client on a non-test instance: what that boot
+        // assembles is under test.
         val cxt = Startup.mkTestBootCxt(
             "tf696bootProd", "tf696bootProd",
             mapOf(ACFG.isTestInstance to false, BoundaryFixture.loadFlag.name to "true"),
@@ -80,7 +84,7 @@ class TestFeaturesBoundaryTest : StringSpec({
     }
 
     "on a non-test instance, an explicit write carrying testFeatures is refused" {
-        val cxt = Startup.mkTestBootCxt("tf696writeProd", "tf696writeProd", mapOf(ACFG.isTestInstance to false))
+        val cxt = TestInstances.notTestInstance("tf696writeProd")
         val client = "tf696writeprod"
         shouldThrow<KdrException> {
             GedraConfigService.get(cxt).writeConfig(asClient(cxt, client), clientWithTestFeatures(cxt, client))

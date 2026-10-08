@@ -31,7 +31,7 @@ class HomeUiConfigEndpointTest : StringSpec({
     fun Map<String, Any?>.list(key: String): List<Any?> = getValue(key) as List<*>
 
     "home ui config is anonymous and carries the fragments/features/state envelope" {
-        val cxt = Startup.mkTestBootCxt("uiHome", "uiHomeTest")
+        val cxt = TestInstances.default("uiHome")
         val client = TestHttpClient(cxt.instanceConfig)
 
         // No login: the home page is the shell a logged-out visitor lands on.
@@ -50,7 +50,7 @@ class HomeUiConfigEndpointTest : StringSpec({
     }
 
     "home ui config offers the readme as a versioned document link" {
-        val cxt = Startup.mkTestBootCxt("uiHomeLinks", "uiHomeLinksTest")
+        val cxt = TestInstances.default("uiHomeLinks")
         val client = TestHttpClient(cxt.instanceConfig)
 
         val links = results(client.sendJsonGetRequest(HEP.homeUiConfig)).obj(UIC.state).list(HFLD.links)
@@ -75,7 +75,7 @@ class HomeUiConfigEndpointTest : StringSpec({
     // the list and -- worse -- from the link-resolution map. Enumerating the expected ids turns that into a
     // named failure. Keep this list in step when registering a document (issue #492).
     "every registered document is served -- registry, build copy, and HDOC ids in step" {
-        val cxt = Startup.mkTestBootCxt("uiHomeAll", "uiHomeAllTest")
+        val cxt = TestInstances.default("uiHomeAll")
         val links = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig))
             .obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap() }
         val ids = links.map { it[HFLD.id] }
@@ -90,11 +90,12 @@ class HomeUiConfigEndpointTest : StringSpec({
     }
 
     "source repo base is absent by default and configured from the env var" {
-        val plain = Startup.mkTestBootCxt("uiHomeNoRepo", "uiHomeNoRepoTest")
+        val plain = TestInstances.default("uiHomeNoRepo")
         val plainState = results(TestHttpClient(plain.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)).obj(UIC.state)
         // Unconfigured: the field is simply absent, which is how the frontend leaves a non-document link alone.
         plainState.containsKey(HFLD.sourceRepoBase) shouldBe false
 
+        // Its own instance (issue #1075): it changes instance configuration (`instanceConfig.put`) while running.
         val cxt = Startup.mkTestBootCxt("uiHomeRepo", "uiHomeRepoTest")
         cxt.instanceConfig.put(HDOCENV.sourceRepoUrl.name, "https://github.com/o/r")
         cxt.instanceConfig.put(HDOCENV.sourceRepoBranch.name, "trunk")
@@ -104,6 +105,7 @@ class HomeUiConfigEndpointTest : StringSpec({
     }
 
     "layout flags come from the deployment's instance config" {
+        // Its own instance (issue #1075): it changes instance configuration (`instanceConfig.put`) while running.
         val cxt = Startup.mkTestBootCxt("uiHomeCfg", "uiHomeCfgTest")
         // A deployment that wants a top menu bar and inline links instead of the default left bar.
         cxt.instanceConfig.put(HCFG.homeTopBar, true)
@@ -118,7 +120,7 @@ class HomeUiConfigEndpointTest : StringSpec({
     }
 
     "the readme document is served whole and renders as Markdown" {
-        val cxt = Startup.mkTestBootCxt("uiHomeDoc", "uiHomeDocTest")
+        val cxt = TestInstances.default("uiHomeDoc")
         val client = TestHttpClient(cxt.instanceConfig)
 
         val buildId = MarkdownDocService.docBuildId(HDOC.readme)

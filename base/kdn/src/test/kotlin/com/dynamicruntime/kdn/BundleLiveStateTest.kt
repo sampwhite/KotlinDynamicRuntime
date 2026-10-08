@@ -23,7 +23,7 @@ import io.kotest.matchers.shouldBe
  * the bundles summary's latest *published* version beside the latest version, and the overview row's tier.
  */
 class BundleLiveStateTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("bundleLive1001", "bundleLive1001")
+    val cxt = TestInstances.default("bundleLive1001")
     val svc = GedraConfigService.get(cxt)
 
     "the summary names the published version under a draft, and the overview row the client's tier" {

@@ -40,9 +40,10 @@ import io.kotest.matchers.string.shouldContain
  * also guards the demo itself -- a demo that no longer loads would otherwise be found at demo time.
  */
 class DesignViewTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("designView972", "designView972")
-    val client = DesignDemo.client
-    GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client), designDemoConfig(cxt))
+    val cxt = TestInstances.default("designView972")
+    // A copy of the demo's shape under a client of its own: the instance is shared, and other tests write the demo's.
+    val client = "${DesignDemo.client}view"
+    GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client), designDemoConfig(cxt, client))
     GedraConfigReload.reloadClient(cxt, client)
 
     val admin = TestUser.create(cxt, "designer@$client.test", level = ROLE.admin, userClient = client)

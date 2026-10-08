@@ -26,7 +26,7 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
  * and dropped with the global one when that is reset.
  */
 class ClientSchemaTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("clientSchema946", "clientSchema946")
+    val cxt = TestInstances.default("clientSchema946")
     val client = "cschema946"
     val union = "${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"
 

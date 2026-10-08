@@ -23,7 +23,7 @@ import io.kotest.matchers.shouldBe
  * Its own client, as `GedraDataCacheTest` explains.
  */
 class GedraSortTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("gedraSort", "gedraSortTest")
+    val cxt = TestInstances.default("gedraSort")
     val client = "gsortclient"
     val kind = GedraDataType.formDoc
     val scope = ReadScope.ofClient(client)

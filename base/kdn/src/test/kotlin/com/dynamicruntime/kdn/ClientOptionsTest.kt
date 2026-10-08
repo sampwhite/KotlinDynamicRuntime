@@ -1,6 +1,5 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
@@ -40,7 +39,7 @@ class ClientOptionsTest : StringSpec({
 
     // Env-authed (issue #489): this tests the client-filter *options* on the catalog endpoint, so the caller
     // must see /schema/endpoints itself -- which the publicApi restriction would hide from a non-env-authed one.
-    val cxt = Startup.mkTestBootCxt("clientOptions", "clientOptionsTest", mapOf(ACFG.assumeEnvAuth to true))
+    val cxt = TestInstances.envAuth("clientOptions")
 
     /** The values offered for [field] on the input schema of [path], as this caller is shown them. */
     fun offered(user: TestUser, path: String, field: String): List<String> =

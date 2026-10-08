@@ -43,7 +43,7 @@ class AuthUserCacheTest : StringSpec({
         UserService.get(cxt).also { it.checkInit(cxt) }
 
     "a written user is cached, and each read gets its own row rather than the cached one" {
-        val cxt = Startup.mkTestBootCxt("userCache", "userCacheTest")
+        val cxt = TestInstances.default("userCache")
         val service = users(cxt)
         val cache = service.userCache.shouldNotBeNull()
 
@@ -66,7 +66,7 @@ class AuthUserCacheTest : StringSpec({
     }
 
     "an update is visible to the very next read, with no request boundary in between" {
-        val cxt = Startup.mkTestBootCxt("userCacheRyw", "userCacheRywTest")
+        val cxt = TestInstances.default("userCacheRyw")
         val service = users(cxt)
         val userId = service.provisionUser(cxt, "ucache-ryw@example.com", CL.public, listOf(ROLE.user))
         service.queryByUserId(cxt, userId).shouldNotBeNull() // warm the cache with the pre-update row
@@ -81,7 +81,7 @@ class AuthUserCacheTest : StringSpec({
     }
 
     "a disabled user leaves the cache but still resolves, through the SQL fallback" {
-        val cxt = Startup.mkTestBootCxt("userCacheOff", "userCacheOffTest")
+        val cxt = TestInstances.default("userCacheOff")
         val service = users(cxt)
         val cache = service.userCache.shouldNotBeNull()
         val userId = service.provisionUser(cxt, "ucache-disabled@example.com", CL.public, listOf(ROLE.user))
@@ -106,6 +106,7 @@ class AuthUserCacheTest : StringSpec({
      * broken merge would show up only as a log line.
      */
     "a request that creates a user publishes the change to the shared cache-state row" {
+        // Its own instance (issue #1075): it pushes the instance clock 400 days ahead, which is instance-wide.
         val cxt = Startup.mkTestBootCxt("userCacheState", "userCacheStateTest")
         val caches = SqlTableCacheService.get(cxt)
 
@@ -135,7 +136,7 @@ class AuthUserCacheTest : StringSpec({
      * all.
      */
     "the operator report shows this node's caches beside the dates every node shares" {
-        val cxt = Startup.mkTestBootCxt("userCacheReport", "userCacheReportTest")
+        val cxt = TestInstances.default("userCacheReport")
         val opal = TestUser.createOperator(cxt, "ucache-operator@example.com")
 
         // A request first, so there is something for the shared row to hold.
@@ -170,7 +171,7 @@ class AuthUserCacheTest : StringSpec({
      * report it accompanies.
      */
     "the reload action forces one cache or all to reload and reports what it touched" {
-        val cxt = Startup.mkTestBootCxt("userCacheReload", "userCacheReloadTest")
+        val cxt = TestInstances.default("userCacheReload")
         val opal = TestUser.createOperator(cxt, "ureload-operator@example.com")
         TestUser.create(cxt, "ureload-seed@example.com")
 

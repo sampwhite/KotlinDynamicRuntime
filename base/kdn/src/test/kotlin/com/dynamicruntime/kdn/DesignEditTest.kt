@@ -47,7 +47,7 @@ import io.kotest.matchers.string.shouldContain
  * collect the same trait -- which is what makes "this workflow only" visible.
  */
 class DesignEditTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("designEdit984", "designEdit984")
+    val cxt = TestInstances.default("designEdit984")
     // Provisioned by its simulation (issue #997), so its configuration is published -- a Design View save publishes,
     // as the Clients page's editors do, and refuses a config carrying unpublished changes (issue #1026).
     val client = provisionDesignDemo(cxt).clients.single()

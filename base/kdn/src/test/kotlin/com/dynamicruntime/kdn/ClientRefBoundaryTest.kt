@@ -27,7 +27,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class ClientRefBoundaryTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("refBoundary", "clientRefBoundaryTest")
+    val cxt = TestInstances.default("refBoundary")
     val owner = "refboundaryowner"
     val other = "refboundaryother"
 

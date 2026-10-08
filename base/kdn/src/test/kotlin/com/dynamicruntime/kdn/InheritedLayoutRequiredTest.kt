@@ -37,6 +37,8 @@ class InheritedLayoutRequiredTest : StringSpec({
 
     "outside production, an inherited authoritative layout omitting a field the client requires refuses the boot" {
         val message = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: InheritedLayoutFixture is expected to
+            // refuse it.
             Startup.mkTestBootCxt(
                 "inheritedLayout", "inheritedLayoutTest", overlay, listOf(InheritedLayoutFixture()),
             )
@@ -46,6 +48,8 @@ class InheritedLayoutRequiredTest : StringSpec({
     }
 
     "in production, that client renders the type without a layout, and global keeps its own" {
+        // Its own instance (issue #1075): a production boot with InheritedLayoutFixture: what that boot assembles is
+        // under test.
         val prod: KdrCxt = Startup.mkBootCxt(
             "inheritedLayoutProd", "inheritedLayoutProdTest",
             overlay + mapOf(ACFG.env to ENV.prod, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true),

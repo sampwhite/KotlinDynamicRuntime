@@ -38,6 +38,7 @@ class BackendReferenceCheckTest : StringSpec({
     // --- dangling: the pulled key must exist in the (backend) target ------------------------------------
 
     "a backend pull naming a missing key in a backend file is a dangling reference" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beDangling", "beDanglingTest")
         val data = backend("beData", "email", "subject" to "Code")
         val puller = backend("bePull", "email", "body" to """%{@t("beData.email.gone")}""")
@@ -48,6 +49,7 @@ class BackendReferenceCheckTest : StringSpec({
     }
 
     "a guarded backend pull to a missing key is left to its default, not reported" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beGuarded", "beGuardedTest")
         val data = backend("beData", "email", "subject" to "Code")
         val puller = backend("bePull", "email", "body" to """%{@t("beData.email.gone") ?: "fallback"}""")
@@ -56,6 +58,7 @@ class BackendReferenceCheckTest : StringSpec({
     }
 
     "a backend pull whose key exists in the target is clean" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beValidRef", "beValidRefTest")
         val data = backend("beData", "email", "subject" to "Code")
         val puller = backend("bePull", "email", "body" to """Subject: %{@t("beData.email.subject")}""")
@@ -68,6 +71,7 @@ class BackendReferenceCheckTest : StringSpec({
     // --- cross-file cycles ------------------------------------------------------------------------------
 
     "a backend reference cycle across files is reported" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beCycle", "beCycleTest")
         val a = backend("beA", "x", "a" to """%{@t("beB.x.b")}""")
         val b = backend("beB", "x", "b" to """%{@t("beA.x.a")}""")
@@ -78,6 +82,7 @@ class BackendReferenceCheckTest : StringSpec({
     }
 
     "a strict boot refuses on a backend reference cycle" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beCycleStrict", "beCycleStrictTest")
         val a = backend("beA", "x", "a" to """%{@t("beB.x.b")}""")
         val b = backend("beB", "x", "b" to """%{@t("beA.x.a")}""")
@@ -86,6 +91,7 @@ class BackendReferenceCheckTest : StringSpec({
     }
 
     "a non-cyclic backend chain is clean" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beChain", "beChainTest")
         val a = backend("beA", "x", "a" to """%{@t("beB.x.b")}""")
         val b = backend("beB", "x", "b" to "leaf")
@@ -101,6 +107,7 @@ class BackendReferenceCheckTest : StringSpec({
      * also make the answer depend on who asked. Both are why the scan is per variant (issue #505).
      */
     "a cycle closed only by a client's overlay is found, and named for that client" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beCliCycle", "beCliCycleTest")
         // Shared content is acyclic: beA -> beB, and beB's value is a leaf.
         val a = backend("beA", "x", "a" to """%{@t("beB.x.b")}""")
@@ -124,6 +131,7 @@ class BackendReferenceCheckTest : StringSpec({
     }
 
     "a shared cycle is reported once, not repeated on every client's row" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beCliDup", "beCliDupTest")
         val a = backend("beA", "x", "a" to """%{@t("beB.x.b")}""")
         val b = backend("beB", "x", "b" to """%{@t("beA.x.a")}""")
@@ -144,6 +152,7 @@ class BackendReferenceCheckTest : StringSpec({
      * instead would wrongly call acme's pull dangling.
      */
     "a pull that resolves only in the client's own view of the target is not reported" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("beCliTarget", "beCliTargetTest")
         val data = backend("beData", "email", "subject" to "Code")
         val puller = backend("bePull", "email", "body" to "plain, no pull")

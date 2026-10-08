@@ -26,7 +26,7 @@ import io.kotest.matchers.shouldBe
  */
 class UserSearchEndpointTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("userSearch", "userSearchEndpointTest")
+    val cxt = TestInstances.default("userSearch")
     val admin = TestUser.createFullAdmin(cxt, "chief@admin.test")
 
     // Three users under the unique `usrch.test` domain (so a search isolates them from the admin and from the

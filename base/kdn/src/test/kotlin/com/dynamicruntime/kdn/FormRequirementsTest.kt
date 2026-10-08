@@ -39,7 +39,7 @@ import io.kotest.matchers.string.shouldContain
  * is held to the schema alone, which is how "saved elsewhere" is made here.
  */
 class FormRequirementsTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("formReq1022", "formReq1022")
+    val cxt = TestInstances.default("formReq1022")
     val client = "formreq1022"
     val eventType = "client.$client.Event"
     fun alteration(vararg entries: Map<String, Any?>): Map<String, Any?> = mapOf(SCH.layout to mapOf(SL.schemaFields to entries.toList()))

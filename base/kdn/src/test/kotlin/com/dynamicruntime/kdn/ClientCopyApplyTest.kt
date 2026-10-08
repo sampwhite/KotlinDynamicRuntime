@@ -40,7 +40,7 @@ import io.kotest.matchers.string.shouldContain
  * stored, or keys held by two stored configs are refused. One booted instance; a client per case.
  */
 class ClientCopyApplyTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("clientCopyApply1062", "clientCopyApply1062")
+    val cxt = TestInstances.default("clientCopyApply1062")
     val svc = GedraConfigService.get(cxt)
     val fragments = MarkdownFragmentService.get(cxt)
 

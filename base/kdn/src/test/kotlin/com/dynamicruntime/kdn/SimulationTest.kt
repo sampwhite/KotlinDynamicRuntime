@@ -25,7 +25,7 @@ import io.kotest.matchers.string.shouldContain
  * without env auth.
  */
 class SimulationTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("simulation997", "simulation997")
+    val cxt = TestInstances.default("simulation997")
     // An ordinary signed-in user, no env auth: whoever is testing the instance.
     val tester = TestUser.create(cxt, "tester@simulation997.test")
     val designDemo = SIM.pathRoot + DesignDemo.simulationName

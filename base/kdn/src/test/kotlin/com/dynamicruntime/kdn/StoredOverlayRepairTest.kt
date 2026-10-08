@@ -42,7 +42,7 @@ import io.kotest.matchers.string.shouldContain
 class StoredOverlayRepairTest : StringSpec({
 
     val warn = mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name)
-    val cxt = Startup.mkTestBootCxt("overlayRepair", "storedOverlayRepairTest", warn)
+    val cxt = TestInstances.storedConfigWarn("overlayRepair")
 
     fun writer(on: KdrCxt, client: String): KdrCxt = on.mkSubContext("overlayWrite", client).also { it.userId = 8411L }
 
@@ -114,6 +114,8 @@ class StoredOverlayRepairTest : StringSpec({
     "an unresolvable layout pull in stored config no longer refuses the restart" {
         val db = mapOf("KDR_DB_NAME" to "overlayRepair_pull", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "ovl841pull"
+        // Its own instance (issue #1075): the first of three boots over its own database (`KDR_DB_NAME`); the restarts'
+        // boot-time repair is under test.
         val first = Startup.mkTestBootCxt("overlayRepair1", "storedOverlayRepair1", db + warn)
         storeAndReload(first, client) {
             type("Pulled") {
@@ -123,11 +125,14 @@ class StoredOverlayRepairTest : StringSpec({
             }
         }
 
+        // Its own instance (issue #1075): a restart over the same database, whose boot-time repair is under test.
         val restarted = Startup.mkTestBootCxt("overlayRepair2", "storedOverlayRepair2", db + warn)
         val issue = ClientConfigIssues.get(restarted).issuesFor(client).single()
         issue.message shouldContain "noSuchFile841"
         issue.elementId shouldBe "${clientNamespace(client)}.Pulled"
 
+        // Its own instance (issue #1075): the boot itself is under test: a strict restart over the same database is
+        // expected to refuse.
         shouldThrow<KdrException> { Startup.mkTestBootCxt("overlayRepair3", "storedOverlayRepair3", db) }
             .message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
     }

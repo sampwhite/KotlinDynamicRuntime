@@ -37,7 +37,7 @@ import io.kotest.matchers.string.shouldMatch
 class OperatorRoleTest : StringSpec({
 
     val systemInfo = "/operator/system/info"
-    val cxt = Startup.mkTestBootCxt("op", "operatorRoleTest")
+    val cxt = TestInstances.default("op")
 
     /** Grants `[user, operator]` to [target] through the real admin endpoint, as [admin]. */
     fun grantOperator(admin: TestUser, target: TestUser) {

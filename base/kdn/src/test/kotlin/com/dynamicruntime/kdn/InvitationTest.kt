@@ -33,6 +33,7 @@ import kotlin.time.Duration.Companion.days
  * identity, and signs them in. Driven through the endpoints, reading the link back from the simulated mail sink.
  */
 class InvitationTest : StringSpec({
+    // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("invitation", "invitationTest")
     val users = UserService.get(cxt)
 
@@ -149,7 +150,7 @@ class InvitationTest : StringSpec({
  * answers as a success, and the mail says what matched.
  */
 class ClaimAccountTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("claim", "claimAccountTest")
+    val cxt = TestInstances.default("claim")
     val users = UserService.get(cxt)
     val node = com.dynamicruntime.common.node.NodeService.get(cxt)
 

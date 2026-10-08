@@ -39,7 +39,7 @@ import io.kotest.matchers.shouldBe
  * Its own client ids, so nothing here depends on which clients other code declares.
  */
 class AdminGedraConfigEndpointTest : StringSpec({
-    val cxt: KdrCxt = Startup.mkTestBootCxt("adminCfgEp", "adminCfgEpTest")
+    val cxt: KdrCxt = TestInstances.default("adminCfgEp")
 
     // A full-scope admin: ROLE.admin + allClients, the only caller the `/admin` config surface admits.
     fun fullAdmin(): TestUser = TestUser.createFullAdmin(cxt, "admincfg@example.com")

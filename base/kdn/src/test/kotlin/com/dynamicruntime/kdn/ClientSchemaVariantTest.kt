@@ -36,6 +36,8 @@ import io.kotest.matchers.types.shouldBeSameInstanceAs
  */
 class ClientSchemaVariantTest : StringSpec({
 
+    // Its own instance (issue #1075): what the boot builds from VariantFixtureComponent (a client's schema variant) is
+    // under test.
     fun boot(name: String): KdrCxt {
         return Startup.mkTestBootCxt("variants", name, mapOf(VariantFixtureComponent.loadFlag.name to "true"), additionalComponents = listOf(VariantFixtureComponent()))
     }
@@ -86,6 +88,8 @@ class ClientSchemaVariantTest : StringSpec({
     // that is invalid to everybody else.
     "an alteration that widens refuses the boot" {
         val ex = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: WideningFixtureComponent is expected to
+            // refuse it.
             Startup.mkTestBootCxt("widening", "wideningVariantTest", mapOf(WideningFixtureComponent.loadFlag.name to "true"), additionalComponents = listOf(WideningFixtureComponent()))
         }
         val message = ex.fullMessage()

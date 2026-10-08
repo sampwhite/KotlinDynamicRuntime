@@ -50,7 +50,7 @@ import io.kotest.matchers.string.shouldContain
  * so a case changes one: `main` (the definition), `traits`, and `flows` (a workflow over them).
  */
 class ConfigImpactTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("configImpact935", "configImpact935")
+    val cxt = TestInstances.default("configImpact935")
     val svc = GedraConfigService.get(cxt)
 
     /** The `traits` bundle: `memo` (with [memoRequired] when given, a newly required field) and, unless dropped, `extra`. */

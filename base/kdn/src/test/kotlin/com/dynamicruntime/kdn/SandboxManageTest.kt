@@ -27,7 +27,7 @@ import io.kotest.matchers.shouldBe
  * beside its parent. One booted instance; a client per case.
  */
 class SandboxManageTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("sandboxManage932", "sandboxManage932")
+    val cxt = TestInstances.default("sandboxManage932")
     val svc = GedraConfigService.get(cxt)
 
     /** Defines [client] -- no sandbox -- and publishes and reloads it. */

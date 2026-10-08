@@ -35,7 +35,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class ClientOperatorFieldsTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("opFields", "clientOperatorFieldsTest")
+    val cxt = TestInstances.default("opFields")
     val client = "op820"
 
     fun def(

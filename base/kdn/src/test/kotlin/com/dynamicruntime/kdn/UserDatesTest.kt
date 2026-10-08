@@ -23,6 +23,7 @@ import kotlin.time.Duration.Companion.minutes
  */
 class UserDatesTest : StringSpec({
 
+    // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("userDates", "userDatesTest")
     val admin = TestUser.createFullAdmin(cxt, "dates-admin@example.com")
 

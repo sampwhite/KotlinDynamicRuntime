@@ -30,7 +30,7 @@ class EnvAuthHeaderTest : StringSpec({
     fun features(resp: Map<String, Any?>): Map<String, Any?> = results(resp).getValue(UIC.features)!!.toJsonMap()
 
     "the header lands on the request context and is reported to the frontend" {
-        val cxt = Startup.mkTestBootCxt("envAuthOn", "envAuthOnTest")
+        val cxt = TestInstances.default("envAuthOn")
         val client = TestHttpClient(cxt.instanceConfig)
         client.setHeader(ENVA.header, "envauth.alice@gyassa.com")
 
@@ -44,7 +44,7 @@ class EnvAuthHeaderTest : StringSpec({
     }
 
     "a request that did not come through an edge reports nothing" {
-        val cxt = Startup.mkTestBootCxt("envAuthNone", "envAuthNoneTest")
+        val cxt = TestInstances.default("envAuthNone")
         val client = TestHttpClient(cxt.instanceConfig)
         client.sendGetRequest(APP.uiConfig).createdCxt?.envAuthEmail shouldBe null
         features(client.sendJsonGetRequest(APP.uiConfig))[APP.isEnvAuthed] shouldBe false
@@ -56,6 +56,8 @@ class EnvAuthHeaderTest : StringSpec({
      * that protects every node not behind an edge would be untested.
      */
     "a node that does not trust the header ignores it entirely" {
+        // Its own instance (issue #1075): a node that does not trust the env-auth header (`ACFG.trustEnvAuthHeader`), a
+        // setup no shared entry has.
         val cxt = Startup.mkTestBootCxt(
             "envAuthOff", "envAuthOffTest", mapOf(ACFG.trustEnvAuthHeader to false),
         )
@@ -67,7 +69,7 @@ class EnvAuthHeaderTest : StringSpec({
     }
 
     "a header this node would not repeat leaves the request simply not env-authed" {
-        val cxt = Startup.mkTestBootCxt("envAuthBad", "envAuthBadTest")
+        val cxt = TestInstances.default("envAuthBad")
         val client = TestHttpClient(cxt.instanceConfig)
         client.setHeader(ENVA.header, "envauth.eve@gyassa.com\r\nINFO fabricated log line")
 
@@ -83,7 +85,7 @@ class EnvAuthHeaderTest : StringSpec({
      * are asserted, because collapsing the two axes into one is exactly the modeling mistake to guard against.
      */
     "env auth is a property of the channel, not of the user" {
-        val cxt = Startup.mkTestBootCxt("envAuthWho", "envAuthWhoTest")
+        val cxt = TestInstances.default("envAuthWho")
 
         // Env-authed channel, anonymous caller.
         val anon = TestHttpClient(cxt.instanceConfig)
@@ -106,7 +108,7 @@ class EnvAuthHeaderTest : StringSpec({
      * while still knowing that it is -- which is what keeps the control that restores it on screen.
      */
     "suppressing turns the effective flag off and leaves availability on" {
-        val cxt = Startup.mkTestBootCxt("envAuthSuppress", "envAuthSuppressTest")
+        val cxt = TestInstances.default("envAuthSuppress")
         val client = TestHttpClient(cxt.instanceConfig)
         client.setHeader(ENVA.header, "envauth.sara@gyassa.com")
 
@@ -125,7 +127,7 @@ class EnvAuthHeaderTest : StringSpec({
     }
 
     "suppressing when there is no env auth to suppress changes nothing" {
-        val cxt = Startup.mkTestBootCxt("envAuthSuppressNone", "envAuthSuppressNoneTest")
+        val cxt = TestInstances.default("envAuthSuppressNone")
         val client = TestHttpClient(cxt.instanceConfig)
         client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.suppress.name))
 
@@ -137,7 +139,7 @@ class EnvAuthHeaderTest : StringSpec({
     // ---- the tri-state debug state (issue #517) ----------------------------
 
     "the env control cycles through off, on, and debug" {
-        val cxt = Startup.mkTestBootCxt("envDebugCycle", "envDebugCycleTest")
+        val cxt = TestInstances.default("envDebugCycle")
         val client = TestHttpClient(cxt.instanceConfig)
         client.setHeader(ENVA.header, "envauth.dev@gyassa.com")
 
@@ -163,10 +165,7 @@ class EnvAuthHeaderTest : StringSpec({
     "debug opens the debug behaviors on a node that is not a test instance" {
         // Not a test instance, so allowDebugPages/showErrorDetail are off by default -- but env auth is assumed
         // (the local-box path), so an env-authed operator can turn debug on for their own session (issue #517).
-        val cxt = Startup.mkTestBootCxt(
-            "envDebugProd", "envDebugProdTest",
-            mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
-        )
+        val cxt = TestInstances.envAuthNotTestInstance("envDebugProd")
         val client = TestHttpClient(cxt.instanceConfig)
 
         val before = features(client.sendJsonGetRequest(APP.uiConfig))
@@ -185,7 +184,7 @@ class EnvAuthHeaderTest : StringSpec({
     "the debug cookie grants nothing without env auth" {
         // A plain unit node assumes no env auth, so a session that sets the debug cookie is still not env-authed
         // -- and debug requires effective env auth, the same rule the toggle's presence follows.
-        val cxt = Startup.mkTestBootCxt("envDebugNoAuth", "envDebugNoAuthTest")
+        val cxt = TestInstances.default("envDebugNoAuth")
         val client = TestHttpClient(cxt.instanceConfig)
         client.sendJsonPostRequest(APP.envAuthPath, mapOf(APP.envAuthOp to EnvAuthOp.debug.name))
 
@@ -200,7 +199,7 @@ class EnvAuthHeaderTest : StringSpec({
      * here is no env auth.
      */
     "the test fixture asserts env auth for a session no edge vouched for" {
-        val cxt = Startup.mkTestBootCxt("envAuthFixture", "envAuthFixtureTest")
+        val cxt = TestInstances.default("envAuthFixture")
         val client = TestHttpClient(cxt.instanceConfig)
 
         features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthSuppressible] shouldBe false
@@ -227,6 +226,8 @@ class EnvAuthHeaderTest : StringSpec({
      * because either alone leaves a way in.
      */
     "a real-shaped node refuses a forged fixture cookie, and does not serve the fixture at all" {
+        // Its own instance (issue #1075): a real-shaped node (not a test instance) that trusts the env-auth header, a
+        // setup no shared entry has.
         val cxt = Startup.mkTestBootCxt(
             "envAuthReal", "envAuthRealTest",
             mapOf(ACFG.isTestInstance to false, ACFG.trustEnvAuthHeader to true),

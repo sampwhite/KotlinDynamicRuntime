@@ -19,7 +19,7 @@ import io.kotest.matchers.shouldNotBe
  * remove their own `public` user once they hold a registered user in a real client.
  */
 class PublicPlaceholderTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("publicPlaceholder", "publicPlaceholderTest")
+    val cxt = TestInstances.default("publicPlaceholder")
     val users = UserService.get(cxt)
 
     // --- the default-user fallback -------------------------------------------------------------------------

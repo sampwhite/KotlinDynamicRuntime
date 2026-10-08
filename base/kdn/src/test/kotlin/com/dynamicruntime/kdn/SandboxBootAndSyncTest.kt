@@ -60,6 +60,8 @@ class SandboxBootAndSyncTest : StringSpec({
 
     // --- a source-defined parent ---------------------------------------------------------------------------
 
+    // Its own instance (issue #1075): SandboxParentComponent, a source-defined parent no shared entry has, whose source
+    // client it reloads.
     val source = Startup.mkTestBootCxt("sandboxSource", "sandboxSourceTest", emptyMap(), listOf(SandboxParentComponent()))
     val parent = SandboxParentComponent.clientId
 
@@ -88,6 +90,8 @@ class SandboxBootAndSyncTest : StringSpec({
     // --- persistent nodes ------------------------------------------------------------------------------------
 
     val db = mapOf("KDR_DB_NAME" to "sandboxSyncDb", "KDR_LOAD_STORED_CONFIG" to "true")
+    // Its own instance (issue #1075): nodes A and B, two nodes over one database of their own (`KDR_DB_NAME`), as
+    // syncing between peers needs.
     val nodeA = Startup.mkTestBootCxt("sandboxSyncA", "sandboxSyncNodeA", db)
     val nodeB = Startup.mkTestBootCxt("sandboxSyncB", "sandboxSyncNodeB", db)
     GedraConfigService.get(nodeB).configCache = null
@@ -114,6 +118,7 @@ class SandboxBootAndSyncTest : StringSpec({
     // A node booting after the change builds the sandbox from its boot load, and announces its marker on restart.
     "a persistent node builds the sandbox from what it loads at boot" {
         val client = "sbxsync"
+        // Its own instance (issue #1075): a third node over the same database, whose boot-time load is under test.
         val nodeC = Startup.mkTestBootCxt("sandboxSyncC", "sandboxSyncNodeC", db)
         traits(nodeC, client) shouldNotContain "syB"
         traits(nodeC, sandboxOf(client)) shouldContain "syB"
@@ -124,10 +129,13 @@ class SandboxBootAndSyncTest : StringSpec({
     // client consumes anything at boot -- and the sandbox must still be built with the draft, as a reload builds it.
     "a node booting with nothing consumed still gives the sandbox its parent's drafts" {
         val draftDb = mapOf("KDR_DB_NAME" to "sandboxDraftDb", "KDR_LOAD_STORED_CONFIG" to "true")
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time load is under test.
         val first = Startup.mkTestBootCxt("sandboxDraft1", "sandboxDraftNode1", draftDb, listOf(SandboxParentComponent()))
         write(first, parent, "drA", define = false)
         GedraConfigService.get(first).setPublishedOnly(asClient(first, parent), parent, true)
 
+        // Its own instance (issue #1075): the restart over the same database, whose boot-time load is under test.
         val second = Startup.mkTestBootCxt("sandboxDraft2", "sandboxDraftNode2", draftDb, listOf(SandboxParentComponent()))
         traits(second, parent) shouldNotContain "drA"
         traits(second, sandboxOf(parent)) shouldContain "drA"

@@ -73,7 +73,7 @@ class GedraConfigCurrentTest : StringSpec({
     }
 
     "a publish demotes the published head it supersedes, and nothing else" {
-        val cxt = Startup.mkTestBootCxt("currentFlags", "gedraConfigCurrentFlags")
+        val cxt = TestInstances.default("currentFlags")
         val client = "current875a"
         write(cxt, client, "v1")
         publish(cxt, client)
@@ -97,7 +97,7 @@ class GedraConfigCurrentTest : StringSpec({
     // No delete exists yet, but it is the one thing that can make history current again; `refresh` handles it, and
     // advances the promoted row's updatedAt so a cache that skipped it hears about it.
     "a revision made current again is promoted, with its updatedAt advanced" {
-        val cxt = Startup.mkTestBootCxt("currentPromote", "gedraConfigCurrentPromote")
+        val cxt = TestInstances.default("currentPromote")
         val client = "current875b"
         write(cxt, client, "v1")
         publish(cxt, client)
@@ -124,6 +124,8 @@ class GedraConfigCurrentTest : StringSpec({
     "a restart skips history, and backfills a database from before the flag" {
         val db = mapOf("KDR_DB_NAME" to "gedraConfigCurrent_restart", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "current875c"
+        // Its own instance (issue #1075): the first of three boots over its own database (`KDR_DB_NAME`); the restarts'
+        // boot-time load is under test.
         val first = Startup.mkTestBootCxt("current1", "gedraConfigCurrent1", db)
         write(first, client, "v1")
         publish(first, client)
@@ -131,6 +133,7 @@ class GedraConfigCurrentTest : StringSpec({
         publish(first, client)
         write(first, client, "v3")                   // v1 history, v2 published head, v3 draft
 
+        // Its own instance (issue #1075): a restart over the same database, whose boot-time load is under test.
         val second = Startup.mkTestBootCxt("current2", "gedraConfigCurrent2", db)
         val cache = GedraConfigService.get(second).configCache.shouldNotBeNull()
         cache.checkRefresh(second)
@@ -149,6 +152,8 @@ class GedraConfigCurrentTest : StringSpec({
             mapOf(GC.configId to classId(client)),
         )
         versionsFlagged(second, client, null) shouldContainExactlyInAnyOrder listOf(1L, 2L, 3L)
+        // Its own instance (issue #1075): a further restart over the same database, whose boot-time backfill is under
+        // test.
         val third = Startup.mkTestBootCxt("current3", "gedraConfigCurrent3", db)
         versionsFlagged(third, client, true) shouldContainExactlyInAnyOrder listOf(2L, 3L)
         versionsFlagged(third, client, false) shouldContainExactlyInAnyOrder listOf(1L)

@@ -24,6 +24,7 @@ import io.kotest.matchers.shouldBe
  * client, so the revisions counted are only the ones written here.
  */
 class GedraConfigCacheTest : StringSpec({
+    // Its own instance (issue #1075): it freezes the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("gedraCfgCache", "gedraCfgCacheTest")
     val client = "cfgcacheclient"
     val name = "cached"

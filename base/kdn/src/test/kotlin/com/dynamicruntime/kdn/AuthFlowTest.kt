@@ -56,6 +56,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @Suppress("UnnecessaryVariable")
 class AuthFlowTest : StringSpec({
 
+    // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
     // The one instance the whole flow runs on.
     val cxt = Startup.mkTestBootCxt("auth", "authFlowTest")
 
@@ -582,7 +583,7 @@ class AuthFlowTest : StringSpec({
     // Its own instance: a different config cannot join the flow.
     "a sensitive error is obfuscated to a generic message where the deployment obfuscates (issue #108)" {
         // Boot with obfuscation on (a prod deployment has it on by default; here the config option forces it).
-        val obfCxt = Startup.mkTestBootCxt("authObf", "authObfTest", mapOf(ACFG.obfuscateSensitiveErrors to true))
+        val obfCxt = TestInstances.obfuscatedErrors("authObf")
         val client = TestHttpClient(obfCxt.instanceConfig)
         val token = results(client.sendJsonGetRequest("/auth/form/createToken"))["formAuthToken"] as String
 

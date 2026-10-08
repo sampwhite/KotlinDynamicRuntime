@@ -21,13 +21,13 @@ class AppUiConfigEndpointTest : StringSpec({
     fun settings(resp: Map<String, Any?>): Map<String, Any?> = results(resp).getValue(UIC.settings)!!.toJsonMap()
 
     "app ui config is anonymous and reports obfuscation off by default (a non-prod deployment)" {
-        val cxt = Startup.mkTestBootCxt("appCfg", "appCfgTest")
+        val cxt = TestInstances.default("appCfg")
         val client = TestHttpClient(cxt.instanceConfig)
         features(client.sendJsonGetRequest(APP.uiConfig))[APP.obfuscateSensitiveErrors] shouldBe false
     }
 
     "the obfuscation flag follows the deployment config" {
-        val cxt = Startup.mkTestBootCxt("appCfgObf", "appCfgObfTest", mapOf(ACFG.obfuscateSensitiveErrors to true))
+        val cxt = TestInstances.obfuscatedErrors("appCfgObf")
         val client = TestHttpClient(cxt.instanceConfig)
         features(client.sendJsonGetRequest(APP.uiConfig))[APP.obfuscateSensitiveErrors] shouldBe true
     }
@@ -36,12 +36,10 @@ class AppUiConfigEndpointTest : StringSpec({
     // halves are asserted: on where the app is developed or tested, and off on a node shaped like a real one.
     // The second is the half that matters -- it is what keeps a stack trace off a user's screen.
     "the error-detail flag is on for a test instance and off for a real one" {
-        val testCxt = Startup.mkTestBootCxt("appCfgDetail", "appCfgDetailTest")
+        val testCxt = TestInstances.default("appCfgDetail")
         features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe true
 
-        val realCxt = Startup.mkTestBootCxt(
-            "appCfgNoDetail", "appCfgNoDetailTest", mapOf(ACFG.isTestInstance to false),
-        )
+        val realCxt = TestInstances.notTestInstance("appCfgNoDetail")
         realCxt.instanceConfig.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
         features(TestHttpClient(realCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe false
     }
@@ -50,18 +48,16 @@ class AppUiConfigEndpointTest : StringSpec({
     // separate flag: seeing internals and *manufacturing a failure* are different powers. The off half is the
     // one that matters -- it is what keeps a route that deliberately breaks the app off a real deployment.
     "the debug-page flag is on for a test instance and off for a real one" {
-        val testCxt = Startup.mkTestBootCxt("appCfgDebug", "appCfgDebugTest")
+        val testCxt = TestInstances.default("appCfgDebug")
         features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe true
 
-        val realCxt = Startup.mkTestBootCxt(
-            "appCfgNoDebug", "appCfgNoDebugTest", mapOf(ACFG.isTestInstance to false),
-        )
+        val realCxt = TestInstances.notTestInstance("appCfgNoDebug")
         realCxt.instanceConfig.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
         features(TestHttpClient(realCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe false
     }
 
     "the idle-bump interval defaults when the deployment does not tune it" {
-        val cxt = Startup.mkTestBootCxt("appCfgIdle", "appCfgIdleTest")
+        val cxt = TestInstances.default("appCfgIdle")
         val client = TestHttpClient(cxt.instanceConfig)
         // A JSON number round-trips through the parser as a Number; compare on the Int value.
         (settings(client.sendJsonGetRequest(APP.uiConfig))[APP.idleBumpIntervalMs] as Number).toInt() shouldBe
@@ -69,6 +65,8 @@ class AppUiConfigEndpointTest : StringSpec({
     }
 
     "the idle-bump interval follows the deployment config" {
+        // Its own instance (issue #1075): a deployment-tuned idle-bump interval (`ACFG.idleBumpIntervalMs`), a setup no
+        // shared entry has.
         val cxt = Startup.mkTestBootCxt("appCfgIdleSet", "appCfgIdleSetTest", mapOf(ACFG.idleBumpIntervalMs to 5000))
         val client = TestHttpClient(cxt.instanceConfig)
         (settings(client.sendJsonGetRequest(APP.uiConfig))[APP.idleBumpIntervalMs] as Number).toInt() shouldBe 5000

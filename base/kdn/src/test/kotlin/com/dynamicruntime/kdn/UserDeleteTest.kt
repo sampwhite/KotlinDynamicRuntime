@@ -24,7 +24,7 @@ import io.kotest.matchers.string.shouldContain
 class UserDeleteTest : StringSpec({
 
     "a recoverable delete disables the user and is undone by re-enabling" {
-        val cxt = Startup.mkTestBootCxt("userDelete", "userDeleteRecoverableTest")
+        val cxt = TestInstances.default("userDelete")
         val admin = TestUser.createFullAdmin(cxt, "chief@del.com")
         val created = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "recover@del.com", ADF.username to "recover"))
         val userId = created[ADF.userId] as Long
@@ -45,7 +45,7 @@ class UserDeleteTest : StringSpec({
     }
 
     "a permanent delete obfuscates the email, marks the former user, and frees the address" {
-        val cxt = Startup.mkTestBootCxt("userDelete", "userDeletePermanentTest")
+        val cxt = TestInstances.default("userDelete")
         val admin = TestUser.createFullAdmin(cxt, "chief@perm.com")
         val created = admin.postData(
             ADEP.userCreate,
@@ -92,7 +92,7 @@ class UserDeleteTest : StringSpec({
     }
 
     "you cannot delete your own account, permanently or otherwise" {
-        val cxt = Startup.mkTestBootCxt("userDelete", "userDeleteSelfTest")
+        val cxt = TestInstances.default("userDelete")
         val admin = TestUser.createFullAdmin(cxt, "chief@self.com")
         admin.expectError(EXC.badInput, ADEP.userDelete, args = mapOf(ADF.userId to admin.userId),
             method = HttpMethod.DELETE)

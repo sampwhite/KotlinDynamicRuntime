@@ -50,6 +50,7 @@ import io.kotest.matchers.string.shouldContain
  * source-defined template to extend.
  */
 class ClientCreateEndpointTest : StringSpec({
+    // Its own instance (issue #1075): env auth with ExtensionTemplateComponent's template, a setup no shared entry has.
     val cxt: KdrCxt = Startup.mkTestBootCxt(
         "clientCreate", "clientCreateEndpointTest", mapOf(ACFG.assumeEnvAuth to true), listOf(ExtensionTemplateComponent()),
     )

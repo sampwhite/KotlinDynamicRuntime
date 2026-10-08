@@ -38,6 +38,8 @@ import kotlin.time.Duration.Companion.seconds
  * Its own client, so nothing here depends on which configs `public` happens to hold.
  */
 class GedraConfigEndpointTest : StringSpec({
+    // Its own instance (issue #1075): it travels the instance clock (a case freezes and advances it), which is
+    // instance-wide.
     val cxt: KdrCxt = Startup.mkTestBootCxt("gedraCfgEp", "gedraCfgEpTest")
 
     // A client-scoped administrator (ROLE.admin, no allClients): the config surface's intended caller. No

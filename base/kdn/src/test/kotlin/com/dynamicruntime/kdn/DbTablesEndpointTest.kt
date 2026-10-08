@@ -20,7 +20,7 @@ import io.kotest.matchers.shouldBe
 class DbTablesEndpointTest : StringSpec({
 
     val path = "/operator/db/tables"
-    val cxt = Startup.mkTestBootCxt("dbTables", "dbTablesTest")
+    val cxt = TestInstances.default("dbTables")
 
     "an anonymous caller is refused the table catalog" {
         // No login at all: the operator section needs one, so this is a 401 rather than a 403.

@@ -408,13 +408,23 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
 - **`Startup.mkBootCxt(...)`** — the raw boot, no unit-env forcing. Use it to test behavior in a **non-unit**
   environment, e.g. a startup guard: `mkBootCxt("g", "gI", mapOf(ACFG.env to ENV.dev, ACFG.inMemoryOnly to true))`.
 
-- **Use a unique `instanceName` per test.** `InstanceRegistry` caches an instance by name, so a reused name
-  returns the earlier config and silently ignores your overlay.
+- **Share an instance by default; justify a private one (issue #1075).** In `base:kdn`, take the
+  `TestInstances` entry whose setup you need -- `TestInstances.default(cxtName)` for the base components, or a
+  profile such as `storedConfigWarn`, `envAuth` or `notTestInstance`. Each call returns a **fresh context** on one
+  shared instance, so re-binding your context's client or user touches nobody else. Isolate yourself there with
+  clients and user addresses of your own (`TestUser.create` *finds* an existing address and keeps its level, so a
+  reused address is somebody else's user), and never count or list everything on the instance. Boot an instance
+  of your own (`mkTestBootCxt` with a name of your own) only when the test changes something instance-wide, and
+  say which in a comment above the boot: the instance clock, the job scheduler, instance configuration set while
+  running, a restart against its own database, the boot itself under test, or a setup no entry has. A setup other
+  tests could share goes into `TestInstances` instead; within one file, share one instance across its tests rather
+  than booting one per test. In the `unit` environment the registry **refuses** a cached name asked for with
+  other components or settings, since a cache hit would otherwise ignore them silently.
 
 - **An in-memory database is one per instance name, and outlives the instance.** Unless `KDR_DB_NAME` names
   it, an in-memory H2 database takes the instance's name (issue #836), and the URL carries `DB_CLOSE_DELAY=-1`,
   so its rows last for the whole JVM and are found by name. Two consequences. Cases that boot the **same**
-  instance name — the common spec-level `val cxt` — share every row, so a value one case asserts by content (a
+  instance name — the common spec-level `val cxt`, and every test on a shared `TestInstances` entry — share every row, so a value one case asserts by content (a
   search for "Ada Lovelace") can match a user an earlier case created. And separate instances meant to share
   data — a restart, a second node — must name one database with `KDR_DB_NAME`, or the second boot finds an
   empty one. Prefixing fixture addresses and names with something specific to the test is still cheap

@@ -35,6 +35,8 @@ class SandboxBootTierTest : StringSpec({
             ?.variants?.isKnown(traitId) == true
 
     "a restarted node runs the published revision of a client whose definition asks for a sandbox; the sandbox its draft" {
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time load is under test.
         val first = Startup.mkTestBootCxt("sbxBootA", "sbxBootNodeA", db)
         val svc = GedraConfigService.get(first)
         val setup = first.mkSubContext("setup", client).also { it.userId = 9930L }

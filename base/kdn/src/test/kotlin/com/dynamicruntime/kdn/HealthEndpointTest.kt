@@ -22,11 +22,9 @@ import io.kotest.matchers.string.shouldContain
  */
 class HealthEndpointTest : StringSpec({
 
-    // The default-boot, read-only tests share one instance (its init is cached by instance name, so it runs
-    // once) and vary only the inexpensive context name. The context-root override test at the end needs its own
-    // instance -- it boots with a different apiContextRoot, and the instance cache is keyed on that name.
-    fun client(cxtName: String): TestHttpClient =
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "healthEndpointTest").instanceConfig)
+    // The read-only tests use the shared default instance (issue #1075) and vary only the inexpensive context name.
+    // The context-root override test at the end needs its own instance -- it boots with a different apiContextRoot.
+    fun client(cxtName: String): TestHttpClient = TestHttpClient(TestInstances.default(cxtName).instanceConfig)
 
     "GET /health returns a health envelope through the in-process client" {
         val client = client("healthGet")
@@ -112,6 +110,8 @@ class HealthEndpointTest : StringSpec({
     }
 
     "the context root is configurable; the default is not served when overridden" {
+        // Its own instance (issue #1075): a configured API context root (`ACFG.apiContextRoot`), a setup no shared
+        // entry has.
         val cxt = Startup.mkTestBootCxt(
             "healthCheck",
             "healthCfgTest",

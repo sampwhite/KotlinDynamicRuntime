@@ -42,6 +42,7 @@ import io.kotest.matchers.shouldBe
  * client's own bare `review` sits beside it as a second workflow, since shadowing by id is gone.
  */
 class RootedWorkflowTest : StringSpec({
+    // Its own instance (issue #1075): RootedWorkflowComponent, a fixture component no shared entry has.
     val cxt = Startup.mkTestBootCxt(
         "rootedWorkflow953", "rootedWorkflow953",
         mapOf(RootedWorkflowComponent.loadFlag.name to "true"),

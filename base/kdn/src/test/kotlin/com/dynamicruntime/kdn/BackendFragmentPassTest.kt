@@ -25,14 +25,14 @@ class BackendFragmentPassTest : StringSpec({
     fun service(cxt: com.dynamicruntime.common.context.KdrCxt) = MarkdownFragmentService.get(cxt)
 
     "the backend resolver resolves a three-part key across the registry" {
-        val cxt = Startup.mkTestBootCxt("beResolve", "beResolveTest")
+        val cxt = TestInstances.default("beResolve")
         val r = service(cxt).backendResolver(cxt)
         r.resolve("${FRAG.sample}.email.subject") shouldBe "Your verification code"
         r.resolve("${FRAG.sample}.portal.welcome") shouldBe "Welcome to the portal."
     }
 
     "the backend resolver names nothing for a bad or non-three-part key" {
-        val cxt = Startup.mkTestBootCxt("beResolveBad", "beResolveBadTest")
+        val cxt = TestInstances.default("beResolveBad")
         val r = service(cxt).backendResolver(cxt)
         r.resolve("email.subject").shouldBeNull()             // two parts -- no file named
         r.resolve("nofile.email.subject").shouldBeNull()      // unknown file
@@ -41,7 +41,7 @@ class BackendFragmentPassTest : StringSpec({
     }
 
     $$"the backend pass resolves %{...} and leaves ${...} for the frontend" {
-        val cxt = Startup.mkTestBootCxt("bePass", "bePassTest")
+        val cxt = TestInstances.default("bePass")
         val out = service(cxt).backendPass(
             cxt,
             $$"""be=%{@t("sample.email.subject")} fe=${@t("portal.welcome")} v=${keep}""",
@@ -53,7 +53,7 @@ class BackendFragmentPassTest : StringSpec({
     "choosing '%' makes '%%' an escape and a lone '%' literal" {
         // The cost of any template prefix, documented on backendPassPrefix so copy running a backend pass can
         // live with it: doubled is the escape, lone is untouched.
-        val cxt = Startup.mkTestBootCxt("bePct", "bePctTest")
+        val cxt = TestInstances.default("bePct")
         val s = service(cxt)
         s.backendPass(cxt, "100% off") shouldBe "100% off"       // a lone % is literal
         s.backendPass(cxt, "100%% off") shouldBe "100% off"      // doubled escapes to one
@@ -64,7 +64,7 @@ class BackendFragmentPassTest : StringSpec({
         // A *literal* missing key like this is now a boot finding too (issue #505), so it would not reach a
         // running node; this pins the runtime behavior that still backstops a **computed** key, which no
         // static check can resolve -- loud rather than a silently wrong string. `?:` opts into degrading.
-        val cxt = Startup.mkTestBootCxt("beMiss", "beMissTest")
+        val cxt = TestInstances.default("beMiss")
         val s = service(cxt)
         shouldThrow<KdrException> { s.backendPass(cxt, """x=%{@t("sample.email.gone")}""") }
         s.backendPass(cxt, """x=%{@t("sample.email.gone") ?: "fallback"}""") shouldBe "x=fallback"
@@ -75,7 +75,7 @@ class BackendFragmentPassTest : StringSpec({
         // resolves against is the *element* that carries the string, not the file the text came from -- which
         // is fine for a data substitution the carrier supplies, and is the author's assertion to get right for
         // a `${@t(...)}`. Demonstrated rather than asserted: `sample.email.body` carries `${code}`.
-        val cxt = Startup.mkTestBootCxt("beSplice", "beSpliceTest")
+        val cxt = TestInstances.default("beSplice")
         val out = service(cxt).backendPass(cxt, """%{@t("sample.email.body")}""")
         out shouldContain $$"""${code}"""
         // Untouched by the backend pass, so whoever evaluates this next owns resolving it -- and owes it a
@@ -83,7 +83,7 @@ class BackendFragmentPassTest : StringSpec({
     }
 
     "the fragmentDemo endpoint ships a backend-resolved, frontend-pending string" {
-        val cxt = Startup.mkTestBootCxt("beDemo", "beDemoTest")
+        val cxt = TestInstances.default("beDemo")
         val resp = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(TEP.fragmentDemo)
         val text = resp.getValue(EP.results)!!.toJsonMap()[TEP.demoText] as String
         text shouldContain "Your verification code"                 // backend pull, resolved

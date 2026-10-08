@@ -10,14 +10,12 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCEL
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigLoadService
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.ReportCombine
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaCollector
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -33,7 +31,7 @@ import io.kotest.matchers.string.shouldContain
  * definition schema has to resolve.
  */
 class StoredReportConfigTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("storedReport", "storedReportConfigTest")
+    val cxt = TestInstances.default("storedReport")
     val client = "rptstored"
     fun writer(): KdrCxt = cxt.mkSubContext("reportWrite", client).also { it.userId = 9470L }
 
@@ -63,9 +61,7 @@ class StoredReportConfigTest : StringSpec({
     // A stored report that a later release can no longer read -- planted here by patching the row, since a write
     // goes through the builder, which refuses it -- costs only itself, and the client and its other reports stay.
     "a stored report that cannot be read costs only itself at a reload" {
-        val warn = Startup.mkTestBootCxt(
-            "storedReportWarn", "storedReportWarnTest", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-        )
+        val warn = TestInstances.storedConfigWarn("storedReportWarn")
         val unreadable = "rptunread"
         val writer = warn.mkSubContext("reportWrite", unreadable).also { it.userId = 9471L }
         val config = gedraConfig(warn, "main", "client.$unreadable", unreadable) {

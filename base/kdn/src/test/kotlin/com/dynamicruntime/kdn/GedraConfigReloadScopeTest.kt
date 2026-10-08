@@ -9,14 +9,12 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.ConfigReloadResult
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.BCHK
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -56,7 +54,7 @@ class GedraConfigReloadScopeTest : StringSpec({
     // B4 strict, now fixed: the bad client's own reload is refused (stored config is strict in unit), but it no
     // longer takes an unrelated client's reload down with it.
     "on strict, one client's bad definition does not fail another client's reload" {
-        val cxt = Startup.mkTestBootCxt("reloadScopeS", "reloadScopeStrict")
+        val cxt = TestInstances.default("reloadScopeS")
         val bad = "scope842bad"
         val good = "scope842good"
 
@@ -70,9 +68,7 @@ class GedraConfigReloadScopeTest : StringSpec({
     }
 
     "on warn, a reload does not report another client's problems again" {
-        val cxt = Startup.mkTestBootCxt(
-            "reloadScopeW", "reloadScopeWarn", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-        )
+        val cxt = TestInstances.storedConfigWarn("reloadScopeW")
         val bad = "scope842drop"
         val good = "scope842fine"
 

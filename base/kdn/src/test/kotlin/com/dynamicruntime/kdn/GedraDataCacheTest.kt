@@ -40,6 +40,7 @@ import kotlin.time.Duration.Companion.seconds
  * the ids, the envelope and the storage entirely real while leaving the shared client alone.
  */
 class GedraDataCacheTest : StringSpec({
+    // Its own instance (issue #1075): it freezes and steps the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("gedraCache", "gedraCacheTest")
 
     val client = "gcacheclient"

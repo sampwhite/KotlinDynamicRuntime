@@ -38,7 +38,7 @@ import io.kotest.matchers.string.shouldContain
  * view reports the same verdict at each step.
  */
 class WorkflowSaveRuleTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("wfSaveRule856", "wfSaveRule856")
+    val cxt = TestInstances.default("wfSaveRule856")
     val client = "wfsave856"
     fun asClient(c: String): KdrCxt = cxt.mkSubContext("setup", c).also { it.userId = 9000L }
 

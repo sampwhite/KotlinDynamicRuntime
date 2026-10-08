@@ -25,6 +25,7 @@ import io.kotest.matchers.string.shouldContain
  * `next` and the last page without one both have to conform to the declared output.
  */
 class CursorPagingEndpointTest : StringSpec({
+    // Its own instance (issue #1075): CursorFixtureComponent, a fixture component no shared entry has.
     val cxt = Startup.mkTestBootCxt("cursorPaging", "cursorPagingTest", emptyMap(), listOf(CursorFixtureComponent()))
     val http = TestHttpClient(cxt.instanceConfig)
 

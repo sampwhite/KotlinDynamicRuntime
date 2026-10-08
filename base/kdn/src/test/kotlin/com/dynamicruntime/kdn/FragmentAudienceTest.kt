@@ -50,6 +50,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "the content server delivers a frontend file and refuses a backend one as though absent" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("audServe", "audServeTest")
         register(cxt)
         val client = TestHttpClient(cxt.instanceConfig)
@@ -70,6 +71,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a backend file the server withholds is still resolvable by the backend pass" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("audPull", "audPullTest")
         register(cxt)
         val resolver = service(cxt).backendResolver(cxt)
@@ -81,6 +83,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "the boot check does not mistake a backend file's cross-file reference for a dangling one" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("audCheckRef", "audCheckRefTest")
         // A backend value pulls another file three-part. The per-file walk cannot resolve three parts (that is
         // the registry-wide backend-pass check, still a follow-up), so the point is only that it does not
@@ -96,6 +99,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "the boot check still catches a malformed backend block" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("audCheckBad", "audCheckBadTest")
         // Syntax is syntax whoever finishes the value: an unterminated `%{` is caught here, at the keyboard.
         val back = fragmentInline(
@@ -108,6 +112,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a malformed *frontend* block in a backend file is caught too" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         // The half a single backend-prefix parse would miss: `${` is plain text to the `%` parser, so without
         // the second pass this file passes a strict boot and fails later at frontend render, an unbounded
         // distance from the keyboard. A backend file's `${...}` is carried onward, not exempt from syntax.
@@ -129,6 +134,7 @@ class FragmentAudienceTest : StringSpec({
      * naming it then fails somewhere else entirely. So the conflict is a boot finding, reported at its cause.
      */
     "bases disagreeing about audience is a boot finding, and a strict boot refuses" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("audConflict", "audConflictTest")
         val asFrontend = fragmentInline("audBoth", origin = "componentA", isOverlay = false) {
             namespace("welcome") { key("title", "Public copy") }
@@ -151,6 +157,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a conflict a client alone has is reported on that client's row" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         // The shared content is consistent, and only this client's own base disagrees -- so the file goes
         // private *for them alone*, and nothing on the shared row can say so. Suppressing the flag by
         // `client == null` would swallow exactly that.
@@ -185,6 +192,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a conflict the shared content already has is not repeated per client" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         // The other half: the suppression still does its original job. The conflict is in the shared bases, so
         // every client inherits it -- reporting it per row would say one thing N times, and a boot refusal
         // listing it three times reads as three broken files.
@@ -212,6 +220,7 @@ class FragmentAudienceTest : StringSpec({
     // --- the finding count ------------------------------------------------------------------------------
 
     "issueCount counts every kind of finding, not just template issues" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         // The 'is this file clean?' column. A file a strict boot refuses on must never report 0 here -- which
         // is exactly what it did while the count was `issues.size`.
         val cxt = Startup.mkTestBootCxt("audCount", "audCountTest")
@@ -228,6 +237,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a note is not counted as a finding" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("audCount2", "audCount2Test")
         val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
             namespace("email") { key("subject", $$"""Hello ${@t("greeting.hello")}""") }
@@ -240,6 +250,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a UI-config naming a backend file fails saying why, not 'not available'" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         // If the conflict above is ignored (production only warns), this is what the reader gets at the far
         // end. It must name the audience: the file is loaded and present, so "not available" sends them
         // hunting for a missing resource that is sitting right there.
@@ -255,6 +266,7 @@ class FragmentAudienceTest : StringSpec({
     // --- check 1: a frontend file must contain no %{...} backend block ------------------------------------
 
     "a frontend file carrying a backend block is a finding, and a strict boot refuses" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("chk1", "chk1Test")
         // A %{@t(...)} in a frontend file is the mistake this catches: it is served with no backend pass, so it
         // reaches the browser as the literal text `%{@t(...)}`.
@@ -275,6 +287,7 @@ class FragmentAudienceTest : StringSpec({
     // --- check 3: a backend pull may name only a backend file ---------------------------------------------
 
     "a backend pull naming a frontend file is a finding" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("chk3fe", "chk3feTest")
         val front = fragmentInline("audFront", origin = "test", isOverlay = false) {
             namespace("welcome") { key("title", "Hi") }
@@ -288,6 +301,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a backend pull naming another backend file is clean" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("chk3be", "chk3beTest")
         val data = fragmentInline("audData", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
             namespace("email") { key("subject", "Your code") }
@@ -300,6 +314,7 @@ class FragmentAudienceTest : StringSpec({
     }
 
     "a backend pull naming an undeclared file is a finding" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("chk3none", "chk3noneTest")
         val back = fragmentInline("audBack", origin = "test", isOverlay = false, audience = FragmentAudience.backend) {
             namespace("email") { key("subject", """%{@t("audNope.a.b")}""") }
@@ -312,6 +327,7 @@ class FragmentAudienceTest : StringSpec({
     // --- check 2: a carried frontend pull is a note, not a finding ----------------------------------------
 
     "a backend file carrying a frontend pull is a note, and does not fail a strict boot" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("chk2", "chk2Test")
         // The deliberate case the design revived: a backend template carries a `${@t(...)}` for the frontend to
         // finish against whatever element carries the composed string. Unverifiable here, so it is named, not failed.

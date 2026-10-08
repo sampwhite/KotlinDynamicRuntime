@@ -12,7 +12,6 @@ import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -20,7 +19,6 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import io.kotest.core.spec.style.StringSpec
@@ -39,9 +37,7 @@ import io.kotest.matchers.string.shouldContain
  * definitions here are flawed on purpose.
  */
 class StrictSchemaKeywordsTest : StringSpec({
-    val cxt: KdrCxt = Startup.mkTestBootCxt(
-        "strictKeywords", "strictSchemaKeywordsTest", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-    )
+    val cxt: KdrCxt = TestInstances.storedConfigWarn("strictKeywords")
     val admin = TestUser.createFullAdmin(cxt, "chief@strict1053.test")
     val client = "strict1053"
     val ns = clientNamespace(client)

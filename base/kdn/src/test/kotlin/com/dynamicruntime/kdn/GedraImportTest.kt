@@ -32,7 +32,7 @@ import io.kotest.matchers.shouldNotBe
  * state built up across the blocks, which run in declaration order.
  */
 class GedraImportTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("gedraImport", "gedraImportTest")
+    val cxt = TestInstances.default("gedraImport")
 
     val alice = TestUser.create(cxt, "alice@import.test", userClient = CL.hub)
     val bob = TestUser.create(cxt, "bob@import.test", userClient = CL.hub)
