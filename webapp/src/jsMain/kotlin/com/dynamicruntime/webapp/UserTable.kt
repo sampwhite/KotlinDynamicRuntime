@@ -217,12 +217,14 @@ fun cellValue(field: String, user: AdminUser): String = when (field) {
 
 /**
  * What a column-header click sorts by: the clicked [field] in the [order] antd reports (`ascend` / `descend`),
- * or -- for the cancel click, which antd reports as a null order -- the console's default order. Null when the
- * click named no field, which is not a sort. Pure, covered under `jsNodeTest`.
+ * or -- for the cancel click, which antd reports as a null order -- the console's default order. The order is
+ * checked first because antd's cancel names **no field** either: the sorter it hands back has neither, and reading
+ * that as "not a sort" was why cancelling did nothing. Null only for an order with no field, which no click sends.
+ * Pure, covered under `jsNodeTest`.
  */
 fun sortAfterHeaderClick(field: String?, order: String?): Pair<String, Boolean>? = when {
-    field == null -> null
     order == null -> defaultUserSortKey to defaultUserSortDescending
+    field == null -> null
     else -> field to (order == "descend")
 }
 
@@ -315,16 +317,32 @@ private fun column(title: String, dataIndex: String, width: Int?): dynamic {
 }
 
 /**
+ * The header-click cycle for the column sorting by [sortKey], as antd's `sortDirections` (antd moves to the entry
+ * after the current one, and cancels the sort past the last). Most columns take antd's own cycle -- ascend, descend,
+ * then cancel, which returns to the default order ([sortAfterHeaderClick]) -- so null. The **default** column's cancel
+ * would land on the order it already shows, an offered choice that does nothing; so its cycle starts on the default
+ * direction and ends where it began, never reaching the cancel: `descend, ascend, descend` for newest-first. Pure,
+ * covered under `jsNodeTest`.
+ */
+fun userSortCycle(sortKey: String): List<String>? {
+    if (sortKey != defaultUserSortKey) return null
+    val first = if (defaultUserSortDescending) "descend" else "ascend"
+    val second = if (defaultUserSortDescending) "ascend" else "descend"
+    return listOf(first, second, first)
+}
+
+/**
  * A [column] that sorts on the server: `sorter = true` hands the click to the table's `onChange` rather than
- * reordering locally, `sortOrder` shows the arrow when this is the active column (null otherwise), and
- * `sortDirections` keeps the header cycle to ascend<->descend so the order is never cleared to none.
+ * reordering locally, and `sortOrder` shows the arrow when this is the active column (null otherwise). The header
+ * cycles as [userSortCycle] says: antd's ascend, descend, cancel, except on the default column, which never offers a
+ * cancel that would change nothing.
  */
 private fun sortableColumn(
     title: String, sortKey: String, width: Int?, activeSort: String, descending: Boolean,
 ): dynamic {
     val c = column(title, sortKey, width)
     c.sorter = true
-    c.sortDirections = arrayOf("ascend", "descend")
+    userSortCycle(sortKey)?.let { c.sortDirections = it.toTypedArray() }
     c.sortOrder = if (activeSort == sortKey) (if (descending) "descend" else "ascend") else null
     return c
 }

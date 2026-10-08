@@ -720,6 +720,10 @@ class FormSummary(
     val ownerName: String? = null,
     /** The owner's email, from the row's `owner` block (issue #580); null for an ordinary caller's own rows. */
     val ownerEmail: String? = null,
+    /** The owner's persona, from the `owner` block (issue #1097); null when there is no block. */
+    val ownerPersona: String? = null,
+    /** The owner's personaSuffix, from the `owner` block (issue #1097); empty when the user has none. */
+    val ownerPersonaSuffix: String = "",
     /** The owning client, from the row's `client` (issue #668): what the Client column shows for a caller who
      *  administers across clients. Every row carries it; empty only when the row somehow arrived without one. */
     val client: String = "",
@@ -771,6 +775,9 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         // read-only view read them one at a time; a block absent (an ordinary caller's own row) leaves both null.
         ownerName = owner[DUF.name] as? String,
         ownerEmail = owner[DUF.email] as? String,
+        // Which of the person's users owns it (issue #1097): what the cell's persona tag says.
+        ownerPersona = owner[DUF.persona] as? String,
+        ownerPersonaSuffix = owner[DUF.personaSuffix] as? String ?: "",
         // The owning client (issue #668), attached to every listed row; the Client column shows it for a caller
         // who administers across clients.
         client = item[GDF.client] as? String ?: "",

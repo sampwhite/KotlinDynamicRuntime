@@ -542,7 +542,9 @@ val FormsPage = FC<FormsPageProps> { props ->
     }
 
     div {
-        className = ClassName("card wide")
+        // The listing is a table-first page and takes the window, as the Users table does (`.card.full`); one form's
+        // read-only view keeps the content width, since a form reads badly stretched that far.
+        className = ClassName(if (viewingId == null) "card full" else "card wide")
         val cat = catalog
         val ep = listEndpoint
         // The workflow drilled into (issue #792) -- the page's identity in workflow mode, null on My forms.
