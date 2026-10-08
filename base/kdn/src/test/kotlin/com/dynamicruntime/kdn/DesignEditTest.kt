@@ -177,6 +177,81 @@ class DesignEditTest : StringSpec({
         def.containsKey(WFD.typeBasis) shouldBe false
     }
 
+    // --- page-level copy (issue #1070) ---
+
+    fun basedOn(): String = block(requestView())[DSV.basedOn].toOptStr()!!
+    fun labelArgs(label: String?, taskId: String? = null, saveId: String? = null, stamp: String = basedOn()) = buildMap {
+        put(DSV.workflowId, DesignDemo.requestWorkflow)
+        taskId?.let { put(DSV.taskId, it) }
+        saveId?.let { put(DSV.saveId, it) }
+        label?.let { put(DSV.label, it) }
+        put(DSV.basedOn, stamp)
+    }
+    fun describeTask(view: Map<String, Any?>) = view[WFD.tasks].toJsonListOfMaps().single { it[WFD.id] == DesignDemo.describeTask }
+    fun heading(view: Map<String, Any?>): String? = view["fieldLayouts"].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[SL.label].toOptStr()
+
+    "the workflow's own labels -- the page title, a task's, a save's -- are edited in its definition" {
+        admin.postData(DSV.labelEdit, labelArgs("Plan an event"))
+        requestView()[WFD.label] shouldBe "Plan an event"
+        admin.postData(DSV.labelEdit, labelArgs("Tell us about it", taskId = DesignDemo.describeTask))
+        describeTask(requestView())[WFD.label] shouldBe "Tell us about it"
+        admin.postData(DSV.labelEdit, labelArgs("Send the request", taskId = DesignDemo.describeTask, saveId = DesignDemo.submitSave))
+        describeTask(requestView())[WFD.saves].toJsonListOfMaps().single()[WFD.label] shouldBe "Send the request"
+        // The workflow's own label is optional: cleared, the page falls back to its generic title.
+        admin.postData(DSV.labelEdit, labelArgs(null))
+        requestView()[WFD.label].toOptStr().orEmpty() shouldBe ""
+    }
+
+    "a task's or a save's label cannot be cleared, a task or save the workflow lacks is refused, and so is a stale edit" {
+        admin.expectError(400, DSV.labelEdit, labelArgs(" ", taskId = DesignDemo.describeTask)).toString() shouldContain "needs a label"
+        admin.expectError(400, DSV.labelEdit, labelArgs("Nope", taskId = "noSuchTask")).toString() shouldContain "no task"
+        admin.expectError(400, DSV.labelEdit, labelArgs("Nope", taskId = DesignDemo.describeTask, saveId = "noSuchSave"))
+        val stale = basedOn()
+        admin.postData(DSV.labelEdit, labelArgs("Plan it"))
+        admin.expectError(409, DSV.labelEdit, labelArgs("Plan it again", stamp = stale))
+        requestView()[WFD.label] shouldBe "Plan it"
+        // A label is a backend template, checked as one at the save: a pull must resolve.
+        admin.expectError(400, DSV.labelEdit, labelArgs("""%{@t("noSuchFile1070.ns.key")}""")).toString() shouldContain "noSuchFile1070"
+    }
+
+    "a workflow's own heading shows on its pages only, and says when the shared heading has changed since" {
+        val shared = heading(reviewView())
+        admin.postData(DSV.headingEdit, mapOf(DSV.workflowId to DesignDemo.requestWorkflow, DSV.typeName to dataType, DSV.label to "About the event", DSV.basedOn to basedOn()))
+        heading(requestView()) shouldBe "About the event"
+        heading(reviewView()) shouldBe shared
+        val facts = block(requestView())[DSV.headingEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()
+        facts[DSV.label] shouldBe "About the event"
+        facts[DSV.inherited] shouldBe shared
+        facts[DSV.inheritedChanged] shouldBe false
+
+        // The shared heading changes, for every workflow: the survey shows it, and the block says the override is behind.
+        val sharedBasedOn = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))[DSV.sharedBasedOn]
+        admin.postData(DSV.sharedHeadingEdit, mapOf(DSV.typeName to dataType, DSV.label to "The event", DSV.sharedBasedOn to sharedBasedOn))
+        heading(reviewView()) shouldBe "The event"
+        heading(requestView()) shouldBe "About the event"
+        block(requestView())[DSV.headingEdits].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[DSV.inheritedChanged] shouldBe true
+
+        // Reset: the shared heading again, and no alteration left behind.
+        admin.postData(DSV.headingEdit, mapOf(DSV.workflowId to DesignDemo.requestWorkflow, DSV.typeName to dataType, DSV.basedOn to basedOn()))
+        heading(requestView()) shouldBe "The event"
+        block(requestView()).containsKey(DSV.headingEdits) shouldBe false
+        val def = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.workflowDef, DSV.key to DesignDemo.requestWorkflow))[DSV.entry]
+            .toJsonMapOrEmpty()[CCT.definition].toJsonMapOrEmpty()
+        def.containsKey(WFD.types) shouldBe false
+        def.containsKey(WFD.typeBasis) shouldBe false
+
+        // Removed from the shared definition, there is no heading: the page falls back to the type's own title. The
+        // layout keeps its field copy.
+        fun sharedLayout() = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to DesignDemo.eventRequest))
+        admin.postData(DSV.sharedHeadingEdit, mapOf(DSV.typeName to dataType, DSV.sharedBasedOn to sharedLayout()[DSV.sharedBasedOn]))
+        heading(reviewView()) shouldBe null
+        sharedLayout()[DSV.entry].toJsonMapOrEmpty()[CCT.dataSchema].toJsonMapOrEmpty()[SCH.layout].toJsonMapOrEmpty()
+            .containsKey(SL.schemaFields) shouldBe true
+        // And given back, as the demo had it.
+        admin.postData(DSV.sharedHeadingEdit, mapOf(DSV.typeName to dataType, DSV.label to shared, DSV.sharedBasedOn to sharedLayout()[DSV.sharedBasedOn]))
+        heading(reviewView()) shouldBe shared
+    }
+
     "a workflow may alter only a type its pages draw -- refused at the reload, outside production" {
         val other = "alterBad984"
         val config = gedraConfig(cxt, "${other}cfg", clientNamespace(other), other) {

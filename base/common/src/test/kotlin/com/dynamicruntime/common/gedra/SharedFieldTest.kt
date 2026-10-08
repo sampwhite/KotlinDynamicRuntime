@@ -73,4 +73,16 @@ class SharedFieldTest : StringSpec({
         val out = withSharedField(body(SLM.authoritative), "venue", null, options)
         fields(out) shouldBe listOf("title")
     }
+
+    "a shared heading is set and removed, and a layout left saying nothing goes with it (issue #1070)" {
+        val withHeading = withSharedHeading(body(null), "Trip")
+        (withHeading[SCH.layout] as Map<*, *>)[SL.label] shouldBe "Trip"
+        // Removed from a layout with fields, the fields stay.
+        fields(withSharedHeading(withHeading, null)) shouldBe listOf("title")
+        // A heading with only its fragment file beside it: removing the heading leaves nothing a form would show.
+        val headingOnly = mapOf<String, Any?>(SCH.layout to mapOf(SL.fragmentFileId to "help", SL.label to "%{@t(\"trip.heading\")}"))
+        withSharedHeading(headingOnly, " ").containsKey(SCH.layout) shouldBe false
+        // And one given to a type with no layout is a heading-only layout.
+        withSharedHeading(emptyMap(), "Trip")[SCH.layout] shouldBe mapOf(SL.label to "Trip")
+    }
 })

@@ -96,7 +96,8 @@ class SchLayout(
         // before issue #777 -- the same reason a null field override is omitted rather than written as null.
         if (mode != SchLayoutMode.overlay) out[SL.mode] = mode.name
         if (strings.isNotEmpty()) out[SL.strings] = strings
-        out[SL.schemaFields] = fields.map { it.toJsonMap() }
+        // A heading-only layout has no field list to write (issue #1070); written empty, it would not parse back.
+        if (fields.isNotEmpty()) out[SL.schemaFields] = fields.map { it.toJsonMap() }
         out
     }
 
@@ -456,18 +457,22 @@ fun parseSchLayout(where: String, raw: Map<String, Any?>): SchLayout =
  * ([LayoutError]) and located within it (`schemaFields[2].defaultMode`). Strict about keys: an unknown key on the
  * block or on a field entry is refused (the same stance `g-errors` takes), because the failure it guards against
  * is a block that parses clean and does nothing -- the draft's `formFields`, a `schemaFields` written as an
- * object, a typo. A present block must list at least one field for the same reason. [where] names the type for
- * the message.
+ * object, a typo. A present block must say something for the same reason: at least one field, or -- with no field
+ * list -- the type's heading ([SL.label]) or form [SL.strings] (issue #1070), which a type with no field copy may
+ * still be given ([layoutSaysSomething]). A list that is present must not be empty, and a [SL.mode] that orders or
+ * chooses fields needs one.
+ * [where] names the type for the message.
  */
 fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayout> {
     val problems = mutableListOf<Problem>()
     unknownKeysProblem(where, "a '${SCH.layout}' block", raw.keys, SL.blockKeys, path = null)?.let { problems.add(it) }
     val entries = raw[SL.schemaFields]
-    if (entries !is List<*> || entries.isEmpty()) {
+    if (if (entries == null) !layoutSaysSomething(raw) else entries !is List<*> || entries.isEmpty()) {
         problems.add(
             layoutProblem(
                 LayoutError.noFields,
-                "$where: a '${SCH.layout}' block must list at least one '${SL.schemaFields}' entry.",
+                "$where: a '${SCH.layout}' block must list at least one '${SL.schemaFields}' entry, or -- with no " +
+                    "'${SL.mode}' -- give the type a heading ('${SL.label}') or form '${SL.strings}'.",
                 SL.schemaFields,
             ),
         )
@@ -550,6 +555,19 @@ fun parseSchLayoutResult(where: String, raw: Map<String, Any?>): Parsed<SchLayou
     }
     if (problems.isNotEmpty()) return Parsed.Failed(problems)
     return Parsed.Ok(SchLayout(raw[SL.fragmentFileId].toOptStr(), raw[SL.label].toOptStr(), fields, strings, mode))
+}
+
+/**
+ * Whether the `g-layout` block [raw] says anything a form would show (issue #1070): a field entry, or -- under the
+ * default [SLM.overlay] mode, written or not, since a mode that orders or chooses fields needs a list -- a non-blank
+ * heading ([SL.label]) or form [SL.strings]. A block that says nothing is refused by the parser, so an edit that empties
+ * one removes the block instead. Pure.
+ */
+fun layoutSaysSomething(raw: Map<String, Any?>): Boolean {
+    if ((raw[SL.schemaFields] as? List<*>)?.isNotEmpty() == true) return true
+    val mode = raw[SL.mode]
+    return (mode == null || mode == SLM.overlay) &&
+        (!raw[SL.label].toOptStr().isNullOrBlank() || (raw[SL.strings] as? Map<*, *>)?.isNotEmpty() == true)
 }
 
 /**

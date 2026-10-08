@@ -823,6 +823,22 @@ each key editable beneath. Elsewhere a pull reads as its words too: the workflow
 read-only facts (`inheritedCopyText`), and the shared editor shows a pulled slot read-only rather than offer to
 overwrite the pull with literal text.
 
+**Page-level copy** (issue #1070, `LabelSection`, `HeadingSection`): the copy above a form's fields. The **labels a
+workflow owns** -- its own (the page title, also its name in listings and lock notices), each task's, each save's
+button -- are selected by the frames on the title, the task rail or panel label and the save button (`DesignTarget.Task`,
+`DesignTarget.Save`), and from the inspector's lists of tasks and saves, since a one-task form draws no task name and a
+save shows only while the form is filled in. They are edited in the workflow's definition **in place**
+(`/clientAdmin/design/label`, `labelEditBody`): the workflow owns them, so there is no shared level and no reset; the
+page title may be cleared to the generic one, a task's or save's may not. A **trait's heading** -- its data type's
+layout `label` -- has the two levels a field's copy has: the workflow's own, as its alteration of the type, with
+**Reset to shared** and the note when the shared heading has changed since (`/clientAdmin/design/heading`, the block's
+`DSV.headingEdits`), and the shared one behind **Edit the shared heading** (`/clientAdmin/design/sharedHeading`). A
+label or heading that pulls a fragment key is shared wording (`DSV.pulledLabels`, `DSV.pulledHeadings`), edited at the
+key in the same `SharedWordingSection` a field's copy uses -- whatever the workflow's origin, so a source-declared
+workflow's pulled labels (the sample's acme `createForm`) are editable there -- and never overwritten with literal text
+by the label or heading editor. What the inspector says the page shows is read from the view, never from the selection,
+which predates any save's re-read.
+
 - **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
   request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
   administrator, adding a `design` block to the workflow view -- an address and origin for every type the page

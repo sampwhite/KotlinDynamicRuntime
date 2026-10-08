@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.DesignOrigin
 import com.dynamicruntime.common.gedra.IMP
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SCT
@@ -534,4 +535,93 @@ class DesignViewTest {
         assertEquals("acme", reset[COV.client])
         assertTrue(COV.value !in reset)
     }
+
+    // --- page-level copy (issue #1070) ---
+
+    private val task = WfTaskView("describe", "Describe it", emptyList(), listOf(WfSaveView("submit", "Send", "create")))
+
+    /** A workflow definition read: the authored entry, and which labels pull a fragment key. */
+    private val workflowRead = mapOf(
+        DSV.entry to mapOf(
+            CCT.definition to mapOf(
+                WFD.label to "Plan an event",
+                WFD.tasks to listOf(
+                    mapOf(
+                        WFD.id to "describe",
+                        WFD.label to """%{@t("wf.describe.label")}""",
+                        WFD.saves to listOf(mapOf(WFD.id to "submit", WFD.label to "Send")),
+                    ),
+                ),
+            ),
+        ),
+        DSV.pulledLabels to mapOf(
+            DSV.tasks to mapOf(
+                "describe" to mapOf(
+                    DSV.mixed to false,
+                    DSV.pulls to listOf(mapOf(COV.fileId to "wf", COV.namespaceField to "describe", COV.key to "label", COV.value to "Describe it")),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun aLabelIsTheWorkflowsTaskOrSaveAndReadsAsWrittenOrAsItsPull() {
+        val own = labelSlotOf(DesignTarget.Workflow)!!
+        val ofTask = labelSlotOf(DesignTarget.Task(task))!!
+        val ofSave = labelSlotOf(DesignTarget.Save(task, task.saves.single()))!!
+        assertEquals(listOf("Page title", "Task label", "Button label"), listOf(own.title, ofTask.title, ofSave.title))
+        assertTrue(own.optional && !ofTask.optional && !ofSave.optional)
+        assertNull(labelSlotOf(DesignTarget.Trait(WfTraitView("t", true, request, "client.demo.Request", null))))
+        assertEquals(listOf("task:describe", "save:describe:submit"), listOf(DesignTarget.Task(task).id, DesignTarget.Save(task, task.saves.single()).id))
+
+        assertEquals("Plan an event", writtenLabel(workflowRead, own))
+        assertEquals("""%{@t("wf.describe.label")}""", writtenLabel(workflowRead, ofTask))
+        assertEquals("Send", writtenLabel(workflowRead, ofSave))
+        assertNull(writtenLabel(null, own))
+        // Only the task's label pulls; it reads as its key.
+        assertNull(pulledLabelOf(workflowRead, own))
+        assertEquals("describe.label", pulledLabelOf(workflowRead, ofTask)?.pulls?.single()?.name)
+        assertNull(pulledLabelOf(workflowRead, ofSave))
+    }
+
+    @Test
+    fun aBlankLabelIsTheGenericTitleOnlyForThePageAndIsSentAsAbsent() {
+        // The generic title the page falls back to: a survey edit's, or a creation's.
+        assertEquals("Edit form", labelFallback(LabelSlot(null, null), isEdit = true).text)
+        assertEquals("New form", labelFallback(LabelSlot(null, null), isEdit = false).text)
+        assertNull(labelFallback(LabelSlot("describe", null), isEdit = true).text)
+        val clear = labelEditBody("request", LabelSlot(null, null), "  ", "stamp", null)
+        assertTrue(DSV.label !in clear)
+        assertEquals("stamp", clear[DSV.basedOn])
+        val save = labelEditBody("request", LabelSlot("describe", "submit"), " Send it ", "stamp", "acme")
+        assertEquals(listOf("describe", "submit", "Send it", "acme"), listOf(save[DSV.taskId], save[DSV.saveId], save[DSV.label], save[DSV.client]))
+    }
+
+    @Test
+    fun aHeadingIsReadFromTheLayoutAndFallsBackToTheTitleOrTheTraitId() {
+        assertEquals("Trip", headingIn(mapOf(SCH.layout to mapOf(SL.label to "Trip"))))
+        assertNull(headingIn(mapOf(SCH.type to SCT.kObject)))
+        assertEquals("Event request", headingFallback(WfTraitView("eventRequest", true, request, "client.demo.Request", null)).text)
+        val read = mapOf(DSV.pulledHeadings to mapOf("client.demo.Request" to mapOf(DSV.mixed to true, DSV.pulls to emptyList<Any?>())))
+        assertEquals(true, pulledHeadingOf(read, "client.demo.Request")?.mixed)
+        assertNull(pulledHeadingOf(read, "client.demo.Contact"))
+        // The workflow's own heading is stamped against the workflow; the shared one against the definition's entry.
+        val own = headingEditBody("request", "client.demo.Request", "Trip", "wfStamp", null)
+        assertEquals("wfStamp", own[DSV.basedOn])
+        val shared = headingEditBody(null, "client.demo.Request", "", "entryStamp", null)
+        assertEquals("entryStamp", shared[DSV.sharedBasedOn])
+        assertTrue(DSV.workflowId !in shared && DSV.label !in shared)
+    }
+
+    @Test
+    fun theBlocksHeadingEditsAreRead() {
+        val design = parseWfDesign(
+            mapOf(DSV.headingEdits to mapOf("client.demo.Request" to mapOf(DSV.label to "Trip", DSV.inheritedChanged to true))),
+        )!!
+        val edit = design.headingEdits.getValue("client.demo.Request")
+        assertEquals("Trip", edit.label)
+        assertNull(edit.inherited)
+        assertTrue(edit.inheritedChanged)
+    }
 }
+

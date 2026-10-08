@@ -104,10 +104,18 @@ class WfDesign(
     val basedOn: String = "",
     /** The layout entries the workflow alters, by type name and then field (issue #984). */
     val layoutEdits: Map<String, Map<String, LayoutEdit>> = emptyMap(),
+    /** The headings the workflow sets, by type name (issue #1070). */
+    val headingEdits: Map<String, HeadingEdit> = emptyMap(),
 ) {
     /** The workflow's own entry for [field] of [typeName], with what it replaced, or null when it has none. */
     fun layoutEdit(typeName: String, field: String): LayoutEdit? = layoutEdits[typeName]?.get(field)
 }
+
+/**
+ * A heading a workflow sets for a type (issue #1070): the workflow's [label], the [inherited] heading it replaces (null
+ * when the shared layout has none), and whether that has [inheritedChanged] since.
+ */
+class HeadingEdit(val label: String, val inherited: String?, val inheritedChanged: Boolean)
 
 /**
  * One layout entry a workflow alters (issue #984): the workflow's [entry], the [inherited] one it replaces (null when
@@ -148,6 +156,10 @@ fun parseWfDesign(raw: Any?): WfDesign? {
                 )
             }
         },
+        headingEdits = block[DSV.headingEdits].toJsonMapOrEmpty().mapNotNull { (typeName, raw) ->
+            val h = raw.toJsonMapOrEmpty()
+            h[DSV.label].toOptStr()?.let { typeName to HeadingEdit(it, h[DSV.inherited].toOptStr(), h[DSV.inheritedChanged] == true) }
+        }.toMap(),
     )
 }
 
@@ -175,10 +187,16 @@ enum class FieldHidden(val reason: String) {
     notInLayout("The layout leaves this field out."),
 }
 
-/** What the inspector shows: the workflow, one trait of a task, or one field of a trait's form. */
+/** What the inspector shows: the workflow, a task or a save of it, one trait of a task, or one field of a trait's form. */
 sealed class DesignTarget {
     /** The workflow itself. */
     object Workflow : DesignTarget()
+
+    /** One of the workflow's tasks (issue #1070): its label is the workflow's own. */
+    class Task(val task: WfTaskView) : DesignTarget()
+
+    /** One of a task's saves -- its button (issue #1070): its label is the workflow's own. */
+    class Save(val task: WfTaskView, val save: WfSaveView) : DesignTarget()
 
     class Trait(val trait: WfTraitView) : DesignTarget()
 
@@ -201,6 +219,8 @@ sealed class DesignTarget {
     val id: String
         get() = when (this) {
             Workflow -> "wf"
+            is Task -> "task:${task.id}"
+            is Save -> "save:${task.id}:${save.id}"
             is Trait -> "trait:${trait.traitId}"
             is Field -> "field:${root.traitId}:$path"
         }
@@ -332,9 +352,11 @@ class DesignSession(
     val afterEdit: suspend () -> Unit = {},
     /** The trait the enclosing form draws -- set per trait by the workflow form, so a field can name its root. */
     val trait: WfTraitView? = null,
+    /** Whether the page edits a form rather than creating one -- which generic title it falls back to (issue #1070). */
+    val isEdit: Boolean = false,
 ) {
     fun forTrait(t: WfTraitView): DesignSession =
-        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, client, afterEdit, t)
+        DesignSession(design, selected, select, showAllIds, showHidden, workflowId, client, afterEdit, t, isEdit)
 
     fun isSelected(target: DesignTarget): Boolean = selected?.id == target.id
 
@@ -492,23 +514,26 @@ class PulledSlot(val mixed: Boolean, val pulls: List<PulledKey>)
  */
 fun pulledCopyOf(read: Map<String, Any?>?, typeName: String, field: String): Map<String, PulledSlot> =
     read?.get(DSV.pulledCopy).toJsonMapOrEmpty()[typeName].toJsonMapOrEmpty()[field].toJsonMapOrEmpty()
-        .mapValues { (_, raw) ->
-            val slot = raw.toJsonMapOrEmpty()
-            PulledSlot(
-                mixed = slot[DSV.mixed] == true,
-                pulls = slot[DSV.pulls].toJsonListOfMaps().map {
-                    PulledKey(
-                        fileId = it[COV.fileId].toOptStr().orEmpty(),
-                        namespace = it[COV.namespaceField].toOptStr().orEmpty(),
-                        key = it[COV.key].toOptStr().orEmpty(),
-                        value = it[COV.value].toOptStr(),
-                        baseValue = it[COV.baseValue].toOptStr(),
-                        origin = it[COV.origin].toOptStr(),
-                        sourceValue = it[COV.sourceValue].toOptStr(),
-                    )
-                },
+        .mapValues { (_, raw) -> parsePulledSlot(raw) }
+
+/** One pulled copy slot as the definition read gives it -- a field's, a heading's or a label's. Pure. */
+fun parsePulledSlot(raw: Any?): PulledSlot {
+    val slot = raw.toJsonMapOrEmpty()
+    return PulledSlot(
+        mixed = slot[DSV.mixed] == true,
+        pulls = slot[DSV.pulls].toJsonListOfMaps().map {
+            PulledKey(
+                fileId = it[COV.fileId].toOptStr().orEmpty(),
+                namespace = it[COV.namespaceField].toOptStr().orEmpty(),
+                key = it[COV.key].toOptStr().orEmpty(),
+                value = it[COV.value].toOptStr(),
+                baseValue = it[COV.baseValue].toOptStr(),
+                origin = it[COV.origin].toOptStr(),
+                sourceValue = it[COV.sourceValue].toOptStr(),
             )
-        }
+        },
+    )
+}
 
 /** Why a definition [read]'s shared wording may not be changed from here (issue #1010), or null when it may. Pure. */
 fun sharedWordingRefusalOf(read: Map<String, Any?>?): String? = read?.get(DSV.sharedWordingRefusal).toOptStr()
@@ -690,3 +715,103 @@ fun definitionQuery(slot: String, key: String, client: String?): Map<String, Any
     put(DSV.key, key)
     client?.let { put(DSV.client, it) }
 }
+
+// --- page-level copy: the workflow's labels and a trait's heading (issue #1070) ------------------------------------
+
+/**
+ * A label the workflow owns (issue #1070): its own -- the page title -- when [taskId] is null, a task's, or with
+ * [saveId] a save's. There is no shared level beneath one: the workflow owns it, and an edit changes its definition.
+ */
+class LabelSlot(val taskId: String?, val saveId: String?) {
+    /** The workflow's own label is optional; a task's and a save's are what the page shows for them. */
+    val optional: Boolean get() = taskId == null
+
+    /** What the label is, for a heading in the inspector. */
+    val title: String
+        get() = when {
+            taskId == null -> "Page title"
+            saveId == null -> "Task label"
+            else -> "Button label"
+        }
+}
+
+/** The label [target] carries, or null for a part whose copy is not a label the workflow owns. Pure. */
+fun labelSlotOf(target: DesignTarget?): LabelSlot? = when (target) {
+    null, DesignTarget.Workflow -> LabelSlot(null, null)
+    is DesignTarget.Task -> LabelSlot(target.task.id, null)
+    is DesignTarget.Save -> LabelSlot(target.task.id, target.save.id)
+    else -> null
+}
+
+/**
+ * The label [slot] names as the workflow's definition **writes** it -- a template, before any pull is resolved -- from
+ * the workflow's definition [read]; null when it has none or the read has not answered. Pure.
+ */
+fun writtenLabel(read: Map<String, Any?>?, slot: LabelSlot): String? {
+    val def = read?.get(DSV.entry).toJsonMapOrEmpty()[CCT.definition].toJsonMapOrEmpty()
+    if (slot.taskId == null) return def[WFD.label].toOptStr()
+    val task = def[WFD.tasks].toJsonListOfMaps().firstOrNull { it[WFD.id] == slot.taskId } ?: return null
+    if (slot.saveId == null) return task[WFD.label].toOptStr()
+    return task[WFD.saves].toJsonListOfMaps().firstOrNull { it[WFD.id] == slot.saveId }?.get(WFD.label).toOptStr()
+}
+
+/** The fragment keys the label [slot] pulls, from the workflow's definition [read], or null when it pulls none. Pure. */
+fun pulledLabelOf(read: Map<String, Any?>?, slot: LabelSlot): PulledSlot? {
+    val labels = read?.get(DSV.pulledLabels).toJsonMapOrEmpty()
+    val raw = when {
+        slot.taskId == null -> labels[DSV.workflow]
+        slot.saveId == null -> labels[DSV.tasks].toJsonMapOrEmpty()[slot.taskId]
+        else -> labels[DSV.saves].toJsonMapOrEmpty()[slot.taskId].toJsonMapOrEmpty()[slot.saveId]
+    }
+    return (raw as? Map<*, *>)?.let(::parsePulledSlot)
+}
+
+/** The fragment keys [typeName]'s heading pulls, from a trait's or type's definition [read], or null. Pure. */
+fun pulledHeadingOf(read: Map<String, Any?>?, typeName: String): PulledSlot? =
+    (read?.get(DSV.pulledHeadings).toJsonMapOrEmpty()[typeName] as? Map<*, *>)?.let(::parsePulledSlot)
+
+/** The heading a type body's own `g-layout` gives it, or null. Pure. */
+fun headingIn(typeBody: Any?): String? = typeBody.toJsonMapOrEmpty()[SCH.layout].toJsonMapOrEmpty()[SL.label].toOptStr()
+
+/**
+ * What the page shows for [slot] when its label is left blank (issue #1070) -- only the workflow's own label may be:
+ * a task's and a save's are required. The page title falls back to `WorkflowForm`'s generic one, "Edit form" on a page
+ * editing a form ([isEdit]) and "New form" on one creating it; change the two together. Pure.
+ */
+fun labelFallback(slot: LabelSlot, isEdit: Boolean): CopyFallback {
+    if (!slot.optional) return CopyFallback(null, "A ${if (slot.saveId == null) "task" else "button"} needs a label.")
+    val generic = if (isEdit) "Edit form" else "New form"
+    return CopyFallback(generic, "Blank: the page shows a generic title, \"$generic\".")
+}
+
+/**
+ * What a trait's section shows as its heading when no layout gives one (issue #1070): its data type's title, else a
+ * heading made from the trait's id -- `WorkflowForm`'s own fallback (`traitHeading`); change the two together. Pure.
+ */
+fun headingFallback(trait: WfTraitView): CopyFallback =
+    trait.type.title?.takeIf { it.isNotBlank() }?.let { CopyFallback(it, "Blank: the section shows its type's own title.") }
+        ?: CopyFallback(humanizeFieldName(trait.traitId), "Blank: the section shows a heading made from the trait's id.")
+
+/** The body of a label edit (issue #1070): which label, its new text (absent to clear the page title), the stamp. Pure. */
+fun labelEditBody(workflowId: String, slot: LabelSlot, label: String?, basedOn: String, client: String?): Map<String, Any?> = buildMap {
+    put(DSV.workflowId, workflowId)
+    slot.taskId?.let { put(DSV.taskId, it) }
+    slot.saveId?.let { put(DSV.saveId, it) }
+    label?.trim()?.takeIf { it.isNotEmpty() }?.let { put(DSV.label, it) }
+    put(DSV.basedOn, basedOn)
+    client?.let { put(DSV.client, it) }
+}
+
+/**
+ * The body of a heading edit (issue #1070): the workflow's own when [workflowId] is given, against the workflow stamp
+ * [basedOn]; else the shared one, against the definition's [basedOn] (`sharedBasedOn`). A blank [label] is sent as
+ * absent -- back to the shared heading, or no heading. Pure.
+ */
+fun headingEditBody(workflowId: String?, typeName: String, label: String?, basedOn: String, client: String?): Map<String, Any?> = buildMap {
+    workflowId?.let { put(DSV.workflowId, it) }
+    put(DSV.typeName, typeName)
+    label?.trim()?.takeIf { it.isNotEmpty() }?.let { put(DSV.label, it) }
+    put(if (workflowId != null) DSV.basedOn else DSV.sharedBasedOn, basedOn)
+    client?.let { put(DSV.client, it) }
+}
+

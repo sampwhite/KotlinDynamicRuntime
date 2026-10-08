@@ -84,6 +84,24 @@ object DesignApi {
         parseCopyEditResult(Http.sendApi("POST", path, sharedWordingRequest(pull, value, client))[EP.results].toJsonMapOrEmpty())
     }
 
+    /**
+     * Sets a label the workflow owns -- its own, a task's or a save's, as [slot] names -- to [label], clearing the page
+     * title when [label] is blank (issue #1070), as an edit of the definition stamped [basedOn].
+     */
+    suspend fun setLabel(workflowId: String, slot: LabelSlot, label: String?, basedOn: String, client: String?): ApiResult<Map<String, Any?>> =
+        Http.sendApiResult("POST", DSV.labelEdit, labelEditBody(workflowId, slot, label, basedOn, client))
+
+    /**
+     * Sets [typeName]'s heading to [label] -- the workflow's own when [workflowId] is given, else the shared one in the
+     * definition the client declares -- or clears it when [label] is blank (issue #1070), as an edit of the definition
+     * stamped [basedOn].
+     */
+    suspend fun setHeading(workflowId: String?, typeName: String, label: String?, basedOn: String, client: String?): ApiResult<Map<String, Any?>> =
+        Http.sendApiResult(
+            "POST", if (workflowId != null) DSV.headingEdit else DSV.sharedHeadingEdit,
+            headingEditBody(workflowId, typeName, label, basedOn, client),
+        )
+
     suspend fun setSharedField(
         typeName: String,
         field: String,
@@ -219,9 +237,63 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 +"Show hidden fields"
             }
         }
+        // A save re-reads the panel's definition: its read carries what a label or heading is written as (issue #1070).
+        val rereadDefinition = {
+            cacheKey?.let { stale = stale + it }
+            rereads += 1
+        }
         when (selected) {
-            null, DesignTarget.Workflow -> workflowSummary(props.view, selected == null)
-            is DesignTarget.Trait -> traitSummary(selected)
+            null, DesignTarget.Workflow, is DesignTarget.Task, is DesignTarget.Save -> {
+                // As the page now shows it -- read from the view, not from the selection, which was made before any
+                // edit re-read the view.
+                when (selected) {
+                    is DesignTarget.Task -> taskSummary(DesignTarget.Task(currentTask(props.view, selected.task)), session)
+                    is DesignTarget.Save -> {
+                        val task = currentTask(props.view, selected.task)
+                        saveSummary(DesignTarget.Save(task, task.saves.firstOrNull { it.id == selected.save.id } ?: selected.save))
+                    }
+                    else -> workflowSummary(props.view, selected == null, session)
+                }
+                // The label the workflow owns (issue #1070), once the definition read has answered: it says what the
+                // label is written as, and whether it pulls shared wording.
+                val slot = labelSlotOf(selected)
+                if (slot != null && definition?.response != null) {
+                    val shown = shownLabel(props.view, slot)
+                    LabelSection {
+                        key = "${selected?.id ?: "wf"}|${design.basedOn}".unsafeCast<Key>()
+                        this.session = session
+                        this.slot = slot
+                        this.read = definition.response
+                        this.shown = shown
+                        onSaved = rereadDefinition
+                    }
+                    pulledLabelOf(definition.response, slot)?.let { pulled ->
+                        SharedWordingSection {
+                            key = "${selected?.id ?: "wf"}|wording".unsafeCast<Key>()
+                            this.session = session
+                            this.subject = "This label"
+                            this.slots = listOf(WordingSlot(slot.title, pulled, shown))
+                            this.refusal = sharedWordingRefusalOf(definition.response)
+                            onSaved = rereadDefinition
+                        }
+                    }
+                }
+            }
+            is DesignTarget.Trait -> {
+                // The trait as the page now draws it, its heading included (see the field case below).
+                val trait = props.view.tasks.flatMap { it.traits }.firstOrNull { it.traitId == selected.trait.traitId } ?: selected.trait
+                traitSummary(DesignTarget.Trait(trait))
+                if (definition?.response != null && address != null) {
+                    HeadingSection {
+                        key = "${selected.id}|${design.basedOn}".unsafeCast<Key>()
+                        this.session = session
+                        this.trait = trait
+                        this.read = definition.response
+                        this.typeBody = subtreeAt(definition.response[DSV.entry].toJsonMapOrEmpty(), address.path)
+                        onSaved = rereadDefinition
+                    }
+                }
+            }
             is DesignTarget.Field -> {
                 // The field's copy as the page now shows it -- read from the view, not from the selection, which was
                 // made before any edit re-read the view.
@@ -257,16 +329,14 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 // the definition's origin, since a copy override is the client's own data.
                 val pulled = pulledCopyOf(definition?.response, owner.typeName, selected.name)
                 if (pulled.isNotEmpty()) {
+                    val shown = props.view.fieldLayouts[owner.typeName]?.fieldFor(selected.name)
                     SharedWordingSection {
                         key = "${selected.id}|wording".unsafeCast<Key>()
                         this.session = session
-                        this.pulled = pulled
-                        this.shown = props.view.fieldLayouts[owner.typeName]?.fieldFor(selected.name)
+                        this.subject = "This field's copy"
+                        this.slots = editableCopyKeys.mapNotNull { k -> pulled[k]?.let { WordingSlot(humanizeFieldName(k), it, shownCopy(shown, k)) } }
                         this.refusal = sharedWordingRefusalOf(definition?.response)
-                        onSaved = {
-                            cacheKey?.let { stale = stale + it }
-                            rereads += 1
-                        }
+                        onSaved = rereadDefinition
                     }
                 }
                 // The shared definition (issue #1029): where it is used, and -- deliberately, behind its own button --
@@ -283,10 +353,7 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                         this.authored = authoredLayoutEntry(address, definition, selected)
                         this.pulled = pulled
                         // The read is cached per definition, so a shared save -- which changes it -- drops it to re-read.
-                        onSaved = {
-                            cacheKey?.let { stale = stale + it }
-                            rereads += 1
-                        }
+                        onSaved = rereadDefinition
                     }
                 }
             }
@@ -297,8 +364,9 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 +"This part of the page has no definition the backend could name."
             }
         } else {
-            // Yes or no on editing is the block's decision, and only a field has an edit to offer (issue #1013).
-            definitionSection(address, definition, selected, editable = design.canEdit.takeIf { selected is DesignTarget.Field })
+            // Yes or no on editing the workflow's own copy is the block's decision (issue #1013) -- a field's, a label's,
+            // a heading's (issue #1070).
+            definitionSection(address, definition, selected, editable = design.canEdit)
         }
     }
 }
@@ -308,7 +376,7 @@ private class LoadedDefinition(val response: Map<String, Any?>?, val error: Disp
 
 /** Where [target] is declared: its type's address from the backend's block, extended to the field's place in it. */
 private fun addressOf(target: DesignTarget, design: WfDesign): DesignAddress? = when (target) {
-    DesignTarget.Workflow -> design.workflow
+    DesignTarget.Workflow, is DesignTarget.Task, is DesignTarget.Save -> design.workflow
     is DesignTarget.Trait -> design.types[target.trait.typeName]
     is DesignTarget.Field -> {
         val owner = fieldOwner(target.root.typeName, target.root.type, target.path)
@@ -316,22 +384,75 @@ private fun addressOf(target: DesignTarget, design: WfDesign): DesignAddress? = 
     }
 }
 
-private fun ChildrenBuilder.workflowSummary(view: WorkflowView, nothingSelected: Boolean) {
+private fun ChildrenBuilder.workflowSummary(view: WorkflowView, nothingSelected: Boolean, session: DesignSession) {
     h2 { +view.label.ifBlank { humanizeFieldName(view.workflowId) } }
     fact("Workflow", view.workflowId, mono = true)
     fact("Kind", view.entry)
-    fact("Tasks", view.tasks.joinToString(", ") { it.id }, mono = true)
+    // Every task, whether or not the page draws its name (a one-task form shows none): each opens its own label.
+    pickList("Tasks", view.tasks.map { t -> t.label.ifBlank { t.id } to { session.select(DesignTarget.Task(t)) } })
     if (nothingSelected) {
         p {
             className = ClassName("dv-note")
-            +"Click any outlined part of the form — a section or a field — to see what defines it."
+            +"Click any outlined part of the form — the title, a section or a field — to see what defines it."
         }
     }
 }
 
+private fun ChildrenBuilder.taskSummary(target: DesignTarget.Task, session: DesignSession) {
+    val task = target.task
+    h2 { +task.label.ifBlank { task.id } }
+    fact("Task", task.id, mono = true)
+    fact("Collects", task.traits.joinToString(", ") { it.traitId }.ifEmpty { "nothing" }, mono = true)
+    // Its saves, which the page draws only while the form is being filled in: each opens its button's label.
+    if (task.saves.isNotEmpty()) pickList("Saves", task.saves.map { sv -> sv.label.ifBlank { sv.id } to { session.select(DesignTarget.Save(task, sv)) } })
+}
+
+private fun ChildrenBuilder.saveSummary(target: DesignTarget.Save) {
+    val save = target.save
+    h2 { +save.label.ifBlank { save.id } }
+    fact("Save", save.id, mono = true)
+    fact("Of task", target.task.id, mono = true)
+    fact("Kind", save.kind)
+}
+
+/** A short list of parts of the page, each a link that selects it -- for parts the page may not draw. */
+private fun ChildrenBuilder.pickList(name: String, items: List<Pair<String, () -> Unit>>) {
+    div {
+        className = ClassName("dv-fact")
+        span {
+            className = ClassName("dv-fact-name")
+            +name
+        }
+        span {
+            className = ClassName("dv-fact-value")
+            items.forEachIndexed { i, (label, pick) ->
+                if (i > 0) +", "
+                Button {
+                    size = "small"
+                    type = "link"
+                    onClick = { pick() }
+                    +label
+                }
+            }
+        }
+    }
+}
+
+/** A heading -- Markdown, perhaps several lines -- as one line of plain words: its first, without the `#` marks. */
+private fun headingLine(markdown: String): String = markdown.lineSequence().firstOrNull()?.trimStart('#', ' ').orEmpty()
+
+/** [task] as [view] now has it, or [task] itself when the view no longer carries it. */
+private fun currentTask(view: WorkflowView, task: WfTaskView): WfTaskView = view.tasks.firstOrNull { it.id == task.id } ?: task
+
+/** The label [slot] names as the page shows it -- resolved, its pulls filled in -- from the view. */
+private fun shownLabel(view: WorkflowView, slot: LabelSlot): String {
+    val task = slot.taskId?.let { id -> view.tasks.firstOrNull { it.id == id } } ?: return view.label
+    return slot.saveId?.let { id -> task.saves.firstOrNull { it.id == id }?.label.orEmpty() } ?: task.label
+}
+
 private fun ChildrenBuilder.traitSummary(target: DesignTarget.Trait) {
     val trait = target.trait
-    h2 { +(trait.fieldLayout?.label?.lineSequence()?.firstOrNull()?.trimStart('#', ' ') ?: trait.type.title ?: humanizeFieldName(trait.traitId)) }
+    h2 { +(trait.fieldLayout?.label?.let(::headingLine) ?: trait.type.title ?: humanizeFieldName(trait.traitId)) }
     fact("Trait", trait.traitId, mono = true)
     fact("Data type", trait.typeName, mono = true)
     fact("In this task", if (trait.required) "required" else "optional")
@@ -735,23 +856,26 @@ private fun ChildrenBuilder.formRequirementControls(
     }
 }
 
+/** One copy slot that pulls shared wording (issue #1010): what it is called, its keys, and its words as shown. */
+class WordingSlot(val name: String, val slot: PulledSlot, val shown: String?)
+
 external interface SharedWordingSectionProps : Props {
     var session: DesignSession
-    /** The field's pulled copy slots, from the definition read. */
-    var pulled: Map<String, PulledSlot>
-    /** The field's copy as the page shows it -- for a mixed slot, the composed words. */
-    var shown: SchLayoutField?
+    /** What the wording is, for the opening sentence: "This field's copy", "This label", "This heading". */
+    var subject: String
+    /** The copy slots that pull shared wording, from the definition read. */
+    var slots: List<WordingSlot>
     /** Why the wording may not be changed from here (a client with a sandbox is changed from it), or null. */
     var refusal: String?
     var onSaved: () -> Unit
 }
 
 /**
- * The field's **shared wording** (issue #1010): each fragment key its copy pulls, edited at the key -- this client's
- * copy override (#918), the Clients page's path -- so it changes everywhere the key is used, in every workflow. The
- * user sees words, never the `%{@t(...)}` template; a slot that mixes a pull with other text is shown as composed,
- * with each key it pulls editable beneath. Offered whatever the definition's origin: an override is the client's own
- * data even for a definition declared globally or in source.
+ * **Shared wording** (issue #1010): each fragment key a copy slot pulls, edited at the key -- this client's copy
+ * override (#918), the Clients page's path -- so it changes everywhere the key is used, in every workflow. The user
+ * sees words, never the `%{@t(...)}` template; a slot that mixes a pull with other text is shown as composed, with
+ * each key it pulls editable beneath. Offered whatever the definition's origin: an override is the client's own data
+ * even for a definition declared globally or in source. A field's copy, a label and a heading (issue #1070) alike.
  */
 private val SharedWordingSection = FC<SharedWordingSectionProps> { props ->
     div {
@@ -759,7 +883,7 @@ private val SharedWordingSection = FC<SharedWordingSectionProps> { props ->
         h3 { +"Shared wording" }
         p {
             className = ClassName("dv-note")
-            +"This field's copy comes from shared wording. Changing it changes this client's wording wherever it is used."
+            +"${props.subject} comes from shared wording. Changing it changes this client's wording wherever it is used."
         }
         props.refusal?.let {
             p {
@@ -767,16 +891,16 @@ private val SharedWordingSection = FC<SharedWordingSectionProps> { props ->
                 +it
             }
         }
-        for (slot in editableCopyKeys) {
-            val pulled = props.pulled[slot] ?: continue
+        for (wording in props.slots) {
+            val pulled = wording.slot
             if (pulled.mixed) {
                 div {
                     className = ClassName("dv-edit-row")
                     span {
                         className = ClassName("dv-fact-name")
-                        +humanizeFieldName(slot)
+                        +wording.name
                     }
-                    span { +shownCopy(props.shown, slot).orEmpty() }
+                    span { +wording.shown.orEmpty() }
                     p {
                         className = ClassName("dv-fallback")
                         +"Combines shared wording with other text; the shared part is below."
@@ -785,9 +909,9 @@ private val SharedWordingSection = FC<SharedWordingSectionProps> { props ->
             }
             for (pull in pulled.pulls) {
                 SharedWordingRow {
-                    key = "$slot|${pull.fileId}|${pull.name}".unsafeCast<Key>()
+                    key = "${wording.name}|${pull.fileId}|${pull.name}".unsafeCast<Key>()
                     this.session = props.session
-                    this.label = if (pulled.mixed) pull.name else humanizeFieldName(slot)
+                    this.label = if (pulled.mixed) pull.name else wording.name
                     this.pull = pull
                     this.editable = props.refusal == null
                     this.onSaved = props.onSaved
@@ -1135,5 +1259,341 @@ private val SharedFieldSection = FC<SharedFieldSectionProps> { props ->
             }
         }
         impact?.let { impactReportBody(it, formsOpenable = true, doing = removingPhrase(removing)) }
+    }
+}
+
+external interface LabelSectionProps : Props {
+    var session: DesignSession
+    var slot: LabelSlot
+    /** The workflow's definition read: what the label is written as, and whether it pulls shared wording. */
+    var read: Map<String, Any?>
+    /** The label as the page shows it. */
+    var shown: String
+    var onSaved: () -> Unit
+}
+
+/**
+ * A label the workflow owns (issue #1070) -- its own (the page title), a task's, or a save's button -- edited in the
+ * workflow's definition in place: the workflow owns it, so there is no shared level beneath to reset to. A label that
+ * pulls a fragment key is shared wording, edited at the key in its own section, and not overwritten here. Offered where
+ * the workflow's own copy is (the block's `canEdit`); elsewhere the block's reason is said.
+ */
+private val LabelSection = FC<LabelSectionProps> { props ->
+    val session = props.session
+    val design = session.design
+    val slot = props.slot
+    val written = writtenLabel(props.read, slot)
+    val pulled = pulledLabelOf(props.read, slot)
+    val fallback = labelFallback(slot, session.isEdit)
+    var editing by useState(false)
+    var value by useState(written.orEmpty())
+    var saving by useState(false)
+    var failure by useState<DisplayError?>(null)
+
+    fun save() {
+        saving = true
+        failure = null
+        designScope.launch {
+            val result = DesignApi.setLabel(session.workflowId, slot, value, design.basedOn, session.client)
+            saving = false
+            val refused = result.failureOrNull()
+            if (refused != null) {
+                failure = userFacingError(refused)
+            } else {
+                editing = false
+                props.onSaved()
+                session.afterEdit()
+            }
+        }
+    }
+
+    div {
+        className = ClassName("dv-edit")
+        h3 { +slot.title }
+        if (slot.optional) {
+            p {
+                className = ClassName("dv-note")
+                +"The page title is also this workflow's name in form listings and on lock notices."
+            }
+        }
+        when {
+            // Shared wording: its own section below edits it at the key; replacing it with literal text here would
+            // silently drop the pull.
+            pulled != null -> p {
+                className = ClassName("dv-fallback")
+                +"This label is shared wording: change it under Shared wording."
+            }
+            !design.canEdit -> {
+                fact("Shown", props.shown.ifBlank { fallback.text ?: "none" })
+                design.editRefusal?.let {
+                    p {
+                        className = ClassName("dv-note")
+                        +it
+                    }
+                }
+            }
+            !editing -> {
+                fact("Shown", props.shown.ifBlank { fallback.text ?: "none" })
+                div {
+                    className = ClassName("dv-actions")
+                    Button {
+                        size = "small"
+                        onClick = {
+                            value = written.orEmpty()
+                            editing = true
+                        }
+                        +"Edit"
+                    }
+                }
+            }
+            else -> {
+                div {
+                    className = ClassName("dv-edit-row")
+                    span {
+                        className = ClassName("dv-fact-name")
+                        +"Label"
+                    }
+                    Input {
+                        this.value = value
+                        placeholder = fallback.text
+                        onChange = { e -> value = e.target.value as String }
+                    }
+                    if (value.isBlank()) {
+                        p {
+                            className = ClassName("dv-fallback")
+                            +fallback.note
+                        }
+                    }
+                }
+                div {
+                    className = ClassName("dv-actions")
+                    Button {
+                        type = "primary"
+                        size = "small"
+                        loading = saving
+                        // A task's and a save's label are required: blank is no label at all.
+                        disabled = !slot.optional && value.isBlank()
+                        onClick = { save() }
+                        +"Save"
+                    }
+                    Button {
+                        size = "small"
+                        type = "link"
+                        onClick = {
+                            editing = false
+                            failure = null
+                        }
+                        +"Cancel"
+                    }
+                }
+            }
+        }
+        failure?.let { errorText("Couldn't save the label.", it) }
+    }
+}
+
+external interface HeadingSectionProps : Props {
+    var session: DesignSession
+    var trait: WfTraitView
+    /** The definition read of the trait or type: its shared facts, and whether its heading pulls shared wording. */
+    var read: Map<String, Any?>
+    /** The type's body in that definition's authored entry, where its shared heading is written. */
+    var typeBody: Any?
+    var onSaved: () -> Unit
+}
+
+/**
+ * A trait section's **heading** (issue #1070): the `label` of its data type's layout, at the two levels a field's copy
+ * has -- the workflow's own, written as its alteration of the type, with **Reset to shared**; and, behind its own
+ * button, the shared heading in the definition the client declares, for every workflow. A heading that pulls a fragment
+ * key is shared wording, edited at the key.
+ */
+private val HeadingSection = FC<HeadingSectionProps> { props ->
+    val session = props.session
+    val design = session.design
+    val trait = props.trait
+    val typeName = trait.typeName
+    val edit = design.headingEdits[typeName]
+    val sharedWritten = headingIn(props.typeBody)
+    val pulled = pulledHeadingOf(props.read, typeName)
+    val facts = parseSharedFacts(props.read)
+    val fallback = headingFallback(trait)
+    // The shared heading as words: a pull reads as its key's words, naming the key.
+    val sharedText = (edit?.inherited ?: sharedWritten)?.let { inheritedCopyText(it, pulled) }
+    var editingOwn by useState(false)
+    var editingShared by useState(false)
+    var value by useState("")
+    var saving by useState(false)
+    var failure by useState<DisplayError?>(null)
+
+    fun save(workflowId: String?, label: String?, basedOn: String) {
+        saving = true
+        failure = null
+        designScope.launch {
+            val result = DesignApi.setHeading(workflowId, typeName, label, basedOn, session.client)
+            saving = false
+            val refused = result.failureOrNull()
+            if (refused != null) {
+                failure = userFacingError(refused)
+            } else {
+                editingOwn = false
+                editingShared = false
+                props.onSaved()
+                session.afterEdit()
+            }
+        }
+    }
+
+    fun ChildrenBuilder.headingInput(placeholderText: String?, note: String?) {
+        div {
+            className = ClassName("dv-edit-row")
+            span {
+                className = ClassName("dv-fact-name")
+                +"Heading"
+            }
+            Input {
+                this.value = value
+                placeholder = placeholderText
+                onChange = { e -> value = e.target.value as String }
+            }
+            note?.let {
+                p {
+                    className = ClassName(if (value.isBlank()) "dv-fallback" else "dv-shared")
+                    +it
+                }
+            }
+        }
+    }
+
+    div {
+        className = ClassName("dv-edit")
+        h3 { +"Heading for this workflow" }
+        fact("Shown", trait.fieldLayout?.label?.let(::headingLine) ?: fallback.text.orEmpty())
+        if (edit != null) {
+            p {
+                className = ClassName("dv-note")
+                +"This workflow uses its own heading here; every other workflow shows the shared one."
+            }
+            if (edit.inheritedChanged) {
+                p {
+                    className = ClassName("dv-callout")
+                    +"The shared heading has changed since this workflow overrode it."
+                }
+            }
+        }
+        when {
+            !design.canEdit -> design.editRefusal?.let {
+                p {
+                    className = ClassName("dv-note")
+                    +it
+                }
+            }
+            !editingOwn -> div {
+                className = ClassName("dv-actions")
+                Button {
+                    size = "small"
+                    disabled = editingShared
+                    onClick = {
+                        value = edit?.label.orEmpty()
+                        editingOwn = true
+                    }
+                    +(if (edit == null) "Override for this workflow" else "Edit")
+                }
+                if (edit != null) {
+                    Button {
+                        size = "small"
+                        type = "link"
+                        loading = saving
+                        onClick = { save(session.workflowId, null, design.basedOn) }
+                        +"Reset to shared"
+                    }
+                }
+            }
+            else -> {
+                // Blank goes back to the shared heading -- or, with none, the section's own title (issue #1039's rule).
+                headingInput(
+                    sharedText ?: fallback.text,
+                    if (value.isBlank()) sharedText?.let { "Blank: the shared heading, \"$it\"." } ?: fallback.note
+                    else sharedText?.let { "Shared: $it" },
+                )
+                div {
+                    className = ClassName("dv-actions")
+                    Button {
+                        type = "primary"
+                        size = "small"
+                        loading = saving
+                        onClick = { save(session.workflowId, value, design.basedOn) }
+                        +"Save"
+                    }
+                    Button {
+                        size = "small"
+                        type = "link"
+                        onClick = { editingOwn = false }
+                        +"Cancel"
+                    }
+                }
+            }
+        }
+        // The shared heading (issue #1029's editor, for the type as a whole): opened deliberately.
+        if (facts != null) {
+            h3 { +"Shared heading" }
+            p {
+                className = ClassName("dv-note")
+                +usedByText(facts.usedBy)
+            }
+            when {
+                !facts.canEdit -> facts.refusal?.let {
+                    p {
+                        className = ClassName("dv-note")
+                        +it
+                    }
+                }
+                pulled != null -> p {
+                    className = ClassName("dv-fallback")
+                    +"The shared heading is shared wording: change it under Shared wording."
+                }
+                !editingShared -> div {
+                    className = ClassName("dv-actions")
+                    Button {
+                        size = "small"
+                        disabled = editingOwn
+                        onClick = {
+                            value = sharedWritten.orEmpty()
+                            editingShared = true
+                        }
+                        +"Edit the shared heading"
+                    }
+                }
+                else -> {
+                    headingInput(fallback.text, if (value.isBlank()) fallback.note else null)
+                    div {
+                        className = ClassName("dv-actions")
+                        Button {
+                            type = "primary"
+                            size = "small"
+                            loading = saving
+                            onClick = { save(null, value, facts.basedOn) }
+                            +"Save for every workflow"
+                        }
+                        Button {
+                            size = "small"
+                            type = "link"
+                            onClick = { editingShared = false }
+                            +"Cancel"
+                        }
+                    }
+                }
+            }
+        }
+        failure?.let { errorText("Couldn't save the heading.", it) }
+    }
+    pulled?.let {
+        SharedWordingSection {
+            this.session = session
+            this.subject = "This heading"
+            this.slots = listOf(WordingSlot("Heading", it, trait.fieldLayout?.label))
+            this.refusal = sharedWordingRefusalOf(props.read)
+            onSaved = props.onSaved
+        }
     }
 }

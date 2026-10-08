@@ -9,10 +9,15 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
+import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.headingBasisKey
 import com.dynamicruntime.common.gedra.workflow.layoutEntryOf
+import com.dynamicruntime.common.gedra.workflow.layoutHeadingOf
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.gedra.workflow.withLayoutEntry
+import com.dynamicruntime.common.gedra.workflow.withLayoutHeading
+import com.dynamicruntime.common.gedra.workflow.withWorkflowLabel
 import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
@@ -143,6 +148,29 @@ object DesignView {
         }
         val edits = layoutEdits(declared, clientStore, store)
         if (edits.isNotEmpty()) out[DSV.layoutEdits] = edits
+        val headings = headingEdits(declared, clientStore, store)
+        if (headings.isNotEmpty()) out[DSV.headingEdits] = headings
+        return out
+    }
+
+    /**
+     * The headings [declared] sets, by type name (issue #1070): each the workflow's [DSV.label], the client's heading it
+     * replaces ([DSV.inherited], absent when there is none), and whether that has changed since the override was made.
+     * Only for types [store] still carries.
+     */
+    private fun headingEdits(declared: WfDeclared, clientStore: KdrSchemaStore, store: KdrSchemaStore): Map<String, Any?> {
+        val out = linkedMapOf<String, Any?>()
+        for ((typeName, alteration) in declared.def.typeAlterations) {
+            if (typeName !in store.defs) continue
+            val label = (alteration[SCH.layout] as? Map<*, *>)?.get(SL.label).toOptStr() ?: continue
+            val inherited = layoutHeadingOf(clientStore.defs, typeName)
+            // A basis records the heading an override replaced, `{}` when there was none.
+            val made = declared.def.typeBasis[typeName]?.get(headingBasisKey) as? Map<*, *>
+            out[typeName] = linkedMapOf<String, Any?>(DSV.label to label).also { h ->
+                inherited?.let { h[DSV.inherited] = it }
+                h[DSV.inheritedChanged] = made != null && made[SL.label].toOptStr() != inherited
+            }
+        }
         return out
     }
 
@@ -273,10 +301,44 @@ object DesignView {
         entry: Map<String, Any?>?,
         basedOn: String,
     ): String {
+        val inherited = layoutEntryOf(cxt.getClientSchema(), typeName, field)
+        return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutEntry(it, typeName, field, entry, inherited) }
+    }
+
+    /**
+     * Sets a label workflow [workflowId] owns to [label] (issue #1070): its own when [taskId] is null, else that
+     * task's, or -- with [saveId] -- that save's ([withWorkflowLabel]). Edited in the definition in place, as every
+     * Design View save is made, and refused when the definition has changed since [basedOn]. A label that pulls a
+     * fragment key is the client's shared wording, edited at the key instead (#1010); this replaces whatever the label
+     * says. Returns the new stamp.
+     */
+    fun setLabel(cxt: KdrCxt, workflowId: String, taskId: String?, saveId: String?, label: String?, basedOn: String): String =
+        editWorkflowDef(cxt, workflowId, basedOn) { withWorkflowLabel(it, taskId, saveId, label) }
+
+    /**
+     * Sets workflow [workflowId]'s own heading for [typeName] to [label], or removes it when [label] is null -- back to
+     * the shared heading (issue #1070) -- as a layout alteration of the type ([withLayoutHeading]), recording the
+     * client's heading it replaces. Refused when the definition has changed since [basedOn]. Returns the new stamp.
+     */
+    fun setHeading(cxt: KdrCxt, workflowId: String, typeName: String, label: String?, basedOn: String): String {
+        val inherited = layoutHeadingOf(cxt.getClientSchema().defs, typeName)
+        return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutHeading(it, typeName, label, inherited) }
+    }
+
+    /**
+     * Rewrites workflow [workflowId]'s stored definition with [rewrite] -- given its JSON form, returning the new one --
+     * as every Design View save is made ([saveEdit]): refused first by [editRefusal], and under the write lock when the
+     * stored definition has changed since [basedOn] (409). Returns the new stamp, for the page's next edit.
+     */
+    private fun editWorkflowDef(
+        cxt: KdrCxt,
+        workflowId: String,
+        basedOn: String,
+        rewrite: (Map<String, Any?>) -> Map<String, Any?>,
+    ): String {
         val declared = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
             ?: throw KdrException("No workflow '$workflowId' for client '${cxt.client}'.", code = EXC.notFound)
         editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it.message) }
-        val inherited = layoutEntryOf(cxt.getClientSchema(), typeName, field)
         saveEdit(cxt, declared.bundle.name) { slots ->
             val workflows = slots[CCT.workflowDef].orEmpty()
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }
@@ -289,7 +351,7 @@ object DesignView {
                     code = EXC.conflict,
                 )
             }
-            val rewritten = withLayoutEntry(current.toJsonMap(), typeName, field, entry, inherited)
+            val rewritten = rewrite(current.toJsonMap())
             slots + (CCT.workflowDef to workflows.mapIndexed { i, e -> if (i == at) e + (CCT.definition to rewritten) else e })
         }
         val reloaded = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
@@ -348,7 +410,7 @@ object DesignView {
             CCT.workflowDef -> {
                 val declared = WorkflowService.get(cxt).forClient(client).workflow(key) ?: notFound()
                 val entry = linkedMapOf(CCT.workflowId to key, CCT.definition to declared.def.toJsonMap())
-                Read(address(slot, key, null, declared.bundle), declared.bundle, entry, null, emptySet())
+                Read(address(slot, key, null, declared.bundle), declared.bundle, entry, null, emptySet(), declared.def)
             }
             else -> throw KdrException.mkInput(
                 "Design View reads ${readableSlots.joinToString()} definitions; '$slot' is not one of them.",
@@ -365,17 +427,23 @@ object DesignView {
                 ),
             )
         }
-        // The copy the client's layout pulls from fragment files (issue #1010): editable as the client's shared wording,
-        // whatever the definition's origin.
+        // The copy the client's layout pulls from fragment files (issue #1010) -- a field's copy, a type's heading, a
+        // workflow's labels (#1070): editable as the client's shared wording, whatever the definition's origin.
+        val pulled = linkedMapOf<String, Any?>()
         if (read.typeNames.isNotEmpty()) {
-            DesignPulledCopy.facts(cxt, read.typeNames).takeIf { it.isNotEmpty() }?.let { pulled ->
-                out[DSV.pulledCopy] = pulled
-                // The rule every Design View save keeps (#1026): a client with a sandbox is changed from its sandbox,
-                // where the draft shows. A copy edit lands in the editors' own config, so no foreign draft is at stake.
-                saveRefusal(cxt, CPY.copyConfigName)?.let {
-                    out[DSV.sharedWordingRefusal] = it.message
-                    out[DSV.sharedWordingRefusalCode] = it.code.name
-                }
+            DesignPulledCopy.facts(cxt, read.typeNames).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledCopy] = it }
+            DesignPulledCopy.headingFacts(cxt, read.typeNames).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledHeadings] = it }
+        }
+        read.workflow?.let { def ->
+            DesignPulledCopy.labelFacts(cxt, def).takeIf { it.isNotEmpty() }?.let { pulled[DSV.pulledLabels] = it }
+        }
+        if (pulled.isNotEmpty()) {
+            out.putAll(pulled)
+            // The rule every Design View save keeps (#1026): a client with a sandbox is changed from its sandbox,
+            // where the draft shows. A copy edit lands in the editors' own config, so no foreign draft is at stake.
+            saveRefusal(cxt, CPY.copyConfigName)?.let {
+                out[DSV.sharedWordingRefusal] = it.message
+                out[DSV.sharedWordingRefusalCode] = it.code.name
             }
         }
         read.altered?.let { (typeName, alteration) ->
@@ -408,6 +476,8 @@ object DesignView {
         val altered: Pair<String, GedraConfig>?,
         /** The types this definition gives the page -- a trait's entry and data types, or a schema type -- if any. */
         val typeNames: Set<String>,
+        /** For a workflow's read, its definition: the labels it owns, which may pull shared wording (issue #1070). */
+        val workflow: WfDef? = null,
     )
 
     private fun schemaEntry(typeName: String, body: Any?): Map<String, Any?> =
@@ -460,6 +530,14 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
             DSV.pulledCopy,
             "By type, field and copy slot, the fragment keys the client's layout pulls, with their wording -- what the " +
                 "client may change as shared wording.",
+        ) { type = SCT.kObject }
+        property(
+            DSV.pulledHeadings,
+            "By type, the heading of the client's layout when it pulls a fragment key, with its wording (issue #1070).",
+        ) { type = SCT.kObject }
+        property(
+            DSV.pulledLabels,
+            "For a workflow: its own, its tasks' and its saves' labels that pull a fragment key, with their wording (issue #1070).",
         ) { type = SCT.kObject }
         property(DSV.sharedWordingRefusal, "Why the shared wording may not be changed from here, when it may not.")
         property(DSV.sharedWordingRefusalCode, "Which of the closed set of reasons that is.") { options(DesignRefusal.entries) }
@@ -538,6 +616,75 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
             (request[DSV.options] as? List<*>)?.map { (it as? Map<*, *>)?.toJsonMap().orEmpty() },
             request.getReqNonBlankStr(DSV.sharedBasedOn),
             acknowledgeImpact = request[IMP.acknowledgeImpact] == true,
+        )
+        linkedMapOf(DSV.sharedBasedOn to stamp)
+    }
+
+    type(DSV.labelEditType) {
+        type = SCT.kObject
+        description = "The outcome of an edit of a workflow's own copy: the stamp of its definition as it now stands."
+        property(DSV.basedOn, "The workflow definition's stamp after the edit -- what the next edit is based on.", required = true)
+    }
+
+    generalEndpoint(
+        DSV.labelEdit,
+        "Sets a label a workflow owns -- its own (the page title), a task's or a save's -- in its stored definition, and reloads the client.",
+        HttpMethod.POST,
+        outputRef = DSV.labelEditType,
+        inputFields = {
+            field(DSV.workflowId, "The workflow whose label changes.", required = true)
+            field(DSV.taskId, "The task whose label changes, or whose save's does; absent for the workflow's own.")
+            field(DSV.saveId, "The save, within the task, whose label changes.")
+            field(DSV.label, "The label, a template like any workflow label; absent or blank clears the workflow's own, which a task's and a save's cannot be.")
+            field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
+            designClientField()
+        },
+    ) { c, request ->
+        AdminRules.requireClientAdministrator(c)
+        val stamp = DesignView.setLabel(
+            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request[DSV.taskId].toOptStr(),
+            request[DSV.saveId].toOptStr(), request[DSV.label].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
+        )
+        linkedMapOf(DSV.basedOn to stamp)
+    }
+
+    generalEndpoint(
+        DSV.headingEdit,
+        "Sets or clears a workflow's own heading for a type its pages draw, and reloads the client.",
+        HttpMethod.POST,
+        outputRef = DSV.labelEditType,
+        inputFields = {
+            field(DSV.workflowId, "The workflow whose heading changes.", required = true)
+            field(DSV.typeName, "The type whose heading it is -- a trait's data type, as the page draws it.", required = true)
+            field(DSV.label, "The heading; absent or blank to go back to the shared one.")
+            field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
+            designClientField()
+        },
+    ) { c, request ->
+        AdminRules.requireClientAdministrator(c)
+        val stamp = DesignView.setHeading(
+            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
+            request[DSV.label].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
+        )
+        linkedMapOf(DSV.basedOn to stamp)
+    }
+
+    generalEndpoint(
+        DSV.sharedHeadingEdit,
+        "Sets or removes a type's heading in the definition the client declares, for every workflow on the client.",
+        HttpMethod.POST,
+        outputRef = DSV.sharedFieldEditType,
+        inputFields = {
+            field(DSV.typeName, "The type whose heading it is.", required = true)
+            field(DSV.label, "The heading; absent or blank to remove it, so forms show the type's own title.")
+            field(DSV.sharedBasedOn, "The stamp of the entry the edit was made against, from the definition read.", required = true)
+            designClientField()
+        },
+    ) { c, request ->
+        AdminRules.requireClientAdministrator(c)
+        val stamp = DesignSharedEdit.setSharedHeading(
+            designCxt(c, request), request.getReqNonBlankStr(DSV.typeName), request[DSV.label].toOptStr(),
+            request.getReqNonBlankStr(DSV.sharedBasedOn),
         )
         linkedMapOf(DSV.sharedBasedOn to stamp)
     }

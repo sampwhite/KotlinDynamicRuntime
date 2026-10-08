@@ -371,8 +371,10 @@ is equivalent):
 
 - The block's vocabulary is the `SL` object (`schemaFields`, `field`, `label`, `description`, `hint`, `errors`,
   `defaultMode`, `required`, `choices`, `fragmentFileId`, `strings`, `mode`). The parser is **strict**: an unknown key on the block or
-  on an entry, a present block with no entries, or a non-object value all fail the boot — a layout must never
-  parse clean and render nothing.
+  on an entry, a present block that says nothing, or a non-object value all fail the boot — a layout must never
+  parse clean and render nothing. A block says something with at least one field entry, or -- with no field list
+  and no `mode` -- a heading (`label`) or form `strings` (issue #1070), so a type with no field copy can still be
+  given a heading. A field list that is present must not be empty.
 - **Field order and membership** (`mode`, issue #777): who owns *which* fields render and *in what order* — the
   `SLM` values, set via `layout(mode = SchLayoutMode.…) { … }`. `overlay` (default) — the schema owns order and
   the full set, the layout only annotates (historic behavior). `reorder` — the layout's listed fields draw
