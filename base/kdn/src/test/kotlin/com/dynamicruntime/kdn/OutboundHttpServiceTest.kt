@@ -21,7 +21,7 @@ import io.kotest.matchers.string.shouldContain
 class OutboundHttpServiceTest : StringSpec({
 
     "fast and slow both refuse in the unit test environment" {
-        val cxt = Startup.mkTestBootCxt("outboundHttp", "outboundHttpServiceTest")
+        val cxt = TestInstances.default("outboundHttp")
         val service = OutboundHttpService.get(cxt)
         shouldThrow<KdrException> { service.fast(cxt) }.fullMessage() shouldContain "unit test"
         shouldThrow<KdrException> { service.slow(cxt) }.fullMessage() shouldContain "unit test"

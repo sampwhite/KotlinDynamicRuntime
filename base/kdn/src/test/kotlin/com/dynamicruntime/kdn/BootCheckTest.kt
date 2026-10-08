@@ -106,6 +106,8 @@ class BootCheckTest : StringSpec({
 
     // --- the endpoint -----------------------------------------------------------------------------------
 
+    // Its own instance (issue #1075): what the boot recorded is under test: it reads the node's whole boot-check
+    // registry.
     val cxt = Startup.mkTestBootCxt("bootChecks", "bootChecksTest")
 
     "a booted node reports the checks that ran, clean ones included" {

@@ -37,7 +37,7 @@ import io.kotest.matchers.shouldBe
  * path (deriver -> `writeState` -> states cache -> the `withStates` read) without depending on acme's shapes.
  */
 class SurveyStateDerivationTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("surveyState657", "surveyState657")
+    val cxt = TestInstances.default("surveyState657")
     val client = "survey657"
 
     // A write is attributed, so bind a sub-context to the client with a userId before writing its config.

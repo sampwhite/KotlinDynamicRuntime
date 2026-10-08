@@ -36,7 +36,7 @@ import io.kotest.matchers.shouldBe
  * Registered through the real flow, since what is under test is what a self-registration grants.
  */
 class PublicAdminTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("publicAdmin", "publicAdminTest")
+    val cxt = TestInstances.default("publicAdmin")
     val users = UserService.get(cxt)
 
     val me = TestUser.register(cxt, "pubadmin-me@other.test", "pubadminme")

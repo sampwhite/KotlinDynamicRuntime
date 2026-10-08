@@ -9,7 +9,6 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCEL
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
@@ -17,7 +16,6 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportService
-import com.dynamicruntime.common.startup.BootCheckMode
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -32,7 +30,7 @@ import io.kotest.matchers.string.shouldContain
  * breaks dropped on the reload that makes the change, with the rest of the configuration loading.
  */
 class ReportRegistryReloadTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("reportRegistry", "reportRegistryReloadTest")
+    val cxt = TestInstances.default("reportRegistry")
 
     fun writer(on: KdrCxt, client: String): KdrCxt = on.mkSubContext("reportWrite", client).also { it.userId = 9800L }
 
@@ -75,9 +73,7 @@ class ReportRegistryReloadTest : StringSpec({
     }
 
     "a report a trait change breaks is dropped on that reload, and the rest of the configuration loads" {
-        val warn = Startup.mkTestBootCxt(
-            "reportRegistryWarn", "reportRegistryWarnTest", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-        )
+        val warn = TestInstances.storedConfigWarn("reportRegistryWarn")
         val client = "rptbreak"
         val svc = GedraConfigService.get(warn)
         fun reports(field: String) = config(warn, client, field) {

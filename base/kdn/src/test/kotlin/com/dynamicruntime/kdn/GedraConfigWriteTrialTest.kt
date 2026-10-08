@@ -10,7 +10,6 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -25,7 +24,6 @@ import com.dynamicruntime.common.gedra.workflow.SVY
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -47,9 +45,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class GedraConfigWriteTrialTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt(
-        "cfgTrial", "gedraConfigWriteTrialTest", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-    )
+    val cxt = TestInstances.storedConfigWarn("cfgTrial")
     val admin = TestUser.createFullAdmin(cxt, "chief@trial843.test")
 
     fun clientDef(client: String, includedTraits: List<String> = emptyList()) = ClientDef(

@@ -50,7 +50,7 @@ import io.kotest.matchers.string.shouldContain
  * is refused when the configuration is loaded, since a misspelled label would otherwise never fire.
  */
 class UserLabelsTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("labels786", "labels786")
+    val cxt = TestInstances.default("labels786")
     val client = "labels786"
 
     fun asClient(id: String): KdrCxt = cxt.mkSubContext("setup", id).also { it.userId = 9000L }

@@ -54,7 +54,7 @@ import io.kotest.matchers.shouldBe
  * literal undeclared cfact is already refused at boot and so never reaches the runtime drop.
  */
 class CfactCalcTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("cfactCalc678", "cfactCalc678")
+    val cxt = TestInstances.default("cfactCalc678")
     val client = "cfactcalc678"
     // A second client opting into strict unknown-cfact handling. Written purely over the API: on a test instance
     // its testFeatures round-trips and is honored (issue #696), so no boot fixture is needed.

@@ -6,7 +6,6 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.ClientUsageType
-import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
@@ -14,7 +13,6 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
-import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.TestUser
@@ -32,9 +30,7 @@ import io.kotest.matchers.shouldBe
  */
 class ClientStatusListingTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt(
-        "statusListing", "clientStatusListingTest", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
-    )
+    val cxt = TestInstances.storedConfigWarn("statusListing")
     val present = "status828ok"
     val notEnabled = "status828off"
     val dropped = "status828drop"

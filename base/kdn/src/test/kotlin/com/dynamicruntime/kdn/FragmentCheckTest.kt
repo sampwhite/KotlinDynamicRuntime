@@ -43,7 +43,7 @@ class FragmentCheckTest : StringSpec({
      * keying on it would have handed a developer production behavior on their own machine.
      */
     "the check is strict outside prod and lenient in prod" {
-        val cxt = Startup.mkTestBootCxt("fragMode", "fragModeTest")
+        val cxt = TestInstances.default("fragMode")
         MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe BootCheckMode.strict
 
         // A prod-shaped config built directly: `env` is fixed at construction, and `mkTestBootCxt` forces
@@ -53,6 +53,7 @@ class FragmentCheckTest : StringSpec({
     }
 
     "an explicit setting decides it either way" {
+        // Its own instance (issue #1075): it changes instance configuration (`FRAG.checkEnvVar`) while running.
         val cxt = Startup.mkTestBootCxt("fragEnv", "fragEnvTest")
         cxt.instanceConfig.put(FRAG.checkEnvVar.name, BootCheckMode.warn.name)
         MarkdownFragmentService.fragmentCheckMode(cxt) shouldBe BootCheckMode.warn
@@ -71,6 +72,8 @@ class FragmentCheckTest : StringSpec({
      * fragment anywhere would stop every test in the repository rather than just this one.
      */
     "every registered fragment file is present and free of syntax problems" {
+        // Its own instance (issue #1075): it checks every fragment file the instance holds, which other tests on a
+        // shared instance may add to.
         val cxt = Startup.mkTestBootCxt("fragCheck", "fragCheckTest")
         val results = service(cxt).checkFragments(cxt)
         results.isNotEmpty() shouldBe true
@@ -82,7 +85,7 @@ class FragmentCheckTest : StringSpec({
     }
 
     "a declared file that is not there is reported as absent rather than clean" {
-        val cxt = Startup.mkTestBootCxt("fragMissing", "fragMissingTest")
+        val cxt = TestInstances.default("fragMissing")
         val results = service(cxt).checkFragments(cxt, only = "no-such-fragment-file")
         results.size shouldBe 1
         results[0].found shouldBe false
@@ -93,6 +96,8 @@ class FragmentCheckTest : StringSpec({
     // --- the endpoint -----------------------------------------------------------
 
     "an operator can check the fragments of a running instance" {
+        // Its own instance (issue #1075): it checks every fragment file the instance holds, which other tests on a
+        // shared instance may add to.
         val cxt = Startup.mkTestBootCxt("fragEndpoint", "fragEndpointTest")
         val operator = TestUser.createOperator(cxt, "frag-op@example.com")
 
@@ -118,7 +123,7 @@ class FragmentCheckTest : StringSpec({
     }
 
     "the endpoint reports what each entry asks of its data" {
-        val cxt = Startup.mkTestBootCxt("fragPaths", "fragPathsTest")
+        val cxt = TestInstances.default("fragPaths")
         val operator = TestUser.createOperator(cxt, "frag-paths-op@example.com")
 
         val auth = operator.getItems("/operator/fragments/check", mapOf(FCHK.fileId to AFRAG.auth)).single()
@@ -133,7 +138,7 @@ class FragmentCheckTest : StringSpec({
     }
 
     "supplying a data map reports the required paths it would not satisfy" {
-        val cxt = Startup.mkTestBootCxt("fragData", "fragDataTest")
+        val cxt = TestInstances.default("fragData")
         val operator = TestUser.createOperator(cxt, "frag-data-op@example.com")
 
         fun missingFor(data: String): List<String> {
@@ -157,7 +162,7 @@ class FragmentCheckTest : StringSpec({
      * `${email}`; renaming either without the other is a 500 in front of a user, found by nobody until then.
      */
     "the copy that takes a param is satisfied by the map its caller actually builds" {
-        val cxt = Startup.mkTestBootCxt("fragCaller", "fragCallerTest")
+        val cxt = TestInstances.default("fragCaller")
         val template = service(cxt).resolveFragment(cxt, AFRAG.auth, AERR.ns, AERR.emailNotAvailable)
             ?: error("The emailNotAvailable fragment should exist.")
 
@@ -168,7 +173,7 @@ class FragmentCheckTest : StringSpec({
 
     /** It reports copy internals and file positions, so it sits behind the operator gate like the other diagnostics. */
     "an ordinary user cannot reach the fragment check" {
-        val cxt = Startup.mkTestBootCxt("fragGate", "fragGateTest")
+        val cxt = TestInstances.default("fragGate")
         val plain = TestUser.create(cxt, "frag-plain@example.com")
         plain.expectError(EXC.notAuthorized, "/operator/fragments/check")
     }

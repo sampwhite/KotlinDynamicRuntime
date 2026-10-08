@@ -40,7 +40,7 @@ import io.kotest.matchers.shouldNotBe
  * for one without, as before. One booted instance; a parent client per case.
  */
 class SandboxEditsTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("sandboxEdits930", "sandboxEdits930")
+    val cxt = TestInstances.default("sandboxEdits930")
     val svc = GedraConfigService.get(cxt)
 
     /** Defines [parent] -- with a sandbox unless [sandbox] is false -- publishes it, and makes it published-only when asked. */

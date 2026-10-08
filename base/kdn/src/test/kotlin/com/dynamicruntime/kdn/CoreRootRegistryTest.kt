@@ -18,7 +18,7 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
  * a name added later without it fails here rather than shipping.
  */
 class CoreRootRegistryTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("coreRoots", "coreRootRegistryTest")
+    val cxt = TestInstances.default("coreRoots")
 
     "no core type or endpoint namespace lacks the kdr root" {
         val store = SchemaService.get(cxt).schemaStore

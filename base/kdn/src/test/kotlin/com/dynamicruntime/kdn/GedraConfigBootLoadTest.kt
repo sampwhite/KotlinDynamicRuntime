@@ -49,6 +49,8 @@ class GedraConfigBootLoadTest : StringSpec({
         val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_basic", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "bootclient"
 
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time load is under test.
         // Boot 1: write a config that defines a client and one trait.
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1a", "cfgBootLoad1a", db)
         val config: GedraConfig = gedraConfig(cxt1, "bootcfg", clientNamespace(client), client) {
@@ -80,6 +82,8 @@ class GedraConfigBootLoadTest : StringSpec({
         val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_extends", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "extclient"
 
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time load is under test.
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1b", "cfgBootLoad1b", db)
         // `hub` is a source client, but a production one, not a template -- so a data config may not extend it.
         val config = gedraConfig(cxt1, "extcfg", clientNamespace(client), client) {
@@ -110,6 +114,8 @@ class GedraConfigBootLoadTest : StringSpec({
         val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_forgive", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "forgiveclient"
 
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time load is under test.
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1d", "cfgBootLoad1d", db)
         val config = gedraConfig(cxt1, "forgivecfg", clientNamespace(client), client) {
             defineClient(
@@ -123,6 +129,8 @@ class GedraConfigBootLoadTest : StringSpec({
         }
         GedraConfigService.get(cxt1).writeConfig(writer(cxt1, client), config)
 
+        // Its own instance (issue #1075): the restart over the same database, its stored-config check at warn; its
+        // boot-time load is under test.
         val cxt2 = Startup.mkTestBootCxt(
             "cfgLoad2d", "cfgBootLoad2d", db + mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
         )
@@ -148,6 +156,8 @@ class GedraConfigBootLoadTest : StringSpec({
         val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_holder", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "holderclient"
 
+        // Its own instance (issue #1075): the first of three boots over its own database (`KDR_DB_NAME`); the restarts'
+        // boot-time load is under test.
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1e", "cfgBootLoad1e", db)
         val config = gedraConfig(cxt1, "holdercfg", clientNamespace(client), client) {
             defineClient(
@@ -165,6 +175,8 @@ class GedraConfigBootLoadTest : StringSpec({
         shouldThrow<KdrException> { Startup.mkTestBootCxt("cfgLoad2e", "cfgBootLoad2e", db) }
             .message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
 
+        // Its own instance (issue #1075): a further restart over the same database, its stored-config check at warn;
+        // its boot-time load is under test.
         val cxt3 = Startup.mkTestBootCxt(
             "cfgLoad3e", "cfgBootLoad3e", db + mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
         )
@@ -180,6 +192,8 @@ class GedraConfigBootLoadTest : StringSpec({
         val db = mapOf("KDR_DB_NAME" to "cfgBootLoad_frag", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "fragclient"
 
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time load is under test.
         val cxt1 = Startup.mkTestBootCxt("cfgLoad1c", "cfgBootLoad1c", db)
         // A config that overlays the shipped `home` fragment for its own client (`home.title` exists in the
         // base file, so the overlay is not orphaned) and defines the client so the overlay has a variant.

@@ -21,6 +21,8 @@ class EnvVarReferenceTest : StringSpec({
     // `LogSetup.appLogLevelEnvVar` loads that declaring object -- so the variable is in the registry when the
     // document renders, independent of what else the suite happened to touch first.
     "an operator gets a Markdown reference showing this node's resolved values" {
+        // Its own instance (issue #1075): the report shows this node's resolved values, so it boots with known ones
+        // (log level, admin domain).
         val cxt = Startup.mkTestBootCxt(
             "envRef", "envRefTest",
             mapOf(
@@ -53,7 +55,7 @@ class EnvVarReferenceTest : StringSpec({
 
     /** It names infrastructure detail (`KDR_DB_HOST`, `KDR_DB_USER`), so it sits behind the operator gate. */
     "an ordinary user cannot reach the environment-variable reference" {
-        val cxt = Startup.mkTestBootCxt("envRefGate", "envRefGateTest")
+        val cxt = TestInstances.default("envRefGate")
         val plain = TestUser.create(cxt, "env-plain@example.com")
         plain.expectError(EXC.notAuthorized, OENV.envReferencePath)
     }

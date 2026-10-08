@@ -35,12 +35,16 @@ class SourceSchemaForgivenessTest : StringSpec({
 
     "outside production a component's schema fault still refuses the boot, naming the source variable" {
         val failure = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: SourceFaultComponent is expected to refuse
+            // it.
             Startup.mkTestBootCxt("srcFaultUnit", "sourceFaultUnitTest", additionalComponents = listOf(SourceFaultComponent()))
         }
         failure.message.shouldNotBeNull() shouldContain GCFG.checkEnvVar.name
     }
 
     "in production the faulty keyword and layout are dropped, and the node serves" {
+        // Its own instance (issue #1075): a production boot with SourceFaultComponent: what that boot drops and serves
+        // is under test.
         val cxt: KdrCxt = Startup.mkBootCxt(
             "srcFaultProd", "sourceFaultProdTest",
             mapOf(

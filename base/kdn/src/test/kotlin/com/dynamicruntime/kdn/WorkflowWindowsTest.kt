@@ -56,6 +56,7 @@ import kotlin.time.Instant
  * apart rather than days, so the test user's session outlives the walk.
  */
 class WorkflowWindowsTest : StringSpec({
+    // Its own instance (issue #1075): it freezes and sets the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("wfWindows790", "wfWindows790")
     val client = "wfwin790"
     val clock = cxt.instanceConfig.clock

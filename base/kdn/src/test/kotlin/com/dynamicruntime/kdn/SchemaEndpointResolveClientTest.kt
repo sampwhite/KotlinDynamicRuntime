@@ -28,8 +28,10 @@ import io.kotest.matchers.ints.shouldBeLessThan
  * catalog is unrestricted and this test turns on `resolveClient` alone, not the #489 publicApi gate.
  */
 class SchemaEndpointResolveClientTest : StringSpec({
+    // Its own instance (issue #1075): VariantFixtureComponent with env auth, a setup no shared entry has.
+    // One instance for the file (issue #1075): every test here only looks endpoints up, each as its own caller.
     fun boot(name: String): KdrCxt = Startup.mkTestBootCxt(
-        "resolveClient", name,
+        name, "resolveClientShared",
         mapOf(VariantFixtureComponent.loadFlag.name to "true", ACFG.assumeEnvAuth to true),
         additionalComponents = listOf(VariantFixtureComponent()),
     )

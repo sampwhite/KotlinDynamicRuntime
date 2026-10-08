@@ -24,7 +24,7 @@ import io.kotest.matchers.shouldBe
 class ProfileNameTest : StringSpec({
 
     "a user sets the name they are shown under, and it survives the round trip" {
-        val cxt = Startup.mkTestBootCxt("profileName", "profileNameTest")
+        val cxt = TestInstances.default("profileName")
         val user = TestUser.create(cxt, "profile-name@example.com")
 
         // Before: no name, so the display falls back to the login name -- which for a provisioned user with a
@@ -40,7 +40,7 @@ class ProfileNameTest : StringSpec({
     }
 
     "a blank name clears it rather than being rejected as an empty form" {
-        val cxt = Startup.mkTestBootCxt("profileNameClear", "profileNameClearTest")
+        val cxt = TestInstances.default("profileNameClear")
         val user = TestUser.create(cxt, "profile-clear@example.com")
 
         user.postData(AEP.profileSetName, mapOf(AFLD.name to "Temporary"))[UPF.name] shouldBe "Temporary"
@@ -51,7 +51,7 @@ class ProfileNameTest : StringSpec({
 
     /** Whitespace is trimmed on the way in, so a name never carries padding into a heading or the app bar. */
     "the stored name is trimmed" {
-        val cxt = Startup.mkTestBootCxt("profileNameTrim", "profileNameTrimTest")
+        val cxt = TestInstances.default("profileNameTrim")
         val user = TestUser.create(cxt, "profile-trim@example.com")
         user.postData(AEP.profileSetName, mapOf(AFLD.name to "  Ada Lovelace  "))[UPF.name] shouldBe "Ada Lovelace"
     }
@@ -62,7 +62,7 @@ class ProfileNameTest : StringSpec({
      * wherever it happens to be rendered.
      */
     "an over-long name is refused by validation" {
-        val cxt = Startup.mkTestBootCxt("profileNameLong", "profileNameLongTest")
+        val cxt = TestInstances.default("profileNameLong")
         val user = TestUser.create(cxt, "profile-long@example.com")
         val tooLong = "x".repeat(defaultDisplayLen + 1)
         user.expectError(EXC.badInput, AEP.profileSetName, mapOf(AFLD.name to tooLong))
@@ -76,7 +76,7 @@ class ProfileNameTest : StringSpec({
      * carries a unique index. This is why the endpoint needs no collision handling at all.
      */
     "two users may hold the same name" {
-        val cxt = Startup.mkTestBootCxt("profileNameDup", "profileNameDupTest")
+        val cxt = TestInstances.default("profileNameDup")
         TestUser.create(cxt, "profile-dup-a@example.com")
             .postData(AEP.profileSetName, mapOf(AFLD.name to "Alex Taylor"))[UPF.name] shouldBe "Alex Taylor"
         TestUser.create(cxt, "profile-dup-b@example.com")
@@ -89,7 +89,7 @@ class ProfileNameTest : StringSpec({
      * the login page rather than show a refusal.
      */
     "a logged-out caller cannot set a name" {
-        val cxt = Startup.mkTestBootCxt("profileNameAnon", "profileNameAnonTest")
+        val cxt = TestInstances.default("profileNameAnon")
         val anon = TestHttpClient(cxt.instanceConfig)
         val resp = anon.sendJsonPostRequest(AEP.profileSetName, mapOf(AFLD.name to "Nobody"))
         (resp[EP.status] as? Number)?.toInt() shouldBe EXC.authNeeded

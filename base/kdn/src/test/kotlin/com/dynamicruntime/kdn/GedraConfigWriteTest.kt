@@ -40,6 +40,7 @@ import kotlin.time.Duration.Companion.seconds
  * explains.
  */
 class GedraConfigWriteTest : StringSpec({
+    // Its own instance (issue #1075): it freezes and steps the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("gedraCfgWrite", "gedraCfgWriteTest")
     val client = "gcfgwclient"
     val ownerId = 91001L

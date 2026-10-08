@@ -32,7 +32,7 @@ class BecomeUserEndpointTest : StringSpec({
     @Suppress("UNCHECKED_CAST")
 
     "TestUser.create makes a new user and the client is authenticated as them" {
-        val cxt = Startup.mkTestBootCxt("becomeNew", "becomeNewTest")
+        val cxt = TestInstances.default("becomeNew")
         val alice = TestUser.create(cxt, "become-alice@example.com")
         alice.userId shouldBeGreaterThan 0L
         // A follow-up call through the same client is made as that user -- proving the session cookie stuck.
@@ -40,7 +40,7 @@ class BecomeUserEndpointTest : StringSpec({
     }
 
     "a supplied name is set on a freshly created user, and ignored for an existing one (issue #736)" {
-        val cxt = Startup.mkTestBootCxt("becomeNamed", "becomeNamedTest")
+        val cxt = TestInstances.default("becomeNamed")
         val user = TestUser.create(cxt, "become-dana@example.com", name = "Dana Lee")
         // The real-world name persisted -- distinct from publicName/username, which is what a prefill from the
         // owner's name needs to have something to show.
@@ -51,7 +51,7 @@ class BecomeUserEndpointTest : StringSpec({
     }
 
     "becoming an existing user returns the same user, and the requested level is ignored" {
-        val cxt = Startup.mkTestBootCxt("becomeExisting", "becomeExistingTest")
+        val cxt = TestInstances.default("becomeExisting")
         // Prefixed, like every address in this spec: the in-memory database is keyed by name rather than by
         // instance, so a bare `bob@example.com` is shared with whichever other spec also chose it -- and
         // since #352 a plain address on a controlled domain is provisioned as an administrator, so a spec
@@ -63,7 +63,7 @@ class BecomeUserEndpointTest : StringSpec({
     }
 
     "a level places a freshly created user on the ladder" {
-        val cxt = Startup.mkTestBootCxt("becomeAdmin", "becomeAdminTest")
+        val cxt = TestInstances.default("becomeAdmin")
         val admin = TestUser.create(cxt, "become-carol@example.com", level = ROLE.admin)
         TestUser.rolesOf(admin.userInfo).contains(ROLE.admin) shouldBe true
     }
@@ -73,7 +73,7 @@ class BecomeUserEndpointTest : StringSpec({
      * base role has to come with it or the user could not log in at all.
      */
     "a level of operator creates an operator, and carries the base role with it" {
-        val cxt = Startup.mkTestBootCxt("becomeOperator", "becomeOperatorTest")
+        val cxt = TestInstances.default("becomeOperator")
         val operator = TestUser.create(cxt, "become-operator@example.com", level = ROLE.operator)
 
         val roles = TestUser.rolesOf(operator.userInfo)
@@ -90,7 +90,7 @@ class BecomeUserEndpointTest : StringSpec({
 
     /** An unrecognized level can only under-grant, so a typo cannot hand out privileges. */
     "an unknown level is rejected by the endpoint's declared options" {
-        val cxt = Startup.mkTestBootCxt("becomeBadLevel", "becomeBadLevelTest")
+        val cxt = TestInstances.default("becomeBadLevel")
         val client = TestHttpClient(cxt.instanceConfig)
         val handler = client.sendEditRequest(
             TEP.becomeUser,
@@ -102,7 +102,7 @@ class BecomeUserEndpointTest : StringSpec({
     }
 
     "failIfUserAlreadyExists rejects an existing user with a 400" {
-        val cxt = Startup.mkTestBootCxt("becomeFail", "becomeFailTest")
+        val cxt = TestInstances.default("becomeFail")
         val client = TestHttpClient(cxt.instanceConfig)
         client.sendJsonPostRequest(TEP.becomeUser, mapOf(TEP.email to "become-dave@example.com"))
         val handler = client.sendEditRequest(
@@ -113,12 +113,14 @@ class BecomeUserEndpointTest : StringSpec({
     }
 
     "the become-user endpoint is marked forTestingOnly" {
-        val cxt = Startup.mkTestBootCxt("becomeMarker", "becomeMarkerTest")
+        val cxt = TestInstances.default("becomeMarker")
         testSchema(cxt).endpoints.single { it.path == TEP.becomeUser }.forTestingOnly shouldBe true
     }
 
     "a test instance outside local/unit fails startup with an aggressive error" {
         val ex = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: a test instance outside local/unit is
+            // expected to refuse it.
             Startup.mkBootCxt("guardCxt", "guardInstance", mapOf(ACFG.env to ENV.dev, ACFG.inMemoryOnly to true))
         }
         ex.message.orEmpty() shouldContain "test instance"

@@ -45,7 +45,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
  * as something else, or thrown as a server error. What is already stored is still read leniently.
  */
 class ClientDefGateTest : StringSpec({
-    val cxt: KdrCxt = Startup.mkTestBootCxt("clientDefGate", "clientDefGateTest")
+    val cxt: KdrCxt = TestInstances.default("clientDefGate")
 
     fun fullAdmin(): TestUser = TestUser.createFullAdmin(cxt, "gate1051@example.com")
 

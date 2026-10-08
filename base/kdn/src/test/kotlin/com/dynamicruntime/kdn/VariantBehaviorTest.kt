@@ -39,9 +39,11 @@ class VariantBehaviorTest : StringSpec({
         VariantScenario("failAll", listOf(VariantRule(pathContains = "/kda", failStatus = 503))),
     )
 
+    // Its own instance (issue #1075): configured test-variant scenarios (`ACFG.testVariantScenarios`), a setup no
+    // shared entry has.
     val enabledCxt = Startup.mkTestBootCxt("variantEnabled", "variantEnabledTest",
         mapOf(ACFG.testVariantScenarios to scenarios()))
-    val disabledCxt = Startup.mkTestBootCxt("variantDisabled", "variantDisabledTest")
+    val disabledCxt = TestInstances.default("variantDisabled")
 
     "the escape-hatch endpoint selects a configured scenario and reports the choices" {
         val client = TestHttpClient(enabledCxt.instanceConfig)
@@ -110,6 +112,8 @@ class VariantBehaviorTest : StringSpec({
     "a malformed scenario refuses the boot" {
         // env=unit (forced by mkTestBootCxt), so it is validation -- not the real-environment refusal -- that fires.
         val failure = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: a malformed scenario is expected to refuse
+            // it.
             Startup.mkTestBootCxt(
                 "variantBad", "variantBadNameTest",
                 mapOf(ACFG.testVariantScenarios to listOf(
@@ -123,6 +127,8 @@ class VariantBehaviorTest : StringSpec({
 
     "a real environment refuses to boot with scenarios configured" {
         val failure = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: a real environment with scenarios is
+            // expected to refuse it.
             Startup.mkBootCxt(
                 "variantProd", "variantProdRefusalTest",
                 mapOf(

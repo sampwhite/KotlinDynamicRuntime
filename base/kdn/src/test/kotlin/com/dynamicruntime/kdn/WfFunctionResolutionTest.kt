@@ -48,6 +48,8 @@ import io.kotest.matchers.shouldBe
  */
 class WfFunctionResolutionTest : StringSpec({
 
+    // Its own instance (issue #1075): the boot is under test: it resolves WfFnFixture's function usages and records the
+    // ones it drops (check at warn).
     fun boot(): KdrCxt = Startup.mkTestBootCxt(
         "wfFn", "wfFnResolutionTest",
         mapOf(WfFnFixture.loadFlag.name to "true", GCFG.checkEnvVar.name to "warn"),

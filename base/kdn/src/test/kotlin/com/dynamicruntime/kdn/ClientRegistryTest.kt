@@ -40,6 +40,8 @@ import io.kotest.matchers.shouldBe
  */
 class ClientRegistryTest : StringSpec({
 
+    // Its own instance (issue #1075): OffsiteClientComponent, a fixture component no shared entry has; a case lists
+    // every client the instance carries.
     fun boot(name: String): KdrCxt {
         return Startup.mkTestBootCxt("clients", name, mapOf(OffsiteClientComponent.loadFlag.name to "true"), additionalComponents = listOf(OffsiteClientComponent()))
     }

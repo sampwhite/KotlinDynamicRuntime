@@ -49,7 +49,7 @@ import io.kotest.matchers.string.shouldContain
 class ClientExtensionTest : StringSpec({
     val tpl = ExtensionTemplateComponent.template
     val kid = ExtensionTemplateComponent.child
-    val cxt = Startup.mkTestBootCxt("clientExtension", "clientExtensionTest", emptyMap(), listOf(ExtensionTemplateComponent()))
+    val cxt = TestInstances.extensionTemplate("clientExtension")
 
     fun traits(client: String) = SchemaService.get(cxt).gedraTraitsFor(client)
     fun traitIds(client: String) = traits(client).map { it.traitId }

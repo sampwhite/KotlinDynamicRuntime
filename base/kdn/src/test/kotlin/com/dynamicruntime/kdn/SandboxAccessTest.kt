@@ -45,7 +45,7 @@ import io.kotest.matchers.shouldNotBe
  * One booted instance; a parent client per case.
  */
 class SandboxAccessTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("sandboxAccess929", "sandboxAccess929")
+    val cxt = TestInstances.default("sandboxAccess929")
 
     /** Defines [parent], with a sandbox unless [sandbox] is false, and makes it live. */
     fun defineParent(parent: String, sandbox: Boolean = true) {

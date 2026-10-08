@@ -35,6 +35,8 @@ import io.kotest.matchers.shouldBe
  */
 class GedraConfigSyncTest : StringSpec({
     val db = mapOf("KDR_DB_NAME" to "cfgSyncDb", "KDR_LOAD_STORED_CONFIG" to "true")
+    // Its own instance (issue #1075): nodes A and B, two nodes over one database of their own (`KDR_DB_NAME`), as
+    // syncing between peers needs.
     val nodeA: KdrCxt = Startup.mkTestBootCxt("cfgSyncA", "cfgSyncNodeA", db)
     val nodeB: KdrCxt = Startup.mkTestBootCxt("cfgSyncB", "cfgSyncNodeB", db)
     // Node B reads config straight from the shared database, for the reason in the spec doc.

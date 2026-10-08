@@ -47,7 +47,7 @@ import io.kotest.matchers.string.shouldContain
  * folds new data into the form and recomputes its survey state live, no restart.
  */
 class SurveyEditTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("surveyEdit658", "surveyEdit658")
+    val cxt = TestInstances.default("surveyEdit658")
     val client = "surveyedit658"
 
     fun asClient(): KdrCxt = cxt.mkSubContext("setup", client).also { it.userId = 9000L }

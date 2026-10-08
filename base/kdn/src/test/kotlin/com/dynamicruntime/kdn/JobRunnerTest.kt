@@ -46,6 +46,8 @@ import kotlin.time.Duration.Companion.seconds
  * uses it, so every case gets a job shaped to its question. The fixture component registers them all at boot.
  */
 class JobRunnerTest : StringSpec({
+    // Its own instance (issue #1075): it runs the job machinery, which is instance-wide, with JobFixture's jobs, and
+    // freezes the clock.
     val cxt = Startup.mkTestBootCxt("jobRunner", "jobRunnerTest", additionalComponents = listOf(JobFixture()))
     cxt.instanceConfig.clock.freeze()
 

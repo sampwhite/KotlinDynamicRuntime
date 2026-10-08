@@ -32,7 +32,7 @@ class ActingProfileTest : StringSpec({
         UserService.get(cxt).also { it.checkInit(cxt) }
 
     "refreshing the acting roles keeps every other field of the live profile" {
-        val cxt = Startup.mkTestBootCxt("actingProfile", "actingProfileTest")
+        val cxt = TestInstances.default("actingProfile")
         val service = users(cxt)
 
         // A user with the optional identity fields actually populated -- a profile of all defaults could not
@@ -74,7 +74,7 @@ class ActingProfileTest : StringSpec({
      * cookie expiry. A disabled account drops to no roles at all.
      */
     "refreshing picks up a role change, and a disabled account loses its roles" {
-        val cxt = Startup.mkTestBootCxt("actingRoles", "actingRolesTest")
+        val cxt = TestInstances.default("actingRoles")
         val service = users(cxt)
         val userId = service.provisionUser(cxt, "acting-promoted@example.com", CL.public, listOf(ROLE.user, ROLE.admin))
 

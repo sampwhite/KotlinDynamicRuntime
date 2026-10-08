@@ -86,6 +86,7 @@ class AdminUserTest : StringSpec({
     }
 
     "registering at the configured domain grants admin, and a plus-addressed sibling gets nothing" {
+        // Its own instance (issue #1075): an auto-admin domain (`ACFG.adminEmailDomain`), a setup no shared entry has.
         val cxt = Startup.mkTestBootCxt("admin", "adminGrantTest", mapOf(ACFG.adminEmailDomain to adminDomain))
 
         // The real registration flow, because what is under test is what `createInitialUser` grants.
@@ -106,7 +107,7 @@ class AdminUserTest : StringSpec({
     "a plain address on a controlled domain is provisioned as a full-scope administrator" {
         // No admin domain configured, so this is `example.com` doing the work -- which is how a test or a
         // fresh developer instance mints its own first administrator without the GrantRole script.
-        val cxt = Startup.mkTestBootCxt("autoAdmin", "autoAdminExampleTest")
+        val cxt = TestInstances.default("autoAdmin")
         val boss = TestUser.register(cxt, "auto-boss@example.com", "autoboss")
         boss.selfRoles() shouldContain ROLE.admin
         boss.selfRoles() shouldContain ROLE.allClients
@@ -122,7 +123,7 @@ class AdminUserTest : StringSpec({
      * as and stops there.
      */
     "a role an administrator removes stays removed across a login" {
-        val cxt = Startup.mkTestBootCxt("autoAdmin", "autoAdminNoResyncTest")
+        val cxt = TestInstances.default("autoAdmin")
         val chief = TestUser.register(cxt, "auto-chief@example.com", "autochief")
         val demoted = TestUser.register(cxt, "auto-demoted@example.com", "autodemoted")
         demoted.selfRoles() shouldContain ROLE.admin // provisioned as one, being a plain controlled address
@@ -140,7 +141,7 @@ class AdminUserTest : StringSpec({
     // --- the gate ------------------------------------------------------------
 
     "neither an anonymous caller nor a plain user can reach the admin endpoints" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminGateTest")
+        val cxt = TestInstances.default("admin")
 
         // Refused either way, but not with the same answer (issue #211): nobody logged in is a 401, which
         // says "authenticate and retry", while a logged-in non-admin is a 403, where retrying as themselves
@@ -152,7 +153,7 @@ class AdminUserTest : StringSpec({
     }
 
     "the users listing trims to the limit but reports the full total in numAvailable (issue #499)" {
-        val cxt = Startup.mkTestBootCxt("adminNumAvail", "adminNumAvailTest")
+        val cxt = TestInstances.default("adminNumAvail")
         val admin = TestUser.createFullAdmin(cxt, "chief@other.com")
 
         fun total(): Int =
@@ -188,7 +189,7 @@ class AdminUserTest : StringSpec({
     // --- the whole flow ------------------------------------------------------
 
     "an admin lists, creates, promotes, and disables users" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminFlowTest")
+        val cxt = TestInstances.default("admin")
         val admin = TestUser.createFullAdmin(cxt, "chief@other.com")
 
         // Create a user directly, bypassing email verification.
@@ -240,7 +241,7 @@ class AdminUserTest : StringSpec({
     }
 
     "creating a user with a malformed email address is refused" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminEmailValidationTest")
+        val cxt = TestInstances.default("admin")
         val admin = TestUser.createFullAdmin(cxt, "chief@emailval.com")
 
         // The reported gap: a bare username (no '@') was accepted as an address, minting a permanent account
@@ -257,7 +258,7 @@ class AdminUserTest : StringSpec({
     }
 
     "an admin-created address is stored normalized, and a duplicate by case is refused (#743)" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminEmailNormalizeTest")
+        val cxt = TestInstances.default("admin")
         val admin = TestUser.createFullAdmin(cxt, "norm743@example.com")
         admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to " Dupe@Other.COM "))[ADF.primaryId] shouldBe "dupe@other.com"
         admin.expectError(EXC.badInput, ADEP.userCreate, mapOf(ADF.primaryId to "DUPE@other.com"))
@@ -266,7 +267,7 @@ class AdminUserTest : StringSpec({
     }
 
     "a user is created enabled by default, or disabled when asked" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminCreateEnabledTest")
+        val cxt = TestInstances.default("admin")
         val admin = TestUser.createFullAdmin(cxt, "chief@enabled.com")
 
         // Default: no `enabled` field -> an active account, as every existing caller expects.
@@ -290,7 +291,7 @@ class AdminUserTest : StringSpec({
     // --- revocation takes effect without waiting for the session to expire ----
 
     "granting and revoking admin take effect on an existing session's next request" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminRevokeTest")
+        val cxt = TestInstances.default("admin")
         val chief = TestUser.createFullAdmin(cxt, "chief2@other.com")
 
         // A plain user with a live session of their own, promoted *after* their cookie was issued.
@@ -316,7 +317,7 @@ class AdminUserTest : StringSpec({
     // --- nobody edits their own administrator status -------------------------
 
     "an admin may edit their own other roles, but not their own admin status" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminSelfRoleTest")
+        val cxt = TestInstances.default("admin")
         val admin = TestUser.createFullAdmin(cxt, "self@other.com")
         val other = "auditor" // a role some deployment might add; not special to the runtime
 
@@ -343,7 +344,7 @@ class AdminUserTest : StringSpec({
     }
 
     "a user cannot promote themselves to admin" {
-        val cxt = Startup.mkTestBootCxt("admin", "adminSelfPromoteTest")
+        val cxt = TestInstances.default("admin")
         val plain = TestUser.create(cxt, "climber@other.com")
 
         // Today the section gate alone stops this -- a non-admin never reaches the endpoint. The assertion
@@ -366,7 +367,7 @@ class AdminUserTest : StringSpec({
  * administrator makes at their own address, and the key the database holds.
  */
 class AdminPersonaTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("adminPersona", "adminPersonaTest")
+    val cxt = TestInstances.default("adminPersona")
 
     "a persona names the roles a new user starts with, and an explicit list still wins" {
         val admin = TestUser.createFullAdmin(cxt, "persona-chief@other.com")

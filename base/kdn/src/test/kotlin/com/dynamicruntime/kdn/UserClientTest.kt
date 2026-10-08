@@ -32,7 +32,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class UserClientTest : StringSpec({
 
-    fun boot(): KdrCxt = Startup.mkTestBootCxt("userClient", "userClientTest")
+    fun boot(): KdrCxt = TestInstances.default("userClient")
 
     // --- the fixture, which is told ---------------------------------------------
 

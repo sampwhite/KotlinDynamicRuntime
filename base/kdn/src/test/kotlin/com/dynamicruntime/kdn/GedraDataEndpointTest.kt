@@ -44,7 +44,7 @@ import io.kotest.matchers.string.shouldStartWith
  * shared on purpose rather than by omission, and the blocks run in declaration order.
  */
 class GedraDataEndpointTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("gedraData", "gedraDataTest")
+    val cxt = TestInstances.default("gedraData")
 
     val alice = TestUser.create(cxt, "alice@gedra.test", userClient = CL.hub)
     val bob = TestUser.create(cxt, "bob@gedra.test", userClient = CL.hub)

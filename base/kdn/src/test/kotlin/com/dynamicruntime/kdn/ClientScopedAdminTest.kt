@@ -1,6 +1,5 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
@@ -52,7 +51,7 @@ class ClientScopedAdminTest : StringSpec({
     // --- the scope as policy ---------------------------------------------------
 
     "the scope narrows by role, and only allClients widens it" {
-        val cxt = Startup.mkTestBootCxt("scope", "adminScopeTest")
+        val cxt = TestInstances.default("scope")
 
         fun acting(vararg roles: String): KdrCxt = KdrCxt(
             "scopeCase", cxt.instanceConfig, null,
@@ -76,7 +75,7 @@ class ClientScopedAdminTest : StringSpec({
      * hand later.
      */
     "the read scope resolves a width for every caller, not only administrators" {
-        val cxt = Startup.mkTestBootCxt("widths", "readScopeWidthsTest")
+        val cxt = TestInstances.default("widths")
 
         fun acting(org: String?, vararg roles: String): KdrCxt = KdrCxt(
             "widthCase", cxt.instanceConfig, null,
@@ -117,7 +116,7 @@ class ClientScopedAdminTest : StringSpec({
      * the script to `forCaller` fails here rather than silently listing nobody.
      */
     "a caller with no session is confined, which is why the operator script asks for the whole table" {
-        val cxt = Startup.mkTestBootCxt("scriptScope", "scriptScopeTest")
+        val cxt = TestInstances.default("scriptScope")
         seedUserInClient(cxt, "script-visible@acme.com", otherClient)
 
         // The context a script boots with: the system profile, holding no roles.
@@ -136,7 +135,7 @@ class ClientScopedAdminTest : StringSpec({
      * they see once there, not whether they may go.
      */
     "canManageUsers agrees with what the surface actually admits" {
-        val cxt = Startup.mkTestBootCxt("canManage", "canManageUsersTest")
+        val cxt = TestInstances.default("canManage")
 
         fun acting(vararg roles: String): KdrCxt = KdrCxt(
             "canManageCase", cxt.instanceConfig, null,
@@ -161,7 +160,7 @@ class ClientScopedAdminTest : StringSpec({
      * on the same comparison the gate enforces, so this covers being able to *see* those endpoints too.
      */
     "the admin surface admits a full-scope administrator and refuses a scoped one" {
-        val cxt = Startup.mkTestBootCxt("reserved", "adminReservedTest")
+        val cxt = TestInstances.default("reserved")
 
         val scoped = TestUser.create(cxt, "scoped-admin@example.com", level = ROLE.admin)
         scoped.selfRoles().contains(ROLE.admin) shouldBe true
@@ -186,7 +185,7 @@ class ClientScopedAdminTest : StringSpec({
         // see the whole catalog and privilege must be the only thing narrowing it. Without env auth the newer
         // publicApi restriction would hide the admin paths regardless, and the assertions would pass for the
         // wrong reason -- a guard against the #211/#237 defect that could no longer catch it.
-        val cxt = Startup.mkTestBootCxt("demoted", "demotedCapabilityTest", mapOf(ACFG.assumeEnvAuth to true))
+        val cxt = TestInstances.envAuth("demoted")
 
         val demoted = TestUser.create(
             cxt, "demoted-cap@example.com", level = ROLE.user, capabilities = listOf(ROLE.allClients),
@@ -209,7 +208,7 @@ class ClientScopedAdminTest : StringSpec({
 
     /** The level alone is not enough either -- both halves are required, in both directions. */
     "the full-scope surface requires the level and the capability together" {
-        val cxt = Startup.mkTestBootCxt("bothHalves", "bothHalvesTest")
+        val cxt = TestInstances.default("bothHalves")
 
         // Level without capability: refused (the scoped surface is what they get instead).
         TestUser.create(cxt, "halves-scoped@example.com", level = ROLE.admin)
@@ -228,7 +227,7 @@ class ClientScopedAdminTest : StringSpec({
      * scoped administrator is refused the full-scope surface and admitted to their own.
      */
     "a scoped administrator works through clientAdmin and is refused admin" {
-        val cxt = Startup.mkTestBootCxt("scopedSurface", "scopedSurfaceTest")
+        val cxt = TestInstances.default("scopedSurface")
         val scoped = TestUser.create(cxt, "surface-admin@example.com", level = ROLE.admin)
         seedUserInClient(cxt, "surface-outsider@acme.com", otherClient)
 
@@ -241,7 +240,7 @@ class ClientScopedAdminTest : StringSpec({
 
     /** A full-scope administrator uses the same surface and is simply unconfined on it. */
     "the scoped surface serves a full-scope administrator unconfined" {
-        val cxt = Startup.mkTestBootCxt("scopedFull", "scopedFullTest")
+        val cxt = TestInstances.default("scopedFull")
         val full = TestUser.createFullAdmin(cxt, "surface-full@example.com")
         seedUserInClient(cxt, "surface-elsewhere@acme.com", otherClient)
 
@@ -254,7 +253,7 @@ class ClientScopedAdminTest : StringSpec({
      * this is the half that step 1 could not exercise, and the half that matters.
      */
     "a scoped administrator cannot grant reach they do not hold" {
-        val cxt = Startup.mkTestBootCxt("scopedEscalate", "scopedEscalateTest")
+        val cxt = TestInstances.default("scopedEscalate")
         val scoped = TestUser.create(cxt, "surface-granter@example.com", level = ROLE.admin)
         val target = TestUser.create(cxt, "surface-target@example.com", userClient = CL.hub)
 
@@ -281,7 +280,7 @@ class ClientScopedAdminTest : StringSpec({
      * holds the capability, still can.
      */
     "a scoped administrator cannot grant the operator level either" {
-        val cxt = Startup.mkTestBootCxt("scopedEscalateOp", "scopedEscalateOpTest")
+        val cxt = TestInstances.default("scopedEscalateOp")
         val scoped = TestUser.create(cxt, "op-granter@example.com", level = ROLE.admin)
         val target = TestUser.create(cxt, "op-target@example.com", userClient = CL.hub)
 
@@ -305,7 +304,7 @@ class ClientScopedAdminTest : StringSpec({
      * would create somebody they could not then see -- which is how the old hardcoded client would have read.
      */
     "a user created through the scoped surface is visible to its creator" {
-        val cxt = Startup.mkTestBootCxt("scopedCreate", "scopedCreateTest")
+        val cxt = TestInstances.default("scopedCreate")
         val scoped = TestUser.create(cxt, "surface-creator@example.com", level = ROLE.admin)
 
         scoped.postData(UADEP.userCreate, mapOf(ADF.primaryId to "surface-made@example.com"))
@@ -320,7 +319,7 @@ class ClientScopedAdminTest : StringSpec({
      * signup, and this is how an administrator does it after the fact or on someone else's account.
      */
     "an administrator creates and edits named and business accounts" {
-        val cxt = Startup.mkTestBootCxt("entityAdmin", "entityAdminTest")
+        val cxt = TestInstances.default("entityAdmin")
         val admin = TestUser.createFullAdmin(cxt, "entity-admin@example.com")
 
         // Created as a business, with a name.
@@ -372,7 +371,7 @@ class ClientScopedAdminTest : StringSpec({
      * reason that has nothing to do with what they were changing.
      */
     "a scoped administrator may preserve a capability they cannot grant" {
-        val cxt = Startup.mkTestBootCxt("preserveCap", "preserveCapTest")
+        val cxt = TestInstances.default("preserveCap")
         val full = TestUser.createFullAdmin(cxt, "preserve-full@example.com")
         val scoped = TestUser.create(cxt, "preserve-scoped@example.com", level = ROLE.admin)
         val target = TestUser.create(cxt, "preserve-target@example.com", userClient = CL.hub)
@@ -411,7 +410,7 @@ class ClientScopedAdminTest : StringSpec({
      * pre-organization content from vanishing the day somebody is given an org.
      */
     "an administrator with a primary org sees their org and the org-less, but not another org" {
-        val cxt = Startup.mkTestBootCxt("orgScope", "orgScopeTest")
+        val cxt = TestInstances.default("orgScope")
         val full = TestUser.createFullAdmin(cxt, "org-full@example.com")
 
         val inEng = TestUser.create(cxt, "org-eng@example.com", level = ROLE.admin)
@@ -430,7 +429,7 @@ class ClientScopedAdminTest : StringSpec({
 
     /** The capability outranks a primary organization: the two are different axes, and this is the wider. */
     "allClients is not confined by the administrator's own organization" {
-        val cxt = Startup.mkTestBootCxt("orgFull", "orgFullTest")
+        val cxt = TestInstances.default("orgFull")
         val full = TestUser.createFullAdmin(cxt, "orgfull-admin@example.com")
         val other = TestUser.create(cxt, "orgfull-other@example.com")
         full.postData(UADEP.userSetOrg, mapOf(ADF.userId to other.userId, ADF.org to "sales"))
@@ -454,7 +453,7 @@ class ClientScopedAdminTest : StringSpec({
      * hatch from confinement, which is why no separate self-check is needed.
      */
     "an administrator confined to an org may only assign that org" {
-        val cxt = Startup.mkTestBootCxt("orgAssign", "orgAssignTest")
+        val cxt = TestInstances.default("orgAssign")
         val full = TestUser.createFullAdmin(cxt, "assign-full@example.com")
         val confined = TestUser.create(cxt, "assign-confined@example.com", level = ROLE.admin)
         val target = TestUser.create(cxt, "assign-target@example.com")
@@ -474,7 +473,7 @@ class ClientScopedAdminTest : StringSpec({
     // --- the read filter, at the service level ---------------------------------
 
     "the scope filters the user list, and unrestricted reach does not" {
-        val cxt = Startup.mkTestBootCxt("listScope", "adminListScopeTest")
+        val cxt = TestInstances.default("listScope")
         val service = users(cxt)
         seedUserInClient(cxt, "insider@example.com", CL.public)
         seedUserInClient(cxt, "outsider@acme.com", otherClient)
@@ -492,7 +491,7 @@ class ClientScopedAdminTest : StringSpec({
 
     /** The search path builds its own SQL, so the predicate has to be proven on it too. */
     "the scope filters the search path as well as the list-all path" {
-        val cxt = Startup.mkTestBootCxt("searchScope", "adminSearchScopeTest")
+        val cxt = TestInstances.default("searchScope")
         val service = users(cxt)
         seedUserInClient(cxt, "hidden@acme.com", otherClient)
 
@@ -508,7 +507,7 @@ class ClientScopedAdminTest : StringSpec({
      * username share nothing with the name being searched.
      */
     "the search matches an account's name, case-insensitively" {
-        val cxt = Startup.mkTestBootCxt("searchEntity", "adminSearchEntityTest")
+        val cxt = TestInstances.default("searchEntity")
         val service = users(cxt)
         // A personal user whose address has no overlap with the business name below, so it cannot be the hit.
         val personaSuffix = seedUserInClient(cxt, "person@example.com", CL.public)
@@ -543,7 +542,7 @@ class ClientScopedAdminTest : StringSpec({
      * real user in a client they cannot see. The endpoint turns this null into its own 404.
      */
     "a user outside the scope loads as absent rather than forbidden" {
-        val cxt = Startup.mkTestBootCxt("loadScope", "adminLoadScopeTest")
+        val cxt = TestInstances.default("loadScope")
         val service = users(cxt)
         val hiddenId = seedUserInClient(cxt, "unreachable@acme.com", otherClient)
 
@@ -561,7 +560,7 @@ class ClientScopedAdminTest : StringSpec({
      * at least proves the guard does not block a legitimate granter.
      */
     "a full-scope administrator may grant the capability they hold" {
-        val cxt = Startup.mkTestBootCxt("escalate", "adminEscalateTest")
+        val cxt = TestInstances.default("escalate")
         val admin = TestUser.createFullAdmin(cxt, "escalate-admin@example.com")
         val target = TestUser.create(cxt, "escalate-target@example.com")
 

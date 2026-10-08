@@ -19,7 +19,7 @@ import io.kotest.matchers.string.shouldContain
 class MarkdownFragmentEndpointTest : StringSpec({
 
     "the static root serves a fragment file as a two-tier map with an immutable cache header" {
-        val cxt = Startup.mkTestBootCxt("md", "markdownFragmentTest")
+        val cxt = TestInstances.default("md")
         val client = TestHttpClient(cxt.instanceConfig)
 
         // The buildId is a content hash of the merged content, and since #456 it *selects* what is served.
@@ -41,7 +41,7 @@ class MarkdownFragmentEndpointTest : StringSpec({
     }
 
     "an unknown appId is ignored -- content is still served" {
-        val cxt = Startup.mkTestBootCxt("md2", "markdownFragmentAppIdTest")
+        val cxt = TestInstances.default("md2")
         val client = TestHttpClient(cxt.instanceConfig)
         val buildId = MarkdownFragmentService.fragmentBuildId(cxt, "sample").shouldNotBeNull()
         // A different appId (with client/locale-style suffixes) resolves the same file for now.
@@ -50,7 +50,7 @@ class MarkdownFragmentEndpointTest : StringSpec({
     }
 
     "a missing fragment file returns 404" {
-        val cxt = Startup.mkTestBootCxt("md404", "markdownFragmentMissingTest")
+        val cxt = TestInstances.default("md404")
         val client = TestHttpClient(cxt.instanceConfig)
         val handler = client.sendGetRequestRaw("/st/myapp/md/does-not-exist:1")
         handler.rptStatusCode shouldBe EXC.notFound

@@ -23,6 +23,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class TimeTravelTest : StringSpec({
 
     "/fixture/clock advances the instance clock" {
+        // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
         val cxt = Startup.mkTestBootCxt("clock", "clockEndpointTest")
         val client = TestHttpClient(cxt.instanceConfig)
         val before = cxt.instanceNow().toEpochMilliseconds()
@@ -34,6 +35,7 @@ class TimeTravelTest : StringSpec({
     }
 
     "the remaining clock ops travel, hold and release the instance clock over the wire (issue #185)" {
+        // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
         val cxt = Startup.mkTestBootCxt("clockOps", "clockOpsTest")
         val client = TestHttpClient(cxt.instanceConfig)
         fun op(op: ClockOp, field: String? = null, value: Long? = null): Long =
@@ -61,12 +63,13 @@ class TimeTravelTest : StringSpec({
     }
 
     "an unknown clock op is rejected by the choice-list validation (the enum drives the schema)" {
-        val cxt = Startup.mkTestBootCxt("clockBad", "clockBadOpTest")
+        val cxt = TestInstances.default("clockBad")
         TestHttpClient(cxt.instanceConfig).sendJsonPostRequest(TCLK.path, mapOf(TCLK.op to "bogus"))[EP.status] shouldBe
             EXC.badInput
     }
 
     "advancing past the session lifetime expires an existing session, with no real wait (issue #120)" {
+        // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
         val cxt = Startup.mkTestBootCxt("clockSession", "clockSessionTest")
         val user = TestUser.create(cxt, "carol@example.com")
         UserProfile.fromUserInfo(user.getData("/auth/self/info")).isLoggedIn shouldBe true

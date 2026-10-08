@@ -17,8 +17,8 @@ Transcribed in `base/kdn/src/test/.../TestClientSkillExamplesTest.kt`, which com
 so a signature change breaks the build rather than staling this. Keep the two in step.
 
 ```kotlin
-// One shared instance for the whole spec -- create a client per scenario, not a node.
-val cxt = Startup.mkTestBootCxt("skillTestClients", "skillTestClients")
+// The shared instance (issue #1075) -- create a client per scenario, not a node.
+val cxt = TestInstances.default("skillTestClients")
 
 // A sub-context in the client, with a userId so the write names who made it (optional: unset, it is the
 // system user).

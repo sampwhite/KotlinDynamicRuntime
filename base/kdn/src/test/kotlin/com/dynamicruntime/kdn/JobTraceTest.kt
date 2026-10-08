@@ -42,6 +42,8 @@ import kotlin.time.Duration.Companion.seconds
  * a run's whole trace is written by the time `launch` returns.
  */
 class JobTraceTest : StringSpec({
+    // Its own instance (issue #1075): it runs the job machinery, which is instance-wide, with TraceFixture's jobs and a
+    // configured trace profile.
     val cxt = Startup.mkTestBootCxt(
         "jobTrace", "jobTraceTest",
         // The deployment's own default for one profile: launch level, which a launch may still override.

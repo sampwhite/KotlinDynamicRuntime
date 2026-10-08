@@ -42,7 +42,7 @@ import io.kotest.matchers.string.shouldStartWith
  * the parent consumes at -- with data of its own. One booted instance; a parent client per case.
  */
 class SandboxClientTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("sandboxClient", "sandboxClientTest")
+    val cxt = TestInstances.default("sandboxClient")
 
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("sandbox", client).also { it.userId = 9300L }
     fun svc(): GedraConfigService = GedraConfigService.get(cxt)

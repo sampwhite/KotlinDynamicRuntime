@@ -45,7 +45,7 @@ import io.kotest.matchers.string.shouldContain
 class StoredSchemaRepairTest : StringSpec({
 
     val warn = mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name)
-    val cxt = Startup.mkTestBootCxt("storedRepair", "storedSchemaRepairTest", warn)
+    val cxt = TestInstances.storedConfigWarn("storedRepair")
 
     fun writer(on: KdrCxt, client: String): KdrCxt = on.mkSubContext("repairWrite", client).also { it.userId = 8410L }
 
@@ -257,6 +257,8 @@ class StoredSchemaRepairTest : StringSpec({
     "the next boot repairs it too, and strict still refuses" {
         val db = mapOf("KDR_DB_NAME" to "storedRepair_restart", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "rep841boot"
+        // Its own instance (issue #1075): the first of three boots over its own database (`KDR_DB_NAME`); the restarts'
+        // boot-time repair is under test.
         val first = Startup.mkTestBootCxt("storedRepair1", "storedSchemaRepair1", db + warn)
         storeAndReload(first, client) {
             type("Pick") {
@@ -265,11 +267,14 @@ class StoredSchemaRepairTest : StringSpec({
             }
         }.issues.size shouldBe 1
 
+        // Its own instance (issue #1075): a restart over the same database, whose boot-time repair is under test.
         val restarted = Startup.mkTestBootCxt("storedRepair2", "storedSchemaRepair2", db + warn)
         ClientService.get(restarted).present(client).shouldNotBeNull()
         val pick = propertyOf(defOf(restarted, client, "${clientNamespace(client)}.Pick"), "pick")
         pick.containsKey(SCH.optionsSource) shouldBe false
 
+        // Its own instance (issue #1075): the boot itself is under test: a strict restart over the same database is
+        // expected to refuse.
         shouldThrow<KdrException> { Startup.mkTestBootCxt("storedRepair3", "storedSchemaRepair3", db) }
             .message.shouldNotBeNull() shouldContain GCFG.storedCheckEnvVar.name
     }
@@ -279,12 +284,15 @@ class StoredSchemaRepairTest : StringSpec({
     "a restart over a stored cfact redeclaring a global one starts, and drops the declaration" {
         val db = mapOf("KDR_DB_NAME" to "storedRepair_cfact", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "rep821boot"
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart's
+        // boot-time repair is under test.
         val first = Startup.mkTestBootCxt("storedRepairCf1", "storedSchemaRepairCf1", db + warn)
         storeAndReload(first, client) {
             cfact(SVY.surveyComplete, "rep821", "A redeclaration.")
             cfact("rep821Own", "rep821", "The client's own.")
         }.issues.size shouldBe 1
 
+        // Its own instance (issue #1075): the restart over the same database, whose boot-time repair is under test.
         val restarted = Startup.mkTestBootCxt("storedRepairCf2", "storedSchemaRepairCf2", db + warn)
         val issue = ClientConfigIssues.get(restarted).issuesFor(client).single()
         issue.elementKind shouldBe GCEL.cfact

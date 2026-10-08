@@ -25,7 +25,7 @@ import io.kotest.matchers.shouldBe
  * the switch reissues is the thing under test.
  */
 class UserSwitchTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("userSwitch", "userSwitchTest")
+    val cxt = TestInstances.default("userSwitch")
     val users = UserService.get(cxt)
 
     fun choices(user: TestUser): List<Map<String, Any?>> = user.getData(AEP.selfUsers)[AFLD.users].toJsonListOfMaps()

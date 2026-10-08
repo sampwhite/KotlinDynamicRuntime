@@ -59,6 +59,8 @@ class ClientConfigIsolationTest : StringSpec({
 
     "outside production a client's source config declaring a state trait refuses the boot" {
         val failure = shouldThrow<KdrException> {
+            // Its own instance (issue #1075): the boot itself is under test: ClientStateComponent is expected to refuse
+            // it.
             Startup.mkTestBootCxt(
                 "isoStateUnit", "isoStateUnitTest", additionalComponents = listOf(ClientStateComponent()),
             )
@@ -67,6 +69,8 @@ class ClientConfigIsolationTest : StringSpec({
     }
 
     "in production a client's state trait is dropped, and the rest of its config stands" {
+        // Its own instance (issue #1075): a production boot with ClientStateComponent: what that boot keeps and drops
+        // is under test.
         val cxt: KdrCxt = Startup.mkBootCxt(
             "isoStateProd", "isoStateProdTest",
             mapOf(ACFG.env to ENV.prod, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true),
@@ -82,7 +86,7 @@ class ClientConfigIsolationTest : StringSpec({
     }
 
     "a bundle write naming a state-trait slot is refused as an unknown slot" {
-        val cxt = Startup.mkTestBootCxt("isoSlot", "isoSlotTest")
+        val cxt = TestInstances.default("isoSlot")
         val admin = TestUser.createFullAdmin(cxt, "chief@iso873.test")
         val refused = admin.expectError(
             EXC.badInput, ACEP.bundleWrite,
@@ -99,6 +103,8 @@ class ClientConfigIsolationTest : StringSpec({
     "a load drops a global-owned row, and ignores a slot it does not read, saying so" {
         val db = mapOf("KDR_DB_NAME" to "clientIsolation_restart", "KDR_LOAD_STORED_CONFIG" to "true")
         val client = "iso873"
+        // Its own instance (issue #1075): the first of two boots over its own database (`KDR_DB_NAME`); the restart
+        // below reads what it leaves.
         val first = Startup.mkTestBootCxt("iso1", "clientIsolation1", db + warn)
         val writer = first.mkSubContext("isoWrite", client).also { it.userId = 8730L }
         val svc = GedraConfigService.get(first)
@@ -147,6 +153,8 @@ class ClientConfigIsolationTest : StringSpec({
             ) shouldBe 1
         }
 
+        // Its own instance (issue #1075): the restart over the same database, whose boot-time load of the planted rows
+        // is under test.
         val restarted = Startup.mkTestBootCxt("iso2", "clientIsolation2", db + warn)
         val issues = ClientConfigIssues.get(restarted)
         issues.issuesFor(client).single().message shouldContain "stateTraitDef"

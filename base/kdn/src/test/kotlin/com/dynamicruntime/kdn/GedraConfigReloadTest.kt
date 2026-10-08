@@ -38,6 +38,8 @@ import io.kotest.matchers.types.shouldNotBeSameInstanceAs
  * untouched, and a reload that fails leaves the node exactly as it was. One booted instance; unique clients.
  */
 class GedraConfigReloadTest : StringSpec({
+    // Its own instance (issue #1075): a later case appends a source layer to its fragment registry (`FRAG.registryKey`)
+    // while running.
     val cxt = Startup.mkTestBootCxt("gedraCfgReload", "gedraCfgReloadTest")
 
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("reload", client).also { it.userId = 9000L }
@@ -214,6 +216,8 @@ class GedraConfigReloadTest : StringSpec({
     // stored configs -- several declaring one cfact, which a reload rightly refuses. The name is redundant now
     // that each instance has its own, and is kept so this case never depends on that default.
     "the endpoint reloads the caller's own client" {
+        // Its own instance (issue #1075): it reloads the caller's own client, the default one every client-less caller
+        // lands in.
         val own = Startup.mkTestBootCxt("gedraCfgReloadEp", "gedraCfgReloadEpTest", mapOf("KDR_DB_NAME" to "cfgReload_endpoint"))
         val admin = TestUser.create(own, "reloadadmin@example.com", level = ROLE.admin)
         val result = admin.postData(CFEP.reload, emptyMap())

@@ -31,6 +31,7 @@ import io.kotest.matchers.shouldBe
  * unknown job type or client itself.
  */
 class JobChoiceListsTest : StringSpec({
+    // Its own instance (issue #1075): ChoiceFixture's job types with env auth, a setup no shared entry has.
     // Env-authed, as ClientOptionsTest explains: the caller must see the catalog endpoint itself.
     val cxt = Startup.mkTestBootCxt(
         "jobChoices", "jobChoiceListsTest", mapOf(ACFG.assumeEnvAuth to true),

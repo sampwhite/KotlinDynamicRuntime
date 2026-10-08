@@ -21,7 +21,7 @@ import io.kotest.matchers.string.shouldContain
 class MarkdownDocEndpointTest : StringSpec({
 
     "a matching build id serves the document with the permanent immutable header" {
-        val cxt = Startup.mkTestBootCxt("doc", "markdownDocMatchTest")
+        val cxt = TestInstances.default("doc")
         val client = TestHttpClient(cxt.instanceConfig)
         val buildId = MarkdownDocService.docBuildId(HDOC.readme).shouldNotBeNull()
 
@@ -33,7 +33,7 @@ class MarkdownDocEndpointTest : StringSpec({
     }
 
     "a build id that does not match still serves the current document, but uncached" {
-        val cxt = Startup.mkTestBootCxt("docStale", "markdownDocStaleTest")
+        val cxt = TestInstances.default("docStale")
         val client = TestHttpClient(cxt.instanceConfig)
 
         // A browser holding a previous ref (e.g. across a deploy) asks for an old hash. It must get the current
@@ -46,7 +46,7 @@ class MarkdownDocEndpointTest : StringSpec({
     }
 
     "a bare URL with no build id serves the document uncached" {
-        val cxt = Startup.mkTestBootCxt("docBare", "markdownDocBareTest")
+        val cxt = TestInstances.default("docBare")
         val client = TestHttpClient(cxt.instanceConfig)
 
         // No `:buildId` at all -- the URL names no particular version, so it may be answered but not stored.
@@ -58,7 +58,7 @@ class MarkdownDocEndpointTest : StringSpec({
     }
 
     "a missing document 404s and is not cached" {
-        val cxt = Startup.mkTestBootCxt("docMissing", "markdownDocMissingTest")
+        val cxt = TestInstances.default("docMissing")
         val client = TestHttpClient(cxt.instanceConfig)
 
         // A cached negative answer would outlive a rolling deploy in which one node 404s what another serves.

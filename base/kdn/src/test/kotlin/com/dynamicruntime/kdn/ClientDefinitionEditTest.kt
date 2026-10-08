@@ -38,7 +38,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class ClientDefinitionEditTest : StringSpec({
     // With the extension fixture, for a stored client built on a source template (issue #945).
-    val cxt = Startup.mkTestBootCxt("clientDefEdit1026", "clientDefEdit1026", emptyMap(), listOf(ExtensionTemplateComponent()))
+    val cxt = TestInstances.extensionTemplate("clientDefEdit1026")
     val svc = GedraConfigService.get(cxt)
 
     /** Defines [client] in stored configuration, published and reloaded; with a sandbox, or on a template, when asked. */

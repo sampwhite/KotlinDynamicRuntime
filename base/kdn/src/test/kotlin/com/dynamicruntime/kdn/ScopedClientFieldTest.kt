@@ -1,7 +1,6 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.cfact.CFACTS
-import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CFEP
@@ -28,7 +27,7 @@ import io.kotest.matchers.shouldBe
  */
 class ScopedClientFieldTest : StringSpec({
     // Env-authed, as ClientOptionsTest explains: the caller must see the catalog endpoint itself.
-    val cxt = Startup.mkTestBootCxt("scopedClient1000", "scopedClient1000", mapOf(ACFG.assumeEnvAuth to true))
+    val cxt = TestInstances.envAuth("scopedClient1000")
     val full = TestUser.createFullAdmin(cxt, "full@scoped1000.test")
     val scoped = TestUser.create(cxt, "scoped@scoped1000.test", level = ROLE.admin)
 

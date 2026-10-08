@@ -37,7 +37,7 @@ import io.kotest.matchers.string.shouldContain
  */
 class ClientTraitIdScopeTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("traitIdScope", "clientTraitIdScopeTest")
+    val cxt = TestInstances.default("traitIdScope")
     val alpha = "idscopealpha"
     val beta = "idscopebeta"
 

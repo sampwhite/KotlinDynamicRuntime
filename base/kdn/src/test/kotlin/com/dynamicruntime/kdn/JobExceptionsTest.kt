@@ -40,6 +40,8 @@ import kotlin.time.Duration.Companion.minutes
  * succeed.
  */
 class JobExceptionsTest : StringSpec({
+    // Its own instance (issue #1075): it runs the job machinery, which is instance-wide, with ExceptionFixture's jobs,
+    // and freezes the clock.
     val cxt = Startup.mkTestBootCxt("jobExceptions", "jobExceptionsTest", additionalComponents = listOf(ExceptionFixture()))
     cxt.instanceConfig.clock.freeze()
 

@@ -40,7 +40,7 @@ import io.kotest.matchers.string.shouldContain
  * Its own client, as `GedraDataCacheTest` explains.
  */
 class GedraDataExtraTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("gedraExtra", "gedraExtraTest")
+    val cxt = TestInstances.default("gedraExtra")
 
     val client = "gextraclient"
     val ownerId = 90101L

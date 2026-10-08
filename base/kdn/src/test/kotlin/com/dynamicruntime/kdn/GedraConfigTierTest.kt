@@ -31,7 +31,7 @@ import io.kotest.matchers.shouldBe
  * (`currentConfigs`), which the reload loads from; its own client per case.
  */
 class GedraConfigTierTest : StringSpec({
-    val cxt = Startup.mkTestBootCxt("gedraCfgTier", "gedraCfgTierTest")
+    val cxt = TestInstances.default("gedraCfgTier")
 
     fun svc(): GedraConfigService = GedraConfigService.get(cxt)
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("tier", client).also { it.userId = 12000L }
@@ -87,6 +87,8 @@ class GedraConfigTierTest : StringSpec({
     }
 
     "the toggle endpoint sets the caller's own client's tier" {
+        // Its own instance (issue #1075): it sets the tier of the caller's own client, the default one every
+        // client-less caller lands in.
         val own = Startup.mkTestBootCxt("gedraCfgTierEp", "gedraCfgTierEpTest", mapOf("KDR_DB_NAME" to "cfgTier_ep"))
         val admin = TestUser.create(own, "tieradmin@example.com", level = ROLE.admin)
         val result = admin.postData(CFEP.publishedOnly, mapOf(CFEP.publishedOnlyField to true))
@@ -97,6 +99,8 @@ class GedraConfigTierTest : StringSpec({
     // `staticConfig` is not a tier (issue #824): outside production a static client is an ordinary one, on the latest tier by
     // default and toggled like any other. What it does in production is StaticConfigTest's.
     "outside production a static client is on the latest tier by default and toggles like any other" {
+        // Its own instance (issue #1075): StaticClientComponent, a fixture component no shared entry has, over a
+        // database of its own.
         val tcxt = Startup.mkTestBootCxt(
             "gedraCfgTierStatic", "gedraCfgTierStaticTest",
             mapOf(StaticClientComponent.loadFlag.name to "true", "KDR_DB_NAME" to "cfgTier_static"),

@@ -37,6 +37,7 @@ import io.kotest.matchers.string.shouldContain
  * global layout's. Written as stored configuration and reloaded live, the way a client edits its own copy.
  */
 class ClientLayoutMergeTest : StringSpec({
+    // Its own instance (issue #1075): LayoutMergeFixture, a fixture component no shared entry has.
     val cxt = Startup.mkTestBootCxt(
         "layoutMerge985", "layoutMerge985", mapOf(LayoutMergeFixture.loadFlag.name to "true"), listOf(LayoutMergeFixture()),
     )

@@ -50,8 +50,12 @@ class GoogleLoginTest : StringSpec({
             if (kid == testKid) keyPair.public as RSAPublicKey else null
     }
 
-    /** Boots an instance with Google sign-in configured against this test's signing key. */
-    fun bootGoogle(cxtName: String, instanceName: String) = Startup.mkTestBootCxt(
+    /**
+     * A context on an instance with Google sign-in configured against this test's signing key -- one instance the
+     * file's tests share (issue #1075), each signing in its own subject and address; a test that travels the clock
+     * names an instance of its own, since the clock is instance-wide.
+     */
+    fun bootGoogle(cxtName: String, instanceName: String = "googleLoginShared") = Startup.mkTestBootCxt(
         cxtName, instanceName,
         mapOf(GOOG.googleClientId to clientId, GOOG.googleKeySource to keySource),
     )
@@ -91,7 +95,7 @@ class GoogleLoginTest : StringSpec({
             .getValue("results")!!.toJsonMap()
 
     "a first Google sign-in provisions a user and logs them in" {
-        val cxt = bootGoogle("googNew", "googNewTest")
+        val cxt = bootGoogle("googNew")
         val client = TestHttpClient(cxt.instanceConfig)
         val info = login(client, mkCredential("sub-alice", "alice@example.com"))
         info[UPF.userId].toOptLong()!! shouldNotBe 0L
@@ -103,7 +107,7 @@ class GoogleLoginTest : StringSpec({
     // The link is to the identity, not a user (issue #748): signing in proves who you are, and which user you
     // then act as is the identity's default-user rule -- and Google's verified address counts as proof of it.
     "a Google sign-in links the identity and proves its address" {
-        val cxt = bootGoogle("googIdentity", "googIdentityTest")
+        val cxt = bootGoogle("googIdentity")
         val info = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-ida", "ida@example.com"))
         val linked = UserService.get(cxt).queryLinkedIdentity(cxt, LSRC.google, "sub-ida").shouldNotBeNull()
         linked.primaryId shouldBe "ida@example.com"
@@ -114,7 +118,7 @@ class GoogleLoginTest : StringSpec({
     // The registered-user rule for Google (issue #749): a registered user at the address is what the sign-in
     // lands on; with none, Google reaches exactly the one user the rules name, claiming it.
     "a Google sign-in claims the rule-chosen user when the person has not registered one" {
-        val cxt = bootGoogle("googClaim", "googClaimTest")
+        val cxt = bootGoogle("googClaim")
         val users = UserService.get(cxt)
         val admin = TestUser.createFullAdmin(cxt, "goog-claim-admin@example.com")
         // Provisioned by an administrator: the public client, the member persona, unregistered. An ordinary
@@ -144,7 +148,7 @@ class GoogleLoginTest : StringSpec({
     }
 
     "signing in again with the same Google identity returns the same user" {
-        val cxt = bootGoogle("googRepeat", "googRepeatTest")
+        val cxt = bootGoogle("googRepeat")
         val first = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-bob", "bob@example.com"))
         val second = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-bob", "bob@example.com"))
         second[UPF.userId].toOptLong() shouldBe first[UPF.userId].toOptLong()
@@ -153,7 +157,7 @@ class GoogleLoginTest : StringSpec({
     // The reason the link is keyed on `sub`: Google can change the email on an account, and a Workspace domain
     // can reassign one outright. Neither may re-point an established link.
     "an established link follows the Google subject, not the email on the token" {
-        val cxt = bootGoogle("googEmailChange", "googEmailChangeTest")
+        val cxt = bootGoogle("googEmailChange")
         val first = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-carol", "carol@example.com"))
         // Same Google account, new email address. It must still be the same local user.
         val renamed = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-carol", "carol.new@example.com"))
@@ -161,7 +165,7 @@ class GoogleLoginTest : StringSpec({
     }
 
     "a different Google identity at the same email does not take over the linked account" {
-        val cxt = bootGoogle("googSquat", "googSquatTest")
+        val cxt = bootGoogle("googSquat")
         val owner = login(TestHttpClient(cxt.instanceConfig), mkCredential("sub-dave", "dave@example.com"))
         // A *different* Google account presenting the same (Google-verified) address. The existing local user
         // was matched by email on its own first link, so this one links to it too -- but as the same user, not
@@ -175,7 +179,7 @@ class GoogleLoginTest : StringSpec({
 
     // The takeover vector: an unverified Google address must never match an existing local account.
     "an unverified Google email is refused" {
-        val cxt = bootGoogle("googUnverified", "googUnverifiedTest")
+        val cxt = bootGoogle("googUnverified")
         val client = TestHttpClient(cxt.instanceConfig)
         val handler = client.sendEditRequest(
             AEP.loginByGoogle, null,
@@ -192,6 +196,7 @@ class GoogleLoginTest : StringSpec({
     // The last cxt.now() gate in the auth surface, and the one a captured token replays against (see the
     // deferred nonce item): worth holding still in both directions.
     "an ID token is honored inside the expiry leeway and refused past it (issue #185)" {
+        // Its own instance: it travels the clock, which is instance-wide.
         val cxt = bootGoogle("googExpiry", "googExpiryTest")
         val client = TestHttpClient(cxt.instanceConfig)
         val clock = cxt.instanceConfig.clock
@@ -219,7 +224,7 @@ class GoogleLoginTest : StringSpec({
     }
 
     "a token minted for another application is refused end to end" {
-        val cxt = bootGoogle("googAud", "googAudTest")
+        val cxt = bootGoogle("googAud")
         val client = TestHttpClient(cxt.instanceConfig)
         val handler = client.sendEditRequest(
             AEP.loginByGoogle, null,
@@ -230,6 +235,8 @@ class GoogleLoginTest : StringSpec({
     }
 
     "the auto-admin domain rule reaches a Google-provisioned user" {
+        // Its own instance (issue #1075): Google sign-in with an auto-admin domain (`adminEmailDomain`), a setup no
+        // shared entry has.
         val cxt = Startup.mkTestBootCxt(
             "googAdmin", "googAdminTest",
             mapOf(
@@ -244,7 +251,7 @@ class GoogleLoginTest : StringSpec({
     }
 
     "the auth UI config advertises Google sign-in and carries the client id when configured" {
-        val cxt = bootGoogle("googUiOn", "googUiOnTest")
+        val cxt = bootGoogle("googUiOn")
         val results = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(AEP.authUiConfig)
             .getValue("results")!!.toJsonMap()
         results.getValue("features")!!.toJsonMap()["googleLogin"] shouldBe true
@@ -252,7 +259,7 @@ class GoogleLoginTest : StringSpec({
     }
 
     "with no client id configured the feature is off and the client id is empty" {
-        val cxt = Startup.mkTestBootCxt("googUiOff", "googUiOffTest")
+        val cxt = TestInstances.default("googUiOff")
         val results = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(AEP.authUiConfig)
             .getValue("results")!!.toJsonMap()
         results.getValue("features")!!.toJsonMap()["googleLogin"] shouldBe false

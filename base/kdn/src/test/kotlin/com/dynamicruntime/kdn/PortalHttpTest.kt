@@ -13,10 +13,8 @@ import io.kotest.matchers.string.shouldContain
  */
 class PortalHttpTest : StringSpec({
 
-    // One shared instance (the expensive part -- component/schema/service init -- is cached by instance name,
-    // so it happens once); each test varies only the inexpensive context name.
-    fun client(cxtName: String): TestHttpClient =
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "portalHttpTest").instanceConfig)
+    // The shared default instance (issue #1075); each test varies only the inexpensive context name.
+    fun client(cxtName: String): TestHttpClient = TestHttpClient(TestInstances.default(cxtName).instanceConfig)
 
     "GET /cp/portal serves the HTML page with the injected bootstrap config" {
         val resp = client("portalPage").sendGetRequestRaw("/cp/portal")

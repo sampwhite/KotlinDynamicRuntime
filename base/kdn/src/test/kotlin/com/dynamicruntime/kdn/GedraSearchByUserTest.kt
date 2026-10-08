@@ -35,6 +35,7 @@ import kotlin.time.Duration.Companion.seconds
  * built up across the blocks, which run in declaration order.
  */
 class GedraSearchByUserTest : StringSpec({
+    // Its own instance (issue #1075): it steps the instance clock, which is instance-wide.
     val cxt = Startup.mkTestBootCxt("gedraSearchUser", "gedraSearchUserTest")
 
     val aliceEmail = "alice@search.test"

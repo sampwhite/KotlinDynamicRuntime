@@ -48,7 +48,7 @@ class SchemaEndpointsTest : StringSpec({
     // every caller browses the whole catalog -- rather than sprinkling the header on each.
     fun client(cxtName: String): TestHttpClient =
         TestHttpClient(
-            Startup.mkTestBootCxt(cxtName, "schemaEndpointsTest", mapOf(ACFG.assumeEnvAuth to true)).instanceConfig,
+            TestInstances.envAuth(cxtName).instanceConfig,
         )
 
     $$"/schema/endpoints renders every endpoint and a shared $defs" {
@@ -146,7 +146,7 @@ class SchemaEndpointsTest : StringSpec({
     "the catalog shows an endpoint only to a caller who could actually call it" {
         // Env-authed (issue #489): this test is about *access* filtering, so the caller must see the whole
         // catalog and the access gate must be the only thing narrowing it -- not the publicApi restriction.
-        val cxt = Startup.mkTestBootCxt("schemaVisibility", "schemaVisibilityTest", mapOf(ACFG.assumeEnvAuth to true))
+        val cxt = TestInstances.envAuth("schemaVisibility")
         // The whole catalog, as the catalog page asks for it -- not the default first 100, which the admin's view
         // outgrew once the endpoints (and their per-client copies) passed that many.
         fun pathsFor(client: TestHttpClient): List<Any?> =
@@ -165,7 +165,7 @@ class SchemaEndpointsTest : StringSpec({
 
         // The admin sees them, which is what makes the two assertions above about privilege rather than about
         // the admin endpoints having quietly stopped being registered.
-        val chief = TestUser.createFullAdmin(cxt, "chief@other.com")
+        val chief = TestUser.createFullAdmin(cxt, "schema-chief@other.com")
         val chiefPaths = pathsFor(chief.client)
         chiefPaths shouldContainAll listOf(ADEP.users, ADEP.userSetRoles, "/health")
 
@@ -203,7 +203,7 @@ class SchemaEndpointsTest : StringSpec({
     // ---- _debug=explainAccess (issue #215) ----------------------------------
 
     "explainAccess names what the filter withheld, and the role each withheld section wants" {
-        val cxt = Startup.mkTestBootCxt("schemaExplain", "schemaExplainTest", mapOf(ACFG.assumeEnvAuth to true))
+        val cxt = TestInstances.envAuth("schemaExplain")
         val plain = TestUser.create(cxt, "explain@other.com")
 
         val resp = plain.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess))
@@ -235,7 +235,7 @@ class SchemaEndpointsTest : StringSpec({
     }
 
     "the X-Kdr-Debug header carries the tag the same as the _debug param (issue #517, slice 3)" {
-        val cxt = Startup.mkTestBootCxt("schemaExplainHdr", "schemaExplainHdrTest", mapOf(ACFG.assumeEnvAuth to true))
+        val cxt = TestInstances.envAuth("schemaExplainHdr")
         val client = TestUser.create(cxt, "explain-hdr@other.com").client
         client.setHeader(EP.debugHeader, SS.explainAccess)
 
@@ -245,7 +245,7 @@ class SchemaEndpointsTest : StringSpec({
     }
 
     "an explicit _debug param overrides the header for that request" {
-        val cxt = Startup.mkTestBootCxt("schemaExplainOver", "schemaExplainOverTest", mapOf(ACFG.assumeEnvAuth to true))
+        val cxt = TestInstances.envAuth("schemaExplainOver")
         val client = TestUser.create(cxt, "explain-over@other.com").client
         client.setHeader(EP.debugHeader, SS.explainAccess)
 
@@ -256,7 +256,7 @@ class SchemaEndpointsTest : StringSpec({
     }
 
     "a malformed or blank X-Kdr-Debug header is dropped, not fatal, and the request is served normally" {
-        val cxt = Startup.mkTestBootCxt("schemaHdrBad", "schemaHdrBadTest", mapOf(ACFG.assumeEnvAuth to true))
+        val cxt = TestInstances.envAuth("schemaHdrBad")
         // Each bad shape a header can take: over the length cap, a non-variable-name, and blank (the vacuous
         // `all {}` case). None throws -- unlike an explicit param -- and none turns the tag on.
         for (bad in listOf("x".repeat(EP.debugMaxLength + 1), "not a name!", "   ")) {
@@ -272,10 +272,7 @@ class SchemaEndpointsTest : StringSpec({
     "the header tag is fenced on an instance that is not a test instance" {
         // The same fence as the param (issue #215): a real node must not answer explainAccess however it is
         // asked -- header or query. Env-authed so the caller still sees the whole catalog.
-        val cxt = Startup.mkTestBootCxt(
-            "schemaHdrProd", "schemaHdrProdTest",
-            mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
-        )
+        val cxt = TestInstances.envAuthNotTestInstance("schemaHdrProd")
         cxt.instanceConfig.isTestInstance shouldBe false // guard the premise
         val client = TestUser.create(cxt, "hdr-prod@other.com").client
         client.setHeader(EP.debugHeader, SS.explainAccess)
@@ -286,7 +283,7 @@ class SchemaEndpointsTest : StringSpec({
     }
 
     "explainAccess says nothing unless it is asked for" {
-        val cxt = Startup.mkTestBootCxt("schemaNoExplain", "schemaExplainTest", mapOf(ACFG.assumeEnvAuth to true))
+        val cxt = TestInstances.envAuth("schemaNoExplain")
         val resp = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest("/schema/endpoints")
         resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
     }
@@ -298,12 +295,9 @@ class SchemaEndpointsTest : StringSpec({
      * alone always says "test" here, since a unit test runs in `unit` and in memory.
      */
     "explainAccess is withheld on an instance that is not a test instance" {
-        val cxt = Startup.mkTestBootCxt(
-            "schemaExplainProd", "schemaExplainProdTest",
-            // Not a test instance (the fence under test), but env-authed so the caller still sees the whole
-            // catalog -- otherwise the publicApi restriction, not the explainAccess fence, would hide /health.
-            mapOf(ACFG.isTestInstance to false, ACFG.assumeEnvAuth to true),
-        )
+        // Not a test instance (the fence under test), but env-authed so the caller still sees the whole
+        // catalog -- otherwise the publicApi restriction, not the explainAccess fence, would hide /health.
+        val cxt = TestInstances.envAuthNotTestInstance("schemaExplainProd")
         // Guard the premise: if this were still a test instance the assertion below would pass for the wrong
         // reason, and a fence test that cannot fail is worse than none.
         cxt.instanceConfig.isTestInstance shouldBe false
@@ -389,7 +383,7 @@ class SchemaEndpointsTest : StringSpec({
         // A logged-in ordinary user, not env-authed (a unit instance auto-assumes nothing) -- the production
         // caller the restriction is for. Logged in, so the login-gated gedra surface is theirs to see; the
         // restriction is what keeps them to its *published* part.
-        val cxt = Startup.mkTestBootCxt("schemaNoEnv", "schemaNoEnvTest")
+        val cxt = TestInstances.default("schemaNoEnv")
         val client = TestUser.create(cxt, "no-env@example.com").client
 
         val resp = client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 500))

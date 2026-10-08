@@ -17,7 +17,7 @@ import io.kotest.matchers.shouldBe
  */
 class FormDocsQueryReservedTest : StringSpec({
     "the listing's query type declares exactly the reserved names the framework does not append" {
-        val cxt = Startup.mkTestBootCxt("formDocsReserved", "formDocsReservedTest")
+        val cxt = TestInstances.default("formDocsReserved")
         val schema = SchemaService.get(cxt)
         // The type as served carries the global usage rules' search fields too; what is left is its own.
         val searchFields = gedraSearchParams(schema.traitUsagesFor(GID.globalClient)).map { it.name }.toSet()

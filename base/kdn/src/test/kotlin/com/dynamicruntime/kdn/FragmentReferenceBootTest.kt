@@ -30,6 +30,7 @@ class FragmentReferenceBootTest : StringSpec({
     }
 
     "a dangling @t reference in a registered fragment is reported" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("fragRefDangling", "fragRefDanglingTest")
         register(cxt) {
             key("chooser", $$"""${@t("items.gone")}""")
@@ -40,6 +41,7 @@ class FragmentReferenceBootTest : StringSpec({
     }
 
     "a valid @t reference is clean" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("fragRefValid", "fragRefValidTest")
         register(cxt) {
             key("chooser", $$"""${@t("items.noItems")}""")
@@ -52,6 +54,7 @@ class FragmentReferenceBootTest : StringSpec({
     }
 
     "a reference cycle in a registered fragment is reported" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         val cxt = Startup.mkTestBootCxt("fragRefCycle", "fragRefCycleTest")
         register(cxt) {
             key("a", $$"""${@t("items.b")}""")
@@ -62,6 +65,7 @@ class FragmentReferenceBootTest : StringSpec({
     }
 
     "a strict boot refuses to start on a dangling @t reference" {
+        // Its own instance (issue #1075): it replaces the node's fragment registry (`FRAG.registryKey`) while running.
         // mkTestBootCxt forces the unit environment, where the check is strict.
         val cxt = Startup.mkTestBootCxt("fragRefStrict", "fragRefStrictTest")
         register(cxt) {

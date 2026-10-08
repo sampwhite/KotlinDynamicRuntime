@@ -48,7 +48,7 @@ import io.kotest.matchers.string.shouldNotContain
  * has does not refuse an unrelated write to it.
  */
 class ConfigSlotGateTest : StringSpec({
-    val cxt: KdrCxt = Startup.mkTestBootCxt("slotGate", "configSlotGateTest")
+    val cxt: KdrCxt = TestInstances.default("slotGate")
 
     fun fullAdmin(): TestUser = TestUser.createFullAdmin(cxt, "gate1052@example.com")
 

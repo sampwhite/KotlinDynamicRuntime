@@ -8,6 +8,7 @@ import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.logging.LogStartup
 
@@ -25,6 +26,9 @@ import com.dynamicruntime.common.logging.LogStartup
  */
 object InstanceRegistry {
     private val instanceConfigs = HashMap<String, KdrInstanceConfig>()
+
+    /** Each instance's setup as it was first built -- see [setupOf] -- so a reuse with another setup can be refused. */
+    private val instanceSetups = HashMap<String, Map<String, Any?>>()
     private var shutdownHookInstalled = false
 
     // Resources to release when the JVM shuts down -- today the outbound HTTP clients (issue #420), which hold
@@ -63,7 +67,8 @@ object InstanceRegistry {
      *
      * [components] is used **only when the instance is first created** (issue #524) -- like [overlay], it is
      * ignored on a cache hit, because the instance is already built. So a reused [instanceName] returns the
-     * earlier instance and its earlier component set, which is why the house rule is a unique name per test.
+     * earlier instance and its earlier component set -- refused in the unit environment when they differ
+     * (`requireSameSetup`), so a test shares an instance only by asking for the very setup it was built with.
      */
     fun getOrCreateInstanceConfig(
         instanceName: String,
@@ -71,7 +76,10 @@ object InstanceRegistry {
         overlay: Map<String, Any?> = emptyMap(),
     ): KdrInstanceConfig {
         synchronized(instanceConfigs) {
-            instanceConfigs[instanceName]?.let { return it }
+            instanceConfigs[instanceName]?.let { existing ->
+                requireSameSetup(instanceName, existing, components, overlay)
+                return existing
+            }
 
             val env = (overlay[ACFG.env] as? String) ?: System.getenv(KdrInstanceConfig.envName.name) ?: ENV.local
             // The boot role rides in on the overlay (issue #377): the launcher put it there, and it has to
@@ -161,6 +169,7 @@ object InstanceRegistry {
             bindAndInitServices(cxt, node, serviceEntries)
 
             instanceConfigs[instanceName] = config
+            instanceSetups[instanceName] = setupOf(components, overlay)
             return config
         }
     }
@@ -194,6 +203,44 @@ object InstanceRegistry {
         for (service in services) service.onCreate(cxt)
         for (service in services) service.checkInit(cxt)
         for (service in services) service.checkReady(cxt)
+    }
+
+    /**
+     * Refuses, in the [ENV.unit] environment, a reuse of [instanceName] whose [components] or [overlay] differ from
+     * the ones it was built with (issue #1075). A cache hit ignores both, so without this a test naming an existing
+     * instance with another setup would silently run against the first test's -- testing something it did not ask
+     * for. Shared test instances are declared once with their whole setup, which this keeps honest. Outside unit
+     * tests a launcher boots one instance per name, and nothing is asked.
+     */
+    private fun requireSameSetup(instanceName: String, existing: KdrInstanceConfig, components: List<ComponentDefinition>, overlay: Map<String, Any?>) {
+        if (existing.env != ENV.unit) return
+        val built = instanceSetups[instanceName] ?: return
+        val asked = setupOf(components, overlay)
+        if (asked != built) {
+            throw KdrException(
+                "Instance '$instanceName' was built with $built and is now asked for with $asked. A cached instance " +
+                    "keeps its first setup, so a test with another setup needs an instance of its own name -- or the " +
+                    "shared instance that has that setup.",
+            )
+        }
+    }
+
+    /**
+     * An instance's setup in comparable form: its component classes, and its overlay with each value reduced to
+     * something with a value's equality. A plain value (text, number, flag, and lists and maps of them) is kept; any
+     * other object -- a key source, a lambda, a fixture made per call -- is reduced to its class, since a fresh one
+     * per call is the same setup asked for again, not a different one.
+     */
+    private fun setupOf(components: List<ComponentDefinition>, overlay: Map<String, Any?>): Map<String, Any?> = linkedMapOf(
+        "components" to components.map { it::class.qualifiedName ?: it::class.toString() }.sorted(),
+        "overlay" to overlay.toSortedMap().mapValues { comparable(it.value) },
+    )
+
+    private fun comparable(value: Any?): Any? = when (value) {
+        null, is String, is Number, is Boolean, is Enum<*> -> value
+        is Map<*, *> -> value.entries.associate { it.key.toString() to comparable(it.value) }.toSortedMap()
+        is Iterable<*> -> value.map { comparable(it) }
+        else -> "<${value::class.qualifiedName ?: value::class}>"
     }
 
     /** Creates a top-level context bound to the given instance config. */
