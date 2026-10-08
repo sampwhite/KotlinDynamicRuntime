@@ -839,6 +839,17 @@ fun formRequirementProblems(where: String, layout: SchLayout, type: SchType): Li
 }
 
 /**
+ * The fields of [type] an **authoritative** layout must list ([authoritativeLayoutProblems]): every field the type may
+ * require -- [SchType.required] and both sides of its `if`/`then`/`else` -- except a derived one, which nobody at the
+ * form supplies. What Design View's field checklist locks on (issue #1071), by the rule the load check holds. Pure.
+ */
+fun fieldsAListMustShow(type: SchType): Set<String> {
+    val condition = type.condition
+    val mayRequire = type.required + condition?.thenRequired.orEmpty() + condition?.elseRequired.orEmpty()
+    return mayRequire.filterTo(LinkedHashSet()) { type.properties[it]?.valueType?.derived != true }
+}
+
+/**
  * The problems with an **authoritative** [layout] against [type] (issue #777): the layout is the whole presented
  * set, so a property the type may require that it omits could never be supplied, and the form is unsubmittable by
  * construction. Empty for any other mode -- reorder and overlay hide nothing, so nothing is owed.
@@ -855,10 +866,8 @@ fun formRequirementProblems(where: String, layout: SchLayout, type: SchType): Li
 fun authoritativeLayoutProblems(where: String, layout: SchLayout, type: SchType): List<Problem> {
     if (layout.mode != SchLayoutMode.authoritative) return emptyList()
     val listed = layout.fieldNames.toSet()
-    val condition = type.condition
-    val mayRequire = type.required + condition?.thenRequired.orEmpty() + condition?.elseRequired.orEmpty()
-    return mayRequire
-        .filter { it !in listed && type.properties[it]?.valueType?.derived != true }
+    return fieldsAListMustShow(type)
+        .filter { it !in listed }
         .map {
             val how = if (it in type.required) "" else " (conditionally, through '${SCH.kIf}')"
             layoutProblem(

@@ -839,6 +839,17 @@ workflow's pulled labels (the sample's acme `createForm`) are editable there -- 
 by the label or heading editor. What the inspector says the page shows is read from the view, never from the selection,
 which predates any save's re-read.
 
+**Which fields a form shows** (issue #1071, `FieldsShownSection`): a trait's inspector offers **Choose which fields this
+form shows**, off by default. Turning it on writes the fields shown now as the workflow's own `authoritative` list (its
+layout alteration of the type, `/clientAdmin/design/shownFields`, the block's `DSV.shownFields`), so nothing changes
+until a field is unchecked; a checklist of every field the type declares (`shownFieldRows`, filterable past eight)
+then picks them, saved together. A field the data may require is locked by the load check's own rule
+(`fieldsAListMustShow`), and one this form requires must stop being required first. Off goes back to the shared
+layout's fields and keeps any copy. Under the list, a field's copy edit keeps its place and **Reset to shared** leaves
+the field on the form (`withLayoutEntry`). The save follows the list: an edit save sends only the shown fields
+(`shownPayload`) and the backend merges them over the stored entry, refusing any other, so workflows filling different
+parts of one questionnaire keep each other's answers.
+
 - **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
   request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
   administrator, adding a `design` block to the workflow view -- an address and origin for every type the page

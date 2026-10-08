@@ -14,8 +14,10 @@ import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLDM
+import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.parseSchLayout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -215,6 +217,17 @@ class WorkflowModelTest {
         val bare = parseWorkflowView(view() - WVF.fieldLayouts)!!
         assertNull(bare.tasks.single().traits.single().fieldLayout)
         assertTrue(bare.fieldLayouts.isEmpty())
+    }
+
+    @Test
+    fun anEditUnderALayoutThatChoosesItsFieldsSendsOnlyThose() {
+        // Issue #1071: the page is seeded with the whole stored entry, hidden answers included; only the shown go back.
+        val payload = mapOf<String, Any?>("q1" to "a", "q2" to "b", "q3" to "hidden")
+        val chooses = parseSchLayout("t", mapOf(SL.mode to SLM.authoritative, SL.schemaFields to listOf(mapOf(SL.field to "q1"), mapOf(SL.field to "q2"))))
+        assertEquals(mapOf("q1" to "a", "q2" to "b"), shownPayload(payload, chooses))
+        // A layout that only annotates, or none, sends it all.
+        assertEquals(payload, shownPayload(payload, parseSchLayout("t", mapOf(SL.schemaFields to listOf(mapOf(SL.field to "q1"))))))
+        assertEquals(payload, shownPayload(payload, null))
     }
 
     @Test

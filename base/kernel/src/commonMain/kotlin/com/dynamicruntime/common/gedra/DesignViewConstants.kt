@@ -216,6 +216,22 @@ object DSV {
      * fragment key, as a [pulledCopy] slot is.
      */
     const val pulledHeadings = "pulledHeadings"
+
+    // --- which fields a form shows (issue #1071) ---
+
+    /**
+     * In the block: by type name, the fields the workflow's own layout lists as its form's, in order -- for each type
+     * whose fields the workflow chooses (an `authoritative` alteration). A type it leaves to the shared layout is absent.
+     */
+    const val shownFields = "shownFields"
+
+    /**
+     * Sets the fields a workflow's form shows for a type -- its layout alteration made `authoritative`, listing [fields]
+     * in order -- or, with [fields] absent, removes its choice, so the form shows what the shared layout does. Input:
+     * [workflowId], [typeName], [fields] and [basedOn]. Its save then writes only the fields shown. Client-scoped admin.
+     */
+    const val shownFieldsEdit = "/${SECT.clientAdmin}/design/shownFields"
+    const val fields = "fields"
 }
 
 /**

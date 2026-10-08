@@ -9,9 +9,11 @@ import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
+import com.dynamicruntime.common.schema.fieldsAListMustShow
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -106,6 +108,8 @@ class WfDesign(
     val layoutEdits: Map<String, Map<String, LayoutEdit>> = emptyMap(),
     /** The headings the workflow sets, by type name (issue #1070). */
     val headingEdits: Map<String, HeadingEdit> = emptyMap(),
+    /** By type name, the fields the workflow's own form shows, in order, where it chooses them (issue #1071). */
+    val shownFields: Map<String, List<String>> = emptyMap(),
 ) {
     /** The workflow's own entry for [field] of [typeName], with what it replaced, or null when it has none. */
     fun layoutEdit(typeName: String, field: String): LayoutEdit? = layoutEdits[typeName]?.get(field)
@@ -160,6 +164,7 @@ fun parseWfDesign(raw: Any?): WfDesign? {
             val h = raw.toJsonMapOrEmpty()
             h[DSV.label].toOptStr()?.let { typeName to HeadingEdit(it, h[DSV.inherited].toOptStr(), h[DSV.inheritedChanged] == true) }
         }.toMap(),
+        shownFields = block[DSV.shownFields].toJsonMapOrEmpty().mapValues { it.value.toJsonListOfStrings() },
     )
 }
 
@@ -812,6 +817,50 @@ fun headingEditBody(workflowId: String?, typeName: String, label: String?, based
     put(DSV.typeName, typeName)
     label?.trim()?.takeIf { it.isNotEmpty() }?.let { put(DSV.label, it) }
     put(if (workflowId != null) DSV.basedOn else DSV.sharedBasedOn, basedOn)
+    client?.let { put(DSV.client, it) }
+}
+
+// --- which fields a form shows (issue #1071) --------------------------------------------------------------------
+
+/**
+ * One field in the checklist of the fields a workflow's form shows (issue #1071): its [name], what the form calls it
+ * ([label]), whether the form [shown] it, and -- when it cannot be taken off -- why ([locked]).
+ */
+class ShownFieldRow(val name: String, val label: String, val shown: Boolean, val locked: String?)
+
+/**
+ * The checklist for [type] with the form showing [chosen] (issue #1071): the shown fields first, in their order, then
+ * the rest in the type's. A field the list must keep is locked, with why: one the data may require -- the load check's
+ * own rule, [fieldsAListMustShow] -- or one this form requires ([layout]'s entry), which must stop being required
+ * first. Pure.
+ */
+fun shownFieldRows(type: SchType, layout: SchLayout?, chosen: List<String>): List<ShownFieldRow> {
+    val mustShow = fieldsAListMustShow(type)
+    fun row(name: String, shown: Boolean): ShownFieldRow {
+        val entry = layout?.fieldFor(name)
+        val locked = when {
+            name in mustShow -> "The data requires it, so every form shows it."
+            shown && entry?.required == true -> "This form requires it; stop requiring it first."
+            else -> null
+        }
+        return ShownFieldRow(name, entry?.label ?: type.properties[name]?.title ?: humanizeFieldName(name), shown, locked)
+    }
+    val listed = chosen.filter { it in type.properties }
+    return listed.map { row(it, true) } + type.properties.keys.filter { it !in listed }.map { row(it, false) }
+}
+
+/** Whether [row] matches the checklist's [filter]: by its name or label, ignoring case; a blank filter matches all. Pure. */
+fun shownFieldMatches(row: ShownFieldRow, filter: String): Boolean {
+    val f = filter.trim().lowercase()
+    return f.isEmpty() || f in row.name.lowercase() || f in row.label.lowercase()
+}
+
+/** The body of a shown-fields edit (issue #1071): the list in order, or absent to stop choosing. Pure. */
+fun shownFieldsBody(workflowId: String, typeName: String, fields: List<String>?, basedOn: String, client: String?): Map<String, Any?> = buildMap {
+    put(DSV.workflowId, workflowId)
+    put(DSV.typeName, typeName)
+    fields?.let { put(DSV.fields, it) }
+    put(DSV.basedOn, basedOn)
     client?.let { put(DSV.client, it) }
 }
 

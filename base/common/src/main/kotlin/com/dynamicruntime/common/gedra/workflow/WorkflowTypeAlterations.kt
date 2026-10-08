@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.overlayDefs
 import com.dynamicruntime.common.schema.overlayTypeOutcome
@@ -105,11 +106,51 @@ fun withLayoutEntry(
     entry: Map<String, Any?>?,
     inherited: Map<String, Any?>?,
 ): Map<String, Any?> = withLayoutAlteration(definition, typeName) { layout, typeBasis ->
-    val fields = (layout[SL.schemaFields] as? List<*>).orEmpty().filter { (it as? Map<*, *>)?.get(SL.field) != field }
-        .toMutableList()
-    if (entry != null) fields.add(LinkedHashMap(entry).also { it[SL.field] = field })
+    val listed = (layout[SL.schemaFields] as? List<*>).orEmpty()
+    val at = listed.indexOfFirst { (it as? Map<*, *>)?.get(SL.field) == field }
+    val fields = listed.toMutableList()
+    // Under the workflow's own list of the fields its form shows (issue #1071), the entry keeps its place, and a reset
+    // leaves the field on the form -- named, with the inherited copy -- rather than taking it off.
+    val chooses = layout[SL.mode] == SLM.authoritative
+    val replacement: Map<String, Any?>? = entry?.let { LinkedHashMap(it).also { e -> e[SL.field] = field } }
+        ?: if (chooses && at >= 0) linkedMapOf(SL.field to field) else null
+    when {
+        replacement == null -> if (at >= 0) fields.removeAt(at)
+        at >= 0 -> fields[at] = replacement
+        else -> fields.add(replacement)
+    }
     if (fields.isEmpty()) layout.remove(SL.schemaFields) else layout[SL.schemaFields] = fields
     if (entry != null) typeBasis[field] = inherited?.let { LinkedHashMap(it) } ?: LinkedHashMap<String, Any?>() else typeBasis.remove(field)
+}
+
+/**
+ * [definition] with the workflow's own list of the fields its form shows for [typeName] set to [fields], in that order,
+ * or removed when [fields] is null (issue #1071) -- as its layout alteration of the type in `authoritative` mode, which
+ * restates the list. A field the list names keeps the workflow's own entry for it (its copy and form requirements),
+ * and is otherwise named alone, which keeps the inherited entry; a field the list leaves out loses the workflow's entry,
+ * and its basis with it. Removing the list removes the mode and every bare name, and keeps each entry that carries
+ * copy. Pure.
+ */
+fun withShownFields(definition: Map<String, Any?>, typeName: String, fields: List<String>?): Map<String, Any?> =
+    withLayoutAlteration(definition, typeName) { layout, typeBasis ->
+        val entries = (layout[SL.schemaFields] as? List<*>).orEmpty().mapNotNull { it.toJsonMapOrEmpty().takeIf { e -> SL.field in e } }
+            .associateBy { it[SL.field] as String }
+        if (fields != null) {
+            layout[SL.mode] = SLM.authoritative
+            layout[SL.schemaFields] = fields.distinct().map { f -> entries[f] ?: linkedMapOf<String, Any?>(SL.field to f) }
+            (entries.keys - fields.toSet()).forEach { typeBasis.remove(it) }
+        } else {
+            layout.remove(SL.mode)
+            val copy = entries.values.filter { e -> e.keys.any { it != SL.field } }
+            if (copy.isEmpty()) layout.remove(SL.schemaFields) else layout[SL.schemaFields] = copy
+        }
+    }
+
+/** The fields a workflow's [alteration] of a type lists as its form's (issue #1071), or null when it chooses none. */
+fun shownFieldsOf(alteration: Map<String, Any?>?): List<String>? {
+    val layout = alteration?.get(SCH.layout) as? Map<*, *> ?: return null
+    if (layout[SL.mode] != SLM.authoritative) return null
+    return (layout[SL.schemaFields] as? List<*>).orEmpty().mapNotNull { (it as? Map<*, *>)?.get(SL.field).toOptStr() }
 }
 
 /**

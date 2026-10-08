@@ -20,6 +20,7 @@ import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.parseDeliveredLayouts
@@ -612,6 +613,14 @@ fun pendingDefaultCount(
  *  offered -- and is absent here. Empty when the trait carries no default. */
 fun suggestedFilledFields(presentation: PrefillPresentation, traitId: String): Set<String> =
     presentation.modes[traitId]?.filterValues { it == SLDM.filled }?.keys ?: emptySet()
+
+/**
+ * What a save sends of a trait's [payload] under its [layout] (issue #1071): only the fields an `authoritative` layout
+ * lists -- the ones the form shows, which an edit save writes, refusing any other -- and the whole payload otherwise.
+ * Pure.
+ */
+fun shownPayload(payload: Map<String, Any?>, layout: SchLayout?): Map<String, Any?> =
+    if (layout?.mode == SchLayoutMode.authoritative) payload.filterKeys { it in layout.fieldNames } else payload
 
 /**
  * The `entries` a save posts, from the values collected per trait (issue #536): each is a `{traitId, data}`

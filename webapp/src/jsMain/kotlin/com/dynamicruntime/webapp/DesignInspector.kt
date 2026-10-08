@@ -9,6 +9,7 @@ import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.offeredChoices
+import com.dynamicruntime.common.schema.orderedFieldNames
 import com.dynamicruntime.common.util.fmtD
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -95,6 +96,13 @@ object DesignApi {
             "POST", if (workflowId != null) DSV.headingEdit else DSV.sharedHeadingEdit,
             headingEditBody(workflowId, typeName, label, basedOn, client),
         )
+
+    /**
+     * Sets the fields the workflow's form shows for [typeName] to [fields], in order, or stops choosing them when
+     * [fields] is null (issue #1071), as an edit of the definition stamped [basedOn].
+     */
+    suspend fun setShownFields(workflowId: String, typeName: String, fields: List<String>?, basedOn: String, client: String?): ApiResult<Map<String, Any?>> =
+        Http.sendApiResult("POST", DSV.shownFieldsEdit, shownFieldsBody(workflowId, typeName, fields, basedOn, client))
 
     /**
      * Sets [field] of [typeName] -- in the definition the client declares -- to the layout [entry] and the choices
@@ -283,6 +291,12 @@ val DesignInspector = FC<DesignInspectorProps> { props ->
                 // The trait as the page now draws it, its heading included (see the field case below).
                 val trait = props.view.tasks.flatMap { it.traits }.firstOrNull { it.traitId == selected.trait.traitId } ?: selected.trait
                 traitSummary(DesignTarget.Trait(trait))
+                // Which fields the form shows (issue #1071): the workflow's own choice, from the block.
+                FieldsShownSection {
+                    key = "${selected.id}|fields|${design.basedOn}".unsafeCast<Key>()
+                    this.session = session
+                    this.trait = trait
+                }
                 if (definition?.response != null && address != null) {
                     HeadingSection {
                         key = "${selected.id}|${design.basedOn}".unsafeCast<Key>()
@@ -1597,3 +1611,126 @@ private val HeadingSection = FC<HeadingSectionProps> { props ->
         }
     }
 }
+
+external interface FieldsShownSectionProps : Props {
+    var session: DesignSession
+    /** The trait as the page now draws it. */
+    var trait: WfTraitView
+}
+
+/**
+ * Which of a trait's fields this workflow's form shows (issue #1071). Off by default -- the form shows what the shared
+ * layout does. **Choose which fields this form shows** writes the fields shown now as the workflow's own list, so
+ * nothing changes until one is unchecked; a checklist of every field the type declares, filterable for a long
+ * questionnaire, then picks them -- checking adds a field at the end, unchecking takes it off -- saved together. A
+ * field the data requires, or that this form requires, cannot be taken off, and says why. Turning the choice off goes
+ * back to the shared layout's fields and keeps any copy. The page goes on drawing only the form as shown: the full set
+ * lives here.
+ */
+private val FieldsShownSection = FC<FieldsShownSectionProps> { props ->
+    val session = props.session
+    val design = session.design
+    val trait = props.trait
+    val own = design.shownFields[trait.typeName]
+    // What the form shows now -- the start of the list when the choice is turned on.
+    val showing = orderedFieldNames(trait.type, trait.fieldLayout)
+    var chosen by useState(own ?: showing)
+    var filter by useState("")
+    var saving by useState(false)
+    var failure by useState<DisplayError?>(null)
+
+    fun save(fields: List<String>?) {
+        saving = true
+        failure = null
+        designScope.launch {
+            val result = DesignApi.setShownFields(session.workflowId, trait.typeName, fields, design.basedOn, session.client)
+            saving = false
+            result.failureOrNull()?.let { failure = userFacingError(it) } ?: session.afterEdit()
+        }
+    }
+
+    div {
+        className = ClassName("dv-edit")
+        h3 { +"Fields on this form" }
+        fact("Shows", "${showing.size} of ${trait.type.properties.size} fields")
+        if (!design.canEdit) {
+            design.editRefusal?.let {
+                p {
+                    className = ClassName("dv-note")
+                    +it
+                }
+            }
+        } else {
+            div {
+                className = ClassName("dv-actions")
+                Checkbox {
+                    checked = own != null
+                    disabled = saving
+                    onChange = { e -> save(if (e.target.checked == true) showing else null) }
+                    +"Choose which fields this form shows"
+                }
+            }
+            if (own == null) {
+                p {
+                    className = ClassName("dv-fallback")
+                    +"Off: the form shows what the shared layout does."
+                }
+            } else {
+                p {
+                    className = ClassName("dv-note")
+                    +"This form's save writes only the fields it shows; the form's other answers are kept as they are."
+                }
+                val rows = shownFieldRows(trait.type, trait.fieldLayout, chosen)
+                if (rows.size > 8) {
+                    Input {
+                        value = filter
+                        placeholder = "Filter the fields"
+                        onChange = { e -> filter = e.target.value as String }
+                    }
+                }
+                for (row in rows.filter { shownFieldMatches(it, filter) }) {
+                    div {
+                        key = row.name.unsafeCast<Key>()
+                        className = ClassName("dv-edit-row")
+                        Checkbox {
+                            checked = row.shown
+                            disabled = row.locked != null
+                            onChange = { e -> chosen = if (e.target.checked == true) chosen + row.name else chosen - row.name }
+                            +row.label
+                        }
+                        span {
+                            className = ClassName("dv-fact-value mono")
+                            +row.name
+                        }
+                        row.locked?.let {
+                            p {
+                                className = ClassName("dv-fallback")
+                                +it
+                            }
+                        }
+                    }
+                }
+                div {
+                    className = ClassName("dv-actions")
+                    Button {
+                        type = "primary"
+                        size = "small"
+                        loading = saving
+                        disabled = chosen == own || chosen.isEmpty()
+                        onClick = { save(chosen) }
+                        +"Save"
+                    }
+                    Button {
+                        size = "small"
+                        type = "link"
+                        disabled = chosen == own
+                        onClick = { chosen = own }
+                        +"Revert"
+                    }
+                }
+            }
+        }
+        failure?.let { errorText("Couldn't change the fields this form shows.", it) }
+    }
+}
+
