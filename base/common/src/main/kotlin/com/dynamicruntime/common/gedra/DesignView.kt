@@ -276,7 +276,7 @@ object DesignView {
         val declared = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)
             ?: throw KdrException("No workflow '$workflowId' for client '${cxt.client}'.", code = EXC.notFound)
         editRefusal(cxt, declared)?.let { throw KdrException.mkInput(it.message) }
-        val inherited = layoutEntryOf(SchemaService.get(cxt).storeFor(cxt.client), typeName, field)
+        val inherited = layoutEntryOf(cxt.getClientSchema(), typeName, field)
         saveEdit(cxt, declared.bundle.name) { slots ->
             val workflows = slots[CCT.workflowDef].orEmpty()
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }

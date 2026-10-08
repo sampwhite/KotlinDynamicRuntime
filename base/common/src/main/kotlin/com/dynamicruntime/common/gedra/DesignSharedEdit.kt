@@ -102,7 +102,7 @@ object DesignSharedEdit {
     fun whereUsed(cxt: KdrCxt, typeNames: Set<String>): List<Map<String, Any?>> {
         val schema = SchemaService.get(cxt)
         val traits = schema.gedraTraitsFor(cxt.client).associateBy { it.traitId }
-        val store = schema.storeFor(cxt.client)
+        val store = cxt.getClientSchema()
         return WorkflowService.get(cxt).forClient(cxt.client).workflows.values.filter { declared ->
             val seeds = declared.def.tasks.flatMap { it.traits }.flatMap { ref ->
                 val trait = traits[ref.traitId] ?: return@flatMap emptyList()

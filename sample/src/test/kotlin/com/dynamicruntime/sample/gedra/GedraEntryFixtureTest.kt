@@ -1,23 +1,34 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GU
+import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.TestHttpClient
-import com.dynamicruntime.kdn.Startup
-import com.dynamicruntime.sample.SampleComponent
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchOpts
 import com.dynamicruntime.common.schema.coerceAndValidate
+import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.kdn.Startup
+import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -129,6 +140,31 @@ class GedraEntryFixtureTest : StringSpec({
         explained[GFX.knownTraits] shouldBe
             listOf(GT.name, ST.expenseReport, ST.managerApproval, ST.questionnaire, ST.siteVisit, ST.yearly)
         explained[GFX.branches] shouldBe listOf(GT.name, GFX.default)
+    }
+
+    "the explained union is the caller's client's, a trait its own configuration adds included (issue #1072)" {
+        // A client defined in data with a trait of its own, so its union is a variant of the global one.
+        val client = "explain1072"
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 10720L }
+        GedraConfigService.get(cxt).writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                        enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                trait("ExplainNoteEntry", "explainNote1072", setOf(GedraDataType.formDoc), "A note.") { property("text", "What it says.") }
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, client)
+        val member = TestUser.create(cxt, "member@explain1072.test", userClient = client)
+        val response = member.client.sendEditRequest(
+            fillOut, mapOf(EP.debug to GFX.explainEntries), mapOf<String, Any?>(GFX.entries to listOf(entry("Mine"))), HttpMethod.POST,
+        ).rptResponseData?.jsonMap() ?: emptyMap()
+        val known = response.getValue(EP.meta).toJsonMapOrEmpty().getValue(GFX.entriesExplained).toJsonMapOrEmpty()[GFX.knownTraits]
+        known.toJsonListOfStrings() shouldContain "explainNote1072"
     }
 
     // --- what only a union with more than one branch can show ----------------
