@@ -422,6 +422,16 @@ class FieldErrors(
     fun messagesAt(path: String): List<SchFailure> = byPath[path] ?: emptyList()
 
     /**
+     * The failures to show under a field drawn as **one control over a whole object** -- the JSON editor an object
+     * with no declared fields gets, a map's among them (issue #1055): those at [path], then those below it, each led
+     * by where in the object it is. The control has no slot per key, so without this a failure inside a map's entry
+     * would be marked nowhere and named only in the listing at the foot of the page.
+     */
+    fun messagesWithin(path: String): List<SchFailure> = messagesAt(path) +
+        all.filter { it.path != path && isPathAtOrBelow(it.path, path) }
+            .map { it.copy(message = "${it.path.substring(path.length).trimStart('.')}: ${it.message}") }
+
+    /**
      * Failures below [path] whose next key down is not one of [declared] — reported against a property this
      * object does not have, so no field of its own will ever be drawn for it. Grouped by their own path, so
      * each gets one addressable place to appear.
@@ -1104,7 +1114,9 @@ private fun ChildrenBuilder.renderField(
         return
     }
 
-    val messages = errors.messagesAt(path)
+    // An object reaching here has no declared fields and is one control: a failure below it -- inside a map's
+    // entry -- is shown with the field, where the person editing it is.
+    val messages = if (vt.jsonType == SCT.kObject) errors.messagesWithin(path) else errors.messagesAt(path)
     fieldFrame(name, prop, required, path, messages, opts, copy, value = value, prefill = prefill) {
         widget(
             vt, value, required, editable, messages.ifEmpty { null }?.let { fieldErrorsId(path) },
@@ -1696,9 +1708,12 @@ fun ChildrenBuilder.schemaTable(elementType: SchType, elements: List<Any?>, opts
     }
 }
 
+/** How many maps deep [typeWord] names a map's values ("map of map of string") before it says only "map". */
+internal const val maxTypeWordDepth = 3
+
 /** The field's type named in words, e.g. "string", "boolean", "date", "choice", "list". Internal (not private)
  *  so `ControlKindTest` can pin the choice-vs-open-choice reading it shares with [controlKind] (issue #781). */
-internal fun typeWord(vt: SchType): String = when {
+internal fun typeWord(vt: SchType, depth: Int = 0): String = when {
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> "file"
     // "open choice" rather than "choice": the word has to carry that the list is not the whole of what is
     // allowed, or the outline documents a constraint the endpoint does not have.
@@ -1712,6 +1727,11 @@ internal fun typeWord(vt: SchType): String = when {
     vt.jsonType == SCT.integer -> "integer"
     vt.jsonType == SCT.number -> "number"
     vt.jsonType == SCT.string -> "string"
+    // A map (issue #1055): free keys, each a value of one kind -- which is what a reader needs to know of it. An
+    // object that also declares fields is named for those, and its outline shows them. A map's values may be the
+    // map itself, by reference, so the naming stops a few levels down.
+    vt.properties.isEmpty() && vt.additionalValueType != null ->
+        if (depth >= maxTypeWordDepth) "map" else "map of ${typeWord(vt.additionalValueType!!, depth + 1)}"
     else -> vt.jsonType ?: "value"
 }
 

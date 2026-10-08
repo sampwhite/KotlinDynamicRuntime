@@ -127,10 +127,10 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         primaryKey = listOf(CCT.fileId),
     ) {
         property(CCT.fileId, "The fragment file this overlays.", required = true)
-        // Namespace to key to text. Declared an open object because the schema layer has no map of free keys to
-        // typed values yet (issue #1055); a write checks the two tiers by hand (`configSlotFailures`).
+        // Namespace to key to text: a map of maps (issue #1055), so a write's gate holds both tiers to it -- a
+        // namespace that is not an object, or a key whose value is not text, is refused by its path.
         property(CCT.content, "The overlay content: a two-tier map of namespace to key to value.", required = true) {
-            type = SCT.kObject
+            mapOfValues { mapOfValues { type = SCT.string } }
         }
     }
     configTrait(

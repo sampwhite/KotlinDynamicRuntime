@@ -79,7 +79,7 @@ class SchType(
      * Whether undeclared properties are allowed on an object. kd2 defaults this to **false when the type
      * declares any properties** and **true when it declares none** (so a property-less generic map still
      * accepts anything). Keys prefixed with `_` or a non-keyword `$` are exempt from this check regardless
-     * (see the validator).
+     * (see the validator). True whenever [additionalValueType] says what an undeclared property holds.
      */
     val additionalProperties: Boolean,
     /**
@@ -199,7 +199,29 @@ class SchType(
      * by parsing it (issue #316). See `validateSchemaDocument`.
      */
     val schemaDocument: Boolean = false,
+    /**
+     * The schema of every **undeclared** property's value, for an object that is a **map** (issue #1055): free
+     * keys, each holding a value of this shape. JSON Schema's `additionalProperties` given as a schema rather
+     * than as true or false; null for an object that is not one. It is the third way to describe an object,
+     * beside the closed record (declared keys only) and the open one (declared keys typed, any others passed
+     * through): here the keys are the author's own names and it is the values that are held to something --
+     * a fragment's namespaces, a schema's `properties`.
+     *
+     * **A map's keys are data, so none is off-contract.** The `_` and `$` prefixes that exempt a key from a
+     * record's rules mark an annotation beside its fields; in a map every key is an entry, and its value is
+     * validated like any other. Declared [properties] may stand beside it and are validated as themselves.
+     *
+     * Mutable for the reason [itemType] is: a `$ref` here is bound in the reference-resolution pass.
+     */
+    var additionalValueType: SchType? = null,
 )
+
+/**
+ * Whether this is an object with fields of its own to walk into: declared ones, or a map's entries (issue #1055).
+ * The one answer the walkers that judge a value field by field share -- a form's requirements, a field's gate on a
+ * write -- so that a shape one of them learns to walk is one they all do.
+ */
+fun SchType.holdsFields(): Boolean = properties.isNotEmpty() || additionalValueType != null
 
 /**
  * The modes of the `g-outerWhitespace` keyword (issues #541, #765), resolved from its [SOWS] wire values. An

@@ -3,6 +3,7 @@ package com.dynamicruntime.common.schema
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.config.KdrConfigData
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.deepClone
 import com.dynamicruntime.common.util.toOptT
 import com.dynamicruntime.common.util.toT
@@ -161,9 +162,25 @@ open class SchTypeBuilder(
      */
     var visibleWhen: String? by SchAttr(data, SCH.visibleWhen)
 
-    /** Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
-     *  has declared properties, true when it has none). Set explicitly to allow extras on a defined type. */
-    var additionalProperties: Boolean? by SchAttr(data, SCH.additionalProperties)
+    /**
+     * Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
+     * has declared properties, true when it has none). Set explicitly to allow extras on a defined type.
+     *
+     * The keyword has a second use -- a schema, which makes the object a map ([mapOfValues]) -- and one type says
+     * one or the other: setting this on a type already declared a map is refused, as [mapOfValues] refuses the
+     * reverse, where the later of the two would otherwise quietly win.
+     */
+    var additionalProperties: Boolean?
+        get() = data[SCH.additionalProperties] as? Boolean
+        set(value) {
+            if (data[SCH.additionalProperties] is Map<*, *>) throw mapAndSwitch()
+            if (value == null) data.remove(SCH.additionalProperties) else data[SCH.additionalProperties] = value
+        }
+
+    private fun mapAndSwitch(): KdrException = KdrException.mkConv(
+        "A type declares its undeclared properties once: as a map's values (mapOfValues) or as allowed or not " +
+            "('${SCH.additionalProperties}' true or false), not both. A map already admits every key.",
+    )
 
     // JSON Schema's four min/max pairs (issue #203). Each is spelled with the standard keyword for its type,
     // because that is what the document has to say; the parser folds whichever one applies into a single
@@ -445,6 +462,23 @@ open class SchTypeBuilder(
     /** Defines the element schema for an array type (`items`). */
     fun items(build: SchTypeBuilder.() -> Unit) {
         data[SCH.items] = SchTypeBuilder(cxt, namespace).apply(build).data
+    }
+
+    /**
+     * Makes this an object that is a **map** (issue #1055): free keys, each holding a value of the schema [build]
+     * declares -- JSON Schema's `additionalProperties` given as a schema. What `items` is to an array's elements,
+     * for an object's undeclared properties: `mapOfValues { type = SCT.string }` is a map of names to text, and
+     * one nested in another a map of maps. Sets the type to an object; properties declared beside it are
+     * validated as themselves.
+     *
+     * Named for what it makes rather than for the keyword, since the keyword's other use -- true or false, whether
+     * a record admits keys it does not declare -- is [additionalProperties], and one name for both would read as a
+     * switch where this is a declaration.
+     */
+    fun mapOfValues(build: SchTypeBuilder.() -> Unit) {
+        if (data[SCH.additionalProperties] is Boolean) throw mapAndSwitch()
+        type = SCT.kObject
+        data[SCH.additionalProperties] = SchTypeBuilder(cxt, namespace).apply(build).data
     }
 
     /**

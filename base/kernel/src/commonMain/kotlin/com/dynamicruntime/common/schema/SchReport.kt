@@ -112,6 +112,7 @@ fun schemaFault(
 class SchParseState {
     val pendingRefs = mutableListOf<PendingRef>()
     val pendingItemRefs = mutableListOf<PendingItemRef>()
+    val pendingMapValueRefs = mutableListOf<PendingMapValueRef>()
     val pendingBranchRefs = mutableListOf<PendingBranchRef>()
     private val segments = ArrayDeque<String>()
 

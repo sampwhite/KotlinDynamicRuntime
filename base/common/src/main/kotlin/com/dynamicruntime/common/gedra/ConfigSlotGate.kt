@@ -75,7 +75,6 @@ object ConfigSlotShapes {
  *   class keeps (issue #1051).
  * - **A usage rule's `display`** must be a template that parses: it is evaluated per row with its failures
  *   swallowed, so a malformed one blanks its column for every row and says nothing.
- * - **A fragment overlay's `content`** is namespace to key to text, which the schema layer cannot yet state.
  * - **A type declared twice** (`kdr:schemaDef`) is refused: the second would silently replace the first. No other
  *   slot is held to one entry a key, because elsewhere a repeat is either legal -- two overlays of one fragment
  *   file or one UiBlock are two layers -- or refused already, by the reassembly or the trial, as what it is.
@@ -141,11 +140,7 @@ private fun SchFailure.under(parent: String): SchFailure = copy(path = if (path.
 private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: Map<String, Any?>): List<SchFailure> {
     if (slot == CCT.clientDef) return readClientDef(cxt, entry).failures
     val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, it) }
-    val beyond = when (slot) {
-        CCT.usageDef -> displayFailures(entry[CCT.display])
-        CCT.fragmentDef -> fragmentContentFailures(entry[CCT.content])
-        else -> emptyList()
-    }
+    val beyond = if (slot == CCT.usageDef) displayFailures(entry[CCT.display]) else emptyList()
     // A key a request may carry off-contract is not one a stored entry may: it would be accepted and then gone.
     return shape + offContractKeyFailures(entry) + beyond
 }
@@ -163,27 +158,6 @@ private fun leftToTheTrial(slot: String, failure: SchFailure): Boolean =
 /** What is wrong with a usage rule's `display` as a template -- one failure per defect, so they are fixed in one pass. */
 private fun displayFailures(display: Any?): List<SchFailure> = (display as? String)?.checkTemplateSyntax().orEmpty().map {
     SchFailure(CCT.display, SchFailCode.badValue, "This is not a template that parses: ${it.message}")
-}
-
-/**
- * What is wrong with a fragment overlay's `content` beyond its being an object: each namespace holds an object, and
- * each key in it text. Written out by hand because the schema layer has no map of free keys to typed values yet
- * (issue #1055); the reassembly would turn anything else into text, or into nothing.
- */
-private fun fragmentContentFailures(content: Any?): List<SchFailure> {
-    val namespaces = content as? Map<*, *> ?: return emptyList()
-    val out = mutableListOf<SchFailure>()
-    for ((namespace, keys) in namespaces) {
-        val at = childPath(CCT.content, namespace.toString())
-        if (keys !is Map<*, *>) {
-            out.add(SchFailure(at, SchFailCode.wrongType, "This must be an object of keys to text."))
-            continue
-        }
-        for ((key, value) in keys) {
-            if (value !is String) out.add(SchFailure(childPath(at, key.toString()), SchFailCode.wrongType, "This must be text."))
-        }
-    }
-    return out
 }
 
 /** How many failures a refusal's message names; all of them are in its structured `failures`. */

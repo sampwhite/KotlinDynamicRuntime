@@ -18,9 +18,9 @@ import com.dynamicruntime.common.util.toOptStr
  * Schema defines. And only a keyword's **shape**: whether it applies to the type it sits on, and what it means
  * there, are the parser's own checks (a `pattern` on an integer, a `oneOf` with no discriminator).
  *
- * **Some of what is refused is legal JSON Schema that this layer does not read**: a list of types, a schema for
- * `additionalProperties`, a tuple of `items`, `true` or `false` standing for a schema. Those are said to be what
- * they are -- valid, and not supported here -- rather than worded as the typo the rest are.
+ * **Some of what is refused is legal JSON Schema that this layer does not read**: a list of types, a tuple of
+ * `items`, `true` or `false` standing for a schema. Those are said to be what they are -- valid, and not supported
+ * here -- rather than worded as the typo the rest are.
  *
  * One list, read two ways, as [SchGKeywords] is: the parser refuses a problem outright (`parseSchemaTypes`
  * throws, naming the keyword and the type or property), and the repair of a client's stored definitions drops the
@@ -59,7 +59,8 @@ object SchStdKeywords {
             it is Map<*, *> && it.values.all { v -> v == null || v is Map<*, *> }
         },
         SCH.items to SchKeywordShape("a schema object") { it is Map<*, *> },
-        SCH.additionalProperties to SchKeywordShapes.boolean,
+        // True or false for a record; a schema for a map, whose values it describes (issue #1055).
+        SCH.additionalProperties to SchKeywordShape("true, false or a schema object") { it is Boolean || it is Map<*, *> },
         SCH.oneOf to SchKeywordShapes.list,
         SCH.minimum to number,
         SCH.maximum to number,
@@ -114,9 +115,6 @@ object SchStdKeywords {
         keyword == SCH.type && value is List<*> ->
             "$where sets '${SCH.type}' to a list; a list of types is not supported. Declare the one type it is: a " +
                 "property that may be absent is simply not required."
-        keyword == SCH.additionalProperties && value is Map<*, *> ->
-            "$where sets '${SCH.additionalProperties}' to a schema; a schema for undeclared properties is valid JSON " +
-                "Schema and is not supported here. It must be true or false: true admits any undeclared property."
         keyword == SCH.items && value is List<*> ->
             "$where sets '${SCH.items}' to a list; a schema per position is not supported. Declare the one schema " +
                 "every item takes."

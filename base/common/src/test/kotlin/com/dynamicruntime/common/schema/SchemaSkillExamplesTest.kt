@@ -192,4 +192,33 @@ class SchemaSkillExamplesTest : StringSpec({
         mismatch.userMessage shouldBe "A postal code is five digits."
         failures.single { it.code == SchFailCode.belowMinimum }.message shouldBe "This must be more than 0."
     }
+
+    // Transcribed from the skill's "Maps: free keys, typed values" section (issue #1055).
+    "the maps example validates each entry and names its key" {
+        val defs = schemaDefs(cxt, "abc.shop") {
+            type("Line") {
+                type = SCT.kObject
+                property("item", "What was bought.", required = true)
+                property("count", "How many.") { type = SCT.integer }
+            }
+            type("Order") {
+                type = SCT.kObject
+                property("labels", "Free labels, each some text.") { mapOfValues { type = SCT.string } }
+                property("lines", "The lines, by a key the buyer chose.") { mapOfValues { ref("Line") } }
+                property("copy", "Wording, by namespace and then by key.") { mapOfValues { mapOfValues { type = SCT.string } } }
+            }
+        }
+        val order = parseSchemaTypes(defs).getValue("abc.shop.Order")
+        order.properties.getValue("labels").valueType.additionalValueType?.jsonType shouldBe SCT.string
+        val failures = validate(
+            order,
+            mapOf(
+                "labels" to mapOf("gift" to "yes", "_rush" to 1),
+                "lines" to mapOf("gift" to mapOf("item" to "Pen", "count" to "many")),
+                "copy" to mapOf("home" to mapOf("title" to "Welcome", "lede" to "")),
+            ),
+        )
+        // A failure under the entry's key; `_rush` is an entry like any other; an empty text is a value.
+        failures.map { it.path } shouldContainExactlyInAnyOrder listOf("labels._rush", "lines.gift.count")
+    }
 })

@@ -32,10 +32,10 @@ class SchStdKeywordsTest : StringSpec({
         message shouldContain "one of string, number, integer, boolean, array, object, null"
         refusal(mapOf(SCH.type to 5L)).shouldNotBeNull() shouldContain "sets 'type' to 5"
         // A list of types is legal JSON Schema and not read here: said, rather than left to look like a typo. So
-        // are a schema for undeclared properties, a schema per item, and true or false standing for a schema.
+        // are a schema per item, and true or false standing for a schema. (A schema for undeclared properties was
+        // among them until it was read: a map of typed values, issue #1055.)
         refusal(mapOf(SCH.type to listOf(SCT.string, SCT.kNull))).shouldNotBeNull() shouldContain "a list of types is not supported"
-        refusal(mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.type to SCT.string))).shouldNotBeNull()
-            .let { it shouldContain "valid JSON Schema and is not supported here"; it shouldContain "true or false" }
+        refusal(mapOf(SCH.type to SCT.kObject, SCH.additionalProperties to mapOf(SCH.type to SCT.string))) shouldBe null
         refusal(mapOf(SCH.type to SCT.array, SCH.items to listOf(mapOf(SCH.type to SCT.string)))).shouldNotBeNull() shouldContain
             "a schema per position is not supported"
         refusal(mapOf(SCH.type to SCT.array, SCH.items to true)).shouldNotBeNull() shouldContain "an empty object accepts anything"
@@ -82,7 +82,7 @@ class SchStdKeywordsTest : StringSpec({
         beside(SCH.description to listOf("x")) shouldContain "'description'"
         // And on a type.
         refusal(mapOf(SCH.type to SCT.string), SCH.required to "v").shouldNotBeNull() shouldContain "Type 's.Raw'"
-        refusal(mapOf(SCH.type to SCT.string), SCH.additionalProperties to 0L).shouldNotBeNull() shouldContain "true or false"
+        refusal(mapOf(SCH.type to SCT.string), SCH.additionalProperties to 0L).shouldNotBeNull() shouldContain "true, false or a schema object"
     }
 
     "a well-shaped keyword, a null, a bound spelled as text, and a keyword of the document's own all pass" {

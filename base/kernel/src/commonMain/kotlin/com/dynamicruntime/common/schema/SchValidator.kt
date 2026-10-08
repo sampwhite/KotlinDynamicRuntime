@@ -282,6 +282,7 @@ fun errorMessageProblems(
         }
         for ((name, prop) in t.properties) walk("$w field '$name'", prop.valueType)
         t.itemType?.let { walk("$w item", it) }
+        t.additionalValueType?.let { walk("$w value", it) }
         t.variants?.let { v ->
             for (b in v.branches) walk("$w branch", b)
             v.defaultBranch?.let { walk("$w branch", it) }
@@ -693,10 +694,22 @@ fun validateObject(
     }
 
     // Then whatever the data carried that the schema does not declare, in the order it arrived.
+    val mapValueType = type.additionalValueType
+    // A map's entries are objects (or values) of their own, so a fragment's relaxed completeness does not carry
+    // into them, as it does not into an array's elements (issue #487).
+    val entryOpts = opts.withSkipCompleteness(false)
     for ((k, v) in map) {
         val key = k as? String ?: continue
         if (type.properties.containsKey(key)) {
             continue // handled above
+        }
+        // A map (issue #1055): every undeclared key is an entry, its value held to the map's value type and
+        // reported under its own key. Before the prefix exemptions, which are a record's -- see
+        // [SchType.additionalValueType]. Validated as an array's element is: as it stands, an empty value included.
+        if (mapValueType != null) {
+            val coerced = validateValue(mapValueType, v, childPath(path, key), coerce, failures, entryOpts)
+            out?.put(key, coerced)
+            continue
         }
         // Undeclared ("additional") property -- apply the additionalProperties rule with prefix exemptions.
         when {
