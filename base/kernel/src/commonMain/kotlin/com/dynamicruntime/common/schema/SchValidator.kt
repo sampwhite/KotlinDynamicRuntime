@@ -15,6 +15,7 @@ import com.dynamicruntime.common.util.parseDayLenientResult
 import com.dynamicruntime.common.util.parseDayResult
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toDay
+import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toOptBool
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toStartOfDay
@@ -416,6 +417,12 @@ data class SchOpts(
      * where parsing it alone would refuse it for naming a sibling type, or for being an alteration of another
      * type, and where the whole document is compiled and judged right after. That it is an object is still
      * checked; that it is a schema is then the later check's to say, and this run makes no claim about it.
+     *
+     * **Its shape is still checked** (issue #1056, [SchMetaSchema.structureFailures]), and for the same reason the
+     * body is not parsed alone, **a directive at its top stands**: a `g-extends` or `g-merge` there is read when the
+     * configuration's types are assembled -- a type's `schema` and a trait's `dataSchema` alike, each of which
+     * becomes a type of the document -- so whether it may be there is that assembly's to say. Both follow from the
+     * one fact this flag states: the body is a piece of a document, held apart from it.
      */
     val schemaDocumentsUnparsed: Boolean = false,
 ) {
@@ -1103,8 +1110,10 @@ fun coerceStringToObject(
 
 /**
  * Validates a `g-schemaDocument` object (issue #316): the value is a JSON Schema type body, and it is checked
- * by **parsing** it with [parseSchemaTypes] -- the same parser the schema store runs -- rather than against a
- * schema for schema. That gets the checking the parser already does and that matters -- a `oneOf` without a
+ * by **parsing** it with [parseSchemaTypes] -- the same parser the schema store runs -- once its **shape** has
+ * passed the generated schema for schema ([SchMetaSchema.structureFailures], issue #1056): every keyword whose
+ * value is not of its shape, each a failure at its own path below the field. Parsing gets the checking the parser
+ * already does and that matters -- a `oneOf` without a
  * discriminator, a branch with no `const`, a property/item/branch `$ref` to a type nothing defines -- and
  * degrades honestly: what the parser does not check, this does not claim to have checked.
  *
@@ -1116,8 +1125,8 @@ fun coerceStringToObject(
  * it reads -- issue #1053.)
  *
  * The same shape as [validateDate]: parse, and turn the parser's refusal into one [SchFailCode.badValue]
- * carrying it as the cause. **One** failure, not a list -- the parser stops at the first defect, unlike the
- * fragment check, which is the trade-off of reusing it. A `$ref` resolves against [SchOpts.existingTypes],
+ * carrying it as the cause. **One** failure for what the parser finds, not a list -- it stops at the first defect,
+ * which is the trade-off of reusing it, and why the faults a shape can decide are found before it runs. A `$ref` resolves against [SchOpts.existingTypes],
  * so a caller holding a compiled store passes its types and a standalone check passes none.
  *
  * The value is returned untouched: a schema body is text to be stored as written, not a shape to coerce.
@@ -1130,6 +1139,15 @@ fun validateSchemaDocument(
     val body = value as? Map<*, *>
     if (body == null) {
         failures.add(type.failure(path, SchFailCode.wrongType, "This must be a schema definition (an object).", value = value))
+        return value
+    }
+    // Its shape first (issue #1056): every keyword at fault, each by its path, where the parse below stops at the
+    // first and says it of the whole value. A body with such a fault is not parsed -- the parser would only repeat
+    // one of them -- and a caller that leaves the parse to someone else still gets this much. For that caller the
+    // body is a piece of a configuration, whose top may carry a directive the assembly reads (see the flag).
+    val structural = SchMetaSchema.structureFailures(body.toJsonMap(), path, directivesStandAtTop = opts.schemaDocumentsUnparsed)
+    if (structural.isNotEmpty()) {
+        failures.addAll(structural)
         return value
     }
     if (opts.schemaDocumentsUnparsed) return value

@@ -535,9 +535,10 @@ open class SchTypeBuilder(
 
     /**
      * Declares this property's value to be a **JSON Schema type body** (issue #316), validated by *parsing* it
-     * rather than against a schema for schema -- see `validateSchemaDocument`. An open object on the wire; the
-     * parser is the check, so whatever it refuses is reported and whatever it does not understand is not
-     * claimed to have been checked.
+     * -- see `validateSchemaDocument` -- after its shape is checked against the generated schema for schema
+     * (issue #1056), which reports every keyword at fault by path. An open object on the wire; the parser is the
+     * authority, so whatever it refuses is reported and whatever it does not understand is not claimed to have
+     * been checked.
      */
     fun schemaDocument() {
         type = SCT.kObject

@@ -69,10 +69,11 @@ class StrictSchemaKeywordsTest : StringSpec({
         fun refused(schema: Map<String, Any?>): String =
             admin.expectError(EXC.badInput, ACEP.bundleWrite, typeBundle("types", "Card", schema))[EP.errorMessage].toString()
 
-        // A type that is no type used to be stored, and then constrain nothing.
+        // A type that is no type used to be stored, and then constrain nothing. The write refuses it by the path
+        // of the keyword (issue #1056) -- the slot, the type, the property, the keyword -- before any trial.
         refused(card(name = mapOf(SCH.type to "strng"))).let {
-            it shouldContain "Type '$ns.Card'"
-            it shouldContain "property 'name' sets 'type' to 'strng'"
+            it shouldContain "${CCT.schemaDef}[$ns.Card].${CCT.schema}.properties.name.type"
+            it shouldContain "sets 'type' to 'strng'"
         }
         refused(card(SCH.required to "name")) shouldContain "sets 'required' to 'name'"
         refused(card(SCH.additionalProperties to "no")) shouldContain "'additionalProperties'"

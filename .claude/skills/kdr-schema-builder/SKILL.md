@@ -502,6 +502,44 @@ the key and pointing to `g-extends`. What may stand beside a `$ref` is what the 
 `description` and `title` anywhere, and on a property `g-optionalContents`, `g-presentation` and `g-visibleWhen`
 (plus `$comment` and other off-contract annotations).
 
+## The schema for schema (issue #1056)
+
+Each keyword this layer reads has one statement of its shape: its entry in `SchStdKeywords` (the standard keywords
+we interpret) or `SchGKeywords` (our own), as **data** -- a `SchShapeForm`: a flag, text, one of some values, a
+number, a list of something, a schema node, a map of nodes, either of two. Three things read it:
+
+- **the parser**, which refuses a value that is not of its keyword's shape, and the repair of a client's stored
+  definitions, which drops it;
+- **the walk**, `SchMetaSchema.structureFailures(body)`, which reports *every* fault of shape in a schema body at
+  once, each at the path of the keyword at fault -- where the parser stops at the first. A write of client
+  configuration is held to it, and so is any `schemaDocument()` field, before the body is parsed;
+- **the document**, `SchMetaSchema.defs` / `.nodeType`: the same shapes written in our own dialect as one open type,
+  `kdr.meta.SchemaNode`, served at `GET /schema/metaSchema` -- for a reader, a test, or an editor's form.
+
+```kotlin
+val body = mapOf(
+    SCH.type to SCT.kObject,
+    SCH.properties to mapOf("cost" to mapOf(SCH.type to "strng")),
+    SCH.required to "cost",
+)
+val faults = SchMetaSchema.structureFailures(body).map { it.path }   // [properties.cost.type, required]
+val byDocument = validate(SchMetaSchema.nodeType, body).map { it.path } // the same two, from the document
+```
+
+**Adding a keyword is adding it to its table** -- the walk, the document and the endpoint follow, and
+`SchMetaSchemaTest` holds them to the parser (each fault fixture is refused by all three) while
+`MetaSchemaCoverageTest` holds them to the repository (every type any component or sample client declares passes).
+
+Our dialect cannot say three things a schema node needs said, so the document does not state them and
+`SchMetaSchema.notStated` lists them, generated from the same tables: a value that is **one shape or another**
+(`additionalProperties`, `g-derived` -- left untyped), the **closed `g-` list** (any other unknown key passes), and
+the **refused keywords** (`enum`, `allOf`, `anyOf`, `not`, `dependentSchemas`). The walk enforces all three. The one
+place the document is *stricter* than the walk is a property set to `null` -- how an alteration removes one -- which
+is listed too.
+
+Neither is validity: a body that passes may still name a type that does not exist, put a `pattern` on an integer,
+or widen what it alters. Those stay the parser's and the load's (`SchMetaSchema.notChecked`).
+
 ## A client's own definitions: dropped, not refused (issue #841)
 
 The boot checks above refuse the boot for a fault in a **component's** schema -- outside production; in production
@@ -518,7 +556,7 @@ mode: stored config is forgiven everywhere but `unit` (`KDR_STORED_CONFIG_CHECK`
 | unregistered `g-optionsSource`, or one beside `options` | the keyword (the field takes free input, or keeps its options) |
 | bad `g-visibleWhen`, or one on a required property | the keyword (the field shows for everyone) |
 | a `g-errors` message that cannot render, or an unknown code | that message |
-| a standard keyword of the wrong shape (`type: "strng"`, `required: "name"`, issue #1053) | the keyword -- or only the part at fault: a property whose schema is not an object, a `required` entry that is not a name. For most that is how it was already read, so the definition validates as it did; a bound that is not a number, a non-text `$ref`, or a non-type beside `g-options` used to stop the whole type compiling and now costs only the keyword |
+| a standard keyword of the wrong shape (`type: "strng"`, `required: "name"`, issue #1053) | the keyword -- or only the part at fault: a property whose schema is not an object, a `oneOf` branch that is not one, a `required` entry that is not a name. For most that is how it was already read, so the definition validates as it did; a bound that is not a number, a non-text `$ref`, or a non-type beside `g-options` used to stop the whole type compiling and now costs only the keyword |
 | a client-written `g-layout` that fails the layout check | that layout |
 | a type that will not compile (an unresolvable `$ref`) | that type change -- and a trait whose type it was, which then leaves the client's supported set |
 | a client cfact redeclaring a global one, or declared twice | that declaration |

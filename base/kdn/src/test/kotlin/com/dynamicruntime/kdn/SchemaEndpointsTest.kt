@@ -16,6 +16,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.schema.MSCH
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
@@ -86,10 +87,11 @@ class SchemaEndpointsTest : StringSpec({
         val posts = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EI.method to "POST")))
         posts.map { it[EI.path] } shouldContain "/demo/schema/sample"
         posts.map { it[EI.method] }.toSet() shouldBe setOf("POST")
-        // `schema` is now only the catalog's own endpoints: the two exercise surfaces that used to sit beside
-        // them moved to the purpose-named roots (issue #270) -- the fixture to `/fixture/`, the demo to
-        // `/demo/`. The namespace they are *declared* in is still `schema`; the section is not.
-        paths(mapOf(SS.pathRegex to "^/schema/")) shouldBe listOf("/schema/endpoint", "/schema/endpoints")
+        // `schema` is now only the catalog's own endpoints and the schema for schema (issue #1056): the two
+        // exercise surfaces that used to sit beside them moved to the purpose-named roots (issue #270) -- the
+        // fixture to `/fixture/`, the demo to `/demo/`. The namespace they are *declared* in is still `schema`;
+        // the section is not.
+        paths(mapOf(SS.pathRegex to "^/schema/")) shouldBe listOf("/schema/endpoint", "/schema/endpoints", MSCH.path)
         paths(mapOf(SS.pathRegex to "^/fixture/schema/")) shouldBe listOf("/fixture/schema/complex")
     }
 

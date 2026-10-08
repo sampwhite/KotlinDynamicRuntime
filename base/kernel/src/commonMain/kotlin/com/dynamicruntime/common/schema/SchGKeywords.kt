@@ -30,7 +30,7 @@ object SchGKeywords {
         SCH.emptyIsAbsent to boolean,
         SCH.visibleOnly to boolean,
         SCH.outerWhitespace to text,
-        SCH.derived to SchKeywordShape("true, false or an object") { it is Boolean || it is Map<*, *> },
+        SCH.derived to SchKeywordShape("true, false or an object", SchShapeForm.Either(SchShapeForm.Flag, SchShapeForm.Obj)),
         SCH.schemaDocument to boolean,
         SCH.options to list,
         SCH.openOptions to boolean,
@@ -39,7 +39,7 @@ object SchGKeywords {
         SCH.optionsSource to text,
         SCH.visibleWhen to text,
         SCH.errors to obj,
-        SCH.presentation to SchKeywordShape("one of ${PRES.all.sorted()}") { it is String && it in PRES.all },
+        SCH.presentation to SchKeywordShape("one of ${PRES.all.sorted()}", SchShapeForm.Choice(PRES.all.sorted())),
         SCH.layout to obj,
         // The two directives below are judged before any shape ([problem] returns for them first); they are listed
         // so the unknown-keyword message names them among ours when one is misspelled.
@@ -51,19 +51,31 @@ object SchGKeywords {
     /** Every `g-` keyword there is. */
     val keywords: Set<String> get() = shapes.keys
 
+    /** Every `g-` keyword with its shape, in the order declared -- what the meta-schema is generated from (issue #1056). */
+    val entries: Map<String, SchKeywordShape> get() = shapes
+
+    /**
+     * The directives: keywords read where a configuration's types are assembled -- a merge, an extension -- and
+     * nowhere a type is judged, so each is refused there ([problem]) whatever its value.
+     */
+    val directives: Set<String> = setOf(SCH.merge, SCH.extends)
+
     /**
      * What is wrong with [keyword] set to [value] on [where] (a type or property, for the message), or null when
      * nothing is: a `g-` key that is not one of ours ([SchemaError.unknownKeyword]), or a value not of its
      * keyword's shape ([SchemaError.badValue]). Null for any key without the prefix -- not ours to judge.
+     *
+     * [directivesStand] is for the top of a body as a configuration stores it, where a directive is read by the
+     * assembly: there one is held to its shape like any keyword, and its placement is not this check's to judge.
      */
-    fun problem(where: String, keyword: String, value: Any?): Problem? {
+    fun problem(where: String, keyword: String, value: Any?, directivesStand: Boolean = false): Problem? {
         if (!keyword.startsWith(SCH.gPrefix) || value == null) return null
         // A merge directive is consumed by the merge of a client's alteration of a global type (issue #985), so in a
         // type that is being judged -- a global one, a client's own, a nested part, or anything the parser sees -- it
         // would do nothing. The repair of a client's alterations lets it stand at the one place it applies.
-        if (keyword == SCH.merge) return misplacedMerge(where)
+        if (keyword == SCH.merge && !directivesStand) return misplacedMerge(where)
         // An extension is resolved before a type is judged (issue #990), so one met here is somewhere it cannot apply.
-        if (keyword == SCH.extends) return misplacedExtends(where)
+        if (keyword == SCH.extends && !directivesStand) return misplacedExtends(where)
         val shape = shapes[keyword]
             ?: return Problem(
                 SchemaError.unknownKeyword,

@@ -366,7 +366,7 @@ fun parseNode(
         } else {
             state.enter(SCH.items)
             // Named for where it is: a fault in an item schema is not the array's own (issue #1055).
-            itemType = parseNode(null, itemsMap, state, depth + 1, where = "$where (in its item schema)")
+            itemType = parseNode(null, itemsMap, state, depth + 1, where = "$where (${SchStdKeywords.nodePlace(SCH.items)})")
             state.exit()
         }
     }
@@ -382,7 +382,7 @@ fun parseNode(
             additionalRefName = refTargetName(additionalRef)
         } else {
             state.enter(SCH.additionalProperties)
-            additionalValueType = parseNode(null, additionalMap, state, depth + 1, where = "$where (in its value schema)")
+            additionalValueType = parseNode(null, additionalMap, state, depth + 1, where = "$where (${SchStdKeywords.nodePlace(SCH.additionalProperties)})")
             state.exit()
         }
     }
@@ -562,12 +562,14 @@ val refusedKeywords: Map<String, String> = linkedMapOf(
  * [where]; null when there is none.
  */
 @KdrPrivate
-fun refusedKeywordProblem(where: String, map: Map<String, Any?>): Problem? {
-    val keyword = refusedKeywords.keys.firstOrNull { it in map } ?: return null
-    return Problem(
-        SchemaError.refusedKeyword,
-        "$where uses '$keyword', which is not supported. ${refusedKeywords.getValue(keyword)}",
-    )
+fun refusedKeywordProblem(where: String, map: Map<String, Any?>): Problem? =
+    refusedKeywords.keys.firstOrNull { it in map }?.let { refusedKeywordProblem(where, it) }
+
+/** [keyword] at [where] as a [SchemaError.refusedKeyword] problem, when it is one of [refusedKeywords]; else null. */
+@KdrPrivate
+fun refusedKeywordProblem(where: String, keyword: String): Problem? {
+    val advice = refusedKeywords[keyword] ?: return null
+    return Problem(SchemaError.refusedKeyword, "$where uses '$keyword', which is not supported. $advice")
 }
 
 /**

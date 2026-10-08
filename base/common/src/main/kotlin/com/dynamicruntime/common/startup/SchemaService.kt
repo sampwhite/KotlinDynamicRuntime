@@ -72,6 +72,8 @@ import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchMetaSchema
+import com.dynamicruntime.common.schema.MSCH
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.schema.optionsSourceProblems
@@ -1094,6 +1096,68 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 outputRef = "EndpointCatalog",
                 inputRef = "EndpointQuery",
             ) { c, request -> endpointCatalog(c, request) }
+
+            // ---- GET /schema/metaSchema: the dialect's schema for schema (issue #1056) ----
+            // Generated from the keyword tables the parser reads, so it cannot disagree with them. Served beside
+            // the catalog because the same people read both: whoever writes schema for this runtime -- a client's
+            // configuration, a tool, an editor drawing a form for one.
+            type("MetaSchemaRule") {
+                type = SCT.kObject
+                description = "A rule of the dialect the meta-schema document cannot state."
+                property(MSCH.rule, "Which kind of rule this is.", required = true) {
+                    option(MSCH.closedPrefix, "Only these keys may carry our prefix")
+                    option(MSCH.refusedKeyword, "A standard keyword that is refused")
+                    option(MSCH.eitherOf, "A value of one shape or another, left untyped")
+                    option(MSCH.unsetEntry, "Entries may be null, which the document refuses")
+                    option(MSCH.placement, "Read only at the top of a declared type")
+                }
+                property(MSCH.keywords, "The keywords the rule is about.", required = true) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(MSCH.detail, "The rule, in words.", required = true)
+            }
+            type("MetaSchema") {
+                type = SCT.kObject
+                property(MSCH.nodeType, $$"The name, in `$defs`, of the type a schema is validated against.", required = true)
+                property(
+                    SCH.dDefs,
+                    "The meta-schema, in this runtime's own dialect: every keyword it interprets, held to its shape. " +
+                        "A schema is an open record, so any other key passes.",
+                    required = true,
+                ) { type = SCT.kObject }
+                property(
+                    MSCH.notStated,
+                    "The rules the document cannot state, which a write is held to all the same.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { ref("MetaSchemaRule") }
+                }
+                property(
+                    MSCH.notChecked,
+                    "What no shape decides -- a schema that passes all of the above is not thereby valid; the parser " +
+                        "and the load judge the rest.",
+                    required = true,
+                ) {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+            }
+            generalEndpoint(
+                MSCH.path,
+                "The schema for schema: the shape of every keyword this runtime reads in a schema definition, " +
+                    "generated from the tables its parser reads, with the rules of the dialect the document cannot state.",
+                HttpMethod.GET,
+                outputRef = "MetaSchema",
+            ) { _, _ ->
+                mapOf(
+                    MSCH.nodeType to MSCH.nodeTypeName,
+                    SCH.dDefs to SchMetaSchema.defs,
+                    MSCH.notStated to SchMetaSchema.notStated,
+                    MSCH.notChecked to SchMetaSchema.notChecked,
+                )
+            }
 
             // ---- GET /fixture/simulations: the simulations this test instance offers (issue #997) ----
             generalEndpoint(

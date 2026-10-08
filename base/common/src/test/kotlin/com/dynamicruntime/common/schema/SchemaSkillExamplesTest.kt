@@ -221,4 +221,17 @@ class SchemaSkillExamplesTest : StringSpec({
         // A failure under the entry's key; `_rush` is an entry like any other; an empty text is a value.
         failures.map { it.path } shouldContainExactlyInAnyOrder listOf("labels._rush", "lines.gift.count")
     }
+
+    // Transcribed from the skill's "The schema for schema" section.
+    "the schema for schema: the walk and the document report a body's faults of shape by path" {
+        val body = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("cost" to mapOf(SCH.type to "strng")),
+            SCH.required to "cost",
+        )
+        val faults = SchMetaSchema.structureFailures(body).map { it.path }
+        val byDocument = validate(SchMetaSchema.nodeType, body).map { it.path }
+        faults shouldBe listOf("properties.cost.type", "required")
+        byDocument.toSet() shouldBe faults.toSet()
+    }
 })
