@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.annotation.KdrPrivate
@@ -8,6 +9,7 @@ import com.dynamicruntime.common.cfact.CFactRegistries
 import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.cfact.buildCFactRegistries
 import com.dynamicruntime.common.cfact.referencedNames
+import com.dynamicruntime.common.context.ClientSchemaSource
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
@@ -95,7 +97,7 @@ import com.dynamicruntime.common.util.toJsonMap
  * aggregation, without dn's builder-keyword resolution pass, because kd2's endpoint and
  * type schema are already realized eagerly by the `Sch*` builders.
  */
-class SchemaService : ServiceInitializer {
+class SchemaService : ServiceInitializer, ClientSchemaSource {
     override val serviceName: String = SchemaService.serviceName
 
     @KdrPrivate
@@ -111,7 +113,7 @@ class SchemaService : ServiceInitializer {
      * the same configuration -- so they change together or not at all. A reader that has read the reference
      * holds a consistent set for as long as it likes; a reload assembles a new one off to the side and swaps
      * it in, the pattern `InternCache` uses. A request already in flight keeps the store it started with,
-     * because `KdrCxt.getSchema` memoizes per request.
+     * because `KdrCxt.getGlobalSchema` memoizes per request.
      */
     class SchemaSnapshot(
         val store: KdrSchemaStore,
@@ -215,6 +217,9 @@ class SchemaService : ServiceInitializer {
         // faulty keyword, message or layout is dropped and the node serves, as every other source-config check
         // does there. A document that will not *compile* still refuses everywhere -- the node cannot do its job
         // without one.
+        // Extensions first (issue #990): a type declared as another plus a delta is resolved before anything judges
+        // it, so the repair, the parse and the served schema all see one resolved type.
+        resolveGlobalExtensions(cxt, collected)
         repairGlobalDefs(cxt, collected, repairContext(collected, cfacts.global))
         var types = parseSchemaTypes(collected.defs)
         if (dropFaultyGlobalLayouts(cxt, collected, types)) types = parseSchemaTypes(collected.defs)
@@ -465,6 +470,27 @@ class SchemaService : ServiceInitializer {
         DefRepairContext(collected.optionsProviders.keys.toSet()) { expression ->
             visibleWhenExpressionProblem(expression, registry ?: cfactsFor(null))
         }
+
+    /**
+     * Resolves every global **extension** onto its base ([resolveExtensions], issue #990), in place, each one that
+     * cannot be reported as source config -- refused outside production, and in production dropped.
+     *
+     * Resolved **once, on the global document**, so a global extension is a fixed type every client shares: a client
+     * that alters the base does not change the extension with it. A client narrowing `kdr.B` therefore leaves
+     * `kdr.A`, which extends it, accepting what the client narrowed away. Deliberate for now -- following each client's
+     * base would make a global type vary by client without being altered -- and a client wanting the narrowing on the
+     * extension too alters the extension as well.
+     */
+    private fun resolveGlobalExtensions(cxt: KdrCxt, collected: SchemaCollector) {
+        val resolved = resolveExtensions(collected.defs)
+        if (resolved.defs === collected.defs) return
+        val issues = mutableListOf<GedraConfigIssue>()
+        for ((name, problem) in resolved.refused) {
+            reportConfigProblem(cxt, globalTypeIssue(collected, name, problem.message, "Dropping '$name'."), issues)
+        }
+        collected.defs.clear()
+        collected.defs.putAll(resolved.defs)
+    }
 
     /**
      * Repairs every **global** type as a client's own are repaired ([repairTypeDef], issue #841), in place, each
@@ -864,6 +890,8 @@ class SchemaService : ServiceInitializer {
     private fun publish(cxt: KdrCxt, next: SchemaSnapshot) {
         snapshot = next
         cxt.instanceConfig.put(KdrSchemaStore.key, next.store)
+        // Where `KdrCxt.getClientSchema` resolves a client's store: this service, which reads the live snapshot.
+        cxt.instanceConfig.put(KdrSchemaStore.clientSourceKey, this)
         cxt.schemaStore = next.store
     }
 
@@ -948,7 +976,8 @@ class SchemaService : ServiceInitializer {
     /**
      * The compiled schema [client] sees: their variant, or the global store when they have none (issue #356).
      *
-     * **Not what `KdrCxt.getSchema` returns, and deliberately.** That stays global, because `RequestService`
+     * What `KdrCxt.getClientSchema` returns for the context's bound client (issue #946). **Not what
+     * `KdrCxt.getGlobalSchema` returns, and deliberately.** That stays global, because `RequestService`
      * resolves each endpoint's input and output types through it and caches them **keyed by path** -- so an
      * endpoint has to mean one type for every caller or the cache is unsound. `client-definition.md` settles
      * the split as case (a): permissive at the edge, strict where it is stored. The published type stays
@@ -958,7 +987,7 @@ class SchemaService : ServiceInitializer {
      * answer, which is what lets `SqlTopicService` read the table catalog at boot before any client exists
      * and anonymous callers be served without a special case.
      */
-    fun storeFor(client: String?): KdrSchemaStore {
+    override fun storeFor(client: String?): KdrSchemaStore {
         val store = schemaStore
         return if (client == null) store else clientStores[client] ?: store
     }
@@ -1362,7 +1391,7 @@ class SchemaService : ServiceInitializer {
                 // reason (a store built by hand, outside a running dispatcher).
                 schema = client?.let {
                     (cxt.instanceConfig.get(serviceName) as? SchemaService)?.storeFor(it)
-                } ?: cxt.getSchema(),
+                } ?: cxt.getGlobalSchema(),
             )
         }
 

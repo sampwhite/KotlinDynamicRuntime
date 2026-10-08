@@ -20,6 +20,7 @@ import com.dynamicruntime.common.naming.isClientNamespace
 import com.dynamicruntime.common.overlay.OverlayMergeError
 import com.dynamicruntime.common.schema.LogSchema
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SchGKeywords
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.authoritativeLayoutProblems
 import com.dynamicruntime.common.schema.collectLayouts
@@ -28,6 +29,7 @@ import com.dynamicruntime.common.schema.narrowingProblems
 import com.dynamicruntime.common.schema.overlayDefs
 import com.dynamicruntime.common.schema.overlayTypeOutcome
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.util.toJsonMap
 
 /**
@@ -93,6 +95,9 @@ fun buildClientVariants(
         // Issue #841: a fault in the client's own definitions costs only itself. Keyword-level faults are repaired
         // on the raw definitions first, where a keyword can still be removed.
         var authored = repairKeywords(cxt, collected, client, global.defs, narrowed, repair, issues)
+        // The client's extensions (issue #990): any that cannot be resolved against its composed document is dropped
+        // and reported here, once, so the composition below resolves only what can be.
+        authored = keepResolvableExtensions(cxt, collected, client, global.defs, authored, issues)
         // The client's forms-listing search fields (issue #538): its usage rules' parameters merged onto the
         // pristine query base -- never onto the global-augmented type, or an overriding client would inherit
         // global's parameters too. Folded in only when they differ from the global type, like the unions
@@ -108,16 +113,23 @@ fun buildClientVariants(
         // A function of the authored set, because the unions follow what the client overlaid and a repair below
         // can drop an alteration.
         val declaredNames = authored.keys.toSet()
-        fun compose(from: Map<String, Any?>): Map<String, Any?> {
+        // The composed document, and why an extension in it could not be resolved -- which only a build leaving out
+        // its base can cause, since the unresolvable ones were dropped above. The fault is the extension's, so the
+        // build below leaves it out and reports it, as it does a type that will not compile.
+        fun composeJudged(from: Map<String, Any?>): Pair<Map<String, Any?>, String?> {
             // A type the client declared and this build left out (it would not compile) takes its trait out of
             // the unions with it, or the unions would reference a type that is not there.
             val gone = (declaredNames - from.keys).filterTo(HashSet()) { it !in global.defs }
             val unions = changedUnions(cxt, collected, global, client, present.getValue(client), from.keys, gone)
-            var composed: Map<String, Any?> = overlayDefs(global.defs, from)
+            // Extensions resolve after the alterations (issue #990), so a client's extension of a global type extends
+            // that type as this client has it. Identity when nothing extends, so an unvarying client still shares.
+            val resolved = resolveExtensions(overlayDefs(global.defs, from))
+            var composed: Map<String, Any?> = resolved.defs
             if (unions.isNotEmpty()) composed = composed + unions
             if (queryOverlay.isNotEmpty()) composed = composed + queryOverlay
-            return composed
+            return composed to resolved.refused.values.firstOrNull()?.message
         }
+        fun compose(from: Map<String, Any?>): Map<String, Any?> = composeJudged(from).first
         var defs = compose(authored)
         if (defs === global.defs) {
             // Identity, not equality: a client whose overlays all fell away -- or who declared none that
@@ -127,7 +139,7 @@ fun buildClientVariants(
         }
         // A type change that will not compile is dropped, not the variant (issue #841); then a layout the client
         // wrote that names what its type lacks, or will not parse, is dropped and the variant re-parsed.
-        val parsed = parseDroppingFaults(cxt, collected, client, authored, ::compose, issues)
+        val parsed = parseDroppingFaults(cxt, collected, client, authored, ::composeJudged, issues)
         authored = parsed.first
         var types = parsed.second
         defs = compose(authored)
@@ -236,6 +248,18 @@ private fun keepWhatNarrows(
             continue
         }
         val base = globalDefs[name]
+        // An alteration keeps the name it alters, so it cannot be an extension (issue #990): that is a new type.
+        if (base is Map<*, *> && body is Map<*, *> && body.containsKey(SCH.extends)) {
+            reportConfigProblem(
+                cxt,
+                alterationIssue(
+                    collected, client, name, SchGKeywords.misplacedExtends("Type '$name' (client '$client')", onAlteration = true).message,
+                    "Dropping the alteration; '$name' stays as the global document declares it.",
+                ),
+                issues,
+            )
+            continue
+        }
         if (base !is Map<*, *> || body !is Map<*, *>) {
             kept[name] = body
             continue
@@ -293,8 +317,10 @@ private fun repairKeywords(
     var out: LinkedHashMap<String, Any?>? = null
     for ((name, body) in authored) {
         if (body !is Map<*, *>) continue
-        val (repaired, repairs) =
-            repairTypeDef("Type '$name' (client '$client')", body.toJsonMap(), repair, altersGlobal = name in globalDefs)
+        val (repaired, repairs) = repairTypeDef(
+            "Type '$name' (client '$client')", body.toJsonMap(), repair, altersGlobal = name in globalDefs,
+            extendsBase = name !in globalDefs && body.containsKey(SCH.extends),
+        )
         if (repairs.isEmpty()) continue
         for (r in repairs) {
             reportConfigProblem(cxt, alterationIssue(collected, client, name, r.message, r.degradedTo), issues)
@@ -302,6 +328,43 @@ private fun repairKeywords(
         (out ?: LinkedHashMap(authored).also { out = it })[name] = repaired
     }
     return out ?: authored
+}
+
+/**
+ * [authored] without each of [client]'s **extensions** that cannot be resolved (issue #990), every one reported against
+ * the config that declares it -- strict outside production for source config and in unit tests for stored, dropped
+ * otherwise, as every other fault in a client's definitions is. Judged on the client's composed document, so the base
+ * is the client's own version of it ([resolveExtensions]). Also refused: an extension of a type **its own
+ * configuration** alters, which reads two ways at once -- the base before that alteration or after it. A type altered
+ * in another of the client's configurations is extended as altered. Returns [authored] itself when nothing is dropped.
+ */
+private fun keepResolvableExtensions(
+    cxt: KdrCxt,
+    collected: SchemaCollector,
+    client: String,
+    globalDefs: Map<String, Any?>,
+    authored: Map<String, Any?>,
+    issues: MutableList<GedraConfigIssue>,
+): Map<String, Any?> {
+    if (authored.values.none { it is Map<*, *> && it.containsKey(SCH.extends) }) return authored
+    val refused = LinkedHashMap<String, String>()
+    for ((name, body) in authored) {
+        val baseName = (body as? Map<*, *>)?.get(SCH.extends) as? String ?: continue
+        if (baseName !in globalDefs || baseName !in authored) continue
+        val config = collected.gedraConfigs.contributorOf(client, name)
+        if (config != null && config === collected.gedraConfigs.contributorOf(client, baseName)) {
+            refused[name] = "Type '$name' extends '$baseName', which its own configuration '${config.name}' also alters, so it " +
+                "reads two ways at once. Extend '$baseName' from another configuration, or declare '$name' in full."
+        }
+    }
+    resolveExtensions(overlayDefs(globalDefs, authored)).refused.forEach { (name, problem) ->
+        if (name in authored && name !in refused) refused[name] = problem.message
+    }
+    if (refused.isEmpty()) return authored
+    for ((name, message) in refused) {
+        reportConfigProblem(cxt, alterationIssue(collected, client, name, message, "Dropping '$name'."), issues)
+    }
+    return authored.filterKeys { it !in refused }
 }
 
 /**
@@ -314,20 +377,25 @@ private fun repairKeywords(
  * references another of the client's types is taken once that one is in, whatever the declaration order. What
  * never fits is dropped. A trait's type leaving takes the trait out of the unions with it (see [compose]'s caller),
  * which is why a sound trait beside a broken one survives. Changes that only compile together (two types each
- * referencing the other) are tried together before being given up on.
+ * referencing the other) are tried together before being given up on. An extension whose base a set leaves out does
+ * not compile in that set either (issue #990): [compose] says why beside the document, so it is dropped and named
+ * with its base rather than vanishing from the composition unreported.
  */
 private fun parseDroppingFaults(
     cxt: KdrCxt,
     collected: SchemaCollector,
     client: String,
     authored: Map<String, Any?>,
-    compose: (Map<String, Any?>) -> Map<String, Any?>,
+    compose: (Map<String, Any?>) -> Pair<Map<String, Any?>, String?>,
     issues: MutableList<GedraConfigIssue>,
 ): Pair<Map<String, Any?>, Map<String, SchType>> {
-    fun failure(from: Map<String, Any?>): String? = analyzeSchemaTypes(compose(from)).problems.firstOrNull()?.message
+    fun failure(from: Map<String, Any?>): String? {
+        val (defs, refusal) = compose(from)
+        return refusal ?: analyzeSchemaTypes(defs).problems.firstOrNull()?.message
+    }
 
     // The common case: everything compiles, at the cost of the one parse it always took. Otherwise grow, below.
-    analyzeSchemaTypes(compose(authored)).types?.let { return authored to it }
+    compose(authored).let { (defs, refusal) -> if (refusal == null) analyzeSchemaTypes(defs).types?.let { return authored to it } }
     val kept = LinkedHashMap<String, Any?>()
     var pending = authored.keys.toList()
     while (pending.isNotEmpty()) {
@@ -352,7 +420,7 @@ private fun parseDroppingFaults(
             issues,
         )
     }
-    return kept to parseSchemaTypes(compose(kept))
+    return kept to parseSchemaTypes(compose(kept).first)
 }
 
 /**

@@ -43,7 +43,7 @@ class InstanceConfigTest : StringSpec({
         // Disable the row directly (there is no soft-delete write path yet). Once disabled, getConfig treats
         // it as if it were not there -- the same handling a legacy null-enabled row receives.
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, InstanceConfigService.topic)
-        val table = cxt.getSchema().tables[InstanceConfigService.tableName].shouldNotBeNull()
+        val table = cxt.getGlobalSchema().tables[InstanceConfigService.tableName].shouldNotBeNull()
         val query = SqlStmtUtil.mkUpdateQuery2(
             InstanceConfigService.tableName, listOf(PF.enabled), listOf(IC.instanceName, IC.configName),
         )

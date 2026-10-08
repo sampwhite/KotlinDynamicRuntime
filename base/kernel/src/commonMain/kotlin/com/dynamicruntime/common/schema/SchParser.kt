@@ -205,6 +205,7 @@ fun parseVariants(name: String?, map: Map<String, Any?>, state: SchParseState, d
         val branchMap = (raw as? Map<*, *>)?.toJsonMap() ?: return@mapIndexedNotNull null
         val ref = branchMap[SCH.dRef].toOptStr()
         if (ref != null) {
+            refSiblingProblem("A '${SCH.oneOf}' branch$where", branchMap, refAnnotationKeys)?.let { throw it.toException() }
             BranchSource(null, refTargetName(ref))
         } else {
             state.enter("${SCH.oneOf}[$i]")
@@ -359,6 +360,8 @@ fun parseNode(
         val itemsMap = rawItems.toJsonMap()
         val itemRef = itemsMap[SCH.dRef].toOptStr()
         if (itemRef != null) {
+            refSiblingProblem("The '${SCH.items}' of ${where.replaceFirstChar { it.lowercase() }}", itemsMap, refAnnotationKeys)
+                ?.let { throw it.toException() }
             itemRefName = refTargetName(itemRef)
         } else {
             state.enter(SCH.items)
@@ -794,6 +797,8 @@ fun parseProperty(name: String, map: Map<String, Any?>, state: SchParseState, de
     // must reach the parsed property so the frontend -- which re-parses the served schema -- can evaluate it.
     val visibleWhen = map[SCH.visibleWhen].toOptStr()
     if (ref != null) {
+        // What this use of the type says about itself is read above; anything else would do nothing (issue #990).
+        refSiblingProblem("Property '$name'", map, propertyRefKeys)?.let { throw it.toException() }
         val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation, visibleWhen)
         state.pendingRefs.add(PendingRef(prop, state.path().orEmpty())) // valueType bound in the resolution pass
         state.exit()
@@ -806,6 +811,39 @@ fun parseProperty(name: String, map: Map<String, Any?>, state: SchParseState, de
     prop.valueType = parseNode(null, map, state, depth + 1, where = "Property '$name'")
     state.exit()
     return prop
+}
+
+/**
+ * The keys any `$ref` may carry beside it (issue #990): annotations about this use of the type, which change nothing
+ * the type means -- a description and a title.
+ */
+private val refAnnotationKeys: Set<String> = setOf(SCH.dRef, SCH.description, SCH.title)
+
+/**
+ * The keys a **property** may carry beside its `$ref`: the annotations, and what the property says about its own use
+ * of the type, which [parseProperty] reads before the `$ref` is followed (issues #487, #540, #564).
+ */
+private val propertyRefKeys: Set<String> = refAnnotationKeys + setOf(SCH.optionalContents, SCH.presentation, SCH.visibleWhen)
+
+/**
+ * A `$ref` in [map] at [where] with schema keys beside it, or null when it has none (issue #990). The parser takes a
+ * `$ref` alone, so a key such as `properties`, `type` or `maxLength` written beside one used to parse clean and do
+ * nothing -- the failure the layout parser was written to refuse, and an easy one for anyone who knows a schema
+ * dialect where `$ref` siblings merge into the target. [allowed] are the keys this site reads; a `$comment`, another
+ * off-contract `$`-annotation and a `_`-prefixed key pass, as the validator lets them.
+ */
+fun refSiblingProblem(where: String, map: Map<String, Any?>, allowed: Set<String>): Problem? {
+    val extra = map.keys.filter { key ->
+        key !in allowed && key != SCH.dComment && !key.startsWith("_") &&
+            !(key.startsWith("$") && key !in reservedSchemaKeys)
+    }
+    if (extra.isEmpty()) return null
+    val keys = extra.joinToString(", ") { "'$it'" }
+    return Problem(
+        SchemaError.refSibling,
+        "$where has $keys beside its '${SCH.dRef}', which would do nothing: a '${SCH.dRef}' takes its type whole. To " +
+            "change the type, declare a named type that extends it with '${SCH.extends}', and refer to that.",
+    )
 }
 
 @KdrPrivate

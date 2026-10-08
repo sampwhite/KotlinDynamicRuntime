@@ -41,7 +41,10 @@ object SchGKeywords {
         SCH.errors to obj,
         SCH.presentation to SchKeywordShape("one of ${PRES.all.sorted()}") { it is String && it in PRES.all },
         SCH.layout to obj,
+        // The two directives below are judged before any shape ([problem] returns for them first); they are listed
+        // so the unknown-keyword message names them among ours when one is misspelled.
         SCH.merge to obj,
+        SCH.extends to text,
         SCH.appliesTo to textList,
     )
 
@@ -59,6 +62,8 @@ object SchGKeywords {
         // type that is being judged -- a global one, a client's own, a nested part, or anything the parser sees -- it
         // would do nothing. The repair of a client's alterations lets it stand at the one place it applies.
         if (keyword == SCH.merge) return misplacedMerge(where)
+        // An extension is resolved before a type is judged (issue #990), so one met here is somewhere it cannot apply.
+        if (keyword == SCH.extends) return misplacedExtends(where)
         val shape = shapes[keyword]
             ?: return Problem(
                 SchemaError.unknownKeyword,
@@ -70,6 +75,20 @@ object SchGKeywords {
             SchemaError.badValue, "$where sets '$keyword' to ${describeSchemaValue(value)}; it must be ${shape.described}.",
         )
     }
+
+    /**
+     * [SCH.extends] at [where], where nothing resolves it: below the top of a named type, or -- when [onAlteration] --
+     * at the top of an alteration, which keeps the name it alters and so cannot be another type plus a delta.
+     */
+    fun misplacedExtends(where: String, onAlteration: Boolean = false): Problem = Problem(
+        SchemaError.badExtends,
+        "$where carries '${SCH.extends}', which belongs at the top of a named type a configuration declares as new, " +
+            "naming the type it extends. " + if (onAlteration) {
+                "An alteration keeps the name it alters, so it cannot extend; declare a new type."
+            } else {
+                "To extend a type here, declare the extension as a named type of its own and refer to it."
+            },
+    )
 
     /** [SCH.merge] at [where], where no merge will apply it. */
     fun misplacedMerge(where: String): Problem = Problem(

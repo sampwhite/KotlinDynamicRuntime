@@ -47,7 +47,7 @@ class GedraConfigCurrentTest : StringSpec({
     /** Every revision row of [client]'s `main` config, straight from the table: history included. */
     fun rows(on: KdrCxt, client: String): List<Map<String, Any?>> {
         val sqlCxt = SqlTopicService.mkSqlCxt(on, gedraConfigTopic)
-        val table = on.getSchema().tables.getValue(GCT.gedraConfig)
+        val table = on.getGlobalSchema().tables.getValue(GCT.gedraConfig)
         val stmt = SqlStmtUtil.prepareSql(
             sqlCxt, "qCurrentTestRows", table.columns,
             "select * from t:${GCT.gedraConfig} where c:${GC.configId} = :${GC.configId}",
@@ -66,7 +66,7 @@ class GedraConfigCurrentTest : StringSpec({
     /** Runs [sql] with [bind] straight against the table, as a hand edit or an older node would. */
     fun plant(on: KdrCxt, name: String, sql: String, bind: Map<String, Any?>) {
         val sqlCxt = SqlTopicService.mkSqlCxt(on, gedraConfigTopic)
-        val table = on.getSchema().tables.getValue(GCT.gedraConfig)
+        val table = on.getGlobalSchema().tables.getValue(GCT.gedraConfig)
         sqlCxt.sqlDb.withSession(on) {
             sqlCxt.sqlDb.executeStatement(on, SqlStmtUtil.prepareSql(sqlCxt, name, table.columns, sql), bind)
         }
@@ -111,7 +111,7 @@ class GedraConfigCurrentTest : StringSpec({
             mapOf(GC.gedraId to "${classId(client)}~2"),
         )
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
-        val table = cxt.getSchema().tables.getValue(GCT.gedraConfig)
+        val table = cxt.getGlobalSchema().tables.getValue(GCT.gedraConfig)
         sqlCxt.sqlDb.withSession(cxt) { ConfigCurrentRevisions.refresh(cxt, sqlCxt, table, classId(client)) }
 
         versionsFlagged(cxt, client, true) shouldContainExactlyInAnyOrder listOf(1L)

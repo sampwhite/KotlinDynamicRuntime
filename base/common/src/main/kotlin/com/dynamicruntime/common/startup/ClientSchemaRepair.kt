@@ -70,6 +70,11 @@ fun repairTypeDef(
      * applies, at its top. Anywhere else the directive is refused like any misplaced keyword.
      */
     altersGlobal: Boolean = false,
+    /**
+     * Whether [body] is a client's new type declared as an **extension** (issue #990): its top-level `g-extends` names
+     * the base, and a `g-merge` there says how its properties merge. Both are read when the extension is resolved.
+     */
+    extendsBase: Boolean = false,
 ): Pair<Map<String, Any?>, List<DefRepair>> {
     val repairs = mutableListOf<DefRepair>()
 
@@ -98,6 +103,8 @@ fun repairTypeDef(
         for ((key, value) in node) {
             // The merge directive stands at the top of an alteration of a global type, where the merge reads it.
             if (key == SCH.merge && altersGlobal && node === body) continue
+            // An extension's directives stand at its top, where the resolution reads them (issue #990).
+            if ((key == SCH.extends || key == SCH.merge) && extendsBase && node === body) continue
             val problem = SchGKeywords.problem(at, key, value) ?: continue
             out.remove(key)
             repairs.add(DefRepair(problem.message, "Dropping '$key'."))

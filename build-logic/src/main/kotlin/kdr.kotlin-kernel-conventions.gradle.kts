@@ -56,14 +56,9 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // Gradle's default test-worker heap is 512m, and a suite here boots many in-memory instances into one
     // worker JVM -- each retaining its own schema store -- so the default sat right at the edge: adding a
-    // couple of state traits (issue #794) was enough to tip `:base:kdn:test` into OutOfMemoryError. Raised
-    // once, here, rather than per module, so every suite gets the same headroom.
-    //
-    // And raised again (issue #1055): by then `:base:kdn:test` held some 240 booted instances and 1020MB of a
-    // 1024MB heap -- measured on main, before the change that tipped it -- so one more field on `SchType` made
-    // the last spec to boot run out, on most runs but not all. Nothing releases a test's instance (the registry
-    // is VM-global), so the suite's footprint is the sum of every spec's; the number buys room, not a fix.
-    maxHeapSize = "2g"
+    // couple of state traits (issue #794) was enough to tip `:base:kdn:test` into OutOfMemoryError. Kept equal
+    // to `kdr.kotlin-conventions`' (raised to 1536m for #990, which says why), so every suite gets the same headroom.
+    maxHeapSize = "1536m"
 }
 
 

@@ -114,7 +114,7 @@ class ClientConfigIsolationTest : StringSpec({
         val rogue = svc.writeConfig(writer, isoConfig(first, client, "rogue") { cfact("iso873Rogue", "iso", "Rogue.") })
 
         val sqlCxt = SqlTopicService.mkSqlCxt(first, gedraConfigTopic)
-        val table = first.getSchema().tables.getValue(GCT.gedraConfig)
+        val table = first.getGlobalSchema().tables.getValue(GCT.gedraConfig)
         sqlCxt.sqlDb.withSession(first) {
             // The client's row gains a retired state-trait slot.
             val plantSlot = SqlStmtUtil.prepareSql(

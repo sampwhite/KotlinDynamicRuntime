@@ -179,6 +179,36 @@ class StoredSchemaRepairTest : StringSpec({
         store.types.containsKey("${clientNamespace(client)}.Fine") shouldBe true
     }
 
+    // An extension of a type that will not compile cannot be resolved once its base is dropped (issue #990): it is
+    // dropped and named too, and a trait over it goes with it -- rather than vanishing from the composition unreported
+    // while the unions still reference it.
+    "an extension whose base will not compile is dropped and named with it" {
+        val client = "rep990ext"
+        val ns = clientNamespace(client)
+        val result = storeAndReload(cxt, client) {
+            type("Broken") {
+                type = SCT.kObject
+                property("link", "Points at nothing.") { ref("noSuchType990") }
+            }
+            type("Grown") {
+                extends("Broken")
+                property("more", "What the extension adds.")
+            }
+            trait("GrownEntry", "${client}Grown", setOf(GedraDataType.formDoc), dataType = "$ns.Grown")
+            type("Fine") {
+                type = SCT.kObject
+                property("text", "Some text.")
+            }
+        }
+        result.issues.single { it.elementId == "$ns.Broken" }.message shouldContain "does not compile"
+        result.issues.single { it.elementId == "$ns.Grown" }.message shouldContain "'$ns.Broken', which is not a type here"
+        val store = SchemaService.get(cxt).storeFor(client)
+        store.types.containsKey("$ns.Grown") shouldBe false
+        store.types.containsKey("$ns.Fine") shouldBe true
+        SchemaService.get(cxt).supportedGedraTraitsFor(client, ClientService.get(cxt).present(client)!!)
+            .map { it.traitId }.contains("${client}Grown") shouldBe false
+    }
+
     // A trait whose own type will not compile goes with it (part 3 of #841): the unions and every supported-traits
     // reader leave it out, so a workflow collecting it is dropped by the check that already exists -- rather than
     // the unions referencing a missing type and taking every one of the client's changes down with them.

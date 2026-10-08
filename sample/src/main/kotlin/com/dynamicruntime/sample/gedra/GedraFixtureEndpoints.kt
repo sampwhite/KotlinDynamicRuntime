@@ -125,7 +125,7 @@ object GedraFixtureEndpoints {
         if (!cxt.hasDebug(GFX.explainEntries)) {
             return
         }
-        val union = cxt.getSchema().types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
+        val union = cxt.getGlobalSchema().types["${GCFG.globalNamespace}.${GU.unionName(GedraDataType.formDoc)}"]
         val known = union?.variants?.values.orEmpty()
         cxt.request?.responseMeta?.put(
             GFX.entriesExplained,

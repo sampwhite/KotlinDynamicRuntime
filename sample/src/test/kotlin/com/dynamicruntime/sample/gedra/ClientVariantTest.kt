@@ -308,7 +308,7 @@ class ClientVariantTest : StringSpec({
     // schema?", so it can be strict at the edge -- advertised and enforced become the same thing.
 
     "a client's endpoints exist at their own paths" {
-        val schema = cxt.getSchema()
+        val schema = cxt.getGlobalSchema()
         schema.endpoints["${clientPath(GEP.formDocCreate, SC.acme)}:POST"].shouldNotBeNull()
             .client shouldBe SC.acme
         // The shared surface is untouched, which is what keeps anonymous and `public` callers working.

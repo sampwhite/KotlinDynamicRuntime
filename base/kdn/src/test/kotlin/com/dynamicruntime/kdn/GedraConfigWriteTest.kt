@@ -164,7 +164,7 @@ class GedraConfigWriteTest : StringSpec({
         // Nothing was stored for the class.
         GedraId.of(GedraConfigType.configDoc, client, "wcfgDup").let { id ->
             val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
-            val table = cxt.getSchema().tables.getValue(GCT.gedraConfig)
+            val table = cxt.getGlobalSchema().tables.getValue(GCT.gedraConfig)
             val stmt = SqlStmtUtil.prepareSql(
                 sqlCxt, "qDupCheck", table.columns,
                 "select * from t:${GCT.gedraConfig} where c:${GC.configId} = :${GC.configId}",
@@ -183,7 +183,7 @@ class GedraConfigWriteTest : StringSpec({
         val stray = "futureKey"
         val strayValue = mapOf("from" to "a newer node")
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
-        val table = cxt.getSchema().tables.getValue(GCT.gedraConfig)
+        val table = cxt.getGlobalSchema().tables.getValue(GCT.gedraConfig)
         val plant = SqlStmtUtil.prepareSql(
             sqlCxt, "plantConfigExtra", table.columns,
             "update t:${GCT.gedraConfig} set c:${GC.data} = :${GC.data}, c:${PF.updatedAt} = :${PF.updatedAt} " +
