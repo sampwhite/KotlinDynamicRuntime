@@ -69,15 +69,9 @@ object DesignApi {
     )
 
     /**
-     * Sets [field] of [typeName] -- in the definition the client declares -- to the layout [entry] and the choices
-     * [options], each when given, for every workflow on the client (issue #1029), as an edit of the entry stamped
-     * [basedOn]. A refusal comes back as the result's refusal: a stale stamp, or -- for a removed choice stored forms
-     * hold -- the impact report ([impactOf]), which [acknowledgeImpact] goes past (issue #1040).
-     */
-    /**
-     * Sets this client's **shared wording** at a fragment key a field's copy pulls (issue #1010) -- the Clients page's
-     * copy override (#918) -- or, with a null [value], removes the client's stored value. Live, or a draft for a client
-     * with a sandbox; the result says which.
+     * Sets this client's **shared wording** at a fragment key a field's copy, a label or a heading pulls (issues #1010,
+     * #1070) -- the Clients page's copy override (#918) -- or, with a null [value], removes the client's stored value.
+     * Live, or a draft for a client with a sandbox; the result says which.
      */
     suspend fun setSharedWording(pull: PulledKey, value: String?, client: String?): ApiResult<CopyEditResult> = apiResult {
         val path = if (value == null) CPY.resetPath else CPY.setPath
@@ -102,6 +96,12 @@ object DesignApi {
             headingEditBody(workflowId, typeName, label, basedOn, client),
         )
 
+    /**
+     * Sets [field] of [typeName] -- in the definition the client declares -- to the layout [entry] and the choices
+     * [options], each when given, for every workflow on the client (issue #1029), as an edit of the entry stamped
+     * [basedOn]. A refusal comes back as the result's refusal: a stale stamp, or -- for a removed choice stored forms
+     * hold -- the impact report ([impactOf]), which [acknowledgeImpact] goes past (issue #1040).
+     */
     suspend fun setSharedField(
         typeName: String,
         field: String,
