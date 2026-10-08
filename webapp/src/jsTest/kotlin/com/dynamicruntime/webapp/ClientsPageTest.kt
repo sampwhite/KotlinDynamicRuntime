@@ -84,6 +84,37 @@ class ClientsPageTest {
         assertEquals("#${HP.page}=${HMENU.pageUsers}", clientUsersHref("acme", acrossClients = false))
     }
 
+    @Test
+    fun aClientsOwnPageIsOneAddress() {
+        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.client}=acme", clientDetailHref("acme"))
+        // A sandbox's id holds a colon, which a hash value must carry encoded.
+        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.client}=acme%3Asandbox", clientDetailHref("acme:sandbox"))
+        assertEquals(clientDetailHref("acme"), clientOverridesHref("acme"))
+    }
+
+    @Test
+    fun aUsersFormsLinkNamesTheUserByIdAndAClientOnlyWhenOneIsChosen() {
+        // By id: an address names a person, whose default user need not be the row the link is on.
+        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42", userFormsHref(42L, surfaceClient = null))
+        // With a client chosen the listing is drawn on that client's surface.
+        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42&${EI.client}=globex", userFormsHref(42L, "globex"))
+        // The page keeps both keys when it loads: the client chosen, the user within it.
+        val search = formsInitialSearch(mapOf(HP.page to HMENU.pageForms, EI.user to "42", EI.client to "globex"), seeAllClients = true)
+        assertEquals(mapOf(EI.user to "42", EI.client to "globex"), search)
+    }
+
+    @Test
+    fun aFormsLinkChoosesOnlyAClientThisNodeCarries() {
+        val carried = setOf("hub", "acme", "globex")
+        assertEquals("globex", userFormsSurface("globex", carried))
+        // A user whose client is not carried here has no surface to draw; the link lists their forms without one.
+        assertEquals(null, userFormsSurface("retired", carried))
+        // A client-scoped administrator is told of no clients, and their listing is their own already.
+        assertEquals(null, userFormsSurface("acme", emptySet()))
+        // A row with no client (never the case for a stored user) chooses none.
+        assertEquals(null, userFormsSurface("", carried))
+    }
+
     private fun acmeDefinition() = parseClientDefinition(
         mapOf(
             CLD.client to mapOf(

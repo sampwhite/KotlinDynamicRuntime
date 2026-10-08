@@ -429,6 +429,27 @@ fun userPickLabel(name: String?, username: String, email: String): String {
 }
 
 /**
+ * The user id the forms listing is confined to, when the scope names its user that way (issue #1081) -- which is
+ * how a link from the Users page does, since an id is one user where an address is a person. Null for an address,
+ * a blank, or no scope at all. Pure, covered under `jsNodeTest`.
+ */
+fun scopeUserId(applied: String?): Long? = applied?.trim()?.toLongOrNull()
+
+/**
+ * Who the scope's user [userId] is, for the scope bar to say beside the id (issue #1081): the label a picked
+ * suggestion shows ([userPickLabel]), and -- for a person with more than one user among [users], the identity's
+ * users the caller administers -- what tells this one apart, in brackets as the identity badge says it
+ * (`Demo Person — demo@x.test [Member B]`). Null when [users] does not hold the user, so the bar says nothing
+ * rather than something wrong. Pure, covered under `jsNodeTest`.
+ */
+fun scopeUserLabel(users: List<AdminUser>, userId: Long): String? {
+    val user = users.firstOrNull { it.userId == userId } ?: return null
+    val label = userPickLabel(user.name, user.username, user.primaryId)
+    val apart = identitySiblings(users, userId).firstOrNull { it.selected }?.label?.ifEmpty { null }
+    return if (apart == null) label else "$label [$apart]"
+}
+
+/**
  * The endpoint that fetches **one** form document by id (`GET /gedra/<client>/formDoc`). Distinct from the list
  * by its suffix (`/formDoc`, no trailing `s`) and from the same path's DELETE by method. Lets the view resolve
  * a form the loaded list page does not hold -- a bookmark, or a link to a form now past the first page.

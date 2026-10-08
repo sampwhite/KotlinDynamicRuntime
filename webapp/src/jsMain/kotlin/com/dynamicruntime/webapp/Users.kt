@@ -107,6 +107,11 @@ val Users = FC<Props> {
     var draftClient by useState("")
     /** The clients a full-scope administrator may create into; empty for everybody else, who get no choice. */
     var clientChoices by useState<List<ClientChoice>>(emptyList())
+    // What the links from a user to their forms and client need (issue #1081), asked once for the list and the
+    // editor alike: whether this caller is offered them, and the clients a Forms link may choose -- the ones this
+    // node carries, which only a caller who sees across clients is told (so a scoped one's links choose none).
+    val linksOffered = config?.user?.let { userLinksOffered(it) } == true
+    val carriedClients = clientChoices.map { it.clientId }.toSet()
     var draftIsEntity by useState(false)
     var draftName by useState("")
     var draftEnabled by useState(true)
@@ -718,6 +723,23 @@ val Users = FC<Props> {
             } else {
                 readOnlyField("Client", draftClient.ifEmpty { "—" })
             }
+            // Where this user's forms and client are (issue #1081) -- for a user who exists, since a new one has
+            // neither yet, and to the callers the list offers the same links.
+            val open = editing
+            if (!creating && open != null && linksOffered) {
+                div {
+                    className = ClassName("row")
+                    span {
+                        className = ClassName("field-label")
+                        +"Go to"
+                    }
+                    UserLinks {
+                        userId = open.userId
+                        client = open.client
+                        this.carriedClients = carriedClients
+                    }
+                }
+            }
 
             // The persona (issue #750): frozen at creation, like the client, so a selector on create and plain
             // text afterward. Choosing one moves the access level to the persona's default, which the
@@ -1042,6 +1064,8 @@ val Users = FC<Props> {
                 }
                 UserTable {
                     this.showClient = showClient
+                    this.showLinks = linksOffered
+                    this.carriedClients = carriedClients
                     this.users = users
                     this.sortBy = sortBy
                     this.descending = descending

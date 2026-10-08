@@ -785,6 +785,9 @@ button.op-status:focus-visible { outline: 2px solid var(--accent-bright); outlin
 .wf-cell-link:hover, button.wf-cell-more:hover { color: var(--accent-brighter); text-decoration: underline; }
 .wf-cell-link:focus-visible, button.wf-cell-more:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 1px; }
 .wf-cell-cat { color: var(--text-dim); font-size: .8rem; }
+/* A user's forms and client (issue #1081), on a row of the Users list and in the editor: one line, never wrapped --
+   two short links read as a pair only side by side. */
+.user-links { white-space: nowrap; }
 button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 .wf-cell-all { max-width: 320px; }
 .wf-reasons { margin: 0; padding-left: 18px; }
@@ -1040,6 +1043,9 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 }
 
 .forms-scope-label { color: var(--text-muted); white-space: nowrap; }
+/* Who a scope given as an id is (issue #1081): a line of its own under the bar's controls, in the page's own text
+   colour -- it is the answer to "whose forms", not a hint. */
+.forms-scope-who { flex-basis: 100%; color: var(--text); }
 
 /* The collapsible filter shell the listing pages share (issues #562, #683; see FilterPanel.kt): an inset well
    of controls, closed by default, and -- while it is closed -- the filters in force summarized as chips, which

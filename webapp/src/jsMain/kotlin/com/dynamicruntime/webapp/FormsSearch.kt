@@ -177,6 +177,12 @@ external interface FormsScopeBarProps : Props {
     /** The user the list is currently confined to, or null for everyone the caller may see. */
     var applied: String?
 
+    /**
+     * Who [applied] is, when it names its user by id (issue #1081) -- a link from the Users page does -- so the bar
+     * says a name beside a number. Null when it is an address, which says who already, or not yet known.
+     */
+    var appliedWho: String?
+
     /** Records a keystroke in the box. */
     var onChange: (String) -> Unit
 
@@ -249,6 +255,16 @@ val FormsScopeBar = FC<FormsScopeBarProps> { props ->
                 type = "link"
                 onClick = { props.onShowEveryone() }
                 +"Show everyone"
+            }
+        }
+        // Who an id is, on a line of its own under the controls, so they never move to make room for a name.
+        // Shown while the box still holds what is applied: once something else is typed, the name is of the
+        // list on screen and no longer of the box.
+        val who = props.appliedWho
+        if (who != null && props.value.trim() == props.applied?.trim()) {
+            span {
+                className = ClassName("forms-scope-who")
+                +"User ${props.applied?.trim()}: $who"
             }
         }
     }

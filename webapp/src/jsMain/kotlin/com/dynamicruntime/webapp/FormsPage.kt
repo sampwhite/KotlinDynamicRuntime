@@ -130,6 +130,9 @@ val FormsPage = FC<FormsPageProps> { props ->
     // draft, and paging/reloads carry the applied set so a filtered list stays filtered across pages.
     var searchDraft by useState<Map<String, String>>(emptyMap())
     var appliedSearch by useState<Map<String, String>>(emptyMap())
+    // Who the scope's user is, when the scope names them by id (issue #1081): the applied value it was read for,
+    // and the label. Kept beside its key, so a slow answer for a scope since replaced is never shown for the new one.
+    var scopeWho by useState<Pair<String, String>?>(null)
     // The chosen sort (issue #666): a display trait id or `updated`/`created`, null for the default order, and a
     // direction. Carried in the hash like the applied search, and passed to `loadPage` so paging and a new
     // search keep it. The backend ignores an unknown column, so a stale sort in a bookmark still lists.
@@ -284,6 +287,22 @@ val FormsPage = FC<FormsPageProps> { props ->
         appliedSearch = applied
         offset = 0
         loadPage(ep, 0, applied, withSummary = withSummary)
+    }
+
+    // The name behind a scope given as an id (issue #1081), read from the identity view the Users editor reads --
+    // scoped like it, so it names only a user this caller administers. A failure leaves the bar as it was: the id.
+    // An answer is kept only while its scope is still the one applied: two reads may answer out of order, and the
+    // later answer for an earlier scope must not take the place of the name already shown.
+    val appliedUser = appliedSearch[EI.user]?.ifBlank { null }
+    val scopeAsked = useRef<String>(null)
+    scopeAsked.current = appliedUser
+    useEffect(appliedUser, canManageUsers) {
+        val id = scopeUserId(appliedUser)
+        if (id == null || appliedUser == null || !canManageUsers || scopeWho?.first == appliedUser) return@useEffect
+        formsScope.launch {
+            val label = apiResult { AdminApi.userIdentity(id) }.valueOrNull()?.let { scopeUserLabel(it.users, id) }
+            if (label != null && scopeAsked.current == appliedUser) scopeWho = appliedUser to label
+        }
     }
 
     // A history move between the workflow's states (issue #792): the state is part of what identifies the page,
@@ -798,7 +817,8 @@ val FormsPage = FC<FormsPageProps> { props ->
                 if (canManageUsers) {
                     FormsScopeBar {
                         value = searchDraft[EI.user] ?: ""
-                        applied = appliedSearch[EI.user]?.ifBlank { null }
+                        applied = appliedUser
+                        appliedWho = scopeWho?.takeIf { it.first == appliedUser }?.second
                         onChange = { v -> searchDraft = searchDraft + (EI.user to v) }
                         onApply = { applySearch(ep, searchDraft) }
                         // Drops the user from what is *applied*, and reverts the boxes to that: a pending edit in

@@ -3,8 +3,13 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.user.userSearchFieldSpecs
+import com.dynamicruntime.common.context.UserProfile
 import react.FC
 import react.Props
+import react.create
+import react.dom.html.ReactHTML.a
+import react.dom.html.ReactHTML.span
+import web.cssom.ClassName
 
 /**
  * The user search results as an antd table (issue #411). The **search columns are rendered from the shared
@@ -36,6 +41,15 @@ external interface UserTableProps : Props {
 
     /** Reports a header-click sort: the [USF] sort key and whether it is now descending. */
     var onSort: (field: String, descending: Boolean) -> Unit
+
+    /**
+     * Whether each row offers the way to its user's forms and client (issue #1081, [userLinksOffered]): a column
+     * of links, so neither is a detour through another page's filters.
+     */
+    var showLinks: Boolean
+
+    /** The clients this node carries, as the page was told them -- which a Forms link may choose ([userFormsSurface]). */
+    var carriedClients: Set<String>
 }
 
 val UserTable = FC<UserTableProps> { props ->
@@ -62,6 +76,7 @@ val UserTable = FC<UserTableProps> { props ->
             add(column("Type", typeColumn, columnWidths[typeColumn]))
             add(column("Roles", rolesColumn, columnWidths[rolesColumn]))
             add(column("Status", statusColumn, columnWidths[statusColumn]))
+            if (props.showLinks) add(userLinksColumn(props))
         }
         // The columns that identify a user stay in view while the rest scroll (issue #750): who this is on the
         // left, and whether they are live on the right. antd pins a column only when the table has an explicit
@@ -108,6 +123,71 @@ val UserTable = FC<UserTableProps> { props ->
         }
     }
 }
+
+/**
+ * The row's links (issue #1081): to the user's forms and to their client. A click in the cell is the link's, so
+ * `onCell` stops it from also opening the row's editor -- as the forms table's workflow cell does.
+ */
+private fun userLinksColumn(props: UserTableProps): dynamic {
+    val c = column("Go to", linksColumn, columnWidths[linksColumn])
+    c.onCell = {
+        val cellProps: dynamic = js("({})")
+        cellProps.onClick = { event: dynamic -> event.stopPropagation() }
+        cellProps
+    }
+    // Read off the row itself -- its key is the user's id, and its client cell the client -- rather than found
+    // again among the users, once a row, on every render.
+    c.render = fun(_: dynamic, record: dynamic, _: dynamic): dynamic {
+        val id = (record.key as? String)?.toLongOrNull() ?: return null
+        return UserLinks.create {
+            userId = id
+            client = record[USF.client] as? String ?: ""
+            carriedClients = props.carriedClients
+        }
+    }
+    return c
+}
+
+/** What [UserLinks] needs: whose links, and the clients this node carries (which the forms link may choose). */
+external interface UserLinksProps : Props {
+    var userId: Long
+    var client: String
+    var carriedClients: Set<String>
+}
+
+/**
+ * A user's forms and a user's client, as two links (issue #1081) -- on each row of the list and in the editor of
+ * the user who is open. Links, not buttons: each goes somewhere and changes nothing.
+ */
+val UserLinks = FC<UserLinksProps> { props ->
+    span {
+        className = ClassName("user-links")
+        a {
+            className = ClassName("wf-cell-link")
+            href = userFormsHref(props.userId, userFormsSurface(props.client, props.carriedClients))
+            title = "The forms this user owns."
+            +"Forms"
+        }
+        if (props.client.isNotEmpty()) {
+            +" · "
+            a {
+                className = ClassName("wf-cell-link")
+                href = clientDetailHref(props.client)
+                title = "The client this user belongs to: ${props.client}."
+                +"Client"
+            }
+        }
+    }
+}
+
+/**
+ * Whether the Users page offers [caller] the links from a user to their forms and their client (issue #1081):
+ * a client's administrator, of one client or of all. An administrator in `public` without `allClients` administers
+ * only their own users (issue #805) -- the forms listing reads them their own rows and the Clients page refuses
+ * them -- so for them both links could only fail, and a control that can only fail is not shown. The same people
+ * [mayCreateForOthers] names, for the same reason. Pure, covered under `jsNodeTest`.
+ */
+fun userLinksOffered(caller: UserProfile): Boolean = mayCreateForOthers(caller)
 
 /**
  * A search column's display value for [user] -- the frontend's reading of the row, the counterpart to the
@@ -172,6 +252,7 @@ private const val idColumn = "userId"
 private const val typeColumn = "type"
 private const val rolesColumn = "roles"
 private const val statusColumn = "status"
+private const val linksColumn = "links"
 
 /**
  * Which edge a column is pinned to while the middle scrolls, or null for one that scrolls (issue #750). The
@@ -181,7 +262,8 @@ private const val statusColumn = "status"
  */
 fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
     idColumn, USF.email, USF.name, USF.client, USF.persona -> "left"
-    statusColumn -> "right"
+    // The links ride with the status: a column after a pinned one is pinned too, or it would slide under it.
+    statusColumn, linksColumn -> "right"
     else -> null
 }
 
@@ -214,6 +296,8 @@ private val columnWidths: Map<String, Int> = mapOf(
     USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.registered.at to 175, USF.activated.at to 175,
     // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
     typeColumn to 80, statusColumn to 85,
+    // "Forms · Client", which never varies.
+    linksColumn to 115,
     // A list, so it is the other one that may wrap -- and now does, on the rows that hold three roles
     // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority. The 40px
     // it gave up went to the Registered column (issue #750); two lines on a few rows beat a scrollbar on all.
