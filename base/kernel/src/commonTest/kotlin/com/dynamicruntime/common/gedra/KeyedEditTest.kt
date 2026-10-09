@@ -29,6 +29,19 @@ class KeyedEditTest {
     }
 
     @Test
+    fun aMergeThatOwnsFieldsClearsTheOnesItLeavesOutAndKeepsTheRest() {
+        // A form showing `note` and `extra` (issue #1071): it sent no `note`, so the answer was left empty; `kept` is
+        // another form's, and stays.
+        val owned = setOf("note", "extra")
+        assertEquals(
+            mapOf("year" to 2024L, "kept" to true, "extra" to 5L),
+            assertIs<KeyedEdit.Put>(GedraEditAction.addOrMerge.applyTo(stored, mapOf("extra" to 5L), owned)).data,
+        )
+        // Owning fields changes nothing about a replace.
+        assertEquals(mapOf("extra" to 5L), assertIs<KeyedEdit.Put>(GedraEditAction.addOrReplace.applyTo(stored, mapOf("extra" to 5L), owned)).data)
+    }
+
+    @Test
     fun anEditNamesItsEntryByEveryKeyField() {
         val pk = listOf("year", "region")
         assertEquals(listOf("region"), missingKeyFields(pk, mapOf("year" to 2024L)))

@@ -126,6 +126,15 @@ object Simulations {
     }
 
     /**
+     * Gives [row] the [labels] (issue #1071), replacing any it has -- what an administrator's label edit does, so a
+     * simulation can provision a user a workflow's `userHasLabel` recognizes.
+     */
+    fun setLabels(cxt: KdrCxt, row: AuthUserRow, labels: List<String>) {
+        row.labels = labels
+        UserService.get(cxt).updateUser(cxt.mkSubContext("simulation", row.client), row)
+    }
+
+    /**
      * The [SimulationUser] a report lists for [row], provisioned at [level] (with any [capabilities]), with what it is
      * [purpose] for.
      */

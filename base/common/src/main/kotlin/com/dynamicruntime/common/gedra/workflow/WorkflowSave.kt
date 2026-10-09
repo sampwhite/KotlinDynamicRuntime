@@ -88,7 +88,10 @@ fun saveWorkflow(
  * There is **no completeness gate** here, unlike a create: a survey may be saved part-finished, and its
  * incompleteness is recorded as state (for the CTA), not refused -- so this always saves. Each collected trait
  * is replaced wholesale ([GedraEditAction.addOrReplace]) with what the task supplied, through the ordinary
- * patch fold, so client-scope and validation are the patch endpoint's, unchanged. The form's derived survey
+ * patch fold, so client-scope and validation are the patch endpoint's, unchanged -- except a trait whose form shows
+ * only the fields its layout lists (`authoritative`, issue #1071): that form's answers are **merged** over the stored
+ * entry, the fields it shows written and every other one left as stored, so workflows filling different parts of one
+ * form leave each other's answers alone; a field it does not show is refused. The merged entry is validated whole. The form's derived survey
  * state is recomputed by the patch's own post-write hook (issue #675), inside the same transaction, so this
  * does not recompute it explicitly. It answers with the form's id and nothing of its data (issue #827): the view
  * is the one place a page reads a form's workflow state from, so a save that returned it too would be a second.
@@ -105,6 +108,8 @@ private fun editForm(
     val svc = GedraDataService.get(cxt)
     val id = GedraService.get(cxt).readId(fullId)
     val scope = ReadScopeRules.forCaller(cxt)
+    // The traits whose form shows only the fields its layout lists (issue #1071): a save writes those, and no others.
+    val shown = WorkflowFormRules.shownFields(cxt, cxt.client, declared, entries.mapNotNull { it[GE.traitId].toOptStr() }.toSet())
     val edits = entries.map { entry ->
         val traitId = entry[GE.traitId].toOptStr()
             ?: throw KdrException.mkInput("A survey edit entry has no ${GE.traitId}.")
@@ -115,7 +120,20 @@ private fun editForm(
             missingHint = " An edit save replaces each entry with the data it carries; to remove an entry, delete it " +
                 "(a patch with ${GedraEditAction.deleteOrNoOp.name}).",
         )
-        GedraEdit(GedraEditAction.addOrReplace, traitId, data = data)
+        val form = shown[traitId] ?: return@map GedraEdit(GedraEditAction.addOrReplace, traitId, data = data)
+        // A field the form does not show is not this save's to write. A derived one is the server's, dropped as it
+        // always is, so it is let through to be.
+        val outside = data.keys.filter { it !in form.fields && form.type.properties[it]?.valueType?.derived != true }
+        if (outside.isNotEmpty()) {
+            throw KdrException.mkInput(
+                "This form does not show ${outside.joinToString(", ") { "'$it'" }} of '$traitId', so its save does not " +
+                    "write ${if (outside.size == 1) "it" else "them"}. It shows ${form.fields.joinToString(", ") { "'$it'" }}; " +
+                    "change another field through the form that shows it.",
+            )
+        }
+        // Merged over what is stored: the fields this form shows are its answers -- one not sent was left empty -- and
+        // every other field is another form's, kept as it is.
+        GedraEdit(GedraEditAction.addOrMerge, traitId, data = data, owns = form.fields)
     }
     svc.patchGedras(cxt, mapOf(GedraDataType.formDoc to listOf(GedraPatchTarget(id, edits, underLock))), scope)
     return linkedMapOf<String, Any?>(WSF.saved to true, GDF.gedraId to id.fullId)

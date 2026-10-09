@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLM
@@ -123,9 +124,9 @@ object DesignSharedEdit {
         for (declared in WorkflowService.get(cxt).forClient(cxt.client).workflows.values) {
             for ((typeName, alteration) in declared.def.typeAlterations) {
                 if (typeName !in typeNames) continue
-                val fields = (alteration[SCH.layout] as? Map<*, *>)?.get(SL.schemaFields) as? List<*>
-                for (entry in fields.orEmpty()) {
-                    val field = (entry as? Map<*, *>)?.get(SL.field).toOptStr() ?: continue
+                // Only an entry carrying copy: a field a workflow's list merely names keeps the shared copy (issue #1071).
+                for (entry in copyOverrideEntries(alteration)) {
+                    val field = entry[SL.field].toOptStr() ?: continue
                     out.getOrPut(field) { mutableListOf() }.add(declared.def.workflowId)
                 }
             }

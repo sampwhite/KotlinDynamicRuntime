@@ -623,5 +623,46 @@ class DesignViewTest {
         assertNull(edit.inherited)
         assertTrue(edit.inheritedChanged)
     }
+
+    // --- which fields a form shows (issue #1071) ---
+
+    private val questions: SchType = parseSchemaTypes(
+        mapOf(
+            "client.demo.Q" to mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf(
+                    "name" to mapOf(SCH.type to SCT.string, SCH.title to "Your name"),
+                    "q1" to mapOf(SCH.type to SCT.string),
+                    "q2" to mapOf(SCH.type to SCT.string),
+                    "q3" to mapOf(SCH.type to SCT.string),
+                ),
+                SCH.required to listOf("name"),
+            ),
+        ),
+    ).getValue("client.demo.Q")
+
+    @Test
+    fun theChecklistListsTheShownFieldsFirstAndLocksWhatMustStay() {
+        val layout = SchLayout(null, null, listOf(SchLayoutField("q2", "Second", null, null, required = true)), mode = SchLayoutMode.authoritative)
+        val rows = shownFieldRows(questions, layout, listOf("q2", "name"))
+        assertEquals(listOf("q2", "name", "q1", "q3"), rows.map { it.name })
+        assertEquals(listOf(true, true, false, false), rows.map { it.shown })
+        assertEquals(listOf("Second", "Your name", "Q1", "Q3"), rows.map { it.label })
+        // The data requires `name`; this form requires `q2`; the rest may come and go.
+        assertTrue(rows[0].locked!!.contains("form requires"))
+        assertTrue(rows[1].locked!!.contains("data requires"))
+        assertNull(rows[2].locked)
+        // Filtered by name or label.
+        assertEquals(listOf("q2"), rows.filter { shownFieldMatches(it, "SECOND") }.map { it.name })
+        assertEquals(4, rows.count { shownFieldMatches(it, " ") })
+    }
+
+    @Test
+    fun aShownFieldsEditSendsTheListOrNothingToStopChoosing() {
+        assertEquals(listOf("q1"), shownFieldsBody("partA", "client.demo.Q", listOf("q1"), "stamp", null)[DSV.fields])
+        assertTrue(DSV.fields !in shownFieldsBody("partA", "client.demo.Q", null, "stamp", "acme"))
+        val design = parseWfDesign(mapOf(DSV.shownFields to mapOf("client.demo.Q" to listOf("q2", "q1"))))!!
+        assertEquals(listOf("q2", "q1"), design.shownFields["client.demo.Q"])
+    }
 }
 

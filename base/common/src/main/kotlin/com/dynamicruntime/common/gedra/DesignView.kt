@@ -11,12 +11,15 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.gedra.workflow.headingBasisKey
 import com.dynamicruntime.common.gedra.workflow.layoutEntryOf
 import com.dynamicruntime.common.gedra.workflow.layoutHeadingOf
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
+import com.dynamicruntime.common.gedra.workflow.shownFieldsOf
 import com.dynamicruntime.common.gedra.workflow.withLayoutEntry
 import com.dynamicruntime.common.gedra.workflow.withLayoutHeading
+import com.dynamicruntime.common.gedra.workflow.withShownFields
 import com.dynamicruntime.common.gedra.workflow.withWorkflowLabel
 import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
@@ -150,6 +153,10 @@ object DesignView {
         if (edits.isNotEmpty()) out[DSV.layoutEdits] = edits
         val headings = headingEdits(declared, clientStore, store)
         if (headings.isNotEmpty()) out[DSV.headingEdits] = headings
+        // The types whose fields the workflow's own form chooses (issue #1071).
+        val shown = declared.def.typeAlterations.filterKeys { it in store.defs }
+            .mapNotNull { (typeName, alteration) -> shownFieldsOf(alteration)?.let { typeName to it } }.toMap()
+        if (shown.isNotEmpty()) out[DSV.shownFields] = shown
         return out
     }
 
@@ -183,11 +190,10 @@ object DesignView {
         val out = linkedMapOf<String, Any?>()
         for ((typeName, alteration) in declared.def.typeAlterations) {
             if (typeName !in store.defs) continue
-            val layout = alteration[SCH.layout] as? Map<*, *> ?: continue
             val basis = declared.def.typeBasis[typeName].orEmpty()
             val fields = linkedMapOf<String, Any?>()
-            for (raw in (layout[SL.schemaFields] as? List<*>).orEmpty()) {
-                val entry = (raw as? Map<*, *>)?.toJsonMap() ?: continue
+            // Only an entry carrying copy: a field the workflow's list merely names keeps the shared copy (issue #1071).
+            for (entry in copyOverrideEntries(alteration)) {
                 val field = entry[SL.field].toOptStr() ?: continue
                 val inherited = layoutEntryOf(clientStore, typeName, field)
                 val made = (basis[field] as? Map<*, *>)?.toJsonMap()
@@ -323,6 +329,19 @@ object DesignView {
     fun setHeading(cxt: KdrCxt, workflowId: String, typeName: String, label: String?, basedOn: String): String {
         val inherited = layoutHeadingOf(cxt.getClientSchema().defs, typeName)
         return editWorkflowDef(cxt, workflowId, basedOn) { withLayoutHeading(it, typeName, label, inherited) }
+    }
+
+    /**
+     * Sets the fields workflow [workflowId]'s form shows for [typeName] to [fields], in order, or removes its choice when
+     * [fields] is null (issue #1071) -- its layout alteration of the type, `authoritative` ([withShownFields]). Its edit
+     * save then writes only those fields. A list that omits a field the type may require is refused by the trial, as
+     * the load check refuses one. Refused when the definition has changed since [basedOn]. Returns the new stamp.
+     */
+    fun setShownFields(cxt: KdrCxt, workflowId: String, typeName: String, fields: List<String>?, basedOn: String): String {
+        if (fields != null && fields.isEmpty()) {
+            throw KdrException.mkInput("A form shows at least one field; to show them all, stop choosing them.")
+        }
+        return editWorkflowDef(cxt, workflowId, basedOn) { withShownFields(it, typeName, fields) }
     }
 
     /**
@@ -665,6 +684,30 @@ fun designViewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, DSV.namespace) 
         val stamp = DesignView.setHeading(
             designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
             request[DSV.label].toOptStr(), request.getReqNonBlankStr(DSV.basedOn),
+        )
+        linkedMapOf(DSV.basedOn to stamp)
+    }
+
+    generalEndpoint(
+        DSV.shownFieldsEdit,
+        "Sets which fields a workflow's form shows for a type, in order -- and so which its save writes -- or stops choosing them, and reloads the client.",
+        HttpMethod.POST,
+        outputRef = DSV.labelEditType,
+        inputFields = {
+            field(DSV.workflowId, "The workflow whose form it is.", required = true)
+            field(DSV.typeName, "The type whose fields are chosen -- a trait's data type, as the page draws it.", required = true)
+            field(DSV.fields, "The fields the form shows, in order; absent to stop choosing, so the form shows what the shared layout does.") {
+                type = SCT.array
+                items { type = SCT.string }
+            }
+            field(DSV.basedOn, "The stamp of the definition the edit was made against, from the page's Design View block.", required = true)
+            designClientField()
+        },
+    ) { c, request ->
+        AdminRules.requireClientAdministrator(c)
+        val stamp = DesignView.setShownFields(
+            designCxt(c, request), request.getReqNonBlankStr(DSV.workflowId), request.getReqNonBlankStr(DSV.typeName),
+            (request[DSV.fields] as? List<*>)?.mapNotNull { it.toOptStr() }, request.getReqNonBlankStr(DSV.basedOn),
         )
         linkedMapOf(DSV.basedOn to stamp)
     }

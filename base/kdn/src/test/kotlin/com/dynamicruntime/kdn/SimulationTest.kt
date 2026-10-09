@@ -36,7 +36,8 @@ class SimulationTest : StringSpec({
         val report = tester.postData(designDemo, emptyMap())
         report[SIM.clients].toJsonListOfStrings() shouldBe listOf(DesignDemo.client)
         report[SIM.startPage] shouldNotBe null
-        val designer = usersOf(report).single { it[SIM.level] == ROLE.admin }
+        // Two administrators since the reviewer (issue #1071); the designer is the one by that address.
+        val designer = usersOf(report).single { it[SIM.level] == ROLE.admin && it[SIM.email].toString().startsWith("designer@") }
         designer[SIM.client] shouldBe DesignDemo.client
 
         // Signing in as the reported designer reaches the client's workflow page in Design View.

@@ -311,7 +311,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         wholeChecked = wholeChecked + checks.keys
         if (checks.values.any { it.failures.isNotEmpty() }) return
 
-        val entries = workflowSaveEntries(checks.mapValues { it.value.payload ?: emptyMap() })
+        // An edit sends only the fields its form shows (issue #1071): where the layout lists them, the save writes those
+        // and refuses any other, so the hidden answers the page was seeded with stay home.
+        val entries = workflowSaveEntries(
+            checks.mapValues { (traitId, check) ->
+                val layout = task.traits.firstOrNull { it.traitId == traitId }?.let { wf.fieldLayouts[it.typeName] }
+                shownPayload(check.payload ?: emptyMap(), layout.takeIf { isEdit })
+            },
+        )
         // A create save may be for another user (issue #727) when an admin picked one; an edit ignores it.
         val forUserRef = if (isEdit) null else pickedUser?.primaryId
         val save = saveFor(task) ?: return
