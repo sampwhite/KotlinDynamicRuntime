@@ -347,8 +347,11 @@ class RequestService : ServiceInitializer {
         // startup service has finished before any regular one is created, so the store is built here, and the
         // rules are populated immediately above -- the one point where both halves are in hand.
         //
-        // Nothing contributes endpoints after that: schema is collected from components, before any service
-        // runs, and compiled by the startup tier. So reading it in the first pass sees the whole set.
+        // Nothing a component declares contributes endpoints after that: schema is collected from components,
+        // before any service runs, and compiled by the startup tier. So reading it in the first pass sees the
+        // whole declared set. An endpoint **generated** after boot is not seen here, so whatever generates one
+        // must put it in a section already ruled -- as the typed report endpoints of issue #1083 are, under
+        // `clientAdmin` by construction.
         val unruled = cxt.getGlobalSchema().endpoints.values
             .map { sectionOf(it.path) }.distinct().sorted()
             .filter { it !in sectionRulesMap }
@@ -649,10 +652,17 @@ class RequestService : ServiceInitializer {
         }
     }
 
-    /** Validates the outgoing [envelope] against the endpoint's output schema, when the config flag is set. */
+    /**
+     * Validates the outgoing [envelope] against the endpoint's output schema: for every endpoint when the config
+     * flag is set (tests), and in every environment for an endpoint that asks for it ([KdrEndpoint.validateOutput],
+     * issue #1085). An endpoint with no output schema has nothing to be held to, either way.
+     */
     @KdrPrivate
     fun validateResponse(cxt: KdrCxt, schema: KdrSchemaStore, endpoint: KdrEndpoint, envelope: Map<String, Any?>) {
-        if (cxt.instanceConfig.get(ACFG.validateResponseSchema) != true || endpoint.outputSchema.isEmpty()) {
+        if (endpoint.outputSchema.isEmpty()) {
+            return
+        }
+        if (!endpoint.validateOutput && cxt.instanceConfig.get(ACFG.validateResponseSchema) != true) {
             return
         }
         val outputType = outputTypeCache.getOrPut(endpoint.collationKey) {

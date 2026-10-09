@@ -176,9 +176,14 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   (the `results` map / the `item` / the `items` list / a `ContentData`). Captured verbatim; no name-based
   indirection.
 - `KdrEndpoint(path, method, kind, namespace, description, inputFields, inputTypeRef, includeLimit,
-  outputSchema, handler)` — the output schema is a built JSON-schema **map** with `$ref`s into the module's
-  `$defs`. The *input* is not realized here (a type ref cannot be flattened until its target is bound); it is
-  resolved on demand by `resolveEndpointInputType` against the compiled types.
+  outputSchema, handler, …, validateOutput)` — the output schema is a built JSON-schema **map** with `$ref`s into
+  the module's `$defs`. The *input* is not realized here (a type ref cannot be flattened until its target is
+  bound); it is resolved on demand by `resolveEndpointInputType` against the compiled types.
+- **Output validation.** A response is checked against `outputSchema` when the `validateResponseSchema` config
+  flag is on -- which it is in tests (`mkTestBootCxt`) and nowhere else -- or, in every environment, when the
+  endpoint itself sets `validateOutput = true`. A mismatch is a 500 naming the endpoint and the failures. The
+  opt-in is for an endpoint whose schema is generated from data and so *is* the contract; it is not a builder
+  parameter, and is set only where a `KdrEndpoint` is constructed directly.
 - Protocol keys are constants in `object EP` (kernel): `EP.results`, `EP.item`, `EP.items`, `EP.limit`,
   `EP.numItems`, `EP.hasMore`, `EP.numAvailable`, `EP.requestUri`, `EP.duration`; the error keys `EP.status`,
   `EP.errorCode`, `EP.errorMessage`, `EP.extraData` (see *How one runs*); and the off-contract `EP.debug`

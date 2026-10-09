@@ -113,5 +113,8 @@ private fun copyFor(endpoint: KdrEndpoint, client: String): KdrEndpoint {
         summaryRef = endpoint.summaryRef,
         // And cursor paging (issue #976): the copy shares the output's `next` and must take `after` as input.
         cursorPaged = endpoint.cursorPaged,
+        // And the promise to check every response (issue #1085): it is made of the output schema, which the copy
+        // shares -- resolved against the client's variant, where it is as much the contract as on the shared path.
+        validateOutput = endpoint.validateOutput,
     )
 }
