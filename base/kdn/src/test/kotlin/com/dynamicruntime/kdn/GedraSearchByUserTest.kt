@@ -3,6 +3,8 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.gedra.workflow.WCOL
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
 import com.dynamicruntime.common.gedra.GE
@@ -197,6 +199,54 @@ class GedraSearchByUserTest : StringSpec({
             it shouldContainAll listOf(bobDocId)
             it shouldNotContain aliceDocId
         }
+    }
+
+    // Who a named user was resolved to (issue #1095). The request may name the user by id or by address, and an
+    // address names a person: the listing is confined to *one* of their users, and until it said which, nothing did.
+    "the listing says which user it is confined to, which an address alone does not" {
+        fun summaryFor(tu: TestUser, args: Map<String, Any?>) =
+            tu.client.sendJsonGetRequest(GEP.formDocs, args)[EP.summary].toJsonMapOrEmpty()
+        fun scopeUser(tu: TestUser, user: Any) = summaryFor(tu, mapOf(EI.user to user.toString()))[GDF.scopeUser].toJsonMapOrEmpty()
+
+        // By address and by id it is the same user, said the same way: no name, since the account has none that
+        // is not its email, and no suffix, since it has none.
+        val byEmail = scopeUser(ada, aliceEmail)
+        byEmail shouldBe mapOf(DUF.email to aliceEmail, DUF.userId to alice.userId, DUF.client to CL.hub, DUF.persona to PERSONA.member)
+        scopeUser(ada, alice.userId) shouldBe byEmail
+        // Naming nobody, there is nobody to say.
+        summaryFor(ada, emptyMap()).containsKey(GDF.scopeUser) shouldBe false
+        // An ordinary user naming themselves is told the same of themselves.
+        scopeUser(bob, bobEmail)[DUF.userId] shouldBe bob.userId
+        // It is said on every user-scoped page, whatever else was asked for: a page turn, a search and a sort ask
+        // for states and not for the workflow column's summary, and are told all the same -- with no workflows.
+        val pageTurn = summaryFor(ada, mapOf(EI.user to aliceEmail, GDF.withStates to true))
+        pageTurn[GDF.scopeUser].toJsonMapOrEmpty()[DUF.userId] shouldBe alice.userId
+        pageTurn.containsKey(WCOL.workflows) shouldBe false
+        // It rides beside the workflow column's summary when that is asked for, in the one `summary`.
+        val both = summaryFor(ada, mapOf(EI.user to aliceEmail, GDF.withStates to true, GDF.withWorkflowSummary to true))
+        both.containsKey(WCOL.workflows) shouldBe true
+        both[GDF.scopeUser].toJsonMapOrEmpty()[DUF.userId] shouldBe alice.userId
+
+        // A person with two users, each with a document of their own.
+        val carolEmail = "carol@search.test"
+        val carol = TestUser.create(cxt, carolEmail, userClient = CL.hub, name = "Carol Jones")
+        val carolB = TestUser.create(cxt, carolEmail, userClient = CL.hub, personaSuffix = "B")
+        val carolDoc = carol.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(nameEntry("Carol doc"))))[GDF.gedraId].toOptStr()
+        val carolBDoc = carolB.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(nameEntry("Carol B doc"))))[GDF.gedraId].toOptStr()
+        // By id, each is said as itself: the name when there is one, the suffix when there is one.
+        scopeUser(ada, carol.userId) shouldBe mapOf(
+            DUF.name to "Carol Jones", DUF.email to carolEmail, DUF.userId to carol.userId, DUF.client to CL.hub, DUF.persona to PERSONA.member,
+        )
+        scopeUser(ada, carolB.userId).let {
+            it[DUF.userId] shouldBe carolB.userId
+            it[DUF.personaSuffix] shouldBe "B"
+        }
+        // By address the listing is confined to one of them -- and says which, so the user it names is the user
+        // whose documents it lists.
+        val resolved = scopeUser(ada, carolEmail)[DUF.userId]
+        val docOf = mapOf<Any?, String?>(carol.userId to carolDoc, carolB.userId to carolBDoc)
+        docOf.containsKey(resolved) shouldBe true
+        idsSeenBy(ada, mapOf(EI.user to carolEmail)) shouldBe listOf(docOf[resolved])
     }
 
     // Last, since it adds a form the cases above would otherwise list: a second user of Alice's address -- an

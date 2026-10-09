@@ -342,12 +342,22 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         }
         property(WCOL.lastTask, "The workflow's last task, where a finished workflow's link lands.", required = true)
     }
-    type(WCOL.summaryType) {
+    // Which user a listing is confined to (issue #1095), as the listing's summary says them.
+    type(GEP.scopeUserType) {
         type = SCT.kObject
-        description = "The workflows the forms listing's workflow column may show, over every form the caller may see."
-        property(WCOL.workflows, "The workflows, by client then declaration order; empty means no column.", required = true) {
+        description = "The user a listing is confined to: who the request's `user` was resolved to."
+        identifiedUserBlockProperties()
+    }
+    type(GEP.formDocsSummary) {
+        type = SCT.kObject
+        description = "What is true of everything the forms listing could return, rather than of one page."
+        // Only when asked for (`withWorkflowSummary`): it is a pass over every form the caller may see.
+        property(WCOL.workflows, "The workflows the listing's workflow column may show, by client then declaration order; empty means no column. Present when asked for.") {
             type = SCT.array
             items { ref(WCOL.summaryWorkflowType) }
+        }
+        property(GDF.scopeUser, "The user the listing is confined to, when the request named one (issue #1095).") {
+            ref(GEP.scopeUserType)
         }
     }
 
@@ -363,7 +373,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         publicApi = true,
         needsClientConfig = true,
         // The workflow column's summary (issue #791), beside the items when states are asked for.
-        summaryRef = WCOL.summaryType,
+        summaryRef = GEP.formDocsSummary,
     ) { c, request ->
         val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
         val offset = (request[EP.offset] as? Number)?.toInt() ?: 0
@@ -428,11 +438,16 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             // caller's own scope, not the search, the user filter or the page -- so the column does not come and
             // go as a search narrows. Only with states, which the rows are drawn from against it, and only when asked:
             // it is a pass over everything the caller may see, which a page turn, search or sort does not change.
-            summary = if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
-                FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope))
-            } else {
-                null
-            },
+            //
+            // And whose forms these are, when the request named a user (issue #1095): the user it was resolved to
+            // above, so the caller is told which of a person's users an address meant -- on every page, since it
+            // is the row already in hand.
+            summary = buildMap {
+                if (withStates && request.getOptBool(GDF.withWorkflowSummary) == true) {
+                    putAll(FormWorkflowSummary.of(c, svc.statesInScope(c, formDoc, callerScope)))
+                }
+                target?.let { put(GDF.scopeUser, scopeUserBlock(it)) }
+            }.ifEmpty { null },
         )
     }
 
@@ -1383,17 +1398,31 @@ private fun gedraSortFor(
  * beneath": sending the name only when it adds something lets the frontend render exactly that without comparing
  * the two strings. Empty for no [owner], so the map addition is a no-op rather than an empty block.
  */
-private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
-    if (owner == null) return emptyMap()
-    val email = owner.primaryId
-    val name = ownerSortName(owner)
+private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> =
+    if (owner == null) emptyMap() else mapOf(GDF.owner to userBlockFields(owner))
+
+/**
+ * The fields of a user block ([DUF]): the email always, the name only when the account has one that is not its
+ * email, the persona, and its suffix when the user has one. The one statement of that, for every block that says
+ * who a user is -- the owner of a row, and the user a listing is confined to.
+ */
+private fun userBlockFields(user: AuthUserRow): Map<String, Any?> {
+    val email = user.primaryId
+    val name = ownerSortName(user)
     val block = linkedMapOf<String, Any?>()
     if (name != email) block[DUF.name] = name
     block[DUF.email] = email
-    block[DUF.persona] = owner.persona
-    if (owner.personaSuffix.isNotEmpty()) block[DUF.personaSuffix] = owner.personaSuffix
-    return mapOf(GDF.owner to block)
+    block[DUF.persona] = user.persona
+    if (user.personaSuffix.isNotEmpty()) block[DUF.personaSuffix] = user.personaSuffix
+    return block
 }
+
+/**
+ * [user] as a listing's summary says who it is confined to ([GDF.scopeUser], issue #1095): what the owner block
+ * gives ([userBlockFields]), and what makes this one of the person's users and no other.
+ */
+private fun scopeUserBlock(user: AuthUserRow): Map<String, Any?> =
+    userBlockFields(user) + mapOf(DUF.userId to user.userId, DUF.client to user.client)
 
 /**
  * The global admin state surface (issue #600): read one gedra's state, and replace it wholesale. On `/admin/…`
