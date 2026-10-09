@@ -6,6 +6,8 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.HomeMenuAudiences
+import com.dynamicruntime.common.home.MenuAudience
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockService
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -15,9 +17,9 @@ import com.dynamicruntime.common.util.toOptStr
 /**
  * Editing one item of a client's home menu (issue #919): the write behind `POST /clientAdmin/client/menu/set` and
  * `/reset`. The first cut: **rename** (the item's label), **hide** (its condition becomes `#never`, the documented
- * way an overlay withdraws an item), **show** (a condition the shipped menu already draws for -- a client picks an
- * audience the menu knows, it does not write an expression) and **reset** (the client's changes to the item
- * removed). Not adding, reordering, or a free condition.
+ * way an overlay withdraws an item), **show** (to an audience the menu names, [HomeMenuAudiences] -- a client picks
+ * one of those by name, it does not write an expression) and **reset** (the client's changes to the item removed).
+ * Not adding, reordering, or a free condition.
  *
  * **Presentation, not permission.** Hiding an item withdraws its offer; showing one puts it on offer. Neither
  * changes what anyone may reach: the section gate still decides, and a shown item's page refuses a caller who lacks
@@ -40,10 +42,27 @@ object ClientMenuEdit {
     class MenuItem(
         val itemId: String,
         val parentId: String?,
+        /**
+         * Whether the item is the client's own, which the shipped menu does not hold. Such an item has no shipped
+         * label, condition or audience, and nothing here can change it: a set refuses an item the shipped menu lacks.
+         */
+        val added: Boolean,
         val baseLabel: String?,
         val label: String?,
         val baseCondition: String?,
         val condition: String?,
+        /**
+         * What the audiences of [baseCondition] and [condition] are called (issue #1094); null for a withdrawn item,
+         * which has none, and for a condition [HomeMenuAudiences] does not name. An [added] item shipped under no
+         * audience at all -- which is not the same as shipping with no condition.
+         */
+        val baseAudience: String?,
+        val audience: String?,
+        /**
+         * The audiences this item may be shown to ([HomeMenuAudiences.choicesFor]) -- exactly what a set accepts, so
+         * none for an [added] item.
+         */
+        val audiences: List<MenuAudience>,
         /** Whether the client's own layers set the label or the condition. */
         val stored: Boolean,
     )
@@ -61,13 +80,20 @@ object ClientMenuEdit {
         return effective.mapNotNull { item ->
             val id = item[HFLD.id].toOptStr() ?: return@mapNotNull null
             val shipped = base[id]
+            val baseCondition = shipped?.get(UIB.cfactExpression).toOptStr()
+            val condition = item[UIB.cfactExpression].toOptStr()
             MenuItem(
                 itemId = id,
                 parentId = item[UIB.parentId].toOptStr(),
+                added = shipped == null,
                 baseLabel = shipped?.get(HFLD.label).toOptStr(),
                 label = item[HFLD.label].toOptStr(),
-                baseCondition = shipped?.get(UIB.cfactExpression).toOptStr(),
-                condition = item[UIB.cfactExpression].toOptStr(),
+                baseCondition = baseCondition,
+                condition = condition,
+                // Asked of the shipped item, not of the absence of one: a null condition reads as `#always`.
+                baseAudience = shipped?.let { HomeMenuAudiences.of(baseCondition)?.name },
+                audience = HomeMenuAudiences.of(condition)?.name,
+                audiences = if (shipped == null) emptyList() else HomeMenuAudiences.choicesFor(baseCondition),
                 stored = stored[id]?.let { it.containsKey(HFLD.label) || it.containsKey(UIB.cfactExpression) } ?: false,
             )
         }
@@ -78,6 +104,8 @@ object ClientMenuEdit {
         val configName: String,
         val label: String?,
         val condition: String?,
+        /** What [condition]'s audience is called, as [MenuItem.audience]. */
+        val audience: String?,
         val stored: Boolean,
         val issues: List<GedraConfigIssue>,
         /** How the save took effect, an [EDM] value (issue #930): live, or a draft its sandbox runs. */
@@ -86,10 +114,11 @@ object ClientMenuEdit {
 
     /**
      * Changes [itemId] for [client] -- [label] renames it, [visibility] hides or shows it (with [condition], for a
-     * show, one the shipped menu draws for) -- and makes that take effect, live or as a draft. At least one of the two
-     * must be asked for.
+     * show, one of the audiences the item may be shown to) -- and makes that take effect, live or as a draft. At least
+     * one of the two must be asked for.
      */
     fun set(cxt: KdrCxt, client: String, itemId: String, label: String?, visibility: String?, condition: String?): Result {
+        val shipped = requireShippedItem(cxt, itemId)
         val fields = LinkedHashMap<String, Any?>()
         if (label != null) {
             if (label.isBlank()) throw KdrException.mkInput("A menu item's label cannot be blank.")
@@ -101,10 +130,12 @@ object ClientMenuEdit {
             MNU.show -> {
                 val chosen = condition?.trim()?.ifEmpty { null }
                     ?: throw KdrException.mkInput("Showing an item needs the '${MNU.condition}' it is shown under.")
-                if (chosen != CFACT.alwaysName && chosen !in shippedConditions(cxt)) {
+                // What the listing offered for this item, and nothing else: the two read one function.
+                val choices = HomeMenuAudiences.choicesFor(shipped[UIB.cfactExpression].toOptStr())
+                if (choices.none { it.condition == chosen }) {
                     throw KdrException.mkInput(
-                        "'$chosen' is not a condition the shipped menu draws for. A client may show an item to an " +
-                            "audience the menu already knows: ${(shippedConditions(cxt) + CFACT.alwaysName).joinToString(", ")}.",
+                        "'$chosen' is not an audience the menu item '$itemId' may be shown to. It may be shown to: " +
+                            "${choices.joinToString("; ") { "${it.name} (${it.condition})" }}.",
                     )
                 }
                 fields[UIB.cfactExpression] = chosen
@@ -112,7 +143,6 @@ object ClientMenuEdit {
             else -> throw KdrException.mkInput("'${MNU.visibility}' is '${MNU.hide}' or '${MNU.show}', not '$visibility'.")
         }
         if (fields.isEmpty()) throw KdrException.mkInput("A menu edit renames the item, hides it, or shows it; this one does none.")
-        requireShippedItem(cxt, itemId)
         if (visibility == MNU.hide) requireNoChildren(cxt, itemId)
 
         // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
@@ -153,11 +183,6 @@ object ClientMenuEdit {
         return goLive(cxt, target, written, itemId, undo = { patchItem(svc, bound, written, itemId, before, replace = true) })
     }
 
-    /** The conditions the shipped home menu draws for -- the audiences a client may show an item to. */
-    fun shippedConditions(cxt: KdrCxt): List<String> =
-        menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, null).content)
-            .mapNotNull { it[UIB.cfactExpression].toOptStr() }.filter { it != CFACT.neverName }.distinct()
-
     private fun menuItems(content: Map<String, Any?>): List<Map<String, Any?>> = content[HFLD.menu].toJsonListOfMaps()
 
     /**
@@ -175,11 +200,13 @@ object ClientMenuEdit {
         )
     }
 
-    /** Refuses an item the shipped menu does not have: an overlay of it would add an item, which this editor does not do. */
-    private fun requireShippedItem(cxt: KdrCxt, itemId: String) {
-        val known = menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, null).content).any { it[HFLD.id].toOptStr() == itemId }
-        if (!known) throw KdrException("The home menu has no item '$itemId'.", code = EXC.notFound)
-    }
+    /**
+     * [itemId] as the shipped menu holds it. Refuses an item the shipped menu does not have: an overlay of it would
+     * add an item, which this editor does not do.
+     */
+    private fun requireShippedItem(cxt: KdrCxt, itemId: String): Map<String, Any?> =
+        menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, null).content).firstOrNull { it[HFLD.id].toOptStr() == itemId }
+            ?: throw KdrException("The home menu has no item '$itemId'.", code = EXC.notFound)
 
     /**
      * The client's stored menu items by id, folded over the stored configs **this node runs** for the client -- the
@@ -254,10 +281,12 @@ object ClientMenuEdit {
     private fun goLive(cxt: KdrCxt, target: ClientStoredEdit.EditTarget, written: GedraConfigRow, itemId: String, undo: () -> Unit): Result {
         val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo)
         val item = menuItems(UiBlockService.get(cxt).merged(cxt, HMENU.block, target.readsAs).content).firstOrNull { it[HFLD.id].toOptStr() == itemId }
+        val condition = item?.get(UIB.cfactExpression).toOptStr()
         return Result(
             configName = written.configId.baseId,
             label = item?.get(HFLD.label).toOptStr(),
-            condition = item?.get(UIB.cfactExpression).toOptStr(),
+            condition = condition,
+            audience = HomeMenuAudiences.of(condition)?.name,
             stored = storedItem(written, itemId)?.let { it.containsKey(HFLD.label) || it.containsKey(UIB.cfactExpression) } ?: false,
             issues = reload.issues,
             mode = target.mode,

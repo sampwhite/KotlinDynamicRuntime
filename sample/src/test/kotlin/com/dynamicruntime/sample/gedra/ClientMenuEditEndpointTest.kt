@@ -110,19 +110,65 @@ class ClientMenuEditEndpointTest : StringSpec({
             EXC.badInput, MNU.setPath,
             data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.workflows, MNU.visibility to MNU.show, MNU.condition to "isChief"),
         )
-        refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "not a condition the shipped menu draws for"
+        // The refusal says what the item may be shown to, each by its name.
+        refused[EP.errorMessage].toOptStr().orEmpty().let {
+            it shouldContain "not an audience the menu item '${HMENU.workflows}' may be shown to"
+            it shouldContain "Everyone signed in (${CFACTS.loggedIn},${CFACTS.app})"
+        }
         servedMenu(globexUser).keys shouldNotContain HMENU.workflows
 
-        edit(SC.globex, HMENU.workflows, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.loggedIn},${CFACTS.app}")[MNU.condition] shouldBe "${CFACTS.loggedIn},${CFACTS.app}"
+        val shown = edit(SC.globex, HMENU.workflows, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.loggedIn},${CFACTS.app}")
+        shown[MNU.condition] shouldBe "${CFACTS.loggedIn},${CFACTS.app}"
+        shown[MNU.audience] shouldBe "Everyone signed in"
         servedMenu(globexUser).keys shouldContain HMENU.workflows
         // A show needs its condition; an edit that asks for nothing is refused too.
         admin.expectError(EXC.badInput, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.docs, MNU.visibility to MNU.show))
         admin.expectError(EXC.badInput, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.docs))
         admin.expectError(EXC.notFound, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to "noSuchItem", MNU.label to "x"))
+        // The item is the subject: one the menu does not have is said first, whatever else is wrong with the edit.
+        admin.expectError(EXC.notFound, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to "noSuchItem"))
+        admin.expectError(EXC.notFound, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to "noSuchItem", MNU.visibility to MNU.show))
         // A group cannot be hidden: the app bar would take every child with it, Log out included.
         val group = admin.expectError(EXC.badInput, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.account, MNU.visibility to MNU.hide))
         group[EP.errorMessage].toOptStr().orEmpty() shouldContain HMENU.logout
         servedMenu(globexUser).keys shouldContain HMENU.logout
+    }
+
+    // Who an item is shown to is chosen by name (issue #1094): the listing names each condition's audience and says
+    // which audiences the item may be shown to, and a show accepts exactly those.
+    "the listing names each audience and what an item may be shown to; a show accepts those and no other" {
+        fun conditionsOffered(item: Map<String, Any?>) = item[MNU.audiences].toJsonListOfMaps().map { it[MNU.condition] }
+        val listed = items(SC.globex)
+        val docs = listed.getValue(HMENU.docs)
+        docs[MNU.baseAudience] shouldBe "Everyone"
+        docs[MNU.audience] shouldBe "Everyone"
+        // Each choice is a condition and its name, the condition being what a show sends.
+        docs[MNU.audiences].toJsonListOfMaps().first() shouldBe mapOf(MNU.condition to CFACTS.app, MNU.name to "Everyone")
+        // The deployment's own audiences are not handed to an item that did not ship with one...
+        conditionsOffered(docs) shouldNotContain CFACTS.isDeploymentOperator
+        conditionsOffered(docs) shouldNotContain "${CFACTS.hasAdminLevel},${CFACTS.app}"
+        // ...while the item that did may go back to it, and its row names it.
+        val users = listed.getValue(HMENU.users)
+        users[MNU.baseAudience] shouldBe "Anyone at the administrator level"
+        conditionsOffered(users) shouldContain "${CFACTS.hasAdminLevel},${CFACTS.app}"
+        // A withdrawn item has no audience to name.
+        items(SC.acme).getValue(HMENU.cfactReference).let {
+            it.containsKey(MNU.audience) shouldBe false
+            it[MNU.baseAudience] shouldBe "Operators and administrators"
+        }
+
+        // The write holds to the same list: another item's audience is refused, the item's own is taken.
+        val foreign = admin.expectError(
+            EXC.badInput, MNU.setPath,
+            data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.docs, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.hasAdminLevel},${CFACTS.app}"),
+        )
+        foreign[EP.errorMessage].toOptStr().orEmpty() shouldContain "not an audience the menu item '${HMENU.docs}' may be shown to"
+        edit(SC.globex, HMENU.users, MNU.visibility to MNU.hide).containsKey(MNU.audience) shouldBe false
+        // Hidden, it is still offered the audience it shipped under: what it may go back to is the shipped item's.
+        conditionsOffered(items(SC.globex).getValue(HMENU.users)) shouldContain "${CFACTS.hasAdminLevel},${CFACTS.app}"
+        edit(SC.globex, HMENU.users, MNU.visibility to MNU.show, MNU.condition to "${CFACTS.hasAdminLevel},${CFACTS.app}")[MNU.audience] shouldBe
+            "Anyone at the administrator level"
+        admin.postData(MNU.resetPath, mapOf(COV.client to SC.globex, COV.itemId to HMENU.users))[MNU.audience] shouldBe "Anyone at the administrator level"
     }
 
     "a draft this node does not run is not a change the listing reports" {
@@ -162,5 +208,35 @@ class ClientMenuEditEndpointTest : StringSpec({
         servedMenu(acmeUser)[HMENU.profile] shouldBe "Me"
         scoped.expectError(EXC.notAuthorized, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to HMENU.profile, MNU.label to "Nope"))
         servedMenu(globexUser)[HMENU.profile] shouldBe "Profile"
+    }
+
+    // Last, since it reloads globex. An item a client adds has nothing shipped behind it (issue #1094): the listing
+    // must not read "no shipped item" as "shipped with no condition", which is everyone.
+    "an item the client added is listed as its own, with no shipped audience and nothing it may be shown to" {
+        val extra = "siteNews"
+        admin.postData(
+            ACEP.bundleWrite,
+            mapOf(CFEP.client to SC.globex, CFEP.name to "menuExtra", CFEP.namespaceField to clientNamespace(SC.globex),
+                CFEP.slots to mapOf(CCT.uiBlockDef to listOf(mapOf(CCT.blockId to HMENU.block, CCT.content to mapOf(HFLD.menu to listOf(mapOf(HFLD.id to extra, HFLD.label to "Site news"))))))),
+        )
+        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to SC.globex, CFEP.name to "menuExtra"))[CFEP.published] shouldBe true
+        admin.postData(ACEP.reload, mapOf(CFEP.client to SC.globex))
+        servedMenu(globexUser)[extra] shouldBe "Site news"
+
+        val listed = items(SC.globex)
+        val added = listed.getValue(extra)
+        added[COV.added] shouldBe true
+        added.containsKey(COV.baseLabel) shouldBe false
+        added.containsKey(MNU.baseAudience) shouldBe false
+        added[MNU.audiences].toJsonListOfMaps() shouldBe emptyList()
+        // Its own condition is still named: written with none, it is drawn for everyone.
+        added[MNU.audience] shouldBe "Everyone, edge nodes included"
+        // Nothing offered, because nothing would be taken: the write changes shipped items only.
+        admin.expectError(EXC.notFound, MNU.setPath, data = mapOf(COV.client to SC.globex, COV.itemId to extra, MNU.label to "News"))
+        // A shipped item with no condition did ship for everyone, and says so.
+        listed.getValue(HMENU.catalog).let {
+            it[COV.added] shouldBe false
+            it[MNU.baseAudience] shouldBe "Everyone, edge nodes included"
+        }
     }
 })

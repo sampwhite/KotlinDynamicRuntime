@@ -97,6 +97,12 @@ object CFACT {
     const val alwaysName = "#always"
 
     /**
+     * [expression] as written out: an omitted one is [alwaysName], which is what omitting it means. For code that
+     * compares or names conditions, so that "no condition" and `#always` are one condition wherever they are read.
+     */
+    fun orAlways(expression: String?): String = expression ?: alwaysName
+
+    /**
      * Matches everything. Written [alwaysName], or by omitting the expression entirely.
      *
      * Spelled explicitly as well as omittable because that is how an overlay **re-enables** something a layer

@@ -603,16 +603,35 @@ class ClientsPageTest {
 
     // --- editing the menu (issue #919) ---------------------------------------------------------------------
 
-    private fun menuRow(id: String, base: String?, label: String?, baseCond: String?, cond: String?, stored: Boolean = false, parent: String? = null) =
-        mapOf(COV.itemId to id, MNU.parentId to parent, COV.baseLabel to base, MNU.label to label, MNU.baseCondition to baseCond, MNU.condition to cond, CPY.stored to stored)
+    private fun menuRow(
+        id: String, base: String?, label: String?, baseCond: String?, cond: String?, stored: Boolean = false, parent: String? = null,
+        baseAudience: String? = null, audience: String? = null, audiences: List<Pair<String, String>> = emptyList(),
+    ) = mapOf(
+        COV.itemId to id, MNU.parentId to parent, COV.baseLabel to base, MNU.label to label, MNU.baseCondition to baseCond,
+        MNU.condition to cond, CPY.stored to stored, MNU.baseAudience to baseAudience, MNU.audience to audience,
+        MNU.audiences to audiences.map { (condition, name) -> mapOf(MNU.condition to condition, MNU.name to name) },
+    )
+
+    private val everyone = "kdr:app" to "Everyone"
+    private val signedIn = "kdr:loggedIn,kdr:app" to "Everyone signed in"
 
     private fun sampleMenu() = parseMenuItems(
         listOf(
-            menuRow("account", "Account", "Account", "kdr:app", "kdr:app"),
-            menuRow("profile", "Profile", "My account", "kdr:loggedIn,kdr:app", "kdr:loggedIn,kdr:app", stored = true, parent = "account"),
-            menuRow("catalog", "Endpoint catalog", "Endpoint catalog", null, null),
-            menuRow("docs", "Documents", "Documents", "kdr:app", "#never", stored = true),
-            menuRow("workflows", "Workflows", "Workflows", "#never", "kdr:loggedIn,kdr:app"),
+            menuRow("account", "Account", "Account", "kdr:app", "kdr:app", baseAudience = "Everyone", audience = "Everyone", audiences = listOf(everyone, signedIn)),
+            menuRow(
+                "profile", "Profile", "My account", "kdr:loggedIn,kdr:app", "kdr:loggedIn,kdr:app", stored = true, parent = "account",
+                baseAudience = "Everyone signed in", audience = "Everyone signed in", audiences = listOf(everyone, signedIn),
+            ),
+            // No condition at all: drawn for everyone on every node, which the backend names and offers to this item alone.
+            menuRow(
+                "catalog", "Endpoint catalog", "Endpoint catalog", null, null,
+                baseAudience = "Everyone, edge nodes included", audience = "Everyone, edge nodes included",
+                audiences = listOf(everyone, signedIn, "#always" to "Everyone, edge nodes included"),
+            ),
+            menuRow("docs", "Documents", "Documents", "kdr:app", "#never", stored = true, baseAudience = "Everyone", audiences = listOf(everyone, signedIn)),
+            menuRow("workflows", "Workflows", "Workflows", "#never", "kdr:loggedIn,kdr:app", audience = "Everyone signed in", audiences = listOf(everyone, signedIn)),
+            // A condition somebody wrote by hand in a source config: the backend has no name for it.
+            menuRow("users", "Users", "Users", "kdr:hasAdminLevel,kdr:app", "isChief", baseAudience = "Anyone at the administrator level", audiences = listOf(everyone)),
             mapOf(MNU.label to "no id"),
         ),
     )
@@ -620,18 +639,72 @@ class ClientsPageTest {
     @Test
     fun theMenuItemsParseAndSayHowEachIsOffered() {
         val items = sampleMenu()
-        assertEquals(listOf("account", "profile", "catalog", "docs", "workflows"), items.map { it.itemId })
+        assertEquals(listOf("account", "profile", "catalog", "docs", "workflows", "users"), items.map { it.itemId })
         assertEquals("account", items[1].parentId)
         assertEquals(true, items[1].stored)
-        assertEquals("kdr:app", menuVisibilityText(items[0]))
-        assertEquals("everyone", menuVisibilityText(items[2]))
-        assertEquals("hidden (shipped: kdr:app)", menuVisibilityText(items[3]))
-        assertEquals("kdr:loggedIn,kdr:app (shipped: hidden)", menuVisibilityText(items[4]))
-        assertEquals(listOf(false, false, false, true, false), items.map { menuItemHidden(it) })
-        // The audiences a client may show an item to: everyone, then each condition the shipped menu draws for, once.
-        assertEquals(listOf("#always", "kdr:app", "kdr:loggedIn,kdr:app"), menuAudiences(items))
+        // An audience reads by its name (issue #1094), never as the expression...
+        assertEquals("Everyone", menuVisibilityText(items[0]))
+        assertEquals("Everyone signed in", menuVisibilityText(items[1]))
+        assertEquals("Everyone, edge nodes included", menuVisibilityText(items[2]))
+        assertEquals("hidden (shipped: Everyone)", menuVisibilityText(items[3]))
+        assertEquals("Everyone signed in (shipped: hidden)", menuVisibilityText(items[4]))
+        // ...a condition with no name as "Custom"...
+        assertEquals("Custom (shipped: Anyone at the administrator level)", menuVisibilityText(items[5]))
+        // ...and the expression is the detail, for each.
+        assertEquals("kdr:app", menuVisibilityDetail(items[0]))
+        assertEquals("#always", menuVisibilityDetail(items[2]))
+        assertEquals("#never (shipped: kdr:app)", menuVisibilityDetail(items[3]))
+        assertEquals("isChief (shipped: kdr:hasAdminLevel,kdr:app)", menuVisibilityDetail(items[5]))
+        assertEquals(listOf(false, false, false, true, false, false), items.map { menuItemHidden(it) })
         // The groups: what some other item sits under; those get no Hide.
         assertEquals(setOf("account"), menuGroups(items))
+    }
+
+    @Test
+    fun aChangedConditionIsNotedEvenWhenTheNamesReadAlike() {
+        // Whether the client changed the audience is judged by the conditions: were two ever given one name, the
+        // note must still be there.
+        val item = parseMenuItems(listOf(menuRow("docs", "Documents", "Documents", "kdr:app", "kdr:other", baseAudience = "Everyone", audience = "Everyone"))).single()
+        assertEquals("Everyone (shipped: Everyone)", menuVisibilityText(item))
+        // No condition and `#always` are one condition, so that is no change.
+        val same = parseMenuItems(listOf(menuRow("catalog", "Catalog", "Catalog", null, "#always", baseAudience = "All", audience = "All"))).single()
+        assertEquals("All", menuVisibilityText(same))
+        assertEquals("#always", menuVisibilityDetail(same))
+    }
+
+    @Test
+    fun anItemTheClientAddedHasNoShippedStateToNote() {
+        // Nothing shipped under this id (issue #1094): its own audience is all there is to say, and there is nothing
+        // to mark "as shipped" -- where a shipped item with no condition shipped for everyone.
+        val added = parseMenuItems(listOf(menuRow("siteAudits", null, "Site audits", null, "kdr:app", audience = "Everyone") + (COV.added to true))).single()
+        assertEquals(true, added.added)
+        assertEquals("Everyone", menuVisibilityText(added))
+        assertEquals("kdr:app", menuVisibilityDetail(added))
+        assertEquals(emptyList(), menuShowChoices(added))
+        val shipped = parseMenuItems(listOf(menuRow("docs", "Documents", "Documents", null, "kdr:app", baseAudience = "All", audience = "Everyone"))).single()
+        assertEquals(false, shipped.added)
+        assertEquals("Everyone (shipped: All)", menuVisibilityText(shipped))
+    }
+
+    @Test
+    fun theShowChoicesAreTheBackendsByNameWithTheShippedOneMarked() {
+        val items = sampleMenu().associateBy { it.itemId }
+        // Exactly what the backend listed for the item, each by its name, sending its condition.
+        assertEquals(
+            listOf("Everyone (as shipped)" to "kdr:app", "Everyone signed in" to "kdr:loggedIn,kdr:app"),
+            menuShowChoices(items.getValue("docs")),
+        )
+        // An item with no condition shipped under `#always`, which is marked as its own.
+        assertEquals(
+            listOf("Everyone", "Everyone signed in", "Everyone, edge nodes included (as shipped)"),
+            menuShowChoices(items.getValue("catalog")).map { it.first },
+        )
+        // An item shipped withdrawn has no shipped audience to mark; one whose shipped audience is not listed, none either.
+        assertEquals(listOf("Everyone", "Everyone signed in"), menuShowChoices(items.getValue("workflows")).map { it.first })
+        assertEquals(listOf("Everyone"), menuShowChoices(items.getValue("users")).map { it.first })
+        // A choice the backend sent without a name or a condition is no choice.
+        val partial = parseMenuItems(listOf(mapOf(COV.itemId to "x", MNU.audiences to listOf(mapOf(MNU.condition to "kdr:app"), mapOf(MNU.name to "Nobody"))))).single()
+        assertEquals(emptyList(), menuShowChoices(partial))
     }
 
     @Test
@@ -646,6 +719,10 @@ class ClientsPageTest {
         assertEquals("copy" to "Me", result.configName to result.label)
         assertEquals("#never", result.condition)
         assertEquals(true, result.stored)
+        // A show's note names the audience (issue #1094), as the result gave it.
+        val shown = parseMenuEditResult(mapOf(COV.configName to "copy", MNU.condition to "kdr:loggedIn,kdr:app", MNU.audience to "Everyone signed in"))
+        assertEquals("workflows is now offered to: Everyone signed in.", menuShownNote("workflows", shown))
+        assertEquals("workflows is now offered to: Custom.", menuShownNote("workflows", result))
     }
 
     @Test
