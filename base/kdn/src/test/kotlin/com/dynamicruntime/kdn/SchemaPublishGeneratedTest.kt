@@ -8,11 +8,13 @@ import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModuleBuilder
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.gedraConfig
@@ -177,10 +179,11 @@ class SchemaPublishGeneratedTest : StringSpec({
     }
 
     "what a generator could get wrong is refused, and nothing is published" {
-        val before = schema.schemaStore
-        fun refused(surface: GeneratedSurface, client: String = surface.client): String =
-            shouldThrow<KdrException> { schema.publishGenerated(cxt, mapOf(client to surface)) }.message.orEmpty()
+        fun refused(surface: GeneratedSurface, client: String = surface.client): String {
+            val before = schema.schemaStore
+            return shouldThrow<KdrException> { schema.publishGenerated(cxt, mapOf(client to surface)) }.message.orEmpty()
                 .also { schema.schemaStore shouldBe before }
+        }
         val c = "pgenbad"
 
         // An output schema naming a type that is not there: a fault of the publication, not of a first request.
@@ -193,8 +196,27 @@ class SchemaPublishGeneratedTest : StringSpec({
         // A surface filed under a client it does not say it is for.
         refused(surface(c, 1), client = "pgenother") shouldContain "it says it is for '$c'"
         // The address of a declared endpoint, and of another client's generated one.
-        refused(GeneratedSurface(c, defs(c), listOf(endpoint(c, 1, path = "/${SECT.clientAdmin}/users")))) shouldContain "already published at"
-        refused(GeneratedSurface(c, defs(c), listOf(endpoint(c, 1, path = pathOf(plain))))) shouldContain "already published at '${pathOf(plain)}:GET'"
+        refused(GeneratedSurface(c, defs(c), listOf(endpoint(c, 1, path = "/${SECT.clientAdmin}/users")))) shouldContain
+            "already published at '/${SECT.clientAdmin}/users:GET' -- a declared one"
+        refused(GeneratedSurface(c, defs(c), listOf(endpoint(c, 1, path = pathOf(plain))))) shouldContain
+            "already published at '${pathOf(plain)}:GET', generated for another client"
+        // A keyword the boot judges, which nothing would judge here -- in a type, however deep, or on an endpoint.
+        fun gated(keyword: String) = defs(c) {
+            it["${namespaceOf(c)}.Gated"] = mapOf(
+                SCH.type to SCT.kObject,
+                SCH.properties to mapOf("inner" to mapOf(SCH.type to SCT.array, SCH.items to mapOf(SCH.type to SCT.string, keyword to "x"))),
+            )
+        }
+        for (keyword in listOf(SCH.visibleWhen, SCH.layout, SCH.errors, SCH.optionsSource)) {
+            refused(GeneratedSurface(c, gated(keyword), listOf(endpoint(c, 1)))) shouldContain "its type '${namespaceOf(c)}.Gated' carries '$keyword'"
+        }
+        val gatedOutput = endpoint(c, 1).let { e ->
+            KdrEndpoint(
+                e.path, e.method, e.kind, e.namespace, e.description, null, null, false,
+                e.outputSchema + (SCH.visibleWhen to "kdr:app"), handler = e.handler, client = c,
+            )
+        }
+        refused(GeneratedSurface(c, defs(c), listOf(gatedOutput))) shouldContain "its endpoint '${pathOf(c)}:GET' carries '${SCH.visibleWhen}'"
         // A type the schema already has, or another surface does.
         val shared = schema.schemaStore.defs.keys.first { it !in setOf(typeOf(plain), typeOf(varying), typeOf(bare)) }
         refused(GeneratedSurface(c, defs(c) { it[shared] = mapOf(SCH.type to SCT.kObject) }, listOf(endpoint(c, 1)))) shouldContain "already has a type named '$shared'"
@@ -208,6 +230,15 @@ class SchemaPublishGeneratedTest : StringSpec({
         }
         refused(GeneratedSurface(c, leaning, listOf(endpoint(c, 1)))) shouldContain "may refer only to each other"
 
+        // A property that is merely *named* like one of those keywords is a property: a report's column may be
+        // called anything.
+        val named = defs(c) {
+            it["${namespaceOf(c)}.Named"] = mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf(SCH.layout to mapOf(SCH.type to SCT.string)))
+        }
+        publish(c to GeneratedSurface(c, named, listOf(endpoint(c, 1))))
+        publish(c to null)
+        val before = schema.schemaStore
+
         // One bad surface among several refuses the lot.
         shouldThrow<KdrException> {
             schema.publishGenerated(cxt, mapOf(c to surface(c, 1), "pgenother" to GeneratedSurface("pgenother", defs("pgenother"), listOf(endpoint("pgenother", 1, boundTo = null)))))
@@ -216,6 +247,25 @@ class SchemaPublishGeneratedTest : StringSpec({
         admin.expectError(EXC.notFound, pathOf(c))
         // And what was published before is as it was.
         served(plain) shouldBe 70
+    }
+
+    // The other order: the generated endpoint is there first, and the client then starts to vary -- which mints it
+    // copies of the client-shaped endpoints, one of them at that address. Neither may replace the other silently.
+    "a client's copy minted later at a generated endpoint's address refuses that reload" {
+        val late = "pgenlate"
+        val copyPath = clientPath(GEP.formDocs, late)
+        publish(late to GeneratedSurface(late, defs(late), listOf(endpoint(late, 5, path = copyPath))))
+        admin.getData(copyPath)["n"] shouldBe 5
+        // Defining the client makes it vary, and its copy of the forms listing lands on the generated endpoint.
+        shouldThrow<KdrException> { define(late, alsoVaries = false) }.message.orEmpty() shouldContain "already published at '$copyPath:GET'"
+        // Refused whole: the generated endpoint still answers, and the other surfaces stand.
+        admin.getData(copyPath)["n"] shouldBe 5
+        served(plain) shouldBe 70
+        // With the surface gone the same reload goes through, and the address is the copy's.
+        publish(late to null)
+        GedraConfigReload.reloadClient(cxt, late)
+        schema.schemaStore.endpoints.getValue("$copyPath:GET").client shouldBe late
+        schema.schemaStore.endpoints.getValue("$copyPath:GET").namespace shouldBe schema.schemaStore.endpoints.getValue("${GEP.formDocs}:GET").namespace
     }
 
     "removing a surface takes its endpoints and types away and says which cached types went" {

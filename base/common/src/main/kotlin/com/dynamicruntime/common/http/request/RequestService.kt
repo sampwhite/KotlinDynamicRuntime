@@ -271,6 +271,11 @@ class RequestService : ServiceInitializer {
      * endpoint would tie the fact to whichever endpoint happened to be picked. A section with no rules is
      * served permissively, as it is for [canAccess].
      */
+    fun sectionAdmits(profile: UserProfile, section: String): Boolean {
+        val rules = sectionRulesMap[section] ?: return true
+        return rules.admits(profile.roles)
+    }
+
     /**
      * The sections of [endpoints] that have **no access rules**, sorted -- which would be served to anyone. The one
      * statement of that, for the boot's check of every declared endpoint and for the admission of generated ones
@@ -279,11 +284,6 @@ class RequestService : ServiceInitializer {
      */
     fun unruledSections(endpoints: Collection<KdrEndpoint>): List<String> =
         endpoints.map { sectionOf(it.path) }.distinct().sorted().filter { it !in sectionRulesMap }
-
-    fun sectionAdmits(profile: UserProfile, section: String): Boolean {
-        val rules = sectionRulesMap[section] ?: return true
-        return rules.admits(profile.roles)
-    }
 
     /**
      * The browser bootstrap config: the live context roots keyed by focus (`{"contextRoots":{"api":"kda",

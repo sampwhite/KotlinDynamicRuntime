@@ -73,6 +73,7 @@ import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchMetaSchema
+import com.dynamicruntime.common.schema.SchStdKeywords
 import com.dynamicruntime.common.schema.MSCH
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.SchOptionsProvider
@@ -153,7 +154,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * document with the shared endpoints, each varying client's variant as it was built, and which clients vary.
      * Kept apart from the published [snapshot] because that one carries the generated types and endpoints in every
      * store, and a rebuild that started from it would compound them -- a client's variant would be overlaid on a
-     * document already holding another client's generated types. Null until [checkInit]; replaced under [reloadLock].
+     * document already holding another client's generated types. Null until [checkInit]; replaced under [reloadLock],
+     * and volatile because a config trial reads it without the lock.
      */
     private class SchemaBase(
         val store: KdrSchemaStore,
@@ -161,6 +163,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         val varyingClients: Set<String>,
     )
 
+    @Volatile
     private var base: SchemaBase? = null
 
     /** A [GeneratedSurface] as [publishGenerated] admitted it: the endpoints this node serves of it, and its types parsed. */
@@ -934,6 +937,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * A client that varies nothing about *schema* gets the global store itself -- present rather than absent, since
      * a client with endpoints of its own is advertised them, and the same object, which is how the checks that walk
      * every store know not to judge the global document twice.
+     *
+     * Refuses a generated endpoint at a declared endpoint's address or a client copy's, whichever arrived second.
      */
     private fun assemble(
         cxt: KdrCxt,
@@ -941,11 +946,20 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         surfaces: Map<String, AdmittedSurface>,
         cfacts: CFactRegistries,
     ): SchemaSnapshot {
-        val copies = buildClientEndpoints(cxt, sharedEndpoints.values, from.varyingClients)
+        val declared = sharedEndpoints + buildClientEndpoints(cxt, sharedEndpoints.values, from.varyingClients).associateBy { it.collationKey }
         val generatedEndpoints = surfaces.values.flatMap { it.endpoints }
-        val allEndpoints = sharedEndpoints + (copies + generatedEndpoints).associateBy { it.collationKey }
-        val genTypes = surfaces.values.fold(emptyMap<String, SchType>()) { acc, s -> acc + s.types }
-        val genDefs = surfaces.values.fold(emptyMap<String, Any?>()) { acc, s -> acc + s.defs }
+        // Held here, where every set is put together, because either may come second: a surface published at a
+        // declared address, or a client that starts to vary and is minted a copy at a generated one. Neither may
+        // replace the other without a word.
+        generatedEndpoints.firstOrNull { it.collationKey in declared }?.let {
+            throw KdrException(
+                "The endpoint generated for client '${it.client}' cannot be published: an endpoint is already " +
+                    "published at '${it.collationKey}' -- a declared one, or a client's copy of one.",
+            )
+        }
+        val allEndpoints = declared + generatedEndpoints.associateBy { it.collationKey }
+        val genTypes = buildMap { surfaces.values.forEach { putAll(it.types) } }
+        val genDefs = buildMap { surfaces.values.forEach { putAll(it.defs) } }
         // With nothing generated a store keeps its own maps, so "this client shares the global document" stays
         // the identity it has always been.
         fun withGenerated(store: KdrSchemaStore) = KdrSchemaStore(
@@ -1038,6 +1052,12 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * - an endpoint whose **section has no access rules**. The boot's check has long since run and does not run
      *   again, and an unruled section is served to everybody;
      * - an endpoint at the address of a declared endpoint, a client's copy, or another client's generated one;
+     * - a type, an input field or an output schema carrying a keyword the boot **judges** -- `g-visibleWhen`,
+     *   `g-layout`, `g-errors`, `g-optionsSource`. Those checks run over the declared schema at boot and over a
+     *   client's variant at its reload; a generated type is in every store, so one carrying such a keyword would go
+     *   unjudged here and then refuse some client's later reload over a type that client never wrote. A generated
+     *   type is a contract for data, with nothing to present. Should a generator come to need one of them, the
+     *   answer is to run that keyword's check here, not to stop looking;
      * - a type named as a type already in the schema or in another client's surface, and a surface whose types are
      *   not **self-contained** -- one that refers outside itself would mean the global type in every store, a
      *   client's own altered copy never, and would break when another surface went;
@@ -1054,12 +1074,11 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         val current = snapshot
         val before = surfaces.keys.flatMap { generated[it]?.endpoints.orEmpty() }.map { it.collationKey }.toSet()
 
-        // The addresses that are not a generated surface's to take: the declared endpoints and the clients' copies.
-        val declared = current.store.endpoints.keys - generated.values.flatMap { it.endpoints }.map { it.collationKey }.toSet()
         var next = generated
         for ((client, surface) in surfaces) {
-            next = if (surface == null) next - client else next + (client to admit(cxt, from, declared, next - client, client, surface))
+            next = if (surface == null) next - client else next + (client to admit(cxt, from, next - client, client, surface))
         }
+        // Refuses a surface at a declared endpoint's address, or a client copy's.
         val candidate = assemble(cxt, from, next, current.cfactRegistries)
         for (client in surfaces.keys) {
             // In the store each will be served from: its client's variant, or the global one.
@@ -1072,13 +1091,12 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
     }
 
     /**
-     * [surface] checked against everything it must not disturb -- the [declared] endpoints' addresses, the schema's
-     * types, and the [others], the other clients' surfaces -- and parsed.
+     * [surface] checked for what is its own to get right, and against the schema's types and the [others] -- the
+     * other clients' surfaces -- and parsed. What it must not take from the declared endpoints is [assemble]'s to say.
      */
     private fun admit(
         cxt: KdrCxt,
         from: SchemaBase,
-        declared: Set<String>,
         others: Map<String, AdmittedSurface>,
         client: String,
         surface: GeneratedSurface,
@@ -1097,8 +1115,17 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         requests.unruledSections(endpoints).takeIf { it.isNotEmpty() }?.let { unruled ->
             refuse("the endpoint section(s) ${unruled.joinToString(", ") { "'$it'" }} have no access rules, so they would be served to anyone.")
         }
-        val taken = declared + others.values.flatMap { it.endpoints }.map { it.collationKey }
-        endpoints.firstOrNull { it.collationKey in taken }?.let { refuse("an endpoint is already published at '${it.collationKey}'.") }
+        val taken = others.values.flatMap { it.endpoints }.mapTo(HashSet()) { it.collationKey }
+        endpoints.firstOrNull { it.collationKey in taken }?.let {
+            refuse("an endpoint is already published at '${it.collationKey}', generated for another client.")
+        }
+        for ((name, body) in surface.defs) {
+            judgedKeywordIn(body)?.let { refuse("its type '$name' carries '$it', which nothing would judge.") }
+        }
+        for (endpoint in endpoints) {
+            val carried = endpoint.inputFields?.firstNotNullOfOrNull { judgedKeywordIn(it.schema) } ?: judgedKeywordIn(endpoint.outputSchema)
+            carried?.let { refuse("its endpoint '${endpoint.collationKey}' carries '$it', which nothing would judge.") }
+        }
         surface.defs.keys.firstOrNull { name ->
             name in from.store.defs || from.variants.values.any { name in it.defs } || others.values.any { name in it.defs }
         }?.let { refuse("the schema already has a type named '$it'.") }
@@ -1109,6 +1136,22 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             refuse("its types do not compile on their own -- a generated surface's types may refer only to each other. ${e.message}")
         }
         return AdmittedSurface(surface.defs, types, endpoints)
+    }
+
+    /**
+     * The first keyword the boot judges ([judgedKeywords]) that the schema [node] carries, at any depth, or null. A
+     * walk of **schema nodes**, by the keyword tables' own account of where they sit, so a property that happens to
+     * be named `g-layout` is a property and not a keyword.
+     */
+    private fun judgedKeywordIn(node: Any?, depth: Int = 0): String? {
+        if (depth > MSCH.maxDepth) throw KdrException("A generated schema nests deeper than ${MSCH.maxDepth} levels.")
+        val schema = node as? Map<*, *> ?: return null
+        judgedKeywords.firstOrNull { it in schema }?.let { return it }
+        for ((key, value) in schema) {
+            if (key !is String) continue
+            for ((_, child) in SchStdKeywords.nodesIn(key, value)) judgedKeywordIn(child, depth + 1)?.let { return it }
+        }
+        return null
     }
 
     /** Refuses [endpoint] when its input type or its output schema does not resolve against [types]. */
@@ -2152,3 +2195,10 @@ class SchemaTrial(val cfactNames: Set<String>, val droppedTypes: Set<String>, va
  * its types refer only to each other. Each of [endpoints] is bound to [client].
  */
 class GeneratedSurface(val client: String, val defs: Map<String, Any?>, val endpoints: List<KdrEndpoint>)
+
+/**
+ * The keywords the boot **judges** over the declared schema -- an expression that must parse, a layout that must name
+ * real fields, a message template that must render, a choice source that must be registered -- and that a generated
+ * type may therefore not carry (issue #1087): nothing would judge it where it is published.
+ */
+private val judgedKeywords = listOf(SCH.visibleWhen, SCH.layout, SCH.errors, SCH.optionsSource)
