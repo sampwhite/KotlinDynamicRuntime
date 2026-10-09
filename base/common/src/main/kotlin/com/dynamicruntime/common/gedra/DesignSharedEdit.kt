@@ -4,10 +4,12 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SL
 import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.collectDefClosure
+import com.dynamicruntime.common.schema.layoutSaysSomething
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.crc32Hex
@@ -122,9 +124,9 @@ object DesignSharedEdit {
         for (declared in WorkflowService.get(cxt).forClient(cxt.client).workflows.values) {
             for ((typeName, alteration) in declared.def.typeAlterations) {
                 if (typeName !in typeNames) continue
-                val fields = (alteration[SCH.layout] as? Map<*, *>)?.get(SL.schemaFields) as? List<*>
-                for (entry in fields.orEmpty()) {
-                    val field = (entry as? Map<*, *>)?.get(SL.field).toOptStr() ?: continue
+                // Only an entry carrying copy: a field a workflow's list merely names keeps the shared copy (issue #1071).
+                for (entry in copyOverrideEntries(alteration)) {
+                    val field = entry[SL.field].toOptStr() ?: continue
                     out.getOrPut(field) { mutableListOf() }.add(declared.def.workflowId)
                 }
             }
@@ -166,6 +168,37 @@ object DesignSharedEdit {
         basedOn: String,
         acknowledgeImpact: Boolean = false,
     ): String {
+        val target = sharedTarget(cxt, typeName)
+        // Judged against the entry as drawn; were it to change before the lock, the stamp check refuses the save.
+        val removes = options != null && removedChoices(target.storedBody(cxt), field, options).isNotEmpty()
+        val impact = when {
+            !removes -> ImpactGate.unchecked
+            acknowledgeImpact -> ImpactGate.acknowledged
+            else -> ImpactGate.refuse
+        }
+        return saveShared(cxt, target, basedOn, impact) { withSharedField(it, field, entry, options) }
+    }
+
+    /**
+     * Sets [typeName]'s **heading** -- its own `g-layout` label -- to [label] in the definition the client declares, or
+     * removes it when [label] is null or blank, for every workflow on the client (issue #1070). Refused as
+     * [setSharedField] is; a heading changes no data, so no stored form is checked. Returns the new stamp.
+     */
+    fun setSharedHeading(cxt: KdrCxt, typeName: String, label: String?, basedOn: String): String =
+        saveShared(cxt, sharedTarget(cxt, typeName), basedOn, ImpactGate.unchecked) { withSharedHeading(it, label) }
+
+    /** Where a shared edit of a type lands: the [config] declaring it, and its entry there by [slot] and [key]. */
+    private class SharedTarget(val config: GedraConfig, val slot: String, val key: String) {
+        /** The type's authored body as stored -- in a sandbox's parent, where its rows are (issue #930). */
+        fun storedBody(cxt: KdrCxt): Map<String, Any?> =
+            storedEntry(SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt, config, slot, key)?.get(bodyField(slot)).toJsonMapOrEmpty()
+    }
+
+    /**
+     * The entry a shared edit of [typeName] changes, refused when this caller may not edit it here ([refusal]) or when
+     * [typeName] is a trait's entry type, whose data fields are on its data type.
+     */
+    private fun sharedTarget(cxt: KdrCxt, typeName: String): SharedTarget {
         val config = DesignView.typeLayers(cxt, cxt.client, typeName).declaredBy
         refusal(cxt, config)?.let { throw KdrException.mkInput(it.message) }
         config!!
@@ -173,17 +206,22 @@ object DesignSharedEdit {
         if (trait != null && trait.typeName == typeName) {
             throw KdrException.mkInput("'$typeName' is a trait's entry type; its data fields are on the trait's data type.")
         }
-        val slot = if (trait != null) CCT.traitDef else CCT.schemaDef
-        val key = trait?.traitId ?: typeName
-        val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
-        // Judged against the entry as drawn; were it to change before the lock, the stamp check refuses the save.
-        val removes = options != null &&
-            removedChoices(storedEntry(readCxt, config, slot, key)?.get(bodyField(slot)).toJsonMapOrEmpty(), field, options).isNotEmpty()
-        val impact = when {
-            !removes -> ImpactGate.unchecked
-            acknowledgeImpact -> ImpactGate.acknowledged
-            else -> ImpactGate.refuse
-        }
+        return SharedTarget(config, if (trait != null) CCT.traitDef else CCT.schemaDef, trait?.traitId ?: typeName)
+    }
+
+    /**
+     * Saves [target]'s type body as [rewrite] makes it, as every Design View save is made ([DesignView.saveEdit]),
+     * refused for an extension ([extensionRefusal]) and when the entry has changed since [basedOn] (409). Returns the
+     * new stamp.
+     */
+    private fun saveShared(
+        cxt: KdrCxt,
+        target: SharedTarget,
+        basedOn: String,
+        impact: ImpactGate,
+        rewrite: (Map<String, Any?>) -> Map<String, Any?>,
+    ): String {
+        val (config, slot, key) = Triple(target.config, target.slot, target.key)
         DesignView.saveEdit(cxt, config.name, impact) { slots ->
             val entries = slots[slot].orEmpty()
             val at = entries.indexOfFirst { it[keyField(slot)] == key }
@@ -197,11 +235,26 @@ object DesignSharedEdit {
                     code = EXC.conflict,
                 )
             }
-            val rewritten = withSharedField(body, field, entry, options)
-            slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewritten) else e })
+            slots + (slot to entries.mapIndexed { i, e -> if (i == at) e + (bodyField(slot) to rewrite(body)) else e })
         }
+        val readCxt = SandboxEdits.parentCxt(cxt, cxt.client) ?: cxt
         return storedEntry(readCxt, config, slot, key)?.let { stampOf(it) } ?: ""
     }
+}
+
+/**
+ * [body] -- a type's authored body -- with its layout heading set to [label], or removed when [label] is null or blank
+ * (issue #1070). A layout left saying nothing ([layoutSaysSomething]) is removed -- one holding only a heading and its
+ * `fragmentFileId`, say, which would no longer parse -- while one left with only its heading is a layout still, since a
+ * type with no field copy may have a heading. Pure.
+ */
+fun withSharedHeading(body: Map<String, Any?>, label: String?): Map<String, Any?> {
+    val text = label?.trim()?.takeIf { it.isNotEmpty() }
+    val layout = LinkedHashMap(body[SCH.layout].toJsonMapOrEmpty())
+    if (text == null) layout.remove(SL.label) else layout[SL.label] = text
+    val out = LinkedHashMap(body)
+    if (!layoutSaysSomething(layout)) out.remove(SCH.layout) else out[SCH.layout] = layout
+    return out
 }
 
 /**

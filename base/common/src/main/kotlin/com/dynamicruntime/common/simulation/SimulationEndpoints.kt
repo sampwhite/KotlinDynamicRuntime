@@ -47,11 +47,16 @@ fun provisionDesignDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
     Simulations.provisionConfig(cxt, designDemoConfig(cxt, client))
     val designer = Simulations.provisionUser(cxt, "designer@$client.example", client, ROLE.admin, name = "Dana Designer")
     val requester = Simulations.provisionUser(cxt, "requester@$client.example", client, ROLE.user, name = "Riley Requester")
+    // Approves a logistics plan (issue #1071): the label is the client's, and only its carrier sees the step as theirs.
+    // An administrator, since a reviewer reads forms other people own; the designer is one too, without the label.
+    val reviewer = Simulations.provisionUser(cxt, "reviewer@$client.example", client, ROLE.admin, name = "Remy Reviewer")
+    Simulations.setLabels(cxt, reviewer, listOf(DesignDemo.reviewerLabel))
     return SimulationReport(
         clients = listOf(client),
         users = listOf(
             Simulations.reported(designer, ROLE.admin, "the designer -- an administrator, who can turn on Design View"),
             Simulations.reported(requester, ROLE.user, "a requester -- the ordinary view of the same form"),
+            Simulations.reported(reviewer, ROLE.admin, "a reviewer -- an administrator carrying the 'reviewer' label, who approves a logistics plan"),
         ),
         startPage = "page=${HMENU.pageNewForm}",
         summary = "Client '$client' is ready. Sign in as the designer and turn on Design in the app bar.",

@@ -18,6 +18,7 @@ import com.dynamicruntime.sample.SampleComponent
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * Design View's shared wording (issue #1010): field copy pulled from a fragment file is named by the definition read
@@ -78,6 +79,35 @@ class SharedWordingTest : StringSpec({
         fun read(client: String) = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to ST.questionnaire, DSV.client to client))
         read(SC.acme)[DSV.sharedWordingRefusalCode] shouldBe DesignRefusal.publishedOnly.name
         read(SC.globex).containsKey(DSV.sharedWordingRefusalCode) shouldBe false
+    }
+
+    // Page-level copy (issue #1070): acme's creation workflow, declared in source, pulls its page title, its task's
+    // label and its save's from the acmeWf file, and the questionnaire's heading pulls questionnaire.heading.
+    "the definition read names the keys a workflow's labels pull, for a workflow declared in source" {
+        val read = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.workflowDef, DSV.key to SW.createForm, DSV.client to SC.acme))
+        val labels = read[DSV.pulledLabels].toJsonMapOrEmpty()
+        fun keyOf(slot: Any?) = slot.toJsonMapOrEmpty()[DSV.pulls].toJsonListOfMaps().single().let {
+            "${it[COV.fileId]}.${it[COV.namespaceField]}.${it[COV.key]}"
+        }
+        keyOf(labels[DSV.workflow]) shouldBe "${SF.acmeWf}.${SW.createForm}.label"
+        keyOf(labels[DSV.tasks].toJsonMapOrEmpty()[SW.identify]) shouldBe "${SF.acmeWf}.${SW.identify}.label"
+        keyOf(labels[DSV.saves].toJsonMapOrEmpty()[SW.identify].toJsonMapOrEmpty()[SW.create]) shouldBe "${SF.acmeWf}.${SW.identify}.save"
+        labels[DSV.workflow].toJsonMapOrEmpty()[DSV.mixed] shouldBe false
+        // acme has a sandbox, so its wording is changed from there -- said once for every pulled slot on the read.
+        read[DSV.sharedWordingRefusalCode] shouldBe DesignRefusal.publishedOnly.name
+        // The labels themselves are the workflow's, declared in source: not this client's to rewrite here.
+        admin.expectError(
+            400, DSV.labelEdit,
+            mapOf(DSV.workflowId to SW.createForm, DSV.label to "Start a form", DSV.basedOn to "any", DSV.client to SC.acme),
+        ).toString() shouldContain "declared in source"
+    }
+
+    "the definition read names the key a type's heading pulls" {
+        val read = admin.getItem(DSV.definition, mapOf(DSV.slot to CCT.traitDef, DSV.key to ST.questionnaire, DSV.client to SC.globex))
+        val heading = read[DSV.pulledHeadings].toJsonMapOrEmpty()[dataType].toJsonMapOrEmpty()[DSV.pulls].toJsonListOfMaps().single()
+        heading[COV.namespaceField] shouldBe "questionnaire"
+        heading[COV.key] shouldBe "heading"
+        heading[COV.value] shouldBe fragments.effectiveFragmentsFor(cxt, SF.formHelp, SC.globex)?.content?.get("questionnaire")?.get("heading")
     }
 
     "a pull is told from a pull mixed with other text, and a two-part key is read against the layout's file" {

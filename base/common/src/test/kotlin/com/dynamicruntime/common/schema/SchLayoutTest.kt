@@ -238,6 +238,21 @@ class SchLayoutTest : StringSpec({
         shouldThrow<KdrException> { parseSchLayout("Type 'X'", mapOf(SL.schemaFields to mapOf("topic" to mapOf<String, Any?>()))) }
     }
 
+    "a block with no field list may give the type a heading or form strings, and round-trips without a list (issue #1070)" {
+        val heading = parseSchLayout("Type 'X'", mapOf(SL.label to "Your trip"))
+        heading.label shouldBe "Your trip"
+        heading.fields shouldBe emptyList()
+        heading.toJsonMap() shouldBe mapOf(SL.label to "Your trip")
+        parseSchLayout("Type 'X'", heading.toJsonMap()).label shouldBe "Your trip"
+        parseSchLayout("Type 'X'", mapOf(SL.strings to mapOf(LAYSTR.formErrorHint to "Check it."))).strings.size shouldBe 1
+        // Saying nothing is still refused: a blank heading, empty strings, or a mode with no list to order.
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", mapOf(SL.label to " ")) }
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", mapOf(SL.strings to emptyMap<String, Any?>())) }
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", mapOf(SL.label to "Trip", SL.mode to SLM.reorder)) }
+        // The default mode, written out, says the same as none.
+        parseSchLayout("Type 'X'", mapOf(SL.label to "Trip", SL.mode to SLM.overlay)).label shouldBe "Trip"
+    }
+
     "collectLayouts keys only the types that declare a g-layout, and leaves the defs untouched" {
         val defs = mapOfDefs("acme.Q" to typeBody(withLayout = true), "acme.Plain" to typeBody(withLayout = false))
         val layouts = collectLayouts(defs)

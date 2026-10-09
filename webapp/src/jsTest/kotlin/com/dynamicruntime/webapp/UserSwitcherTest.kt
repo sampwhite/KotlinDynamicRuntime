@@ -3,6 +3,9 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.user.UserChoice
+import com.dynamicruntime.common.user.personaTag
+import com.dynamicruntime.common.user.personaTerm
+import com.dynamicruntime.common.user.userKeyLabel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -21,6 +24,21 @@ class UserSwitcherTest {
         assertEquals("acme / Member 2", batch.label())
         // A blank name is no name; a personaSuffix is shown only when there is one; the persona is capitalized.
         assertEquals("public / Member", UserChoice(9L, "public", "member", name = "  ").label())
+    }
+
+    // The listing's persona tag (issue #1097): the persona and suffix as one term, and none for a plain member.
+    @Test
+    fun aPersonaTagMarksEveryUserButAPlainMember() {
+        assertEquals(null, personaTag(PERSONA.member, ""))
+        assertEquals("Member B", personaTag(PERSONA.member, "B"))
+        assertEquals("Admin", personaTag(PERSONA.admin, ""))
+        assertEquals("Admin 2", personaTag(PERSONA.admin, "2"))
+        // An unknown persona is shown by its own name, capitalized, as PERSONA.label does.
+        assertEquals("Reviewer", personaTag("reviewer", ""))
+        // The full label, as a hover shows it: the client and the term, then the name when there is one.
+        assertEquals("acme / Admin 2 -- Ada Lovelace", userKeyLabel("acme", PERSONA.admin, "2", "Ada Lovelace"))
+        assertEquals("acme / Member", userKeyLabel("acme", PERSONA.member, "", null))
+        assertEquals("Member B", personaTerm(PERSONA.member, "B"))
     }
 
     @Test

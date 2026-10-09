@@ -62,12 +62,17 @@ sealed interface KeyedEdit {
  * none), [supplied] the edit's. A merge folds the supplied keys over what is stored -- keys, not a deep merge,
  * since a page owns the answers it shows and says nothing about the rest; a replace takes the supplied data
  * whole; a delete removes what is there.
+ *
+ * [owned], for a merge (issue #1071), are the keys the edit **speaks for**: a form that shows exactly those fields
+ * owns their answers, so one it does not supply was left empty and is cleared, while every other key stays as stored.
+ * Null -- the ordinary merge -- speaks only for the keys supplied.
  */
-fun GedraEditAction.applyTo(existing: Map<String, Any?>?, supplied: Map<String, Any?>): KeyedEdit = when (this) {
-    GedraEditAction.deleteOrNoOp -> if (existing == null) KeyedEdit.NoOp else KeyedEdit.Remove
-    GedraEditAction.addOrReplace -> KeyedEdit.Put(supplied)
-    GedraEditAction.addOrMerge -> KeyedEdit.Put(existing.orEmpty() + supplied)
-}
+fun GedraEditAction.applyTo(existing: Map<String, Any?>?, supplied: Map<String, Any?>, owned: Set<String>? = null): KeyedEdit =
+    when (this) {
+        GedraEditAction.deleteOrNoOp -> if (existing == null) KeyedEdit.NoOp else KeyedEdit.Remove
+        GedraEditAction.addOrReplace -> KeyedEdit.Put(supplied)
+        GedraEditAction.addOrMerge -> KeyedEdit.Put(existing.orEmpty() - owned.orEmpty() + supplied)
+    }
 
 /**
  * The fields of the key [pkFields] that an edit's [data] does not supply. The entry an edit names is its

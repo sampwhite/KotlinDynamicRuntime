@@ -382,13 +382,14 @@ clear an edge's Google gate is staff, and the gate is the whole of the decision.
   withheld — it is a capability rather than a rung, so the full-scope admin sections stay closed to an
   env-authed caller, which is the natural first thing to revisit rather than the last.
 
-## When a client's workflows reference its own content indirectly
+## When a client asks for more flexible workflow implementation options
 
-The point at which a client needs custom workflows that both **own copy** and **select among it by reference**
--- a workflow choosing which fragment to show by a key rather than inlining the text. That is what makes a
-client-owned fragment file and a declarative selector worth building; until then a client overlays existing
-component copy and that is enough. Design and full rationale live in the fragment design doc,
-`kdr-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
+The point at which a client defined in data wants workflows shaped beyond what shipped copy allows: copy of its own
+for its labels, layouts and pages, rather than rewording a component's -- and, further, workflows that **select
+among** that copy **by reference** (a workflow choosing which fragment to show by a key rather than inlining the
+text). The first makes a client-owned fragment file worth building, the second a declarative selector; until then a
+client overlays existing component copy and that is enough. Design and full rationale live in the fragment design
+doc, `kdr-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
 
 - **Client-defined template (fragment) files** *(from the "client-declared fragments" iteration in the design
   doc).* Let a client declare its own **base** fragment files -- new fileIds, not just overlays of
@@ -401,12 +402,26 @@ component copy and that is enough. Design and full rationale live in the fragmen
   *silently* for a client's own backend pulls, so it must land with this, not after. No cross-client
   references; reuse across clients is an in-source **clone-and-own** "include", never a live lookup.
 
+  *What #974 added (deferred here 2026-10-08).* Where it stands: a client's stored `fragmentDef` entry is always
+  read as an overlay. A new key in a shipped file is an orphan (refused at write). An overlay of a file **no
+  component ships** is accepted and its keys resolve when pulled, but by accident -- the fragment check reports the
+  file as declared-but-absent, its content is never checked (`checkFragments` builds a client row only over a
+  base), its audience defaults to frontend, and, read from the code but not run, the startup fragment check is strict
+  outside `prod`, so a non-prod node loading such a config at boot would likely refuse to start. The proposal: a
+  `fragmentDef` entry for a file no component declares **is that client's base** (`mergeFragmentLayers` already
+  admits a client-scoped base), declaring its audience -- backend the safer default for copy pulled by layouts and
+  workflow labels -- and checked like any base, so a malformed template is refused at write and dropped at load; an
+  entry for a shipped file stays an overlay under the orphan rule. Open, besides the file-id namespacing above: whether
+  `fragmentDef` says base-or-overlay explicitly or leaves it implied, and widening the copy editor's
+  `requireShippedKey` (#918) to "a key some base declares, shipped or the client's" -- which would also give Design
+  View's shared wording (#1010, #1070) copy of the client's own to edit.
+
 - **Structured descriptor content form** *(Phase 5 of #505).* A `{template, by, default}` alternative to a
   bare string in a content field -- a schema `String | descriptor` union that normalizes to the *same* resolved
   outcome as the string form. It buys two things the string form cannot: a **statically knowable pull-set**
   (`by` enumerates the choices, so they can be validated and preloaded, where a computed `${@t(chosenKey)}` is
   opaque), and a **declarative shape** friendlier to content authored or generated as data than embedded
-  `@t`/`?:` syntax -- which is exactly the indirect-reference case this trigger describes. Deferred because it
+  `@t`/`?:` syntax -- which is exactly the select-by-reference case this trigger describes. Deferred because it
   duplicates the proven string/`@t` form (Phases 1-4) and is **purely additive** -- widening a field to accept
   a second shape breaks no existing string content and needs no migration -- so it costs nothing to add when a
   consumer exists, and building it now would be a second way to do a solved thing. Ripples into `SchType`, the

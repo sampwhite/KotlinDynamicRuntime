@@ -482,10 +482,13 @@ class GedraFormsTest {
             GDF.client to "acme",
             GDF.createdAt to "2026-08-21T19:49:51.568Z",
             GDF.updatedAt to "2026-08-22T08:05:00.000Z",
-            GDF.owner to mapOf(DUF.name to "Ada", DUF.email to "ada@example.com"),
+            GDF.owner to mapOf(DUF.name to "Ada", DUF.email to "ada@example.com", DUF.persona to "admin", DUF.personaSuffix to "2"),
             GDF.entries to emptyList<Any?>(),
         )
         val info = summarizeForm(item, entriesUnion())
+        // Which of the person's users owns it (issue #1097).
+        assertEquals("admin", info.ownerPersona)
+        assertEquals("2", info.ownerPersonaSuffix)
         assertEquals("2026-08-22 08:05 UTC", info.updatedAt)
         assertEquals("Ada", info.ownerName)
         assertEquals("ada@example.com", info.ownerEmail)
@@ -496,6 +499,8 @@ class GedraFormsTest {
         assertNull(bare.updatedAt)
         assertNull(bare.ownerName)
         assertNull(bare.ownerEmail)
+        assertNull(bare.ownerPersona)
+        assertEquals("", bare.ownerPersonaSuffix)
     }
 
     /** The timestamp formatter trims to minute precision and labels the zone; a non-ISO value is left alone. */

@@ -1085,6 +1085,14 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 
 /* The User column's second line: the email under the name, quieter so the name leads. */
 .owner-email { display: block; font-size: 12px; color: var(--text-muted); }
+/* Which of the person's users owns the form (issue #1097): a quiet pill after the cell's first line, the look of the
+   form's own suggested-value chip, so it reads as a label about the user rather than part of their name. */
+.owner-persona {
+  display: inline-block; margin-left: 2px; vertical-align: 1px; white-space: nowrap;
+  font-size: .7rem; font-weight: 600; letter-spacing: .02em;
+  padding: 1px 6px; border-radius: 8px;
+  color: var(--text-dim); background: var(--surface-raised); border: 1px solid var(--border);
+}
 
 /* The just-saved form, flashed once on arrival back at the list from the edit page (issue #592): the row's
    cells fade from the accent tint to nothing, so the eye is drawn to it without leaving a persistent mark.

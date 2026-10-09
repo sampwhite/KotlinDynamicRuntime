@@ -1151,7 +1151,7 @@ class GedraDataService : ServiceInitializer {
             if (edit.action == GedraEditAction.deleteOrNoOp || data == null) {
                 edit
             } else {
-                GedraEdit(edit.action, edit.traitId, edit.entryId, prepForSaveData(cxt, kind, edit.traitId, data, cxt.client))
+                edit.withData(prepForSaveData(cxt, kind, edit.traitId, data, cxt.client))
             }
         }
         return GedraPatchTarget(target.gedraId, edits, target.underLock, target.overrideReason)
@@ -1420,7 +1420,7 @@ class GedraDataService : ServiceInitializer {
             )
         }
         val existingData = existing?.get(GE.data)?.toJsonMapOrEmpty()
-        val assembled = when (val result = edit.action.applyTo(existingData, supplied)) {
+        val assembled = when (val result = edit.action.applyTo(existingData, supplied, edit.owns)) {
             KeyedEdit.NoOp -> return false
             KeyedEdit.Remove -> {
                 // Deleting the entry would take a value the caller's gate hides with it (issue #830).

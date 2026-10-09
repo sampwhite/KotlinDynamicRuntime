@@ -827,6 +827,33 @@ each key editable beneath. Elsewhere a pull reads as its words too: the workflow
 read-only facts (`inheritedCopyText`), and the shared editor shows a pulled slot read-only rather than offer to
 overwrite the pull with literal text.
 
+**Page-level copy** (issue #1070, `LabelSection`, `HeadingSection`): the copy above a form's fields. The **labels a
+workflow owns** -- its own (the page title, also its name in listings and lock notices), each task's, each save's
+button -- are selected by the frames on the title, the task rail or panel label and the save button (`DesignTarget.Task`,
+`DesignTarget.Save`), and from the inspector's lists of tasks and saves, since a one-task form draws no task name and a
+save shows only while the form is filled in. They are edited in the workflow's definition **in place**
+(`/clientAdmin/design/label`, `labelEditBody`): the workflow owns them, so there is no shared level and no reset; the
+page title may be cleared to the generic one, a task's or save's may not. A **trait's heading** -- its data type's
+layout `label` -- has the two levels a field's copy has: the workflow's own, as its alteration of the type, with
+**Reset to shared** and the note when the shared heading has changed since (`/clientAdmin/design/heading`, the block's
+`DSV.headingEdits`), and the shared one behind **Edit the shared heading** (`/clientAdmin/design/sharedHeading`). A
+label or heading that pulls a fragment key is shared wording (`DSV.pulledLabels`, `DSV.pulledHeadings`), edited at the
+key in the same `SharedWordingSection` a field's copy uses -- whatever the workflow's origin, so a source-declared
+workflow's pulled labels (the sample's acme `createForm`) are editable there -- and never overwritten with literal text
+by the label or heading editor. What the inspector says the page shows is read from the view, never from the selection,
+which predates any save's re-read.
+
+**Which fields a form shows** (issue #1071, `FieldsShownSection`): a trait's inspector offers **Choose which fields this
+form shows**, off by default. Turning it on writes the fields shown now as the workflow's own `authoritative` list (its
+layout alteration of the type, `/clientAdmin/design/shownFields`, the block's `DSV.shownFields`), so nothing changes
+until a field is unchecked; a checklist of every field the type declares (`shownFieldRows`, filterable past eight)
+then picks them, saved together. A field the data may require is locked by the load check's own rule
+(`fieldsAListMustShow`), and one this form requires must stop being required first. Off goes back to the shared
+layout's fields and keeps any copy. Under the list, a field's copy edit keeps its place and **Reset to shared** leaves
+the field on the form (`withLayoutEntry`). The save follows the list: an edit save sends only the shown fields
+(`shownPayload`) and the backend merges them over the stored entry, refusing any other, so workflows filling different
+parts of one questionnaire keep each other's answers.
+
 - **The backend explains; the page does not work it out.** The switch is a `sessionStorage` flag that rides every
   request as `X-Kdr-View: design` (see `applyRequestHeaders`); the backend honors it only for a client
   administrator, adding a `design` block to the workflow view -- an address and origin for every type the page
@@ -846,6 +873,10 @@ overwrite the pull with literal text.
 - **Seeing it.** The `design-demo` simulation writes the `designdemo` client -- defined in data, so its definitions
   show as the client's own. Run it from the **Simulations** page (below), with a suffix for a fresh copy
   (`designdemouat`), and sign in as its designer in one click; or `kdr-probe --url http://localhost:7072 design-demo`.
+  Its third workflow, **Plan the logistics** (issue #1071), is a normal one whose form shows only the fields it
+  arranges, so it and the **Event request** survey each save their own part of one request; its last step is a
+  reviewer's approval. The report's **reviewer** is an administrator carrying the client's `reviewer` label; the
+  designer, without it, sees that step as someone else's ("A reviewer approves the plan").
 
 ## The Simulations page (issue #997)
 

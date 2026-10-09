@@ -170,6 +170,68 @@ object DSV {
 
     /** The field's choices as they should stand: every existing value kept (relabeled or not), new ones added. */
     const val options = "options"
+
+    // --- page-level copy (issue #1070) ---
+
+    /**
+     * Sets a label the workflow owns -- its own (the page title), a task's, or a save's -- in its stored definition,
+     * and reloads the client. Input: [workflowId], [taskId] for a task's or a save's, [saveId] for a save's, [label]
+     * (absent to clear the workflow's own, which a task's and a save's cannot be), and [basedOn]. Client-scoped admin.
+     */
+    const val labelEdit = "/${SECT.clientAdmin}/design/label"
+    const val labelEditType = "DesignLabelEdit"
+    const val taskId = "taskId"
+    const val saveId = "saveId"
+
+    /**
+     * Sets or clears a workflow's own **heading** for a type its pages draw -- the `label` of its layout alteration of
+     * the type -- and reloads the client. Input: [workflowId], [typeName], [label] (absent to go back to the shared
+     * heading) and [basedOn]. Client-scoped admin.
+     */
+    const val headingEdit = "/${SECT.clientAdmin}/design/heading"
+
+    /**
+     * Sets or clears a type's **shared** heading -- its own `g-layout` label -- in the definition the client declares,
+     * for every workflow. Input: [typeName], [label] (absent to remove it) and [sharedBasedOn]. Client-scoped admin.
+     */
+    const val sharedHeadingEdit = "/${SECT.clientAdmin}/design/sharedHeading"
+
+    /**
+     * In the block: the headings the workflow sets, by type name -- each with the workflow's [label], the [inherited]
+     * heading it replaces (absent when the shared layout has none), and whether that has [inheritedChanged] since.
+     */
+    const val headingEdits = "headingEdits"
+
+    /**
+     * In the definition read of a workflow: its labels that pull a fragment key, each as a [pulledCopy] slot is --
+     * `{ workflow: slot, tasks: { taskId: slot }, saves: { taskId: { saveId: slot } } }`, a label pulling nothing
+     * left out. What the inspector's shared wording edits for a label.
+     */
+    const val pulledLabels = "pulledLabels"
+    const val tasks = "tasks"
+    const val saves = "saves"
+
+    /**
+     * In the definition read of a trait or type: by type name, the heading of the client's layout when it pulls a
+     * fragment key, as a [pulledCopy] slot is.
+     */
+    const val pulledHeadings = "pulledHeadings"
+
+    // --- which fields a form shows (issue #1071) ---
+
+    /**
+     * In the block: by type name, the fields the workflow's own layout lists as its form's, in order -- for each type
+     * whose fields the workflow chooses (an `authoritative` alteration). A type it leaves to the shared layout is absent.
+     */
+    const val shownFields = "shownFields"
+
+    /**
+     * Sets the fields a workflow's form shows for a type -- its layout alteration made `authoritative`, listing [fields]
+     * in order -- or, with [fields] absent, removes its choice, so the form shows what the shared layout does. Input:
+     * [workflowId], [typeName], [fields] and [basedOn]. Its save then writes only the fields shown. Client-scoped admin.
+     */
+    const val shownFieldsEdit = "/${SECT.clientAdmin}/design/shownFields"
+    const val fields = "fields"
 }
 
 /**

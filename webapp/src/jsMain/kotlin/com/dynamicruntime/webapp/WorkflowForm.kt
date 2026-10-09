@@ -228,6 +228,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // The form's client when it is another client's (issue #714's surface client): Design View reads and
             // saves there, as the view and the save do.
             workflowId = wf.workflowId, client = props.client, afterEdit = { props.onDesignEdited?.invoke() },
+            isEdit = isEdit,
         )
     }
     // The inspector is fixed to the window's right edge; the page makes room for it rather than being covered.
@@ -310,7 +311,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         wholeChecked = wholeChecked + checks.keys
         if (checks.values.any { it.failures.isNotEmpty() }) return
 
-        val entries = workflowSaveEntries(checks.mapValues { it.value.payload ?: emptyMap() })
+        // An edit sends only the fields its form shows (issue #1071): where the layout lists them, the save writes those
+        // and refuses any other, so the hidden answers the page was seeded with stay home.
+        val entries = workflowSaveEntries(
+            checks.mapValues { (traitId, check) ->
+                val layout = task.traits.firstOrNull { it.traitId == traitId }?.let { wf.fieldLayouts[it.typeName] }
+                shownPayload(check.payload ?: emptyMap(), layout.takeIf { isEdit })
+            },
+        )
         // A create save may be for another user (issue #727) when an admin picked one; an edit ignores it.
         val forUserRef = if (isEdit) null else pickedUser?.primaryId
         val save = saveFor(task) ?: return
@@ -501,7 +509,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // A disabled display (issue #788) greys the whole step; nothing in it acts (see `isEditable`).
             className = ClassName(if (task.isDisabled) "wf-task wf-task-disabled" else "wf-task")
             if (showLabel && wf.showTaskList && task.label.isNotBlank()) {
-                Markdown { source = task.label; inlineUi = true }
+                designFramed(designSession, DesignTarget.Task(task), task.id) { Markdown { source = task.label; inlineUi = true } }
             }
             // A text display (issue #788) stands in for the task's whole rendering -- fields, saves, an approval's
             // button -- with its placeholders filled from the task's own data.
@@ -615,12 +623,15 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 }
                 div {
                     className = ClassName("row")
-                    Button {
-                        type = "primary"
-                        loading = savingTask == task.id
-                        disabled = !taskUnsaved(task, valuesByTrait, stored) || savingTask != null
-                        onClick = { onSave(task) }
-                        +save.label
+                    // Design View frames the button (issue #1070); its badge selects it even while the button is disabled.
+                    designFramed(designSession, DesignTarget.Save(task, save), save.id) {
+                        Button {
+                            type = "primary"
+                            loading = savingTask == task.id
+                            disabled = !taskUnsaved(task, valuesByTrait, stored) || savingTask != null
+                            onClick = { onSave(task) }
+                            +save.label
+                        }
                     }
                 }
             }
@@ -783,7 +794,9 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 className = ClassName("wf-layout")
                 div {
                     className = ClassName("wf-rail")
-                    wf.tasks.forEach { railItem(it, active = it.id == active) }
+                    // In Design View each entry is framed as its task (issue #1070): a click both opens the task and
+                    // selects it.
+                    wf.tasks.forEach { task -> designFramed(designSession, DesignTarget.Task(task), task.id) { railItem(task, active = task.id == active) } }
                 }
                 div {
                     className = ClassName("wf-panel")

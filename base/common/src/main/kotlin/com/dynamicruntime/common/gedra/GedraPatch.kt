@@ -21,7 +21,16 @@ class GedraEdit(
     val traitId: String,
     val entryId: String? = null,
     val data: Map<String, Any?>? = null,
+    /**
+     * For a merge, the fields it speaks for (issue #1071): one it does not supply is cleared, rather than left as
+     * stored -- a workflow form that shows exactly these fields. Null for the ordinary merge. Never read off a request:
+     * set by the workflow save, from the layout its pages draw.
+     */
+    val owns: Set<String>? = null,
 ) {
+    /** This edit carrying [data] instead -- every other part kept, so a step that prepares the data loses nothing. */
+    fun withData(data: Map<String, Any?>?): GedraEdit = GedraEdit(action, traitId, entryId, data, owns)
+
     companion object {
         /** Reads an edit off the validated request map. */
         fun extract(raw: Map<String, Any?>): GedraEdit {

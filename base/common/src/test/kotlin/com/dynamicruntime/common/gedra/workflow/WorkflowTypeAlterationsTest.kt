@@ -7,7 +7,9 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.parseSchemaTypes
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -107,4 +109,38 @@ class WorkflowTypeAlterationsTest : StringSpec({
         workflowSchemaStore(store, altered) shouldBeSameInstanceAs own
         workflowSchemaStore(clientStore(), altered) shouldNotBeSameInstanceAs own
     }
+
+    // --- the fields a workflow's form shows (issue #1071) ---
+
+    fun layoutOf(def: Map<String, Any?>): Map<*, *>? = ((def[WFD.types] as? Map<*, *>)?.get(typeName) as? Map<*, *>)?.get(SCH.layout) as? Map<*, *>
+
+    "choosing the fields writes an authoritative list, keeping the workflow's own copy for a field it still shows" {
+        val withCopy = withLayoutEntry(base, typeName, "title", mapOf(SL.label to "Name it"), inherited)
+        val chosen = withShownFields(withCopy, typeName, listOf("venue", "title"))
+        layoutOf(chosen)?.get(SL.mode) shouldBe SLM.authoritative
+        entries(chosen) shouldBe listOf(mapOf(SL.field to "venue"), mapOf(SL.label to "Name it", SL.field to "title"))
+        shownFieldsOf(chosen[WFD.types].toJsonMapOrEmpty()[typeName].toJsonMapOrEmpty()) shouldBe listOf("venue", "title")
+        // A field the list leaves out loses the workflow's entry, and its basis.
+        val narrowed = withShownFields(chosen, typeName, listOf("venue"))
+        entries(narrowed) shouldBe listOf(mapOf(SL.field to "venue"))
+        narrowed.containsKey(WFD.typeBasis) shouldBe false
+    }
+
+    "under the list, a copy edit keeps the field's place, and a reset leaves the field on the form" {
+        val chosen = withShownFields(base, typeName, listOf("title", "venue", "date"))
+        val edited = withLayoutEntry(chosen, typeName, "venue", mapOf(SL.label to "Where"), null)
+        entries(edited) shouldBe listOf(mapOf(SL.field to "title"), mapOf(SL.label to "Where", SL.field to "venue"), mapOf(SL.field to "date"))
+        val reset = withLayoutEntry(edited, typeName, "venue", null, null)
+        entries(reset) shouldBe listOf(mapOf(SL.field to "title"), mapOf(SL.field to "venue"), mapOf(SL.field to "date"))
+    }
+
+    "no longer choosing removes the mode and the bare names, and keeps entries carrying copy" {
+        val chosen = withShownFields(withLayoutEntry(base, typeName, "title", mapOf(SL.label to "Name it"), inherited), typeName, listOf("title", "venue"))
+        val off = withShownFields(chosen, typeName, null)
+        layoutOf(off)?.containsKey(SL.mode) shouldBe false
+        entries(off) shouldBe listOf(mapOf(SL.label to "Name it", SL.field to "title"))
+        // With no copy at all, nothing is left behind.
+        withShownFields(withShownFields(base, typeName, listOf("venue")), typeName, null) shouldBe base
+    }
 })
+

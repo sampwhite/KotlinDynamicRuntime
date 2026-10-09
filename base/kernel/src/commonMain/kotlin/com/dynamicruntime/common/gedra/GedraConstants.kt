@@ -309,42 +309,45 @@ object DUF {
     /** The user's numeric id: which user this is, where an email is a person who may have several (issue #1095). */
     const val userId = "userId"
 
-    /** The client the user belongs to. */
+    /** The client the user belongs to (issue #1095). */
     const val client = "client"
 
-    /** The user's persona -- what kind of user this is (issue #750). */
+    /** The user's persona (issue #1097): what kind of user this is, `PERSONA`'s value -- `member`, `admin`. */
     const val persona = "persona"
 
-    /** What tells this user from the person's others of the same client and persona; absent when there is none. */
+    /** What tells same-persona users of one address apart (issue #1097); present only when the user has one. */
     const val personaSuffix = "personaSuffix"
 }
 
 /**
  * The properties inside a document's user-information block ([DUF]) -- declared once, beside the field names,
  * so a block's shape lives in one place rather than re-listed at each site (issue #580). The [GDF.owner] block
- * composes it today, and the `updatedBy` block to come will too. The email is always present; the name only
- * when the account has one that is not its email, so it is optional. Both are computed, never sent -- the
- * caller marks the containing block `derived`, and that carries to these, so they are not repeated as such.
+ * composes it today, and the `updatedBy` block to come will too. The email and the persona are always present; the
+ * name only when the account has one that is not its email, and the personaSuffix only when the user has one, so
+ * those two are optional (issue #1097 added the persona pair, so a person's users can be told apart). All are
+ * computed, never sent -- the caller marks the containing block `derived`, and that carries to these, so they are
+ * not repeated as such.
  *
- * The property *type* defaults to string (see `property`), which is what both are; a caller composes this into
+ * The property *type* defaults to string (see `property`), which is what all of them are; a caller composes this into
  * a `kObject` property whose own presence is already gated (an ordinary caller gets no block at all).
  */
 fun SchTypeBuilder.userBlockProperties() {
     property(DUF.name, "The user's display name, when it is not the email.")
     property(DUF.email, "The user's email (their login id).", required = true)
+    property(DUF.persona, "The user's persona: what kind of user this is ('member', 'admin').", required = true)
+    property(DUF.personaSuffix, "What tells the user apart from the address's other users of the same persona, when it has one.")
 }
 
 /**
- * The properties of a block that says **which user** (issue #1095): [userBlockProperties], and what makes this one
- * of a person's users and no other -- the id, the client, the persona and its suffix. For [GDF.scopeUser], where
- * the point is to say which of a person's users a listing resolved an address to.
+ * The properties of a block that says **which user** (issue #1095): [userBlockProperties] -- which carry the persona
+ * and its suffix -- and the two things that with them make this one of a person's users and no other, the id and
+ * the client. For [GDF.scopeUser], where the point is to say which of a person's users a listing resolved an
+ * address to.
  */
 fun SchTypeBuilder.identifiedUserBlockProperties() {
     userBlockProperties()
     property(DUF.userId, "The user's numeric id.", required = true) { type = SCT.integer }
     property(DUF.client, "The client the user belongs to.", required = true)
-    property(DUF.persona, "The user's persona.", required = true)
-    property(DUF.personaSuffix, "What tells this user from the person's others of the same client and persona, when there is one.")
 }
 
 /** Field names for a patch's request and its answer (issue #337). Each name matches its value. */

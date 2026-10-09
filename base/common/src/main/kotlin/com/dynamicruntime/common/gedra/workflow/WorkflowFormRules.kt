@@ -5,6 +5,8 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SchFailure
+import com.dynamicruntime.common.schema.SchLayoutMode
+import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.formRequirementFailures
 import com.dynamicruntime.common.schema.refName
 import com.dynamicruntime.common.startup.SchemaService
@@ -49,6 +51,28 @@ object WorkflowFormRules {
         }
         return out
     }
+
+    /**
+     * By trait id, the fields [declared]'s form shows for each of [traitIds] whose data type's layout -- as the
+     * workflow's pages draw it, its own alterations merged in -- is **authoritative** (issue #1071): the fields it
+     * lists, the only ones its form shows and so the only ones its edit save writes. A trait whose layout does not
+     * choose its fields is absent. Each comes with the type, which the save needs to tell a derived field apart.
+     */
+    fun shownFields(cxt: KdrCxt, client: String, declared: WfDeclared, traitIds: Set<String>): Map<String, ShownFields> {
+        val schema = SchemaService.get(cxt)
+        val store = workflowSchemaStore(schema.storeFor(client), declared)
+        if (store.layouts.values.none { it.mode == SchLayoutMode.authoritative }) return emptyMap()
+        val traits = schema.gedraTraitsFor(client).associateBy { it.traitId }
+        return traitIds.mapNotNull { traitId ->
+            val typeName = traits[traitId]?.dataSchema?.get(SCH.dRef).toOptStr()?.let { refName(it) } ?: return@mapNotNull null
+            val layout = store.layouts[typeName]?.takeIf { it.mode == SchLayoutMode.authoritative } ?: return@mapNotNull null
+            val type = store.types[typeName] ?: return@mapNotNull null
+            traitId to ShownFields(layout.fieldNames.toSet(), type)
+        }.toMap()
+    }
+
+    /** The fields an authoritative layout shows for a trait ([shownFields]), with the trait's data [type]. */
+    class ShownFields(val fields: Set<String>, val type: SchType)
 
     /**
      * Refuses a save through [declared] whose [entries] miss the workflow's form requirements -- the save's half of

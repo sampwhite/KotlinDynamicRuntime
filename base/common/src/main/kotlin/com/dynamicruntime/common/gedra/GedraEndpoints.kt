@@ -1389,8 +1389,10 @@ private fun gedraSortFor(
 }
 
 /**
- * The owner block attached to a listed row (issue #580, flat keys in #562): a `{name?, email}` map under
- * [GDF.owner]. The email always, and a display name only when the account has one that is not the email --
+ * The owner block attached to a listed row (issue #580, flat keys in #562): a `{name?, email, persona,
+ * personaSuffix?}` map under [GDF.owner]. The persona always and the personaSuffix when the user has one (issue
+ * #1097), so a person's admin and member users -- or a batch's `Member A` and `Member B` -- can be told apart. The
+ * email always, and a display name only when the account has one that is not the email --
  * `name`, else a chosen username (the `UserProfile.displayName` rule). A provisioned account with neither would
  * otherwise repeat its address as its name, and the column's rule is "the email, or the name with the email
  * beneath": sending the name only when it adds something lets the frontend render exactly that without comparing
@@ -1400,26 +1402,27 @@ private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> =
     if (owner == null) emptyMap() else mapOf(GDF.owner to userBlockFields(owner))
 
 /**
- * The name and email of a user block ([DUF]): the email always, the name only when the account has one that is not
- * its email. The one statement of that rule, for every block that says who a user is -- the owner of a row, and
- * the user a listing is confined to.
+ * The fields of a user block ([DUF]): the email always, the name only when the account has one that is not its
+ * email, the persona, and its suffix when the user has one. The one statement of that, for every block that says
+ * who a user is -- the owner of a row, and the user a listing is confined to.
  */
 private fun userBlockFields(user: AuthUserRow): Map<String, Any?> {
     val email = user.primaryId
     val name = ownerSortName(user)
-    return if (name == email) mapOf(DUF.email to email) else mapOf(DUF.name to name, DUF.email to email)
+    val block = linkedMapOf<String, Any?>()
+    if (name != email) block[DUF.name] = name
+    block[DUF.email] = email
+    block[DUF.persona] = user.persona
+    if (user.personaSuffix.isNotEmpty()) block[DUF.personaSuffix] = user.personaSuffix
+    return block
 }
 
 /**
- * [user] as a listing's summary says who it is confined to ([GDF.scopeUser], issue #1095): the name and email the
- * owner block gives ([userBlockFields]), and what makes this one of the person's users and no other.
+ * [user] as a listing's summary says who it is confined to ([GDF.scopeUser], issue #1095): what the owner block
+ * gives ([userBlockFields]), and what makes this one of the person's users and no other.
  */
-private fun scopeUserBlock(user: AuthUserRow): Map<String, Any?> = userBlockFields(user) + buildMap {
-    put(DUF.userId, user.userId)
-    put(DUF.client, user.client)
-    put(DUF.persona, user.persona)
-    if (user.personaSuffix.isNotEmpty()) put(DUF.personaSuffix, user.personaSuffix)
-}
+private fun scopeUserBlock(user: AuthUserRow): Map<String, Any?> =
+    userBlockFields(user) + mapOf(DUF.userId to user.userId, DUF.client to user.client)
 
 /**
  * The global admin state surface (issue #600): read one gedra's state, and replace it wholesale. On `/admin/…`

@@ -4,7 +4,6 @@ import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.gedra.workflow.WCOL
-import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.gedra.DUF
 import com.dynamicruntime.common.gedra.GDF
@@ -18,6 +17,7 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraEditAction
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -129,6 +129,9 @@ class GedraSearchByUserTest : StringSpec({
         // email is present and the name is not, rather than the address twice.
         aliceOwner[DUF.email] shouldBe aliceEmail
         aliceOwner.containsKey(DUF.name) shouldBe false
+        // Which of Alice's users owns it (issue #1097): her ordinary member user, with no suffix to send.
+        aliceOwner[DUF.persona] shouldBe PERSONA.member
+        aliceOwner.containsKey(DUF.personaSuffix) shouldBe false
         val bobRows = bob.getItems(GEP.formDocs, mapOf(EI.includeUsers to true))
         bobRows.first { it[GDF.gedraId] == bobDocId }.containsKey(GDF.owner) shouldBe false
     }
@@ -198,7 +201,6 @@ class GedraSearchByUserTest : StringSpec({
         }
     }
 
-
     // Who a named user was resolved to (issue #1095). The request may name the user by id or by address, and an
     // address names a person: the listing is confined to *one* of their users, and until it said which, nothing did.
     "the listing says which user it is confined to, which an address alone does not" {
@@ -245,5 +247,16 @@ class GedraSearchByUserTest : StringSpec({
         val docOf = mapOf<Any?, String?>(carol.userId to carolDoc, carolB.userId to carolBDoc)
         docOf.containsKey(resolved) shouldBe true
         idsSeenBy(ada, mapOf(EI.user to carolEmail)) shouldBe listOf(docOf[resolved])
+    }
+
+    // Last, since it adds a form the cases above would otherwise list: a second user of Alice's address -- an
+    // admin, with a suffix -- owns a form of its own, and its owner block says which user it is (issue #1097).
+    "the owner block tells a person's users apart by persona and suffix" {
+        val aliceAdmin = TestUser.create(cxt, aliceEmail, level = ROLE.admin, userClient = CL.hub, persona = PERSONA.admin, personaSuffix = "B")
+        val adminDocId = aliceAdmin.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(nameEntry("Alice admin doc"))))[GDF.gedraId]
+        val adminOwner = ada.getItems(GEP.formDocs, mapOf(EI.includeUsers to true)).first { it[GDF.gedraId] == adminDocId }[GDF.owner].toJsonMapOrEmpty()
+        adminOwner[DUF.email] shouldBe aliceEmail
+        adminOwner[DUF.persona] shouldBe PERSONA.admin
+        adminOwner[DUF.personaSuffix] shouldBe "B"
     }
 })

@@ -193,7 +193,11 @@ only then is it decidable what to validate against:
 
 - `addOrReplace` — validate the payload as a complete entry against the trait.
 - `addOrMerge` — read the stored entry, merge, then **validate the result**, not the fragment. This is where
-  the trait's own `required` is enforced, and it is the only place it can be.
+  the trait's own `required` is enforced, and it is the only place it can be. A workflow's edit save uses it for a
+  form that shows only the fields its layout lists (`authoritative`, issue #1071), with those fields **owned**: one
+  the form does not send was left empty and is cleared, every other field is kept as stored, and a field outside the
+  list is refused. So workflows filling different parts of one questionnaire leave each other's answers alone. The
+  patch endpoint's own `addOrMerge` owns only the keys it supplies.
 - `deleteOrNoOp` — no data validation at all.
 
 All three are **hard** validation: schema-level, and a failure is a 400 that writes nothing. That is not the
