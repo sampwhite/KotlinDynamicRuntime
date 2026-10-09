@@ -197,8 +197,9 @@ class KdrEndpoint(
      */
     val cursorPaged: Boolean = false,
     /**
-     * Validates **every** response against [outputSchema], in every environment (issue #1085) -- where the
-     * `validateResponseSchema` config flag does it for all endpoints and is on only in tests. For an endpoint whose
+     * Validates **every JSON response** against [outputSchema], in every environment (issue #1085) -- where the
+     * `validateResponseSchema` config flag does it for all endpoints and is on only in tests. A file download is
+     * not one: it has no envelope to check, so on a download endpoint this does nothing. For an endpoint whose
      * output schema is itself the contract: one generated from data, where no test written beside the handler could
      * have checked the two against each other. A response that does not conform is the same 500 the flag gives,
      * naming the endpoint and the failures, so a caller is never handed what the catalog said it would not get.

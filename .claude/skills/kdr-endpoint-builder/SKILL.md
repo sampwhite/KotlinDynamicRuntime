@@ -181,7 +181,8 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   bound); it is resolved on demand by `resolveEndpointInputType` against the compiled types.
 - **Output validation.** A response is checked against `outputSchema` when the `validateResponseSchema` config
   flag is on -- which it is in tests (`mkTestBootCxt`) and nowhere else -- or, in every environment, when the
-  endpoint itself sets `validateOutput = true`. A mismatch is a 500 naming the endpoint and the failures. The
+  endpoint itself sets `validateOutput = true`. A mismatch is a 500 naming the endpoint and each failure's path
+  and message. Only a JSON envelope is checked; a file download has none. The
   opt-in is for an endpoint whose schema is generated from data and so *is* the contract; it is not a builder
   parameter, and is set only where a `KdrEndpoint` is constructed directly.
 - Protocol keys are constants in `object EP` (kernel): `EP.results`, `EP.item`, `EP.items`, `EP.limit`,

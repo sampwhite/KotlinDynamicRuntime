@@ -10,6 +10,7 @@ import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.buildClientEndpoints
@@ -25,9 +26,13 @@ import io.kotest.matchers.string.shouldContain
  */
 class ValidateOutputTest : StringSpec({
 
-    /** An output schema with something to get wrong: `results.count` is a whole number. */
+    /**
+     * An output schema with something to get wrong: `results.count` is a whole number. Open at the envelope, which
+     * a served response fills with protocol fields (the request's address, its duration) this test is not about.
+     */
     val output = mapOf(
         SCH.type to SCT.kObject,
+        SCH.additionalProperties to true,
         SCH.properties to mapOf(
             EP.results to mapOf(
                 SCH.type to SCT.kObject,
@@ -62,8 +67,9 @@ class ValidateOutputTest : StringSpec({
         for (flag in listOf(null, false)) {
             val refused = shouldThrow<KdrException> { check(cxtWith(flag), endpoint(validateOutput = true), bad) }
             // The 500 the flag gives: it names the endpoint and says what did not conform.
-            refused.message shouldContain "Response for '/user/thing:GET' failed output-schema validation"
-            refused.message shouldContain "count"
+            // Each failure as its path and the validator's message -- this reaches a real caller.
+            refused.message shouldBe "Response for '/user/thing:GET' failed output-schema validation: " +
+                "results.count: 'several' is not a valid integer."
             // And a response that conforms is let through.
             check(cxtWith(flag), endpoint(validateOutput = true), good)
         }
@@ -82,6 +88,31 @@ class ValidateOutputTest : StringSpec({
     "an endpoint with no output schema has nothing to be held to" {
         check(cxtWith(null), endpoint(validateOutput = true, outputSchema = emptyMap()), bad)
         check(cxtWith(true), endpoint(validateOutput = true, outputSchema = emptyMap()), bad)
+    }
+
+    // The cases above ask the check itself. This one asks what serves a request: that it reaches the check for an
+    // endpoint that asked, with the flag off, and that a refused response is never sent.
+    "serving a request holds the response to the schema before anything is sent" {
+        fun serve(validateOutput: Boolean, payload: Map<String, Any?>): RequestHandler {
+            val config = KdrInstanceConfig("validateOutputServe", ENV.unit, ENV.liveSource, null)
+            // What serving reads besides the endpoint: the schema it resolves input against, and the node, asked
+            // for on the way to the auth cookie this request never sets.
+            config.put(KdrSchemaStore.key, store)
+            config.put(NodeService.serviceName, NodeService())
+            val handler = RequestHandler(config, "GET", "/kda/user/thing", emptyMap(), mutableMapOf())
+            val served = KdrEndpoint(
+                path = "/user/thing", method = HttpMethod.GET, kind = EndpointKind.general, namespace = "t",
+                description = "d", inputFields = null, inputTypeRef = null, includeLimit = false,
+                outputSchema = output, handler = { _, _ -> payload }, validateOutput = validateOutput,
+            )
+            RequestService().executeEndpoint(KdrCxt("validateOutputServe", config), handler, served)
+            return handler
+        }
+        val refused = shouldThrow<KdrException> { serve(validateOutput = true, payload = mapOf("count" to "several")) }
+        refused.message shouldContain "'/user/thing:GET' failed output-schema validation: results.count:"
+        // A conforming response goes out, and so does a non-conforming one from an endpoint that did not ask.
+        serve(validateOutput = true, payload = mapOf("count" to 3)).rptResponseData.orEmpty() shouldContain "\"count\":3"
+        serve(validateOutput = false, payload = mapOf("count" to "several")).rptResponseData.orEmpty() shouldContain "several"
     }
 
     "a client's copy of an endpoint keeps the promise" {

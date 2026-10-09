@@ -349,9 +349,9 @@ class RequestService : ServiceInitializer {
         //
         // Nothing a component declares contributes endpoints after that: schema is collected from components,
         // before any service runs, and compiled by the startup tier. So reading it in the first pass sees the
-        // whole declared set. An endpoint **generated** after boot is not seen here, so whatever generates one
-        // must put it in a section already ruled -- as the typed report endpoints of issue #1083 are, under
-        // `clientAdmin` by construction.
+        // whole declared set. An endpoint **generated** after boot (issue #1083's typed report endpoints) is not
+        // seen here, and this check does not run again: what admits generated endpoints into the published schema
+        // must hold them to a ruled section itself, or one in a new section is served to everybody.
         val unruled = cxt.getGlobalSchema().endpoints.values
             .map { sectionOf(it.path) }.distinct().sorted()
             .filter { it !in sectionRulesMap }
@@ -672,7 +672,10 @@ class RequestService : ServiceInitializer {
         }
         val failures = validate(outputType, envelope)
         if (failures.isNotEmpty()) {
-            throw KdrException("Response for '${endpoint.collationKey}' failed output-schema validation: $failures.")
+            // Each failure as where and what, in the validator's own words: an endpoint that asks to be checked
+            // (issue #1085) sends this to a real caller, where a dump of the failure objects once reached only tests.
+            val named = failures.joinToString("; ") { "${it.path.ifEmpty { "(root)" }}: ${it.message}" }
+            throw KdrException("Response for '${endpoint.collationKey}' failed output-schema validation: $named")
         }
     }
 
