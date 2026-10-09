@@ -1396,27 +1396,29 @@ private fun gedraSortFor(
  * beneath": sending the name only when it adds something lets the frontend render exactly that without comparing
  * the two strings. Empty for no [owner], so the map addition is a no-op rather than an empty block.
  */
+private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> =
+    if (owner == null) emptyMap() else mapOf(GDF.owner to userBlockFields(owner))
+
 /**
- * [user] as a listing's summary says who it is confined to ([GDF.scopeUser], issue #1095): the name and email the
- * owner block gives, and what makes this one of the person's users and no other.
+ * The name and email of a user block ([DUF]): the email always, the name only when the account has one that is not
+ * its email. The one statement of that rule, for every block that says who a user is -- the owner of a row, and
+ * the user a listing is confined to.
  */
-private fun scopeUserBlock(user: AuthUserRow): Map<String, Any?> = buildMap {
+private fun userBlockFields(user: AuthUserRow): Map<String, Any?> {
     val email = user.primaryId
     val name = ownerSortName(user)
-    if (name != email) put(DUF.name, name)
-    put(DUF.email, email)
+    return if (name == email) mapOf(DUF.email to email) else mapOf(DUF.name to name, DUF.email to email)
+}
+
+/**
+ * [user] as a listing's summary says who it is confined to ([GDF.scopeUser], issue #1095): the name and email the
+ * owner block gives ([userBlockFields]), and what makes this one of the person's users and no other.
+ */
+private fun scopeUserBlock(user: AuthUserRow): Map<String, Any?> = userBlockFields(user) + buildMap {
     put(DUF.userId, user.userId)
     put(DUF.client, user.client)
     put(DUF.persona, user.persona)
     if (user.personaSuffix.isNotEmpty()) put(DUF.personaSuffix, user.personaSuffix)
-}
-
-private fun ownerFields(owner: AuthUserRow?): Map<String, Any?> {
-    if (owner == null) return emptyMap()
-    val email = owner.primaryId
-    val name = ownerSortName(owner)
-    val block = if (name == email) mapOf(DUF.email to email) else mapOf(DUF.name to name, DUF.email to email)
-    return mapOf(GDF.owner to block)
 }
 
 /**

@@ -481,10 +481,31 @@ fun parseScopeUser(summary: Any?): ScopeUser? {
  * `jsNodeTest`.
  */
 fun scopeUserLabel(user: ScopeUser, acrossClients: Boolean): String {
-    val who = if (user.name == null || user.name == user.email) user.email else "${user.name} — ${user.email}"
-    val kind = listOfNotNull(user.client.takeIf { acrossClients && it.isNotEmpty() }, personaCell(user.persona, user.personaSuffix))
-    return "User ${user.userId}: $who [${kind.joinToString(" · ")}]"
+    // The name is sent only when it is not the email, so its presence is the whole test.
+    val who = if (user.name == null) user.email else "${user.name} — ${user.email}"
+    // A part the block did not say is left out rather than drawn empty -- and the bracket with it, if that was all.
+    val kind = listOfNotNull(
+        user.client.takeIf { acrossClients && it.isNotEmpty() },
+        personaCell(user.persona, user.personaSuffix).takeIf { user.persona.isNotEmpty() },
+    )
+    return "User ${user.userId}: $who" + if (kind.isEmpty()) "" else " [${kind.joinToString(" · ")}]"
 }
+
+/**
+ * The user a listing said it is confined to, **with the scope it was asked about** (issue #1095): [askedFor] is the
+ * `user` the request carried, null for a request that named none. Kept together because the page records a newly
+ * applied scope before the listing answers, and a listing that refuses it never answers at all -- so the last
+ * answer on hand may be about a scope that is no longer the one applied.
+ */
+class ScopeAnswer(val askedFor: String?, val user: ScopeUser?)
+
+/**
+ * The user to name under the scope bar: [answer]'s, when it is about the scope now [applied] -- else nobody. So a
+ * scope the listing refused, or has not yet answered, is never named with the previous scope's user. Pure, covered
+ * under `jsNodeTest`.
+ */
+fun scopeUserFor(applied: String?, answer: ScopeAnswer?): ScopeUser? =
+    answer?.user?.takeIf { applied != null && applied.trim() == answer.askedFor?.trim() }
 
 /**
  * The endpoint that fetches **one** form document by id (`GET /gedra/<client>/formDoc`). Distinct from the list

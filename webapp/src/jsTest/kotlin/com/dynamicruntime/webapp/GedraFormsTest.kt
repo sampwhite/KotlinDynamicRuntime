@@ -136,6 +136,29 @@ class GedraFormsTest {
         assertNull(parseScopeUser(null))
         // A block that does not say which user says nothing the bar can use.
         assertNull(parseScopeUser(summary(DUF.email to "sam@x.test")))
+        // A block that does not say the persona is drawn without one, not with an empty bracket.
+        val noPersona = parseScopeUser(summary(DUF.userId to 7, DUF.email to "sam@x.test", DUF.client to "hub"))!!
+        assertEquals("User 7: sam@x.test", scopeUserLabel(noPersona, acrossClients = false))
+        assertEquals("User 7: sam@x.test [hub]", scopeUserLabel(noPersona, acrossClients = true))
+    }
+
+    /**
+     * The name under the scope bar is the applied scope's own answer (issue #1095). The page records a new scope
+     * before the listing answers, and a refused scope is never answered, so the answer on hand can be an older one.
+     */
+    @Test
+    fun namesOnlyTheUserTheAppliedScopeWasAnsweredWith() {
+        val memOne = parseScopeUser(mapOf(GDF.scopeUser to mapOf(DUF.userId to 2, DUF.email to "mem1@acme.test", DUF.persona to PERSONA.member)))!!
+        val answer = ScopeAnswer(askedFor = "2", user = memOne)
+        assertEquals(memOne, scopeUserFor("2", answer))
+        assertEquals(memOne, scopeUserFor(" 2 ", answer))
+        // Another scope was applied since -- one the listing refused, or is still fetching: nobody is named.
+        assertNull(scopeUserFor("nosuch@x.test", answer))
+        // No scope applied: a page of everyone's has nobody to name, whatever was answered before.
+        assertNull(scopeUserFor(null, answer))
+        assertNull(scopeUserFor("2", null))
+        // An answer that named nobody -- asked with no user -- names nobody for any scope.
+        assertNull(scopeUserFor("2", ScopeAnswer(askedFor = null, user = null)))
     }
 
     /**

@@ -215,6 +215,11 @@ class GedraSearchByUserTest : StringSpec({
         summaryFor(ada, emptyMap()).containsKey(GDF.scopeUser) shouldBe false
         // An ordinary user naming themselves is told the same of themselves.
         scopeUser(bob, bobEmail)[DUF.userId] shouldBe bob.userId
+        // It is said on every user-scoped page, whatever else was asked for: a page turn, a search and a sort ask
+        // for states and not for the workflow column's summary, and are told all the same -- with no workflows.
+        val pageTurn = summaryFor(ada, mapOf(EI.user to aliceEmail, GDF.withStates to true))
+        pageTurn[GDF.scopeUser].toJsonMapOrEmpty()[DUF.userId] shouldBe alice.userId
+        pageTurn.containsKey(WCOL.workflows) shouldBe false
         // It rides beside the workflow column's summary when that is asked for, in the one `summary`.
         val both = summaryFor(ada, mapOf(EI.user to aliceEmail, GDF.withStates to true, GDF.withWorkflowSummary to true))
         both.containsKey(WCOL.workflows) shouldBe true

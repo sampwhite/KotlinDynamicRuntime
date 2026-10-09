@@ -132,9 +132,9 @@ val FormsPage = FC<FormsPageProps> { props ->
     var appliedSearch by useState<Map<String, String>>(emptyMap())
     // What the shell knows of the caller (issue #1091): the page's heading is named by it.
     val shell = useShellFacts()
-    // The user the rows on screen are confined to (issues #1081, #1095), as the listing that returned them said:
-    // set with the rows, from the same answer, so it is never of another scope than they are.
-    var scopeUser by useState<ScopeUser?>(null)
+    // The user the rows on screen are confined to (issues #1081, #1095), as the listing that returned them said --
+    // with the scope that listing was asked about, so it is named only while that is still the scope applied.
+    var scopeAnswer by useState<ScopeAnswer?>(null)
     // The chosen sort (issue #666): a display trait id or `updated`/`created`, null for the default order, and a
     // direction. Carried in the hash like the applied search, and passed to `loadPage` so paging and a new
     // search keep it. The backend ignores an unknown column, so a stale sort in a bookmark still lists.
@@ -270,7 +270,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 val page = fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers, withSummary)
                 rows = page.rows
                 numAvailable = page.numAvailable
-                scopeUser = page.scopeUser
+                scopeAnswer = ScopeAnswer(search[EI.user] as? String, page.scopeUser)
                 page.workflowSummary?.let { listingWorkflows = it }
                 searchError = null
             } catch (e: Throwable) {
@@ -366,7 +366,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 if (page != null) {
                     rows = page.rows
                     numAvailable = page.numAvailable
-                    scopeUser = page.scopeUser
+                    scopeAnswer = ScopeAnswer(applied[EI.user], page.scopeUser)
                     page.workflowSummary?.let { listingWorkflows = it }
                 }
                 error = null
@@ -810,8 +810,9 @@ val FormsPage = FC<FormsPageProps> { props ->
                     FormsScopeBar {
                         value = searchDraft[EI.user] ?: ""
                         applied = appliedUser
-                        // Only while a user is applied: a page of everyone's has nobody to name.
-                        appliedWho = scopeUser?.takeIf { appliedUser != null }?.let { scopeUserLabel(it, canSeeAllClients) }
+                        // Only the user the applied scope was answered with: a scope the listing refused, or has
+                        // not answered yet, is not named with the one before it.
+                        appliedWho = scopeUserFor(appliedUser, scopeAnswer)?.let { scopeUserLabel(it, canSeeAllClients) }
                         onChange = { v -> searchDraft = searchDraft + (EI.user to v) }
                         onApply = { applySearch(ep, searchDraft) }
                         // Drops the user from what is *applied*, and reverts the boxes to that: a pending edit in
