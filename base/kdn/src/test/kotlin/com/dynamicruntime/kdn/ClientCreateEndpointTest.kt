@@ -124,6 +124,36 @@ class ClientCreateEndpointTest : StringSpec({
         refusal(EXC.conflict, body(waiting)) shouldContain "already has stored configuration"
     }
 
+    "an id differing from a taken one only by case is a 409, and a bundle defining one is refused (issue #1106)" {
+        val client = "case1106"
+        admin.postData(ADEP.clientCreate, body(client))[CLD.present] shouldBe true
+        refusal(EXC.conflict, body("Case1106")) shouldContain "'case1106' is defined in stored configuration, and two client ids may not differ only by case"
+        refusal(EXC.conflict, body("HUB")) shouldContain "'hub' is defined in source code"
+        ClientService.get(cxt).known("Case1106") shouldBe null
+
+        // Stored configuration that never made a client holds its id up to case too.
+        val waiting = "waitcase1106"
+        admin.postData(
+            ACEP.bundleWrite,
+            mapOf(
+                CFEP.client to waiting, CFEP.name to "other", CFEP.namespaceField to clientNamespace(waiting),
+                CFEP.slots to mapOf(CCT.cfactDef to listOf(mapOf(CCT.name to "ready", CCT.group to "g", CCT.description to "Ready."))),
+            ),
+        )
+        refusal(EXC.conflict, body("WaitCase1106")) shouldContain "'$waiting' has stored configuration"
+
+        // A bundle write defining such a client is refused by its trial, as the load would drop it.
+        val variant = "CASE1106"
+        admin.expectError(
+            EXC.badInput, ACEP.bundleWrite,
+            mapOf(
+                CFEP.client to variant, CFEP.name to CLD.definitionConfigName, CFEP.namespaceField to clientNamespace(variant),
+                CFEP.slots to mapOf(CCT.clientDef to listOf(body(variant))),
+            ),
+        ).toString() shouldContain "differs from the client 'case1106' only by case"
+        ClientService.get(cxt).known(variant) shouldBe null
+    }
+
     "a create is refused for what any written definition is, in the same words" {
         // By the input's own schema: a missing field, an environment that does not exist, a flag that is not one.
         refusal(EXC.badInput, body("bad1054") - CLD.name) shouldContain CLD.name

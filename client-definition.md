@@ -46,7 +46,10 @@ For the client configuration itself, the client has the following attributes.
 * `name` - The name to be presented to users as the name of the client.
 * `clientId` - A unique key identifying the client. It must use a restricted character set
   so that it would be a legal JavaScript variable name and only have ASCII characters. It is embedded in
-  the GedraId.
+  the GedraId. It is unique **without regard to case** (issue #1106): `Acme` beside `acme` would be two clients
+  that read as one to a person, so a create is refused (409) for an id another client holds up to case, and the
+  load drops the later of two such definitions -- a reload's own client being the later -- strictly outside
+  production, as any other refused definition.
 * `description` - An optional internal description for humans to understand who, what, or why for the client.
 * `usageType` - An enum list of usage purposes for the client which may grow over time. Some new behaviors
   or features may condition themselves on the usage type to control visibility of changes. 
@@ -153,7 +156,9 @@ once on a node whose environment it is enabled in, and stored but not present on
 which). The create adds one rule of its own -- an id that is taken, in source or in stored configuration, is a 409
 -- and is otherwise refused for exactly what a bundle write of the same definition would be, in the same words,
 because it goes through that write. The rule is kept by the write itself, under the client's lock
-(`ConfigWrite.mustBeNew`), so two creates of one id cannot both succeed. Once the definition is published the
+(`ConfigWrite.mustBeNew`), so two creates of one id cannot both succeed. An id differing from a taken one only by
+case is refused too, before the write; two such ids take two clients' locks, so for that race the load's check is
+what holds. Once the definition is published the
 client exists whatever becomes of loading it: a load that fails is reported in the result (`loadFailure`), not
 thrown, since an error would send the caller to create it again.
 
