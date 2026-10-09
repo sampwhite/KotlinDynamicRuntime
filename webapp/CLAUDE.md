@@ -523,12 +523,22 @@ shell re-reads its copy: a changed `home.brand` appears in the app bar without a
 **Editing the menu** (issue #919, `MenuEditor` in `ClientsPage.kt`): the detail's "Menu" table lists every home-menu
 item for the client from `/clientAdmin/client/menu/items` (`ClientsApi.menuItems`; shipped and effective label
 and condition, before any one caller's cfacts -- an editor lists what can be changed), with **Rename**, **Hide**,
-**Show** (a choice of the audiences the shipped menu already draws for, `menuAudiences`; the backend refuses any
-other expression) and, where the client's stored config changed the item, **Reset**; a group (`menuGroups`: anything another item
+**Show** (a choice of audiences, by name -- below) and, where the client's stored config changed the item, **Reset**; a group (`menuGroups`: anything another item
 sits under) gets no Hide, since the bar draws a child only under a parent it keeps, and the backend refuses it
-too. "Set by" comes from the overrides report's rows, which know source from stored. `menuVisibilityText` reads
-the condition as "everyone", "hidden" or the expression itself, noting the shipped state when the client changed
-it. Each action posts `/clientAdmin/client/menu/set` or `/reset` (`menuEditRequest`), the same write-trial-publish-
+too. "Set by" comes from the overrides report's rows, which know source from stored.
+
+**An audience is chosen and read by its name** (issue #1094), never as its cfact expression. The names are the
+backend's, declared beside the menu (`HomeMenuAudiences`, held in step with the shipped menu by
+`HomeMenuAudiencesTest`): each item's row carries what its shipped and its current condition are called
+(`baseAudience`, `audience`) and the audiences it may be shown to (`audiences`, each a condition and a name).
+`menuVisibilityText` reads "hidden", the name, or "Custom" for a condition the table does not hold -- one written by
+hand in a source config -- noting the shipped state when the client changed it; the expression is the cell's tooltip
+(`menuVisibilityDetail`). The Show control lists exactly the item's `audiences` (`menuShowChoices`, the shipped one
+marked "(as shipped)"), and the write accepts exactly those: six audiences of a client's own people for any item,
+plus the item's own shipped audience when that is one of the withheld ones (the deployment's operators, a test
+instance, a debug session, administrators of every client), so an item can always be put back and no other item can
+be given an audience that would only hide it. **Do not add a name, or a choice, in the webapp**: a new menu
+condition is named in `HomeMenuAudiences`, where the test asks for it. Each action posts `/clientAdmin/client/menu/set` or `/reset` (`menuEditRequest`), the same write-trial-publish-
 reload path as a copy edit (a draft, likewise, for a client with a sandbox), landing in the config already changing the item, else one overlaying the menu, else
 `copy`. Hiding or showing is presentation, not permission -- the section gate still decides -- and the hint under
 the table says so. Blocks other than the home menu (the sample's nav) stay read-only under "Other interface

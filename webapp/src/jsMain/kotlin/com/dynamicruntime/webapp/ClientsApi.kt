@@ -578,9 +578,20 @@ class MenuItemView(
     val label: String?,
     val baseCondition: String?,
     val condition: String?,
+    /**
+     * What the audience of [baseCondition] and of [condition] is called (issue #1094), as the menu's own table of
+     * audiences names it; null for a withdrawn item and for a condition that table does not hold.
+     */
+    val baseAudience: String? = null,
+    val audience: String? = null,
+    /** The audiences this item may be shown to, as the backend lists them -- exactly what a show accepts. */
+    val audiences: List<MenuAudienceChoice> = emptyList(),
     /** Whether the client's stored configuration changes the item -- what a reset would remove. */
     val stored: Boolean,
 )
+
+/** An audience a menu item may be shown to (issue #1094): the [condition] a show sends, and the [name] it is chosen by. */
+class MenuAudienceChoice(val condition: String, val name: String)
 
 /** The items listing as [MenuItemView]s; one without an id is not an item. Pure, and covered under `jsNodeTest`. */
 fun parseMenuItems(items: List<Map<String, Any?>>): List<MenuItemView> = items.mapNotNull { row ->
@@ -591,6 +602,11 @@ fun parseMenuItems(items: List<Map<String, Any?>>): List<MenuItemView> = items.m
         label = row[MNU.label].toOptStr(),
         baseCondition = row[MNU.baseCondition].toOptStr(),
         condition = row[MNU.condition].toOptStr(),
+        baseAudience = row[MNU.baseAudience].toOptStr(),
+        audience = row[MNU.audience].toOptStr(),
+        audiences = row[MNU.audiences].toJsonListOfMaps().mapNotNull { choice ->
+            MenuAudienceChoice(choice[MNU.condition].toOptStr() ?: return@mapNotNull null, choice[MNU.name].toOptStr() ?: return@mapNotNull null)
+        },
         stored = row[CPY.stored] == true,
     )
 }
@@ -598,28 +614,45 @@ fun parseMenuItems(items: List<Map<String, Any?>>): List<MenuItemView> = items.m
 /** Whether an item is withdrawn for the client: its condition is `#never`. Pure, and covered under `jsNodeTest`. */
 fun menuItemHidden(item: MenuItemView): Boolean = item.condition == CFACT.neverName
 
+/** What an audience with no name reads as (issue #1094): a condition somebody wrote by hand, which the menu's table does not hold. */
+const val customAudienceText = "Custom"
+
 /**
- * How an item's visibility reads (issue #919): "hidden" when withdrawn; "everyone" when nothing conditions it; else
- * the condition itself, since a cfact expression is the audience's name here. With a note when the client changed
- * it from the shipped state ("hidden (shipped: shown)"). Pure, and covered under `jsNodeTest`.
+ * How an item's visibility reads (issues #919, #1094): "hidden" when withdrawn, else **the audience's name** as the
+ * backend gave it -- "Everyone signed in" -- and "Custom" for a condition that has none. With a note when the client
+ * changed it from the shipped state ("hidden (shipped: Everyone)"), judged by the conditions, so two audiences are
+ * never taken for one because they read alike. The expression itself is the detail ([menuVisibilityDetail]). Pure,
+ * and covered under `jsNodeTest`.
  */
 fun menuVisibilityText(item: MenuItemView): String {
-    fun word(condition: String?): String = when (condition) {
-        null, CFACT.alwaysName -> "everyone"
-        CFACT.neverName -> "hidden"
-        else -> condition
-    }
-    val now = word(item.condition)
-    val shipped = word(item.baseCondition)
-    return if (now == shipped) now else "$now (shipped: $shipped)"
+    fun word(condition: String?, audience: String?): String =
+        if (condition == CFACT.neverName) "hidden" else audience ?: customAudienceText
+    val now = word(item.condition, item.audience)
+    return if (sameCondition(item.condition, item.baseCondition)) now else "$now (shipped: ${word(item.baseCondition, item.baseAudience)})"
 }
 
 /**
- * The audiences a client may show an item to (issue #919): the conditions the shipped menu itself draws for, each
- * once, plus everyone -- the backend accepts exactly these. Pure, and covered under `jsNodeTest`.
+ * The detail behind [menuVisibilityText] (issue #1094): the condition as it is stored, which is what the name stands
+ * for -- and the shipped one beside it when the client changed it. An item with no condition is drawn under
+ * `#always`. Pure, and covered under `jsNodeTest`.
  */
-fun menuAudiences(items: List<MenuItemView>): List<String> =
-    listOf(CFACT.alwaysName) + items.mapNotNull { it.baseCondition }.filter { it != CFACT.neverName }.distinct()
+fun menuVisibilityDetail(item: MenuItemView): String {
+    val now = item.condition ?: CFACT.alwaysName
+    return if (sameCondition(item.condition, item.baseCondition)) now else "$now (shipped: ${item.baseCondition ?: CFACT.alwaysName})"
+}
+
+/** Whether two conditions are one: no condition and `#always` both draw for everyone, on every node. */
+private fun sameCondition(a: String?, b: String?): Boolean = (a ?: CFACT.alwaysName) == (b ?: CFACT.alwaysName)
+
+/**
+ * The Show control's choices for [item] (issue #1094), each a label to the condition it sends: the audiences the
+ * backend says the item may be shown to, by name, the one it shipped under marked so -- "Everyone (as shipped)" --
+ * since putting an item back is the commonest reason to show one. Nothing is added or left out here: the backend's
+ * list is what its write accepts. Pure, and covered under `jsNodeTest`.
+ */
+fun menuShowChoices(item: MenuItemView): List<Pair<String, String>> = item.audiences.map { choice ->
+    (if (sameCondition(choice.condition, item.baseCondition)) "${choice.name} (as shipped)" else choice.name) to choice.condition
+}
 
 /** The items other items sit under -- the groups, which cannot be hidden (the bar would take their children too). Pure, and covered under `jsNodeTest`. */
 fun menuGroups(items: List<MenuItemView>): Set<String> = items.mapNotNull { it.parentId }.toSet()
@@ -640,6 +673,8 @@ class MenuEditResult(
     val configName: String,
     val label: String?,
     val condition: String?,
+    /** What [condition]'s audience is called (issue #1094); null for a withdrawn item or a condition with no name. */
+    val audience: String? = null,
     val stored: Boolean,
     val issues: List<String>,
     val mode: String = EDM.live,
@@ -650,10 +685,15 @@ fun parseMenuEditResult(results: Map<String, Any?>): MenuEditResult = MenuEditRe
     configName = results[COV.configName].toOptStr().orEmpty(),
     label = results[MNU.label].toOptStr(),
     condition = results[MNU.condition].toOptStr(),
+    audience = results[MNU.audience].toOptStr(),
     stored = results[CPY.stored] == true,
     issues = results[CPY.issues].toJsonListOfMaps().mapNotNull { it[GCI.message].toOptStr() },
     mode = results[CPY.mode].toOptStr() ?: EDM.live,
 )
+
+/** What the note says once an item is shown (issue #1094): who to, by the audience's name. Pure, and covered under `jsNodeTest`. */
+fun menuShownNote(itemId: String, result: MenuEditResult): String =
+    "$itemId is now offered to: ${result.audience ?: customAudienceText}."
 
 /** One configuration issue as the detail lists it (issue #906): what is wrong, what was dropped, and where it came from. */
 class ConfigIssueView(val message: String, val degradedTo: String, val origin: String)

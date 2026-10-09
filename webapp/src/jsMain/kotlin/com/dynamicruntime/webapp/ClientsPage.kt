@@ -1,6 +1,5 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientPresentationFields
@@ -869,9 +868,10 @@ external interface MenuEditorProps : Props {
 /**
  * The home menu as a client sees it, and its editor (issue #919). Every item the menu holds -- before any one
  * caller's cfacts are applied, since an editor lists what can be changed -- with its shipped label, the client's,
- * who is offered it, and the actions: **Rename**, **Hide**, **Show** (to an audience the shipped menu already draws
- * for -- a client picks one, it never writes an expression) and, where the client's stored configuration changed
- * the item, **Reset**. Read from `/clientAdmin/client/menu/items` on mount and again after each change.
+ * who is offered it, and the actions: **Rename**, **Hide**, **Show** (to one of the audiences the backend lists for
+ * the item, chosen by name -- issue #1094; a client never writes an expression) and, where the client's stored
+ * configuration changed the item, **Reset**. Read from `/clientAdmin/client/menu/items` on mount and again after
+ * each change.
  *
  * Hiding or showing is presentation, not permission -- the section gate still decides who may reach a page -- and
  * the hint under the table says so. A change is written, trial-checked, published and made live in one call, as a
@@ -946,7 +946,6 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
         }
         else -> {
             val listed = items!!
-            val audiences = menuAudiences(listed)
             val groups = menuGroups(listed)
             // A rename is sent only when it would change something; Enter and the Save button agree on that.
             fun rename(item: MenuItemView) {
@@ -1002,12 +1001,16 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                         Select {
                                             value = audience
                                             placeholder = "Offer to"
-                                            options = choiceOptions(audiences.map { audienceText(it) to it })
-                                            style = js("({ minWidth: 200 })")
+                                            options = choiceOptions(menuShowChoices(item))
+                                            style = js("({ minWidth: 260 })")
                                             onChange = { v -> audience = v as? String }
                                         }
                                     } else {
-                                        +menuVisibilityText(item)
+                                        // The audience by name; the condition it stands for is the detail (issue #1094).
+                                        span {
+                                            title = menuVisibilityDetail(item)
+                                            +menuVisibilityText(item)
+                                        }
                                     }
                                 }
                                 td { +(props.setBy[item.itemId] ?: "\u2014") }
@@ -1037,7 +1040,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                                 loading = busy
                                                 disabled = audience == null
                                                 onClick = {
-                                                    run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.show, audience) }) { "${item.itemId} is now offered to ${audienceText(it.condition)}." }
+                                                    run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.show, audience) }) { menuShownNote(item.itemId, it) }
                                                 }
                                                 +"Show"
                                             }
@@ -1116,12 +1119,6 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
             }
         }
     }
-}
-
-/** An audience as the Show choice names it: "everyone" for the always-condition, else the expression as written. */
-private fun audienceText(condition: String?): String = when (condition) {
-    null, CFACT.alwaysName -> "everyone"
-    else -> condition
 }
 
 /** antd option groups for a Select: `{ label, options: [{ label, value }] }` per non-empty group, in the order given. */
