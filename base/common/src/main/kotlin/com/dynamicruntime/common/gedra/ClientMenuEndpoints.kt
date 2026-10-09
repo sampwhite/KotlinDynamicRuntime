@@ -27,13 +27,16 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         description = "One home-menu item as a client sees it: what the shipped menu says, what the client changed."
         property(COV.itemId, "The item's id.", required = true)
         property(MNU.parentId, "The item this one sits under; absent for a top-level item.")
+        property(COV.added, "Whether the item is the client's own, which the shipped menu does not hold. It has no shipped label, condition or audience, and cannot be edited here.", required = true) {
+            type = SCT.boolean
+        }
         property(COV.baseLabel, "The shipped label; absent for an item with none.")
         property(MNU.label, "The label this client's people see.") { emptyIsAbsent = false }
         property(MNU.baseCondition, "The shipped condition deciding who is offered the item; absent means everyone.")
         property(MNU.condition, "The condition for this client; `#never` withdraws the item.")
         property(MNU.baseAudience, "What the shipped condition's audience is called; absent for a withdrawn item and for a condition with no name.")
         property(MNU.audience, "What this client's condition's audience is called; absent for a withdrawn item and for a condition with no name.")
-        property(MNU.audiences, "The audiences the item may be shown to: the ones any item may, and the item's own shipped one.", required = true) {
+        property(MNU.audiences, "The audiences the item may be shown to: the ones any item may, and the item's own shipped one. Empty for an item the client added.", required = true) {
             type = SCT.array
             items { ref(MNU.audienceTypeName) }
         }
@@ -76,6 +79,7 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         ClientMenuEdit.itemsFor(c, client).map { item ->
             val out = linkedMapOf<String, Any?>(COV.itemId to item.itemId)
             item.parentId?.let { out[MNU.parentId] = it }
+            out[COV.added] = item.added
             item.baseLabel?.let { out[COV.baseLabel] = it }
             item.label?.let { out[MNU.label] = it }
             item.baseCondition?.let { out[MNU.baseCondition] = it }

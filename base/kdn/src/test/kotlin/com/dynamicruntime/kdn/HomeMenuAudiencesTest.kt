@@ -25,7 +25,7 @@ class HomeMenuAudiencesTest : StringSpec({
     /** The conditions the shipped menu draws for: each item's, an item with none being drawn for everyone. */
     fun shippedConditions(): Set<String> =
         UiBlockService.get(cxt).merged(cxt, HMENU.block, null).content[HFLD.menu].toJsonListOfMaps()
-            .map { it[UIB.cfactExpression].toOptStr() ?: CFACT.alwaysName }.filter { it != CFACT.neverName }.toSet()
+            .map { CFACT.orAlways(it[UIB.cfactExpression].toOptStr()) }.filter { it != CFACT.neverName }.toSet()
 
     "every condition the shipped menu draws for has a name, and every name is of one it draws for" {
         val named = HomeMenuAudiences.all.map { it.condition }.toSet()
@@ -42,7 +42,7 @@ class HomeMenuAudiencesTest : StringSpec({
 
     "what any item may be shown to is the audiences of a client's own people, and no more" {
         // Pinned on purpose: offering another audience to every item of every client is a decision, not a side effect.
-        HomeMenuAudiences.all.filter { it.offered }.map { it.condition } shouldBe listOf(
+        HomeMenuAudiences.offered.map { it.condition } shouldBe listOf(
             CFACTS.app,
             "${CFACTS.loggedIn},${CFACTS.app}",
             "${CFACTS.anonymous},${CFACTS.app}",
@@ -53,7 +53,7 @@ class HomeMenuAudiencesTest : StringSpec({
     }
 
     "an item may be shown to the offered audiences, and put back to its own" {
-        val offered = HomeMenuAudiences.all.filter { it.offered }.map { it.condition }
+        val offered = HomeMenuAudiences.offered.map { it.condition }
         fun choices(shipped: String?) = HomeMenuAudiences.choicesFor(shipped).map { it.condition }
         // An item shipped for an offered audience, for nobody, or under a condition with no name: the offered ones.
         choices("${CFACTS.loggedIn},${CFACTS.app}") shouldBe offered

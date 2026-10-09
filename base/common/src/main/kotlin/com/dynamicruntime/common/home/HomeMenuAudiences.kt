@@ -57,21 +57,23 @@ object HomeMenuAudiences {
 
     private val byCondition: Map<String, MenuAudience> = all.associateBy { it.condition }
 
+    /** The audiences any item may be shown to, in the table's order. */
+    val offered: List<MenuAudience> = all.filter { it.offered }
+
     /**
      * The audience [condition] draws for, or null when it has no name: a withdrawn item's `#never`, which is no
      * audience, and an expression this table does not hold. An item with no condition is drawn for everyone, on
      * every node -- `#always`.
      */
-    fun of(condition: String?): MenuAudience? = byCondition[condition ?: CFACT.alwaysName]
+    fun of(condition: String?): MenuAudience? = byCondition[CFACT.orAlways(condition)]
 
     /**
-     * The audiences an item **shipped under [shippedCondition]** may be shown to: every [offered][MenuAudience.offered]
+     * The audiences an item **shipped under [shippedCondition]** may be shown to: every [offered]
      * one, and the item's own when that is named and not among them -- so an item can always be put back where it
      * shipped, and an audience that is the deployment's own is not handed to every other item. The one answer to
      * "what may be chosen", for the listing that offers and the write that accepts.
      */
     fun choicesFor(shippedCondition: String?): List<MenuAudience> {
-        val offered = all.filter { it.offered }
         val own = of(shippedCondition)
         return if (own == null || own.offered) offered else offered + own
     }

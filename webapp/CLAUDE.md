@@ -538,7 +538,10 @@ marked "(as shipped)"), and the write accepts exactly those: six audiences of a 
 plus the item's own shipped audience when that is one of the withheld ones (the deployment's operators, a test
 instance, a debug session, administrators of every client), so an item can always be put back and no other item can
 be given an audience that would only hide it. **Do not add a name, or a choice, in the webapp**: a new menu
-condition is named in `HomeMenuAudiences`, where the test asks for it. Each action posts `/clientAdmin/client/menu/set` or `/reset` (`menuEditRequest`), the same write-trial-publish-
+condition is named in `HomeMenuAudiences`, where the test asks for it. An item the client's own configuration
+**added** (`added`) has nothing shipped behind it: no shipped audience is noted, nothing is offered, and its row
+shows "added" in place of the actions, every one of which changes a shipped item and would be refused.
+Each action posts `/clientAdmin/client/menu/set` or `/reset` (`menuEditRequest`), the same write-trial-publish-
 reload path as a copy edit (a draft, likewise, for a client with a sandbox), landing in the config already changing the item, else one overlaying the menu, else
 `copy`. Hiding or showing is presentation, not permission -- the section gate still decides -- and the hint under
 the table says so. Blocks other than the home menu (the sample's nav) stay read-only under "Other interface

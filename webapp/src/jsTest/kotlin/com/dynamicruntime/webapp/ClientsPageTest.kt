@@ -673,6 +673,20 @@ class ClientsPageTest {
     }
 
     @Test
+    fun anItemTheClientAddedHasNoShippedStateToNote() {
+        // Nothing shipped under this id (issue #1094): its own audience is all there is to say, and there is nothing
+        // to mark "as shipped" -- where a shipped item with no condition shipped for everyone.
+        val added = parseMenuItems(listOf(menuRow("siteAudits", null, "Site audits", null, "kdr:app", audience = "Everyone") + (COV.added to true))).single()
+        assertEquals(true, added.added)
+        assertEquals("Everyone", menuVisibilityText(added))
+        assertEquals("kdr:app", menuVisibilityDetail(added))
+        assertEquals(emptyList(), menuShowChoices(added))
+        val shipped = parseMenuItems(listOf(menuRow("docs", "Documents", "Documents", null, "kdr:app", baseAudience = "All", audience = "Everyone"))).single()
+        assertEquals(false, shipped.added)
+        assertEquals("Everyone (shipped: All)", menuVisibilityText(shipped))
+    }
+
+    @Test
     fun theShowChoicesAreTheBackendsByNameWithTheShippedOneMarked() {
         val items = sampleMenu().associateBy { it.itemId }
         // Exactly what the backend listed for the item, each by its name, sending its condition.

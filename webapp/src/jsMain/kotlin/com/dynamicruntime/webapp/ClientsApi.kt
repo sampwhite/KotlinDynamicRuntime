@@ -579,6 +579,12 @@ class MenuItemView(
     val baseCondition: String?,
     val condition: String?,
     /**
+     * Whether the item is the client's own, which the shipped menu does not hold (issue #1094): it has no shipped
+     * state to compare with or go back to, and the editor's actions -- all of which change a shipped item -- do not
+     * apply to it.
+     */
+    val added: Boolean = false,
+    /**
      * What the audience of [baseCondition] and of [condition] is called (issue #1094), as the menu's own table of
      * audiences names it; null for a withdrawn item and for a condition that table does not hold.
      */
@@ -602,6 +608,7 @@ fun parseMenuItems(items: List<Map<String, Any?>>): List<MenuItemView> = items.m
         label = row[MNU.label].toOptStr(),
         baseCondition = row[MNU.baseCondition].toOptStr(),
         condition = row[MNU.condition].toOptStr(),
+        added = row[COV.added] == true,
         baseAudience = row[MNU.baseAudience].toOptStr(),
         audience = row[MNU.audience].toOptStr(),
         audiences = row[MNU.audiences].toJsonListOfMaps().mapNotNull { choice ->
@@ -617,18 +624,20 @@ fun menuItemHidden(item: MenuItemView): Boolean = item.condition == CFACT.neverN
 /** What an audience with no name reads as (issue #1094): a condition somebody wrote by hand, which the menu's table does not hold. */
 const val customAudienceText = "Custom"
 
+/** A condition as a reader is told it: "hidden" when it withdraws the item, else its [audience]'s name, else "Custom". */
+private fun audienceWord(condition: String?, audience: String?): String =
+    if (condition == CFACT.neverName) "hidden" else audience ?: customAudienceText
+
 /**
  * How an item's visibility reads (issues #919, #1094): "hidden" when withdrawn, else **the audience's name** as the
  * backend gave it -- "Everyone signed in" -- and "Custom" for a condition that has none. With a note when the client
  * changed it from the shipped state ("hidden (shipped: Everyone)"), judged by the conditions, so two audiences are
- * never taken for one because they read alike. The expression itself is the detail ([menuVisibilityDetail]). Pure,
- * and covered under `jsNodeTest`.
+ * never taken for one because they read alike; an item the client added has no shipped state, and no note. The
+ * expression itself is the detail ([menuVisibilityDetail]). Pure, and covered under `jsNodeTest`.
  */
 fun menuVisibilityText(item: MenuItemView): String {
-    fun word(condition: String?, audience: String?): String =
-        if (condition == CFACT.neverName) "hidden" else audience ?: customAudienceText
-    val now = word(item.condition, item.audience)
-    return if (sameCondition(item.condition, item.baseCondition)) now else "$now (shipped: ${word(item.baseCondition, item.baseAudience)})"
+    val now = audienceWord(item.condition, item.audience)
+    return if (asShipped(item)) now else "$now (shipped: ${audienceWord(item.baseCondition, item.baseAudience)})"
 }
 
 /**
@@ -637,12 +646,15 @@ fun menuVisibilityText(item: MenuItemView): String {
  * `#always`. Pure, and covered under `jsNodeTest`.
  */
 fun menuVisibilityDetail(item: MenuItemView): String {
-    val now = item.condition ?: CFACT.alwaysName
-    return if (sameCondition(item.condition, item.baseCondition)) now else "$now (shipped: ${item.baseCondition ?: CFACT.alwaysName})"
+    val now = CFACT.orAlways(item.condition)
+    return if (asShipped(item)) now else "$now (shipped: ${CFACT.orAlways(item.baseCondition)})"
 }
 
-/** Whether two conditions are one: no condition and `#always` both draw for everyone, on every node. */
-private fun sameCondition(a: String?, b: String?): Boolean = (a ?: CFACT.alwaysName) == (b ?: CFACT.alwaysName)
+/** Whether two conditions are one: no condition and `#always` both draw for everyone, on every node (`CFACT.orAlways`). */
+private fun sameCondition(a: String?, b: String?): Boolean = CFACT.orAlways(a) == CFACT.orAlways(b)
+
+/** Whether there is no shipped state to note beside [item]'s own: it is as shipped, or the client added it and nothing shipped. */
+private fun asShipped(item: MenuItemView): Boolean = item.added || sameCondition(item.condition, item.baseCondition)
 
 /**
  * The Show control's choices for [item] (issue #1094), each a label to the condition it sends: the audiences the

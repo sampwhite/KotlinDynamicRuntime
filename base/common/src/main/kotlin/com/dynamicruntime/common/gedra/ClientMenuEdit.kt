@@ -42,17 +42,26 @@ object ClientMenuEdit {
     class MenuItem(
         val itemId: String,
         val parentId: String?,
+        /**
+         * Whether the item is the client's own, which the shipped menu does not hold. Such an item has no shipped
+         * label, condition or audience, and nothing here can change it: a set refuses an item the shipped menu lacks.
+         */
+        val added: Boolean,
         val baseLabel: String?,
         val label: String?,
         val baseCondition: String?,
         val condition: String?,
         /**
          * What the audiences of [baseCondition] and [condition] are called (issue #1094); null for a withdrawn item,
-         * which has none, and for a condition [HomeMenuAudiences] does not name.
+         * which has none, and for a condition [HomeMenuAudiences] does not name. An [added] item shipped under no
+         * audience at all -- which is not the same as shipping with no condition.
          */
         val baseAudience: String?,
         val audience: String?,
-        /** The audiences this item may be shown to ([HomeMenuAudiences.choicesFor]) -- exactly what a set accepts. */
+        /**
+         * The audiences this item may be shown to ([HomeMenuAudiences.choicesFor]) -- exactly what a set accepts, so
+         * none for an [added] item.
+         */
         val audiences: List<MenuAudience>,
         /** Whether the client's own layers set the label or the condition. */
         val stored: Boolean,
@@ -76,13 +85,15 @@ object ClientMenuEdit {
             MenuItem(
                 itemId = id,
                 parentId = item[UIB.parentId].toOptStr(),
+                added = shipped == null,
                 baseLabel = shipped?.get(HFLD.label).toOptStr(),
                 label = item[HFLD.label].toOptStr(),
                 baseCondition = baseCondition,
                 condition = condition,
-                baseAudience = HomeMenuAudiences.of(baseCondition)?.name,
+                // Asked of the shipped item, not of the absence of one: a null condition reads as `#always`.
+                baseAudience = shipped?.let { HomeMenuAudiences.of(baseCondition)?.name },
                 audience = HomeMenuAudiences.of(condition)?.name,
-                audiences = HomeMenuAudiences.choicesFor(baseCondition),
+                audiences = if (shipped == null) emptyList() else HomeMenuAudiences.choicesFor(baseCondition),
                 stored = stored[id]?.let { it.containsKey(HFLD.label) || it.containsKey(UIB.cfactExpression) } ?: false,
             )
         }

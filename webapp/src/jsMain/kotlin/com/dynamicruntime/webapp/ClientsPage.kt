@@ -1016,6 +1016,13 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                 td { +(props.setBy[item.itemId] ?: "\u2014") }
                                 td {
                                     when {
+                                        // The client's own item (issue #1094): every action here changes a shipped
+                                        // item, and the backend refuses one the shipped menu does not hold.
+                                        item.added -> span {
+                                            className = ClassName("subtitle")
+                                            title = "Added by this client's configuration: there is no shipped item to rename, hide or reset to. It is changed where it is declared."
+                                            +"added"
+                                        }
                                         renaming == item.itemId -> {
                                             Button {
                                                 type = "primary"
