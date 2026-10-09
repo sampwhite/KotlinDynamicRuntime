@@ -71,40 +71,63 @@ class InstanceConfigService : ServiceInitializer {
         // fully initialized -- its database configuration resolved -- before this regular service's onCreate.
         val authKey = node.instanceAuthConfigKey
         // Reads (and, on a fresh instance, creates) the encryption key. The InstanceConfig table it reads was
-        // already created by SqlTopicService's startup-tier checkReady (issue #162), so this is a plain query.
-        val existing = getConfig(cxt, authKey)
-        val encryptionKey = if (existing != null) {
-            existing[IC.configData]?.toJsonMap()?.get(encryptionKeyField) as? String
-                ?: throw KdrException("Stored auth config '$authKey' is missing its encryption key.")
-        } else {
-            val created = mkEncryptionKey()
+        // already created by SqlTopicService's startup-tier checkReady (issue #162). Created under the row's lock, so
+        // nodes starting together on a fresh database agree on one key rather than each keeping its own -- which
+        // would leave each unable to read what the others encrypt.
+        val encryptionKey = getOrCreateConfig(cxt, authConfigType, authKey, encryptionKeyField) {
             LogStartup.info(cxt, "Storing a new shared encryption key for instance '${cxt.instanceConfig.instanceName}'.")
-            setConfig(cxt, authConfigType, authKey, mapOf(encryptionKeyField to created))
-            created
+            mkEncryptionKey()
         }
         node.registerEncryptionKey(authKey, encryptionKey)
         // Database-wide, not under this instance's name: the data it identifies is the database's, whatever names
-        // the instances reading it go by.
-        dataId = getConfig(cxt, dataIdConfigName, databaseWide)?.get(IC.configData)?.toJsonMap()?.get(dataIdField) as? String
-            ?: RandomUtil.bytes(dataIdBytes).base64Encode().also {
-                setConfig(cxt, dataIdConfigType, dataIdConfigName, mapOf(dataIdField to it), databaseWide)
-            }
+        // the instances reading it go by. Created under the row's lock, as the key is, so every node reads one id.
+        dataId = getOrCreateConfig(cxt, dataIdConfigType, dataIdConfigName, dataIdField, databaseWide) {
+            RandomUtil.bytes(dataIdBytes).base64Encode()
+        }
     }
 
     /**
-     * Upserts a configuration entry for this instance via the topic transaction -- or, with [instanceName], under
-     * another instance's key, such as [databaseWide].
+     * The value at [field] in the [configName] row, created by [create] if the row does not hold one yet -- once,
+     * whoever asks first. A stored value is read without a lock; a missing one is written in a topic transaction on
+     * the row itself, which reads the row again under its lock and keeps a value another node stored in the
+     * meantime. So nodes starting together on a fresh database agree on one value, where reading first and writing
+     * after would leave each with its own, the last write winning in the database. A row holding data but not
+     * [field] is a damaged row, and refused rather than overwritten.
      */
-    fun setConfig(
+    fun getOrCreateConfig(
         cxt: KdrCxt,
         configType: String,
         configName: String,
-        data: Map<String, Any?>,
+        field: String,
         instanceName: String = cxt.instanceConfig.instanceName,
-    ) {
+        create: () -> String,
+    ): String {
+        fun valueIn(data: Any?): String? {
+            val map = data?.toJsonMap() ?: return null
+            return map[field] as? String
+                ?: throw KdrException("Stored config '$configName' holds data but no '$field'.")
+        }
+        getConfig(cxt, configName, instanceName)?.let { row -> valueIn(row[IC.configData])?.let { return it } }
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
+        val tranData = mapOf(IC.instanceName to instanceName, IC.configName to configName)
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, "createInstanceConfig", null, tranData, tranTableName = tableName) {
+            // The row as it stands under the lock: a value another node stored since the read above is kept.
+            if (valueIn(sqlCxt.tranData[IC.configData]) != null) {
+                sqlCxt.tranAlreadyDone = true
+            } else {
+                sqlCxt.tranData[IC.configType] = configType
+                sqlCxt.tranData[IC.configData] = mapOf(field to create())
+            }
+        }
+        return valueIn(sqlCxt.tranData[IC.configData])
+            ?: throw KdrException("Stored config '$configName' has no '$field' after it was created.")
+    }
+
+    /** Upserts a configuration entry for this instance via the topic transaction. */
+    fun setConfig(cxt: KdrCxt, configType: String, configName: String, data: Map<String, Any?>) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
         val tranData = mapOf(
-            IC.instanceName to instanceName,
+            IC.instanceName to cxt.instanceConfig.instanceName,
             IC.configName to configName,
         )
         // Names its lock table: TOPIC.instance also carries the cache-state table, and this transaction has no

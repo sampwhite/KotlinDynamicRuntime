@@ -8,6 +8,10 @@ import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotBeEmpty
@@ -33,6 +37,33 @@ class DataIdTest : StringSpec({
         // A database of its own is data of its own.
         val other = Startup.mkTestBootCxt("dataIdC", "dataIdNodeC", mapOf("KDR_DB_NAME" to "dataId1099other"))
         dataId(other) shouldNotBe dataId(first)
+    }
+
+    "nodes asking at once for a value nobody stored get one value, created once" {
+        // The shared instance: a config name of its own is a fresh row nobody else asks for.
+        val cxt = TestInstances.default("dataIdRace")
+        val service = InstanceConfigService.get(cxt)
+        val created = AtomicInteger()
+        val pool = Executors.newFixedThreadPool(8)
+        try {
+            val start = CountDownLatch(1)
+            val answers = (1..8).map { i ->
+                pool.submit<String> {
+                    start.await()
+                    service.getOrCreateConfig(cxt.mkSubContext("race$i"), "raceType", "race1099", "value") {
+                        created.incrementAndGet()
+                        "made by $i"
+                    }
+                }
+            }
+            start.countDown()
+            answers.map { it.get(30, TimeUnit.SECONDS) }.toSet().size shouldBe 1
+            created.get() shouldBe 1
+        } finally {
+            pool.shutdownNow()
+        }
+        // Asked again, the stored value is read back and nothing is created.
+        service.getOrCreateConfig(cxt, "raceType", "race1099", "value") { error("not created again") }.shouldNotBeEmpty()
     }
 
     "a test instance serves its data id in the app config; another instance does not" {
