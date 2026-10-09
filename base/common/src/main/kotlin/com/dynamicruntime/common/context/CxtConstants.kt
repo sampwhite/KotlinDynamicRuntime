@@ -55,7 +55,10 @@ object ACFG {
      */
     const val defaultPort = "defaultPort"
 
-    /** When true, endpoint responses are validated against their `outputSchema`. Default false; on in tests. */
+    /**
+     * When true, every endpoint's responses are validated against its `outputSchema`. Default false; on in tests.
+     * An endpoint may ask for the same of its own responses whatever this says (`KdrEndpoint.validateOutput`).
+     */
     const val validateResponseSchema = "validateResponseSchema"
 
     /**

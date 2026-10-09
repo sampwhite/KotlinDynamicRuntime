@@ -196,6 +196,18 @@ class KdrEndpoint(
      * that never changes for an item (see `cursorSlice`).
      */
     val cursorPaged: Boolean = false,
+    /**
+     * Validates **every JSON response** against [outputSchema], in every environment (issue #1085) -- where the
+     * `validateResponseSchema` config flag does it for all endpoints and is on only in tests. A file download is
+     * not one: it has no envelope to check, so on a download endpoint this does nothing. For an endpoint whose
+     * output schema is itself the contract: one generated from data, where no test written beside the handler could
+     * have checked the two against each other. A response that does not conform is the same 500 the flag gives,
+     * naming the endpoint and the failures, so a caller is never handed what the catalog said it would not get.
+     *
+     * Not a builder parameter: nothing built by a builder asks for it, and a parameter nothing passes reads as an
+     * option rather than as the record of a decision. Set where a `KdrEndpoint` is constructed directly.
+     */
+    val validateOutput: Boolean = false,
 ) {
     init {
         if (inputFields != null && inputTypeRef != null) {
