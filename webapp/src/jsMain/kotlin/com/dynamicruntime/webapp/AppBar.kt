@@ -642,30 +642,13 @@ val AppBar = FC<AppBarProps> { props ->
  *  Absent/blank -> every group collapsed, which is the default (children on demand). */
 private const val expandedGroupsStorageKey = "kdrMenuExpandedGroups"
 
+// `localStorage` (not sessionStorage): the choice should outlive the tab, like a remembered filter. A store that
+// cannot be read leaves the menu all-collapsed rather than breaking (see BrowserStorage.kt).
 private fun readExpandedGroups(): Set<String> =
-    (localStorageGet(expandedGroupsStorageKey)?.splitComma() ?: emptyList()).toSet()
+    (localStorageGet(expandedGroupsStorageKey, "menu state")?.splitComma() ?: emptyList()).toSet()
 
 private fun writeExpandedGroups(ids: Set<String>) =
-    localStorageSet(expandedGroupsStorageKey, ids.joinToString(","))
-
-// `localStorage` (not sessionStorage): the choice should outlive the tab, like a remembered filter. It throws
-// in a private window or when site data is blocked, so a failure is caught and *reported* -- never swallowed
-// (webapp/CLAUDE.md) -- and the menu falls back to all-collapsed rather than breaking.
-private fun localStorageGet(key: String): String? =
-    try {
-        js("window.localStorage.getItem(key)") as? String
-    } catch (e: Throwable) {
-        console.warn("$errorLogPrefix could not read menu state from localStorage: ${e.message}")
-        null
-    }
-
-private fun localStorageSet(key: String, value: String) {
-    try {
-        js("window.localStorage.setItem(key, value)")
-    } catch (e: Throwable) {
-        console.warn("$errorLogPrefix could not persist menu state to localStorage: ${e.message}")
-    }
-}
+    localStorageSet(expandedGroupsStorageKey, ids.joinToString(","), "menu state")
 
 /** A short delay before a loading cue appears, so a fast load never flashes it then removes it (issue #469). */
 private const val brandFlashDelayMs = 200

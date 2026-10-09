@@ -14,6 +14,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.util.toOptEnum
 import kotlin.time.Instant
+import com.dynamicruntime.common.node.InstanceConfigService
 
 /** Schema type name for the app UI-config output (backend-only; the frontend keys off the [APP] wire constants). */
 private const val appUiConfigType = "AppUiConfig"
@@ -80,6 +81,10 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 "How often (ms) the frontend refreshes itself while a tab is visible, so it notices a timed-out session or a newer deploy.",
                 required = true,
             ) { type = SCT.integer }
+            property(
+                APP.dataId,
+                "On a test instance, the id of the data this node serves: it changes when the data is reset, and holds across restarts on a persistent database.",
+            )
         }
     }
 
@@ -120,7 +125,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 // an env var -- this is UI tuning, not an *ops* concern).
                 APP.idleBumpIntervalMs to
                     (c.instanceConfig.get(ACFG.idleBumpIntervalMs) as? Int ?: APP.defaultIdleBumpIntervalMs),
-            ),
+            ) + dataIdSetting(c),
         )
     }
 
@@ -180,4 +185,14 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
             APP.envAuthDebug to (available && !suppressed && op == EnvAuthOp.debug && offered),
         )
     }
+}
+
+/**
+ * The [APP.dataId] setting (issue #1099), on a test instance whose node reads one: the only kind of node that offers
+ * simulations, whose recent runs are kept against it. Nothing elsewhere.
+ */
+private fun dataIdSetting(c: KdrCxt): Map<String, Any?> {
+    if (!c.instanceConfig.isTestInstance) return emptyMap()
+    val id = InstanceConfigService.getOrNull(c)?.dataId?.ifEmpty { null } ?: return emptyMap()
+    return mapOf(APP.dataId to id)
 }

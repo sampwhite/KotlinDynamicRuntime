@@ -53,6 +53,12 @@ class AppConfig(
      * Implies [isEnvAuthed]. Turns on the debug pages, on-screen error detail, and the debug menu.
      */
     val envAuthDebug: Boolean,
+    /**
+     * The id of the data the node serves (issue #1099), on a test instance: it changes when the data is reset and
+     * holds across restarts on a persistent database. The Simulations page keeps its recent runs against it. Null
+     * elsewhere, and before the first fetch.
+     */
+    val dataId: String? = null,
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): the safe, closed defaults, and the
@@ -101,6 +107,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     isEnvAuthed = config.features[APP.isEnvAuthed] == true,
     envAuthSuppressible = config.features[APP.envAuthSuppressible] == true,
     envAuthDebug = config.features[APP.envAuthDebug] == true,
+    dataId = config.settings[APP.dataId] as? String,
 )
 
 object AppApi {

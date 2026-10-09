@@ -15,6 +15,8 @@ import com.dynamicruntime.common.sql.tableModule
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkEncryptionKey
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.RandomUtil
+import com.dynamicruntime.common.util.base64Encode
 
 /** Column-name keys for the InstanceConfig table. Each name matches its value. */
 @Suppress("ConstPropertyName")
@@ -50,6 +52,17 @@ class InstanceConfigService : ServiceInitializer {
     @KdrPrivate
     var nodeService: NodeService? = null
 
+    /**
+     * The id of the data this node serves (issue #1099): random, written to the `InstanceConfig` table the first time
+     * a database is initialized and read back on every boot after. So it changes exactly when the data does -- every
+     * boot of an in-memory database, which starts empty, and never across restarts on a persistent one (an H2 file
+     * store, Postgres), whose data survives them. Stored database-wide ([databaseWide]), so every instance and node
+     * using the database reads the same row. Not a secret: a test
+     * instance serves it in the app config, so a browser can tell whether what it remembers of the data still holds.
+     */
+    var dataId: String = ""
+        private set
+
     override fun onCreate(cxt: KdrCxt) {
         val node = NodeService.get(cxt)
         nodeService = node
@@ -70,13 +83,28 @@ class InstanceConfigService : ServiceInitializer {
             created
         }
         node.registerEncryptionKey(authKey, encryptionKey)
+        // Database-wide, not under this instance's name: the data it identifies is the database's, whatever names
+        // the instances reading it go by.
+        dataId = getConfig(cxt, dataIdConfigName, databaseWide)?.get(IC.configData)?.toJsonMap()?.get(dataIdField) as? String
+            ?: RandomUtil.bytes(dataIdBytes).base64Encode().also {
+                setConfig(cxt, dataIdConfigType, dataIdConfigName, mapOf(dataIdField to it), databaseWide)
+            }
     }
 
-    /** Upserts a configuration entry for this instance via the topic transaction. */
-    fun setConfig(cxt: KdrCxt, configType: String, configName: String, data: Map<String, Any?>) {
+    /**
+     * Upserts a configuration entry for this instance via the topic transaction -- or, with [instanceName], under
+     * another instance's key, such as [databaseWide].
+     */
+    fun setConfig(
+        cxt: KdrCxt,
+        configType: String,
+        configName: String,
+        data: Map<String, Any?>,
+        instanceName: String = cxt.instanceConfig.instanceName,
+    ) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
         val tranData = mapOf(
-            IC.instanceName to cxt.instanceConfig.instanceName,
+            IC.instanceName to instanceName,
             IC.configName to configName,
         )
         // Names its lock table: TOPIC.instance also carries the cache-state table, and this transaction has no
@@ -90,16 +118,17 @@ class InstanceConfigService : ServiceInitializer {
     }
 
     /**
-     * Reads a configuration entry for this instance, or null if it does not exist. A row whose [PF.enabled]
-     * flag is not set (issue #48) is treated as absent, so a disabled config entry reads back as null.
+     * Reads a configuration entry for this instance -- or, with [instanceName], another instance's key, such as
+     * [databaseWide] -- or null if it does not exist. A row whose [PF.enabled] flag is not set (issue #48) is treated
+     * as absent, so a disabled config entry reads back as null.
      */
-    fun getConfig(cxt: KdrCxt, configName: String): Map<String, Any?>? {
+    fun getConfig(cxt: KdrCxt, configName: String, instanceName: String = cxt.instanceConfig.instanceName): Map<String, Any?>? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
         val table = cxt.getGlobalSchema().tables[tableName]
             ?: throw KdrException("InstanceConfig table is not registered in the schema store.")
         val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
         val keys = mapOf(
-            IC.instanceName to cxt.instanceConfig.instanceName,
+            IC.instanceName to instanceName,
             IC.configName to configName,
         )
         var result: Map<String, Any?>? = null
@@ -120,6 +149,23 @@ class InstanceConfigService : ServiceInitializer {
 
         /** Key, within an auth-config row's data map, that holds the encryption key. */
         const val encryptionKeyField = "encryptionKey"
+
+        /** The row holding the [dataId] (issue #1099): its config type and name, and the field within its data. */
+        const val dataIdConfigType = "dataIdentity"
+        const val dataIdConfigName = "dataId"
+        const val dataIdField = "dataId"
+
+        /**
+         * The instance-name key of a row that belongs to the database rather than to one instance (issue #1099): the
+         * [dataId]'s. Not a name any instance takes.
+         */
+        const val databaseWide = "*database*"
+
+        /** Random bytes in a [dataId]: enough that two databases never share one, short enough to compare at a glance. */
+        private const val dataIdBytes = 9
+
+        /** The service, or null on a node that does not run it. */
+        fun getOrNull(cxt: KdrCxt): InstanceConfigService? = cxt.instanceConfig.get(serviceName) as? InstanceConfigService
 
         fun get(cxt: KdrCxt): InstanceConfigService = cxt.instanceConfig.get(serviceName) as? InstanceConfigService
             ?: throw KdrException("The $serviceName is not available on this node.")
