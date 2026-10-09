@@ -15,6 +15,8 @@ import com.dynamicruntime.common.sql.tableModule
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkEncryptionKey
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.RandomUtil
+import com.dynamicruntime.common.util.base64Encode
 
 /** Column-name keys for the InstanceConfig table. Each name matches its value. */
 @Suppress("ConstPropertyName")
@@ -50,6 +52,17 @@ class InstanceConfigService : ServiceInitializer {
     @KdrPrivate
     var nodeService: NodeService? = null
 
+    /**
+     * The id of the data this node serves (issue #1099): random, written to the `InstanceConfig` table the first time
+     * a database is initialized and read back on every boot after. So it changes exactly when the data does -- every
+     * boot of an in-memory database, which starts empty, and never across restarts on a persistent one (an H2 file
+     * store, Postgres), whose data survives them. Stored database-wide ([databaseWide]), so every instance and node
+     * using the database reads the same row. Not a secret: a test
+     * instance serves it in the app config, so a browser can tell whether what it remembers of the data still holds.
+     */
+    var dataId: String = ""
+        private set
+
     override fun onCreate(cxt: KdrCxt) {
         val node = NodeService.get(cxt)
         nodeService = node
@@ -58,18 +71,56 @@ class InstanceConfigService : ServiceInitializer {
         // fully initialized -- its database configuration resolved -- before this regular service's onCreate.
         val authKey = node.instanceAuthConfigKey
         // Reads (and, on a fresh instance, creates) the encryption key. The InstanceConfig table it reads was
-        // already created by SqlTopicService's startup-tier checkReady (issue #162), so this is a plain query.
-        val existing = getConfig(cxt, authKey)
-        val encryptionKey = if (existing != null) {
-            existing[IC.configData]?.toJsonMap()?.get(encryptionKeyField) as? String
-                ?: throw KdrException("Stored auth config '$authKey' is missing its encryption key.")
-        } else {
-            val created = mkEncryptionKey()
+        // already created by SqlTopicService's startup-tier checkReady (issue #162). Created under the row's lock, so
+        // nodes starting together on a fresh database agree on one key rather than each keeping its own -- which
+        // would leave each unable to read what the others encrypt.
+        val encryptionKey = getOrCreateConfig(cxt, authConfigType, authKey, encryptionKeyField) {
             LogStartup.info(cxt, "Storing a new shared encryption key for instance '${cxt.instanceConfig.instanceName}'.")
-            setConfig(cxt, authConfigType, authKey, mapOf(encryptionKeyField to created))
-            created
+            mkEncryptionKey()
         }
         node.registerEncryptionKey(authKey, encryptionKey)
+        // Database-wide, not under this instance's name: the data it identifies is the database's, whatever names
+        // the instances reading it go by. Created under the row's lock, as the key is, so every node reads one id.
+        dataId = getOrCreateConfig(cxt, dataIdConfigType, dataIdConfigName, dataIdField, databaseWide) {
+            RandomUtil.bytes(dataIdBytes).base64Encode()
+        }
+    }
+
+    /**
+     * The value at [field] in the [configName] row, created by [create] if the row does not hold one yet -- once,
+     * whoever asks first. A stored value is read without a lock; a missing one is written in a topic transaction on
+     * the row itself, which reads the row again under its lock and keeps a value another node stored in the
+     * meantime. So nodes starting together on a fresh database agree on one value, where reading first and writing
+     * after would leave each with its own, the last write winning in the database. A row holding data but not
+     * [field] is a damaged row, and refused rather than overwritten.
+     */
+    fun getOrCreateConfig(
+        cxt: KdrCxt,
+        configType: String,
+        configName: String,
+        field: String,
+        instanceName: String = cxt.instanceConfig.instanceName,
+        create: () -> String,
+    ): String {
+        fun valueIn(data: Any?): String? {
+            val map = data?.toJsonMap() ?: return null
+            return map[field] as? String
+                ?: throw KdrException("Stored config '$configName' holds data but no '$field'.")
+        }
+        getConfig(cxt, configName, instanceName)?.let { row -> valueIn(row[IC.configData])?.let { return it } }
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
+        val tranData = mapOf(IC.instanceName to instanceName, IC.configName to configName)
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, "createInstanceConfig", null, tranData, tranTableName = tableName) {
+            // The row as it stands under the lock: a value another node stored since the read above is kept.
+            if (valueIn(sqlCxt.tranData[IC.configData]) != null) {
+                sqlCxt.tranAlreadyDone = true
+            } else {
+                sqlCxt.tranData[IC.configType] = configType
+                sqlCxt.tranData[IC.configData] = mapOf(field to create())
+            }
+        }
+        return valueIn(sqlCxt.tranData[IC.configData])
+            ?: throw KdrException("Stored config '$configName' has no '$field' after it was created.")
     }
 
     /** Upserts a configuration entry for this instance via the topic transaction. */
@@ -90,16 +141,17 @@ class InstanceConfigService : ServiceInitializer {
     }
 
     /**
-     * Reads a configuration entry for this instance, or null if it does not exist. A row whose [PF.enabled]
-     * flag is not set (issue #48) is treated as absent, so a disabled config entry reads back as null.
+     * Reads a configuration entry for this instance -- or, with [instanceName], another instance's key, such as
+     * [databaseWide] -- or null if it does not exist. A row whose [PF.enabled] flag is not set (issue #48) is treated
+     * as absent, so a disabled config entry reads back as null.
      */
-    fun getConfig(cxt: KdrCxt, configName: String): Map<String, Any?>? {
+    fun getConfig(cxt: KdrCxt, configName: String, instanceName: String = cxt.instanceConfig.instanceName): Map<String, Any?>? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, topic)
         val table = cxt.getGlobalSchema().tables[tableName]
             ?: throw KdrException("InstanceConfig table is not registered in the schema store.")
         val stmt = SqlTopicUtil.mkTableSelectStmt(sqlCxt, table)
         val keys = mapOf(
-            IC.instanceName to cxt.instanceConfig.instanceName,
+            IC.instanceName to instanceName,
             IC.configName to configName,
         )
         var result: Map<String, Any?>? = null
@@ -120,6 +172,23 @@ class InstanceConfigService : ServiceInitializer {
 
         /** Key, within an auth-config row's data map, that holds the encryption key. */
         const val encryptionKeyField = "encryptionKey"
+
+        /** The row holding the [dataId] (issue #1099): its config type and name, and the field within its data. */
+        const val dataIdConfigType = "dataIdentity"
+        const val dataIdConfigName = "dataId"
+        const val dataIdField = "dataId"
+
+        /**
+         * The instance-name key of a row that belongs to the database rather than to one instance (issue #1099): the
+         * [dataId]'s. Not a name any instance takes.
+         */
+        const val databaseWide = "*database*"
+
+        /** Random bytes in a [dataId]: enough that two databases never share one, short enough to compare at a glance. */
+        private const val dataIdBytes = 9
+
+        /** The service, or null on a node that does not run it. */
+        fun getOrNull(cxt: KdrCxt): InstanceConfigService? = cxt.instanceConfig.get(serviceName) as? InstanceConfigService
 
         fun get(cxt: KdrCxt): InstanceConfigService = cxt.instanceConfig.get(serviceName) as? InstanceConfigService
             ?: throw KdrException("The $serviceName is not available on this node.")

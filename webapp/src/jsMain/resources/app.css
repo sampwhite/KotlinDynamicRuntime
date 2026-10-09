@@ -1383,3 +1383,16 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .sim-card { border-top: 1px solid var(--border); padding: 12px 0 4px; margin-top: 12px; }
 .sim-card:first-of-type { border-top: none; }
 .sim-users .row { align-items: center; gap: 12px; }
+/* The runs this browser remembers (issue #1099): a panel of their own above the simulations, so a run's other users
+   are a click away after signing in as one. A run from data since reset is dimmed, and offers no sign-in. */
+.sim-recent {
+    margin: 12px 0 18px;
+    padding: 4px 16px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--surface-raised), var(--surface-page) 40%);
+}
+.sim-recent > .row > h2 { margin: 10px 0 4px; }
+.sim-recent .sim-card > h3 { margin: 0 0 4px; font-size: 1rem; }
+.sim-recent-stale { margin-top: 10px; opacity: .7; }
+.sim-recent-stale > p { margin: 2px 0; }

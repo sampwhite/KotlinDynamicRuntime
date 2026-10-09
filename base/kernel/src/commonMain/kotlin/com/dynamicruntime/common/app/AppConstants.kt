@@ -127,6 +127,13 @@ object APP {
      * the two cannot drift.
      */
     const val defaultIdleBumpIntervalMs = 60_000
+
+    /**
+     * A setting (issue #1099), served on a test instance only: the id of the data the node serves, which changes when
+     * the data is reset (an in-memory node's every restart) and holds across restarts on a persistent database. The
+     * Simulations page keeps its recent runs against it, so a run whose users are gone is not offered for sign-in.
+     */
+    const val dataId = "dataId"
 }
 
 /**
