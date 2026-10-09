@@ -277,6 +277,15 @@ class RequestService : ServiceInitializer {
     }
 
     /**
+     * The sections of [endpoints] that have **no access rules**, sorted -- which would be served to anyone. The one
+     * statement of that, for the boot's check of every declared endpoint and for the admission of generated ones
+     * (issue #1087). Empty rules -- before this service is created -- make every section unruled, so a caller that
+     * asks too early is refused rather than waved through.
+     */
+    fun unruledSections(endpoints: Collection<KdrEndpoint>): List<String> =
+        endpoints.map { sectionOf(it.path) }.distinct().sorted().filter { it !in sectionRulesMap }
+
+    /**
      * The browser bootstrap config: the live context roots keyed by focus (`{"contextRoots":{"api":"kda",
      * "content":"cp"}}`). A content server injects this into a served page (as `window.kdrCfg`) so its
      * JavaScript can build backend URLs from the configured roots rather than hardcoding them.
@@ -350,11 +359,9 @@ class RequestService : ServiceInitializer {
         // Nothing a component declares contributes endpoints after that: schema is collected from components,
         // before any service runs, and compiled by the startup tier. So reading it in the first pass sees the
         // whole declared set. An endpoint **generated** after boot (issue #1083's typed report endpoints) is not
-        // seen here, and this check does not run again: what admits generated endpoints into the published schema
-        // must hold them to a ruled section itself, or one in a new section is served to everybody.
-        val unruled = cxt.getGlobalSchema().endpoints.values
-            .map { sectionOf(it.path) }.distinct().sorted()
-            .filter { it !in sectionRulesMap }
+        // seen here, and this check does not run again: `SchemaService.publishGenerated`, which admits generated
+        // endpoints into the published schema, asks [unruledSections] of each surface and refuses one (issue #1087).
+        val unruled = unruledSections(cxt.getGlobalSchema().endpoints.values)
         if (unruled.isNotEmpty()) {
             throw KdrException(
                 "Refusing to start: the endpoint section(s) ${unruled.joinToString(", ") { "'$it'" }} have no " +
