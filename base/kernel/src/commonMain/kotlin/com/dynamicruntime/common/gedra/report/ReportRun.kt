@@ -92,12 +92,18 @@ enum class ReportMode {
 fun BoundReport.excludes(subject: ReportSubject, excludeEmpty: List<BoundColumn>): Boolean =
     excludeEmpty.any { isEmptyReportValue(it.valueOf(subject)) }
 
-/** This column's value for [subject], by its own combine. */
-fun BoundColumn.valueOf(subject: ReportSubject): Any? = path.valueOf(subject, combine)
+/**
+ * This column's value for [subject], by its own combine -- each date in the form the column declares when
+ * [exactDates] is asked (issue #1086; see [BoundPath.valueOf]).
+ */
+fun BoundColumn.valueOf(subject: ReportSubject, exactDates: Boolean = false): Any? = path.valueOf(subject, combine, exactDates)
 
-/** Each of [columns]' value for [subject], by column id, in column order: a detail row's `values`. */
-fun detailValues(subject: ReportSubject, columns: List<BoundColumn>): Map<String, Any?> =
-    columns.associate { it.columnId to it.valueOf(subject) }
+/**
+ * Each of [columns]' value for [subject], by column id, in column order: a detail row's `values`. With [exactDates],
+ * what a row of the report's generated type holds ([reportRowDefs]).
+ */
+fun detailValues(subject: ReportSubject, columns: List<BoundColumn>, exactDates: Boolean = false): Map<String, Any?> =
+    columns.associate { it.columnId to it.valueOf(subject, exactDates) }
 
 /**
  * One group of an aggregate run (issue #981): the [key] -- the grouped-by columns' values, in [groupBy] order, null
@@ -112,9 +118,16 @@ class ReportGroup(val key: List<Any?>, val count: Int, val rollups: Map<String, 
  *
  * A rollup combines the column's value from each form of the group that has one: a `sum` of the forms' totals, the
  * `count` of forms with a value, the `max` of their dates. Two forms are in one group when their keys are equal as
- * report values ([reportValueKey]) -- `2` and `2.0` are one year.
+ * report values ([reportValueKey]) -- `2` and `2.0` are one year. With [exactDates] (issue #1086) a day and a
+ * timestamp within it are one group too, since each is brought to the column's form before it is a key -- and a
+ * rollup's values before they are rolled up.
  */
-fun aggregateReport(subjects: List<ReportSubject>, groupBy: List<BoundColumn>, rolled: List<BoundColumn>): List<ReportGroup> {
+fun aggregateReport(
+    subjects: List<ReportSubject>,
+    groupBy: List<BoundColumn>,
+    rolled: List<BoundColumn>,
+    exactDates: Boolean = false,
+): List<ReportGroup> {
     class Acc(val key: List<Any?>) {
         var count = 0
         val values: Map<String, MutableList<Any>> = rolled.associate { it.columnId to mutableListOf() }
@@ -122,11 +135,11 @@ fun aggregateReport(subjects: List<ReportSubject>, groupBy: List<BoundColumn>, r
     // Keyed by each value's identity as a report value, then ordered once at the end.
     val groups = LinkedHashMap<List<String>, Acc>()
     for (subject in subjects) {
-        val key = groupBy.map { it.valueOf(subject) }
+        val key = groupBy.map { it.valueOf(subject, exactDates) }
         val acc = groups.getOrPut(key.map(::reportValueKey)) { Acc(key) }
         acc.count++
         for (column in rolled) {
-            column.valueOf(subject)?.takeUnless { isEmptyReportValue(it) }?.let { acc.values.getValue(column.columnId).add(it) }
+            column.valueOf(subject, exactDates)?.takeUnless { isEmptyReportValue(it) }?.let { acc.values.getValue(column.columnId).add(it) }
         }
     }
     return groups.values.sortedWith { a, b -> compareReportKeys(a.key, b.key) }.map { acc ->

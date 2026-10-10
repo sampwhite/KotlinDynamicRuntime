@@ -84,6 +84,20 @@ class SchCoercionParityTest {
         assertEquals(listOf(SchFailCode.invalidOption), codes(mapOf(SCH.options to options("a")), 1L))
     }
 
+    // In JS every number is one kind, so "is it an Int?" says yes to 2.5 there; an integer is judged by whether the
+    // value is whole, which is one question on both platforms (issue #1086).
+    @Test
+    fun aNumberWithAFractionIsNoIntegerOnEitherPlatform() {
+        val integer = mapOf(SCH.type to SCT.integer)
+        val strict = integer + (SCH.allowCoerce to false)
+        for (body in listOf(integer, strict)) {
+            assertEquals(listOf(SchFailCode.wrongType), codes(body, 2.5))
+            assertEquals(listOf(SchFailCode.wrongType), codes(body, Double.NaN))
+            assertEquals(emptyList(), codes(body, 2L))
+            assertEquals(emptyList(), codes(body, 2))
+        }
+    }
+
     // A date is validated by parsing and returns before `const` is compared, so a `const` there checked nothing.
     @Test
     fun constOnADateIsRefused() {

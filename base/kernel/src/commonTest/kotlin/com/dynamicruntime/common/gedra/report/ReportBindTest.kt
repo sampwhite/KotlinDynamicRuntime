@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.ProblemCode
@@ -28,6 +29,8 @@ class ReportBindTest {
         trait("AuditEntry", "audit", setOf(GedraDataType.formDoc), "A site audit.") {
             property("auditor", "Who audited.")
             property("visitedOn", "The visit.") { dayOnlyDate() }
+            property("loggedAt", "When it was logged.") { dateTime() }
+            property("revisits", "Later visits.") { type = SCT.array; items { dayOnlyDate() } }
             property("score", "A score.") { type = SCT.integer }
             property("passed", "Whether it passed.") { type = SCT.boolean }
             property("tags", "Tags.") { type = SCT.array; items { type = SCT.string } }
@@ -75,9 +78,22 @@ class ReportBindTest {
             SCH.discriminator to mapOf(SCH.propertyName to "kind"),
         ),
         // Both declare `total` as a number; they disagree on `settled`, a flag on a card and a count on cash.
-        "$ns.Card" to branch("card", "last4" to SCT.string, "total" to SCT.number, "settled" to SCT.boolean),
-        "$ns.Cash" to branch("cash", "tendered" to SCT.number, "total" to SCT.number, "settled" to SCT.integer),
+        // Both date `paidOn` by the day; `clearedOn` is a day on a card and a moment on cash (issue #1086).
+        "$ns.Card" to dated(
+            branch("card", "last4" to SCT.string, "total" to SCT.number, "settled" to SCT.boolean),
+            "paidOn" to SFMT.date, "clearedOn" to SFMT.date,
+        ),
+        "$ns.Cash" to dated(
+            branch("cash", "tendered" to SCT.number, "total" to SCT.number, "settled" to SCT.integer),
+            "paidOn" to SFMT.date, "clearedOn" to SFMT.dateTime,
+        ),
     )
+
+    /** [type] with a date property per [fields] entry, of the format given. */
+    private fun dated(type: Map<String, Any?>, vararg fields: Pair<String, String>): Map<String, Any?> =
+        type + (SCH.properties to (type[SCH.properties] as Map<*, *>) + fields.associate { (name, format) ->
+            name to mapOf(SCH.type to SCT.string, SCH.format to format)
+        })
 
     private fun branch(kind: String, vararg fields: Pair<String, String>) = mapOf(
         SCH.type to SCT.kObject,
@@ -152,6 +168,46 @@ class ReportBindTest {
         assertEquals(ReportKind.string, bound("form.audit.payment.settled").kind)
         // An envelope field has the vocabulary's kind.
         assertEquals(ReportKind.date, bound("form.audit.@updatedAt").kind)
+    }
+
+    // Which form a date takes where a path reads it (issue #1086): what a typed run brings each value to.
+    @Test
+    fun aDateIsADayOnlyWhereTheSchemaDeclaresOneEverywhereThePathEnds() {
+        assertTrue(bound("form.audit.visitedOn").dayOnly)
+        // An array of days is several days.
+        bound("form.audit.revisits").let { assertTrue(it.dayOnly); assertTrue(it.multiValued) }
+        // A timestamp field is one; so are an entry's own dates and a form's, which no schema declares.
+        bound("form.audit.loggedAt").let { assertEquals(ReportKind.date, it.kind); assertFalse(it.dayOnly) }
+        assertFalse(bound("form.audit.@updatedAt").dayOnly)
+        assertFalse(bound("meta.createdAt").dayOnly)
+        // What is not a date is not a day.
+        assertFalse(bound("form.audit.auditor").dayOnly)
+        // In a union, a day when every branch declaring the field says so; one branch saying a moment and the
+        // column promises neither form.
+        assertTrue(bound("form.audit.payment.paidOn").dayOnly)
+        bound("form.audit.payment.clearedOn").let { assertEquals(ReportKind.date, it.kind); assertFalse(it.dayOnly) }
+    }
+
+    @Test
+    fun aColumnIsADayOnlyWhenItsValueIsADateTheSchemaDeclaresOne() {
+        fun column(c: ReportColumn) = assertIs<Parsed.Ok<BoundReport>>(bindReport(report(c), scope)).value.columns.single()
+        assertTrue(column(col("v", "form.audit.visitedOn")).dayOnly)
+        assertTrue(column(col("v", "form.audit.visitedOn", kind = ReportKind.date)).dayOnly)
+        // Declared text, it is read as text.
+        column(col("v", "form.audit.visitedOn", kind = ReportKind.string)).let {
+            assertEquals(ReportKind.string, it.kind)
+            assertFalse(it.dayOnly)
+            // And its path no longer says "a day": that is a fact about a date, and this reads none.
+            assertFalse(it.path.dayOnly)
+        }
+        // A text field read as dates: the schema says nothing of the form its values take.
+        column(col("a", "form.audit.auditor", kind = ReportKind.date)).let {
+            assertEquals(ReportKind.date, it.kind)
+            assertFalse(it.dayOnly)
+        }
+        // The earliest of several days is a day; how many there are is a number.
+        assertTrue(column(col("first", "form.audit.revisits", combine = ReportCombine.min)).dayOnly)
+        assertFalse(column(col("n", "form.audit.revisits", combine = ReportCombine.count)).dayOnly)
     }
 
     @Test
