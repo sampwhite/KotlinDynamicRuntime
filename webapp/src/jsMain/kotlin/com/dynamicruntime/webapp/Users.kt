@@ -1155,9 +1155,12 @@ private const val usersFiltersWellId = "users-filters"
  * change, in the words the forms list's chips use ([textChip], [rangeChip]) so the two pages say the same thing
  * -- and a blank value is no chip, matching `anyFilter` and what the query sends.
  *
- * A date bound reads as the table renders the column it filters -- [formatTimestamp], UTC to the minute -- so
- * the chip and the rows it admitted are on one clock; a chip in local time beside a column in UTC would show
- * one instant two ways. Every term in force is a chip, including one the caller's own well does not offer (the
+ * A date bound reads as the column it filters says its exact times on hover -- [formatTimestamp], UTC to the
+ * minute -- so the chip and the rows it admitted are on one clock; a chip in local time beside a column in UTC
+ * would show one instant two ways. It stays absolute while the cells are relative (issue #1141): a bound is a
+ * fixed instant, and `12m ago` would move under the filter it names.
+ *
+ * Every term in force is a chip, including one the caller's own well does not offer (the
  * client, for a caller without `allClients`, carried in by a shared link): it still counts as a filter to Clear
  * and to the count line, so it must be visible somewhere, and the chip is then the only somewhere. Pure, and
  * covered under `jsNodeTest`.

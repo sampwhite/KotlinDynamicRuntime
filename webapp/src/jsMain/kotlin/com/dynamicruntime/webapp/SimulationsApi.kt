@@ -9,6 +9,7 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /*
  * The Simulations page's API and its pure half (issue #997): the listing is the catalog's shape, so it parses with
@@ -152,9 +153,10 @@ fun decodeSavedRuns(text: String?): List<SavedSimulationRun> {
 }
 
 /**
- * How a remembered run is headed: the simulation, the clients it provisioned, and when it ran -- `report-demo · acme,
- * globex · 2026-10-09 14:05 UTC`. Pure, covered under `jsNodeTest`.
+ * How a remembered run is headed: the simulation, the clients it provisioned, and when it ran, measured from [now] --
+ * `report-demo · acme, globex · 12m ago` (issue #1141; the page puts the exact time on hover). Pure, covered under
+ * `jsNodeTest`.
  */
-fun recentRunHeading(saved: SavedSimulationRun): String =
-    listOf(saved.simulation, saved.run.clients.joinToString(", ").ifEmpty { null }, formatTimestamp(saved.ranAt))
+fun recentRunHeading(saved: SavedSimulationRun, now: Instant): String =
+    listOf(saved.simulation, saved.run.clients.joinToString(", ").ifEmpty { null }, formatRelativeTime(saved.ranAt, now))
         .filterNotNull().joinToString(" · ")

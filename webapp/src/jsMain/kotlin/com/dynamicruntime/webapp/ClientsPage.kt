@@ -579,6 +579,8 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     var busy by useState<String?>(null)
     var error by useState<DisplayError?>(null)
     var impact by useState<ImpactDialog?>(null)
+    // What the Published and Updated columns read their relative times against (issue #1141).
+    val now = useRelativeClock()
     useEffect(props.clientId) { error = null; impact = null }
     val publishedOnly = props.row?.let { it.publishedOnly || it.sandboxOf != null } ?: true
 
@@ -636,8 +638,18 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                         if (configRowNeedsPublish(props.row, c)) className = ClassName("op-row-attention")
                         td { +c.name }
                         td { className = ClassName("op-num"); +c.version.toString() }
-                        td { +(if (c.published) c.publishedAt?.let { formatTimestamp(it) } ?: "Yes" else "No") }
-                        td { +(c.updatedAt?.let { formatTimestamp(it) } ?: "\u2014") }
+                        td {
+                            val at = c.publishedAt
+                            when {
+                                !c.published -> +"No"
+                                at == null -> +"Yes"
+                                else -> RelativeTime { iso = at; this.now = now }
+                            }
+                        }
+                        td {
+                            val at = c.updatedAt
+                            if (at == null) +"\u2014" else RelativeTime { iso = at; this.now = now }
+                        }
                         // A sandbox runs its parent's latest, so for it every row is what it runs (issue #1001).
                         td { +(if (props.row?.sandboxOf != null) "Runs here" else bundleLiveText(c, publishedOnly)) }
                         td { className = ClassName("op-num"); +c.issueCount.toString() }

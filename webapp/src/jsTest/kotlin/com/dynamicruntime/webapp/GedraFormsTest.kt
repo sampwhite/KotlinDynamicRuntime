@@ -407,7 +407,7 @@ class GedraFormsTest {
         mapOf(UF.traitId to traitId, UF.label to label, UF.value to value)
 
     /** The summary reads each trait by its friendly label, the document's heading and columns from the
-     *  client's computed `displayValues`, and a formatted created time. */
+     *  client's computed `displayValues`, and the created time as the wire has it (each surface formats it, #1141). */
     @Test
     fun summarizesTraitsDisplayValuesAndTime() {
         val item = mapOf(
@@ -427,7 +427,7 @@ class GedraFormsTest {
         assertEquals("Q3 expenses", info.displayValues.single().value)
         // "name" has no branch title so it humanizes; "expenseReport"'s branch declares one.
         assertEquals(listOf("Name", "Expense report"), info.traitLabels)
-        assertEquals("2026-08-21 19:49 UTC", info.createdAt)
+        assertEquals("2026-08-21T19:49:51.568Z", info.createdAt)
     }
 
     /** The heading is the first **non-blank** display value: a blank one (the row lacks that trait) is skipped. */
@@ -489,7 +489,7 @@ class GedraFormsTest {
         // Which of the person's users owns it (issue #1097).
         assertEquals("admin", info.ownerPersona)
         assertEquals("2", info.ownerPersonaSuffix)
-        assertEquals("2026-08-22 08:05 UTC", info.updatedAt)
+        assertEquals("2026-08-22T08:05:00.000Z", info.updatedAt)
         assertEquals("Ada", info.ownerName)
         assertEquals("ada@example.com", info.ownerEmail)
         // The owning client (issue #668) feeds the Client column for an allClients caller.

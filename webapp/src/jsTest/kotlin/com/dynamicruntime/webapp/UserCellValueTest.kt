@@ -5,6 +5,7 @@ import com.dynamicruntime.common.user.userSearchFieldSpecs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 
 /**
  * Every spec field the table renders a column for must have a display branch in [cellValue] (issue #411, the
@@ -85,7 +86,7 @@ class UserCellValueTest {
     fun everySpecFieldHasADisplayValue() {
         val user = populatedUser()
         for (spec in userSearchFieldSpecs) {
-            val value = cellValue(spec.name, user)
+            val value = cellValue(spec.name, user, Clock.System.now())
             // A fully-populated user should produce a real, non-placeholder value for every column.
             assertTrue(
                 value.isNotBlank() && value != unmappedCell,

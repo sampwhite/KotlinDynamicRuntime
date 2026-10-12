@@ -761,9 +761,12 @@ class FormSummary(
     val displayValues: List<DisplayValue>,
     /** Each entry's trait, by the same friendly label the form's trait picker showed. */
     val traitLabels: List<String>,
-    /** When it was created, already formatted for reading; null when the row carried no timestamp. */
+    /**
+     * When it was created, as the wire has it -- each surface formats it its own way (issue #1141): the table
+     * relative to now, a form's own page in full. Null when the row carried no timestamp.
+     */
     val createdAt: String?,
-    /** When it was last written, formatted like [createdAt]; null when the row carried no timestamp (issue #562). */
+    /** When it was last written, as the wire has it, like [createdAt]; null when the row carried none (issue #562). */
     val updatedAt: String? = null,
     /**
      * The owner's display name, from the row's `owner` block (issue #580): present only for a caller who sees
@@ -820,8 +823,8 @@ fun summarizeForm(item: Map<String, Any?>, entriesUnion: SchType?): FormSummary 
         title = title,
         displayValues = displayValues,
         traitLabels = traitLabels,
-        createdAt = (item[GDF.createdAt] as? String)?.let { formatTimestamp(it) },
-        updatedAt = (item[GDF.updatedAt] as? String)?.let { formatTimestamp(it) },
+        createdAt = item[GDF.createdAt] as? String,
+        updatedAt = item[GDF.updatedAt] as? String,
         // The owner's name and email come from the row's `owner` block (issue #580), attached only for a caller
         // who may see other users' documents. Kept as two flat summary fields, since the User column and the
         // read-only view read them one at a time; a block absent (an ordinary caller's own row) leaves both null.

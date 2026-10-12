@@ -699,6 +699,17 @@ the rule's declared colour proves nothing. Put the pointer on the control (the b
 ref), wait out antd's `0.2s` transition, then read `getComputedStyle(el).color`. If a link ever looks dim,
 measure that way against its surface before touching the palette, and keep hover brighter than rest.
 
+## Times in tables (issue #1141)
+
+A table column shows a time **relative to now** (`RelativeTime.kt`): `just now` within a minute either way, then two
+units -- `12m ago`, `1h 23m ago`, `1d 2h ago`, `in 3h` for a future one -- and from 48 hours on the UTC day alone,
+`2026-10-10` (`formatRelativeTime`). The exact `formatTimestamp` value is the cell's tooltip. A table reads its rows
+against one `useRelativeClock()`, which re-renders it every 30 seconds -- so minutes are the finest unit -- and an
+antd table files each row's tooltip under `timeTipKey(dataIndex)` for `timeColumnRender`; a plain table draws
+`RelativeTime`. What stays **absolute**: a form's or user's own page (it has the room), a filter chip's date bound (a
+fixed instant; a relative one would move under the filter), a report's cells and the report history's rows (the
+dates there are data compared across rows and snapshots, and the history's day column already names the day).
+
 ## Choice widgets, and the free-entry one (issues #261, #418)
 
 `SchemaForm` draws a choice field from the schema, and which control it draws is decided by two keywords:
