@@ -148,6 +148,45 @@ The **Reports page** in the webapp (`#page=reports`) is these two endpoints with
 **Download CSV** is the cursor walked to the end in the browser: the whole run as set up, saved as one file, or
 nothing at all if a page fails part-way. Times in the file are UTC, written `yyyy-MM-dd HH:mm:ss`.
 
+### Typed endpoints per report
+
+The run endpoint above answers for any report, so its rows are open maps and a caller learns a report's columns only
+from a run's summary. Each report also has **two endpoints of its own** (issue #1083), whose output is that report's
+own type — so the endpoint catalog says exactly what a run of it returns, and every response is held to it:
+
+- **`GET /clientAdmin/<client>/report/<reportId>/run`** — a row per form, `{gedraId, values}`.
+- **`GET /clientAdmin/<client>/report/<reportId>/aggregate`** — a row per group, `{group, count, values}`, grouped
+  by the report's own `groupBy`.
+
+They are the same run under other names, with what the shared endpoint takes as inputs fixed by the path: the client,
+the report and the mode. So the only inputs are `excludeEmpty`, `after` and `limit`; a `groupBy`, a `client` or a
+`reportId` is refused, not ignored. The grouping cannot be overridden because the group type is generated from it.
+Who may call one is the shared endpoint's rule: the client's own administrator, or one who sees every client. The
+summary beside the rows is the shared run's.
+
+**The types.** Two per client and report, `kdr.report.client.<client>.<reportId>Row` and `…Group` (a sandbox's client
+id and a rooted report id each give a dot for their colon). In a row, `values` holds every column by its id; in a
+group, `group` holds the grouped-by columns and `values` only the columns that roll up, typed by what the rollup
+yields. A column is a string, a number (an integer for a `count`), a boolean, or a date; a list of those when its
+combine or rollup yields one. No column is required: one with nothing to show is null. Every object is closed.
+
+**A date column is a day or a timestamp, and says which.** It is a day when the schema declares one wherever the
+column's path can end, and a timestamp otherwise: a form's or an entry's own dates, a text field read as dates, a
+union whose branches disagree. On the typed endpoints every value is brought to that form before it is combined or
+grouped — a timestamp in a day column becomes the day it falls on, a day in a timestamp column its first instant, in
+the server's zone — so a day and a moment within it are one group. The shared endpoint is unchanged: there a value is
+a day or a timestamp as each form stored it.
+
+**Always checked.** The types are strict — nothing is coerced — and a typed endpoint validates every response
+against its type in every environment, where other endpoints are checked only in tests. A response that is not of the
+type is a 500 naming the endpoint, the path and the reason; it means the generator and the run disagree, which is a
+defect to fix rather than a row to tolerate.
+
+**Generated, per client, from the registry.** At boot and on each client's reload, for every report the client may
+run — its own and the global ones — so a stored report's endpoints appear when it is published and go when it is
+removed, and a redefined report is answered in its new type on the next request. See the catalog for one client's:
+`GET /schema/endpoints?client=<client>`. A node that does not serve the shared run endpoint generates none.
+
 ### What the cursor guarantees
 
 Send each page's `next` back as `after` until a page has none.
@@ -161,7 +200,7 @@ Send each page's `next` back as `after` until a page has none.
 - `excludeEmpty` applies before paging, so a form gaining a value mid-walk may join the walk if it is still ahead.
 - A cursor belongs to one query — the client, the report as it was bound, the mode and the grouping. Another query's
   cursor — including one taken before a reload changed the report — or a malformed one is a 400, never a silent
-  restart at the first page.
+  restart at the first page. A typed endpoint's run is a query of its own: its cursor is not the shared run's.
 
 ### Execution
 

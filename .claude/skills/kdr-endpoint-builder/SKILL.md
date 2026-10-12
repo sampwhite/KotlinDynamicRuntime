@@ -185,6 +185,13 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   and message. Only a JSON envelope is checked; a file download has none. The
   opt-in is for an endpoint whose schema is generated from data and so *is* the contract; it is not a builder
   parameter, and is set only where a `KdrEndpoint` is constructed directly.
+- **Endpoints made from data, after boot.** An endpoint that does not exist until configuration says so is
+  constructed directly and handed, with the types it uses, to `SchemaService.publishGenerated` as a client's
+  `GeneratedSurface`. `gedra/report/ReportTypedEndpoints.kt` is the worked example: one endpoint pair per client and
+  report, its output type generated from the report, `validateOutput` on. The publication refuses what the boot
+  would have refused of a declared endpoint (a section with no rules, an address already taken) and a few things
+  only a generator can do: types that refer outside their own surface, and the keywords the boot judges
+  (`g-visibleWhen`, `g-layout`, `g-errors`, `g-optionsSource`).
 - Protocol keys are constants in `object EP` (kernel): `EP.results`, `EP.item`, `EP.items`, `EP.limit`,
   `EP.numItems`, `EP.hasMore`, `EP.numAvailable`, `EP.requestUri`, `EP.duration`; the error keys `EP.status`,
   `EP.errorCode`, `EP.errorMessage`, `EP.extraData` (see *How one runs*); and the off-contract `EP.debug`

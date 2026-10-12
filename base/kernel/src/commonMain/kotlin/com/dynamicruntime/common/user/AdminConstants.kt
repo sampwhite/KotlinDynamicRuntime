@@ -5,6 +5,7 @@ package com.dynamicruntime.common.user
 // and it should build its calls from the same strings the backend serves them under. Per the code guide, these
 // are lowerCamelCase `const val`s in short upper-case acronym objects, always referenced qualified.
 
+import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.http.request.SECT
 
 /**
@@ -154,14 +155,30 @@ object UADEP {
     /** The named reports one client may run (issue #981), with how each column was bound. Scoped as [clientDefinition] is. */
     const val reports = "/${SECT.clientAdmin}/reports"
 
+    /** What the report endpoints that act on one report sit under. */
+    const val reportBase = "/${SECT.clientAdmin}/report"
+
     /** Runs one report over a client's forms (issue #981): a row per form or per group, cursor-paged. */
-    const val reportRun = "/${SECT.clientAdmin}/report/run"
+    const val reportRun = "$reportBase/run"
+
+    /** A typed report endpoint's last segment (issue #1088): a row per form ([typedReportRun]) or per group. */
+    const val typedReportRun = "run"
+    const val typedReportAggregate = "aggregate"
+
+    /**
+     * Where one report's **typed** endpoint is served for one client (issue #1088):
+     * `/clientAdmin/<client>/report/<reportId>/<action>`, [action] being [typedReportRun] or [typedReportAggregate].
+     * Client and report are both in the path, so the catalog can say what that one report returns. One segment
+     * longer than any shared report path, so the two never meet.
+     */
+    fun typedReportPath(client: String, reportId: String, action: String): String =
+        clientPath("$reportBase/$reportId/$action", client)
 
     /** A report's stored snapshots, newest first and cursor-paged (issue #1034). Scoped as [reportRun] is, and client-wide. */
-    const val reportHistory = "/${SECT.clientAdmin}/report/history"
+    const val reportHistory = "$reportBase/history"
 
     /** Takes a snapshot of a report's grouped run now (issue #1034). Scoped as [reportRun] is, and client-wide. */
-    const val reportSnapshot = "/${SECT.clientAdmin}/report/snapshot"
+    const val reportSnapshot = "$reportBase/snapshot"
 }
 
 /** Admin request/response field (JSON key) names. */
