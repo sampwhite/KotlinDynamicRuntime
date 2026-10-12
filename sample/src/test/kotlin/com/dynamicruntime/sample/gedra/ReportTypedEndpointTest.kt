@@ -43,7 +43,8 @@ import io.kotest.matchers.string.shouldContain
  *
  * Booted with response-schema validation **off**, as a real deployment has it, so that every response here is
  * checked only because a typed endpoint asks for it -- which is the enforcement the feature promises. And with env
- * auth assumed, since the catalog shows a caller without it the published API alone.
+ * auth assumed, so the whole catalog can be read beside the typed endpoints; what a caller without it is shown of
+ * them is `ReportTypedCatalogTest`'s.
  */
 class ReportTypedEndpointTest : StringSpec({
     val cxt = Startup.mkTestBootCxt(

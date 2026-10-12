@@ -184,8 +184,17 @@ defect to fix rather than a row to tolerate.
 
 **Generated, per client, from the registry.** At boot and on each client's reload, for every report the client may
 run — its own and the global ones — so a stored report's endpoints appear when it is published and go when it is
-removed, and a redefined report is answered in its new type on the next request. See the catalog for one client's:
-`GET /schema/endpoints?client=<client>`. A node that does not serve the shared run endpoint generates none.
+removed, and a redefined report is answered in its new type on the next request. A node that does not serve the
+shared run endpoint generates none.
+
+**Read from the catalog, by those who may call them.** `GET /schema/endpoints` lists a client's typed endpoints, with
+each report's row and group type in `$defs`, to that client's own administrator — whose catalog is their own client's —
+and `GET /schema/endpoints?client=<client>` lists them to one who sees every client. This holds for a caller
+**without env auth** too (issue #1128), which is the one exception to the catalog serving such a caller the published
+API alone: these endpoints cannot be published, since their section is not a publishable one, and their catalog
+entry is the only place a report's type is written down. The exception is advertisement, never access — it shows a
+generated endpoint to exactly the callers its own rule admits — and it reaches nothing declared: the shared report
+endpoints above stay a developer's to read.
 
 ### What the cursor guarantees
 

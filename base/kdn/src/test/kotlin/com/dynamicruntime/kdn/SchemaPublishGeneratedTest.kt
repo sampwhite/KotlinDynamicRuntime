@@ -46,8 +46,8 @@ import io.kotest.matchers.string.shouldContain
  * published.
  *
  * On a shared instance, under clients of its own; the last case removes what the rest published. The env-auth one,
- * because the catalog shows a caller without env auth the published API alone (issue #489), and a client-administration
- * endpoint is never that.
+ * so the whole catalog can be read around what was generated; what the catalog shows of a generated endpoint to a
+ * caller without env auth (issue #1128) is `SchemaGeneratedCatalogTest`'s.
  */
 class SchemaPublishGeneratedTest : StringSpec({
     val cxt = TestInstances.envAuth("publishGenerated")

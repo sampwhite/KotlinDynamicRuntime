@@ -183,6 +183,16 @@ object AdminRules {
     fun isClientAdministrator(cxt: KdrCxt): Boolean =
         adminScope(cxt).let { it == AdminScope.ownClient || it == AdminScope.allClients }
 
+    /**
+     * Whether the caller administers [client] itself (issue #1128): a client administrator ([isClientAdministrator])
+     * whose reach includes it -- their own client, or any for one who sees every client. The same answer
+     * `overseenClient` gives by throwing, for a caller the `clientAdmin` section has already admitted; asked here
+     * without throwing, for a surface that decides what to **show** such a caller rather than what to refuse the
+     * rest -- the endpoint catalog, listing a client's generated endpoints to those who may call them.
+     */
+    fun administersClient(cxt: KdrCxt, client: String): Boolean =
+        isClientAdministrator(cxt) && (client == cxt.userProfile.client || canSeeAllClients(cxt))
+
     fun requireClientAdministrator(cxt: KdrCxt) {
         if (adminScope(cxt) == AdminScope.ownIdentity) {
             throw KdrException(
