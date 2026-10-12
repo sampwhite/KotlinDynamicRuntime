@@ -10,7 +10,7 @@ The coding philosophy and conventions for the project are described in [`code-gu
 Two terms recur throughout this project and its documentation. The **workspace directory** is the directory
 that *contains* this repository — the (non-versioned) directory that holds the per-deployment
 `settings.gradle.kts`, the Gradle wrapper, the deployment configuration, and the runtime data (`h2Database/`,
-`private/`, `logs/`). The **workspace** is the whole ensemble: the code and data under that directory that
+`private/`, `logs/`, `fileStore/`). The **workspace** is the whole ensemble: the code and data under that directory that
 together constitute a running deployment.
 
 Tooling finds the workspace directory by walking up from its own location to the nearest ancestor that holds

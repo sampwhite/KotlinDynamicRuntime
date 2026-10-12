@@ -30,6 +30,7 @@ dependencies {
     // module cannot acquire a jetty or log4j artifact at some other version by forgetting to opt in.
     add("implementation", platform("org.eclipse.jetty:jetty-bom:${Versions.jetty}"))
     add("implementation", platform("org.apache.logging.log4j:log4j-bom:${Versions.log4j}"))
+    add("implementation", platform("software.amazon.awssdk:bom:${Versions.awsSdk}"))
 
     // KMP-friendly date/time (the Instant type itself comes from the kotlin.time stdlib).
     add("implementation", "org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")

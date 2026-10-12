@@ -42,6 +42,21 @@ dependencies {
     // in-memory and file-based modes (and the tests); PostgreSQL backs real deployments.
     implementation("com.h2database:h2:2.4.240")
     implementation("org.postgresql:postgresql:42.7.13")
+
+    // The AWS SDK's S3 client, behind the file store's `s3` provider (issue #1129) -- the code guide's exception:
+    // a library to talk to a third party. `implementation`, and confined to one file (`SdkS3Api`), so no SDK
+    // type reaches another module. The SDK's heavier HTTP clients are excluded and its JDK-backed one named
+    // instead: one small client on the classpath rather than Apache HttpClient or Netty beside the Jetty
+    // client the rest of the codebase calls out with. At 2.55 only the Apache 5 client arrives transitively;
+    // the other two are named so an SDK upgrade that reshuffles its defaults does not bring one in unnoticed.
+    // The SDK logs through slf4j, which the binding above already routes into our log4j2 config. Versions
+    // come from the AWS BOM applied in `kdr.kotlin-conventions`.
+    implementation("software.amazon.awssdk:s3") {
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+        exclude(group = "software.amazon.awssdk", module = "apache-client")
+        exclude(group = "software.amazon.awssdk", module = "apache5-client")
+    }
+    implementation("software.amazon.awssdk:url-connection-client")
 }
 
 // Publish the repository's README as a Markdown *document* resource, so MarkdownDocService can serve it (and
