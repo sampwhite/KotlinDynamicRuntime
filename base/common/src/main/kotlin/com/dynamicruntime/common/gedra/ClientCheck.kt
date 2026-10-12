@@ -73,6 +73,10 @@ fun checkClientDefs(
     // (issue #839), and it is the holder an issue names. `off` for that origin admits the definition unchecked.
     val holders = HashMap<String, GedraConfig>()
     fun unchecked(config: GedraConfig) = config.checkMode(cxt) == BootCheckMode.off
+    // On a reload, the clients it is not judging hold their ids whatever their place in contribution order (issue
+    // #1106): a reloaded client whose id differs from one of theirs only by case is the newcomer, and is the one
+    // that goes.
+    val settled = if (only == null) emptySet() else current.keys.filterNotTo(HashSet()) { it in only }
 
     // Pass one: what a definition can be judged on by itself, plus whether one client is declared twice.
     for ((config, def) in declared) {
@@ -86,7 +90,7 @@ fun checkClientDefs(
             }
             continue
         }
-        val problem = if (unchecked(config)) null else ownProblem(config, def, kept)
+        val problem = if (unchecked(config)) null else ownProblem(config, def, kept, settled)
         if (problem == null) {
             kept[def.clientId] = def
             holders[def.clientId] = config
@@ -125,8 +129,16 @@ fun checkClientDefs(
     return ClientCheckResult(clients, issues)
 }
 
-/** The first thing wrong with [def] judged on its own, or null. */
-private fun ownProblem(config: GedraConfig, def: ClientDef, kept: Map<String, ClientDef>): GedraConfigIssue? {
+/**
+ * The first thing wrong with [def] judged on its own, or null. [settled] is the ids a reload is not judging, which
+ * hold theirs against [def] as [kept] ones do.
+ */
+private fun ownProblem(
+    config: GedraConfig,
+    def: ClientDef,
+    kept: Map<String, ClientDef>,
+    settled: Set<String>,
+): GedraConfigIssue? {
     // The charset first, so an unusable name is reported as itself rather than as a disagreement with the id
     // it failed to match. `GedraId` already holds the config's own client to this rule; the declared one is a
     // separate string and has to be held to it separately -- which is the whole point of it being declared.
@@ -151,6 +163,14 @@ private fun ownProblem(config: GedraConfig, def: ClientDef, kept: Map<String, Cl
             "Client '${def.clientId}' is defined twice; '${config.gedraId}' is the second. Every config " +
                 "sharing a client is read as one whole, and exactly one of them declares what the client is.",
             "Keeping the first definition; '${config.gedraId}''s is dropped.",
+        )
+    }
+    caseVariantOf(def.clientId, kept.keys + settled)?.let { holder ->
+        return GedraConfigIssue(
+            "Client '${def.clientId}', declared by '${config.gedraId}', differs from the client '$holder' only by " +
+                "case. A client id is embedded in every gedra id its client owns, and two that differ only by case " +
+                "read as one to a person.",
+            "Keeping '$holder'; '${def.clientId}' is dropped.",
         )
     }
     envProblem(config, def)?.let { return it }
@@ -283,6 +303,17 @@ private fun includedEntryFaults(def: ClientDef, configs: GedraConfigCollector): 
             "exist are ${CLD.allGlobal}."
     }
     return out
+}
+
+/**
+ * The id among [ids] that differs from [clientId] only by case, or null (issue #1106). Two such ids cannot both be
+ * clients: an id is permanent and embedded in every gedra id its client owns, and `Acme` beside `acme` is a
+ * look-alike collision. A sandbox's id is never judged, nor judged against: it follows its parent's, so its
+ * parent's check is the one that matters.
+ */
+fun caseVariantOf(clientId: String, ids: Iterable<String>): String? {
+    if (isSandboxClient(clientId)) return null
+    return ids.firstOrNull { it != clientId && it.equals(clientId, ignoreCase = true) && !isSandboxClient(it) }
 }
 
 /**

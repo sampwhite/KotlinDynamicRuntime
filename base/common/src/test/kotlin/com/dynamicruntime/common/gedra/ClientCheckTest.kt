@@ -120,6 +120,28 @@ class ClientCheckTest : StringSpec({
         message shouldContain "gc.cd.acme.acmeExtras"
     }
 
+    // Issue #1106: an id is permanent and embedded in every gedra id, so `Acme` beside `acme` is a collision.
+    "two clients whose ids differ only by case cannot both be declared" {
+        val message = refusal(clientConfig("acme"), clientConfig("Acme"))
+        message shouldContain "Client 'Acme', declared by 'gc.cd.Acme.AcmeClient', differs from the client 'acme' only by case"
+    }
+
+    "in production the first of two ids differing only by case is kept" {
+        val result = checkClientDefs(prodCxt, collectorOf(clientConfig("acme"), clientConfig("ACME")))
+        result.clients.keys shouldContainExactly setOf("acme")
+        result.issues.single().degradedTo shouldBe "Keeping 'acme'; 'ACME' is dropped."
+    }
+
+    "a reloaded client loses to a running one whose id differs only by case, wherever it is declared" {
+        // The reloaded client is declared first, so contribution order alone would keep it.
+        val running = checkClientDefs(prodCxt, collectorOf(clientConfig("acme"))).clients
+        val result = checkClientDefs(
+            prodCxt, collectorOf(clientConfig("Acme"), clientConfig("acme")), only = setOf("Acme"), current = running,
+        )
+        result.clients.keys shouldContainExactly setOf("acme")
+        result.issues.single().message shouldContain "differs from the client 'acme' only by case"
+    }
+
     // Retirement, and the only way to do it: the definition stays and access stops everywhere. Declaring it
     // has to be possible, which is why nothing checks the set is non-empty -- and it cannot happen by
     // accident, the field defaulting to a set that is not empty.

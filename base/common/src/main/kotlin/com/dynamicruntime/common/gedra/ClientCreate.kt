@@ -15,7 +15,8 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * It adds no rule of its own beyond "the id is not taken" -- and that one is kept twice: asked before anything is
  * built, so a taken id is refused in words that say who holds it, and enforced by the write itself, under the
- * client's lock (`ConfigWrite.mustBeNew`), so two creates of one id cannot both succeed whichever asked first.
+ * client's lock (`ConfigWrite.mustBeNew`), so two creates of one id cannot both succeed whichever asked first. An id
+ * that differs from a taken one only by case is taken too (issue #1106), asked before the write (`caseVariant`).
  *
  * The definition goes through the write every definition
  * goes through: the slot gate (`reassembleForWrite`, issue #1051) holds it to its schema, `writeConfig` to the
@@ -61,6 +62,7 @@ object ClientCreate {
         val bound = cxt.mkSubContext("clientCreate", client)
         val svc = GedraConfigService.get(bound)
         if (svc.clientExists(bound)) throw taken(cxt, client)
+        caseVariant(cxt, client)?.let { throw takenByCase(cxt, client, it) }
         val slots = mapOf(CCT.clientDef to listOf(definitionOf(request)))
         val name = CLD.definitionConfigName
         val config = reassembleForWrite(bound, name, clientNamespace(client), client, slots)
@@ -114,6 +116,33 @@ object ClientCreate {
                 "configuration is published, or mended, through the configuration endpoints."
         }
         return KdrException(message, code = EXC.conflict)
+    }
+
+    /**
+     * A client id that differs from [client] only by case (issue #1106): one this node knows, declared anywhere and
+     * kept or not, or one with stored configuration. Asked before the write, as "the id is not taken" is, but not
+     * under a lock: two ids differing by case take two clients' locks, so creates of `Acme` and `acme` racing could
+     * both be stored. The load's check is what holds then -- the later is dropped and reported (`caseVariantOf`).
+     */
+    private fun caseVariant(cxt: KdrCxt, client: String): String? {
+        val clients = ClientService.get(cxt)
+        val ids = clients.clients.keys + clients.declaredClients().map { it.clientId } +
+            GedraConfigService.get(cxt).storedClients(cxt)
+        return caseVariantOf(client, ids)
+    }
+
+    /** The refusal for an id that [holder] takes up to case, saying where [holder] is defined. */
+    private fun takenByCase(cxt: KdrCxt, client: String, holder: String): KdrException {
+        val clients = ClientService.get(cxt)
+        val where = when {
+            clients.known(holder) == null -> "has stored configuration"
+            clients.originOf(holder) == GedraConfigOrigin.source -> "is defined in source code"
+            else -> "is defined in stored configuration"
+        }
+        return KdrException(
+            "Client '$client' cannot be created: '$holder' $where, and two client ids may not differ only by case.",
+            code = EXC.conflict,
+        )
     }
 
     /** The definition [request] asks for, as the `kdr:clientDef` slot holds one: its [ClientCreateFields] that were given. */
