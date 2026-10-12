@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonStr
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -82,6 +84,25 @@ class SchCoercionParityTest {
         // An untyped field may carry a list: the list itself says the value is text.
         assertEquals(emptyList(), codes(mapOf(SCH.options to options("a")), "a"))
         assertEquals(listOf(SchFailCode.invalidOption), codes(mapOf(SCH.options to options("a")), 1L))
+    }
+
+    // In JS every number is one kind, so "is it an Int?" says yes to 2.5 there; an integer is judged by whether the
+    // value is whole, which is one question on both platforms (issue #1086).
+    @Test
+    fun aNumberWithAFractionIsNoIntegerOnEitherPlatform() {
+        val integer = mapOf(SCH.type to SCT.integer)
+        val strict = integer + (SCH.allowCoerce to false)
+        for (body in listOf(integer, strict)) {
+            assertEquals(listOf(SchFailCode.wrongType), codes(body, 2.5))
+            assertEquals(listOf(SchFailCode.wrongType), codes(body, Double.NaN))
+            assertEquals(emptyList(), codes(body, 2L))
+            assertEquals(emptyList(), codes(body, 2))
+        }
+        // A whole `Double` is where the platforms still differ in process -- JS cannot tell it from `2` -- and why
+        // that does not reach a server: written out it has no fraction, on either platform, and is read back whole.
+        val written = mapOf("v" to 2.0).toJsonStr(compact = true)
+        assertEquals("{\"v\":2}", written)
+        assertEquals(emptyList(), codes(integer, written.jsonMap()!!["v"]))
     }
 
     // A date is validated by parsing and returns before `const` is compared, so a `const` there checked nothing.

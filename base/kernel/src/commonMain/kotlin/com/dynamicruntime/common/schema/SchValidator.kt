@@ -21,6 +21,7 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toStartOfDay
 import kotlinx.datetime.LocalDate
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.time.Instant
 
 /**
@@ -1237,7 +1238,15 @@ fun cloneForInjection(value: Any?): Any? = when (value) {
 @KdrPrivate
 fun matchesType(jsonType: String?, value: Any?): Boolean = when (jsonType) {
     SCT.string -> value is String
-    SCT.integer -> value is Int || value is Long
+    // "Is it an Int?" is not one question: in JS every number is one kind, so `2.5 is Int` is true there, and a
+    // fraction passed for an integer in the browser that the backend then refused. So a fraction is asked after
+    // too (issue #1086), and is refused on both platforms.
+    //
+    // One difference is left, and cannot be closed from here: a whole `Double` (`2.0`) is an integer in JS, where
+    // it *is* `2`, and is not one on the JVM, where it is still a `Double`. It does not cross the wire -- the JSON
+    // writer gives a whole number no fraction on either platform, and it is read back a `Long` -- so it shows only
+    // to JVM code handing the validator a `Double` of its own.
+    SCT.integer -> value is Long || (value is Int && isWhole(value))
     SCT.number -> value is Number
     SCT.boolean -> value is Boolean
     SCT.kObject -> value is Map<*, *>
@@ -1245,6 +1254,9 @@ fun matchesType(jsonType: String?, value: Any?): Boolean = when (jsonType) {
     SCT.kNull -> value == null
     else -> true // null/unknown type => no constraint
 }
+
+/** Whether [value] has no fraction and is a number at all: not NaN, not an infinity. Always true of a JVM `Int`. */
+private fun isWhole(value: Number): Boolean = value.toDouble().let { it.isFinite() && it == floor(it) }
 
 @KdrPrivate
 fun wrongTypeMsg(type: SchType): String = "This must be of type '${type.jsonType ?: "any"}'."

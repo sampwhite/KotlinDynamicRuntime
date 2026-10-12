@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.GedraTrait
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.SchProperty
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.isDateFormat
@@ -40,6 +41,9 @@ class BoundColumn(val column: ReportColumn, val path: BoundPath, val combine: Re
 
     /** Whether the column's value is a list -- one that cannot be grouped by. */
     val yieldsList: Boolean get() = combine.yieldsList
+
+    /** Whether the column's value is a date the schema declares a **day** ([BoundPath.dayOnly]) -- a count of days is a number. */
+    val dayOnly: Boolean get() = kind == ReportKind.date && path.dayOnly
 }
 
 /** A report whose every column is bound (issue #980): what a scope's registry holds, and what a run executes. */
@@ -123,7 +127,13 @@ fun bindReport(report: ClientReport, scope: ReportScope): Parsed<BoundReport> {
                 "$where is declared ${declared.name}, but '${column.path}' holds a ${path.kind.name}, which cannot be read as one.",
             )
         }
-        val read = if (declared == null) path else BoundPath(path.path, path.pkFields, declared, path.multiValued)
+        // A declared kind replaces the path's; the day-or-timestamp fact goes with a date the schema itself declares,
+        // and a text field merely read as dates has none.
+        val read = if (declared == null) {
+            path
+        } else {
+            BoundPath(path.path, path.pkFields, declared, path.multiValued, dayOnly = path.dayOnly && declared == ReportKind.date)
+        }
         val combine = column.combine ?: ReportCombine.defaultFor(read.multiValued)
         if (!combine.allows(read.kind)) {
             return Parsed.failed(
@@ -268,7 +278,9 @@ private fun bindFormPath(path: FormPath, scope: ReportScope): Parsed<BoundPath> 
         return Parsed.Ok(BoundPath(path, pk, attr.kind, severalEntries || attr.multiValued))
     }
     return when (val walked = walkReportFields(data, path.fields)) {
-        is Parsed.Ok -> Parsed.Ok(BoundPath(path, pk, walked.value.kind, severalEntries || walked.value.multiValued))
+        is Parsed.Ok -> Parsed.Ok(
+            BoundPath(path, pk, walked.value.kind, severalEntries || walked.value.multiValued, walked.value.dayOnly),
+        )
         is Parsed.Failed -> {
             val first = walked.problems.first()
             Parsed.failed(first.code, "In the trait '${path.traitId}': ${first.message}", first.location)
@@ -321,8 +333,12 @@ private fun bindWorkflowPath(path: WorkflowPath, scope: ReportScope): Parsed<Bou
     return Parsed.Ok(BoundPath(path, emptyList(), attr.kind, attr.multiValued))
 }
 
-/** Where a field walk ended (issue #980): the [kind] of the value there, and whether an array on the way makes it several. */
-class ReportFieldTarget(val kind: ReportKind, val multiValued: Boolean)
+/**
+ * Where a field walk ended (issue #980): the [kind] of the value there, and whether an array on the way makes it
+ * several. For a date, [dayOnly] says the schema declares a **day** there (issue #1086) -- in every branch the walk
+ * reached; one branch declaring a timestamp makes it false, since the column then promises no single form.
+ */
+class ReportFieldTarget(val kind: ReportKind, val multiValued: Boolean, val dayOnly: Boolean = false)
 
 /**
  * [fields] followed down the data schema [type] to the value they name (issue #980). A property whose value is a
@@ -363,9 +379,11 @@ fun walkReportFields(type: SchType, fields: List<String>): Parsed<ReportFieldTar
         at = next
     }
     val kinds = LinkedHashSet<ReportKind>()
+    var everyLeafADay = true
     for (candidate in at) {
         val leaf = openArrays(candidate) ?: return nestedTooDeep(walked)
         multi = multi || leaf !== candidate
+        if (leaf.format != SFMT.date) everyLeafADay = false
         kinds.add(
             scalarKind(leaf) ?: return Parsed.failed(
                 ReportBindProblem.notScalar,
@@ -374,7 +392,8 @@ fun walkReportFields(type: SchType, fields: List<String>): Parsed<ReportFieldTar
             ),
         )
     }
-    return Parsed.Ok(ReportFieldTarget(kinds.singleOrNull() ?: ReportKind.string, multi))
+    val kind = kinds.singleOrNull() ?: ReportKind.string
+    return Parsed.Ok(ReportFieldTarget(kind, multi, dayOnly = kind == ReportKind.date && everyLeafADay))
 }
 
 /** How many arrays may nest between two fields of a path before the walk refuses. */

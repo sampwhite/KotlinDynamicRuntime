@@ -24,6 +24,8 @@ import com.dynamicruntime.common.util.pluckDataPath
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.util.toDay
+import com.dynamicruntime.common.util.toStartOfDay
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.time.Instant
@@ -100,21 +102,49 @@ class ReportSubject(
  * the trait's primary-key fields ([pkFields], empty for an unkeyed trait and for every other source), the [kind] of
  * the value, and whether the path may yield several ([multiValued]). The registry builds one when it checks a
  * report; a test builds one by hand.
+ *
+ * [dayOnly] says which form a **date** takes where the path reads it (issue #1086): true when the schema declares a
+ * day there, in every place the path can end; false for a timestamp, and for anything the schema does not settle --
+ * an attribute, a text field read as a date, branches of a union that disagree. It is what the schema **declares**,
+ * not what each stored value is: [coerceReportValue] reads a day written as a day whatever the field says.
  */
 class BoundPath(
     val path: ReportPath,
     val pkFields: List<String>,
     val kind: ReportKind,
     val multiValued: Boolean,
+    val dayOnly: Boolean = false,
 )
 
 /**
  * The column's value for [subject]: what the path reads, each value coerced to the path's kind, the empty ones
  * dropped, and the rest made one by [combine]. Null -- a blank cell -- when there is nothing to show.
+ *
+ * With [exactDates], each date is first brought to the form the path declares ([reportDateAs]) -- for a run whose
+ * values are promised to be of one form (issue #1086). Before the combine, and so before a run groups by the
+ * result: a day and a timestamp within that day are then one value, and one group, where brought to one form only
+ * as they were written out they would be two rows under the same key.
  */
-fun BoundPath.valueOf(subject: ReportSubject, combine: ReportCombine = ReportCombine.defaultFor(multiValued)): Any? {
-    val values = rawValues(subject).mapNotNull { coerceReportValue(it, kind) }.filterNot { isEmptyReportValue(it) }
+fun BoundPath.valueOf(
+    subject: ReportSubject,
+    combine: ReportCombine = ReportCombine.defaultFor(multiValued),
+    exactDates: Boolean = false,
+): Any? {
+    var values = rawValues(subject).mapNotNull { coerceReportValue(it, kind) }.filterNot { isEmptyReportValue(it) }
+    if (exactDates && kind == ReportKind.date) values = values.map { reportDateAs(it, dayOnly) }
     return combineReportValues(values, kind, combine)
+}
+
+/**
+ * A date [value] -- a day or an instant, as [coerceReportValue] gives one -- in the form a column declares (issue
+ * #1086): a day for a [dayOnly] column, an instant otherwise. An instant becomes the day it falls on and a day its
+ * first instant, both in the server's zone, which is how the schema validator reads one as the other. Anything
+ * already of the form, or not a date at all, is returned as it is.
+ */
+fun reportDateAs(value: Any, dayOnly: Boolean): Any = when {
+    dayOnly && value is Instant -> value.toDay()
+    !dayOnly && value is LocalDate -> value.toStartOfDay()
+    else -> value
 }
 
 /**

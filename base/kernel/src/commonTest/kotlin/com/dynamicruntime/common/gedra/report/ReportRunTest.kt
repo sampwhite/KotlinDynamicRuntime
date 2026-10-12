@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.report
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.parseDay
+import com.dynamicruntime.common.util.toStartOfDay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,6 +96,84 @@ class ReportRunTest {
         val year = column("y", "form.audit.total", ReportKind.number)
         val groups = aggregateReport(listOf(subject("a", "x", 2), subject("b", "y", 2.0), subject("c", "z", 3)), listOf(year), emptyList())
         assertEquals(listOf(2, 1), groups.map { it.count })
+    }
+
+    // --- exact dates (issue #1086): each date in the form its column declares, for a run that promises one ---
+
+    private fun visited(id: String, value: Any?): ReportSubject =
+        ReportSubject(mapOf(RMETA.gedraId to id), listOf(mapOf(GE.traitId to "audit", GE.data to mapOf("visitedOn" to value))), emptyList(), null) { null }
+
+    private fun visitedColumn(dayOnly: Boolean, rollup: ReportCombine? = null) = BoundColumn(
+        ReportColumn("visited", "Visited", "form.audit.visitedOn", rollup = rollup),
+        BoundPath(parseReportPathOrThrow("form.audit.visitedOn"), emptyList(), ReportKind.date, multiValued = false, dayOnly = dayOnly),
+        ReportCombine.first,
+    )
+
+    // Noon, so the day it falls on is the same whatever zone the server keeps.
+    private val day = "2026-03-01".parseDay()
+    private val nextDay = "2026-03-02".parseDay()
+    private val withinDay = "2026-03-01T12:00:00Z".parseDate()
+
+    @Test
+    fun withExactDatesEachDateTakesTheFormItsColumnDeclares() {
+        val asDay = visitedColumn(dayOnly = true)
+        val asMoment = visitedColumn(dayOnly = false)
+        // Unasked, a value is as it was stored, whatever the column declares: that is the shared run, unchanged.
+        assertEquals(day, asDay.valueOf(visited("a", "2026-03-01")))
+        assertEquals(withinDay, asDay.valueOf(visited("a", "2026-03-01T12:00:00Z")))
+        assertEquals(day, asMoment.valueOf(visited("a", "2026-03-01")))
+        // Asked: a moment in a day column is its day, a day in a moment column its first instant.
+        assertEquals(day, asDay.valueOf(visited("a", "2026-03-01T12:00:00Z"), exactDates = true))
+        assertEquals(day.toStartOfDay(), asMoment.valueOf(visited("a", "2026-03-01"), exactDates = true))
+        // One already of the form is as it was, and nothing is still nothing.
+        assertEquals(day, asDay.valueOf(visited("a", "2026-03-01"), exactDates = true))
+        assertEquals(withinDay, asMoment.valueOf(visited("a", "2026-03-01T12:00:00Z"), exactDates = true))
+        assertNull(asDay.valueOf(visited("a", null), exactDates = true))
+        // A detail row carries the flag to every column.
+        assertEquals(mapOf("visited" to day), detailValues(visited("a", "2026-03-01T12:00:00Z"), listOf(asDay), exactDates = true))
+        assertEquals(mapOf("visited" to withinDay), detailValues(visited("a", "2026-03-01T12:00:00Z"), listOf(asDay)))
+        // Only a date is touched.
+        assertEquals("x", reportDateAs("x", dayOnly = true))
+        assertEquals(7L, reportDateAs(7L, dayOnly = false))
+    }
+
+    // The form is taken before the values are made one, which is where it shows: each value once is each *day* once.
+    @Test
+    fun withExactDatesSeveralValuesAreBroughtToTheFormBeforeTheyAreCombined() {
+        val several = visited("a", listOf("2026-03-02", "2026-03-01", "2026-03-01T12:00:00Z"))
+        fun column(combine: ReportCombine, dayOnly: Boolean = true) = BoundColumn(
+            ReportColumn("visited", "Visited", "form.audit.visitedOn", combine = combine),
+            BoundPath(parseReportPathOrThrow("form.audit.visitedOn"), emptyList(), ReportKind.date, multiValued = true, dayOnly = dayOnly),
+            combine,
+        )
+        // As stored, the day and the moment within it are two values.
+        assertEquals(listOf(day, withinDay, nextDay), column(ReportCombine.distinct).valueOf(several))
+        // Exact, they are one day, once -- and every element of a list is of the column's form.
+        assertEquals(listOf(day, nextDay), column(ReportCombine.distinct).valueOf(several, exactDates = true))
+        assertEquals(listOf(nextDay, day, day), column(ReportCombine.list).valueOf(several, exactDates = true))
+        assertEquals(nextDay, column(ReportCombine.max).valueOf(several, exactDates = true))
+        assertEquals(3L, column(ReportCombine.count).valueOf(several, exactDates = true))
+        // A column of moments takes each day as its first instant.
+        assertEquals(
+            listOf(day.toStartOfDay(), withinDay, nextDay.toStartOfDay()),
+            column(ReportCombine.distinct, dayOnly = false).valueOf(several, exactDates = true),
+        )
+    }
+
+    @Test
+    fun withExactDatesADayAndAMomentWithinItAreOneGroup() {
+        val subjects = listOf(visited("a", "2026-03-01"), visited("b", "2026-03-01T12:00:00Z"), visited("c", "2026-03-02"))
+        val byDay = visitedColumn(dayOnly = true)
+        // As stored, the day and the moment within it are two keys -- which, written out as one day each, would be
+        // two rows under the same key.
+        assertEquals(3, aggregateReport(subjects, listOf(byDay), emptyList()).size)
+        val exact = aggregateReport(subjects, listOf(byDay), emptyList(), exactDates = true)
+        assertEquals(listOf(listOf<Any?>(day) to 2, listOf<Any?>(nextDay) to 1), exact.map { it.key to it.count })
+        // What is rolled up is brought to the form first too: the latest of these is a day, not the moment.
+        val latest = visitedColumn(dayOnly = true, rollup = ReportCombine.max)
+        val later = subjects + visited("d", "2026-03-02T12:00:00Z")
+        assertEquals(nextDay, aggregateReport(later, emptyList(), listOf(latest), exactDates = true).single().rollups["visited"])
+        assertEquals("2026-03-02T12:00:00Z".parseDate(), aggregateReport(later, emptyList(), listOf(latest)).single().rollups["visited"])
     }
 
     @Test
