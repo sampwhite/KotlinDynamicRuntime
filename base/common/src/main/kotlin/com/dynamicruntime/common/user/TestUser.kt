@@ -2,6 +2,7 @@ package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.TestHttpClient
@@ -66,6 +67,17 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     fun deleteData(path: String, args: Map<String, Any?>? = null): Map<String, Any?> =
         client.sendJsonDeleteRequest(path, args)[EP.results].toJsonMapOrEmpty()
 
+    /**
+     * The endpoint catalog as this user is shown it: `/schema/endpoints`' answer -- the endpoints, their `$defs`,
+     * whether filters are offered -- with no paging cut, narrowed by [args] (a client, a `publicApi`). What a test
+     * of *who is shown what* reads, in one place rather than once per test.
+     */
+    fun catalog(args: Map<String, Any?> = emptyMap()): Map<String, Any?> = getData(catalogPath, mapOf(EP.limit to catalogLimit) + args)
+
+    /** The one endpoint at [path], as `/schema/endpoint` answers this user: [catalog]'s shape, of one endpoint or none. */
+    fun catalogLookup(path: String, method: HttpMethod = HttpMethod.GET): Map<String, Any?> =
+        getData(catalogLookupPath, mapOf(EI.method to method.name, EI.path to path))
+
     /** This user's *current* roles, read live from `/auth/self/info` (not the possibly-stale [userInfo]). */
     fun selfRoles(): List<String> = rolesOf(getData(AEP.selfInfo))
 
@@ -116,6 +128,17 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     @Suppress("ConstPropertyName")
     companion object {
         private const val emailContactType = "email"
+        private const val catalogPath = "/schema/endpoints"
+        private const val catalogLookupPath = "/schema/endpoint"
+
+        /** More endpoints than any instance has: [catalog] is for reading the whole of what a caller is shown. */
+        private const val catalogLimit = 5000
+
+        /** The endpoints a [catalog] or a [catalogLookup] answer lists. */
+        fun endpointsIn(catalog: Map<String, Any?>): List<Map<String, Any?>> = catalog[EI.endpoints].toJsonListOfMaps()
+
+        /** Their paths. */
+        fun pathsIn(catalog: Map<String, Any?>): List<String?> = endpointsIn(catalog).map { it[EI.path].toOptStr() }
 
         /**
          * Creates (or finds) the user with primary contact [email] and returns a [TestUser] authenticated as

@@ -114,7 +114,7 @@ may call an endpoint.
 
 - **`publicApi = true`** marks the endpoint as part of the documented, supported API. The catalog is
   filterable by it, and a caller **without env auth** (an ordinary production user) is served *only* the
-  `publicApi` set — so a client-facing endpoint should carry it and an internal one must not. A published mark
+  `publicApi` set (plus, for a client's administrator, the endpoints generated for that client -- see below) — so a client-facing endpoint should carry it and an internal one must not. A published mark
   is only allowed in the user-facing sections (`user`/`profile`/`gedra`/`auth`); `RequestService` refuses to
   boot if one sits in a privileged/internal section (`admin`/`operator`/`node`/…), since that would publish
   the very surface the audit exists to hide.
@@ -188,8 +188,12 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
 - **Endpoints made from data, after boot.** An endpoint that does not exist until configuration says so is
   constructed directly and handed, with the types it uses, to `SchemaService.publishGenerated` as a client's
   `GeneratedSurface`. `gedra/report/ReportTypedEndpoints.kt` is the worked example: one endpoint pair per client and
-  report, its output type generated from the report, `validateOutput` on. The publication refuses what the boot
-  would have refused of a declared endpoint (a section with no rules, an address already taken) and a few things
+  report, its output type generated from the report, `validateOutput` on. A generated endpoint is the one thing
+  the catalog shows a caller **without env auth** beyond the `publicApi` set (issue #1128): it is listed to a
+  caller who oversees its client (`AdminRules.oversees`, the rule its handler refuses by through
+  `overseenClient`), since its catalog entry is where its contract lives and its section may not be published.
+  Nothing an endpoint declares opts it in. The publication refuses what the boot would have refused of a
+  declared endpoint (a section with no rules, an address already taken) and a few things
   only a generator can do: types that refer outside their own surface, and the keywords the boot judges
   (`g-visibleWhen`, `g-layout`, `g-errors`, `g-optionsSource`). A generator fed by client configuration asks
   `SchemaService.trialGenerated` in the configuration's trial, so a write whose surface would be refused is

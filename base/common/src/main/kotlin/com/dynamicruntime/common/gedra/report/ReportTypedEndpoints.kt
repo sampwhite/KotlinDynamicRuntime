@@ -35,7 +35,8 @@ import com.dynamicruntime.common.user.UADEP
  * with exact dates: the types are strict, and a day column holding a moment some form stored would fail them.
  *
  * Who may call one is the shared endpoint's rule ([overseenClient]): the client's own administrator, or one who sees
- * every client.
+ * every client. And those are who the endpoint catalog **shows** one to, with or without env auth (issue #1128,
+ * `SchemaService.shownWithoutEnvAuth`) -- a contract nobody it is for could read would be one for developers only.
  */
 fun typedReportSurface(cxt: KdrCxt, client: String, registry: ReportRegistry, shared: KdrEndpoint): GeneratedSurface? {
     if (registry.reports.isEmpty()) return null

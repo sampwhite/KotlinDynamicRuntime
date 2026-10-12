@@ -3,9 +3,6 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.EndpointKind
-import com.dynamicruntime.common.endpoint.HttpMethod
-import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -197,12 +194,8 @@ class ReportRegistryReloadTest : StringSpec({
         val schema = SchemaService.get(cxt)
         val taken = UADEP.typedReportPath(client, "visits", UADEP.typedReportRun)
         // Another client's generated endpoint, sitting where this client's report would put its own.
-        val blocking = KdrEndpoint(
-            path = taken, method = HttpMethod.GET, kind = EndpointKind.general, namespace = "kdr.gentest", description = "In the way.",
-            inputFields = null, inputTypeRef = null, includeLimit = false, outputSchema = emptyMap(),
-            handler = { _, _ -> emptyMap<String, Any?>() }, client = squatter,
-        )
-        schema.publishGenerated(cxt, mapOf(squatter to GeneratedSurface(squatter, emptyMap(), listOf(blocking))))
+        val gen = GeneratedSurfaces(cxt, "rptgentest", setupUserId = 9310L)
+        schema.publishGenerated(cxt, mapOf(squatter to GeneratedSurface(squatter, gen.defs(squatter), listOf(gen.endpoint(squatter, 0, path = taken)))))
         val withReport = config(cxt, client, "site") { report("visits", "Visits") { column("site", "Site", "form.visit.site") } }
 
         // The write's trial says so, and nothing is stored.

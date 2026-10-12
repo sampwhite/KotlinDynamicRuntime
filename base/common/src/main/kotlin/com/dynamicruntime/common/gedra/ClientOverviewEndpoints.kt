@@ -344,10 +344,13 @@ fun InputFieldsBuilder.overseenClientField(name: String, description: String = "
  * every client may name another; a `public` self-administrator (issue #805) oversees no client at all.
  */
 internal fun overseenClient(cxt: KdrCxt, named: String?): String {
+    // First, for its own message: a `public` self-administrator is told what they lack, not that the client is
+    // someone else's.
     AdminRules.requireClientAdministrator(cxt)
     val own = cxt.userProfile.client
     val clientId = named ?: own
-    if (clientId != own && !AdminRules.canSeeAllClients(cxt)) {
+    // The rule itself is [AdminRules.oversees], which the endpoint catalog also shows by (issue #1128).
+    if (!AdminRules.oversees(cxt, clientId)) {
         throw KdrException("You may see only your own client, '$own'.", code = EXC.notAuthorized)
     }
     return clientId
