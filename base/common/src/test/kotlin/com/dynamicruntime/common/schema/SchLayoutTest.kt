@@ -2,6 +2,7 @@ package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.layoutBackendBlockProblems
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -40,6 +41,28 @@ class SchLayoutTest : StringSpec({
         layout.fields[0].description shouldBe $$"${topic.help}"
         layout.fields[1].label shouldBe "Has issue?"
         layout.fields[1].description shouldBe null
+    }
+
+    "a block and a field entry take a comment, kept in the block and out of the model (issue #1135)" {
+        val block = SchLayoutBuilder(null, comment = "Narrows the formats for workshops.").apply {
+            field("topic", label = "Topic", comment = "Asked first: it decides the track.")
+            field("hasIssue", label = "Has issue?")
+        }.build()
+        block[SCH.dComment] shouldBe "Narrows the formats for workshops."
+        val entries = block[SL.schemaFields].toJsonListOfMaps()
+        entries[0] shouldBe mapOf(SL.field to "topic", SCH.dComment to "Asked first: it decides the track.", SL.label to "Topic")
+        entries[1].containsKey(SCH.dComment) shouldBe false
+        // The parser accepts both; the model does not carry them, so a page is never sent an author's note.
+        val layout = parseSchLayout("Type 'X'", block)
+        layout.toJsonMap().containsKey(SCH.dComment) shouldBe false
+        layout.fields[0].toJsonMap().containsKey(SCH.dComment) shouldBe false
+        // A choice entry is copy, not structure, and takes none.
+        val onChoice = mapOf(
+            SL.schemaFields to listOf(
+                mapOf(SL.field to "topic", SL.choices to listOf(mapOf(SL.value to "a", SCH.dComment to "no"))),
+            ),
+        )
+        shouldThrow<KdrException> { parseSchLayout("Type 'X'", onChoice) }.message shouldContain SCH.dComment
     }
 
     "parseSchLayout reads a field's defaultMode and round-trips it (issue #709)" {

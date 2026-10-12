@@ -5,6 +5,9 @@ import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.schema.JsonMappable
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.commentRefusedMessage
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -32,6 +35,21 @@ class ClientReportTest {
         val raw = built { history = true }
         assertEquals(true, raw[RDEF.history])
         assertTrue(parseClientReport(cxt, raw).history)
+    }
+
+    /** A report takes a `$comment` (issue #1135), kept through the parse; a column does not, and says where one goes. */
+    @Test
+    fun aCommentRoundTripsOnTheReportAndIsRefusedOnAColumn() {
+        assertNull(built()[SCH.dComment])
+        val raw = built { comment = "Feeds the committee's weekly meeting." }
+        val report = parseClientReport(cxt, raw)
+        assertEquals("Feeds the committee's weekly meeting.", report.comment)
+        assertEquals(raw, report.toJsonMap())
+
+        val onColumn = built().toMutableMap().also { m ->
+            m[RDEF.columns] = listOf(m[RDEF.columns].toJsonListOfMaps().single() + (SCH.dComment to "no"))
+        }
+        assertTrue(problem(onColumn).contains(commentRefusedMessage), problem(onColumn))
     }
 
     @Test

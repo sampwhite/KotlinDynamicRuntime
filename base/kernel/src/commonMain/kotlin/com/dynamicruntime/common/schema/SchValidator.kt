@@ -92,12 +92,32 @@ enum class SchFailCode {
  * The known JSON-Schema `$` keywords, which are treated as normal (non-exempt) keys when they appear as
  * data properties -- so they are subject to the [SchType.additionalProperties] rule and are kept on coercing.
  * Every *other* `$`-prefixed data key (e.g. `$note`) is off-contract: allowed on validating, dropped on coercing.
+ *
+ * **The rule, in one sentence:** a `$` key JSON Schema reserves is a keyword and means what JSON Schema says it
+ * means; any other `$` key is a caller's scratch note, which a request ignores and stored input refuses
+ * ([offContractKeyFailures]) rather than silently dropping.
+ *
+ * `$comment` is the reserved keyword whose job is a note for maintainers, kept with the document (issue #1135). So
+ * it is kept wherever it is accepted, and it is accepted only where it is declared: on a schema node, where the
+ * parser reads past it, and on the objects of a client's configuration that declare it with
+ * [SchTypeBuilder.commentProperty] -- a workflow, a task, an eligibility test, a report -- or list it among their
+ * keys, as a `g-layout` block and field entry do. Anywhere else it is an additional property like any other key,
+ * refused with [commentRefusedMessage].
  */
 @KdrPrivate
 val reservedSchemaKeys: Set<String> = setOf(
     SCH.dSchema, SCH.dId, SCH.dRef, SCH.dDefs, SCH.dAnchor, SCH.dDynamicRef, SCH.dDynamicAnchor,
     SCH.dVocabulary, SCH.dComment,
 )
+
+/**
+ * Why a `$comment` was refused where it was written (issue #1135): an additional property like any other key, but
+ * one an author wrote on purpose, so the message says where a comment does go rather than only that it may not go
+ * here. Keep the list in step with the objects that declare `$comment` (see [reservedSchemaKeys]).
+ */
+const val commentRefusedMessage: String =
+    $$"A '$comment' is not accepted here. A comment goes on a workflow, a task, an eligibility test, a report, a " +
+        "'g-layout' block or field entry, or a schema."
 
 /**
  * A single validation failure: the [path] through the data to the offending value
@@ -191,10 +211,11 @@ fun inputFailuresException(message: String, failures: List<SchFailure>): KdrExce
  * For input that is **stored in a canonical form**, where there is no such thing: the key would be accepted and
  * then gone, which is the silent drop a strict reading exists to end. A caller holding such input adds these to
  * what [validate] found. Only [data]'s own keys: a `$ref` inside a schema body, or a key inside free content, is
- * that content's business.
+ * that content's business. A reserved keyword ([reservedSchemaKeys]) is not off-contract -- [validate] judges it as
+ * the ordinary key it is -- so it is not reported here a second time.
  */
 fun offContractKeyFailures(data: Map<String, Any?>): List<SchFailure> =
-    data.keys.filter { it.startsWith("_") || it.startsWith("$") }
+    data.keys.filter { it.startsWith("_") || (it.startsWith("$") && it !in reservedSchemaKeys) }
         .map { SchFailure(it, SchFailCode.additionalProperty, "Additional property '$it' is not allowed.") }
 
 /**
@@ -727,9 +748,8 @@ fun validateObject(
             }
             type.additionalProperties -> out?.put(key, v) // allowed (incl. reserved $ keys, treated as normal)
             else -> {
-                failures.add(
-                    SchFailure(childPath(path, key), SchFailCode.additionalProperty, "Additional property '$key' is not allowed."),
-                )
+                val message = if (key == SCH.dComment) commentRefusedMessage else "Additional property '$key' is not allowed."
+                failures.add(SchFailure(childPath(path, key), SchFailCode.additionalProperty, message))
                 // Reported either way; kept only when the caller asked. See SchOpts.keepAdditionalProperties.
                 if (opts.keepAdditionalProperties) out?.put(key, v)
             }

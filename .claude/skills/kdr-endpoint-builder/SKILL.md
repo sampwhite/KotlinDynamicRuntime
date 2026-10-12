@@ -103,8 +103,9 @@ whose endpoints are copied without asking. The handler is the same object on bot
 `cxt.client`, which is the caller's own on the shared path and the path's on a copy.
 
 A list endpoint appends a **`limit`** field (default 100) as a plain sibling, unless `noLimit`. The resolved
-input type is always closed to undeclared properties (`additionalProperties = false`); off-contract `_`/`$`
-keys stay exempt.
+input type is always closed to undeclared properties (`additionalProperties = false`); off-contract keys stay
+exempt -- a `_` key, and a `$` key JSON Schema does not reserve. A reserved one (`$comment`, `$ref`) is an
+ordinary key, refused like any other.
 
 ## Catalog metadata: `publicApi` and `tags` (issues #433, #489)
 

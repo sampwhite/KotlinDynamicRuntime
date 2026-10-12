@@ -191,13 +191,18 @@ class SchLayoutChoice(val value: String, val label: String? = null, val descript
  * the boot check and the delivery see a handwritten block and a built one identically. A builder rather than
  * the raw-map escape hatch because the sample's layouts are read by people, and the sets [SL.blockKeys] /
  * [SL.fieldKeys] the parser is strict about are then spelled once, here.
+ *
+ * A [comment] on the block or on a field (issue #1135) is written into the block as its `$comment` and is not part
+ * of the [SchLayout] model -- see [SL.blockKeys].
  */
 class SchLayoutBuilder(
     private val fragmentFileId: String?,
     private val label: String? = null,
     private val mode: SchLayoutMode = SchLayoutMode.overlay,
+    private val comment: String? = null,
 ) {
     private val fields = mutableListOf<SchLayoutField>()
+    private val fieldComments = HashMap<String, String>()
     private val strings = LinkedHashMap<String, String>()
 
     /** A form-level layout string (issue #641), keyed by [LAYSTR]: the copy this type's forms show for the
@@ -217,8 +222,10 @@ class SchLayoutBuilder(
         defaultMode: String? = null,
         required: Boolean = false,
         choices: List<SchLayoutChoice>? = null,
+        comment: String? = null,
         errors: (SchErrors.() -> Unit)? = null,
     ) {
+        comment?.let { fieldComments[name] = it }
         val errMap = errors?.let { block ->
             val data = LinkedHashMap<String, Any?>()
             SchErrors(data).block()
@@ -227,8 +234,21 @@ class SchLayoutBuilder(
         fields.add(SchLayoutField(name, label, description, hint, errMap, defaultMode, required, choices))
     }
 
-    /** The finished block, as the JSON `g-layout` value. */
-    fun build(): Map<String, Any?> = SchLayout(fragmentFileId, label, fields.toList(), strings.toMap(), mode).toJsonMap()
+    /** The finished block, as the JSON `g-layout` value, with each comment beside what it is about. */
+    fun build(): Map<String, Any?> {
+        val built = SchLayout(fragmentFileId, label, fields.toList(), strings.toMap(), mode).toJsonMap()
+        if (comment == null && fieldComments.isEmpty()) return built
+        val out = LinkedHashMap<String, Any?>()
+        comment?.let { out[SCH.dComment] = it }
+        for ((key, value) in built) {
+            // A field's comment goes right after the `field` naming it: `+` keeps the left map's order.
+            out[key] = if (key != SL.schemaFields) value else value.toJsonListOfMaps().map { entry ->
+                val note = fieldComments[entry[SL.field]] ?: return@map entry
+                linkedMapOf(SL.field to entry[SL.field], SCH.dComment to note) + entry
+            }
+        }
+        return out
+    }
 }
 
 /**
@@ -240,9 +260,10 @@ fun SchTypeBuilder.layout(
     fragmentFileId: String? = null,
     label: String? = null,
     mode: SchLayoutMode = SchLayoutMode.overlay,
+    comment: String? = null,
     block: SchLayoutBuilder.() -> Unit,
 ) {
-    data[SCH.layout] = SchLayoutBuilder(fragmentFileId, label, mode).apply(block).build()
+    data[SCH.layout] = SchLayoutBuilder(fragmentFileId, label, mode, comment).apply(block).build()
 }
 
 /**
@@ -328,11 +349,15 @@ object SL {
     // property's label); the two are told apart by nesting, not by name -- "label" is the override word at
     // either level (`thoughts-workflow-layouts.md` §5).
 
+    // A block and a field entry also take a `$comment` (issue #1135): an author's note on why the layout narrows a
+    // list or takes over a type, kept in the authored block and never read into the model, so it is stored with the
+    // schema it sits in and never delivered to a page. A choice entry and the strings map are copy, and take none.
+
     /** Every key a `g-layout` block may carry. */
-    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings, mode)
+    val blockKeys: Set<String> = setOf(schemaFields, fragmentFileId, label, strings, mode, SCH.dComment)
 
     /** Every key a [schemaFields] entry may carry. */
-    val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode, required, choices)
+    val fieldKeys: Set<String> = setOf(field, label, description, hint, errors, defaultMode, required, choices, SCH.dComment)
 
     /** Every key a [choices] entry may carry. */
     val choiceKeys: Set<String> = setOf(value, label, description)

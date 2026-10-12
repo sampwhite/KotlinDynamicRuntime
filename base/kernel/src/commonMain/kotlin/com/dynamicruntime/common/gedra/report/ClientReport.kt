@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.isOwnedName
 import com.dynamicruntime.common.schema.JsonMappable
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.coerceAndValidate
@@ -89,6 +90,11 @@ class ClientReport(
     val excludeEmpty: List<String> = emptyList(),
     /** Whether the nightly job stores a snapshot of this report's grouped run (issue #1033). */
     val history: Boolean = false,
+    /**
+     * The author's note on the report (issue #1135): its `$comment`, stored and read back, changing nothing. The
+     * [description] is for the person choosing the report; this is for whoever maintains it.
+     */
+    val comment: String? = null,
 ) : JsonMappable {
     init {
         if (!isOwnedName(OwnedNameKind.report, reportId)) {
@@ -101,6 +107,7 @@ class ClientReport(
     /** The definition as its JSON form: what a stored configuration keeps, and what [parseClientReport] reads. */
     override fun toJsonMap(): Map<String, Any?> = buildMap {
         put(RDEF.reportId, reportId)
+        comment?.let { put(SCH.dComment, it) }
         put(RDEF.label, label)
         description?.let { put(RDEF.description, it) }
         put(RDEF.columns, columns.map { it.toJsonMap() })
@@ -147,6 +154,7 @@ object ReportDefSchema {
             type = SCT.kObject
             description = "A named report: the columns a client's forms are shown with, and how they are grouped and filtered by default."
             property(RDEF.reportId, "The report's id: rooted for a component's report, bare for a client's.", required = true)
+            commentProperty()
             property(RDEF.label, "What the report is called.", required = true)
             property(RDEF.description, "What the report shows, for the person choosing it.")
             property(RDEF.columns, "The columns, in the order shown.", required = true) {
@@ -214,6 +222,7 @@ fun clientReportResult(cxt: KdrCxtBase, raw: Map<String, Any?>): Parsed<ClientRe
                 groupBy = m[RDEF.groupBy].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
                 excludeEmpty = m[RDEF.excludeEmpty].toJsonListOrEmpty().mapNotNull { it.toOptStr() },
                 history = m[RDEF.history] == true,
+                comment = m[SCH.dComment].toOptStr(),
             ),
         )
     } catch (e: KdrException) {
@@ -245,6 +254,8 @@ class ReportBuilder(private val reportId: String, private val label: String) {
     var excludeEmpty: List<String> = emptyList()
     /** Whether the nightly job stores a snapshot of the grouped run (issue #1033). */
     var history: Boolean = false
+    /** The author's note on the report (issue #1135), stored as its `$comment`; it changes nothing. */
+    var comment: String? = null
     private val columns = mutableListOf<ReportColumn>()
 
     fun column(
@@ -260,5 +271,5 @@ class ReportBuilder(private val reportId: String, private val label: String) {
 
     /** The definition's JSON form, for the parser. */
     fun build(): Map<String, Any?> =
-        ClientReport(reportId, label, columns.toList(), description, groupBy, excludeEmpty, history).toJsonMap()
+        ClientReport(reportId, label, columns.toList(), description, groupBy, excludeEmpty, history, comment).toJsonMap()
 }

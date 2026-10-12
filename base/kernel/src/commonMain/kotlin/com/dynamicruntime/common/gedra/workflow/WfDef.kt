@@ -431,9 +431,17 @@ class WfSave(val id: String, val label: String, val kind: WfSaveKind)
  *
  * [id] is what a stored failure records, and what finds this entry again to explain it, so it is unique within
  * the workflow; ids tend to say what kind of check they are. [explanation] is a template evaluated in two
- * passes like a label, so it can pull a fragment.
+ * passes like a label, so it can pull a fragment. [comment] is the author's note on why the test exists (issue
+ * #1135): [explanation] is the reader's, shown to whoever is refused.
  */
-class WfEligibility(val id: String, val test: String, val explanation: String)
+class WfEligibility(val id: String, val test: String, val explanation: String, val comment: String? = null) {
+    fun toJsonMap(): Map<String, Any?> = buildMap {
+        put(WFD.id, id)
+        comment?.let { put(SCH.dComment, it) }
+        put(WFD.test, test)
+        put(WFD.explanation, explanation)
+    }
+}
 
 /**
  * One **singleton-cfact rule** of a normal workflow (issue #784): emit the framework singleton [cfact] -- one of
@@ -497,6 +505,8 @@ class WfTask(
      * can see the form. Only a normal workflow's task may declare one, and only one that offers a save.
      */
     val saveWhen: String? = null,
+    /** The author's note on the task (issue #1135): its `$comment`, stored and read back, changing nothing. */
+    val comment: String? = null,
 ) {
     /** The task-scoped function **usages** this task declares (e.g. `prefillData`), in priority order (issue #677). */
     val functionUsages: List<WfFunctionUsage> = functionUsages.sortedBy { it.priority }
@@ -603,6 +613,11 @@ class WfDef(
     val typeAlterations: Map<String, Map<String, Any?>> = emptyMap(),
     /** The basis of each altered layout entry, by type name and then field (issue #984); see [WFD.typeBasis]. */
     val typeBasis: Map<String, Map<String, Any?>> = emptyMap(),
+    /**
+     * The author's note on the workflow (issue #1135): its `$comment`, stored and read back, changing nothing. The
+     * [label] is the reader's; this is for whoever maintains the definition.
+     */
+    val comment: String? = null,
 ) {
     /** The trait locks (issue #857), in declaration order; only a [WfEntry.normal] workflow may declare any. */
     val locks: List<WfLock> = locks.toList()
@@ -920,6 +935,7 @@ object WfDefSchema {
             type = SCT.kObject
             description = "One eligibility test of a normal workflow: a cfact requirement and the reason shown when it is not met."
             property(WFD.id, "Stable id of this test, unique within the workflow; what a stored failure records.", required = true)
+            commentProperty()
             property(WFD.test, "The cfact expression a form's cfacts must match for this test to pass.", required = true)
             property(WFD.explanation, "Why the form is not eligible when the test fails -- a template, evaluated in two passes.", required = true)
         }
@@ -954,6 +970,7 @@ object WfDefSchema {
             type = SCT.kObject
             description = "One task of a workflow: the traits it collects and the saves it offers -- or, with an approval, none, completed by a reviewer."
             property(WFD.id, "Stable id of this task, unique within the workflow.", required = true)
+            commentProperty()
             property(WFD.label, "What the task is called -- a template, evaluated in two passes.", required = true)
             property(WFD.traits, "The traits this task collects.", required = true) {
                 type = SCT.array
@@ -987,6 +1004,7 @@ object WfDefSchema {
             description = "A workflow definition: how it is entered, and its tasks."
             property(WFD.workflowId, "The workflow's base name; its client comes from the bundle declaring it.", required = true)
             property(WFD.entry, "How the workflow is entered.", required = true) { options(WfEntry.entries) }
+            commentProperty()
             property(WFD.label, "What the workflow is called -- a page's title, a template evaluated in two passes like a task's label. Optional; absent, a page uses its own generic title.")
             property(WFD.tasks, "The tasks, in presentation order.", required = true) {
                 type = SCT.array
@@ -1053,6 +1071,7 @@ object WfDefSchema {
 fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     put(WFD.workflowId, workflowId)
     put(WFD.entry, entry.name)
+    comment?.let { put(SCH.dComment, it) }
     // Emitted when set, as the builder does -- a stored definition that dropped it would lose its page title.
     if (label.isNotEmpty()) put(WFD.label, label)
     put(
@@ -1060,6 +1079,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
         tasks.map { task ->
             buildMap {
                 put(WFD.id, task.id)
+                task.comment?.let { put(SCH.dComment, it) }
                 put(WFD.label, task.label)
                 put(WFD.traits, task.traits.map { linkedMapOf(WFD.traitId to it.traitId, WFD.required to it.required) })
                 put(WFD.saves, task.saves.map { linkedMapOf(WFD.id to it.id, WFD.label to it.label, WFD.kind to it.kind.name) })
@@ -1076,12 +1096,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
         },
     )
     if (functionUsages.isNotEmpty()) put(WFD.functions, functionUsages.map { it.toJsonMap() })
-    if (eligibility.isNotEmpty()) {
-        put(
-            WFD.eligibility,
-            eligibility.map { linkedMapOf(WFD.id to it.id, WFD.test to it.test, WFD.explanation to it.explanation) },
-        )
-    }
+    if (eligibility.isNotEmpty()) put(WFD.eligibility, eligibility.map { it.toJsonMap() })
     if (singletons.isNotEmpty()) {
         put(WFD.singletons, singletons.map { linkedMapOf(WFD.cfact to it.cfact, WFD.kWhen to it.whenExpr) })
     }
@@ -1116,6 +1131,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
         workflowId = m[WFD.workflowId].toOptStr() ?: "",
         entry = enumNamed(WfEntry.entries, m[WFD.entry]),
         label = m[WFD.label].toOptStr() ?: "",
+        comment = m[SCH.dComment].toOptStr(),
         tasks = m[WFD.tasks].toJsonListOfMaps().map { t ->
             WfTask(
                 id = t[WFD.id].toOptStr() ?: "",
@@ -1144,6 +1160,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                 // A blank rule arrives absent -- the schema layer reads a blank optional string that way -- which is
                 // "anyone who can see the form", the same as leaving it out.
                 saveWhen = t[WFD.saveWhen].toOptStr(),
+                comment = t[SCH.dComment].toOptStr(),
             )
         },
         functionUsages = usagesOf(m[WFD.functions]),
@@ -1152,6 +1169,7 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
                 e[WFD.id].toOptStr() ?: "",
                 e[WFD.test].toOptStr() ?: "",
                 e[WFD.explanation].toOptStr() ?: "",
+                e[SCH.dComment].toOptStr(),
             )
         },
         singletons = m[WFD.singletons].toJsonListOfMaps().map { r ->
@@ -1231,6 +1249,9 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
      */
     var label: String? = null
 
+    /** The author's note on the workflow (issue #1135), stored as its `$comment`; it changes nothing. */
+    var comment: String? = null
+
     /**
      * Alters the type [typeName] for this workflow's pages (issue #984): [alteration] in the shape a client's
      * alteration takes -- for now a `g-layout` only, merged with the client's layout by field.
@@ -1257,8 +1278,8 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
      * An eligibility test (issue #783), in the order the reasons are listed: the form must meet the cfact [test],
      * and [explanation] -- a template, like a label -- says why it is not eligible when it does not.
      */
-    fun eligibility(id: String, test: String, explanation: String) {
-        eligibility.add(linkedMapOf(WFD.id to id, WFD.test to test, WFD.explanation to explanation))
+    fun eligibility(id: String, test: String, explanation: String, comment: String? = null) {
+        eligibility.add(WfEligibility(id, test, explanation, comment).toJsonMap())
     }
 
     /**
@@ -1305,6 +1326,7 @@ class WfDefBuilder(private val workflowId: String, private val entry: WfEntry) {
     fun build(): Map<String, Any?> = buildMap {
         put(WFD.workflowId, workflowId)
         put(WFD.entry, entry.name)
+        comment?.let { put(SCH.dComment, it) }
         label?.let { put(WFD.label, it) }
         put(WFD.tasks, tasks.toList())
         if (functions.isNotEmpty()) put(WFD.functions, functions.toList())
@@ -1325,6 +1347,9 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     private var approval: Map<String, Any?>? = null
     private var display: Map<String, Any?>? = null
     private var saveWhen: String? = null
+
+    /** The author's note on the task (issue #1135), stored as its `$comment`; it changes nothing. */
+    var comment: String? = null
 
     /**
      * Declares a task-scoped function usage (a `prefillData`, e.g.) -- the `{fn, ...}` initialization data a
@@ -1377,12 +1402,11 @@ class WfTaskBuilder(private val id: String, private val label: String) {
     }
 
     fun build(): Map<String, Any?> {
-        val out = linkedMapOf<String, Any?>(
-            WFD.id to id,
-            WFD.label to label,
-            WFD.traits to traits.toList(),
-            WFD.saves to saves.toList(),
-        )
+        val out = linkedMapOf<String, Any?>(WFD.id to id)
+        comment?.let { out[SCH.dComment] = it }
+        out[WFD.label] = label
+        out[WFD.traits] = traits.toList()
+        out[WFD.saves] = saves.toList()
         layout?.let { out[WFD.layout] = it }
         if (functions.isNotEmpty()) out[WFD.functions] = functions.toList()
         approval?.let { out[WFD.approval] = it }

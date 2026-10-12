@@ -6,6 +6,9 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.commentRefusedMessage
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -76,6 +79,39 @@ class WfDefTest {
         val badEntry = creation().toMutableMap().also { it[WFD.entry] = "sometimes" }
         val e2 = assertFailsWith<KdrException> { parseWfDef(cxt, badEntry) }
         assertTrue(e2.message!!.contains(WFD.entry), e2.message)
+    }
+
+    @Test
+    fun commentsRoundTripWhereDeclaredAndAreRefusedElsewhere() {
+        // Issue #1135: a workflow, a task and an eligibility test take a `$comment`; it survives the builder, the
+        // parse and the JSON form a stored definition is written back in, and changes nothing about the definition.
+        val built = WfDefBuilder("review", WfEntry.normal).apply {
+            comment = "Committee review."
+            eligibility("surveyDone", "surveyComplete", "Finish the survey first.", comment = "Reviewers need the track.")
+            task("score", "Score it") {
+                comment = "The committee's score."
+                trait("talkScore")
+                save("save", "Save", WfSaveKind.edit)
+            }
+        }.build()
+        val def = parseWfDef(cxt, built)
+        assertEquals("Committee review.", def.comment)
+        assertEquals("The committee's score.", def.tasks.single().comment)
+        assertEquals("Reviewers need the track.", def.eligibility.single().comment)
+        assertEquals(built, def.toJsonMap())
+        assertEquals(def.toJsonMap(), parseWfDef(cxt, def.toJsonMap()).toJsonMap())
+
+        // Absent, nothing is written: a definition without comments keeps the JSON form it always had.
+        assertFalse(SCH.dComment in parseWfDef(cxt, creation()).toJsonMap())
+
+        // A save is not one of the places, so its comment is refused, with the message that says where one goes.
+        val onSave = creation().toMutableMap().also { m ->
+            val task = m[WFD.tasks].toJsonListOfMaps().single().toMutableMap()
+            task[WFD.saves] = listOf(mapOf(WFD.id to "create", WFD.label to "Create", WFD.kind to "create", SCH.dComment to "no"))
+            m[WFD.tasks] = listOf(task)
+        }
+        val e = assertFailsWith<KdrException> { parseWfDef(cxt, onSave) }
+        assertTrue(e.message!!.contains(commentRefusedMessage), e.message)
     }
 
     @Test

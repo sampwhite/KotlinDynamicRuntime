@@ -3,10 +3,14 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.layout
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -64,6 +68,46 @@ class GedraConfigSerializeTest : StringSpec({
         reassembled.gedraId shouldBe source.gedraId
         reassembled.namespace shouldBe source.namespace
         reassembled.client?.clientId shouldBe "acme"
+    }
+
+    // Issue #1135: each place that takes a `$comment` keeps it through the stored form -- the typed ones (workflow,
+    // task, eligibility test, report) because their models carry it, and a layout's because the schema it sits in
+    // is stored as written.
+    "comments survive the stored round trip in every place that takes one" {
+        val source = gedraConfig(cxt, "confConfig", "client.conf", "conf") {
+            trait("ConfTalkEntry", "confTalk", setOf(GedraDataType.formDoc), "A talk.") {
+                property("format", "The session format.", required = true)
+                layout(comment = "Workshops get their own formats.") {
+                    field("format", label = "Format", comment = "Narrowed by the logistics workflow.")
+                }
+            }
+            workflow("review", WfEntry.normal) {
+                comment = "Committee review."
+                eligibility("surveyDone", "surveyComplete", "Finish the survey first.", comment = "Reviewers need the track.")
+                task("score", "Score it") {
+                    comment = "The committee's score."
+                    trait("confTalk")
+                    save("save", "Save", WfSaveKind.edit)
+                }
+            }
+            report("byTrack", "Talks by track") {
+                comment = "For the committee's weekly meeting."
+                column("format", "Format", "form.confTalk.format")
+            }
+        }
+        val entries = gedraConfigToEntries(source)
+        val workflow = entries.getValue(CCT.workflowDef).single()[CCT.definition].toJsonMapOrEmpty()
+        workflow[SCH.dComment] shouldBe "Committee review."
+        workflow[WFD.tasks].toJsonListOfMaps().single()[SCH.dComment] shouldBe "The committee's score."
+        workflow[WFD.eligibility].toJsonListOfMaps().single()[SCH.dComment] shouldBe "Reviewers need the track."
+        entries.getValue(CCT.reportDef).single()[CCT.definition].toJsonMapOrEmpty()[SCH.dComment] shouldBe
+            "For the committee's weekly meeting."
+        val layout = entries.getValue(CCT.traitDef).single()[CCT.dataSchema].toJsonMapOrEmpty()[SCH.layout].toJsonMapOrEmpty()
+        layout[SCH.dComment] shouldBe "Workshops get their own formats."
+        layout[SL.schemaFields].toJsonListOfMaps().single()[SCH.dComment] shouldBe "Narrowed by the logistics workflow."
+
+        val reassembled = reassembleGedraConfig(cxt, source.gedraId.baseId, source.namespace, source.gedraId.client, entries)
+        gedraConfigToEntries(reassembled) shouldBe entries
     }
 
     "a trait's generated types are not stored, but are re-manufactured on reassembly" {
