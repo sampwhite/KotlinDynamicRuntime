@@ -23,6 +23,7 @@ import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
 import com.dynamicruntime.common.cfact.cfactSchema
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.job.JobService
@@ -307,6 +308,9 @@ class CommonComponent : ComponentDefinition {
             // `GoogleJwksKeySource` on the env-auth sign-in path. Its clients are created lazily on first call,
             // so a node (or a test) that never calls out pays nothing for it.
             service(::OutboundHttpService),
+            // Where files are kept (issue #1129). Application-only: an edge stores nothing, and must not need
+            // the credentials of a store it never reads.
+            service(::FileStoreService, roles = setOf(BOOT.app)),
             // Its `checkReady` performs every cache's initial load, by which point the whole set is
             // registered. Its position here is no longer load-bearing: it reads the caching environment in
             // `onCreate`, which the whole tier completes before any `checkInit` registers a cache.

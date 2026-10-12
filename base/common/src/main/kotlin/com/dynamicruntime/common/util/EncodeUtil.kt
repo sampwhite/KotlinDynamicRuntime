@@ -81,8 +81,17 @@ fun ByteArray.base64EncodeStripped(): String = base64Encode().replace('-', 'z')
 // --- non-crypto hashing / random strings ------------------------------------
 
 /** A fast, non-security digest of [this] (SHA-256), as raw bytes. */
-fun String.stdHashToBytes(): ByteArray =
-    MessageDigest.getInstance("SHA-256").digest(this.toByteArray(Charsets.UTF_8))
+fun String.stdHashToBytes(): ByteArray = this.toByteArray(Charsets.UTF_8).sha256()
+
+/** The SHA-256 digest of [this], as raw bytes. */
+fun ByteArray.sha256(): ByteArray = MessageDigest.getInstance("SHA-256").digest(this)
+
+/**
+ * The SHA-256 digest of [this], as 64 lowercase hex characters: the **integrity** hash of a piece of content,
+ * where [crc32Hex] is the cache-busting one. What a stored file's metadata records of its bytes (issue #1129),
+ * since it has to tell two files apart for good, and be something another tool can recompute and compare.
+ */
+fun ByteArray.sha256Hex(): String = sha256().toHexString()
 
 /**
  * An **HMAC-SHA256** of [this] under [key] (a node encryption key), as raw bytes.
@@ -105,9 +114,9 @@ fun String.stdHash(): String = this.stdHashToBytes().base64EncodeStripped()
 /**
  * A CRC32 checksum of [this], as a short hex string. Not a security hash -- an inexpensive change-detection /
  * cache-busting content hash: the same bytes give the same value, and a change gives a (near-certainly)
- * different one. The runtime's one content-hash primitive: a content file's `buildId`
+ * different one. The runtime's cache-busting content hash: a content file's `buildId`
  * ([com.dynamicruntime.common.content.ContentResources.buildId]) and a response's `contentHash` (the endpoint
- * envelope) are both this.
+ * envelope) are both this. For a hash that identifies content for good, see [sha256Hex].
  */
 fun ByteArray.crc32Hex(): String {
     val crc = CRC32()

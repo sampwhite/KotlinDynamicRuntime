@@ -66,7 +66,9 @@ class SampleFileInfo(
  * the store. An unguessable id makes the URL itself the capability.
  *
  * A sample, so it is deliberately plain: a file for the bytes and a JSON sidecar for the metadata, no index,
- * no database, no cleanup. Real storage would want all three.
+ * no database, no cleanup. Real storage is `FileStoreService` (issue #1129), which keeps the same pair -- content
+ * and metadata beside it -- in a declared bucket, on a directory or S3; this sample predates it and has not been
+ * moved onto it (`deferred-work.md`).
  */
 class SampleFileStore(val dir: File) {
     /** Reads the store's index: every file's metadata, newest first. Cheap enough at sample scale. */

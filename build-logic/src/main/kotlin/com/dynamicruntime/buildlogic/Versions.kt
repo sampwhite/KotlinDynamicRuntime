@@ -34,4 +34,7 @@ object Versions {
 
     /** log4j2: the API, the core backend, and the slf4j binding that routes third-party logging into it. */
     const val log4j = "2.26.1"
+
+    /** The AWS SDK for Java v2: the S3 client behind the file store's `s3` provider, and its HTTP client. */
+    const val awsSdk = "2.55.14"
 }

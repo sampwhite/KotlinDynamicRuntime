@@ -18,7 +18,7 @@ class EncodeUtilTest : StringSpec({
     val cxt = KdrCxt.mkSimpleCxt("test")
 
     "crc32Hex is deterministic, differs on changed content, and is order-sensitive" {
-        // The one content-hash primitive (a content file's buildId, a response's contentHash). Same input ->
+        // The cache-busting content hash (a content file's buildId, a response's contentHash). Same input ->
         // same value, so it is safe to compare across calls; a change gives a different value.
         "hello".crc32Hex() shouldBe "hello".crc32Hex()
         "hello".crc32Hex() shouldNotBe "hellp".crc32Hex()
@@ -27,6 +27,15 @@ class EncodeUtilTest : StringSpec({
         "ab".crc32Hex() shouldNotBe "ba".crc32Hex()
         // Hex, no leading "0x", non-empty.
         "hello".crc32Hex() shouldMatch Regex("[0-9a-f]+")
+    }
+
+    "sha256Hex is the SHA-256 of the bytes, as 64 lowercase hex characters" {
+        // The published test vectors, so the value is one any other tool computes for the same bytes.
+        "abc".toByteArray().sha256Hex() shouldBe "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        ByteArray(0).sha256Hex() shouldBe "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        // Over bytes, not text: a byte that is no character still counts, and a leading zero nibble is kept.
+        byteArrayOf(-1).sha256Hex() shouldBe "a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89"
+        "abc".stdHashToBytes().toList() shouldBe "abc".toByteArray().sha256().toList()
     }
 
     "base64Encode round-trips arbitrary bytes and is URL-safe" {

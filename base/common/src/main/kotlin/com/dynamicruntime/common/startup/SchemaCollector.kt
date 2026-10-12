@@ -22,6 +22,7 @@ import com.dynamicruntime.common.gedra.GedraWriteHook
 import com.dynamicruntime.common.gedra.workflow.WfFunctionCreation
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.job.JobDef
 import com.dynamicruntime.common.schema.SchOptionsProvider
 import com.dynamicruntime.common.sql.KdrTable
@@ -157,6 +158,21 @@ class SchemaCollector(
     /** Registers a batch-job type (issue #869); a type registered twice fails the boot. */
     fun addJob(def: JobDef) {
         jobs.add(def)
+    }
+
+    /**
+     * The file-store buckets components declared (issue #1129). A bucket is the store's own unit of addressing,
+     * whichever provider is behind it, and declaring one is what puts it under the boot check that it exists:
+     * `FileStoreService` serves no bucket that is not here.
+     */
+    val fileBuckets: MutableList<FileBucketDef> = mutableListOf()
+
+    /** Declares a file-store bucket (issue #1129); a name declared twice fails the boot. */
+    fun addFileBucket(def: FileBucketDef) {
+        if (fileBuckets.any { it.name == def.name }) {
+            throw KdrException("The file-store bucket '${def.name}' is declared more than once.")
+        }
+        fileBuckets.add(def)
     }
 
     /** The post-write hooks (issue #675), fired after every gedra data write inside its transaction. */

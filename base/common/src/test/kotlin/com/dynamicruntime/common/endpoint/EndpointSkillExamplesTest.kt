@@ -1,17 +1,22 @@
 package com.dynamicruntime.common.endpoint
 
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.http.request.ContentData
+import com.dynamicruntime.common.filestore.FileBucketDef
+import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.gedra.namableClients
+import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.SCH
-import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.parseSchemaTypes
-import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -186,6 +191,39 @@ class EndpointSkillExamplesTest : StringSpec({
     "the file endpoints' methods default as documented" {
         endpoint(fileExample(), "/file/upload").method shouldBe HttpMethod.POST
         endpoint(fileExample(), "/file/download").method shouldBe HttpMethod.GET
+    }
+
+    // Transcribed from the skill's file-store example, in the Files section: the bucket declared as a component
+    // declares it, then the calls in the order the skill shows them, over the store a unit test runs on.
+    "a file is kept in the file store, in a bucket the component declared" {
+        val collector = SchemaCollector()
+        collector.addFileBucket(FileBucketDef("web-assets", "A client's own images."))
+        val config = KdrInstanceConfig("endpointSkillFiles", ENV.unit, ENV.liveSource)
+        config.put(SchemaCollector.key, collector)
+        val cxt = KdrCxt("endpointSkillFiles", config)
+        config.put(FileStoreService.serviceName, FileStoreService().apply { onCreate(cxt); checkInit(cxt) })
+        val file = ContentData("PNG", "image/png", saveAsFilename = "logo.png")
+
+        val files = FileStoreService.get(cxt)
+        val meta = files.put(cxt, "web-assets", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
+
+        val download = files.get(cxt, "web-assets", "clients/acme/logo")?.toContentData()
+            ?: throw KdrException("No such file.", code = EXC.notFound)
+
+        // "answers its FileMeta -- type, size, SHA-256, the uploaded name, who and when, your extra".
+        meta.mimeType shouldBe "image/png"
+        meta.size shouldBe 3
+        meta.fileName shouldBe "logo.png"
+        meta.extra shouldBe mapOf("purpose" to "brand")
+        download.mimeType shouldBe "image/png"
+        // "answer the metadata without fetching the file".
+        files.meta(cxt, "web-assets", "clients/acme/logo")?.hash shouldBe meta.hash
+        files.list(cxt, "web-assets", "clients/acme/", limit = 100).map { it.key } shouldBe listOf("clients/acme/logo")
+        // "A bucket nobody declared is refused."
+        shouldThrow<KdrException> { files.get(cxt, "undeclared-files", "x") }
+        // "delete(...) says whether there was one."
+        files.delete(cxt, "web-assets", "clients/acme/logo") shouldBe true
+        files.delete(cxt, "web-assets", "clients/acme/logo") shouldBe false
     }
 
     // --- the Cursor paging section ------------------------------------------------------------------------

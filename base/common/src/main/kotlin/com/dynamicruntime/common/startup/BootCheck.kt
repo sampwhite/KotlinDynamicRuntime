@@ -71,6 +71,9 @@ object BCHK {
     /** Stored (database) client config, judged under its own forgiving mode (issue #839). */
     const val storedConfig = "storedConfig"
 
+    /** Whether the file store can serve every bucket a component declared (issue #1129). */
+    const val fileStore = "fileStore"
+
     // Report field names, shared with the frontend so a console reads them from the same strings.
     const val name = "name"
     const val envVar = "envVar"

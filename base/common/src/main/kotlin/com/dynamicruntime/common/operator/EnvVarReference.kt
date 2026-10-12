@@ -10,12 +10,12 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 /**
  * The groups in the order they render, which is [ENVGRP]'s own declaration order rather than whatever order
  * class-loading happened to register the variables in. A group the registry carries that is not named here
- * (there is none today) falls to the end, alphabetically, so an unforeseen group is still shown rather than
- * dropped.
+ * falls to the end, alphabetically, so an unforeseen group is still shown rather than dropped -- but a group
+ * added to [ENVGRP] is added here, or it renders wherever its name happens to sort.
  */
 private val groupOrder = listOf(
     ENVGRP.application, ENVGRP.database, ENVGRP.logging, ENVGRP.node,
-    ENVGRP.caching, ENVGRP.content, ENVGRP.gedra, ENVGRP.edge,
+    ENVGRP.caching, ENVGRP.content, ENVGRP.gedra, ENVGRP.edge, ENVGRP.jobs, ENVGRP.fileStore,
 )
 
 /**
