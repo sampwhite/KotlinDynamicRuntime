@@ -1,35 +1,19 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.context.ENV
-import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
-import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.EndpointKind
-import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
-import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.ClientAudience
-import com.dynamicruntime.common.gedra.ClientDef
-import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigReload
-import com.dynamicruntime.common.gedra.GedraConfigService
-import com.dynamicruntime.common.gedra.gedraConfig
-import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.SECT
-import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
-import com.dynamicruntime.common.schema.schemaDefs
 import com.dynamicruntime.common.startup.GeneratedSurface
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
-import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
-import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -61,59 +45,21 @@ class SchemaPublishGeneratedTest : StringSpec({
     val bare = "pgenbare"
     val bystander = "pgenby"
 
-    fun namespaceOf(client: String) = "kdr.gentest.$client"
-    fun typeOf(client: String) = "${namespaceOf(client)}.Thing"
-    fun pathOf(client: String, name: String = "thing") = "/${SECT.clientAdmin}/$client/gentest/$name"
-
-    /** An endpoint bound to [client], answering `{ n }` in a type of the surface's own. */
-    fun endpoint(client: String, n: Int, path: String = pathOf(client), boundTo: String? = client, outputType: String = typeOf(client)) = KdrEndpoint(
-        path = path, method = HttpMethod.GET, kind = EndpointKind.general, namespace = namespaceOf(client),
-        description = "A generated endpoint of '$client'.", inputFields = null, inputTypeRef = null, includeLimit = false,
-        outputSchema = SchModuleBuilder(cxt, namespaceOf(client)).scalarOutput(EP.results, "What it answers.", outputType),
-        handler = { _, _ -> mapOf("n" to n) }, client = boundTo,
-    )
-
-    fun defs(client: String, build: (MutableMap<String, Any?>) -> Unit = {}): Map<String, Any?> =
-        LinkedHashMap(
-            schemaDefs(cxt, namespaceOf(client)) {
-                type("Thing") {
-                    type = SCT.kObject
-                    property("n", "A number.", required = true) { type = SCT.integer }
-                }
-            },
-        ).also(build)
-
-    fun surface(client: String, n: Int) = GeneratedSurface(client, defs(client), listOf(endpoint(client, n)))
-
-    /** Publishes, and drops the cached types the publication says are stale, as a caller must. */
-    fun publish(vararg surfaces: Pair<String, GeneratedSurface?>): Set<String> =
-        schema.publishGenerated(cxt, mapOf(*surfaces)).also { RequestService.get(cxt).evictTypes(it) }
+    // The hand-built surfaces and the clients they are bound to, shared with the catalog's test of them.
+    val gen = GeneratedSurfaces(cxt, "gentest", setupUserId = 9100L)
+    fun namespaceOf(client: String) = gen.namespaceOf(client)
+    fun typeOf(client: String) = gen.typeOf(client)
+    fun pathOf(client: String, name: String = "thing") = gen.pathOf(client, name)
+    fun endpoint(client: String, n: Int, path: String = pathOf(client), boundTo: String? = client, outputType: String = typeOf(client)) =
+        gen.endpoint(client, n, path, boundTo, outputType)
+    fun defs(client: String, build: (MutableMap<String, Any?>) -> Unit = {}) = gen.defs(client, build)
+    fun surface(client: String, n: Int) = gen.surface(client, n)
+    fun publish(vararg surfaces: Pair<String, GeneratedSurface?>): Set<String> = gen.publish(*surfaces)
+    fun define(client: String, alsoVaries: Boolean) = gen.define(client, alsoVaries)
 
     fun served(client: String): Any? = admin.getData(pathOf(client))["n"]
-    fun catalog(client: String): Map<String, Any?> = admin.getData("/schema/endpoints", mapOf(EI.client to client, EP.limit to 1000))
-    fun paths(catalog: Map<String, Any?>) = catalog[EI.endpoints].toJsonListOfMaps().map { it[EI.path].toOptStr() }
-
-    fun asClient(client: String): KdrCxt = cxt.mkSubContext("pgen", client).also { it.userId = 9100L }
-
-    /** Defines [client] in stored configuration and loads it -- a reload of that client; [alsoVaries] gives it a type of its own. */
-    fun define(client: String, alsoVaries: Boolean) {
-        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
-            defineClient(
-                ClientDef(
-                    clientId = client, name = client, usageType = ClientUsageType.dev,
-                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
-                ),
-            )
-            if (alsoVaries) {
-                type("PgenOwn") {
-                    type = SCT.kObject
-                    property("label", "A label.")
-                }
-            }
-        }
-        GedraConfigService.get(cxt).writeConfig(asClient(client), config)
-        GedraConfigReload.reloadClient(cxt, client)
-    }
+    fun catalog(client: String): Map<String, Any?> = admin.catalog(mapOf(EI.client to client))
+    fun paths(catalog: Map<String, Any?>) = TestUser.pathsIn(catalog)
 
     "a generated endpoint is served, advertised under its client, and its type is in every store" {
         define(varying, alsoVaries = true)
@@ -135,7 +81,7 @@ class SchemaPublishGeneratedTest : StringSpec({
             listed[SCH.dDefs].toJsonMapOrEmpty().keys shouldContain typeOf(client)
         }
         // And under nobody else: not the shared surface, not another client's.
-        paths(admin.getData("/schema/endpoints", mapOf(EP.limit to 1000))) shouldNotContain pathOf(plain)
+        paths(admin.catalog()) shouldNotContain pathOf(plain)
         paths(catalog(varying)) shouldNotContain pathOf(plain)
 
         // Every store holds every generated type, and the one endpoint map.
@@ -145,8 +91,8 @@ class SchemaPublishGeneratedTest : StringSpec({
             store.endpoints shouldContainKey "${pathOf(plain)}:GET"
         }
         // The variant is still the client's own document: its own type is there, and in no other store.
-        schema.storeFor(varying).types shouldContainKey "${clientNamespace(varying)}.PgenOwn"
-        schema.schemaStore.types shouldNotContainKey "${clientNamespace(varying)}.PgenOwn"
+        schema.storeFor(varying).types shouldContainKey gen.ownTypeOf(varying)
+        schema.schemaStore.types shouldNotContainKey gen.ownTypeOf(varying)
     }
 
     "a client's reload keeps every generated surface, its own and another's" {
@@ -161,7 +107,7 @@ class SchemaPublishGeneratedTest : StringSpec({
         served(varying) shouldBe 8
         // A reload does not compound what was generated into the document the next one starts from: the variant
         // still has its own type, and a later publication still replaces the surface cleanly.
-        schema.storeFor(varying).types shouldContainKey "${clientNamespace(varying)}.PgenOwn"
+        schema.storeFor(varying).types shouldContainKey gen.ownTypeOf(varying)
         publish(plain to surface(plain, 70)) shouldBe setOf("${pathOf(plain)}:GET")
         served(plain) shouldBe 70
         served(varying) shouldBe 8

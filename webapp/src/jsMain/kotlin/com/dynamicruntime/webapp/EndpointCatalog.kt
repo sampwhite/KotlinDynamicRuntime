@@ -87,7 +87,8 @@ val EndpointCatalog = FC<Props> {
 
     // Catalog slicing (issue #489), client-side over the already-fetched list. Offered only when the response
     // says filtering is available (an env-authed caller); a caller without env auth is served only the
-    // published endpoints and sees no controls, since there is nothing to toggle.
+    // published endpoints -- and those generated for a client they administer (issue #1128) -- and sees no
+    // controls, since there is nothing for them to toggle.
     var publicOnly by useState(false)
     var selectedTags by useState<Set<String>>(emptySet())
 

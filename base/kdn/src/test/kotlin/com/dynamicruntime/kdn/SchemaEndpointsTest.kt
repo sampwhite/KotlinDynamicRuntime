@@ -380,8 +380,9 @@ class SchemaEndpointsTest : StringSpec({
     // The env-auth gate (issue #489): a caller without env auth -- an ordinary production user -- is served only
     // the published endpoints, cannot lift that with the publicApi filter, and is told filtering is unavailable
     // so the frontend drops its controls. A unit instance does not auto-assume env auth, so its caller is that
-    // ordinary user.
-    "without env auth the catalog serves only the published endpoints, and says filters are unavailable" {
+    // ordinary user. (What a client's *administrator* is shown beyond the published set -- the endpoints generated
+    // for that client, issue #1128 -- is `SchemaGeneratedCatalogTest`'s.)
+    "without env auth the catalog serves an ordinary user only the published endpoints, and says filters are unavailable" {
         // A logged-in ordinary user, not env-authed (a unit instance auto-assumes nothing) -- the production
         // caller the restriction is for. Logged in, so the login-gated gedra surface is theirs to see; the
         // restriction is what keeps them to its *published* part.

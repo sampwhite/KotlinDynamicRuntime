@@ -168,13 +168,6 @@ object AdminRules {
     fun canSeeAllClients(cxt: KdrCxt): Boolean = adminScope(cxt) == AdminScope.allClients
 
     /**
-     * Refuses a caller who administers only their own users ([AdminScope.ownIdentity], issue #805) from an
-     * action that belongs to a **client** -- its configuration: writing, publishing, reverting, or reloading it.
-     * The `clientAdmin` section admits any [ROLE.admin], which is right for the user pages a `public`
-     * administrator uses on their own users, and wrong for the `public` client's own configuration, which every
-     * `public` user shares. A 403 rather than a 404: the client is not a secret, the authority is what is missing.
-     */
-    /**
      * Whether the caller administers a client -- their own, or every one (issue #972): an administrator anywhere but
      * the `public` placeholder, where an administrator reaches only their own users. The non-throwing form of
      * [requireClientAdministrator]'s rule, for a surface that *shows* something extra to a client administrator
@@ -184,15 +177,29 @@ object AdminRules {
         adminScope(cxt).let { it == AdminScope.ownClient || it == AdminScope.allClients }
 
     /**
-     * Whether the caller administers [client] itself (issue #1128): a client administrator ([isClientAdministrator])
-     * whose reach includes it -- their own client, or any for one who sees every client. The same answer
-     * `overseenClient` gives by throwing, for a caller the `clientAdmin` section has already admitted; asked here
-     * without throwing, for a surface that decides what to **show** such a caller rather than what to refuse the
-     * rest -- the endpoint catalog, listing a client's generated endpoints to those who may call them.
+     * Whether the caller **oversees [client]** (issue #1128): administers that client itself -- their own, for a
+     * client's administrator; any, for one who sees every client; none, for anyone else, a `public`
+     * self-administrator included. Not [isClientAdministrator], which asks whether the caller administers *a* client
+     * (the `administersClient` cfact) and names none.
+     *
+     * **The one rule, asked two ways.** `overseenClient` refuses by it, which is what every client-scoped
+     * `clientAdmin` retrieve and a client's generated endpoints enforce; the endpoint catalog shows by it. One
+     * function rather than two that agree, so what a caller is shown of a client's endpoints cannot come apart from
+     * what they may call -- the drift issue #211 closed between the catalog and the gate.
      */
-    fun administersClient(cxt: KdrCxt, client: String): Boolean =
-        isClientAdministrator(cxt) && (client == cxt.userProfile.client || canSeeAllClients(cxt))
+    fun oversees(cxt: KdrCxt, client: String): Boolean = when (adminScope(cxt)) {
+        AdminScope.allClients -> true
+        AdminScope.ownClient -> client == cxt.userProfile.client
+        else -> false
+    }
 
+    /**
+     * Refuses a caller who administers only their own users ([AdminScope.ownIdentity], issue #805) from an
+     * action that belongs to a **client** -- its configuration: writing, publishing, reverting, or reloading it.
+     * The `clientAdmin` section admits any [ROLE.admin], which is right for the user pages a `public`
+     * administrator uses on their own users, and wrong for the `public` client's own configuration, which every
+     * `public` user shares. A 403 rather than a 404: the client is not a secret, the authority is what is missing.
+     */
     fun requireClientAdministrator(cxt: KdrCxt) {
         if (adminScope(cxt) == AdminScope.ownIdentity) {
             throw KdrException(

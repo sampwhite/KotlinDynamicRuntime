@@ -190,10 +190,10 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   `GeneratedSurface`. `gedra/report/ReportTypedEndpoints.kt` is the worked example: one endpoint pair per client and
   report, its output type generated from the report, `validateOutput` on. A generated endpoint is the one thing
   the catalog shows a caller **without env auth** beyond the `publicApi` set (issue #1128): it is listed to a
-  caller who administers its client (`AdminRules.administersClient`), since its catalog entry is where its
-  contract lives and its section may not be published. Nothing an endpoint declares opts it in. The publication
-  refuses what the boot
-  would have refused of a declared endpoint (a section with no rules, an address already taken) and a few things
+  caller who oversees its client (`AdminRules.oversees`, the rule its handler refuses by through
+  `overseenClient`), since its catalog entry is where its contract lives and its section may not be published.
+  Nothing an endpoint declares opts it in. The publication refuses what the boot would have refused of a
+  declared endpoint (a section with no rules, an address already taken) and a few things
   only a generator can do: types that refer outside their own surface, and the keywords the boot judges
   (`g-visibleWhen`, `g-layout`, `g-errors`, `g-optionsSource`). A generator fed by client configuration asks
   `SchemaService.trialGenerated` in the configuration's trial, so a write whose surface would be refused is

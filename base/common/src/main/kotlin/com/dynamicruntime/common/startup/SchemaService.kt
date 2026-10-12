@@ -1272,7 +1272,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                     EI.publicApi,
                     "Only endpoints in the published API -- the documented, supported set. This filters what " +
                         "is *listed*; it grants nothing, and omitting it lists everything you may already see. " +
-                        "A caller without env auth is served only these, whatever they ask (issue #489).",
+                        "A caller without env auth is served these -- and the endpoints generated for a client " +
+                        "they administer (issue #1128) -- and cannot ask for the rest (issue #489); `true` still " +
+                        "narrows what they are shown to the published ones.",
                 ) {
                     type = SCT.boolean
                 }
@@ -1746,15 +1748,19 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          */
         @KdrPrivate
         fun endpointCatalog(cxt: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
-            // A caller without env auth is confined to the published set and cannot lift that (issue #489): the
-            // catalog is a developer surface, so an ordinary production user sees only what is documented, and
-            // the request's `publicApi` cannot widen it. `isEnvAuthEffective` is the gate a suppressed session
-            // also fails, which is what makes the restriction previewable locally. What such a caller is shown is
-            // [shownWithoutEnvAuth]'s to say, which the single lookup asks too.
-            if (!cxt.isEnvAuthEffective) {
-                return catalogOf(cxt, request) { shownWithoutEnvAuth(cxt, it) }
-            }
+            // A caller without env auth is confined and cannot lift that (issue #489): the catalog is a developer
+            // surface, so a production caller sees what is documented -- and, of a client they administer, what
+            // was generated for it (issue #1128; [shownWithoutEnvAuth], which the single lookup asks too).
+            // `isEnvAuthEffective` is the gate a suppressed session also fails, which is what makes the
+            // restriction previewable locally.
             val published = request[EI.publicApi] as? Boolean
+            if (!cxt.isEnvAuthEffective) {
+                // The request's `publicApi` cannot widen that, and asking for the unpublished set is ignored, as
+                // it always was. Asking for the published one still *narrows*: now that such a caller may be
+                // shown something unpublished, ignoring it would answer `publicApi=true` with endpoints that are
+                // not -- and a narrowing grants nothing.
+                return catalogOf(cxt, request) { shownWithoutEnvAuth(cxt, it) && (published != true || it.publicApi) }
+            }
             return catalogOf(cxt, request) { published == null || it.publicApi == published }
         }
 
@@ -1768,15 +1774,17 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
          * section it sits in may not be published at all (issue #433). Without this its catalog entry -- the one
          * place its output type is written down -- would be readable by a developer and by nobody the endpoint is for.
          *
-         * It widens **advertisement only, and only to those who may already call**: [AdminRules.administersClient]
-         * is the rule the endpoint's own handler enforces, and the section gate ([isVisibleTo]) is applied to this
-         * endpoint as to every other. And it stays one rule to read, which is what #433 asks of publication: beyond
-         * the published set, a caller is shown exactly the endpoints generated for a client they administer -- no
-         * declared endpoint can opt in, since being generated is the schema service's own record
-         * ([SchemaService.isGenerated]) and not a mark an endpoint carries.
+         * It widens **advertisement only, and only to those who may already call**: [AdminRules.oversees] is the
+         * very function a generated endpoint's handler refuses by (`overseenClient`), and the section gate
+         * ([isVisibleTo]) is applied to this endpoint as to every other. And it stays one rule to read, which is
+         * what #433 asks of publication: beyond the published set, a caller is shown exactly the endpoints
+         * generated for a client they oversee -- no declared endpoint can opt in, nor a client's copy of one, since
+         * being generated is the schema service's own record ([SchemaService.isGenerated]) and not a mark an
+         * endpoint carries.
          *
-         * Shared by the listing and the single lookup, for [catalogSurface]'s reason: a lookup that answered for
-         * what the listing hides, or hid what it lists, would make them two surfaces.
+         * Shared by the listing and the single lookup, so that what **publication** hides from one it hides from
+         * the other. (Which *surface* each reads is a separate matter, and older: the listing shows one client's
+         * surface, while the lookup answers for any endpoint by its address.)
          */
         @KdrPrivate
         fun shownWithoutEnvAuth(cxt: KdrCxt, endpoint: KdrEndpoint): Boolean {
@@ -1787,7 +1795,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // Read optionally, as the catalog's other questions of the service are: a store built by hand has no
             // service, and so nothing generated.
             val service = cxt.instanceConfig.get(serviceName) as? SchemaService ?: return false
-            return service.isGenerated(endpoint) && AdminRules.administersClient(cxt, client)
+            return service.isGenerated(endpoint) && AdminRules.oversees(cxt, client)
         }
 
         /**

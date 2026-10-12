@@ -306,7 +306,8 @@ The trigger is observable: the first route added for a backend whose application
   acts on, instead of a redirect it tried to parse as JSON — so the symptom is a clean refusal rather than a
   broken page, and that is the whole of why it can wait.
 
-- **A caller without env auth sees only the published API** *(Sam, during the #433 review).* The endpoint
+- **A caller without env auth sees only the published API** *(Sam, during the #433 review; since #1128 with one
+  exception, the endpoints generated for a client the caller oversees -- `SchemaService.shownWithoutEnvAuth`).* The endpoint
   catalog is curated by the section model today: an anonymous caller sees every anonymous section, which is 30
   endpoints and correct, since a login page needs `/auth/...` and a shell needs `/app/ui/config`. The intended
   end state is narrower — no env auth means the catalog shows only endpoints marked `publicApi`, so an

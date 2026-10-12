@@ -4,14 +4,14 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.report.RGEN
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
-import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
@@ -49,11 +49,8 @@ class ReportTypedCatalogTest : StringSpec({
     val acmeReports = listOf(SC.auditOverview, SC.expensesByYear, SC.formRoster)
     val acmeTyped = acmeReports.flatMap { listOf(run(SC.acme, it), aggregate(SC.acme, it)) }
 
-    fun listing(user: TestUser, args: Map<String, Any?> = emptyMap()) = user.getData("/schema/endpoints", mapOf(EP.limit to 1000) + args)
-    fun endpointsOf(catalog: Map<String, Any?>) = catalog[EI.endpoints].toJsonListOfMaps()
-    fun pathsOf(catalog: Map<String, Any?>) = endpointsOf(catalog).map { it[EI.path].toOptStr() }
-    fun lookedUp(user: TestUser, path: String) =
-        user.getData("/schema/endpoint", mapOf(EI.method to HttpMethod.GET.name, EI.path to path))
+    fun endpointsOf(catalog: Map<String, Any?>) = TestUser.endpointsIn(catalog)
+    fun pathsOf(catalog: Map<String, Any?>) = TestUser.pathsIn(catalog)
 
     /** Whether [user] may call the typed endpoint at [path]: a page of it, or the refusal of one with no authority over the client. */
     fun mayCall(user: TestUser, path: String): Boolean {
@@ -68,7 +65,7 @@ class ReportTypedCatalogTest : StringSpec({
     "a client's administrator reads its reports' typed endpoints and their types from the catalog" {
         // The premise: this node grants no env auth, so the caller is the production one the catalog confines.
         cxt.instanceConfig.get(ACFG.assumeEnvAuth) shouldNotBe true
-        val catalog = listing(acmeAdmin)
+        val catalog = acmeAdmin.catalog()
         catalog[EI.filtersAvailable] shouldBe false
         pathsOf(catalog) shouldContainAll acmeTyped
         // Each with what a run of it returns: the report's own row and group type.
@@ -84,20 +81,48 @@ class ReportTypedCatalogTest : StringSpec({
         pathsOf(catalog) shouldNotContain UADEP.reportRun
         pathsOf(catalog) shouldNotContain run(SC.globex, SC.yearlyNotes)
 
+        // Asking for the published API narrows to it; asking for the rest lifts nothing more.
+        endpointsOf(acmeAdmin.catalog(mapOf(EI.publicApi to true))).all { it[EI.publicApi] == true } shouldBe true
+        endpointsOf(acmeAdmin.catalog(mapOf(EI.publicApi to false))).filter { it[EI.publicApi] != true }.map { it[EI.path].toOptStr() }.toSet() shouldBe
+            acmeTyped.toSet()
+
         // One endpoint looked up by itself answers the same, with its type.
-        val one = lookedUp(acmeAdmin, run(SC.acme, SC.auditOverview))
+        val one = acmeAdmin.catalogLookup(run(SC.acme, SC.auditOverview))
         pathsOf(one) shouldBe listOf(run(SC.acme, SC.auditOverview))
         one[SCH.dDefs].toJsonMapOrEmpty().keys shouldContain RGEN.rowType(SC.acme, SC.auditOverview)
-        endpointsOf(lookedUp(acmeAdmin, UADEP.reportRun)).shouldBeEmpty()
+        endpointsOf(acmeAdmin.catalogLookup(UADEP.reportRun)).shouldBeEmpty()
     }
 
     "the catalog shows a typed endpoint to exactly those who may call it" {
         val path = run(SC.acme, SC.auditOverview)
+        // acme's sandbox has the report too, and so typed endpoints of its own. There the role is not enough: one
+        // granted `admin` in the sandbox who is no administrator of acme has it withheld (issue #929), while an
+        // acme administrator who opens the sandbox acts as one in it.
+        val sandbox = sandboxOf(SC.acme)
+        val sandboxPath = run(sandbox, SC.auditOverview)
+        val granted = TestUser.create(cxt, "catalog-stranger@acme.test", level = ROLE.admin, userClient = sandbox)
+        val opened = TestUser.create(cxt, "catalog-chief@acme.test", level = ROLE.admin, userClient = SC.acme)
+        opened.postData(AEP.openSandbox, emptyMap())
+        opened.selfClient() shouldBe sandbox
+
         // Shown by the lookup -- which answers for any client's endpoint -- exactly when the call is answered.
-        for ((who, user) in listOf("acme admin" to acmeAdmin, "acme user" to acmeUser, "globex admin" to globexAdmin, "public admin" to selfAdmin, "full admin" to full)) {
-            val shown = endpointsOf(lookedUp(user, path)).isNotEmpty()
-            if (shown != mayCall(user, path)) throw AssertionError("For the $who, '$path' is shown=$shown but callable=${!shown}.")
+        val callers = listOf(
+            "acme admin" to acmeAdmin, "acme user" to acmeUser, "globex admin" to globexAdmin, "public admin" to selfAdmin,
+            "full admin" to full, "sandbox admin in name only" to granted, "acme admin in the sandbox" to opened,
+        )
+        for (at in listOf(path, sandboxPath)) {
+            for ((who, user) in callers) {
+                val shown = endpointsOf(user.catalogLookup(at)).isNotEmpty()
+                if (shown != mayCall(user, at)) throw AssertionError("For the $who, '$at' is shown=$shown but callable=${!shown}.")
+            }
         }
+        mayCall(granted, sandboxPath) shouldBe false
+        mayCall(opened, sandboxPath) shouldBe true
+        // In the sandbox they oversee the sandbox, not the client they came from.
+        mayCall(opened, path) shouldBe false
+        mayCall(acmeAdmin, sandboxPath) shouldBe false
+        pathsOf(opened.catalog()) shouldContain sandboxPath
+        pathsOf(granted.catalog()) shouldNotContain sandboxPath
         mayCall(acmeAdmin, path) shouldBe true
         mayCall(full, path) shouldBe true
         mayCall(acmeUser, path) shouldBe false
@@ -106,11 +131,11 @@ class ReportTypedCatalogTest : StringSpec({
 
         // The listing agrees: an ordinary user of the client and another client's administrator are not shown it;
         // that administrator is shown their own client's, and may not ask for this client's surface.
-        pathsOf(listing(acmeUser)) shouldNotContain path
-        pathsOf(listing(globexAdmin)) shouldNotContain path
-        pathsOf(listing(globexAdmin)) shouldContain run(SC.globex, SC.yearlyNotes)
+        pathsOf(acmeUser.catalog()) shouldNotContain path
+        pathsOf(globexAdmin.catalog()) shouldNotContain path
+        pathsOf(globexAdmin.catalog()) shouldContain run(SC.globex, SC.yearlyNotes)
         globexAdmin.expectError(EXC.badInput, "/schema/endpoints", args = mapOf(EI.client to SC.acme))
         // One who sees every client is shown a client's when they name it.
-        pathsOf(listing(full, mapOf(EI.client to SC.acme))) shouldContainAll acmeTyped
+        pathsOf(full.catalog(mapOf(EI.client to SC.acme))) shouldContainAll acmeTyped
     }
 })

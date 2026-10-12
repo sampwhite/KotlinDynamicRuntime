@@ -54,8 +54,9 @@ class Catalog(
     val defs: Map<String, Any?>,
     /**
      * Whether this caller may slice the catalog (issue #489): true when env-authed. When false the backend has
-     * already limited the response to the published endpoints, so the page offers no filters -- there is nothing
-     * to toggle, and re-offering a publicApi filter that is forced on would only mislead.
+     * already limited the response -- to the published endpoints, and those generated for a client the caller
+     * administers (issue #1128) -- so the page offers no filters: there is nothing to toggle, and re-offering a
+     * publicApi filter the caller cannot lift would only mislead. An entry's own `publicApi` still says which it is.
      */
     val filtersAvailable: Boolean = true,
     /**
