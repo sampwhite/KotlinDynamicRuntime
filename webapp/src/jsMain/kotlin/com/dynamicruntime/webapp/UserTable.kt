@@ -10,6 +10,7 @@ import react.create
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.span
 import web.cssom.ClassName
+import kotlin.time.Instant
 
 /**
  * The user search results as an antd table (issue #411). The **search columns are rendered from the shared
@@ -53,6 +54,8 @@ external interface UserTableProps : Props {
 }
 
 val UserTable = FC<UserTableProps> { props ->
+    // What the date columns read their relative times against (issue #1141): one clock for every row.
+    val now = useRelativeClock()
     Table {
         size = "small"
         // Declared widths mean what they say (see `TableProps.tableLayout`): under the default auto layout a
@@ -66,11 +69,14 @@ val UserTable = FC<UserTableProps> { props ->
             // The search columns, straight from the shared spec -- label, sortability, and order included.
             for (spec in userSearchFieldSpecs) {
                 if (spec.allClientsOnly && !props.showClient) continue
-                if (spec.sortable) {
-                    add(sortableColumn(spec.label, spec.name, columnWidths[spec.name], props.sortBy, props.descending))
+                val c = if (spec.sortable) {
+                    sortableColumn(spec.label, spec.name, columnWidths[spec.name], props.sortBy, props.descending)
                 } else {
-                    add(column(spec.label, spec.name, columnWidths[spec.name]))
+                    column(spec.label, spec.name, columnWidths[spec.name])
                 }
+                // A date column's cell carries its exact time on hover (issue #1141), filed beside it on the row.
+                if (spec.name in userTimeFields) c.render = timeColumnRender(timeTipKey(spec.name))
+                add(c)
             }
             // Descriptive columns that are not search fields, so they stay static and unsorted.
             add(column("Type", typeColumn, columnWidths[typeColumn]))
@@ -96,8 +102,9 @@ val UserTable = FC<UserTableProps> { props ->
             // the header maps straight to a sort key. The display value per field is the frontend's own reading
             // of the row -- the counterpart to the backend's accessors.
             for (spec in userSearchFieldSpecs) {
-                row[spec.name] = cellValue(spec.name, user)
+                row[spec.name] = cellValue(spec.name, user, now)
             }
+            for ((field, at) in userTimes(user)) at?.let { row[timeTipKey(field)] = formatTimestamp(it) }
             row.type = if (user.isEntity) "Business" else "Person"
             row.roles = user.roles.joinToString(", ")
             row.status = statusWords(user).joinToString(", ")
@@ -198,22 +205,30 @@ fun userLinksOffered(caller: UserProfile): Boolean = mayCreateForOthers(caller)
  * mapped, so a field added to the spec without a branch here fails the build (a blank column) instead of
  * shipping an empty column silently. Not `private`, so that test can reach it.
  */
-fun cellValue(field: String, user: AdminUser): String = when (field) {
+fun cellValue(field: String, user: AdminUser, now: Instant): String = when (field) {
     USF.email -> user.primaryId
     // The account's own name; an unnamed account shows the placeholder rather than the username standing in.
     USF.name -> user.name?.takeIf { it.isNotBlank() } ?: "—"
     USF.client -> user.client
     // Which of a person's users this is (issue #750): the persona's label, and the personaSuffix when there is one.
     USF.persona -> personaCell(user.persona, user.personaSuffix)
-    // The three tracked dates the console shows (issue #462). A dash rather than a blank: "never" is a fact
-    // about the account -- never logged in, never edited -- and an empty cell reads as a rendering failure.
-    USF.lastEdited.at -> user.lastEditedAt?.let { formatTimestamp(it) } ?: "—"
-    USF.lastLoggedIn.at -> user.lastLoggedInAt?.let { formatTimestamp(it) } ?: "—"
-    // Absent means unclaimed (issue #750), which the Status column also says in a word.
-    USF.registered.at -> user.registeredAt?.let { formatTimestamp(it) } ?: "—"
-    USF.activated.at -> user.activatedAt?.let { formatTimestamp(it) } ?: "—"
+    // The tracked dates the console shows (issue #462), relative to [now] (issue #1141). A dash rather than a blank:
+    // "never" is a fact about the account -- never logged in, never edited -- and an empty cell reads as a rendering
+    // failure. An absent registered date means unclaimed (issue #750), which the Status column also says in a word.
+    in userTimeFields -> userTimes(user)[field]?.let { formatRelativeTime(it, now) } ?: "—"
     else -> unmappedCell
 }
+
+/** The search columns that hold a time (issue #1141). */
+val userTimeFields = setOf(USF.lastEdited.at, USF.lastLoggedIn.at, USF.registered.at, USF.activated.at)
+
+/** Each of [userTimeFields] with [user]'s value, as the wire has it; null where the account has none. */
+fun userTimes(user: AdminUser): Map<String, String?> = mapOf(
+    USF.lastEdited.at to user.lastEditedAt,
+    USF.lastLoggedIn.at to user.lastLoggedInAt,
+    USF.registered.at to user.registeredAt,
+    USF.activated.at to user.activatedAt,
+)
 
 /**
  * What a column-header click sorts by: the clicked [field] in the [order] antd reports (`ascend` / `descend`),
@@ -276,10 +291,10 @@ fun pinnedSide(dataIndex: String): String? = when (dataIndex) {
  * reckoning and gave `Status` -- which holds one short word -- as much as `Roles`, which holds a list. Measured
  * rather than guessed: each figure is the widest content that column actually has to hold, plus its header.
  *
- * The three dates are the ones worth stating a reason for. Their content is **fixed width** --
- * `2026-08-27 19:23 UTC` is the same length forever -- so 175 is not a preference but the number that stops
- * them wrapping, and the previous 150 was 20px short of it. A column whose content cannot vary should never
- * be the one that wraps, which is exactly what it was doing.
+ * The dates are the ones worth stating a reason for. Their content is **bounded** -- a relative time is at
+ * most `23h 59m ago` (86px) and past two days a day alone, `2026-08-27` (issue #1141) -- so their figure is the
+ * one that holds the widest of those and the header with its sort arrow, not a preference. A column whose content
+ * cannot grow should never be the one that wraps. (They were 175 when they held `2026-08-27 19:23 UTC`.)
  *
  * The total is kept near what a 1440-wide window can show, so nothing is pushed off the right-hand edge and
  * behind a scrollbar. Above that the surplus is shared out; below it the table scrolls inside the card. The
@@ -293,9 +308,9 @@ private val columnWidths: Map<String, Int> = mapOf(
     USF.email to 190, USF.name to 130, USF.client to 85,
     // `Member B` at its widest; taken from the email column's share.
     USF.persona to 95,
-    // Fixed-width content, so these are the figures that must not be shaved: `2026-08-27 19:23 UTC` measures
-    // 153px and never varies. Everything else here was sized around them.
-    USF.lastEdited.at to 175, USF.lastLoggedIn.at to 175, USF.registered.at to 175, USF.activated.at to 175,
+    // Bounded content, so these are the figures that must not be shaved: `23h 59m ago` or a header with its
+    // sort arrow, whichever is wider (issue #1141).
+    USF.lastEdited.at to 110, USF.lastLoggedIn.at to 110, USF.registered.at to 110, USF.activated.at to 110,
     // Bounded vocabularies: "Person"/"Business", and "enabled"/"disabled"/"deleted".
     typeColumn to 80, statusColumn to 85,
     // "Forms · Client", which never varies.

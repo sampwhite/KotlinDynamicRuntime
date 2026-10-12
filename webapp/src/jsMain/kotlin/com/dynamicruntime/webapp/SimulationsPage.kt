@@ -231,6 +231,8 @@ private external interface RecentRunsSectionProps : Props {
  */
 private val RecentRunsSection = FC<RecentRunsSectionProps> { props ->
     val split = recentRunsFor(props.runs, props.dataId)
+    // What each heading's "12m ago" is measured from (issue #1141).
+    val now = useRelativeClock()
     div {
         className = ClassName("sim-recent")
         div {
@@ -246,7 +248,10 @@ private val RecentRunsSection = FC<RecentRunsSectionProps> { props ->
             div {
                 key = saved.ranAt.unsafeCast<Key>()
                 className = ClassName("sim-card")
-                h3 { +recentRunHeading(saved) }
+                h3 {
+                    title = formatTimestamp(saved.ranAt)
+                    +recentRunHeading(saved, now)
+                }
                 p {
                     className = ClassName("subtitle")
                     +saved.run.summary
@@ -265,7 +270,8 @@ private val RecentRunsSection = FC<RecentRunsSectionProps> { props ->
                     p {
                         key = saved.ranAt.unsafeCast<Key>()
                         className = ClassName("type-hint")
-                        +recentRunHeading(saved)
+                        title = formatTimestamp(saved.ranAt)
+                        +recentRunHeading(saved, now)
                     }
                 }
             }

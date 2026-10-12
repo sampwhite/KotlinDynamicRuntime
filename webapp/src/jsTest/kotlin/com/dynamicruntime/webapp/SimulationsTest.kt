@@ -5,6 +5,7 @@ import com.dynamicruntime.common.test.TEP
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.time.Instant
 
 /** The Simulations page's pure half (issue #997): reading a report, and turning it into a sign-in and a landing. */
 class SimulationsTest {
@@ -92,6 +93,9 @@ class SimulationsTest {
 
     @Test
     fun aRememberedRunIsHeadedBySimulationClientsAndTime() {
-        assertEquals("report-demo · acme, globex · 2026-10-09 11:00 UTC", recentRunHeading(saved("report-demo", "d1", "2026-10-09T11:00:00Z")))
+        val run = saved("report-demo", "d1", "2026-10-09T11:00:00Z")
+        assertEquals("report-demo · acme, globex · 1h 5m ago", recentRunHeading(run, Instant.parse("2026-10-09T12:05:00Z")))
+        // Two days on, the day it ran.
+        assertEquals("report-demo · acme, globex · 2026-10-09", recentRunHeading(run, Instant.parse("2026-10-11T12:00:00Z")))
     }
 }

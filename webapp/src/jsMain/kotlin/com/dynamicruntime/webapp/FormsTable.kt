@@ -143,6 +143,8 @@ val FormsTable = FC<FormsTableProps> { props ->
     // its endpoint; with neither there is no column, not an empty one.
     val drill = props.drillWorkflowId
     val showActions = anySurveyStatus || props.canDelete || drill != null
+    // What the Updated and Created columns read their relative times against (issue #1141).
+    val now = useRelativeClock()
     // Opens the drilled workflow on a row (issue #792), on the task its cell link would -- the current task of an
     // engaged form, ready to edit; the last of a finished one; the workflow itself for an eligible one.
     fun openWorkflow(id: String, items: List<WorkflowCellItem>) {
@@ -204,8 +206,9 @@ val FormsTable = FC<FormsTableProps> { props ->
             // The workflow column (issue #791): drawn when the summary names any workflow -- decided over every form
             // the caller may see, not this page, so it does not come and go as a search narrows.
             if (props.workflowSummary.isNotEmpty()) add(workflowColumn(props))
-            add(sortableColumn("Updated", GSORT.updated, 175, props.sortColumn, props.sortDescending))
-            add(sortableColumn("Created", GSORT.created, 175, props.sortColumn, props.sortDescending))
+            // Relative times (issue #1141), with the exact one on hover: `23h 59m ago` at the widest (86px).
+            add(timeColumn(sortableColumn("Updated", GSORT.updated, 110, props.sortColumn, props.sortDescending)))
+            add(timeColumn(sortableColumn("Created", GSORT.created, 110, props.sortColumn, props.sortDescending)))
             // View Info (survey clients) and Delete (where its endpoint is on the surface). With "View All" gone
             // (issue #726) the column can have nothing to show -- a no-survey client whose caller cannot delete
             // -- and then it is not drawn at all: an empty column pinned right would be a blank sticky band
@@ -228,8 +231,14 @@ val FormsTable = FC<FormsTableProps> { props ->
             // cell where the row has none.
             summary.displayValues.forEach { row[displayColKey(it.traitId)] = it.value.ifBlank { "—" } }
             row.contains = summary.traitLabels.joinToString(", ")
-            row.updated = summary.updatedAt ?: ""
-            row.created = summary.createdAt ?: ""
+            summary.updatedAt?.let {
+                row.updated = formatRelativeTime(it, now)
+                row[timeTipKey(GSORT.updated)] = formatTimestamp(it)
+            }
+            summary.createdAt?.let {
+                row.created = formatRelativeTime(it, now)
+                row[timeTipKey(GSORT.created)] = formatTimestamp(it)
+            }
             row.ownerName = summary.ownerName
             row.ownerEmail = summary.ownerEmail
             row.ownerPersona = summary.ownerPersona
@@ -563,6 +572,12 @@ private fun sortableColumn(
     c.sorter = true
     // The dataIndex is the endpoint's sort key (a display column's is namespaced); the arrow shows only on it.
     c.sortOrder = if (sortColumn == dataIndex) (if (descending) "descend" else "ascend") else null
+    return c
+}
+
+/** [c], drawn as a time: its cell's text with the exact time on hover (issue #1141). */
+private fun timeColumn(c: dynamic): dynamic {
+    c.render = timeColumnRender(timeTipKey(c.dataIndex as String))
     return c
 }
 

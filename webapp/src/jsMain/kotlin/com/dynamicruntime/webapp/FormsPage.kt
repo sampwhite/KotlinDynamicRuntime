@@ -1046,7 +1046,9 @@ private fun ChildrenBuilder.renderForm(
             +("Contains: " + summary.traitLabels.joinToString(", "))
         }
     }
-    summary.createdAt?.let {
+    // In full: a form's own page has the room a table does not (issue #1141).
+    val created = summary.createdAt?.let { formatTimestamp(it) }
+    created?.let {
         p {
             className = ClassName("subtitle")
             +"Created $it"
@@ -1054,7 +1056,7 @@ private fun ChildrenBuilder.renderForm(
     }
     // The last write, when it is not the creation (issue #562) -- a line that would repeat the one above says
     // nothing.
-    summary.updatedAt?.takeIf { it != summary.createdAt }?.let {
+    summary.updatedAt?.let { formatTimestamp(it) }?.takeIf { it != created }?.let {
         p {
             className = ClassName("subtitle")
             +"Updated $it"
