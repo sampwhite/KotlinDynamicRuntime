@@ -13,15 +13,18 @@ import com.dynamicruntime.common.exception.KdrException
  * -- its region, who may read it, how long it keeps what is deleted -- so a declared bucket that is not there
  * is reported at startup ([ensureBucket]) for whoever runs the deployment to provision.
  *
- * A listing reads each listed file's metadata with a request of its own, so it costs a request per file: fine
- * for the folder of one owner's files, not a way to walk a large bucket.
+ * **A file costs two requests to read and two to write**, where S3's own object metadata would cost one. That
+ * is the price of the metadata being an object like the content ([FileStore]): the same file on every provider,
+ * readable without this code, and not held to the two kilobytes S3 allows an object's own metadata. A listing
+ * reads each listed file's metadata with a request of its own, so it costs a request per file, up to the most
+ * it was asked for: fine for the folder of one owner's files, not a way to walk a large bucket.
  */
 class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
     override val providerType: String = FST.s3
     override val location: String = api.location + if (bucketPrefix.isEmpty()) "" else ", buckets named '$bucketPrefix...'"
 
     init {
-        prefixProblem(bucketPrefix)?.let { throw KdrException("Not a bucket-name prefix: '$bucketPrefix' ($it).") }
+        FNAME.bucketPrefixProblem(bucketPrefix)?.let { throw KdrException("Not a bucket-name prefix: '$bucketPrefix' ($it).") }
     }
 
     /** The S3 bucket behind the declared [bucket]. */
@@ -48,9 +51,21 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
 
     override fun put(cxt: KdrCxt, bucket: String, key: String, bytes: ByteArray, meta: FileMeta) {
         val physical = physicalBucket(bucket)
-        api.delete(physical, FileMeta.metaKey(key))
+        // S3 swaps an object whole, so until this returns the file that was there is untouched -- and still is
+        // if it fails.
         api.put(physical, key, bytes, meta.mimeType)
-        api.put(physical, FileMeta.metaKey(key), meta.toFileText().toByteArray(Charsets.UTF_8), FileMeta.metaMimeType)
+        try {
+            api.put(physical, FileMeta.metaKey(key), meta.toFileText().toByteArray(Charsets.UTF_8), FileMeta.metaMimeType)
+        } catch (e: KdrException) {
+            // The content is the new file's and its metadata could not be written. Left alone, the old metadata
+            // would describe content it does not match; removed, this is a write that did not finish.
+            try {
+                api.delete(physical, FileMeta.metaKey(key))
+            } catch (_: KdrException) {
+                // S3 is failing; the write's own failure is the one to report.
+            }
+            throw e
+        }
     }
 
     override fun get(cxt: KdrCxt, bucket: String, key: String): StoredFile? {
@@ -71,28 +86,38 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         return existed
     }
 
-    override fun list(cxt: KdrCxt, bucket: String, keyPrefix: String): List<FileEntry> {
-        val listed = api.list(physicalBucket(bucket), keyPrefix).toSet()
-        return listed.asSequence()
-            .filter { it.endsWith(FileMeta.metaSuffix) }
-            .map { it.removeSuffix(FileMeta.metaSuffix) }
-            .filter { it in listed && FNAME.keyProblem(it) == null }
-            .sorted()
-            .mapNotNull { key -> meta(cxt, bucket, key)?.let { FileEntry(key, it) } }
-            .toList()
+    override fun list(cxt: KdrCxt, bucket: String, keyPrefix: String, max: Int): List<FileEntry> {
+        val physical = physicalBucket(bucket)
+        // A file is two objects, so twice the keys and a few to spare -- more only when objects that are no
+        // file's (content with no metadata, or the reverse) took the room.
+        var asked = max.toLong() * 2 + spareKeys
+        while (true) {
+            val maxKeys = minOf(asked, Int.MAX_VALUE.toLong()).toInt()
+            val listed = api.list(physical, keyPrefix, maxKeys)
+            val whole = listed.size < maxKeys || maxKeys == Int.MAX_VALUE
+            val keys = listed.toSet()
+            // A listing that stopped short may have stopped between a file's content and its metadata, which
+            // other keys sort between ('a', 'a-b', 'a.meta.json'). Such a file cannot be told from a stray, so
+            // nothing from the first of them on is answered from this listing.
+            val unsettled = if (whole) null else listed.lastOrNull()?.let { last ->
+                listed.filter { !it.endsWith(FileMeta.metaSuffix) && FileMeta.metaKey(it) > last }.minOrNull()
+            }
+            val entries = listed.asSequence()
+                .filter { it.endsWith(FileMeta.metaSuffix) }
+                .map { it.removeSuffix(FileMeta.metaSuffix) }
+                .filter { it in keys && FNAME.keyProblem(it) == null && (unsettled == null || it < unsettled) }
+                .sorted()
+                .mapNotNull { key -> meta(cxt, bucket, key)?.let { FileEntry(key, it) } }
+                .take(max)
+                .toList()
+            if (entries.size >= max || whole) return entries
+            asked *= 2
+        }
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
-        /**
-         * What is wrong with [prefix] as the start of this deployment's bucket names, or null: empty, or
-         * lowercase letters, digits and hyphens beginning with a letter or digit. It may end in a hyphen, as
-         * `acme-prod-` does, since a bucket's own name follows.
-         */
-        fun prefixProblem(prefix: String): String? = when {
-            prefix.isEmpty() -> null
-            !prefix.all { it in 'a'..'z' || it in '0'..'9' || it == '-' } -> "it may hold only lowercase letters, digits and hyphens"
-            prefix.first() == '-' -> "it must begin with a letter or digit"
-            else -> null
-        }
+        /** Keys asked for beyond two per file, so a stray object or two does not cost a second listing. */
+        const val spareKeys = 16
     }
 }

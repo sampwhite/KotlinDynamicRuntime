@@ -151,7 +151,14 @@ The `bin/` wrappers do the workspace resolution for you, so `KDR_PORT=$PORT KDR_
 kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
 
 - `KDR_PORT` moves off 7070 (any free port). `KDR_IN_MEMORY_ONLY=true` uses in-memory H2, so there is no
-  database contention — omit it only when the test needs a specific database or its content.
+  database contention — omit it only when the test needs a specific database or its content. It also keeps
+  **files** in memory (`FileStoreService`), so your server writes no `fileStore/` into the workspace.
+- **A unit test's files are in memory too**, whether or not it runs in memory otherwise. To test on a real
+  directory, name both: `KDR_FILE_STORE_TYPE=local` and `KDR_FILE_STORE_DIR=<a temp dir>` — with no directory
+  named the boot is refused, since the default is in the workspace. To test the S3 path, set
+  `KDR_FILE_STORE_TYPE=s3` and put a stand-in `S3Api` in the instance config under
+  `FileStoreService.s3ApiConfigKey` (`FakeS3Api` in `base/common`'s tests keeps objects in a map and records
+  every call); the real client is refused in a unit test.
 - `:launch:run` rebuilds and embeds the current `:webapp` bundle, so it serves your frontend changes at `/wa`.
 - API endpoints are under the **`/kda`** context root (`/kda/health`, `/kda/auth/self/info`, …).
 - **Env vars flip options at boot** — the most useful lever for testing a config-gated behavior without

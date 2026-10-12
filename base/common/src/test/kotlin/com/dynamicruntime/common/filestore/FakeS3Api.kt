@@ -28,12 +28,16 @@ class FakeS3Api(vararg existingBuckets: String) : S3Api {
     /** When true every call fails as an unreachable S3 does. */
     var unreachable = false
 
+    /** Says of a call, as [calls] records it, whether it is to fail: how a test stops a write part-way. */
+    var failing: ((call: String) -> Boolean)? = null
+
     /** Run after a `get` has read its object and before it returns: where a test changes S3 mid-read. */
     var afterGet: ((bucket: String, key: String) -> Unit)? = null
 
     private fun reached(call: String, bucket: String) {
         calls.add(call)
         if (unreachable) throw KdrException("S3 could not be reached.", null, EXC.notAvailable, SRC.network, ACT.io)
+        if (failing?.invoke(call) == true) throw KdrException("S3 could not $call.", null, EXC.notAvailable, SRC.network, ACT.io)
         if (bucket !in buckets) throw KdrException("No such bucket '$bucket'.", null, EXC.notAvailable, SRC.network, ACT.io)
     }
 
@@ -66,8 +70,12 @@ class FakeS3Api(vararg existingBuckets: String) : S3Api {
         objects.remove("$bucket/$key")
     }
 
-    override fun list(bucket: String, prefix: String): List<String> {
+    /** How many keys each listing was asked for, in order. */
+    val listSizes = mutableListOf<Int>()
+
+    override fun list(bucket: String, prefix: String, maxKeys: Int): List<String> {
         reached("list $bucket/$prefix", bucket)
-        return objects.keys.filter { it.startsWith("$bucket/$prefix") }.map { it.removePrefix("$bucket/") }
+        listSizes.add(maxKeys)
+        return objects.keys.filter { it.startsWith("$bucket/$prefix") }.map { it.removePrefix("$bucket/") }.take(maxKeys)
     }
 }

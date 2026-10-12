@@ -40,8 +40,8 @@ interface S3Api {
     /** Removes the object at [key]; no error when there is none. */
     fun delete(bucket: String, key: String)
 
-    /** Every object key beginning with [prefix], in key order. */
-    fun list(bucket: String, prefix: String): List<String>
+    /** The object keys beginning with [prefix], in key order: the first [maxKeys] of them. */
+    fun list(bucket: String, prefix: String, maxKeys: Int = Int.MAX_VALUE): List<String>
 }
 
 /**
@@ -95,9 +95,11 @@ class SdkS3Api(val region: String, val endpoint: String? = null) : S3Api, AutoCl
         call("delete '$key' in the bucket '$bucket'") { client.deleteObject { it.bucket(bucket).key(key) } }
     }
 
-    override fun list(bucket: String, prefix: String): List<String> =
+    override fun list(bucket: String, prefix: String, maxKeys: Int): List<String> =
         call("list the bucket '$bucket'") {
-            client.listObjectsV2Paginator { it.bucket(bucket).prefix(prefix) }.contents().map { it.key() }
+            // The paginator fetches a page when it is walked into, so taking the first few asks for no more.
+            client.listObjectsV2Paginator { it.bucket(bucket).prefix(prefix) }.contents().asSequence()
+                .take(maxKeys).map { it.key() }.toList()
         }
 
     override fun close() = client.close()
@@ -129,8 +131,13 @@ class SdkS3Api(val region: String, val endpoint: String? = null) : S3Api, AutoCl
     private fun isMissingObject(e: SdkException): Boolean =
         isNotFound(e) && (e as S3Exception).awsErrorDetails()?.errorCode() != noSuchBucketCode
 
+    /**
+     * **Sensitive**: what S3 says of a refusal names the account, the role and the real bucket, which is for
+     * whoever runs the deployment and not for whoever asked for a file. Where a deployment obfuscates, the
+     * client is told only that something failed and the log has the rest.
+     */
     private fun failure(what: String, e: SdkException): KdrException =
-        KdrException("S3 could not $what: ${e.message}", e, EXC.notAvailable, SRC.network, ACT.io)
+        KdrException("S3 could not $what: ${e.message}", e, EXC.notAvailable, SRC.network, ACT.io, sensitive = true)
 
     @Suppress("ConstPropertyName")
     companion object {

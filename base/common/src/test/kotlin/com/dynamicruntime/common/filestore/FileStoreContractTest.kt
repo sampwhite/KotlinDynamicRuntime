@@ -111,6 +111,9 @@ class FileStoreContractTest : StringSpec({
                 listOf("clients/acme/web/brandMark", "clients/acme/web/favicon", "clients/acme2/x")
             store.list(cxt, bucket, "clients/acme/web/favicon").single().meta.size shouldBe "clients/acme/web/favicon".length
             store.list(cxt, bucket, "nothing/").shouldBeEmpty()
+            // No more than it is asked for, and those the first in key order.
+            store.list(cxt, bucket, "", 2).map { it.key } shouldContainExactly listOf("clients/acme/web/brandMark", "clients/acme/web/favicon")
+            store.list(cxt, bucket, "clients/acme", 1).map { it.key } shouldContainExactly listOf("clients/acme/web/brandMark")
         }
 
         "$name: one bucket's files are not another's" {
@@ -147,6 +150,15 @@ class FileStoreContractTest : StringSpec({
             store.delete(cxt, bucket, "a/b") shouldBe true
             store.put(cxt, bucket, "a", "y".toByteArray(), meta("y".toByteArray()))
             store.get(cxt, bucket, "a").shouldNotBeNull().bytes.decodeToString() shouldBe "y"
+
+            // However deep the folders the deletes left: what a filesystem keeps of them holds no file.
+            store.put(cxt, bucket, "deep/er/still/file", "x".toByteArray(), meta("x".toByteArray()))
+            store.delete(cxt, bucket, "deep/er/still/file") shouldBe true
+            store.put(cxt, bucket, "deep", "z".toByteArray(), meta("z".toByteArray()))
+            store.get(cxt, bucket, "deep").shouldNotBeNull().bytes.decodeToString() shouldBe "z"
+            // A folder that does still hold one, further down, is in the way.
+            store.put(cxt, bucket, "held/er/still/file", "x".toByteArray(), meta("x".toByteArray()))
+            shouldThrow<KdrException> { store.put(cxt, bucket, "held", "z".toByteArray(), meta("z".toByteArray())) }.code shouldBe EXC.conflict
         }
     }
 

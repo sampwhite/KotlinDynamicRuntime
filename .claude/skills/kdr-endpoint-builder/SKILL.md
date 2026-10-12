@@ -177,10 +177,34 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
     `FileMeta` — type, size, SHA-256, the uploaded name, who and when, your `extra` — which is also written
     **beside the file** (`<key>.meta.json`). A key is slash-separated segments of letters, digits, `.`, `_`, `-`.
   - `get(cxt, bucket, key)` answers a `StoredFile` (bytes and `FileMeta`; `toContentData()` is what a download
-    handler returns) or null. `meta(...)` and `list(cxt, bucket, keyPrefix)` answer the metadata **without
+    handler returns) or null. `meta(...)` and `list(cxt, bucket, keyPrefix, limit)` answer the metadata **without
     fetching the file**. `delete(...)` says whether there was one.
+  - A listing is for **one folder of files**: it answers at most `limit` (1000 unless you say) and is *refused*
+    when the prefix takes in more, rather than handing back the first few as though they were all.
+  - **Storing at a key again replaces the file without taking it away**: a reader gets the old file or the new
+    one, never neither, and a replace that fails leaves the old one. `extra` comes back as its JSON form.
   - The store decides nothing about **who** may read a file: the endpoint that composes the key is the one that
     has checked the caller. And nothing secret goes in `extra`, which is readable by whoever may read the file.
+  - `FileMeta.client` is the client your context is **bound to** (`cxt.client`), as a row's owner is: a job
+    storing a file for a client does it in a context bound to that client.
+
+```kotlin
+// In your component's addSchema: the bucket, declared once.
+collector.addFileBucket(FileBucketDef("web-assets", "A client's own images."))
+
+// In an upload handler -- `file` is the upload's ContentData.
+val files = FileStoreService.get(cxt)
+val meta = files.put(cxt, "web-assets", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
+
+// In a download handler: the file as the response, or a 404.
+files.get(cxt, "web-assets", "clients/acme/logo")?.toContentData()
+    ?: throw KdrException("No such file.", code = EXC.notFound)
+
+// What a file is, without fetching it: one file's, or a folder's.
+files.meta(cxt, "web-assets", "clients/acme/logo")
+files.list(cxt, "web-assets", "clients/acme/", limit = 100)
+files.delete(cxt, "web-assets", "clients/acme/logo")
+```
 
 ## Signatures
 

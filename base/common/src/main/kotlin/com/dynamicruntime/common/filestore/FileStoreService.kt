@@ -30,16 +30,20 @@ object LogFileStore : KdrLogger("fileStore")
 /** Environment variables of the file store. */
 object FSENV {
     val type = EnvVarDef(
-        "KDR_FILE_STORE_TYPE", group = ENVGRP.fileStore, defaultDoc = "`memory` when running in memory only, else `local`",
-        description = "Where files are kept: `memory` (in the JVM, gone when it stops), `local` (a directory on " +
-            "this machine, see KDR_FILE_STORE_DIR) or `s3` (AWS S3, see the KDR_S3_ variables). Every node of a " +
-            "deployment must name the same store, and `local` is one store only where the nodes share the directory.",
+        "KDR_FILE_STORE_TYPE", group = ENVGRP.fileStore,
+        defaultDoc = "`memory` when running in memory only (and in a unit test), else `local`",
+        description = "Where files are kept: `memory` (in the JVM, gone when it stops, and bounded by nothing but " +
+            "the heap -- for tests and a throwaway node), `local` (a directory on this machine, see " +
+            "KDR_FILE_STORE_DIR) or `s3` (AWS S3, see the KDR_S3_ variables). Every node of a deployment must name " +
+            "the same store, and `local` is one store only where the nodes share the directory, on a filesystem " +
+            "that honors file locks between them.",
     )
 
     val dir = EnvVarDef(
         "KDR_FILE_STORE_DIR", group = ENVGRP.fileStore, defaultDoc = "`fileStore` in the workspace directory",
         description = "The directory a `local` file store keeps its files in, each bucket a directory under it. " +
-            "A relative path is taken from the workspace directory.",
+            "A relative path is taken from the workspace directory. A unit test that runs on the `local` store " +
+            "must name one: it never defaults into the workspace.",
     )
 
     val s3Region = EnvVarDef(
@@ -83,9 +87,13 @@ object FSENV {
  * fetches it.
  *
  * **Which store** is `KDR_FILE_STORE_TYPE` ([FSENV.type]). Unset, a node running in memory only keeps its files
- * in memory too, and so does every unit test, whatever else it sets: neither leaves a file behind, and a
- * developer's throwaway server writes nothing into a workspace that is not its own. Any other node keeps them
- * in a directory. S3 is always asked for by name.
+ * in memory too, and so does every unit test, whether or not it runs in memory otherwise: neither leaves a file
+ * behind, and a developer's throwaway server writes nothing into a workspace that is not its own. Any other
+ * node keeps them in a directory. S3 is always asked for by name. A store that *is* named is the one used, in
+ * a unit test as anywhere -- which is how a test runs on a directory or a stand-in for S3 -- with two refusals
+ * that keep a test off what it did not choose: no directory by default ([FSENV.dir] must name one), and no
+ * real S3 ([s3ApiConfigKey]). The variable is read as every other is, so one set in the shell that runs the
+ * tests reaches them too.
  *
  * **Who may read or write a file is not decided here.** A bucket and a key say nothing about whose a file is,
  * so the endpoint that composes the key is the one that has checked the caller.
@@ -117,13 +125,27 @@ class FileStoreService : ServiceInitializer {
         return when (type) {
             FST.memory -> MemoryFileStore()
             FST.local -> LocalFileStore(localDir(cxt))
-            FST.s3 -> S3FileStore(s3Api(cxt), cxt.getEnvVar(FSENV.s3BucketPrefix)?.trim().orEmpty())
+            FST.s3 -> {
+                val prefix = cxt.getEnvVar(FSENV.s3BucketPrefix)?.trim().orEmpty()
+                FNAME.bucketPrefixProblem(prefix)?.let { throw configError("${FSENV.s3BucketPrefix} is '$prefix'; $it.") }
+                S3FileStore(s3Api(cxt), prefix)
+            }
             else -> throw configError("${FSENV.type} is '$type'; it must be one of ${FST.all.joinToString()}.")
         }
     }
 
     private fun localDir(cxt: KdrCxt): File {
-        val named = cxt.getEnvVar(FSENV.dir)?.trim()?.takeIf { it.isNotEmpty() } ?: return AppPaths.resolve(defaultDirName)
+        val named = cxt.getEnvVar(FSENV.dir)?.trim()?.takeIf { it.isNotEmpty() }
+        if (named == null) {
+            // The default is in the workspace, which is no test's to write in: a test on this store says where.
+            if (cxt.instanceConfig.env == ENV.unit) {
+                throw configError(
+                    "The '${FST.local}' file store has no directory by default in the unit test environment -- name " +
+                        "one with ${FSENV.dir}, or use the '${FST.memory}' store.",
+                )
+            }
+            return AppPaths.resolve(defaultDirName)
+        }
         return File(named).takeIf { it.isAbsolute } ?: AppPaths.resolve(named)
     }
 
@@ -158,7 +180,12 @@ class FileStoreService : ServiceInitializer {
         checked = true
         val mode = bootCheckMode(cxt, modeOverride(cxt, FSENV.check), prodMode = BootCheckMode.warn)
         LogFileStore.info(cxt) { "File store: ${store.providerType} (${store.location}), ${buckets.size} bucket(s) declared." }
-        if (mode == BootCheckMode.off) return
+        if (mode == BootCheckMode.off) {
+            // Recorded as off, with nothing asked of the store: a check that did not run is said to be one,
+            // rather than missing from the report as though there were none.
+            BootCheckRegistry.get(cxt).record(BCHK.fileStore, FSENV.check.name, mode)
+            return
+        }
         val findings = buckets.keys.flatMap { store.ensureBucket(cxt, it) }
         BootCheckRegistry.get(cxt).record(BCHK.fileStore, FSENV.check.name, mode, findings)
         if (findings.isEmpty()) return
@@ -173,9 +200,11 @@ class FileStoreService : ServiceInitializer {
 
     private fun declared(bucket: String): String {
         if (bucket !in buckets) {
+            // Sensitive: it lists what this deployment keeps files in, which is for whoever wrote the call.
             throw KdrException(
                 "The file-store bucket '$bucket' is not declared. A component declares the buckets it keeps " +
                     "files in (SchemaCollector.addFileBucket); declared here: ${buckets.keys.joinToString().ifEmpty { "none" }}.",
+                sensitive = true,
             )
         }
         return bucket
@@ -184,9 +213,14 @@ class FileStoreService : ServiceInitializer {
     /**
      * Stores [content] at [key] in [bucket], replacing a file already there, and answers the metadata written
      * beside it: the content's type, length and SHA-256, the name it arrived under, the moment, the signed-in
-     * user who is acting and the client the context is bound to. [extra] is kept with them, for whatever else
-     * the caller wants to be able to read back without the file -- JSON values, and nothing secret
-     * ([FileMeta]).
+     * user who is acting and the client the context is bound to -- the owner the context was given, as a row's
+     * owner is, so code storing a file for a client does it in a context bound to that client; one bound to none
+     * records the deployment's own. [extra] is kept with them, for whatever else the caller wants to be able to
+     * read back without the file -- JSON values, and nothing secret ([FileMeta]).
+     *
+     * **What is answered is what a later read gives, on every store**: the metadata as its file holds it. So
+     * [extra] is kept as its JSON form -- a copy, which the caller's map going on to change does not touch, and
+     * a value that is not JSON's (a date, say) as the text it is written as, in memory as on disk.
      */
     fun put(cxt: KdrCxt, bucket: String, key: String, content: ContentData, extra: Map<String, Any?> = emptyMap()): FileMeta {
         declared(bucket)
@@ -202,7 +236,8 @@ class FileStoreService : ServiceInitializer {
             uploadedBy = cxt.userProfile.takeIf { it.isLoggedIn }?.userId,
             client = cxt.client,
             extra = extra,
-        )
+        ).let { FileMeta.fromFileText(it.toFileText()) }
+            ?: throw KdrException("The metadata of the file '$key' in the bucket '$bucket' could not be written out and read back.")
         store.put(cxt, bucket, key, bytes, meta)
         return meta
     }
@@ -211,20 +246,25 @@ class FileStoreService : ServiceInitializer {
      * The file at [key] in [bucket], or null when there is none.
      *
      * **The content returned is the content its metadata describes**: its hash is checked against the one
-     * recorded. They can differ for a moment while another caller replaces the file -- the metadata read
-     * before the write, the content after -- so a mismatch is read once more, and one that persists is a
-     * stored file that is damaged, which is refused rather than handed on under metadata that is not its own.
+     * recorded, which costs a pass over the content on every read. They differ for a moment while another
+     * caller replaces the file -- its content is the new one before its metadata is ([FileStore]) -- so a
+     * mismatch is read again, a few times over [rereadPausesMs], which is what lets a replace leave the file
+     * readable throughout. One that persists is a stored file that is damaged, which is refused rather than
+     * handed on under metadata that is not its own.
      */
     fun get(cxt: KdrCxt, bucket: String, key: String): StoredFile? {
         declared(bucket)
         FNAME.checkKey(key)
-        val first = store.get(cxt, bucket, key) ?: return null
-        if (first.bytes.sha256Hex() == first.meta.hash) return first
-        val second = store.get(cxt, bucket, key) ?: return null
-        if (second.bytes.sha256Hex() == second.meta.hash) return second
+        var read = store.get(cxt, bucket, key) ?: return null
+        for (pauseMs in rereadPausesMs) {
+            if (read.bytes.sha256Hex() == read.meta.hash) return read
+            Thread.sleep(pauseMs)
+            read = store.get(cxt, bucket, key) ?: return null
+        }
+        if (read.bytes.sha256Hex() == read.meta.hash) return read
         throw KdrException.mkFileIo(
             "The file '$key' in the bucket '$bucket' does not match its metadata (its content hashes to something " +
-                "other than the recorded ${second.meta.hash}).",
+                "other than the recorded ${read.meta.hash}).",
             null, EXC.internalError,
         )
     }
@@ -244,10 +284,24 @@ class FileStoreService : ServiceInitializer {
     /**
      * The files in [bucket] whose key begins with [keyPrefix] (every file, when it is empty), in key order, each
      * with its metadata and none with its content.
+     *
+     * **At most [limit] of them, and refused when there are more.** A listing reads a file's metadata for each
+     * file it answers -- a request apiece on S3 -- so it is for the folder of one owner's files, and a caller
+     * whose prefix takes in more is told so rather than handed the first few as though they were all.
      */
-    fun list(cxt: KdrCxt, bucket: String, keyPrefix: String = ""): List<FileEntry> {
+    fun list(cxt: KdrCxt, bucket: String, keyPrefix: String = "", limit: Int = FNAME.defaultListLimit): List<FileEntry> {
         declared(bucket)
-        return store.list(cxt, bucket, FNAME.checkKeyPrefix(keyPrefix))
+        if (limit < 1) throw KdrException("A file listing's limit must be at least 1, not $limit.", null, EXC.badInput)
+        // One more than the limit is asked for, which is how "there are more" is told from "exactly that many".
+        val found = store.list(cxt, bucket, FNAME.checkKeyPrefix(keyPrefix), if (limit == Int.MAX_VALUE) limit else limit + 1)
+        if (found.size > limit) {
+            throw KdrException(
+                "The bucket '$bucket' holds more than $limit files under '$keyPrefix'. A listing is for one folder of " +
+                    "files: narrow the prefix, or ask for a higher limit.",
+                null, EXC.badInput,
+            )
+        }
+        return found
     }
 
     @Suppress("ConstPropertyName")
@@ -262,6 +316,12 @@ class FileStoreService : ServiceInitializer {
          * AWS SDK: the only way to an S3 store in the unit environment, where no network is reached.
          */
         const val s3ApiConfigKey = "fileStoreS3Api"
+
+        /**
+         * How long [get] waits before each further read of a file whose content does not match its metadata: long
+         * enough, in all, for a replace to write its metadata after its content, on S3 as on a disk.
+         */
+        val rereadPausesMs = listOf(10L, 50L, 250L)
 
         fun get(cxt: KdrCxt): FileStoreService = cxt.instanceConfig.get(serviceName) as? FileStoreService
             ?: throw KdrException("The $serviceName is not available on this node.")

@@ -91,12 +91,7 @@ fun ByteArray.sha256(): ByteArray = MessageDigest.getInstance("SHA-256").digest(
  * where [crc32Hex] is the cache-busting one. What a stored file's metadata records of its bytes (issue #1129),
  * since it has to tell two files apart for good, and be something another tool can recompute and compare.
  */
-fun ByteArray.sha256Hex(): String = sha256().joinToString("") { b ->
-    val v = b.toInt() and 0xFF
-    "${hexDigits[v shr 4]}${hexDigits[v and 0x0F]}"
-}
-
-private const val hexDigits = "0123456789abcdef"
+fun ByteArray.sha256Hex(): String = sha256().toHexString()
 
 /**
  * An **HMAC-SHA256** of [this] under [key] (a node encryption key), as raw bytes.

@@ -3,6 +3,7 @@ package com.dynamicruntime.common.filestore
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.parseDate
+import com.dynamicruntime.common.util.sha256Hex
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -28,8 +29,10 @@ class LocalFileStoreTest : StringSpec({
 
     fun meta(bytes: ByteArray) = FileMeta("text/plain", bytes.size.toLong(), "h${bytes.size}", "2026-10-12T08:30:00Z".parseDate())
 
+    /** The files under [dir], the store's own lock files aside: what it keeps for its callers. */
     fun filesUnder(dir: File): List<String> =
-        dir.walkTopDown().filter { it.isFile }.map { it.relativeTo(dir).invariantSeparatorsPath }.toList()
+        dir.walkTopDown().filter { it.isFile }.map { it.relativeTo(dir).invariantSeparatorsPath }
+            .filterNot { it.startsWith("${LocalFileStore.lockDirName}/") }.toList()
 
     "a bucket is a directory under the root, a key a path in it, and the metadata a file beside the content" {
         val root = tempDir()
@@ -98,6 +101,51 @@ class LocalFileStoreTest : StringSpec({
         store.put(cxt, bucket, "doc", "replacement".toByteArray(), meta("replacement".toByteArray()))
         store.get(cxt, bucket, "doc").shouldNotBeNull().bytes.decodeToString() shouldBe "replacement"
         filesUnder(root) shouldHaveSize 2
+    }
+
+    // Two nodes that share a directory are two stores over it. A file is two files here, so two writers taking
+    // turns at them would leave one's content under the other's metadata; the lock a write holds is one the
+    // operating system keeps, and this JVM's threads take their turns for it whichever store they came by.
+    "many writers of one file, through two stores over one directory, leave one whole file" {
+        val root = tempDir()
+        val stores = listOf(LocalFileStore(root), LocalFileStore(root))
+        stores.first().ensureBucket(cxt, bucket)
+        val writers = 16
+        val failures = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+        val threads = (0 until writers).map { n ->
+            Thread {
+                try {
+                    repeat(20) { round ->
+                        // Each write's content says how long it is, and its metadata says the same of it.
+                        val bytes = "writer $n round $round ".repeat(n + 1).toByteArray()
+                        stores[n % 2].put(cxt, bucket, "shared/doc", bytes, FileMeta("text/plain", bytes.size.toLong(), bytes.sha256Hex(), "2026-10-12T08:30:00Z".parseDate()))
+                        // Deletes among the writes, early on: every writer's last rounds only store.
+                        if (round % 5 == 0 && round < 15) stores[(n + 1) % 2].delete(cxt, bucket, "shared/doc")
+                    }
+                } catch (e: Throwable) {
+                    failures.add(e)
+                }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+
+        failures.toList().shouldBeEmpty()
+        // Whichever write came last, the file is that one writer's: its content, under its own metadata.
+        stores[1].get(cxt, bucket, "shared/doc").shouldNotBeNull().let { it.bytes.sha256Hex() shouldBe it.meta.hash }
+        // And nothing half-written is left behind.
+        filesUnder(root).filter { it.contains(LocalFileStore.tmpMark) }.shouldBeEmpty()
+    }
+
+    "a file deleted while it is being read is no file, not a failure" {
+        val root = tempDir()
+        val store = LocalFileStore(root)
+        store.ensureBucket(cxt, bucket)
+        store.put(cxt, bucket, "doc", "x".toByteArray(), meta("x".toByteArray()))
+        // The content gone and the metadata still there: what a read finds that started before a delete finished.
+        File(root, "$bucket/doc").delete() shouldBe true
+
+        store.get(cxt, bucket, "doc").shouldBeNull()
     }
 
     "a listing passes over anything in the directory that is not a stored file" {

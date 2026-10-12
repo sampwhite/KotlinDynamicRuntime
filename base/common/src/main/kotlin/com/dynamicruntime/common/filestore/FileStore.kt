@@ -53,6 +53,15 @@ object FNAME {
     const val maxKeyLength = 512
     const val maxSegmentLength = 128
 
+    /** The most folders a key can be under: every segment takes a character and a slash. */
+    const val maxKeyDepth = maxKeyLength / 2
+
+    /**
+     * The most files a listing answers unless it is asked for more ([FileStoreService.list]). A listing is for
+     * the folder of one owner's files; one that would be longer is refused rather than cut short.
+     */
+    const val defaultListLimit = 1000
+
     private fun isBucketChar(c: Char): Boolean = c in 'a'..'z' || c in '0'..'9' || c == '-'
 
     private fun isKeyChar(c: Char): Boolean = c in 'a'..'z' || c in 'A'..'Z' || c in '0'..'9' || c == '.' || c == '_' || c == '-'
@@ -68,6 +77,18 @@ object FNAME {
             "it must be $minBucketLength to $maxBucketLength characters long"
         !name.all { isBucketChar(it) } -> "it may hold only lowercase letters, digits and hyphens"
         name.first() == '-' || name.last() == '-' -> "it must begin and end with a letter or digit"
+        else -> null
+    }
+
+    /**
+     * What is wrong with [prefix] as the start of a deployment's S3 bucket names, or null: empty, or what a
+     * bucket name is made of, beginning with a letter or digit. It may end in a hyphen, as `acme-prod-` does,
+     * since a bucket's own name follows; the two together must fit in [maxPhysicalBucketLength].
+     */
+    fun bucketPrefixProblem(prefix: String): String? = when {
+        prefix.isEmpty() -> null
+        !prefix.all { isBucketChar(it) } -> "it may hold only lowercase letters, digits and hyphens"
+        prefix.first() == '-' -> "it must begin with a letter or digit"
         else -> null
     }
 
@@ -139,13 +160,23 @@ class StoredFile(val bytes: ByteArray, val meta: FileMeta) {
  * component declared, and does nothing but keep and return what it is given.
  *
  * **Two things are stored for every file: its content, and its metadata beside it** ([FileMeta], at
- * [FileMeta.metaKey]). A file exists when its metadata does, and the order of writes keeps that true through
- * a failure part-way:
- * - a put removes any metadata already there, writes the content, then writes the metadata;
+ * [FileMeta.metaKey]) -- the same two on every provider, rather than a provider's own notion of metadata, so a
+ * file reads the same wherever it is kept and its metadata can be read by any tool. A file exists when its
+ * metadata does, and the order of writes keeps that true through a failure part-way:
+ * - a put writes the content, then the metadata;
  * - a delete removes the metadata, then the content.
  *
  * So content without metadata is a write that did not finish, or a delete that did not, and reads as no file
- * at all -- never as a file with nothing known about it, and never as new content under old metadata.
+ * at all -- never as a file with nothing known about it.
+ *
+ * **Replacing a file never takes it away.** The file that was there is whole until the new content is, and a
+ * replace that fails before then leaves it exactly as it was. Between the new content landing and its metadata
+ * there is a moment when the content is the new file's and the metadata the old one's: [FileStoreService.get]
+ * checks what it read against the recorded hash and reads again, so that moment is never served. The one thing
+ * it costs is a stop at exactly that moment -- a crash, not a failure, since a put whose metadata cannot be
+ * written removes the old -- which leaves content its metadata does not match, refused by a read as damaged
+ * until the file is stored again. (Removing the old metadata first would trade that for a file that reads as
+ * absent throughout every replace, and is lost by one that fails.)
  *
  * **A key that names a file is not also a folder of others**: with `a/b` stored, `a` cannot be, nor the other
  * way round. A filesystem cannot hold both, so the two providers a developer meets first ([FST.memory],
@@ -176,6 +207,9 @@ interface FileStore {
     /** Removes the file at [key]; whether there was one. */
     fun delete(cxt: KdrCxt, bucket: String, key: String): Boolean
 
-    /** The files whose key begins with [keyPrefix] (every file, when it is empty), in key order. */
-    fun list(cxt: KdrCxt, bucket: String, keyPrefix: String): List<FileEntry>
+    /**
+     * The files whose key begins with [keyPrefix] (every file, when it is empty), in key order -- and no more
+     * than [max] of them, so that what a listing costs is bounded by what was asked for.
+     */
+    fun list(cxt: KdrCxt, bucket: String, keyPrefix: String, max: Int = FNAME.defaultListLimit): List<FileEntry>
 }

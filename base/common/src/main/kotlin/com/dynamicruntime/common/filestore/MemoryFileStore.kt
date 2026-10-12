@@ -11,10 +11,14 @@ import java.util.concurrent.ConcurrentSkipListMap
  * in memory only, so neither writes a file anywhere. A file's content and metadata are one entry, so there is
  * no part-way state to guard; the rule about a key that is also a folder is kept, so that a key scheme a test
  * passes with is one a filesystem will take ([FileStore]).
+ *
+ * **Nothing bounds it.** Every file stored stays on the heap until it is deleted or the JVM stops, which is
+ * right for a test and for a developer's throwaway node and wrong for anything that keeps running while files
+ * keep arriving: that node names another store.
  */
 class MemoryFileStore : FileStore {
     override val providerType: String = FST.memory
-    override val location: String = "memory"
+    override val location: String = FST.memory
 
     private val buckets = ConcurrentHashMap<String, ConcurrentSkipListMap<String, StoredFile>>()
 
@@ -59,8 +63,10 @@ class MemoryFileStore : FileStore {
 
     override fun delete(cxt: KdrCxt, bucket: String, key: String): Boolean = files(bucket).remove(key) != null
 
-    override fun list(cxt: KdrCxt, bucket: String, keyPrefix: String): List<FileEntry> =
-        files(bucket).tailMap(keyPrefix, true).entries
+    override fun list(cxt: KdrCxt, bucket: String, keyPrefix: String, max: Int): List<FileEntry> =
+        files(bucket).tailMap(keyPrefix, true).entries.asSequence()
             .takeWhile { it.key.startsWith(keyPrefix) }
+            .take(max)
             .map { FileEntry(it.key, it.value.meta) }
+            .toList()
 }

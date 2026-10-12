@@ -50,9 +50,16 @@ class FileMeta(
     val fileName: String? = null,
     /** The user who stored it, or null when no signed-in user did (the system, a job). */
     val uploadedBy: Long? = null,
-    /** The client whose file this is: the owning client of the context that stored it. */
+    /**
+     * The client whose file this is: the client the context that stored it was **bound to** (`cxt.client`), as a
+     * row's owning client is -- not who was acting. So a job storing a file for a client binds its context to
+     * that client first; a context bound to none records the deployment's own client.
+     */
     val client: String? = null,
-    /** Whatever else the code that stored the file wants kept with it; JSON values only. */
+    /**
+     * Whatever else the code that stored the file wants kept with it, as JSON: what is read back is its JSON
+     * form, so a value that is not JSON's comes back as the text it was written as.
+     */
     val extra: Map<String, Any?> = emptyMap(),
 ) : JsonMappable {
     override fun toJsonMap(): Map<String, Any?> {
@@ -114,7 +121,7 @@ class FileMeta(
                 property(FMETA.uploadedAt, "When the file was stored.", required = true) { dateTime() }
                 property(FMETA.fileName, "The name the file arrived under, when it had one.")
                 property(FMETA.uploadedBy, "The id of the user who stored it, when a signed-in user did.") { type = SCT.integer }
-                property(FMETA.client, "The client whose file this is.")
+                property(FMETA.client, "The client whose file this is: the one the storing context was bound to.")
                 property(FMETA.extra, "Whatever else was kept with the file by the code that stored it.") {
                     type = SCT.kObject
                     additionalProperties = true

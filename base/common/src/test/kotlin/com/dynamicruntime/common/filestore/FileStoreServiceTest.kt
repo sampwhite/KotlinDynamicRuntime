@@ -14,7 +14,9 @@ import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.sha256Hex
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.truncateToMs
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -74,10 +76,20 @@ class FileStoreServiceTest : StringSpec({
     }
 
     "any other node keeps them in a directory: 'fileStore' in the workspace unless one is named" {
-        // Created only: starting it would make the bucket's directory, and the default is in the real workspace.
+        // Created only: starting it would make the bucket's directory, and the default is in the real workspace --
+        // which creating the service leaves exactly as it found it.
+        val workspaceDir = AppPaths.resolve("fileStore")
+        val wasThere = workspaceDir.exists()
         val byDefault = created(cxtWith(ENV.local))
         byDefault.providerType shouldBe FST.local
-        byDefault.store.location shouldBe AppPaths.resolve("fileStore").path
+        byDefault.store.location shouldBe workspaceDir.path
+        workspaceDir.exists() shouldBe wasThere
+
+        // A unit test is never given that default: one that runs on a directory says which.
+        shouldThrow<KdrException> { created(cxtWith(ENV.unit, FSENV.type.name to FST.local)) }.let {
+            it.message shouldContain "has no directory by default in the unit test environment"
+            it.source shouldBe SRC.config
+        }
 
         created(cxtWith(ENV.local, FSENV.dir.name to "data/files")).store.location shouldBe AppPaths.resolve("data/files").path
         val absolute = tempDir()
@@ -106,6 +118,14 @@ class FileStoreServiceTest : StringSpec({
     "the S3 store needs a region" {
         val refused = shouldThrow<KdrException> { created(cxtWith(ENV.local, FSENV.type.name to FST.s3)) }
         refused.message shouldContain "KDR_FILE_STORE_TYPE is 's3', which needs KDR_S3_REGION."
+    }
+
+    "a bucket prefix that could begin no bucket's name refuses the start, as the other settings do" {
+        val refused = shouldThrow<KdrException> {
+            created(cxtWith(ENV.unit, FSENV.type.name to FST.s3, FSENV.s3BucketPrefix.name to "Acme_", FileStoreService.s3ApiConfigKey to FakeS3Api()))
+        }
+        refused.message shouldContain "Refusing to start: KDR_S3_BUCKET_PREFIX is 'Acme_'"
+        refused.source shouldBe SRC.config
     }
 
     "starting makes every declared bucket ready and records that the check ran clean" {
@@ -156,10 +176,14 @@ class FileStoreServiceTest : StringSpec({
 
         shouldThrow<KdrException> { started(cxtFor(ENV.prod, FSENV.check.name to "strict")) }
 
-        // Off: nothing is asked of the store, and nothing is recorded as having been checked.
+        // Off: nothing is asked of the store, and the check is recorded as the one that did not run -- in the
+        // report, rather than missing from it as though there were none.
         val off = cxtFor(ENV.local, FSENV.check.name to "off")
         started(off)
-        fileStoreCheck(off).shouldBeNull()
+        fileStoreCheck(off).shouldNotBeNull().let {
+            it.mode shouldBe BootCheckMode.off
+            it.findings.shouldBeEmpty()
+        }
         (off.instanceConfig.get(FileStoreService.s3ApiConfigKey) as FakeS3Api).calls.shouldBeEmpty()
     }
 
@@ -256,6 +280,8 @@ class FileStoreServiceTest : StringSpec({
 
         refused.message shouldContain "The file 'doc' in the bucket '$bucket' does not match its metadata"
         refused.source shouldBe SRC.file
+        // It was read again, over a moment, before being called damaged: a replace in flight looks the same.
+        FileStoreService.rereadPausesMs.sum() shouldBe 310L
         // What the file is can still be asked.
         service.meta(cxt, bucket, "doc").shouldNotBeNull().size shouldBe 9
     }
@@ -281,5 +307,83 @@ class FileStoreServiceTest : StringSpec({
         file.bytes.decodeToString() shouldBe "new content, longer"
         file.meta.mimeType shouldBe "text/markdown"
         file.meta.hash shouldBe "new content, longer".toByteArray().sha256Hex()
+    }
+
+    // The moment a replace has written its content and not yet its metadata: the old metadata, the new content.
+    // A read that lands in it waits it out rather than answering with no file or with a failure.
+    "a file read in the middle of a replace is the new file, once its metadata lands" {
+        val api = FakeS3Api(bucket)
+        val cxt = cxtWith(ENV.unit, FSENV.type.name to FST.s3, FileStoreService.s3ApiConfigKey to api)
+        val service = started(cxt)
+        service.put(cxt, bucket, "logo", ContentData("old content", "text/plain"))
+        val newBytes = "new content, longer".toByteArray()
+        // The replace's first half: its content is in, under the old file's metadata.
+        api.objects["$bucket/logo"] = newBytes
+        // Its second half lands while the read is waiting to look again.
+        var contentReads = 0
+        api.afterGet = { _, key ->
+            if (key == "logo" && ++contentReads == 2) {
+                val meta = FileMeta("text/markdown", newBytes.size.toLong(), newBytes.sha256Hex(), "2026-10-12T08:30:00Z".parseDate())
+                api.objects["$bucket/logo.meta.json"] = meta.toFileText().toByteArray()
+            }
+        }
+
+        val file = service.get(cxt, bucket, "logo").shouldNotBeNull()
+
+        file.bytes.decodeToString() shouldBe "new content, longer"
+        file.meta.mimeType shouldBe "text/markdown"
+        contentReads shouldBe 3
+    }
+
+    "a listing is refused when it would be longer than its limit, rather than cut short" {
+        val cxt = memoryCxt()
+        val service = started(cxt)
+        for (n in 1..5) service.put(cxt, bucket, "f/$n", ContentData("$n", "text/plain"))
+
+        service.list(cxt, bucket, "f/", limit = 5).map { it.key } shouldContainExactly (1..5).map { "f/$it" }
+        val refused = shouldThrow<KdrException> { service.list(cxt, bucket, "f/", limit = 4) }
+        refused.code shouldBe EXC.badInput
+        refused.message shouldContain "holds more than 4 files under 'f/'"
+        shouldThrow<KdrException> { service.list(cxt, bucket, limit = 0) }.code shouldBe EXC.badInput
+        // The limit a caller does not name is the store's own.
+        service.list(cxt, bucket).size shouldBe 5
+        FNAME.defaultListLimit shouldBe 1000
+    }
+
+    // What is answered is what is kept, and what is kept is what its file holds -- on the store in memory as on
+    // any other, so a test that passes there is not passing on something a disk would have changed.
+    "extra is kept as its JSON, a copy of what was handed in" {
+        val cxt = memoryCxt()
+        val service = started(cxt)
+        val nested = mutableMapOf<String, Any?>("tags" to listOf("a", "b"), "more" to mapOf("n" to 2, "deep" to mapOf("ok" to true)))
+        val handedIn = mutableMapOf<String, Any?>("purpose" to "brand", "at" to "2026-10-12T08:30:00Z".parseDate(), "nested" to nested)
+
+        val answered = service.put(cxt, bucket, "logo", ContentData("PNG", "image/png"), handedIn)
+        handedIn["purpose"] = "changed after the fact"
+        nested["tags"] = listOf("changed")
+
+        val kept = service.meta(cxt, bucket, "logo").shouldNotBeNull()
+        kept.extra shouldBe answered.extra
+        kept.extra["purpose"] shouldBe "brand"
+        kept.extra["nested"].toJsonMapOrEmpty().let {
+            it["tags"] shouldBe listOf("a", "b")
+            it["more"].toJsonMapOrEmpty()["deep"] shouldBe mapOf("ok" to true)
+        }
+        // A value that is not JSON's is the text it is written as, in memory as it would be on a disk.
+        kept.extra["at"].shouldBeInstanceOf<String>() shouldContain "2026-10-12T08:30:00"
+    }
+
+    // The client beside a file is the one its context was bound to, as a row's owner is: not who was acting.
+    "the client recorded is the one the storing context is bound to" {
+        val cxt = memoryCxt()
+        val service = started(cxt)
+        val forAcme = cxt.mkSubContext("job", "acme")
+
+        service.put(forAcme, bucket, "report", ContentData("r", "text/plain")).let {
+            it.client shouldBe "acme"
+            it.uploadedBy.shouldBeNull()
+        }
+        // A context bound to no client records the deployment's own.
+        service.put(cxt, bucket, "unbound", ContentData("u", "text/plain")).client shouldBe cxt.client
     }
 })
