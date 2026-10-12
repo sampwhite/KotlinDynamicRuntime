@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.schema
 
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.toJsonStr
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -96,6 +98,11 @@ class SchCoercionParityTest {
             assertEquals(emptyList(), codes(body, 2L))
             assertEquals(emptyList(), codes(body, 2))
         }
+        // A whole `Double` is where the platforms still differ in process -- JS cannot tell it from `2` -- and why
+        // that does not reach a server: written out it has no fraction, on either platform, and is read back whole.
+        val written = mapOf("v" to 2.0).toJsonStr(compact = true)
+        assertEquals("{\"v\":2}", written)
+        assertEquals(emptyList(), codes(integer, written.jsonMap()!!["v"]))
     }
 
     // A date is validated by parsing and returns before `const` is compared, so a `const` there checked nothing.

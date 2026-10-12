@@ -111,15 +111,19 @@ fun reportRowDefs(cxt: KdrCxtBase, client: String, bound: BoundReport): Map<Stri
     }
 }
 
-/** [c] as a property named by its id and titled by its label: a [kind] value, or a [list] of them. */
+/**
+ * [c] as a property named by its id and titled by its label: a [kind] value, or a [list] of them. A date is a day
+ * or a timestamp as the column says ([BoundColumn.dayOnly]) -- also when [kind] is a rollup's, since a rollup that
+ * yields a date yields one of the column's.
+ */
 private fun SchTypeBuilder.column(c: BoundColumn, description: String, kind: ReportKind, list: Boolean, whole: Boolean) {
     property(c.columnId, description) {
         title = c.column.label
         if (list) {
             type = SCT.array
-            items { scalar(kind, c.path.dayOnly, whole) }
+            items { scalar(kind, c.dayOnly, whole) }
         } else {
-            scalar(kind, c.path.dayOnly, whole)
+            scalar(kind, c.dayOnly, whole)
         }
     }
 }

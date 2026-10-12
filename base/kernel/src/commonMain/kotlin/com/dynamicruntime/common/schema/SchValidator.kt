@@ -1238,9 +1238,14 @@ fun cloneForInjection(value: Any?): Any? = when (value) {
 @KdrPrivate
 fun matchesType(jsonType: String?, value: Any?): Boolean = when (jsonType) {
     SCT.string -> value is String
-    // "Is it an Int?" is not one question: in JS every number is one kind, so `2.5 is Int` is true there and a
-    // fraction passed for an integer in the browser that the backend then refused. Whole-or-not is the same
-    // question everywhere, so that is asked as well (issue #1086).
+    // "Is it an Int?" is not one question: in JS every number is one kind, so `2.5 is Int` is true there, and a
+    // fraction passed for an integer in the browser that the backend then refused. So a fraction is asked after
+    // too (issue #1086), and is refused on both platforms.
+    //
+    // One difference is left, and cannot be closed from here: a whole `Double` (`2.0`) is an integer in JS, where
+    // it *is* `2`, and is not one on the JVM, where it is still a `Double`. It does not cross the wire -- the JSON
+    // writer gives a whole number no fraction on either platform, and it is read back a `Long` -- so it shows only
+    // to JVM code handing the validator a `Double` of its own.
     SCT.integer -> value is Long || (value is Int && isWhole(value))
     SCT.number -> value is Number
     SCT.boolean -> value is Boolean

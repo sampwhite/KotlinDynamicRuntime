@@ -137,6 +137,29 @@ class ReportRunTest {
         assertEquals(7L, reportDateAs(7L, dayOnly = false))
     }
 
+    // The form is taken before the values are made one, which is where it shows: each value once is each *day* once.
+    @Test
+    fun withExactDatesSeveralValuesAreBroughtToTheFormBeforeTheyAreCombined() {
+        val several = visited("a", listOf("2026-03-02", "2026-03-01", "2026-03-01T12:00:00Z"))
+        fun column(combine: ReportCombine, dayOnly: Boolean = true) = BoundColumn(
+            ReportColumn("visited", "Visited", "form.audit.visitedOn", combine = combine),
+            BoundPath(parseReportPathOrThrow("form.audit.visitedOn"), emptyList(), ReportKind.date, multiValued = true, dayOnly = dayOnly),
+            combine,
+        )
+        // As stored, the day and the moment within it are two values.
+        assertEquals(listOf(day, withinDay, nextDay), column(ReportCombine.distinct).valueOf(several))
+        // Exact, they are one day, once -- and every element of a list is of the column's form.
+        assertEquals(listOf(day, nextDay), column(ReportCombine.distinct).valueOf(several, exactDates = true))
+        assertEquals(listOf(nextDay, day, day), column(ReportCombine.list).valueOf(several, exactDates = true))
+        assertEquals(nextDay, column(ReportCombine.max).valueOf(several, exactDates = true))
+        assertEquals(3L, column(ReportCombine.count).valueOf(several, exactDates = true))
+        // A column of moments takes each day as its first instant.
+        assertEquals(
+            listOf(day.toStartOfDay(), withinDay, nextDay.toStartOfDay()),
+            column(ReportCombine.distinct, dayOnly = false).valueOf(several, exactDates = true),
+        )
+    }
+
     @Test
     fun withExactDatesADayAndAMomentWithinItAreOneGroup() {
         val subjects = listOf(visited("a", "2026-03-01"), visited("b", "2026-03-01T12:00:00Z"), visited("c", "2026-03-02"))
