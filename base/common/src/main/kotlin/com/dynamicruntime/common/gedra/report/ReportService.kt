@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.startup.GeneratedSurface
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.UADEP
@@ -56,7 +57,7 @@ class ReportService : ServiceInitializer {
         val clients = clientService.presentClients.associateBy { it.clientId }
         registries = buildReportRegistries(cxt, collector.gedraConfigs, clients, { liveScope(cxt, collector, clients, it) }, found)
         issues = found.toList()
-        publishTyped(cxt, clients.keys)
+        publishTyped(cxt, clients.keys, registries)
         isInit = true
     }
 
@@ -80,9 +81,14 @@ class ReportService : ServiceInitializer {
             onlyClient = client, runningGlobal = current.global,
         )
         val byClient = (current.byClient - client) + (rebuilt.byClient[client]?.let { mapOf(client to it) } ?: emptyMap())
-        registries = ReportRegistries(current.global, byClient)
+        val next = ReportRegistries(current.global, byClient)
+        // The typed endpoints first, and the registry only once they are published: a publication that is refused
+        // then leaves both as they were, where the other order would have the shared run answering the new
+        // definition and the typed endpoints the old.
+        val stale = publishTyped(cxt, setOf(client), next)
+        registries = next
         issues = issues.filter { it.client != client } + found
-        return publishTyped(cxt, setOf(client))
+        return stale
     }
 
     /** The clients whose typed report endpoints are published now. Written by [publishTyped], under the boot or a reload. */
@@ -90,21 +96,21 @@ class ReportService : ServiceInitializer {
 
     /**
      * Publishes each of [clients]' typed report endpoints (issue #1088; [typedReportSurface]) from the registry it
-     * sees now -- its own reports and the global ones -- or withdraws them, for a client no longer present here or
-     * left with no report. Returns the collation keys the publication says went stale.
+     * sees in [from] -- its own reports and the global ones -- or withdraws them, for a client no longer present here
+     * or left with no report. Returns the collation keys the publication says went stale.
      *
      * Nothing is generated on a node that does not serve the shared run endpoint (an edge): the typed endpoints are
      * that run under other names, and where it is not served they would have nothing to run. And a client that has
      * no typed endpoints and gains none is not published at all, so a reload that touches no report leaves the
      * published schema alone.
      */
-    private fun publishTyped(cxt: KdrCxt, clients: Collection<String>): Set<String> {
+    private fun publishTyped(cxt: KdrCxt, clients: Collection<String>, from: ReportRegistries): Set<String> {
         val schema = SchemaService.get(cxt)
-        val shared = schema.schemaStore.endpoints["${UADEP.reportRun}:${HttpMethod.GET.name}"] ?: return emptySet()
+        val shared = sharedRun(schema) ?: return emptySet()
         val present = ClientService.get(cxt).presentClients.mapTo(HashSet()) { it.clientId }
         val surfaces = LinkedHashMap<String, GeneratedSurface?>()
         for (client in clients) {
-            val surface = if (client in present) typedReportSurface(cxt, client, forClient(client), shared) else null
+            val surface = if (client in present) typedReportSurface(cxt, client, from.forClient(client), shared) else null
             if (surface != null || client in typedClients) surfaces[client] = surface
         }
         if (surfaces.isEmpty()) return emptySet()
@@ -112,6 +118,10 @@ class ReportService : ServiceInitializer {
         typedClients = (typedClients - surfaces.keys) + surfaces.filterValues { it != null }.keys
         return stale
     }
+
+    /** The shared run endpoint the typed ones are made beside, or null on a node that does not serve it. */
+    private fun sharedRun(schema: SchemaService): KdrEndpoint? =
+        schema.schemaStore.endpoints["${UADEP.reportRun}:${HttpMethod.GET.name}"]
 
     /**
      * A trial of [client]'s candidate reports over a trial's [scratch] collector: bound against the candidate's
@@ -139,7 +149,7 @@ class ReportService : ServiceInitializer {
             types,
             workflows.workflows.mapValues { it.value.def },
         )
-        buildReportRegistries(
+        val candidate = buildReportRegistries(
             cxt, scratch.gedraConfigs, present,
             scopeOf = { asked ->
                 if (asked != client) throw KdrException("A report trial of '$client' was asked to bind the scope '$asked'.")
@@ -147,6 +157,11 @@ class ReportService : ServiceInitializer {
             },
             issues = mutableListOf(), onlyClient = client, runningGlobal = registries.global,
         )
+        // And the typed endpoints the candidate's reports would be given (issue #1088), asked of the schema without
+        // publishing: a surface that cannot be published refuses the write here, not the reload that follows it.
+        val schema = SchemaService.get(cxt)
+        val shared = sharedRun(schema) ?: return
+        typedReportSurface(cxt, client, candidate.forClient(client), shared)?.let { schema.trialGenerated(cxt, it) }
     }
 
     /** The registry [client] sees; see [ReportRegistries.forClient]. */

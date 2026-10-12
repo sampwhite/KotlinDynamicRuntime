@@ -3,6 +3,9 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.endpoint.EndpointKind
+import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -25,6 +28,7 @@ import com.dynamicruntime.common.gedra.report.RRUN
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.startup.GeneratedSurface
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -182,5 +186,40 @@ class ReportRegistryReloadTest : StringSpec({
         admin.expectError(EXC.notFound, runPath)
         endpoints().containsKey(otherRun) shouldBe true
         SchemaService.get(cxt).schemaStore.types.containsKey(RGEN.rowType(other, "visits")) shouldBe true
+    }
+
+    // A report whose typed endpoints cannot be published -- here because something else already holds their address
+    // -- is a fault of the write, said by its trial; and should a reload meet one all the same, the report is not
+    // half taken up: the registry stays as it was, so the shared run and the typed endpoints still agree.
+    "a report whose typed endpoints cannot be published is refused by the trial, and a reload leaves the registry as it was" {
+        val client = "rptclash"
+        val squatter = "rptsquat"
+        val schema = SchemaService.get(cxt)
+        val taken = UADEP.typedReportPath(client, "visits", UADEP.typedReportRun)
+        // Another client's generated endpoint, sitting where this client's report would put its own.
+        val blocking = KdrEndpoint(
+            path = taken, method = HttpMethod.GET, kind = EndpointKind.general, namespace = "kdr.gentest", description = "In the way.",
+            inputFields = null, inputTypeRef = null, includeLimit = false, outputSchema = emptyMap(),
+            handler = { _, _ -> emptyMap<String, Any?>() }, client = squatter,
+        )
+        schema.publishGenerated(cxt, mapOf(squatter to GeneratedSurface(squatter, emptyMap(), listOf(blocking))))
+        val withReport = config(cxt, client, "site") { report("visits", "Visits") { column("site", "Site", "form.visit.site") } }
+
+        // The write's trial says so, and nothing is stored.
+        shouldThrow<KdrException> { GedraConfigService.get(cxt).writeConfig(writer(cxt, client), withReport, trial = true) }
+            .message.shouldNotBeNull() shouldContain "already published at '$taken:GET'"
+        GedraConfigService.get(cxt).listConfigs(writer(cxt, client)).size shouldBe 0
+
+        // Stored without a trial, as an import is: the reload refuses, and the report is not in the registry.
+        GedraConfigService.get(cxt).writeConfig(writer(cxt, client), withReport)
+        shouldThrow<KdrException> { GedraConfigReload.reloadClient(cxt, client) }.message.shouldNotBeNull() shouldContain "already published at"
+        ReportService.get(cxt).forClient(client).report("visits").shouldBeNull()
+        schema.schemaStore.endpoints.getValue("$taken:GET").client shouldBe squatter
+
+        // With the address free the same configuration loads, report, endpoints and all.
+        schema.publishGenerated(cxt, mapOf(squatter to null))
+        GedraConfigReload.reloadClient(cxt, client)
+        ReportService.get(cxt).forClient(client).report("visits").shouldNotBeNull()
+        schema.schemaStore.endpoints.getValue("$taken:GET").client shouldBe client
     }
 })

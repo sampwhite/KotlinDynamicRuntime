@@ -191,7 +191,9 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   report, its output type generated from the report, `validateOutput` on. The publication refuses what the boot
   would have refused of a declared endpoint (a section with no rules, an address already taken) and a few things
   only a generator can do: types that refer outside their own surface, and the keywords the boot judges
-  (`g-visibleWhen`, `g-layout`, `g-errors`, `g-optionsSource`).
+  (`g-visibleWhen`, `g-layout`, `g-errors`, `g-optionsSource`). A generator fed by client configuration asks
+  `SchemaService.trialGenerated` in the configuration's trial, so a write whose surface would be refused is
+  refused as a write; and it publishes before it swaps its own state, so a refusal leaves the two agreeing.
 - Protocol keys are constants in `object EP` (kernel): `EP.results`, `EP.item`, `EP.items`, `EP.limit`,
   `EP.numItems`, `EP.hasMore`, `EP.numAvailable`, `EP.requestUri`, `EP.duration`; the error keys `EP.status`,
   `EP.errorCode`, `EP.errorMessage`, `EP.extraData` (see *How one runs*); and the off-contract `EP.debug`

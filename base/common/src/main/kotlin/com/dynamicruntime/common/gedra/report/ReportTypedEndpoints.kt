@@ -7,7 +7,6 @@ import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.gedra.overseenClient
-import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.GeneratedSurface
 import com.dynamicruntime.common.user.UADEP
 
@@ -71,17 +70,7 @@ private fun typedReportEndpoint(cxt: KdrCxt, client: String, report: BoundReport
             "Runs the report $named over the forms of client '$client', a row per form in form-id order, each of the " +
                 "report's own row type. Paged by cursor, as '${UADEP.reportRun}' is."
         },
-        inputFields = InputFieldsBuilder(cxt, REP.namespace).apply {
-            field(
-                RRUN.excludeEmpty,
-                "The columns a form must have a value for to be in the run; the report's own when absent, none when empty.",
-            ) {
-                type = SCT.array
-                allowCoerce = true
-                emptyIsAbsent = false
-                items { type = SCT.string }
-            }
-        }.fields,
+        inputFields = InputFieldsBuilder(cxt, REP.namespace).apply { excludeEmptyField() }.fields,
         inputTypeRef = null,
         includeLimit = true,
         outputSchema = SchModuleBuilder(cxt, REP.namespace).listOutput(

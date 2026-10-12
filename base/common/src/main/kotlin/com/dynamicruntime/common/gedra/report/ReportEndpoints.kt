@@ -7,6 +7,7 @@ import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.CursorKeyCodec
 import com.dynamicruntime.common.endpoint.CursorKeys
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.cursorPageOf
@@ -317,18 +318,26 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
                 allowCoerce = true
                 items { type = SCT.string }
             }
-            field(
-                RRUN.excludeEmpty,
-                "The columns a form must have a value for to be in the run; the report's own when absent, none when empty.",
-            ) {
-                type = SCT.array
-                allowCoerce = true
-                emptyIsAbsent = false
-                items { type = SCT.string }
-            }
+            excludeEmptyField()
         },
         needsClientConfig = true,
     ) { c, request -> runReport(c, request) }
+}
+
+/**
+ * A run's `excludeEmpty` input, for the shared run endpoint and for each report's typed ones (issue #1088): one
+ * declaration, so the two surfaces take the same thing and say the same of it. Read by [excludeEmptyNamed].
+ */
+fun InputFieldsBuilder.excludeEmptyField() {
+    field(
+        RRUN.excludeEmpty,
+        "The columns a form must have a value for to be in the run; the report's own when absent, none when empty.",
+    ) {
+        type = SCT.array
+        allowCoerce = true
+        emptyIsAbsent = false
+        items { type = SCT.string }
+    }
 }
 
 private fun SchTypesBuilder.columnInfoType() {
