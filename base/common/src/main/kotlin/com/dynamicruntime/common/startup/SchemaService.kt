@@ -1070,24 +1070,45 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * path while its types change.
      */
     fun publishGenerated(cxt: KdrCxt, surfaces: Map<String, GeneratedSurface?>): Set<String> = synchronized(reloadLock) {
-        val from = base ?: throw KdrException("$serviceName.publishGenerated ran before checkInit.")
-        val current = snapshot
         val before = surfaces.keys.flatMap { generated[it]?.endpoints.orEmpty() }.map { it.collationKey }.toSet()
+        val (next, candidate) = withSurfaces(cxt, surfaces)
+        publish(cxt, candidate)
+        generated = next
+        before + surfaces.keys.flatMap { next[it]?.endpoints.orEmpty() }.map { it.collationKey }
+    }
 
+    /**
+     * Whether [publishGenerated] would take [surface], asked without publishing anything (issue #1088): everything
+     * that call refuses is refused here, with the same words, and nothing else happens. For a configuration **trial**,
+     * so that a write whose generated surface cannot be published is refused as a write, where its author is, rather
+     * than accepted and then found by the reload that tries to publish it.
+     *
+     * Judged against the schema as it runs now, with the client's own current surface set aside -- which is the
+     * schema the publication will meet unless the write changes the client's variant too; the endpoints' own types
+     * are generated, so that does not change what resolves.
+     */
+    fun trialGenerated(cxt: KdrCxt, surface: GeneratedSurface) {
+        synchronized(reloadLock) { withSurfaces(cxt, mapOf(surface.client to surface)) }
+    }
+
+    /**
+     * The generated surfaces with [surfaces] put in, and the snapshot they make -- every refusal of
+     * [publishGenerated] made, and nothing published. Called under [reloadLock].
+     */
+    private fun withSurfaces(cxt: KdrCxt, surfaces: Map<String, GeneratedSurface?>): Pair<Map<String, AdmittedSurface>, SchemaSnapshot> {
+        val from = base ?: throw KdrException("$serviceName.publishGenerated ran before checkInit.")
         var next = generated
         for ((client, surface) in surfaces) {
             next = if (surface == null) next - client else next + (client to admit(cxt, from, next - client, client, surface))
         }
         // Refuses a surface at a declared endpoint's address, or a client copy's.
-        val candidate = assemble(cxt, from, next, current.cfactRegistries)
+        val candidate = assemble(cxt, from, next, snapshot.cfactRegistries)
         for (client in surfaces.keys) {
             // In the store each will be served from: its client's variant, or the global one.
             val store = candidate.clientStores[client] ?: candidate.store
             for (endpoint in next[client]?.endpoints.orEmpty()) requireResolves(endpoint, store.types)
         }
-        publish(cxt, candidate)
-        generated = next
-        before + surfaces.keys.flatMap { next[it]?.endpoints.orEmpty() }.map { it.collationKey }
+        return next to candidate
     }
 
     /**

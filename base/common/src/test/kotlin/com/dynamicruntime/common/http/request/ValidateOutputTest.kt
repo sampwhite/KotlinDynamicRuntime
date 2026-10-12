@@ -115,6 +115,35 @@ class ValidateOutputTest : StringSpec({
         serve(validateOutput = false, payload = mapOf("count" to "several")).rptResponseData.orEmpty() shouldContain "several"
     }
 
+    // An endpoint made from data can be replaced at its own address while a request of the old one is still running
+    // (issue #1088: a report redefined mid-run). That request finishes after the reload dropped the cached type, and
+    // must not put the old one back for the new endpoint's responses to be judged by.
+    "a request finishing after its endpoint was replaced leaves no type behind for the new one" {
+        val asText = mapOf(
+            SCH.type to SCT.kObject,
+            SCH.additionalProperties to true,
+            SCH.properties to mapOf(EP.results to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("count" to mapOf(SCH.type to SCT.string)))),
+        )
+        val old = endpoint(validateOutput = true)
+        val replacement = endpoint(validateOutput = true, outputSchema = asText)
+        val config = KdrInstanceConfig("validateOutputReplace", ENV.unit, ENV.liveSource, null)
+        val cxt = KdrCxt("validateOutputReplace", config)
+        val service = RequestService()
+        val words = mapOf(EP.results to mapOf("count" to "three"))
+
+        // The reload: the replacement is published at the address, and the address's cached types are dropped.
+        config.put(KdrSchemaStore.key, KdrSchemaStore(endpoints = mapOf(replacement.collationKey to replacement)))
+        service.evictTypes(listOf(old.collationKey))
+        // The old endpoint's request finishes now, and is still judged as what it is.
+        service.validateResponse(cxt, store, old, good)
+        shouldThrow<KdrException> { service.validateResponse(cxt, store, old, words) }
+        // The replacement's responses are judged by its own type, whichever of the two is asked first or last.
+        service.validateResponse(cxt, store, replacement, words)
+        shouldThrow<KdrException> { service.validateResponse(cxt, store, replacement, good) }
+        service.validateResponse(cxt, store, old, good)
+        service.validateResponse(cxt, store, replacement, words)
+    }
+
     "a client's copy of an endpoint keeps the promise" {
         val cxt = cxtWith(null)
         val copies = buildClientEndpoints(cxt, listOf(endpoint(validateOutput = true, clientShaped = true)), listOf("acme"))

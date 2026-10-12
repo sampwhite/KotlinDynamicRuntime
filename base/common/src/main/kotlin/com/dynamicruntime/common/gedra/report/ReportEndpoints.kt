@@ -7,6 +7,7 @@ import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.endpoint.CursorKeyCodec
 import com.dynamicruntime.common.endpoint.CursorKeys
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.cursorPageOf
@@ -317,18 +318,26 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
                 allowCoerce = true
                 items { type = SCT.string }
             }
-            field(
-                RRUN.excludeEmpty,
-                "The columns a form must have a value for to be in the run; the report's own when absent, none when empty.",
-            ) {
-                type = SCT.array
-                allowCoerce = true
-                emptyIsAbsent = false
-                items { type = SCT.string }
-            }
+            excludeEmptyField()
         },
         needsClientConfig = true,
     ) { c, request -> runReport(c, request) }
+}
+
+/**
+ * A run's `excludeEmpty` input, for the shared run endpoint and for each report's typed ones (issue #1088): one
+ * declaration, so the two surfaces take the same thing and say the same of it. Read by [excludeEmptyNamed].
+ */
+fun InputFieldsBuilder.excludeEmptyField() {
+    field(
+        RRUN.excludeEmpty,
+        "The columns a form must have a value for to be in the run; the report's own when absent, none when empty.",
+    ) {
+        type = SCT.array
+        allowCoerce = true
+        emptyIsAbsent = false
+        items { type = SCT.string }
+    }
 }
 
 private fun SchTypesBuilder.columnInfoType() {
@@ -382,11 +391,13 @@ private fun describeReport(declared: ReportDeclared): Map<String, Any?> {
  *   their key values, and `numAvailable` is the number of groups.
  *
  * Above [REP.scanLimitEnvVar] forms the run is refused, naming the variable. What is read is [reportScope]'s.
+ *
+ * This is the shared endpoint's reading of its request -- which client, which report, which mode and grouping; the
+ * run itself is [runBoundReport], which a report's typed endpoints (issue #1088) reach with those already fixed.
  */
 fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     val client = overseenClient(c, request[RRUN.client].toOptStr())
     val bound = boundReport(c, client, request)
-    val reportId = bound.reportId
     val aggregate = request[RRUN.aggregate] == true
     val askedGroupBy = namesIn(request[RRUN.groupBy])
     if (!aggregate && !askedGroupBy.isNullOrEmpty()) {
@@ -396,11 +407,36 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     groupBy.firstOrNull { it.yieldsList }?.let {
         throw KdrException.mkInput("Column '${it.columnId}' holds a list (combine ${it.combine.name}), so it cannot be grouped by.")
     }
-    val excludeEmpty = columnsNamed(bound, namesIn(request[RRUN.excludeEmpty]) ?: bound.report.excludeEmpty, RRUN.excludeEmpty)
-
-    val scope = reportScope(c, client)
     val mode = if (aggregate) ReportMode.aggregate else ReportMode.detail
-    val queryId = reportQueryId(client, bound, mode, groupBy)
+    return runBoundReport(c, client, bound, mode, groupBy, excludeEmptyNamed(bound, request), request)
+}
+
+/** The columns a form must have a value for in this run: the ones [request] names, else the report's own. */
+fun excludeEmptyNamed(bound: BoundReport, request: Map<String, Any?>): List<BoundColumn> =
+    columnsNamed(bound, namesIn(request[RRUN.excludeEmpty]) ?: bound.report.excludeEmpty, RRUN.excludeEmpty)
+
+/**
+ * One page of a run of [bound] over [client]'s forms, in [mode], grouped by [groupBy] (none for a detail run) and
+ * leaving out the forms with no value in an [excludeEmpty] column -- see [runReport] for what is read and how it is
+ * paged; [request] carries the page asked for. The caller has settled who may run it.
+ *
+ * With [exactDates], every date is in the form its column declares (issue #1086), which is what a run answering in
+ * the report's generated types must give.
+ */
+fun runBoundReport(
+    c: KdrCxt,
+    client: String,
+    bound: BoundReport,
+    mode: ReportMode,
+    groupBy: List<BoundColumn>,
+    excludeEmpty: List<BoundColumn>,
+    request: Map<String, Any?>,
+    exactDates: Boolean = false,
+): ListPage {
+    val reportId = bound.reportId
+    val aggregate = mode == ReportMode.aggregate
+    val scope = reportScope(c, client)
+    val queryId = reportQueryId(client, bound, mode, groupBy, exactDates)
     fun summary(scanned: Int, excluded: Int) = mapOf(
         RRUN.reportId to reportId,
         RRUN.label to bound.report.label,
@@ -414,7 +450,7 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
     )
 
     if (aggregate) {
-        val run = aggregateReportRun(c, client, bound, groupBy, excludeEmpty, scope)
+        val run = aggregateReportRun(c, client, bound, groupBy, excludeEmpty, scope, exactDates)
         return cursorPageOf(
             request, queryId, run.groups, { it.key }, ::compareReportKeys, reportGroupKeyCodec(groupBy), summary(run.scanned, run.excluded),
         ) { page -> page.map { aggregateRowMap(groupBy, it) } }
@@ -435,7 +471,7 @@ fun runReport(c: KdrCxt, request: Map<String, Any?>): ListPage {
         reader.read(page, bound.columns).map { subject ->
             mapOf(
                 RRUN.gedraId to subject.meta[RMETA.gedraId],
-                RRUN.values to detailValues(subject, bound.columns).mapValues { reportWireValue(it.value) },
+                RRUN.values to detailValues(subject, bound.columns, exactDates).mapValues { reportWireValue(it.value) },
             )
         }
     }
@@ -493,7 +529,7 @@ class AggregateRun(val groups: List<ReportGroup>, val scanned: Int, val excluded
 /**
  * An aggregate run of [bound] over [scope]'s forms of [client] (issues #981, #1034): every form read for the
  * [groupBy], rolled-up and [excludeEmpty] columns, the forms missing an excluding value left out, the rest grouped.
- * The run endpoint pages the groups; a snapshot stores them.
+ * The run endpoint pages the groups; a snapshot stores them. [exactDates] is [runBoundReport]'s.
  */
 fun aggregateReportRun(
     c: KdrCxt,
@@ -502,12 +538,13 @@ fun aggregateReportRun(
     groupBy: List<BoundColumn>,
     excludeEmpty: List<BoundColumn>,
     scope: ReadScope,
+    exactDates: Boolean = false,
 ): AggregateRun {
     val ids = scannableIds(c, client, scope)
     val rolled = bound.columns.filter { it.column.rollup != null }
     val read = SubjectReader(c, client, scope).read(ids, groupBy + rolled + excludeEmpty)
     val kept = read.filterNot { bound.excludes(it, excludeEmpty) }
-    return AggregateRun(aggregateReport(kept, groupBy, rolled), ids.size, read.size - kept.size)
+    return AggregateRun(aggregateReport(kept, groupBy, rolled, exactDates), ids.size, read.size - kept.size)
 }
 
 /** One group as the run endpoint's row and a snapshot's: its key by column id, its count, and its rollups. */
@@ -522,19 +559,23 @@ fun aggregateRowMap(groupBy: List<BoundColumn>, group: ReportGroup): Map<String,
  * grouping -- and the report **as bound**, each column's path, kind, combine and rollup. A cursor taken before a reload
  * changed the report is then another query's, refused with a 400, rather than a key of the old definition read as one
  * of the new and resumed at a place that means nothing there.
+ *
+ * A run with [exactDates] is a query of its own: its group keys hold each date in the column's form, where the same
+ * report run without holds what each form stored, so a cursor of one names a place the other may not have.
  */
-fun reportQueryId(client: String, bound: BoundReport, mode: ReportMode, groupBy: List<BoundColumn>): String =
-    listOf(
+fun reportQueryId(client: String, bound: BoundReport, mode: ReportMode, groupBy: List<BoundColumn>, exactDates: Boolean = false): String =
+    listOfNotNull(
         "report", client, bound.reportId, mode.name, groupBy.joinToString(",") { it.columnId },
         bound.columns.map { it.describe() }.toJsonStr(compact = true),
+        "exactDates".takeIf { exactDates },
     ).joinToString("|")
 
 /** The column ids a list-valued input names, blanks dropped; null when the input is absent. */
-private fun namesIn(value: Any?): List<String>? =
+fun namesIn(value: Any?): List<String>? =
     (value as? List<*>)?.mapNotNull { it.toOptStr()?.trim()?.ifEmpty { null } }
 
 /** The columns of [report] that [ids] name, in order; an id naming none is a 400 naming the input. */
-private fun columnsNamed(report: BoundReport, ids: List<String>, input: String): List<BoundColumn> =
+fun columnsNamed(report: BoundReport, ids: List<String>, input: String): List<BoundColumn> =
     ids.distinct().map {
         report.column(it) ?: throw KdrException.mkInput(
             "$input names '$it', which is not a column of report '${report.reportId}'; its columns are " +

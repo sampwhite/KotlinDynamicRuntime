@@ -672,11 +672,7 @@ class RequestService : ServiceInitializer {
         if (!endpoint.validateOutput && cxt.instanceConfig.get(ACFG.validateResponseSchema) != true) {
             return
         }
-        val outputType = outputTypeCache.getOrPut(endpoint.collationKey) {
-            val name = "${endpoint.collationKey}#output"
-            parseSchemaTypes(mapOf(name to endpoint.outputSchema), schema.types)[name]
-                ?: throw KdrException("Could not compile output schema for '${endpoint.collationKey}'.")
-        }
+        val outputType = outputTypeOf(cxt, schema, endpoint)
         val failures = validate(outputType, envelope)
         if (failures.isNotEmpty()) {
             // Each failure as where and what, in the validator's own words: an endpoint that asks to be checked
@@ -684,6 +680,33 @@ class RequestService : ServiceInitializer {
             val named = failures.joinToString("; ") { "${it.path.ifEmpty { "(root)" }}: ${it.message}" }
             throw KdrException("Response for '${endpoint.collationKey}' failed output-schema validation: $named")
         }
+    }
+
+    /**
+     * [endpoint]'s compiled output type, cached under its path -- but only while [endpoint] **is** what is published
+     * at that path (issue #1088).
+     *
+     * A response is validated when its request ends, which can be long after it began, and an endpoint generated
+     * from data can be replaced at its own address in between: a report redefined keeps its path. The reload drops
+     * the cached type, and a request of the old endpoint finishing afterward would put the old type straight back,
+     * for every response of the new endpoint to be refused by, until the next reload. So a request whose endpoint
+     * has been replaced compiles its type and keeps it to itself.
+     *
+     * The check after the put closes the last gap: a reload publishes and then evicts, so an entry written after
+     * that eviction is written with the new endpoint already published, and is seen here not to be it.
+     */
+    private fun outputTypeOf(cxt: KdrCxt, schema: KdrSchemaStore, endpoint: KdrEndpoint): SchType {
+        val key = endpoint.collationKey
+        fun isPublished() = KdrSchemaStore.get(cxt).endpoints[key] === endpoint
+        outputTypeCache[key]?.takeIf { isPublished() }?.let { return it }
+        val name = "$key#output"
+        val compiled = parseSchemaTypes(mapOf(name to endpoint.outputSchema), schema.types)[name]
+            ?: throw KdrException("Could not compile output schema for '$key'.")
+        if (isPublished()) {
+            outputTypeCache[key] = compiled
+            if (!isPublished()) outputTypeCache.remove(key, compiled)
+        }
+        return compiled
     }
 
     @KdrPrivate

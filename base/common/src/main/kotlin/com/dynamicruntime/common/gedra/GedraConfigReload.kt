@@ -158,16 +158,20 @@ object GedraConfigReload {
         UiBlockService.get(cxt).reloadClient(cxt, client, previous.flatMap { it.uiBlocks }, taken.flatMap { it.uiBlocks })
         WorkflowService.get(cxt).reloadClient(cxt, client)
         // Reports after workflows (issue #980): a report's workflow paths bind to the workflows the reload kept.
-        ReportService.get(cxt).reloadClient(cxt, client)
+        // Its typed endpoints are regenerated with it (issue #1088), and theirs are types too: a redefined report
+        // keeps its paths, so what was cached for the old definition is dropped, or it would refuse the new rows.
+        val reportKeys = ReportService.get(cxt).reloadClient(cxt, client)
+        RequestService.get(cxt).evictTypes(reportKeys)
+        val evicted = (typeKeys + reportKeys).size
 
         val inherited = taken.count { it.inheritedFrom != null }
         val copies = if (inherited == 0) "" else ", $inherited from its template"
         LogStartup.info(cxt) {
-            "Reloaded client '$client': ${taken.size - inherited} stored configuration(s)$copies, ${typeKeys.size} type-cache entries dropped."
+            "Reloaded client '$client': ${taken.size - inherited} stored configuration(s)$copies, $evicted type-cache entries dropped."
         }
         val issues = ClientConfigIssues.get(cxt).issuesFor(client)
         // `loaded` is what the client stores and runs: the template's copies are source, so they are not counted.
-        return ConfigReloadResult(client, taken.size - inherited, typeKeys.size, issues, marker)
+        return ConfigReloadResult(client, taken.size - inherited, evicted, issues, marker)
     }
     /**
      * The stored configs [client] now consumes, reassembled and judged, with its marker: the ordinary client's half
