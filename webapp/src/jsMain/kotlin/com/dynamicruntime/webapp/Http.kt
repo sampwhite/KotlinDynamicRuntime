@@ -10,6 +10,7 @@ import com.dynamicruntime.common.util.jsonMapOrNull
 import com.dynamicruntime.common.util.jsonMapResult
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
+import com.dynamicruntime.common.webasset.WAS
 import kotlinx.coroutines.await
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.js.Promise
@@ -112,6 +113,23 @@ fun applyRequestHeaders(headers: dynamic): String {
 /** The API root, for code outside this file that builds its own paths. */
 val apiContextRoot: String get() = apiRoot
 
+/**
+ * [body] as a browser `FormData`, the body of a `multipart/form-data` request: a picked file ([isBrowserFile])
+ * appends as a file part, anything else as its text value, and a null not at all. Shared by every upload -- the
+ * endpoint catalog's own and [Http.uploadApi] -- so there is one answer to what a part is.
+ */
+internal fun formDataOf(body: Map<String, Any?>): dynamic {
+    val fd: dynamic = js("new FormData()")
+    for ((k, v) in body) {
+        when {
+            v == null -> {}
+            isBrowserFile(v) -> fd.append(k, v)
+            else -> fd.append(k, v.toString())
+        }
+    }
+    return fd
+}
+
 @JsName("fetch")
 private external fun browserFetch(input: String, init: dynamic = definedExternally): Promise<dynamic>
 
@@ -209,6 +227,26 @@ object Http {
         requestJson(method, apiRoot + path, body)
 
     /**
+     * POSTs [parts] to an upload endpoint as `multipart/form-data` -- a browser `File` for the file, text for any
+     * field travelling with it -- and returns the parsed envelope. For an endpoint whose kind is `file`: a JSON
+     * body has nowhere to put a file.
+     */
+    suspend fun uploadApi(path: String, parts: Map<String, Any?>): Map<String, Any?> =
+        requestJson("POST", apiRoot + path, parts, multipart = true).orThrow()
+
+    /**
+     * The address of an API endpoint with [args] as its query string, for handing to the browser to fetch itself
+     * -- an `<img>`'s `src`, a download -- where the answer is a file and not an envelope to parse.
+     */
+    fun apiUrl(path: String, args: Map<String, Any?> = emptyMap()): String = apiRoot + path + queryString(args)
+
+    /**
+     * The address of one of the caller's client's own web assets (issue #1130), from its name as the shell config
+     * gave it (`favicon:<hash>`): under the static root, where it is cached for good, the name being its content's.
+     */
+    fun webAssetUrl(versionedName: String): String = staticRoot + WAS.staticPath(appId, versionedName)
+
+    /**
      * DELETE an API endpoint. Its input is [args], appended as an encoded query string, because this codebase
      * sends no DELETE body -- see `HttpMethod.DELETE`. Passing no body is what keeps that true: [requestJson]
      * sets a `Content-Type` and a body only when one is given. Encoding happens once here, through the shared
@@ -234,8 +272,9 @@ object Http {
         method: String,
         url: String,
         body: Map<String, Any?>?,
+        multipart: Boolean = false,
     ): ApiResult<Map<String, Any?>> {
-        val text = when (val sent = requestText(method, url, body)) {
+        val text = when (val sent = requestText(method, url, body, multipart)) {
             is ApiResult.Ok -> sent.value
             is ApiResult.Refused -> return sent
             is ApiResult.Failed -> return sent
@@ -283,7 +322,12 @@ object Http {
      * Runs a request (issue #967): the body of a 2xx, the server's refusal of anything else, or [ApiResult.Failed]
      * when the browser could not complete the request at all.
      */
-    private suspend fun requestText(method: String, url: String, body: Map<String, Any?>?): ApiResult<String> {
+    private suspend fun requestText(
+        method: String,
+        url: String,
+        body: Map<String, Any?>?,
+        multipart: Boolean = false,
+    ): ApiResult<String> {
         val init: dynamic = js("({})")
         init.method = method
         // Same-origin credentials so the session cookie is sent and stored (the API and the app share an origin).
@@ -293,7 +337,10 @@ object Http {
         val headers: dynamic = js("({})")
         val traceId = applyRequestHeaders(headers)
         init.headers = headers
-        if (body != null) {
+        if (body != null && multipart) {
+            // Deliberately no Content-Type: the browser sets it, because only it knows the boundary it generated.
+            init.body = formDataOf(body)
+        } else if (body != null) {
             headers["Content-Type"] = "application/json"
             init.body = body.toJsonStr(compact = true)
         }

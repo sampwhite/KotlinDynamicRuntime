@@ -78,6 +78,10 @@ For the client configuration itself, the client has the following attributes.
   clients can share a `webResourceId`. The mechanics of where these packages of resources are in source
   code, or in the file store, or in the database will be designed over time. At some future point,
   we will integrate with a CDN, and the `webResourceId` can potentially define where to find the resources in the CDN.
+  *Not built.* What is built (issue #1130) is narrower and keyed by the client's own id: its administrator
+  uploads a **favicon** and a **brand mark** from the Clients page, kept in the file store and shown to the
+  client's signed-in people in place of the deployment's. They are not configuration -- no draft, no publish --
+  and a sandbox shows its parent's. A package two clients share is still this field's to become.
 * `enabledEnvironments` - A list of environments where the client is enabled. Even if not enabled, it
   can still be referred to, but the client will otherwise be considered not to be present. 
   It defaults to the list {'unit', 'local', 'dev'}. It is an error if any environment besides `unit` and `local`
@@ -271,6 +275,7 @@ client is, and no registry that can be asked whether one exists or is enabled.
 - **Domain routing** (`domainPrefix`, `customDomain`), which needs a client resolved from the request rather
   than from the caller — a new trust level rather than a new lookup.
 - **`webResourcesId` packaging** and `preload`; the specification already calls the last untestable today.
+  (A client's own favicon and brand mark are built, issue #1130, keyed by the client rather than by a package.)
   (`staticConfig` is built, issue #824.)
 - **Markdown fragment variants** and **auto-generated per-client endpoints**, both named as future issues.
   (Both since built; the endpoints are issue #387.)

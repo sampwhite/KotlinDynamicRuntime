@@ -109,7 +109,7 @@ object SchemaCatalogApi {
                 // Content-Type header -- the browser must set it, because only it knows the multipart
                 // boundary it generated. Setting it by hand here produces a body the server cannot parse.
                 init.headers = headers
-                init.body = formData(body)
+                init.body = formDataOf(body)
             } else {
                 headers["Content-Type"] = "application/json"
                 init.headers = headers
@@ -143,19 +143,6 @@ object SchemaCatalogApi {
      */
     fun downloadUrl(endpoint: EndpointInfo, body: Map<String, Any?>): String =
         apiRoot + endpoint.path + queryString(body)
-
-    /** Builds a `FormData` body: a picked file appends as a file part, anything else as its text value. */
-    private fun formData(body: Map<String, Any?>): dynamic {
-        val fd = newFormData()
-        for ((k, v) in body) {
-            when {
-                v == null -> {}
-                isBrowserFile(v) -> fd.append(k, v)
-                else -> fd.append(k, v.toString())
-            }
-        }
-        return fd
-    }
 
     private suspend fun getJson(url: String): Map<String, Any?> {
         val init: dynamic = js("({})")
@@ -211,9 +198,6 @@ private fun toEndpointInfo(m: Map<String, Any?>): EndpointInfo = EndpointInfo(
     publicApi = m[EI.publicApi] as? Boolean ?: false,
     tags = m[EI.tags].toJsonListOfStrings(),
 )
-
-/** A new, empty browser `FormData`. */
-private fun newFormData(): dynamic = js("new FormData()")
 
 /**
  * Whether [v] is a browser `File` — what the schema form's file picker emits for a binary field, as opposed to

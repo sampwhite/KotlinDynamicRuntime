@@ -68,6 +68,14 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
         client.sendJsonDeleteRequest(path, args)[EP.results].toJsonMapOrEmpty()
 
     /**
+     * Uploads [parts] to [path] as this user -- a `multipart/form-data` request, a `ContentData` for the file and
+     * any other value for a field travelling with it -- and returns the **whole envelope**, a success's or an
+     * error's, so one call serves a test of either: read `results` from it, or `status`.
+     */
+    fun upload(path: String, parts: Map<String, Any?>): Map<String, Any?> =
+        client.sendUploadRequest(path, parts).rptResponseData?.jsonMap() ?: emptyMap()
+
+    /**
      * The endpoint catalog as this user is shown it: `/schema/endpoints`' answer -- the endpoints, their `$defs`,
      * whether filters are offered -- with no paging cut, narrowed by [args] (a client, a `publicApi`). What a test
      * of *who is shown what* reads, in one place rather than once per test.

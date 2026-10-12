@@ -99,7 +99,8 @@ val Home = FC<Props> {
                                 className = ClassName("home-hero")
                                 img {
                                     className = ClassName("home-hero-mark")
-                                    src = brandMarkUrl
+                                    // The client's own mark where it has set one (issue #1130), as the bar draws.
+                                    src = markUrlFor(config)
                                     // Decorative: the wordmark beside it carries the name.
                                     alt = ""
                                 }

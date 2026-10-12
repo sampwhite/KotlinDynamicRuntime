@@ -366,6 +366,16 @@ private fun ChildrenBuilder.clientDetail(
                 this.onChanged = onChanged
             }
         }
+        // Its own tab icon and brand mark (issue #1130) -- for a client this node carries, whose people there are
+        // to see them. A sandbox shows its parent's, and says so.
+        if (row?.status == ClientStatus.present.name) {
+            h2 { +"Web assets" }
+            WebAssetsSection {
+                this.clientId = clientId
+                sandboxOf = row.sandboxOf
+                this.onChanged = onChanged
+            }
+        }
         // A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed here as such.
         h2 {
             id = ElementId(storedConfigurationId)

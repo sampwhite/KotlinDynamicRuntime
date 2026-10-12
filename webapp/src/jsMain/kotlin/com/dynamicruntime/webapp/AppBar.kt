@@ -211,6 +211,9 @@ val AppBar = FC<AppBarProps> { props ->
             }
             config = cfg
             props.onShellFacts(shellFactsOf(cfg))
+            // The tab icon follows the client (issue #1130) -- from a loaded config only, as the tint below, so a
+            // failed refresh leaves the icon as it was.
+            applyClientFavicon(clientFaviconUrl(cfg))
             // Tint the page while in a sandbox (issue #1049) -- set from a loaded config only, so a failed refresh
             // leaves the page as it was rather than dropping the signal.
             markPageSandbox(pageInSandbox(cfg))
@@ -339,7 +342,8 @@ val AppBar = FC<AppBarProps> { props ->
             href = "#"
             img {
                 className = ClassName("app-bar-logo")
-                src = brandMarkUrl
+                // The client's own mark where it has set one (issue #1130), else the deployment's.
+                src = markUrlFor(config)
                 // Decorative: the wordmark beside it already carries the name, so alt text here would only
                 // make a screen reader announce the brand twice.
                 alt = ""

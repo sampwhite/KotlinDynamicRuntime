@@ -11,10 +11,11 @@ import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.webasset.ClientWebAssetService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -64,7 +65,10 @@ class FileStoreBootTest : StringSpec({
         val bucket = FileBucketFixtureComponent.bucket
         File(dir, bucket).isDirectory shouldBe true
         val service = FileStoreService.get(cxt)
-        service.declaredBuckets().map { it.name } shouldContainExactly listOf(bucket)
+        // Beside the one bucket the runtime itself keeps files in (a client's web assets, issue #1130), which the
+        // same boot made ready in the same place.
+        service.declaredBuckets().map { it.name } shouldContainExactlyInAnyOrder listOf(ClientWebAssetService.bucket, bucket)
+        File(dir, ClientWebAssetService.bucket).isDirectory shouldBe true
 
         val meta = service.put(cxt, bucket, "reports/q3", ContentData("three,four\n", "text/csv", saveAsFilename = "q3.csv"))
 

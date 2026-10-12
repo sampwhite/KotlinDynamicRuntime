@@ -72,6 +72,11 @@ class HomeConfig(
     val administersClient: Boolean = false,
     /** When the caller is in a client's sandbox (issue #931): which client's, for the marker and the way back. */
     val sandboxOf: SandboxOf? = null,
+    /**
+     * The caller's client's own web assets (issue #1130): each slot it has set (`WAS.favicon`, `WAS.brandMark`) to
+     * its image by name and content. A slot not in it is the deployment's own image.
+     */
+    val webAssets: Map<String, String> = emptyMap(),
 )
 
 /** The client whose sandbox the caller is in (issue #931): its id, and the name the marker speaks of. */
@@ -121,6 +126,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         canOpenSandbox = config.features[HFEAT.canOpenSandbox] == true,
         administersClient = config.features[HFEAT.administersClient] == true,
         sandboxOf = (config.state[HFLD.sandboxOf] as? String)?.let { SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it) },
+        webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
     )
 }
 

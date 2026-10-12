@@ -61,6 +61,31 @@ is an inline value; `# +key` alone starts a next-line value (ends at two blank l
 `MarkdownFragmentUtil` + `ScriptUtil` in `base:kernel` (both transpile-clean, so you can parse/resolve on the
 frontend too).
 
+### A client's own web assets (issue #1130)
+
+A client's administrator may upload a **favicon** and a **brand mark** of its own, which stand in for the
+deployment's for that client's people. They are static content too, under the same root and absent from the
+catalog for the same reason:
+
+**Request:** `GET /st/<appId>/web/<slot:hash>` (e.g. `/st/kdr.en/web/favicon:9f3a…`) -- built by
+`Http.webAssetUrl(name)` from the kernel's `WAS.staticPath`, never spelled by hand.
+
+- You get the `slot:hash` **name** from the shell config, `state.webAssets` (`HomeConfig.webAssets`): a slot
+  (`WAS.favicon`, `WAS.brandMark`) to its name, **only for the slots the client has set**. An absent slot is the
+  deployment's own image, exactly as before -- so a client with nothing set changes nothing.
+- The image served is the **caller's** client's, whatever the address says: the hash never selects whose. It
+  decides only the caching -- the name the config handed you is cached for good, any other gets the current
+  image under `no-store`, and an empty slot is a `no-store` 404. So after an upload, re-read the config for the
+  new name rather than keeping the old address.
+- The shell does this already, and you should not do it again: `markUrlFor(config)` is the mark the app bar and
+  the home hero draw (the client's, else `brandMarkUrl`), and the bar calls `applyClientFavicon` on every config
+  load, which swaps the page's `<link rel="icon">` set for the client's and puts the deployment's back when the
+  client has none -- so an upload shows without a reload. Both marks are `object-fit: contain`: a client's need
+  not be square.
+- **Known limits.** An anonymous visitor is in the default client, so a client's branding reaches its
+  *signed-in* people until a client can be resolved from the domain (the limit copy overlays have). And the
+  first paint is the deployment's: the shell's `<head>` is written before anybody is known.
+
 ## UI-config endpoints: how a widget-group learns what to build (issue #70)
 
 A React **widget-group** (the auth flow, the profile page, later the nav/home) fetches a normal API endpoint
@@ -466,6 +491,27 @@ A sandbox's own detail says whose it is. In the listing each sandbox follows its
 (`withSandboxesBesideParents`) with a "sandbox of <id>" note (`sandboxRowNote`); the overview rows carry
 `sandboxOf` and `hasSandbox`. A scoped administrator has no listing (issue #1082), so only an `allClients` one
 sees sandbox rows.
+
+**Web assets** (issue #1130, `WebAssetsSection.kt`, its pure half in `WebAssets.kt`, covered by
+`WebAssetsTest`): under Sandbox, for a client this node carries, each slot of the client's own web assets -- the
+favicon and the brand mark -- from `GET /clientAdmin/client/web` (`ClientsApi.webAssets`, parsed by
+`parseWebAssetSlots`; wire names `WAS`, the file's `FMETA`, both in the kernel). The listing is **metadata only**:
+per slot a preview, what it holds (`webAssetHoldsText`: type, size, the name it was uploaded under), who uploaded
+it and when (`webAssetUploadedText`), what it takes (`webAssetTakesText`, from the listing's `kinds` and
+`maxSize` -- **do not hardcode either here**), and **Upload…** / **Replace…** and **Remove**. Picking a file *is*
+the upload: `POST /clientAdmin/client/web/upload` as `multipart/form-data` (`Http.uploadApi`, the one multipart
+call outside the endpoint catalog; both build their body with `formDataOf`). A file over the slot's size is said
+before it is sent (`webAssetFileProblem`); whether it is the image it claims to be is the backend's to say, and
+its refusal shows beside the slot in its words. **There is no draft and no publish** -- a web asset is not stored
+configuration, and the section says so -- so a change is live for the whole client at once, and each success
+bumps the refresh generation, which is what makes the shell redraw its mark and tab icon.
+
+The **preview is not the static address**: that serves the caller's own client's, and the client on this page
+need not be the caller's. It is the named download, `GET /clientAdmin/client/web/download {client, slot, hash}`
+(`webAssetPreviewUrl`), carrying the image's hash so that a replaced image is a new address -- a browser redraws
+an address it has already drawn without asking again. A **sandbox** shows its parent's images and may change
+none (a change would be live for the parent's people): its page draws the slots with no actions under a note
+saying where to make one, and the backend refuses the attempt anyway.
 
 **Copy & menu** (issue #917): what a client's own configuration changes about what its people see, from
 `GET /clientAdmin/client/overrides` (`ClientsApi.overrides`, parsed by the pure `parseClientOverrides`; the wire

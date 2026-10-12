@@ -30,6 +30,7 @@ import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
+import com.dynamicruntime.common.webasset.ClientWebAssetService
 
 /**
  * The home/shell widget-group's endpoints (issue #70's `nav`/`shell` hub). Follows the per-group UI-config
@@ -142,6 +143,14 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             )
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
+            property(
+                HFLD.webAssets,
+                "The caller's client's own web assets (issue #1130): each slot it has set, to its image by name and " +
+                    "content, served at the static root's `/<appId>/web/<name>`. An absent slot is the deployment's own image.",
+            ) {
+                type = SCT.kObject
+                for (def in ClientWebAssetService.slotDefs) property(def.slot, "The client's ${def.label.lowercase()}, as `${def.slot}:<hash>`.")
+            }
         }
     }
 
@@ -189,6 +198,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     put(HFLD.sandboxOf, parent)
                     put(HFLD.sandboxOfName, ClientService.getOrNull(c)?.known(parent)?.name ?: parent)
                 }
+                // The client's own tab icon and brand mark (issue #1130), where it has set them. An edge keeps none.
+                ClientWebAssetService.getOrNull(c)?.let { put(HFLD.webAssets, it.versionedNames(c, c.client)) }
             },
         )
     }

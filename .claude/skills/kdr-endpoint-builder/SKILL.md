@@ -206,6 +206,13 @@ files.list(cxt, "web-assets", "clients/acme/", limit = 100)
 files.delete(cxt, "web-assets", "clients/acme/logo")
 ```
 
+**The worked example** is a client's web assets (`webasset/ClientWebEndpoints.kt`, issue #1130): an upload
+that checks the file is what it says it is before storing it (`WebAssetCheck` -- an upload's content type is the
+uploader's claim), a listing that answers the store's metadata and no content, and a download that sets its own
+response headers through `c.request?.webRequest`. The same images are served to browsers by a `ContentServer`
+under the static root (`ClientWebAssetService.serve`), which is where a file goes out when it is content rather
+than an API answer.
+
 ## Signatures
 
 - `HttpMethod` — enum `GET` / `POST` / `PUT` (kernel).

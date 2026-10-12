@@ -86,6 +86,8 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.uiblock.UiBlockService
+import com.dynamicruntime.common.webasset.ClientWebAssetService
+import com.dynamicruntime.common.webasset.clientWebSchema
 import com.dynamicruntime.common.startup.LayoutCheckService
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.Presence
@@ -197,6 +199,10 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(reportSchema(cxt), appOnly)
         collector.addModule(clientCopySchema(cxt), appOnly)
         collector.addModule(clientMenuSchema(cxt), appOnly)
+        // A client's own tab icon and brand mark (issue #1130): the administrator's endpoints, and the bucket the
+        // images are kept in. Declared only where they are kept: an edge has no file store to check a bucket of.
+        collector.addModule(clientWebSchema(cxt), appOnly)
+        collector.addFileBucket(ClientWebAssetService.bucketDef(), appOnly)
         // The cfacts an expression may name, for whoever is authoring configuration against them. In the
         // `clientAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
         // has a registry of its own to report -- see `cfactSchema`.
@@ -321,6 +327,9 @@ class CommonComponent : ComponentDefinition {
             // sign-in page could. Absent here, that race cannot happen (issues #432, #433).
             service(::PortalService, roles = setOf(BOOT.app)),
             service(::MarkdownFragmentService), service(::MarkdownDocService),
+            // A client's own web assets (issue #1130), served under the static root beside the fragments.
+            // Application-only, as the file store they are kept in is.
+            service(::ClientWebAssetService, roles = setOf(BOOT.app)),
             // Resolves UiBlocks for a caller (issue #457). A regular service, so the startup tier's
             // SchemaService -- which its boot check reads for each client's cfact vocabulary -- is already
             // compiled by the time this initializes.

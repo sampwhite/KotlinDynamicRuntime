@@ -152,6 +152,24 @@ object UADEP {
      */
     const val clientOverrides = "/${SECT.clientAdmin}/client/overrides"
 
+    /**
+     * A client's web assets (issue #1130): every slot -- the tab icon, the brand mark -- with the metadata of the
+     * image it holds and none of its content. Scoped as [clientDefinition] is.
+     */
+    const val clientWeb = "/${SECT.clientAdmin}/client/web"
+
+    /** Uploads the image of one slot of a client's web assets, replacing the one there. Takes effect at once. */
+    const val clientWebUpload = "$clientWeb/upload"
+
+    /** Empties one slot of a client's web assets, so its people see the deployment's image again. */
+    const val clientWebRemove = "$clientWeb/remove"
+
+    /**
+     * The image in one slot of a **named** client's web assets, as a file -- what an administrator looking at
+     * another client's page previews, since the static address serves only the caller's own client's.
+     */
+    const val clientWebDownload = "$clientWeb/download"
+
     /** The named reports one client may run (issue #981), with how each column was bound. Scoped as [clientDefinition] is. */
     const val reports = "/${SECT.clientAdmin}/reports"
 

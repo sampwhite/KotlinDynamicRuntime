@@ -454,6 +454,24 @@ only client this would serve.
   - addressing tasks, saves, eligibility and labels stays deferred, in a shape that does not foreclose a keyed
     merge on task ids.
 
+## When a client's branding has to reach somebody who has not signed in
+
+A client's own favicon and brand mark (issue #1130) are served to the client of whoever is asking, and somebody
+who has not signed in is in the default client. So a client's login page, and the first paint of every page,
+show the deployment's.
+
+- **Resolve the client from the request's domain** *(#1130, deferred here 2026-10-12).* `ClientDef.domainPrefix`
+  and `customDomain` are declared and unread. Once a request's host names a client, an anonymous visitor to
+  `acme.example.com` has one, and both the static address (`ClientWebAssetService.serve`) and the fragment server,
+  which has had this limit since #456, follow without a change of their own: each already asks the context whose
+  client it is. It is a new trust level rather than a new lookup -- the host is the caller's to choose -- which is
+  why it was not folded into either.
+- **Write the client's icon into the shell's `<head>`** *(#1130, deferred here 2026-10-12).* `AppUiPage` renders
+  the deployment's icon links for everybody, and the frontend swaps them once the shell config is read, so a tab
+  shows the deployment's icon for a moment on each load. With the client known at render -- from the session
+  today, from the domain later -- the shell could link the client's own. Left out because the shell is rendered
+  before anything about the caller is consulted, and that is a property worth a decision of its own.
+
 ## When the sample's file endpoints should show how files are really kept
 
 Somebody reads `SampleFileStore` to learn how to store an upload, and copies it: a directory of its own under the
