@@ -912,6 +912,8 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
         if (lastClient.current != props.clientId) {
             lastClient.current = props.clientId
             items = null
+            // The previous client's failure is not this one's: left set, it would be shown over this one's load.
+            loadError = null
             renaming = null
             showing = null
             editError = null

@@ -202,3 +202,22 @@ fun joinAsPhrase(items: List<String>, last: String = "and"): String = when (item
     1 -> items[0]
     else -> items.dropLast(1).joinToString(", ") + " $last " + items.last()
 }
+
+private const val bytesPerKb = 1024L
+private const val bytesPerMb = bytesPerKb * bytesPerKb
+
+/**
+ * A size as a person reads one: `640 bytes`, `12 KB`, `1 MB`, `1.5 MB`. **Rounded up**, so a file never reads as
+ * smaller than it is -- which matters where the number sits beside a limit -- and a megabyte is said as one from
+ * the first size that rounds to it, never as `1024 KB`.
+ *
+ * In the kernel so a refusal the backend words ("at most 256 KB; this file is 300 KB") and the page that listed
+ * the limit say a size the same way.
+ */
+fun byteSizeText(bytes: Long): String {
+    if (bytes < bytesPerKb) return if (bytes == 1L) "1 byte" else "$bytes bytes"
+    val kb = (bytes + bytesPerKb - 1) / bytesPerKb
+    if (kb < bytesPerKb) return "$kb KB"
+    val tenths = (bytes * 10 + bytesPerMb - 1) / bytesPerMb
+    return if (tenths % 10 == 0L) "${tenths / 10} MB" else "${tenths / 10}.${tenths % 10} MB"
+}

@@ -49,6 +49,23 @@ object ContentResources {
      */
     fun cacheHeaderFor(matched: Boolean): String = if (matched) cacheControl else noStore
 
+    /**
+     * [cacheControl] for a content-addressed answer that sits **behind a sign-in**: as permanent, but the
+     * caller's own browser's to keep and no shared cache's. A server that sends it also sends `Vary: Cookie`
+     * ([varyHeader], [varyByCookie]) -- the bytes do not differ by caller, but whether a caller may have them
+     * does, and a kept answer must not outlive the session that was allowed it.
+     */
+    const val privateCacheControl = "private, max-age=31536000, immutable"
+
+    /** [cacheHeaderFor] for an answer behind a sign-in: [privateCacheControl] when matched, [noStore] otherwise. */
+    fun privateCacheHeaderFor(matched: Boolean): String = if (matched) privateCacheControl else noStore
+
+    /** The header the values above are sent under. */
+    const val cacheControlHeader = "Cache-Control"
+
+    const val varyHeader = "Vary"
+    const val varyByCookie = "Cookie"
+
     /** A content file id must be a plain file-name token (guards the classpath lookup against traversal). */
     fun isSafeFileId(fileId: String): Boolean =
         fileId.isNotEmpty() && fileId.all { it.isLetterOrDigit() || it == '-' || it == '_' }

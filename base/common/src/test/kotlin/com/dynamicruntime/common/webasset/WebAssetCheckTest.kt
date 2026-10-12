@@ -8,6 +8,20 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import org.xml.sax.SAXNotRecognizedException
+import javax.xml.parsers.SAXParser
+import javax.xml.parsers.SAXParserFactory
+
+/** A SAX parser factory that knows only the standard secure-processing feature, and would parse without the rest. */
+class RefusingSaxFactory : SAXParserFactory() {
+    override fun newSAXParser(): SAXParser = throw IllegalStateException("No SVG may be read by a parser that was not made safe.")
+
+    override fun setFeature(name: String, value: Boolean) {
+        if (name != javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING) throw SAXNotRecognizedException("Feature '$name' is not recognized.")
+    }
+
+    override fun getFeature(name: String): Boolean = false
+}
 
 /**
  * Whether an uploaded web asset is the image it says it is (issue #1130): the declared type checked against the
@@ -30,11 +44,16 @@ class WebAssetCheckTest : StringSpec({
         WebAssetCheck.check("favicon", "image/png", png) shouldBe WebAssetCheck.png
         WebAssetCheck.check("favicon", "image/jpeg", jpeg) shouldBe WebAssetCheck.jpeg
         WebAssetCheck.check("favicon", "image/jpg", jpeg) shouldBe WebAssetCheck.jpeg
+        WebAssetCheck.check("favicon", "image/pjpeg", jpeg).mimeType shouldBe "image/jpeg"
         WebAssetCheck.check("favicon", "image/webp", webp) shouldBe WebAssetCheck.webp
         WebAssetCheck.check("favicon", "image/svg+xml", svg) shouldBe WebAssetCheck.svg
         // Browsers do not agree on an ICO's type; both are one kind, stored under one.
         WebAssetCheck.check("favicon", "image/x-icon", ico) shouldBe WebAssetCheck.ico
         WebAssetCheck.check("favicon", "image/vnd.microsoft.icon", ico).mimeType shouldBe "image/x-icon"
+        WebAssetCheck.check("favicon", "image/ico", ico).mimeType shouldBe "image/x-icon"
+        // What a file picker is told to offer is every type an upload is taken under, and no other.
+        WebAssetCheck.acceptedMimeTypes.forEach { WebAssetCheck.declaredKind(it).shouldNotBeNull() }
+        WebAssetCheck.acceptedMimeTypes.size shouldBe 9
         // A type's parameters and case are not part of what it declares.
         WebAssetCheck.check("favicon", "Image/SVG+XML; charset=utf-8", svg) shouldBe WebAssetCheck.svg
     }
@@ -102,5 +121,23 @@ class WebAssetCheckTest : StringSpec({
             append("]><svg xmlns=\"http://www.w3.org/2000/svg\"><text>&a12;</text></svg>")
         }.toByteArray()
         WebAssetCheck.svgProblem(bomb).shouldNotBeNull() shouldContain "not well-formed"
+    }
+
+    "a parser that cannot be told to fetch nothing is this server's fault, and no SVG is read by it" {
+        // Another parser on the classpath, which the JDK finds by this property: one that does not know the
+        // feature that stops a DTD being fetched. That is a SAXException, as a malformed file is.
+        val property = SAXParserFactory::class.java.name
+        val previous = System.getProperty(property)
+        System.setProperty(property, RefusingSaxFactory::class.java.name)
+        try {
+            val e = shouldThrow<KdrException> { WebAssetCheck.svgProblem(svg) }
+            // Not a word about the file, which is a perfectly good SVG -- and not a refusal the uploader is sent.
+            e.code shouldBe EXC.internalError
+            e.message.orEmpty() shouldContain "cannot be set up"
+            shouldThrow<KdrException> { WebAssetCheck.check("favicon", "image/svg+xml", svg) }.code shouldBe EXC.internalError
+        } finally {
+            if (previous == null) System.clearProperty(property) else System.setProperty(property, previous)
+        }
+        WebAssetCheck.svgProblem(svg).shouldBeNull()
     }
 })

@@ -70,19 +70,6 @@ class WebAssetsTest {
     }
 
     @Test
-    fun aSizeReadsRoundedUpInTheUnitAPersonWouldUse() {
-        assertEquals("0 bytes", byteSizeText(0))
-        assertEquals("640 bytes", byteSizeText(640))
-        assertEquals("1 KB", byteSizeText(1024))
-        assertEquals("2 KB", byteSizeText(1025))
-        assertEquals("256 KB", byteSizeText(256 * 1024))
-        assertEquals("1 MB", byteSizeText(1024 * 1024))
-        assertEquals("1.1 MB", byteSizeText(1024 * 1024 + 1))
-        assertEquals("1.5 MB", byteSizeText(1536 * 1024))
-        assertEquals("2 MB", byteSizeText(2 * 1024 * 1024))
-    }
-
-    @Test
     fun aSlotSaysWhatItTakesAndWhatItHolds() {
         assertEquals("PNG, SVG or ICO, up to 256 KB.", webAssetTakesText(slot()))
         assertEquals("Not set: the deployment's favicon is shown.", webAssetHoldsText(slot()))
@@ -95,12 +82,68 @@ class WebAssetsTest {
         assertEquals("Uploaded 2026-10-12 19:49 UTC", webAssetUploadedText(slot(pngFile)))
         assertEquals("image/png · 13 KB", webAssetHoldsText(slot(WebAssetFile("image/png", 12_345, "h", "", null))))
         assertEquals("Uploaded", webAssetUploadedText(slot(WebAssetFile("image/png", 1, "h", "", null))))
+        // A file whose type the listing did not say is described by what it did say, with no separator left over.
+        assertEquals("13 KB · a.png", webAssetHoldsText(slot(WebAssetFile("", 12_345, "h", "", "a.png"))))
+    }
+
+    @Test
+    fun whatASlotTakesIsWordedFromWhateverTheListingSaid() {
+        fun takes(kinds: List<String>, maxSize: Long) = webAssetTakesText(WebAssetSlot(WAS.favicon, "Favicon", maxSize, emptyList(), kinds, null, null))
+        assertEquals("PNG, up to 1 MB.", takes(listOf("PNG"), 1024 * 1024))
+        assertEquals("PNG or SVG, up to 256 KB.", takes(listOf("PNG", "SVG"), 256 * 1024))
+        // A listing that named no kinds, or no limit, is not filled in with a guess at either.
+        assertEquals("An image, up to 256 KB.", takes(emptyList(), 256 * 1024))
+        assertEquals("PNG or SVG.", takes(listOf("PNG", "SVG"), 0))
+        assertEquals("An image.", takes(emptyList(), 0))
+    }
+
+    @Test
+    fun aListingsOddShapesAreReadAsWhatTheyAre() {
+        // A `file` that is there and empty is no file; a number that arrived as a double is the number it is.
+        val slots = parseWebAssetSlots(
+            listOf(
+                mapOf(WAS.slot to WAS.favicon, WAS.file to emptyMap<String, Any?>(), WAS.maxSize to 262144.0),
+                mapOf(WAS.slot to WAS.brandMark, WAS.file to mapOf(FMETA.hash to "h", FMETA.size to 2048.0)),
+            ),
+        )
+        assertNull(slots[0].file)
+        assertEquals(262144L, slots[0].maxSize)
+        // The label falls back to the slot's own name, and a file that says little is still a file.
+        assertEquals(WAS.favicon, slots[0].label)
+        assertEquals(2048L, slots[1].file?.size)
+        assertEquals("", slots[1].file?.mimeType)
+        assertNull(slots[1].file?.fileName)
+    }
+
+    @Test
+    fun aRemovalIsAskedAboutNamingTheClientItActsOnAndIsDrawnFromItsAnswer() {
+        assertEquals("Remove the favicon of acme (live data)?", webAssetRemoveQuestion(slot(pngFile), "acme"))
+        assertEquals("Its people see the deployment's favicon again, at once.", webAssetRemoveConsequence(slot(pngFile)))
+        assertEquals(
+            "Remove the brand mark of globex (live data)?",
+            webAssetRemoveQuestion(slot(pngFile, slot = WAS.brandMark, label = "Brand mark"), "globex"),
+        )
+
+        // What is under way names its slot and its action, so a removal is not shown on the upload's control.
+        assertEquals("favicon/remove", webAssetBusyKey(WAS.favicon, WACT.remove))
+        assertEquals(false, webAssetBusyKey(WAS.favicon, WACT.remove) == webAssetBusyKey(WAS.favicon, WACT.upload))
+        assertEquals(false, webAssetBusyKey(WAS.favicon, WACT.remove) == webAssetBusyKey(WAS.brandMark, WACT.remove))
+
+        // The answer takes its slot's place and leaves the others; with nothing listed yet there is nothing to place it in.
+        val listed = listOf(slot(pngFile), slot(pngFile, slot = WAS.brandMark, label = "Brand mark"))
+        val after = withWebAssetSlot(listed, slot())!!
+        assertNull(after[0].file)
+        assertEquals("abc123", after[1].file?.hash)
+        assertNull(withWebAssetSlot(null, slot()))
     }
 
     @Test
     fun aFileTooLargeIsSaidBeforeItIsSentAndNothingElseIsJudgedHere() {
         assertNull(webAssetFileProblem(slot(), 256 * 1024))
         assertEquals("This file is 257 KB; a favicon may be at most 256 KB.", webAssetFileProblem(slot(), 256 * 1024 + 1))
+        // Said in megabytes from the first size that rounds to one, as the limit beside it is.
+        val brand = WebAssetSlot(WAS.brandMark, "Brand mark", 1024 * 1024, emptyList(), emptyList(), null, null)
+        assertEquals("This file is 1.1 MB; a brand mark may be at most 1 MB.", webAssetFileProblem(brand, 1024 * 1024 + 1))
         // A listing that named no limit leaves the judging to the backend.
         assertNull(webAssetFileProblem(WebAssetSlot(WAS.favicon, "Favicon", 0, emptyList(), emptyList(), null, null), 9_999_999))
     }

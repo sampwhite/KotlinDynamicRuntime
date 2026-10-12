@@ -32,7 +32,9 @@ external interface WebAssetsSectionProps : Props {
  * and **Upload** and **Remove**. Read from `/clientAdmin/client/web` on mount and again on every refresh generation.
  *
  * **A change is live as it is made.** A web asset is not part of the client's stored configuration, so there is no
- * draft and no publish, and the section says so above the slots. Picking a file *is* the upload. Each success bumps
+ * draft and no publish, and the section says so above the slots. Picking a file *is* the upload; a removal is asked
+ * about first, in a question that names the client it acts on. Each answers the slot as it now is, which is drawn
+ * at once. Each success bumps
  * the refresh generation through [WebAssetsSectionProps.onChanged], which is what makes the shell re-read its config
  * and draw the new mark and tab icon without a reload -- for an administrator looking at their own client.
  *
@@ -42,9 +44,11 @@ external interface WebAssetsSectionProps : Props {
 val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
     var slots by useState<List<WebAssetSlot>?>(null)
     var loadError by useState<DisplayError?>(null)
-    // The slot an upload or a removal is running for, and the slot the last failure was for, with what went wrong:
-    // a refusal is shown beside the slot it was about.
+    // What is running -- which slot and which action ([webAssetBusyKey]), so the control that was used shows it --
+    // and the slot the last failure was for, with what went wrong: a refusal is shown beside the slot it was about.
     var busy by useState<String?>(null)
+    // The slot whose removal is being asked about, so one question is open at a time and a click elsewhere closes it.
+    var confirming by useState<String?>(null)
     var failedSlot by useState<String?>(null)
     var failure by useState<DisplayError?>(null)
     var problem by useState<String?>(null)
@@ -59,9 +63,13 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
         if (lastClient.current != props.clientId) {
             lastClient.current = props.clientId
             slots = null
+            // The previous client's failure is not this one's: left set, it would be shown over this one's load
+            // and keep its "Loading…" from showing.
+            loadError = null
             failedSlot = null
             failure = null
             problem = null
+            confirming = null
         }
         webAssetsScope.launch {
             try {
@@ -76,18 +84,28 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
         }
     }
 
-    fun run(slot: String, action: suspend () -> Unit) {
-        busy = slot
+    fun run(slot: String, action: String, change: suspend () -> WebAssetSlot?) {
+        // The client the change is for. By the time it answers the page may be showing another's slots, and
+        // neither its result nor its refusal belongs beside those.
+        val forClient = props.clientId
+        busy = webAssetBusyKey(slot, action)
         failedSlot = null
         failure = null
         problem = null
         webAssetsScope.launch {
             try {
-                action()
+                val changed = change()
+                if (lastClient.current == forClient) {
+                    // Drawn from the answer, before the re-read the bump below starts: the slot is as it now is
+                    // the moment its controls come back.
+                    changed?.let { slots = withWebAssetSlot(slots, it) }
+                }
                 props.onChanged()
             } catch (e: Throwable) {
-                failedSlot = slot
-                failure = userFacingError(e)
+                if (lastClient.current == forClient) {
+                    failedSlot = slot
+                    failure = userFacingError(e)
+                }
             } finally {
                 busy = null
             }
@@ -152,7 +170,7 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
                         className = ClassName("web-asset-actions")
                         WebAssetUpload {
                             this.slot = slot
-                            this.busy = busy == slot.slot
+                            this.busy = busy == webAssetBusyKey(slot.slot, WACT.upload)
                             this.disabled = busy != null
                             onPicked = { file, size ->
                                 val tooLarge = webAssetFileProblem(slot, size)
@@ -161,15 +179,33 @@ val WebAssetsSection = FC<WebAssetsSectionProps> { props ->
                                     failure = null
                                     problem = tooLarge
                                 } else {
-                                    run(slot.slot) { ClientsApi.uploadWebAsset(props.clientId, slot.slot, file) }
+                                    run(slot.slot, WACT.upload) { ClientsApi.uploadWebAsset(props.clientId, slot.slot, file) }
                                 }
                             }
                         }
                         if (slot.file != null) {
-                            Button {
+                            // Gone for the client's people as it is confirmed, so it is asked about, and the
+                            // question names where it acts (issue #1049) -- as every delete's does.
+                            Popconfirm {
+                                title = webAssetRemoveQuestion(slot, props.clientId)
+                                description = webAssetRemoveConsequence(slot)
+                                okText = "Remove"
+                                cancelText = "Cancel"
+                                placement = "bottomLeft"
+                                open = confirming == slot.slot
+                                onOpenChange = { open -> confirming = if (open) slot.slot else null }
+                                onConfirm = {
+                                    confirming = null
+                                    run(slot.slot, WACT.remove) { ClientsApi.removeWebAsset(props.clientId, slot.slot) }
+                                }
+                                okButtonProps = js("({ danger: true })")
                                 disabled = busy != null
-                                onClick = { run(slot.slot) { ClientsApi.removeWebAsset(props.clientId, slot.slot) } }
-                                +"Remove"
+                                Button {
+                                    danger = true
+                                    loading = busy == webAssetBusyKey(slot.slot, WACT.remove)
+                                    disabled = busy != null && busy != webAssetBusyKey(slot.slot, WACT.remove)
+                                    +"Remove"
+                                }
                             }
                         }
                     }

@@ -66,9 +66,10 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         inputFields = { overseenClientField(WAS.client) },
         needsClientConfig = true,
     ) { c, request ->
-        val client = overseenClient(c, request[WAS.client].toOptStr())
+        val assets = ClientWebAssetService.get(c)
+        val client = assets.knownClient(c, overseenClient(c, request[WAS.client].toOptStr()))
         // The store's own answer, not this node's memo: the page that edits the slots shows what is there.
-        val held = ClientWebAssetService.get(c).slots(c, client, fresh = true)
+        val held = assets.slots(c, client, fresh = true)
         ClientWebAssetService.slotDefs.map { slotItem(it, held[it.slot]) }
     }
 
@@ -88,6 +89,7 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         },
     ) { c, request ->
         val client = overseenClient(c, request[WAS.client].toOptStr())
+        // A `file` part sent as a plain field is a value, so it passes for "present": it is here that it is no file.
         val content = request[WAS.file] as? ContentData ?: throw KdrException.mkInput("No file was sent.")
         val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
         slotItem(def, ClientWebAssetService.get(c).upload(c, client, def.slot, content))
@@ -116,8 +118,9 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         UADEP.clientWebDownload,
         "The image in one slot of a client's web assets (issue #1130), as a file: what an administrator looking at " +
             "another client's page previews, since the static address serves only the caller's own client's. A 404 " +
-            "when the slot is empty. Sent as a download, so opening its address shows no page. An address that " +
-            "carries the hash of the image returned may be kept by the caller's own browser; any other is never kept.",
+            "when the slot is empty, or the node knows no such client. Sent as a download, so opening its address " +
+            "shows no page. An address that carries the hash of the image returned may be kept by the caller's own " +
+            "browser, for the session that was allowed it; any other is never kept.",
         needsClientConfig = true,
         inputFields = {
             overseenClientField(WAS.client)
@@ -125,15 +128,18 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
             field(WAS.hash, "The hash of the image expected, from the listing; with it the address names the image and the answer may be kept.")
         },
     ) { c, request ->
-        val client = overseenClient(c, request[WAS.client].toOptStr())
+        val assets = ClientWebAssetService.get(c)
+        val client = assets.knownClient(c, overseenClient(c, request[WAS.client].toOptStr()))
         val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
-        val file = ClientWebAssetService.get(c).file(c, client, def.slot)
+        val file = assets.file(c, client, def.slot)
             ?: throw KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
         c.request?.webRequest?.let { web ->
             // The static address's rule, with one difference: this one is behind a sign-in, so even an address
-            // that names exactly these bytes is the caller's own browser's to keep and no shared cache's.
+            // that names exactly these bytes is the caller's own browser's to keep and no shared cache's -- and
+            // only for the session that was allowed it, since who may have the image is what varies here.
             val named = request[WAS.hash].toOptStr() == file.meta.hash
-            web.addResponseHeader(cacheControlHeader, if (named) privateImmutable else ContentResources.noStore)
+            web.addResponseHeader(ContentResources.cacheControlHeader, ContentResources.privateCacheHeaderFor(named))
+            web.addResponseHeader(ContentResources.varyHeader, ContentResources.varyByCookie)
             ClientWebAssetService.guardHeaders(file.meta.mimeType).forEach { (header, value) -> web.addResponseHeader(header, value) }
         }
         file.toContentData(inLine = false)
@@ -161,8 +167,3 @@ fun slotItem(def: WebSlotDef, meta: FileMeta?): Map<String, Any?> = buildMap {
         meta.extra[WAS.uploadedByName].toOptStr()?.let { put(WAS.uploadedByName, it) }
     }
 }
-
-private const val cacheControlHeader = "Cache-Control"
-
-/** [ContentResources.cacheControl] for an answer only its caller may keep. */
-private const val privateImmutable = "private, max-age=31536000, immutable"

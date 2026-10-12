@@ -2,6 +2,8 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.byteSizeText
+import com.dynamicruntime.common.util.joinAsPhrase
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -13,7 +15,8 @@ import com.dynamicruntime.common.webasset.WAS
  * the client's mark and tab icon in place of the deployment's; the **Clients page** lists every slot with what
  * it holds and uploads into or empties one (`WebAssetsSection`).
  *
- * Everything here but [applyClientFavicon] is pure, and covered under `jsNodeTest`.
+ * Everything here but [applyClientFavicon] is pure, and covered under `jsNodeTest`. A size is worded by the
+ * kernel's `byteSizeText`, which the backend's own refusals use.
  */
 
 /**
@@ -86,29 +89,9 @@ fun parseWebAssetSlots(items: List<Map<String, Any?>>): List<WebAssetSlot> = ite
     )
 }
 
-private const val bytesPerKb = 1024L
-private const val bytesPerMb = bytesPerKb * bytesPerKb
-
-/** A size as a person reads one: `640 bytes`, `12 KB`, `1 MB`, `1.5 MB` -- rounded up, so a file never reads as smaller than it is. */
-fun byteSizeText(bytes: Long): String = when {
-    bytes < bytesPerKb -> "$bytes bytes"
-    bytes < bytesPerMb -> "${(bytes + bytesPerKb - 1) / bytesPerKb} KB"
-    else -> {
-        val tenths = (bytes * 10 + bytesPerMb - 1) / bytesPerMb
-        if (tenths % 10 == 0L) "${tenths / 10} MB" else "${tenths / 10}.${tenths % 10} MB"
-    }
-}
-
-/** A list in words: `PNG`, `PNG or SVG`, `PNG, SVG or ICO`. */
-private fun orList(items: List<String>): String = when (items.size) {
-    0 -> ""
-    1 -> items[0]
-    else -> items.dropLast(1).joinToString(", ") + " or " + items.last()
-}
-
 /** What a slot takes, for the hint under it: `PNG, SVG, ICO, JPEG or WebP, up to 256 KB.` */
 fun webAssetTakesText(slot: WebAssetSlot): String {
-    val kinds = orList(slot.kinds).ifEmpty { "An image" }
+    val kinds = joinAsPhrase(slot.kinds, last = "or").ifEmpty { "An image" }
     return if (slot.maxSize > 0) "$kinds, up to ${byteSizeText(slot.maxSize)}." else "$kinds."
 }
 
@@ -140,6 +123,32 @@ fun webAssetFileProblem(slot: WebAssetSlot, size: Long): String? =
     } else {
         null
     }
+
+/**
+ * The question asked before a slot of [clientId]'s is emptied, naming where that acts as every delete's does
+ * (issue #1049): `Remove the favicon of acme (live data)?`. There is no draft to remove it from -- it is gone for
+ * the client's people as it is confirmed -- which [webAssetRemoveConsequence] says under it.
+ */
+fun webAssetRemoveQuestion(slot: WebAssetSlot, clientId: String): String =
+    "Remove the ${slot.label.lowercase()} of ${deleteTargetText(clientId)}?"
+
+/** What emptying a slot does, under [webAssetRemoveQuestion]. */
+fun webAssetRemoveConsequence(slot: WebAssetSlot): String =
+    "Its people see the deployment's ${slot.label.lowercase()} again, at once."
+
+/** The two things done to a slot, as [webAssetBusyKey] names the one under way. */
+@Suppress("ConstPropertyName")
+object WACT {
+    const val upload = "upload"
+    const val remove = "remove"
+}
+
+/** What is under way on a page of slots: which slot, and which of [WACT]'s actions -- so the control that was used is the one that shows it. */
+fun webAssetBusyKey(slot: String, action: String): String = "$slot/$action"
+
+/** [slots] with [changed] in the place of the slot it is, as an upload or a removal answered it. */
+fun withWebAssetSlot(slots: List<WebAssetSlot>?, changed: WebAssetSlot): List<WebAssetSlot>? =
+    slots?.map { if (it.slot == changed.slot) changed else it }
 
 /**
  * The inputs of the address a slot's image is previewed from on the Clients page: the **named** download, since

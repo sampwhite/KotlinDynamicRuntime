@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.webasset
 
+import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.context.KdrCxt
@@ -18,6 +19,7 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.byteSizeText
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
@@ -63,11 +65,12 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
     /** The clock the memo is aged by. A test's to replace; never the instance clock, which a test may travel. */
     var nanoTime: () -> Long = System::nanoTime
 
-    /** Registers this with the dispatcher as a content server (idempotent). */
+    /**
+     * Registers this with the dispatcher as a content server (idempotent). The dispatcher is configured in its
+     * own `onCreate`, which the whole tier completes first, so it is found ready by the lifecycle, not by asking.
+     */
     override fun checkInit(cxt: KdrCxt) {
-        val requestService = RequestService.get(cxt)
-        requestService.checkInit(cxt)
-        requestService.addContentServer(this)
+        RequestService.get(cxt).addContentServer(this)
     }
 
     /**
@@ -96,14 +99,32 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
      * failure is logged and the client shown the deployment's, for [memoMs], so a store that is down is not
      * asked again by every page load.
      */
-    fun versionedNames(cxt: KdrCxt, client: String): Map<String, String> =
-        try {
+    fun versionedNames(cxt: KdrCxt, client: String): Map<String, String> {
+        val before = writes.get()
+        return try {
             slots(cxt, client).mapValues { (slot, meta) -> WAS.versionedName(slot, meta.hash) }
         } catch (e: KdrException) {
             LogWebAsset.warn(cxt) { "Could not read the web assets of client '$client'; serving the deployment's. ${e.message}" }
-            memo[ownerOf(client)] = Memo(nanoTime(), emptyMap())
+            // Held to the rule a read that succeeded is ([slots]): an upload that landed on this node while the
+            // store was failing has already dropped the memo, and "nothing set" must not be written over that.
+            memo.compute(ownerOf(client)) { _, held -> if (writes.get() == before) Memo(nanoTime(), emptyMap()) else held }
             emptyMap()
         }
+    }
+
+    /**
+     * [client], having checked that this node **knows** it; a 404 otherwise. What every call that *names* a
+     * client goes through -- an administrator who sees every client may name any string, and a name nobody
+     * declared must be told so by the listing and the download as it is by an upload, rather than be listed as a
+     * client that has merely set nothing. The shell and the static address never name one: they ask for the
+     * caller's own.
+     */
+    fun knownClient(cxt: KdrCxt, client: String): String {
+        if (ClientService.get(cxt).known(client) == null) {
+            throw KdrException("This node knows no client '$client'.", code = EXC.notFound)
+        }
+        return client
+    }
 
     /** The image in [slot] of [client]'s web assets, content and metadata, or null when the slot holds none. */
     fun file(cxt: KdrCxt, client: String, slot: String): StoredFile? =
@@ -126,7 +147,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         if (bytes.isEmpty()) throw KdrException.mkInput("The file sent as the $what is empty.")
         if (bytes.size > def.maxSize) {
             throw KdrException.mkInput(
-                "A $what may be at most ${def.maxSize / bytesPerKb} KB; this file is ${(bytes.size + bytesPerKb - 1) / bytesPerKb} KB.",
+                "A $what may be at most ${byteSizeText(def.maxSize.toLong())}; this file is ${byteSizeText(bytes.size.toLong())}.",
             )
         }
         val kind = WebAssetCheck.check(what, content.mimeType, bytes)
@@ -153,8 +174,12 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         return removed
     }
 
-    /** Drops what this node held of [owner]'s slots, so its next read is the store's. */
-    private fun forget(owner: String) {
+    /**
+     * Drops what this node held of [owner]'s slots, so its next read is the store's -- and counts as a write, so a
+     * read already under way does not put back what it saw. Every upload and removal ends here.
+     */
+    @KdrPrivate
+    fun forget(owner: String) {
         memo.compute(owner) { _, _ ->
             writes.incrementAndGet()
             null
@@ -164,7 +189,8 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
     /**
      * The client whose web assets [client]'s may be **changed** as: [client] itself. A sandbox is refused, since
      * the images it shows are its parent's and a change to them is live for the parent's people; and so is a
-     * client this node does not know, which would otherwise be given files under whatever name was sent.
+     * client this node does not know ([knownClient]), which would otherwise be given files under whatever name
+     * was sent.
      */
     private fun editableOwner(cxt: KdrCxt, client: String): String {
         sandboxParentOf(client)?.let { parent ->
@@ -173,10 +199,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
                     "a sandbox previews: a change takes effect for '$parent' at once, so it is made on that client's own page.",
             )
         }
-        if (ClientService.get(cxt).known(client) == null) {
-            throw KdrException("This node knows no client '$client'.", code = EXC.notFound)
-        }
-        return client
+        return knownClient(cxt, client)
     }
 
     /**
@@ -187,8 +210,9 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
      * follows ([ContentResources.buildId]): one that names exactly the bytes returned is kept for good, and any
      * other -- an image replaced since the page was built, an address somebody typed -- gets the current image
      * under `no-store`, so a shared cache never holds one client's image at an address that does not name it. An
-     * empty slot is a `no-store` 404. An SVG goes out with a policy that lets it run nothing, and every image
-     * with `nosniff`, for a browser sent straight to the address rather than drawing it in a page.
+     * empty slot is a `no-store` 404. An SVG goes out with a policy that lets it run nothing, and every answer
+     * -- the 404 too, whose words repeat the slot the address named -- with `nosniff`, for a browser sent straight
+     * to the address rather than drawing it in a page.
      */
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
         if (handler.focus != ContextFocus.static) return false
@@ -199,11 +223,14 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         val suppliedHash = segments[3].substringAfter(WAS.nameSep, "")
         val file = if (slotDefs.none { it.slot == slot }) null else file(cxt, cxt.client, slot)
         if (file == null) {
-            handler.setResponseHeader(cacheControlHeader, ContentResources.noStore)
+            handler.setResponseHeader(ContentResources.cacheControlHeader, ContentResources.noStore)
+            handler.setResponseHeader(noSniffHeader, noSniff)
             handler.sendStringResponse("No web asset '$slot'.", EXC.notFound, "text/plain")
             return true
         }
-        handler.setResponseHeader(cacheControlHeader, ContentResources.cacheHeaderFor(suppliedHash == file.meta.hash))
+        handler.setResponseHeader(
+            ContentResources.cacheControlHeader, ContentResources.cacheHeaderFor(suppliedHash == file.meta.hash),
+        )
         guardHeaders(file.meta.mimeType).forEach { (header, value) -> handler.setResponseHeader(header, value) }
         handler.sendBytesResponse(file.bytes, EXC.ok, file.meta.mimeType)
         return true
@@ -219,10 +246,10 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         /** How long a node goes on what it last read of a client's slots: how soon an upload shows on another node. */
         const val memoMs = 30_000L
 
-        private const val nanosPerMs = 1_000_000L
+        /** Nanoseconds in a millisecond: [memoMs] in the unit [nanoTime] counts. */
+        const val nanosPerMs = 1_000_000L
         private const val bytesPerKb = 1024
         private const val pathSegments = 4
-        private const val cacheControlHeader = "Cache-Control"
 
         /** Tells a browser to take the declared type as given, and never to guess a page out of an image. */
         const val noSniffHeader = "X-Content-Type-Options"

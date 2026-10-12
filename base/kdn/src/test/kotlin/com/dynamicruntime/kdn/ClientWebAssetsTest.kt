@@ -150,8 +150,11 @@ class ClientWebAssetsTest : StringSpec({
         }
         // An empty slot, and a slot there is none of, are 404s nothing may keep.
         for (absent in listOf(WAS.brandMark, "banner:abc")) {
-            static(member, absent).rptStatusCode shouldBe EXC.notFound
-            static(member, absent).header("Cache-Control") shouldBe ContentResources.noStore
+            val missing = static(member, absent)
+            missing.rptStatusCode shouldBe EXC.notFound
+            missing.header(ContentResources.cacheControlHeader) shouldBe ContentResources.noStore
+            // Its words repeat what the address named, so it too is never to be read as anything but text.
+            missing.header(ClientWebAssetService.noSniffHeader) shouldBe ClientWebAssetService.noSniff
         }
     }
 
@@ -186,7 +189,14 @@ class ClientWebAssetsTest : StringSpec({
         uploaded(full, WAS.favicon, image(svg, "image/svg+xml"), client = ours)
         // Uploaded by somebody of another client, and still our client's file.
         listed(ourAdmin).getValue(WAS.favicon)[WAS.file].toJsonMapOrEmpty()[FMETA.client] shouldBe ours
-        refused(full, WAS.favicon, image(png, "image/png"), EXC.notFound, client = "nosuchclient1130") shouldContain "no client"
+        // A client nobody declared is one answer to every call that names it -- not an empty listing for one,
+        // a missing image for another and a refusal only for an upload.
+        val nobody = "nosuchclient1130"
+        refused(full, WAS.favicon, image(png, "image/png"), EXC.notFound, client = nobody) shouldContain "no client"
+        full.expectError(EXC.notFound, UADEP.clientWeb, args = mapOf(WAS.client to nobody))[EP.errorMessage] shouldBe "This node knows no client '$nobody'."
+        full.expectError(EXC.notFound, UADEP.clientWebRemove, mapOf(WAS.client to nobody, WAS.slot to WAS.favicon))
+        full.expectError(EXC.notFound, UADEP.clientWebDownload, args = mapOf(WAS.client to nobody, WAS.slot to WAS.favicon))[EP.errorMessage] shouldBe
+            "This node knows no client '$nobody'."
         // Somebody who administers nothing reaches none of it.
         val member = TestUser.create(cxt, "member@$ours.test", userClient = ours)
         member.expectError(EXC.notAuthorized, UADEP.clientWeb)
@@ -233,10 +243,13 @@ class ClientWebAssetsTest : StringSpec({
         val big = png + ByteArray(300 * 1024)
         refused(admin, WAS.favicon, image(big, "image/png")) shouldContain "at most 256 KB"
         uploaded(admin, WAS.brandMark, image(big, "image/png"))
-        refused(admin, WAS.brandMark, image(png + ByteArray(1024 * 1024), "image/png")) shouldContain "at most 1024 KB"
-        // A slot there is none of, and an upload with no file.
+        refused(admin, WAS.brandMark, image(png + ByteArray(1024 * 1024), "image/png")) shouldContain "at most 1 MB; this file is 1.1 MB"
+        // A slot there is none of; an upload with no file; and one whose `file` is a field's text, not a file.
         refused(admin, "banner", image(png, "image/png"))
         (admin.upload(UADEP.clientWebUpload, mapOf(WAS.slot to WAS.favicon))[EP.status] as Number).toInt() shouldBe EXC.badInput
+        val textAsFile = admin.upload(UADEP.clientWebUpload, mapOf(WAS.slot to WAS.favicon, WAS.file to "not a file"))
+        (textAsFile[EP.status] as Number).toInt() shouldBe EXC.badInput
+        textAsFile[EP.errorMessage] shouldBe "No file was sent."
 
         listed(admin).getValue(WAS.favicon).containsKey(WAS.file) shouldBe false
         shellAssets(admin).keys.toList() shouldContainExactly listOf(WAS.brandMark)
@@ -264,8 +277,10 @@ class ClientWebAssetsTest : StringSpec({
         // With the image's hash the address names the image, so the caller's own browser may keep it -- no shared
         // cache, since it is behind a sign-in -- and a hash that is not the image's changes nothing but that.
         fun downloadAs(hash: String) = full.client.sendGetRequest(UADEP.clientWebDownload, mapOf(WAS.client to client, WAS.slot to WAS.favicon, WAS.hash to hash))
-        downloadAs(svg.sha256Hex()).header("Cache-Control") shouldBe "private, max-age=31536000, immutable"
+        downloadAs(svg.sha256Hex()).header("Cache-Control") shouldBe ContentResources.privateCacheControl
         downloadAs("0".repeat(64)).header("Cache-Control") shouldBe ContentResources.noStore
+        // Kept for the session that was allowed it: who may have the image is the one thing that varies here.
+        downloadAs(svg.sha256Hex()).header(ContentResources.varyHeader) shouldBe ContentResources.varyByCookie
         downloadAs("0".repeat(64)).rptResponseBytes!!.toList() shouldBe svg.toList()
         download.header(ContentData.contentDispositionKey).orEmpty() shouldContain "attachment"
         download.header(ContentData.contentDispositionKey).orEmpty() shouldContain "mark.svg"

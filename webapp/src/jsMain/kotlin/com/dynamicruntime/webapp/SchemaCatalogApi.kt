@@ -141,8 +141,7 @@ object SchemaCatalogApi {
      * would corrupt it, and holding a file in memory to re-offer it would throw away the `Content-Disposition`
      * the server already sent. Letting the browser navigate to the URL is what makes that header do its job.
      */
-    fun downloadUrl(endpoint: EndpointInfo, body: Map<String, Any?>): String =
-        apiRoot + endpoint.path + queryString(body)
+    fun downloadUrl(endpoint: EndpointInfo, body: Map<String, Any?>): String = Http.apiUrl(endpoint.path, body)
 
     private suspend fun getJson(url: String): Map<String, Any?> {
         val init: dynamic = js("({})")

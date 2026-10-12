@@ -1,6 +1,9 @@
 package com.dynamicruntime.common.webasset
 
+import com.dynamicruntime.common.exception.ACT
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.exception.SRC
 import org.xml.sax.Attributes
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
@@ -10,6 +13,7 @@ import java.io.IOException
 import java.io.StringReader
 import javax.xml.XMLConstants
 import javax.xml.parsers.ParserConfigurationException
+import javax.xml.parsers.SAXParser
 import javax.xml.parsers.SAXParserFactory
 
 /**
@@ -109,21 +113,14 @@ object WebAssetCheck {
      * here as not well-formed.
      */
     fun svgProblem(bytes: ByteArray): String? {
+        val parser = safeParser()
         val handler = SvgScan()
         try {
-            val factory = SAXParserFactory.newInstance()
-            factory.isNamespaceAware = true
-            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-            factory.setFeature(externalGeneralEntities, false)
-            factory.setFeature(externalParameterEntities, false)
-            factory.setFeature(loadExternalDtd, false)
-            factory.newSAXParser().parse(ByteArrayInputStream(bytes), handler)
+            parser.parse(ByteArrayInputStream(bytes), handler)
         } catch (e: SAXException) {
             return "it is not well-formed XML (${e.message})"
         } catch (e: IOException) {
             return "it could not be read as XML (${e.message})"
-        } catch (e: ParserConfigurationException) {
-            throw KdrException("This JVM's XML parser cannot be set up to read an SVG safely.", e)
         }
         return when {
             handler.root == null -> "it holds no element"
@@ -131,6 +128,32 @@ object WebAssetCheck {
             else -> handler.script
         }
     }
+
+    /**
+     * A parser told to fetch nothing and to bound what it expands. **Made apart from the parse**, so that a
+     * parser which cannot be told so -- another implementation on the classpath, one that does not know a
+     * feature named here -- is this server's fault and is reported as one: an error, never a refusal telling an
+     * uploader their file is malformed. And never a parse without the protections: no SVG is read by a parser
+     * that would not take them.
+     */
+    private fun safeParser(): SAXParser =
+        try {
+            val factory = SAXParserFactory.newInstance()
+            factory.isNamespaceAware = true
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            factory.setFeature(externalGeneralEntities, false)
+            factory.setFeature(externalParameterEntities, false)
+            factory.setFeature(loadExternalDtd, false)
+            factory.newSAXParser()
+        } catch (e: SAXException) {
+            // A feature this parser does not recognize or will not set is a SAXException too.
+            throw parserFault(e)
+        } catch (e: ParserConfigurationException) {
+            throw parserFault(e)
+        }
+
+    private fun parserFault(e: Exception): KdrException =
+        KdrException("This JVM's XML parser cannot be set up to read an SVG safely: ${e.message}", e, EXC.internalError, SRC.config, ACT.code)
 
     /** Reads an SVG's elements and attributes for its root and for the first script it carries. */
     private class SvgScan : DefaultHandler() {

@@ -84,7 +84,10 @@ catalog for the same reason:
   not be square.
 - **Known limits.** An anonymous visitor is in the default client, so a client's branding reaches its
   *signed-in* people until a client can be resolved from the domain (the limit copy overlays have). And the
-  first paint is the deployment's: the shell's `<head>` is written before anybody is known.
+  first paint is the deployment's: the shell's `<head>` is written before anybody is known. **The swap is a
+  Chromium and Firefox behaviour**: Safari reads a page's icon links once, at load, and draws no SVG favicon at
+  all, so there a client's tab icon appears on the next full load and only when it is a raster image. The
+  `apple-touch-icon` (an iOS home-screen icon) is left as the deployment's: there is no slot for one.
 
 ## UI-config endpoints: how a widget-group learns what to build (issue #70)
 
@@ -498,13 +501,19 @@ favicon and the brand mark -- from `GET /clientAdmin/client/web` (`ClientsApi.we
 `parseWebAssetSlots`; wire names `WAS`, the file's `FMETA`, both in the kernel). The listing is **metadata only**:
 per slot a preview, what it holds (`webAssetHoldsText`: type, size, the name it was uploaded under), who uploaded
 it and when (`webAssetUploadedText`), what it takes (`webAssetTakesText`, from the listing's `kinds` and
-`maxSize` -- **do not hardcode either here**), and **Upload…** / **Replace…** and **Remove**. Picking a file *is*
+`maxSize` -- **do not hardcode either here**; a size is worded by the kernel's `byteSizeText`, which the backend's
+refusals use too), and **Upload…** / **Replace…** and **Remove**. Picking a file *is*
 the upload: `POST /clientAdmin/client/web/upload` as `multipart/form-data` (`Http.uploadApi`, the one multipart
 call outside the endpoint catalog; both build their body with `formDataOf`). A file over the slot's size is said
 before it is sent (`webAssetFileProblem`); whether it is the image it claims to be is the backend's to say, and
 its refusal shows beside the slot in its words. **There is no draft and no publish** -- a web asset is not stored
-configuration, and the section says so -- so a change is live for the whole client at once, and each success
-bumps the refresh generation, which is what makes the shell redraw its mark and tab icon.
+configuration, and the section says so -- so a change is live for the whole client at once. That is why
+**Remove** is a `danger` button behind a confirmation that names where it acts (`webAssetRemoveQuestion`:
+"Remove the favicon of acme (live data)?", issue #1049's rule), where "Remove the sandbox" beside it is not: this
+one has no draft to come back from. Whichever control was used is the one that shows the work (`webAssetBusyKey`),
+and the slot is redrawn from the change's own answer (`withWebAssetSlot`) before the re-read arrives. Each success
+bumps the refresh generation, which is what makes the shell redraw its mark and tab icon. A change that answers
+after the page has moved to another client is dropped, result and refusal alike.
 
 The **preview is not the static address**: that serves the caller's own client's, and the client on this page
 need not be the caller's. It is the named download, `GET /clientAdmin/client/web/download {client, slot, hash}`

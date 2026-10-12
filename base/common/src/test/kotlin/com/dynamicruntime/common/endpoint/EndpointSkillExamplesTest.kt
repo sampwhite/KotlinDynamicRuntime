@@ -197,7 +197,7 @@ class EndpointSkillExamplesTest : StringSpec({
     // declares it, then the calls in the order the skill shows them, over the store a unit test runs on.
     "a file is kept in the file store, in a bucket the component declared" {
         val collector = SchemaCollector()
-        collector.addFileBucket(FileBucketDef("web-assets", "A client's own images."))
+        collector.addFileBucket(FileBucketDef("client-files", "Files a client's people upload."))
         val config = KdrInstanceConfig("endpointSkillFiles", ENV.unit, ENV.liveSource)
         config.put(SchemaCollector.key, collector)
         val cxt = KdrCxt("endpointSkillFiles", config)
@@ -205,9 +205,9 @@ class EndpointSkillExamplesTest : StringSpec({
         val file = ContentData("PNG", "image/png", saveAsFilename = "logo.png")
 
         val files = FileStoreService.get(cxt)
-        val meta = files.put(cxt, "web-assets", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
+        val meta = files.put(cxt, "client-files", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
 
-        val download = files.get(cxt, "web-assets", "clients/acme/logo")?.toContentData()
+        val download = files.get(cxt, "client-files", "clients/acme/logo")?.toContentData()
             ?: throw KdrException("No such file.", code = EXC.notFound)
 
         // "answers its FileMeta -- type, size, SHA-256, the uploaded name, who and when, your extra".
@@ -217,13 +217,13 @@ class EndpointSkillExamplesTest : StringSpec({
         meta.extra shouldBe mapOf("purpose" to "brand")
         download.mimeType shouldBe "image/png"
         // "answer the metadata without fetching the file".
-        files.meta(cxt, "web-assets", "clients/acme/logo")?.hash shouldBe meta.hash
-        files.list(cxt, "web-assets", "clients/acme/", limit = 100).map { it.key } shouldBe listOf("clients/acme/logo")
+        files.meta(cxt, "client-files", "clients/acme/logo")?.hash shouldBe meta.hash
+        files.list(cxt, "client-files", "clients/acme/", limit = 100).map { it.key } shouldBe listOf("clients/acme/logo")
         // "A bucket nobody declared is refused."
         shouldThrow<KdrException> { files.get(cxt, "undeclared-files", "x") }
         // "delete(...) says whether there was one."
-        files.delete(cxt, "web-assets", "clients/acme/logo") shouldBe true
-        files.delete(cxt, "web-assets", "clients/acme/logo") shouldBe false
+        files.delete(cxt, "client-files", "clients/acme/logo") shouldBe true
+        files.delete(cxt, "client-files", "clients/acme/logo") shouldBe false
     }
 
     // --- the Cursor paging section ------------------------------------------------------------------------

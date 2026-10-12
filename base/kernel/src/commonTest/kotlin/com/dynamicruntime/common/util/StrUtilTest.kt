@@ -75,4 +75,24 @@ class StrUtilTest {
         assertEquals("Audit review and Site follow-up", joinAsPhrase(listOf("Audit review", "Site follow-up")))
         assertEquals("A, B or C", joinAsPhrase(listOf("A", "B", "C"), last = "or"))
     }
+
+    @Test
+    fun aByteSizeReadsRoundedUpInTheUnitAPersonWouldUse() {
+        assertEquals("0 bytes", byteSizeText(0))
+        assertEquals("1 byte", byteSizeText(1))
+        assertEquals("640 bytes", byteSizeText(640))
+        assertEquals("1023 bytes", byteSizeText(1023))
+        assertEquals("1 KB", byteSizeText(1024))
+        assertEquals("2 KB", byteSizeText(1025))
+        assertEquals("256 KB", byteSizeText(256 * 1024))
+        assertEquals("1023 KB", byteSizeText(1023 * 1024))
+        // The last kilobyte before a megabyte rounds up to the megabyte, never to "1024 KB".
+        assertEquals("1 MB", byteSizeText(1023 * 1024 + 1))
+        assertEquals("1 MB", byteSizeText(1024 * 1024 - 1))
+        assertEquals("1 MB", byteSizeText(1024 * 1024))
+        assertEquals("1.1 MB", byteSizeText(1024 * 1024 + 1))
+        assertEquals("1.5 MB", byteSizeText(1536 * 1024))
+        assertEquals("2 MB", byteSizeText(2 * 1024 * 1024))
+        assertEquals("32 MB", byteSizeText(32L * 1024 * 1024))
+    }
 }
