@@ -1,6 +1,8 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.KdrCxt
+import io.kotest.matchers.ints.shouldBeGreaterThan
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
@@ -132,6 +134,53 @@ class GedraConfigEndpointTest : StringSpec({
         val second = u.getItem(CFEP.bundle, mapOf(CFEP.name to name))
         second[CFEP.slots] shouldBe first[CFEP.slots]
         second[CFEP.slots] shouldBe slots(name, "Ready")
+    }
+
+    // Issue #1156: a write that asks for a reload is live at once; one that does not waits for a reload asked for, as a
+    // production change should. That the reload is announced to the other nodes is ConfigWriteReloadSyncTest's.
+    "a write asking for a reload is live at once; without it, it waits" {
+        val u = admin()
+        val client = u.selfClient()!!
+        val name = "reloaded"
+        fun live() = ready(name) in SchemaService.get(cxt).cfactsFor(client).names
+
+        val quiet = writeBundle(u, name, "Ready")
+        quiet.containsKey(CFEP.reloadField) shouldBe false
+        live() shouldBe false
+
+        val loud = u.postData(
+            CFEP.bundleWrite,
+            mapOf(CFEP.name to name, CFEP.namespaceField to namespace, CFEP.slots to slots(name, "Ready"), CFEP.reloadField to true),
+        )
+        val reload = loud[CFEP.reloadField].toJsonMapOrEmpty()
+        reload[CFEP.client] shouldBe client
+        (reload[CFEP.loaded] as Number).toInt() shouldBeGreaterThan 0
+        live() shouldBe true
+    }
+
+    "a patch and a publish can ask for a reload too" {
+        val u = admin()
+        val name = "reloadedtoo"
+        writeBundle(u, name, "Ready")
+        val patched = u.postData(
+            CFEP.bundlePatch,
+            mapOf(
+                CFEP.name to name,
+                CFEP.edits to listOf(
+                    mapOf(
+                        CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrMerge.name,
+                        GE.data to mapOf(CCT.name to ready(name), CCT.description to "Ready, patched"),
+                    ),
+                ),
+                CFEP.reloadField to true,
+            ),
+        )
+        patched[CFEP.reloadField].toJsonMapOrEmpty()[CFEP.client] shouldBe u.selfClient()
+        val published = u.postData(CFEP.bundlePublish, mapOf(CFEP.name to name, CFEP.reloadField to true))
+        published[CFEP.published] shouldBe true
+        published[CFEP.reloadField].toJsonMapOrEmpty()[CFEP.client] shouldBe u.selfClient()
+        // Not asked, the answer carries no reload.
+        u.postData(CFEP.bundlePublish, mapOf(CFEP.name to name)).containsKey(CFEP.reloadField) shouldBe false
     }
 
     "a patch edits one slot entry and leaves the rest (issue #732)" {

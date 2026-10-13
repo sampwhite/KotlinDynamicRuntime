@@ -213,8 +213,9 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 
 | Path (`CFEP`) | Method | Purpose |
 | --- | --- | --- |
-| `/clientAdmin/config/bundle/write` | POST | write a whole bundle (authoritative; `impliedDelete` default true) |
-| `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision (`acknowledgeImpact` to go past an impact report) |
+| `/clientAdmin/config/bundle/write` | POST | write a whole bundle (authoritative; `impliedDelete` default true; `reload` to make it live) |
+| `/clientAdmin/config/bundle/patch` | POST | edit slot entries individually (`reload` to make it live) |
+| `/clientAdmin/config/bundle/publish` | POST | publish the latest editable revision (`acknowledgeImpact` to go past an impact report; `reload` to make it live) |
 | `/clientAdmin/config/bundle/impact` | GET | what publishing it would do to the client's stored data (`IMP`, issue #935) |
 | `/clientAdmin/config/reload` | POST | reload this client on this node |
 | `/clientAdmin/config/bundle` / `/bundles` | GET | fetch one / list this client's configs |
@@ -224,6 +225,12 @@ client), issue #627 — the config id is always built from `cxt.client`, so a ca
 admin): typed fields in, and the client written, published and present on return -- no bundle to build and no reload
 to remember. `ClientCreateEndpointTest.kt` is the reference. The bundle write still creates one, and is what adds
 its traits and workflows afterwards.
+
+**A write waits for a reload unless it asks for one** (issue #1156): pass `CFEP.reloadField` (`"reload": true`) on a
+write, patch or publish -- or on their `/admin/client/config/...` twins -- and the client is reloaded once the change
+is stored, exactly as the reload endpoint does it (on this node, then announced to its peers), with how it went under
+`reload` in the answer. That is the call a test or a demo wants. Left out, the change is stored but not run until a
+reload is asked for, which is the deliberate step a production change takes.
 
 Drive them with a `TestUser` (`admin.postData(CFEP.reload, emptyMap())`); `GedraConfigEndpointTest.kt` is the
 reference. **A written `kdr:clientDef` must be a valid `WrittenClientInfo`** (issue #1051): build it with
