@@ -1196,6 +1196,13 @@ never read their window as confirmation of your edit.
 
 ## Signing a browser session in to verify a change (the `becomeUser` fixture)
 
+**In the UI** (issue #1183), for a caller with test access: **Become deployment admin** (one click: `admin` plus
+`allClients`, as `TEP.deploymentAdminEmail`) and **Become a user…** (`#page=becomeUser`, the fixture's form drawn from
+its own schema) under Account in the menu, and the same as a card at the top of Home. Each identity one becomes is kept in
+`localStorage` against the app config's `dataId` and offered again in one click, greyed once the data is reset
+(`BecomeUserApi.kt`, `BecomeUserPage.kt`, covered by `BecomeUserTest`). The fetch below is still the way in from
+script.
+
 Most of the app is behind a login — a login-gated surface (anything in the `gedra` section, the forms pages)
 is not even *visible* to a signed-out caller, so `/schema/endpoints` omits it and a page fetched anonymously
 comes back empty. Verifying such a change in a browser therefore starts with a session, and the fast way in is

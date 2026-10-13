@@ -229,6 +229,12 @@ object HMENU {
     const val login = "login"
     const val register = "register"
     const val logout = "logout"
+    /**
+     * Under Account, for a caller with test access (issue #1183): become the deployment admin in one click, or any
+     * user through the `becomeUser` fixture's own form.
+     */
+    const val becomeDeploymentAdmin = "becomeDeploymentAdmin"
+    const val becomeUser = "becomeUser"
     // Debug (issue #517), offered only in an env-authed session. `debugEnable` (a top-level call) turns debug
     // on; once on, `debug` is a parent item whose children -- the debug pages and `debugOff` -- drill down
     // under it via [UIB.parentId]. `debugEnable` and `debug` are mutually exclusive by cfact.
@@ -265,6 +271,8 @@ object HMENU {
     const val reportViewParam = "view"
     const val reportViewHistory = "history"
     const val pageSimulations = "simulations"
+    /** Become any user through the `becomeUser` fixture's form (issue #1183), for a caller with test access. */
+    const val pageBecomeUser = "becomeUser"
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"
@@ -334,6 +342,14 @@ object HACT {
      * what `openPath` does.
      */
     val openPath = UiActionDef("openPath", arity = 1)
+
+    /**
+     * Become the **deployment admin** -- `admin` plus `allClients` -- in one click (issue #1183): the `becomeUser`
+     * fixture as [com.dynamicruntime.common.test.TEP.deploymentAdminEmail], created on the first click and signed
+     * in as on every later one, then home. A call rather than a route, since it changes the session as [logout] does.
+     * Offered only to a caller with test access, for whom the fixture exists.
+     */
+    val becomeDeploymentAdmin = UiActionDef("becomeDeploymentAdmin")
 }
 
 /** Markdown fragment file ids for the home widget-group (each also the group's fragment namespace). */

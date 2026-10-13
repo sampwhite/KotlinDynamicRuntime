@@ -15,6 +15,18 @@ object TEP {
     /** Create-or-find a user by email and immediately become them (a `forTestingOnly` POST). */
     const val becomeUser = "/fixture/becomeUser"
 
+    /**
+     * The **deployment admin** the one-click "Become deployment admin" signs in as (issue #1183): `admin` plus
+     * `allClients`, created on first use. Under `.test`, reserved by RFC 2606, so it can never be anybody's address.
+     */
+    const val deploymentAdminEmail = "deployment-admin@kdr.test"
+
+    /**
+     * The choices behind [becomeUser]'s `client` (issue #1183): every client this node carries -- the fixture may become a
+     * user of any of them -- where the shared client attribute offers only those the caller may name.
+     */
+    const val clientOptions = "becomeUserClients"
+
     const val email = "email"
     const val level = "level"
     const val capabilities = "capabilities"
