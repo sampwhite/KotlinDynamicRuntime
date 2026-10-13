@@ -7,7 +7,6 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
-import com.dynamicruntime.common.gedra.CLC
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
