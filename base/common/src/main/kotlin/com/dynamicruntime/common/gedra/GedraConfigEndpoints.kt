@@ -71,6 +71,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.createdAt, "When this revision was created.") { dateTime() }
         property(CFEP.updatedAt, "When this revision was last written.") { dateTime() }
         configIssuesProperty()
+        reloadResultProperty()
     }
 
     type(IMP.findingType) {
@@ -136,6 +137,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.createdAt, "When this revision was created.") { dateTime() }
         property(CFEP.updatedAt, "When this revision was last written.") { dateTime() }
         configIssuesProperty()
+        reloadResultProperty()
     }
 
     // What a caller sends to write a bundle: identity, contents, and the delete mode. The version, publish
@@ -153,6 +155,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         property(CFEP.impliedDelete, "Whether a slot the bundle omits is dropped (true, the default) or carried forward (false).") {
             type = SCT.boolean
         }
+        reloadRequestProperty()
     }
 
     // One stored config-trait entry, its envelope carried whole so the per-slot accounting is visible.
@@ -215,6 +218,7 @@ fun gedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CFEP.namespace
         inputFields = {
             field(CFEP.name, "The configuration's name.", required = true)
             acknowledgeImpactField()
+            reloadRequestField()
         },
     ) { c, request -> inConfigScope(c, mutating = true) { cfgPublishBody(it, request) } }
 
@@ -356,7 +360,7 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
     val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
     // Strict at write (issue #843): refused when a trial reload of the client with it in place finds a new problem.
-    return bundleOf(c, svc.writeConfig(c, config, impliedDelete, trial = true))
+    return bundleOf(c, svc.writeConfig(c, config, impliedDelete, trial = true)).withReloadIfAsked(c, request)
 }
 
 private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -382,7 +386,7 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
             requireCustomersKept(c, patched[CCT.customerDef], current[CCT.customerDef])
         }
     }
-    return bundleOf(c, edited)
+    return bundleOf(c, edited).withReloadIfAsked(c, request)
 }
 
 /**
@@ -587,6 +591,7 @@ private fun cfgPublishBody(c: KdrCxt, request: Map<String, Any?>): Map<String, A
         throw KdrException("No configuration '$name' for client '${c.client}'.", code = EXC.notFound)
     }
     return summaryOf(c, GedraConfigService.get(c).publish(c, configId(c, name), trial = true, impact = impactGate(request)))
+        .withReloadIfAsked(c, request)
 }
 
 private fun cfgImpactBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -629,6 +634,15 @@ private fun cfgTraitsBody(c: KdrCxt, request: Map<String, Any?>): List<Map<Strin
 
 private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
     AdminRules.requireClientAdministrator(c)
+    return reloadAndAnnounce(c)
+}
+
+/**
+ * Reloads the bound client's stored configuration on this node and announces it to its peers (issues #616, #618) --
+ * what the reload endpoint does, and what a write, patch or publish asking for [CFEP.reloadField] does once its
+ * change is stored (issue #1156). One function, so the two cannot drift. Answers the reload's result.
+ */
+private fun reloadAndAnnounce(c: KdrCxt): Map<String, Any?> {
     val result = GedraConfigReload.reloadClient(c, c.client)
     // Announce to peers that this node reloaded newer configuration (issue #618), so a node behind catches up.
     ClientSyncService.get(c).announceReload(c, result)
@@ -638,6 +652,35 @@ private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
         CFEP.evictedTypes to result.evictedTypes,
         CFEP.issues to result.issues.map { it.toWireMap() },
     )
+}
+
+/**
+ * This answer with the client reloaded, when [request] asked for it with [CFEP.reloadField] (issue #1156): the change
+ * is stored by now, so the reload runs it, and how the reload went is added under the same key. Not asked, the answer
+ * is as it was -- the change waits for a reload somebody asks for, as in production it should.
+ */
+private fun Map<String, Any?>.withReloadIfAsked(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> =
+    if (request[CFEP.reloadField] == true) this + (CFEP.reloadField to reloadAndAnnounce(c)) else this
+
+/** A config write's [CFEP.reloadField] input, on a write type declared as a whole (issue #1156). */
+private fun SchTypeBuilder.reloadRequestProperty() {
+    property(CFEP.reloadField, reloadRequestDescription) { type = SCT.boolean }
+}
+
+/** A config write's [CFEP.reloadField] input, on an endpoint's own fields (issue #1156). */
+private fun InputFieldsBuilder.reloadRequestField() {
+    field(CFEP.reloadField, reloadRequestDescription) { type = SCT.boolean }
+}
+
+private const val reloadRequestDescription =
+    "Reload the client once the change is stored, as the reload endpoint does, so it is live at once (issue #1156). " +
+        "Without it the change waits for a reload asked for -- the deliberate step a production change takes."
+
+/** How the reload a write asked for went (issue #1156), present only when it asked. */
+private fun SchTypeBuilder.reloadResultProperty() {
+    property(CFEP.reloadField, "How the reload this call asked for went; absent when it asked for none.") {
+        ref(CFEP.reloadResultType)
+    }
 }
 
 private fun cfgPublishedOnlyBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any?> {
@@ -706,6 +749,7 @@ private fun InputFieldsBuilder.configPatchInput() {
         type = SCT.array
         items { type = SCT.kObject }
     }
+    reloadRequestField()
 }
 
 /**
@@ -858,6 +902,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         property(CFEP.impliedDelete, "Whether a slot the bundle omits is dropped (true, the default) or carried forward (false).") {
             type = SCT.boolean
         }
+        reloadRequestProperty()
     }
 
     listEndpoint(
@@ -910,6 +955,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             field(CFEP.client, "The client that owns the configuration.", required = true) { clientAttribute() }
             field(CFEP.name, "The configuration's name.", required = true)
             acknowledgeImpactField()
+            reloadRequestField()
         },
     ) { c, request -> cfgPublishBody(adminConfigCxt(c, request), request) }
 

@@ -50,6 +50,12 @@ object CFEP {
     const val publishedVersion = "publishedVersion"
     const val slots = "slots"
     const val impliedDelete = "impliedDelete"
+
+    /**
+     * On a bundle write, patch or publish (issue #1156): `true` to reload the client once the change is stored, as
+     * [reload] does -- and, on the answer, how that reload went. Absent, the change waits for a reload asked for.
+     */
+    const val reloadField = "reload"
     const val edits = "edits"
     const val slot = "slot"
     const val entries = "entries"
