@@ -32,8 +32,14 @@ object CFACTS {
     /** The node is an edge: the [BOOT.edge] role. */
     const val edge = "kdr:${BOOT.edge}"
 
-    /** The node is a test instance, carrying the test-only fixtures (issue #997). */
+    /** The node is a test instance, carrying the test-only fixtures (issue #997). A fact about the node alone. */
     const val isTestInstance = "kdr:isTestInstance"
+
+    /**
+     * The caller has **test access** (issue #1149): a test instance, with env auth effective -- the caller for whom
+     * the test-only fixtures exist. What the Simulations menu item is offered on.
+     */
+    const val hasTestAccess = "kdr:hasTestAccess"
 
     const val loggedIn = "kdr:loggedIn"
     const val anonymous = "kdr:anonymous"
@@ -147,8 +153,8 @@ fun addCoreCFacts(collector: SchemaCollector) {
     collector.addCFact(
         CFactDef(
             CFACTS.isTestInstance, CFGRP.node,
-            "True on a test instance -- one carrying the test-only fixtures (issue #997). The Simulations menu item " +
-                "is offered on it, since the simulations it lists exist nowhere else.",
+            "True on a test instance -- one carrying the test-only fixtures (issue #997), whoever is asking. That " +
+                "a caller may use them is `${CFACTS.hasTestAccess}`.",
         ),
     ) { it.instanceConfig.isTestInstance }
 
@@ -242,6 +248,15 @@ fun addCoreCFacts(collector: SchemaCollector) {
             toFrontend = true,
         ),
     ) { it.isEnvAuthEffective }
+
+    // Read off the context, so the menu offer and the dispatcher's fence are one answer (issue #1149).
+    collector.addCFact(
+        CFactDef(
+            CFACTS.hasTestAccess, CFGRP.caller,
+            "True when the caller may use the test-only fixtures (issue #1149): a test instance, with env auth " +
+                "effective. The Simulations menu item is offered on it, since the simulations exist for nobody else.",
+        ),
+    ) { it.hasTestAccess }
 
     // The env-debug pair (issue #517), read off the context so the menu offer and the fence cannot drift: the
     // debug items appear exactly where `KdrCxt.isEnvDebug` is true, and the "Enable debug" item exactly where a

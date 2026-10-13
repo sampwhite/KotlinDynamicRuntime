@@ -54,8 +54,8 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 required = true,
             ) { type = SCT.boolean }
             property(
-                APP.isTestInstance,
-                "Whether this is a genuine test instance (test-only fixtures present), separate from allowDebugPages.",
+                APP.hasTestAccess,
+                "Whether this caller may use the test-only fixtures: a test instance, with env auth effective.",
                 required = true,
             ) { type = SCT.boolean }
             property(
@@ -83,7 +83,7 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
             ) { type = SCT.integer }
             property(
                 APP.dataId,
-                "On a test instance, the id of the data this node serves: it changes when the data is reset, and holds across restarts on a persistent database.",
+                "For a caller with test access, the id of the data this node serves: it changes when the data is reset, and holds across restarts on a persistent database.",
             )
         }
     }
@@ -93,18 +93,20 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
         mapOf(
             UIC.features to mapOf(
                 APP.obfuscateSensitiveErrors to RequestHandler.obfuscateSensitiveErrors(c.instanceConfig),
-                // The test-instance fence (issue #223), now also opened by a session in ENV DEBUG (issue #517):
-                // an env-authed operator may turn these on for their own session on any deployment. The flag is
-                // still audited -- a node claiming to be a test instance outside local/unit refuses to start,
-                // and ENV DEBUG requires effective env auth -- so a real deployment cannot turn it on by accident.
-                APP.showErrorDetail to (c.instanceConfig.isTestInstance || c.isEnvDebug),
+                // The test-instance fence (issue #223) -- for a caller with test access, so a caller without env
+                // auth on a test instance sees what a real deployment shows (issue #1149) -- also opened by a
+                // session in ENV DEBUG (issue #517): an env-authed operator may turn these on for their own session
+                // on any deployment. The flag is still audited -- a node claiming to be a test instance outside
+                // local/unit refuses to start, and both halves require effective env auth -- so a real deployment
+                // cannot turn it on by accident.
+                APP.showErrorDetail to (c.hasTestAccess || c.isEnvDebug),
                 // Same fence, separate flag (issue #227): a route that manufactures a failure is a different
                 // power from showing a stack, even where both happen to be permitted by the same instance.
-                APP.allowDebugPages to (c.instanceConfig.isTestInstance || c.isEnvDebug),
-                // The raw test-instance truth (issue #517), which allowDebugPages no longer implies: a debug
-                // tool that demos a forTestingOnly fixture is offered only where the fixture is registered, so
-                // an env-debug operator on a real deployment is never handed a tool that can only fail.
-                APP.isTestInstance to c.instanceConfig.isTestInstance,
+                APP.allowDebugPages to (c.hasTestAccess || c.isEnvDebug),
+                // Whether the fixtures exist for this caller (issues #517, #1149), which allowDebugPages does not
+                // imply: a tool that demos a forTestingOnly fixture, and the Simulations page, are offered only
+                // where the dispatcher would serve them, so nobody is handed a tool that can only fail.
+                APP.hasTestAccess to c.hasTestAccess,
                 // Per-request, unlike its neighbors (issue #348): the answer depends on how this particular
                 // request reached the node, not on how the deployment is configured. Read off the context
                 // rather than the header, so the dispatcher's decision and the frontend's view are one answer.
@@ -134,8 +136,8 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
     // to want. Anonymous because env auth is a property of the *channel* -- an env-authed caller need not be
     // logged in at all, so gating this on a role would refuse exactly the people it is for.
     //
-    // Safe unfenced because it only ever subtracts. The opposite direction is a `forTestingOnly` fixture
-    // (TENV.path) precisely because asserting an env auth nobody granted does not have that property.
+    // Safe unfenced because it only ever subtracts. The opposite direction does not exist (issue #1149): env auth is
+    // granted by an edge, or assumed for a direct local request -- never asserted by a caller.
     type(APP.envAuthStateType) {
         type = SCT.kObject
         property(APP.isEnvAuthed, "Whether the session is acting env-authed after the operation.",
@@ -188,11 +190,11 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
 }
 
 /**
- * The [APP.dataId] setting (issue #1099), on a test instance whose node reads one: the only kind of node that offers
- * simulations, whose recent runs are kept against it. Nothing elsewhere.
+ * The [APP.dataId] setting (issue #1099), for a caller with test access on a node that reads one: the only caller
+ * offered simulations, whose recent runs are kept against it (issue #1149). Nothing elsewhere.
  */
 private fun dataIdSetting(c: KdrCxt): Map<String, Any?> {
-    if (!c.instanceConfig.isTestInstance) return emptyMap()
+    if (!c.hasTestAccess) return emptyMap()
     val id = InstanceConfigService.getOrNull(c)?.dataId?.ifEmpty { null } ?: return emptyMap()
     return mapOf(APP.dataId to id)
 }

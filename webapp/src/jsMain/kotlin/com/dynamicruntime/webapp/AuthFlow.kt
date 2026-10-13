@@ -157,9 +157,10 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                 else -> AuthApi.sendVerifyUser(id, tk, withPassword)
             }
             token = tk
-            // Local dev only: when email is simulated (per the config), read the code back and pre-fill it.
-            // Gated on the flag so a real-email deployment never calls the (404) dev endpoint.
-            if (config?.features?.simulatedEmail == true) {
+            // Local dev only: when the config says the code can be read back -- email is simulated and this caller
+            // has test access (issue #1149) -- read it and pre-fill it. Gated on the flag so nobody else calls the
+            // dev endpoint, which does not exist for them (a 404).
+            if (config?.features?.codeReadBack == true) {
                 AuthApi.fetchDevCode(id)?.let {
                     code = it
                     devFilled = true

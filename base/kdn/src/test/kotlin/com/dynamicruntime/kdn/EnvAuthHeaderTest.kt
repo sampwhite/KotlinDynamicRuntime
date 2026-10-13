@@ -4,12 +4,8 @@ import com.dynamicruntime.common.app.APP
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.app.EnvAuthOp
-import com.dynamicruntime.common.exception.EXC
-import com.dynamicruntime.common.test.EnvAuthFixtureOp
-import com.dynamicruntime.common.test.TENV
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.TestUser
@@ -194,53 +190,15 @@ class EnvAuthHeaderTest : StringSpec({
     }
 
     /**
-     * The fixture is how a browser reaches the env-authed view at all, since it cannot attach a request
-     * header. Note `clear` is not `suppress`: it stops pretending and returns the session to the truth, which
-     * here is no env auth.
+     * Nothing a caller sends grants env auth (issue #1149). A test fixture once set a cookie asserting it, which a
+     * test instance honored; once the fixtures themselves needed env auth only a caller who already had it could
+     * have used it, so it went. Pinned so the old cookie, typed into a browser, stays inert.
      */
-    "the test fixture asserts env auth for a session no edge vouched for" {
-        val cxt = TestInstances.default("envAuthFixture")
+    "the retired fixture cookie grants no env auth on a test instance" {
+        val cxt = TestInstances.default("envAuthRetiredCookie")
         val client = TestHttpClient(cxt.instanceConfig)
-
-        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthSuppressible] shouldBe false
-
-        client.sendJsonPostRequest(
-            TENV.path,
-            mapOf(TENV.op to EnvAuthFixtureOp.assert.name, TENV.email to "envauth.fix@gyassa.com"),
-        )
-        val on = features(client.sendJsonGetRequest(APP.uiConfig))
-        on[APP.isEnvAuthed] shouldBe true
-        on[APP.envAuthSuppressible] shouldBe true
-        client.sendGetRequest(APP.uiConfig).createdCxt?.envAuthEmail shouldBe "envauth.fix@gyassa.com"
-
-        client.sendJsonPostRequest(TENV.path, mapOf(TENV.op to EnvAuthFixtureOp.clear.name))
-        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthSuppressible] shouldBe false
-    }
-
-    /**
-     * The security-relevant half, and the one a `forTestingOnly` marking does **not** provide: the endpoint
-     * gate stops the cookie being issued, and nothing stops one being typed into a browser. So a node shaped
-     * like a real one must refuse the cookie itself.
-     *
-     * The endpoint is also absent from such a node's store, which this asserts second -- both halves matter,
-     * because either alone leaves a way in.
-     */
-    "a real-shaped node refuses a forged fixture cookie, and does not serve the fixture at all" {
-        // Its own instance (issue #1075): a real-shaped node (not a test instance) that trusts the env-auth header, a
-        // setup no shared entry has.
-        val cxt = Startup.mkTestBootCxt(
-            "envAuthReal", "envAuthRealTest",
-            mapOf(ACFG.isTestInstance to false, ACFG.trustEnvAuthHeader to true),
-        )
-        cxt.instanceConfig.isTestInstance shouldBe false // guard the premise
-        val client = TestHttpClient(cxt.instanceConfig)
-        client.cookies[ENVA.assertCookie] = "attacker@gyassa.com"
-
-        features(client.sendJsonGetRequest(APP.uiConfig))[APP.envAuthSuppressible] shouldBe false
-
-        // And the fixture endpoint itself is not in the store on a node like this.
-        client.sendEditRequest(
-            TENV.path, null, mapOf(TENV.op to EnvAuthFixtureOp.clear.name), HttpMethod.POST,
-        ).rptStatusCode shouldBe EXC.notFound
+        client.cookies["kdrEnvFixture"] = "attacker@gyassa.com"
+        features(client.sendJsonGetRequest(APP.uiConfig))[APP.isEnvAuthed] shouldBe false
+        client.sendGetRequest(APP.uiConfig).createdCxt?.envAuthEmail shouldBe null
     }
 })

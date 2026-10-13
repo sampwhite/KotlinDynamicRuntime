@@ -22,7 +22,7 @@ import io.kotest.matchers.shouldBe
  */
 class SamePathVerbTest : StringSpec({
 
-    fun client() = TestHttpClient(TestInstances.default("samePathVerb").instanceConfig)
+    fun client() = TestHttpClient(TestInstances.default("samePathVerb").instanceConfig).alwaysWithTestAccess()
 
     "each verb on a shared path validates against its own input and output schema" {
         val c = client()

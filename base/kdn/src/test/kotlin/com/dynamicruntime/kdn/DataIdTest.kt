@@ -24,9 +24,9 @@ import io.kotest.matchers.string.shouldNotBeEmpty
 class DataIdTest : StringSpec({
     fun dataId(cxt: KdrCxt) = InstanceConfigService.get(cxt).dataId
 
-    fun served(cxt: KdrCxt): Any? =
-        TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(APP.uiConfig)[EP.results].toJsonMapOrEmpty()[UIC.settings]
-            .toJsonMapOrEmpty()[APP.dataId]
+    fun served(cxt: KdrCxt, testAccess: Boolean = true): Any? =
+        TestHttpClient(cxt.instanceConfig).also { if (testAccess) it.alwaysWithTestAccess() }
+            .sendJsonGetRequest(APP.uiConfig)[EP.results].toJsonMapOrEmpty()[UIC.settings].toJsonMapOrEmpty()[APP.dataId]
 
     "the data id holds across a restart over one database, and differs on another" {
         // Its own instances (issue #1075): two boots over one database -- the restart is what is under test.
@@ -66,9 +66,11 @@ class DataIdTest : StringSpec({
         service.getOrCreateConfig(cxt, "raceType", "race1099", "value") { error("not created again") }.shouldNotBeEmpty()
     }
 
-    "a test instance serves its data id in the app config; another instance does not" {
+    "a test instance serves its data id in the app config, to a caller with test access; nothing else does" {
         val cxt = TestInstances.default("dataIdServed")
         served(cxt) shouldBe dataId(cxt)
+        // Only the Simulations page reads it, and that is offered to a caller with test access alone (issue #1149).
+        served(cxt, testAccess = false) shouldBe null
         served(TestInstances.notTestInstance("dataIdWithheld")) shouldBe null
     }
 })

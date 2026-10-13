@@ -112,7 +112,7 @@ val Profile = FC<Props> {
             val tk = AuthApi.createToken()
             AuthApi.sendVerifyUser(cfg.loginId, tk, addPassword = true)
             token = tk
-            if (cfg.features.simulatedEmail) {
+            if (cfg.features.codeReadBack) {
                 AuthApi.fetchDevCode(cfg.loginId)?.let {
                     code = it
                     devFilled = true

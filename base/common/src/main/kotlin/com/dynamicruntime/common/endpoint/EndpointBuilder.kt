@@ -105,8 +105,9 @@ class KdrEndpoint(
     /**
      * A **test-only** endpoint (issue #125): removed from the compiled endpoint store -- so neither dispatchable
      * nor listed in the catalog -- unless the deployment allows test endpoints (see
-     * [com.dynamicruntime.common.startup.SchemaService]). Kept before [handler] so the handler stays last
-     * (trailing-lambda construction) and this defaults off.
+     * [com.dynamicruntime.common.startup.SchemaService]). On a test instance it exists only for a caller with
+     * test access ([existsFor], issue #1149). Kept before [handler] so the handler stays last (trailing-lambda
+     * construction) and this defaults off.
      */
     val forTestingOnly: Boolean = false,
     val handler: KdrEndpointHandler,
@@ -223,6 +224,15 @@ class KdrEndpoint(
      * endpoints. It is *not* included in the `/schema/endpoints` catalog rendering.
      */
     val collationKey: String = "$path:${method.name}"
+
+    /**
+     * Whether this endpoint exists for the caller of [cxt] (issue #1149): every endpoint does, except a
+     * [forTestingOnly] one for a caller without [KdrCxt.hasTestAccess]. To them it is as absent as on a real node,
+     * where it is never registered -- the dispatcher answers 404 and the catalog leaves it out, so a caller
+     * without env auth sees a test instance as a real one. One statement, asked by both, so the catalog cannot
+     * list an endpoint the dispatcher would not serve.
+     */
+    fun existsFor(cxt: KdrCxt): Boolean = !forTestingOnly || cxt.hasTestAccess
 
     @Suppress("ConstPropertyName")
     companion object {

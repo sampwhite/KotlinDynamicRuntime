@@ -558,6 +558,9 @@ class RequestService : ServiceInitializer {
                     cxt.schemaStore = null
                     endpoint = cxt.getGlobalSchema().endpoints[key]
                 }
+                // A test-only endpoint does not exist for a caller without test access (issue #1149): answered as
+                // the missing endpoint it is on a real node, below.
+                endpoint = endpoint?.takeIf { it.existsFor(cxt) }
                 if (endpoint != null) {
                     executeEndpoint(cxt, handler, endpoint)
                 }

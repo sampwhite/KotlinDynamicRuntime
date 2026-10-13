@@ -3,20 +3,27 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.EI
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.test.testSchema
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
+import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -91,7 +98,7 @@ class BecomeUserEndpointTest : StringSpec({
     /** An unrecognized level can only under-grant, so a typo cannot hand out privileges. */
     "an unknown level is rejected by the endpoint's declared options" {
         val cxt = TestInstances.default("becomeBadLevel")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val handler = client.sendEditRequest(
             TEP.becomeUser,
             null,
@@ -103,7 +110,7 @@ class BecomeUserEndpointTest : StringSpec({
 
     "failIfUserAlreadyExists rejects an existing user with a 400" {
         val cxt = TestInstances.default("becomeFail")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         client.sendJsonPostRequest(TEP.becomeUser, mapOf(TEP.email to "become-dave@example.com"))
         val handler = client.sendEditRequest(
             TEP.becomeUser, null,
@@ -115,6 +122,29 @@ class BecomeUserEndpointTest : StringSpec({
     "the become-user endpoint is marked forTestingOnly" {
         val cxt = TestInstances.default("becomeMarker")
         testSchema(cxt).endpoints.single { it.path == TEP.becomeUser }.forTestingOnly shouldBe true
+    }
+
+    /**
+     * Issue #1149: on a test instance the fixture exists only for a caller with env auth. Without it -- anonymous,
+     * or a session that suppressed its env auth -- the answer is a real node's 404, and the catalog does not list
+     * it either; the same call with the env-auth header succeeds.
+     */
+    "on a test instance, becoming a user takes env auth" {
+        val cxt = TestInstances.default("becomeNeedsEnvAuth")
+        val body = mapOf(TEP.email to "become-env@example.com")
+        val plain = TestHttpClient(cxt.instanceConfig)
+        plain.sendEditRequest(TEP.becomeUser, null, body, HttpMethod.POST).rptStatusCode shouldBe EXC.notFound
+        fun listed(c: TestHttpClient) = c.sendJsonGetRequest("/schema/endpoints", mapOf(SS.pathRegex to "^/fixture/"))[EP.results]
+            .toJsonMapOrEmpty()[EI.endpoints].toJsonListOfMaps().map { it[EI.path] }
+        listed(plain) shouldBe emptyList()
+
+        val envAuthed = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
+        listed(envAuthed) shouldContain TEP.becomeUser
+        // Suppressing env auth gives it up here too: the restricted view is the one a session previews.
+        envAuthed.cookies[ENVA.suppressCookie] = "1"
+        envAuthed.sendEditRequest(TEP.becomeUser, null, body, HttpMethod.POST).rptStatusCode shouldBe EXC.notFound
+        envAuthed.cookies.remove(ENVA.suppressCookie)
+        envAuthed.sendEditRequest(TEP.becomeUser, null, body, HttpMethod.POST).rptStatusCode shouldBe EXC.ok
     }
 
     "a test instance outside local/unit fails startup with an aggressive error" {

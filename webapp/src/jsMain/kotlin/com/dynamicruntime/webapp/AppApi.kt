@@ -20,9 +20,10 @@ class AppConfig(
     val idleBumpIntervalMs: Int,
     /**
      * When true, a caught render failure may show its message and component stack on screen rather than a
-     * generic panel (issue #223). The backend sets it from `isTestInstance`, so it is on where the app is
-     * being developed or tested and off on a real deployment -- the same fence `explainAccess` uses, and for
-     * the same reason: the detailed form must not be reachable by an ordinary user.
+     * generic panel (issue #223). The backend sets it from the caller's test access (a test instance, with env auth
+     * effective -- issue #1149), so it is on where the app is being developed or tested and off on a real deployment
+     * -- the same fence `explainAccess` uses, and for the same reason: the detailed form must not be reachable by an
+     * ordinary user.
      */
     val showErrorDetail: Boolean,
     /**
@@ -32,11 +33,12 @@ class AppConfig(
      */
     val allowDebugPages: Boolean,
     /**
-     * Whether this is a genuine **test instance** (issue #517) -- distinct from [allowDebugPages], which an
-     * env-debug operator now turns on too. A debug tool that demos a `forTestingOnly` fixture is offered only
-     * where this is true, so an env-debug operator on a real deployment is never handed a tool that can only fail.
+     * Whether this caller has **test access** (issue #1149): a test instance, with env auth effective, so the
+     * `forTestingOnly` fixtures exist for them. Distinct from [allowDebugPages], which an env-debug operator on a real
+     * deployment turns on too (issue #517). A debug tool that demos a fixture, and the Simulations page, are offered
+     * only where this is true, so nobody is handed a tool that can only fail.
      */
-    val isTestInstance: Boolean,
+    val hasTestAccess: Boolean,
     /**
      * Whether this session is **currently acting** env-authed (issue #360) -- reached the deployment through
      * an authenticating edge, and has not suppressed it. Anything that varies with env auth reads this.
@@ -73,9 +75,9 @@ class AppConfig(
             // not be the reason internals appear on a real deployment's screen.
             showErrorDetail = false,
             allowDebugPages = false,
-            // Not a test instance until the backend says so; a test-only debug tool must not be offered before
-            // the config that confirms the fixtures exist has loaded (issue #517).
-            isTestInstance = false,
+            // No test access until the backend says so; a test-only debug tool must not be offered before the
+            // config that confirms the fixtures exist has loaded (issue #517).
+            hasTestAccess = false,
             // Assume neither until the backend says so, for the same reason as showErrorDetail: a fetch that
             // has not happened must not be why an internal affordance appears.
             isEnvAuthed = false,
@@ -103,7 +105,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
         ?: APP.defaultIdleBumpIntervalMs,
     showErrorDetail = config.features[APP.showErrorDetail] == true,
     allowDebugPages = config.features[APP.allowDebugPages] == true,
-    isTestInstance = config.features[APP.isTestInstance] == true,
+    hasTestAccess = config.features[APP.hasTestAccess] == true,
     isEnvAuthed = config.features[APP.isEnvAuthed] == true,
     envAuthSuppressible = config.features[APP.envAuthSuppressible] == true,
     envAuthDebug = config.features[APP.envAuthDebug] == true,

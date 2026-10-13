@@ -239,7 +239,8 @@ The examples below write `7071` for readability; use the port you actually took.
 curl -s http://localhost:7071/kda/app/ui/config | jq .
 
 # Authenticate with a cookie jar. /fixture/becomeUser creates-or-finds a user and logs you in (test endpoints
-# are on here because of KDR_IN_MEMORY_ONLY):
+# are on here because of KDR_IN_MEMORY_ONLY, and answer this curl because a direct local request is assumed
+# env-authed -- the fixtures exist only for a caller with env auth, issue #1149):
 JAR=/tmp/cookies.txt
 curl -s -c "$JAR" -X POST http://localhost:7071/kda/fixture/becomeUser -H 'Content-Type: application/json' \
   -d '{"email":"alice@example.com","level":"admin"}' | jq .results
@@ -264,13 +265,17 @@ withheld endpoint grouped by section with the role that section demands:
 curl -s -b "$JAR" 'http://localhost:7071/kda/schema/endpoints?_debug=explainAccess' | jq '._meta.accessExplained'
 ```
 
-It is **test-instance only**, silently: on a real node the key is simply absent, because naming the privileged
-surface to any caller who asks would undo the hiding it exists to explain. Without it, a filtering bug shows up
-only as a count one lower than expected.
+It answers only a caller with **test access** -- a test instance *and* effective env auth (issue #1149) -- or a
+session in ENV DEBUG, silently: elsewhere the key is simply absent, because naming the privileged surface to any
+caller who asks would undo the hiding it exists to explain. Every diagnostic `_debug` tag (`explainAccess`,
+`explainScope`, `explainInput`, ...) is fenced the same way, through `KdrCxt.hasDebugDiagnostic`. Without it, a
+filtering bug shows up only as a count one lower than expected.
 
 ## Probing a running instance (`kdr-probe`)
 
-`bin/kdr-probe` drives a **running** server as a chosen caller (issue #215). Start one first, then:
+`bin/kdr-probe` drives a **running** server as a chosen caller (issue #215). Its callers sign in through `becomeUser`
+and its simulations are fixtures, so it needs **test access** (issue #1149): a test instance reached directly, where a
+local request is assumed env-authed. Start one first, then:
 
 ```bash
 kdr-probe                                             # lists the scenarios
@@ -310,7 +315,8 @@ incomplete however complete it looks.**
 ## Simulations: canned scenarios a person can set up (issue #997)
 
 A **simulation** provisions a scenario -- clients, users, data -- on a test instance in one call, the way the tests do,
-so a person doing UAT (or reviewing a page) can set it up and look. It is a `forTestingOnly` endpoint declared with
+so a person doing UAT (or reviewing a page) can set it up and look -- a person with env auth, since like every fixture
+a simulation exists only for a caller with test access (issue #1149). It is a `forTestingOnly` endpoint declared with
 `simulationEndpoint(name, description, inputFields) { cxt, request -> SimulationReport }` (`common/simulation`), at
 `/fixture/simulate/<name>`, tagged `simulation`. Its report says what it provisioned, the users to sign in as (each
 with a purpose) and where to start; the webapp's **Simulations** page and `kdr-probe <name>` both read it.
@@ -363,7 +369,8 @@ the **multi-node harness** (issue #872), not the unit suite:
 Anything gated on elapsed time — a session lapsing, a rate-limit window reopening, a device's trust running
 out — is otherwise unreachable: the shortest of those horizons is fifteen minutes and the longest is thirty
 days. `/fixture/clock` moves the **instance** clock instead, so the expiry fires now. It is `forTestingOnly`, so
-it does not exist outside a test instance; there is no way to move a real deployment's clock.
+it does not exist outside a test instance, nor for a caller there without env auth; there is no way to move a real
+deployment's clock.
 
 Five ops, POSTed as `op`: `advance` (with `deltaMs`), `set` (with `atMs`, epoch millis), `freeze`, `unfreeze`,
 `reset`. Each returns `instanceNowMs`, the clock's value afterwards.
@@ -564,6 +571,22 @@ opal.expectError(EXC.notAuthorized, ADEP.users)  // ...but not an admin one
 well as of a success: read `[EP.results]` from it, or `[EP.status]` and `[EP.errorMessage]`. `ClientWebAssetsTest`
 (`base/kdn`) is the worked example, and of reading a content server's answer as a signed-in user
 (`user.client.sendGetRequestRaw`).
+
+**A fixture needs test access** (issue #1149): on a test instance, a `forTestingOnly` endpoint exists only for a
+caller whose env auth is effective (`KdrCxt.hasTestAccess`); to anyone else it is a real node's 404, absent from the
+catalog, and the diagnostic `_debug` tags and the app config's test flags are off for them too. Unit tests
+deliberately do **not** assume env auth (`ENV.unit`; it would flip the baseline every test reasons from), so a fixture
+call carries it explicitly: `TestUser.create` sends the env-auth header on its own `becomeUser` call only, and
+otherwise
+
+```kotlin
+admin.withTestAccess { admin.getData(SIM.list) }                       // one block, as this user
+val fixtures = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess() // a client that exists for the fixtures
+```
+
+Both send `X-Kdr-Env-Email: fixtures@unit.invalid`, which a test instance trusts by default. A real-HTTP test
+(`TestHttpServer` + `KdrHttpClient`) passes that header itself, or boots with `ACFG.assumeEnvAuth` to be shaped like a
+developer's local server, as `ProbeSessionTest` does.
 
 This works in unit tests because `env == unit` allows test endpoints. Test-only endpoints (marked
 `forTestingOnly` on the builder) are dropped from the store unless a deployment allows them

@@ -189,7 +189,9 @@ roots, chosen by **purpose** — the question is who the endpoint is for, not ho
 
 * **`fixture`** — it exists so something can be **exercised**: by an automated test, or by a developer driving
 it by hand. `/fixture/becomeUser`, `/fixture/clock`, `/fixture/schema/complex`. A fixture is never shown to a
-client, so every one is gated — `forTestingOnly`, or a module that loads only in developer environments.
+client, so every one is gated — `forTestingOnly`, or a module that loads only in developer environments. A
+`forTestingOnly` one exists only on a test instance, and there only for a caller with env auth (issue #1149): a
+caller without it takes no advantage of the node being a test instance.
 
 * **`demo`** — it exists so a **person** can see the capability work, and it may be deliberately enabled for a
 client as a showcase. `/demo/file/upload`, `/demo/schema/sample`. That possibility is the whole reason the two

@@ -131,8 +131,12 @@ object AFEAT {
     const val hasPassword = "hasPassword"
     const val canSetPassword = "canSetPassword"
 
-    /** Whether email is simulated, so the frontend may read a verification code back from `/test/simulatedEmails`. */
-    const val simulatedEmail = "simulatedEmail"
+    /**
+     * Whether the frontend may read a verification code back from `/fixture/simulatedEmails`: email is simulated
+     * **and** the caller has test access (a test instance, with env auth effective -- issue #1149), for whom alone
+     * that fixture exists. Its only readers are the code pre-fills.
+     */
+    const val codeReadBack = "codeReadBack"
 }
 
 /** Auth/profile schema type names (the backend's output/input type refs; also useful to the frontend). */

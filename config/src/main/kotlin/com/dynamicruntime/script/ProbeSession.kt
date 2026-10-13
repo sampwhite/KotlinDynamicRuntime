@@ -88,7 +88,9 @@ class ProbeSession(val label: String, val baseUrl: String = defaultProbeUrl) : A
         if (!resp.isSuccess) {
             throw KdrException(
                 "Could not become '$email' at level '$level' (HTTP ${resp.statusCode}): " +
-                    "${resp.errorMessage ?: resp.rawBody.take(200)}. Is a test instance running at $baseUrl?",
+                    "${resp.errorMessage ?: resp.rawBody.take(200)}. Is a test instance running at $baseUrl, " +
+                    "reached directly so env auth is assumed? The fixtures exist only for an env-authed caller " +
+                    "(issue #1149).",
             )
         }
         userInfo = resp.results

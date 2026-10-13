@@ -187,6 +187,19 @@ class KdrCxt(
     val isEnvDebug: Boolean get() = isEnvAuthEffective && envAuthDebug
 
     /**
+     * Whether this request may use the **test surface** (issue #1149): the node is a test instance *and* env auth is
+     * effective. `isTestInstance` is a fact about the node and env auth one about the request, and a caller reaching a
+     * test instance without env auth -- anonymous or signed in -- may not take advantage of the node being one: to
+     * them the `forTestingOnly` endpoints do not exist, and the test instance's debug affordances are off, as on a
+     * real deployment. Effective rather than merely present, so a session that suppressed its env auth is refused
+     * too, which is what makes the restricted view previewable locally (the catalog's choice, #489).
+     *
+     * The one question the dispatcher, the endpoint catalog, the app config and the diagnostic tags ask, so what is
+     * advertised and what is served cannot come apart.
+     */
+    val hasTestAccess: Boolean get() = instanceConfig.isTestInstance && isEnvAuthEffective
+
+    /**
      * The request being processed, or null when this context is not handling one (startup, background
      * jobs, tests). Set when an endpoint invocation begins and inherited by sub contexts. The mutable
      * response accumulator will be a separate field added when endpoint execution is built.
@@ -382,14 +395,15 @@ class KdrCxt(
 
     /**
      * Whether the diagnostic `_debug` tag [name] is both **requested** ([hasDebug]) and **permitted** on this
-     * request: a test instance, or a session in ENV DEBUG (issue #517). The single fence every diagnostic tag
-     * that surfaces internal detail (`explainAccess`, `explainError`, `explainScope`, `explainInput`) asks, so
-     * they cannot drift -- `_debug` is an off-contract key any caller can send, so a leak-shaped tag must not
-     * answer on an ordinary production request. A plain diagnostic that only echoes the caller's own request may
-     * still use [hasDebug] directly.
+     * request: a caller with [hasTestAccess] (issue #1149), or a session in ENV DEBUG (issue #517). The single
+     * fence every diagnostic tag that surfaces internal detail (`explainAccess`, `explainError`, `explainScope`,
+     * `explainInput`) asks, so they cannot drift -- `_debug` is an off-contract key any caller can send, so a
+     * leak-shaped tag must not answer on an ordinary production request, nor for a caller without env auth on a
+     * test instance. A plain diagnostic that only echoes the caller's own request may still use [hasDebug]
+     * directly.
      */
     fun hasDebugDiagnostic(name: String): Boolean =
-        hasDebug(name) && (instanceConfig.isTestInstance || isEnvDebug)
+        hasDebug(name) && (hasTestAccess || isEnvDebug)
 
     /** Duration since this context was created, in milliseconds. */
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0

@@ -43,7 +43,7 @@ object MAIL {
 
     /**
      * When true, email is **simulated** -- recorded in-memory and not transmitted -- and no Mailgun API key is
-     * loaded; the captured mail is read back through the `forTestingOnly` `/test/simulatedEmails` endpoint (so a
+     * loaded; the captured mail is read back through the `forTestingOnly` `/fixture/simulatedEmails` endpoint (so a
      * test or the local frontend can pick up a code). Defaults to the instance's `isTestInstance`, and is
      * refused on a non-test instance (there would be no way to read the captured mail); a real deployment sends
      * for real.
@@ -123,6 +123,13 @@ class MailService : ServiceInitializer {
     /** Whether email is simulated (captured, recent-emails endpoint enabled). See [MAIL.useSimulatedEmail]. */
     var useSimulatedEmail: Boolean = false
         private set
+
+    /**
+     * Whether the caller of [cxt] may read captured mail back (issue #1149) -- what the auth and profile configs'
+     * `codeReadBack` feature tells the code pre-fill. Mail is captured, and the caller has test access, without
+     * which the read-back fixture does not exist for them: the pre-fill must not ask for what it cannot get.
+     */
+    fun readBackOffered(cxt: KdrCxt): Boolean = useSimulatedEmail && cxt.hasTestAccess
 
     /** Whether a simulating instance also transmits mail to the admin domain; see [MAIL.transmitToAdminDomain]. */
     var transmitToAdminDomain: Boolean = false

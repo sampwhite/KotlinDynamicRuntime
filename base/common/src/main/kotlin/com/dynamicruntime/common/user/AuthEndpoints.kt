@@ -61,7 +61,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             property(AFEAT.codeLogin, "Whether verification-code login is offered.", required = true) { type = SCT.boolean }
             property(AFEAT.passwordLogin, "Whether password login is offered.", required = true) { type = SCT.boolean }
             property(AFEAT.googleLogin, "Whether Google sign-in is offered.", required = true) { type = SCT.boolean }
-            property(AFEAT.simulatedEmail, "Whether email is simulated (dev: the code can be read back).", required = true) { type = SCT.boolean }
+            property(AFEAT.codeReadBack, "Whether this caller may read a mailed code back (dev: email is simulated, and the caller has test access).", required = true) { type = SCT.boolean }
         }
         property(UIC.state, "Dynamic state for constructing the auth flow.", required = true) {
             type = SCT.kObject
@@ -254,7 +254,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             UIC.features to mapOf(
                 AFEAT.registration to true, AFEAT.codeLogin to true, AFEAT.passwordLogin to true,
                 AFEAT.googleLogin to authHandler(c).googleLoginEnabled,
-                AFEAT.simulatedEmail to MailService.get(c).useSimulatedEmail,
+                AFEAT.codeReadBack to MailService.get(c).readBackOffered(c),
             ),
             UIC.state to mapOf(
                 AFLD.userInfo to currentUserInfo(c),

@@ -84,7 +84,7 @@ class BackendFragmentPassTest : StringSpec({
 
     "the fragmentDemo endpoint ships a backend-resolved, frontend-pending string" {
         val cxt = TestInstances.default("beDemo")
-        val resp = TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(TEP.fragmentDemo)
+        val resp = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess().sendJsonGetRequest(TEP.fragmentDemo)
         val text = resp.getValue(EP.results)!!.toJsonMap()[TEP.demoText] as String
         text shouldContain "Your verification code"                 // backend pull, resolved
         text shouldContain $$"""${@t("portal.welcome")}"""           // frontend pull, still pending

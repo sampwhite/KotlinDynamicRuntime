@@ -1801,8 +1801,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         /**
          * Handler for [SIM.list] (issue #997): the catalog of the **simulations** this node offers -- the endpoints
          * tagged [SIM.tag] -- in the same shape, for the Simulations page to draw forms from. Not narrowed to the
-         * published API: simulations are test-only, and on a test instance they are for anyone testing it, env auth
-         * or not. The access decision is the catalog's own, unchanged.
+         * published API: simulations are test-only, so the caller has test access by the time this runs (it is
+         * itself `forTestingOnly`, issue #1149), and an env-authed caller is not confined to the published set
+         * anyway. The access decision is the catalog's own, unchanged.
          */
         @KdrPrivate
         fun simulationCatalog(cxt: KdrCxt): Map<String, Any?> =
@@ -1828,9 +1829,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // One access decision per endpoint, consumed twice: what survives is rendered, what does not is
             // what `explainAccess` reports. Deriving the explanation from a second, independent pass is how an
             // explanation comes to disagree with the filter it claims to describe -- the same drift issue #211
-            // closed between the catalog and the gate.
+            // closed between the catalog and the gate. A test-only endpoint the caller has no test access to is
+            // not withheld but absent (issue #1149), as the dispatcher treats it, so it is not explained either.
             val (visible, withheld) = surface.schema.endpoints.values
-                .filter { surfaceOf(it, surface.client, surface.named, surface.schema.endpoints.values) }
+                .filter { surfaceOf(it, surface.client, surface.named, surface.schema.endpoints.values) && it.existsFor(cxt) }
                 .partition { ep -> isVisibleTo(cxt, ep.path) }
             explainAccess(cxt, withheld)
             val renderings = visible
@@ -1888,7 +1890,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // A caller without env auth may look up only what the listing shows them (issues #489, #1128) --
             // otherwise the single-lookup would be a one-call way past the restriction.
             val found = surface.schema.endpoints["$path:$method"]
-                ?.takeIf { cxt.isEnvAuthEffective || shownWithoutEnvAuth(cxt, it) }
+                ?.takeIf { it.existsFor(cxt) && (cxt.isEnvAuthEffective || shownWithoutEnvAuth(cxt, it)) }
             val endpoint = found?.takeIf { isVisibleTo(cxt, it.path) }
             explainAccess(cxt, if (found != null && endpoint == null) listOf(found) else emptyList())
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, surface.schema.defs) }

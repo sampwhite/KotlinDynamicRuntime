@@ -49,11 +49,14 @@ class UserClientTest : StringSpec({
     // an assertion three files away fails for a reason that has nothing to do with what it was checking.
     "the fixture refuses a client this node does not carry" {
         val cxt = boot()
-        val envelope = TestUser.create(cxt, "fixture-plain@example.com").expectError(
-            EXC.badInput,
-            TEP.becomeUser,
-            data = mapOf(TEP.email to "fixture-nosuch@example.com", TEP.client to "nosuch"),
-        )
+        val plain = TestUser.create(cxt, "fixture-plain@example.com")
+        val envelope = plain.withTestAccess {
+            plain.expectError(
+                EXC.badInput,
+                TEP.becomeUser,
+                data = mapOf(TEP.email to "fixture-nosuch@example.com", TEP.client to "nosuch"),
+            )
+        }
         // The message names why, and lists what is present -- a test that got the client name wrong should
         // not also have to go looking for what it should have said.
         envelope[EP.errorMessage].toOptStr()!! shouldContain "no config declares it"

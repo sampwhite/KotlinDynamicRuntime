@@ -128,8 +128,9 @@ class SandboxAccessTest : StringSpec({
         // And an identity with no user in the parent at all fares the same.
         actsAsAdmin(TestUser.create(cxt, "stranger@$parent.test", level = ROLE.admin, userClient = sandboxOf(parent))) shouldBe false
 
-        // The access report names the rule, so the missing role does not read as never held.
-        val resp = granted.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess))
+        // The access report names the rule, so the missing role does not read as never held. A diagnostic tag, so it
+        // answers a caller with test access (issue #1149).
+        val resp = granted.withTestAccess { granted.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess)) }
         val withheld = resp[EP.meta]!!.toJsonMap()[SS.accessExplained]!!.toJsonMap()[SS.rolesWithheld].toJsonListOfMaps()
         withheld.single()[SS.role] shouldBe ROLE.admin
         withheld.single()[SS.rule].toOptStr().shouldNotBeNull() shouldBe SS.sandboxAdminRule

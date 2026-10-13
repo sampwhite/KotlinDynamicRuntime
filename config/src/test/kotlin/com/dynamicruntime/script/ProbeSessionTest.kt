@@ -1,5 +1,6 @@
 package com.dynamicruntime.script
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.server.TestHttpServer
@@ -25,7 +26,9 @@ import io.kotest.matchers.string.shouldContain
  */
 class ProbeSessionTest : StringSpec({
 
-    val cxt = Startup.mkTestBootCxt("probe", "probeSessionTest")
+    // Shaped like the developer's own server the probe drives: a direct request is assumed env-authed there (local),
+    // and becomeUser exists only for a caller with env auth (issue #1149) -- a unit instance assumes nothing.
+    val cxt = Startup.mkTestBootCxt("probe", "probeSessionTest", mapOf(ACFG.assumeEnvAuth to true))
     val server = TestHttpServer(cxt.instanceConfig)
     val baseUrl = "http://localhost:${server.port}"
 

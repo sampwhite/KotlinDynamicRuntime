@@ -220,9 +220,9 @@ class GedraDataEndpointTest : StringSpec({
     // The scope a listing ran with is the one fact its response cannot show: a correctly and an incorrectly
     // scoped listing differs only in the rows the caller never sees.
     "the debug tag reports the scope the listing ran with" {
-        val explained = alice.client
-            .sendJsonGetRequest(GEP.formDocs, mapOf(EP.debug to GDBG.explainScope))[EP.meta].toJsonMapOrEmpty()
-            .getValue(GDBG.scopeExplained).toJsonMapOrEmpty()
+        // A diagnostic tag, so it answers a caller with test access (issue #1149).
+        val explained = alice.withTestAccess { alice.client.sendJsonGetRequest(GEP.formDocs, mapOf(EP.debug to GDBG.explainScope)) }[EP.meta]
+            .toJsonMapOrEmpty().getValue(GDBG.scopeExplained).toJsonMapOrEmpty()
         // "U" is the own-user shape; the administrator's would be "C". The shape is what picks the statement,
         // so this is the assertion that the right one ran.
         explained[GDBG.shapeKey] shouldBe "U"

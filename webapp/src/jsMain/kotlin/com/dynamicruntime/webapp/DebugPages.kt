@@ -105,10 +105,10 @@ val DebugPage = FC<Props> {
     when (hashParams()[debugToolParam]) {
         debugToolFault -> DebugFault {}
         debugToolState -> DebugState {}
-        // The fragment demo calls a `forTestingOnly` fixture endpoint that a real deployment does not register,
-        // so it works only on a test instance -- offer it nowhere else, even to an env-debug operator who can
-        // reach this page (issue #517). A hand-typed URL falls back to the index rather than a guaranteed error.
-        debugToolFragment -> if (appConfig().isTestInstance) DebugFragment {} else DebugIndex {}
+        // The fragment demo calls a `forTestingOnly` fixture endpoint, which exists only for a caller with test
+        // access -- offer it nowhere else, even to an env-debug operator who can reach this page (issues #517,
+        // #1149). A hand-typed URL falls back to the index rather than a guaranteed error.
+        debugToolFragment -> if (appConfig().hasTestAccess) DebugFragment {} else DebugIndex {}
         debugToolChoice -> DebugChoice {}
         else -> DebugIndex {}
     }
@@ -140,10 +140,10 @@ val DebugIndex = FC<Props> {
                 }
                 +" — throws while rendering, so the page error boundary is seen to catch."
             }
-            // Offered only on a genuine test instance: it demos a forTestingOnly fixture endpoint absent from a
-            // real deployment, so an env-debug operator who reaches this page is not shown a tool that can only
-            // fail (issue #517).
-            if (appConfig().isTestInstance) {
+            // Offered only to a caller with test access: it demos a forTestingOnly fixture endpoint that exists for
+            // nobody else, so an env-debug operator who reaches this page is not shown a tool that can only fail
+            // (issues #517, #1149).
+            if (appConfig().hasTestAccess) {
                 li {
                     a {
                         href = "#page=debug&$debugToolParam=$debugToolFragment"
@@ -212,7 +212,7 @@ val DebugState = FC<Props> {
                 "idleBumpIntervalMs" to config.idleBumpIntervalMs,
                 "showErrorDetail" to config.showErrorDetail,
                 "allowDebugPages" to config.allowDebugPages,
-                "isTestInstance" to config.isTestInstance,
+                "hasTestAccess" to config.hasTestAccess,
                 "isEnvAuthed" to config.isEnvAuthed,
                 "envAuthDebug" to config.envAuthDebug,
             ).toJsonStr()

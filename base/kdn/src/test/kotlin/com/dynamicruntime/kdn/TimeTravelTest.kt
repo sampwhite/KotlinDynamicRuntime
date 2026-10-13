@@ -25,7 +25,7 @@ class TimeTravelTest : StringSpec({
     "/fixture/clock advances the instance clock" {
         // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
         val cxt = Startup.mkTestBootCxt("clock", "clockEndpointTest")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val before = cxt.instanceNow().toEpochMilliseconds()
         val results = client.sendJsonPostRequest(
             TCLK.path, mapOf(TCLK.op to ClockOp.advance.name, TCLK.deltaMs to 3_600_000L),
@@ -37,7 +37,7 @@ class TimeTravelTest : StringSpec({
     "the remaining clock ops travel, hold and release the instance clock over the wire (issue #185)" {
         // Its own instance (issue #1075): it travels the instance clock, which is instance-wide.
         val cxt = Startup.mkTestBootCxt("clockOps", "clockOpsTest")
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         fun op(op: ClockOp, field: String? = null, value: Long? = null): Long =
             client.sendJsonPostRequest(
                 TCLK.path, buildMap { put(TCLK.op, op.name); if (field != null) put(field, value) },
@@ -64,7 +64,7 @@ class TimeTravelTest : StringSpec({
 
     "an unknown clock op is rejected by the choice-list validation (the enum drives the schema)" {
         val cxt = TestInstances.default("clockBad")
-        TestHttpClient(cxt.instanceConfig).sendJsonPostRequest(TCLK.path, mapOf(TCLK.op to "bogus"))[EP.status] shouldBe
+        TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess().sendJsonPostRequest(TCLK.path, mapOf(TCLK.op to "bogus"))[EP.status] shouldBe
             EXC.badInput
     }
 
