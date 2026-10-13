@@ -453,7 +453,7 @@ class RequestService : ServiceInitializer {
                 handler.sendRedirect("/$contentContextRoot")
                 return
             }
-            LogRequest.debug(cxt, "Rejecting request outside known context roots: ${handler.logRequestUri}")
+            LogRequest.debug(cxt) { "Rejecting request outside known context roots: ${handler.logRequestSummary()}" }
             handler.sendShortNotFound()
             return
         }
@@ -619,6 +619,8 @@ class RequestService : ServiceInitializer {
             resolveEndpointInputType(endpoint, schema.types)
                 ?: throw KdrException("Could not compile input schema for '${endpoint.collationKey}'.")
         }
+        // What the request log redacts by declaration (issue #1168), beside what it redacts by name.
+        handler.declaredSensitive = inputType.properties.filterValues { it.sensitive }.keys
 
         val data = LinkedHashMap<String, Any?>(handler.queryParams)
         handler.postData?.let { data.putAll(it) }

@@ -364,7 +364,7 @@ class AppUiService : ServiceInitializer, ContentServer {
             LogRequest.warn(
                 cxt,
                 "Webapp resource '$resourcePath' is not on the classpath (build ':webapp' first?); " +
-                    "passing on ${handler.logRequestUri}.",
+                    "passing on ${handler.logRequestSummary()}.",
             )
         }
         return bytes

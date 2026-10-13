@@ -40,6 +40,11 @@ class SchProperty(
      * does. See [SCH.visibleWhen].
      */
     val visibleWhen: String? = null,
+    /**
+     * `g-sensitive`: the value is a secret the request log redacts (issue #1168). On the property, for the same reason
+     * as [visibleWhen]. See [SCH.sensitive].
+     */
+    val sensitive: Boolean = false,
 ) {
     /** Resolved value schema. Set once during parsing (see class doc). */
     lateinit var valueType: SchType
