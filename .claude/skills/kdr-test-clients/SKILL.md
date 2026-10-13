@@ -235,7 +235,16 @@ must parse. Build a bundle's slots with `gedraConfigToEntries(gedraConfig(...) {
 you can. A test that needs a malformed entry *stored* cannot get one through these endpoints: it stores a built
 config with `GedraConfigService.writeConfig` (which gates nothing), or reads one with `reassembleGedraConfig`, the
 load's lenient reader. And **`TestUser.postData` does not assert the call succeeded** -- it returns the `results` of
-whatever came back -- so assert something of the result, or a refused write passes silently. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
+whatever came back -- so assert something of the result, or a refused write passes silently. **A file ref
+(`kdr:fileRefDef`, issue #1153) points at bytes outside the configuration**, so a config holding
+`fileRef(refId, hash)` needs those bytes in the file store first -- `FileStoreService.put` at
+`FileRefService.keyOf(client, hash)`. `writeConfig` stores it either way (it does not trial); it is the
+`reloadClient` after it that refuses, since a missing file is a problem and stored problems are strict in `ENV.unit`
+-- as a *trialled* write (`trial = true`, or any endpoint) refuses up front. The ordinary way to get one is the
+upload itself, `TestUser.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to …, FREF.file to ContentData(…)))`,
+which stores the bytes and patches the entry (`ClientFileRefsTest.kt`). To see what a load does with a ref that is
+no good -- a malformed one goes in through `writeConfig` with `fileRefFromMap(mapOf(…))` -- boot your own instance
+with `GCFG.storedCheckEnvVar` at `warn`, where the problem is recorded and the rest loads; the same file shows it. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A client on the **latest** tier loads its latest revision
 whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
 (`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is

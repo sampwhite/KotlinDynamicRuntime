@@ -63,7 +63,7 @@ object WAS {
     const val namespace = "kdr.clientWeb"
 
     /** Separates a slot from the hash of its content in a [versionedName], as it does a file from its build id. */
-    const val nameSep = ':'
+    const val nameSep = CMK.nameSep
 
     /**
      * A slot's image named by its content: `favicon:<hash>`. The whole of what the shell config says about a set

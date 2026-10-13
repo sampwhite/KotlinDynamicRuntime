@@ -3,18 +3,18 @@ package com.dynamicruntime.common.webasset
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.ContentResources
+import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FileMeta
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.StoredFile
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.configOwnerOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.ContentServer
-import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.logging.KdrLogger
@@ -119,12 +119,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
      * client that has merely set nothing. The shell and the static address never name one: they ask for the
      * caller's own.
      */
-    fun knownClient(cxt: KdrCxt, client: String): String {
-        if (ClientService.get(cxt).known(client) == null) {
-            throw KdrException("This node knows no client '$client'.", code = EXC.notFound)
-        }
-        return client
-    }
+    fun knownClient(cxt: KdrCxt, client: String): String = ClientService.get(cxt).requireKnown(client)
 
     /** The image in [slot] of [client]'s web assets, content and metadata, or null when the slot holds none. */
     fun file(cxt: KdrCxt, client: String, slot: String): StoredFile? =
@@ -212,27 +207,14 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
      * under `no-store`, so a shared cache never holds one client's image at an address that does not name it. An
      * empty slot is a `no-store` 404. An SVG goes out with a policy that lets it run nothing, and every answer
      * -- the 404 too, whose words repeat the slot the address named -- with `nosniff`, for a browser sent straight
-     * to the address rather than drawing it in a page.
+     * to the address rather than drawing it in a page. The rule is [HashedFileServing]'s, shared with every other
+     * file served by its content.
      */
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
-        if (handler.focus != ContextFocus.static) return false
-        // appPath is context-root-stripped: "/<appId>/web/<slot:hash>" -> ["", appId, "web", slotWithHash].
-        val segments = handler.appPath.split('/')
-        if (segments.size != pathSegments || segments[2] != CMK.web) return false
-        val slot = segments[3].substringBefore(WAS.nameSep)
-        val suppliedHash = segments[3].substringAfter(WAS.nameSep, "")
+        val address = HashedFileServing.addressOf(handler, CMK.web) ?: return false
+        val slot = address.name
         val file = if (slotDefs.none { it.slot == slot }) null else file(cxt, cxt.client, slot)
-        if (file == null) {
-            handler.setResponseHeader(ContentResources.cacheControlHeader, ContentResources.noStore)
-            handler.setResponseHeader(noSniffHeader, noSniff)
-            handler.sendStringResponse("No web asset '$slot'.", EXC.notFound, "text/plain")
-            return true
-        }
-        handler.setResponseHeader(
-            ContentResources.cacheControlHeader, ContentResources.cacheHeaderFor(suppliedHash == file.meta.hash),
-        )
-        guardHeaders(file.meta.mimeType).forEach { (header, value) -> handler.setResponseHeader(header, value) }
-        handler.sendBytesResponse(file.bytes, EXC.ok, file.meta.mimeType)
+        HashedFileServing.send(handler, address, file, "No web asset '$slot'.")
         return true
     }
 
@@ -249,19 +231,6 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         /** Nanoseconds in a millisecond: [memoMs] in the unit [nanoTime] counts. */
         const val nanosPerMs = 1_000_000L
         private const val bytesPerKb = 1024
-        private const val pathSegments = 4
-
-        /** Tells a browser to take the declared type as given, and never to guess a page out of an image. */
-        const val noSniffHeader = "X-Content-Type-Options"
-        const val noSniff = "nosniff"
-
-        const val contentPolicyHeader = "Content-Security-Policy"
-
-        /**
-         * What an uploaded SVG may do when a browser opens it as a document: draw itself, with its own inline
-         * styles, and nothing else -- no script, no request, no form, and no place in this origin (`sandbox`).
-         */
-        const val svgContentPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 
         /** The slots, in listing order. A favicon is small by nature; a brand mark may be a photograph. */
         val slotDefs = listOf(
@@ -269,9 +238,15 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
             WebSlotDef(WAS.brandMark, "Brand mark", 1024 * bytesPerKb),
         )
 
-        /** The bucket's declaration, for the component that registers this service to make. */
-        fun bucketDef(): FileBucketDef =
-            FileBucketDef(bucket, "Each client's own web assets: its tab icon and brand mark, uploaded by its administrator.")
+        /**
+         * The bucket's declaration, for the component that registers this service to make. A client's file refs
+         * (issue #1153) are kept in it too, under their own prefix: one bucket for what a client's people are shown,
+         * since on S3 a bucket has to exist before the application can use it.
+         */
+        fun bucketDef(): FileBucketDef = FileBucketDef(
+            bucket,
+            "What each client's people are shown that its administrator uploaded: its tab icon and brand mark, and the files its configuration names.",
+        )
 
         /** The slot named [slot], or a bad-input refusal naming the ones there are. */
         fun slotDef(slot: String): WebSlotDef = slotDefs.firstOrNull { it.slot == slot }
@@ -281,16 +256,10 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
          * The client whose web assets [client]'s people see: its own, or for a sandbox its parent's -- a sandbox
          * previews its parent, and has no images of its own to be different by.
          */
-        fun ownerOf(client: String): String = sandboxParentOf(client) ?: client
+        fun ownerOf(client: String): String = configOwnerOf(client)
 
         /** Where [slot] of [owner]'s web assets is kept in the [bucket]. */
         fun keyOf(owner: String, slot: String): String = "clients/$owner/web/$slot"
-
-        /** The headers an image of [mimeType] is sent with beyond its type and caching; see [serve]. */
-        fun guardHeaders(mimeType: String): Map<String, String> = buildMap {
-            put(noSniffHeader, noSniff)
-            if (mimeType == WebAssetCheck.svg.mimeType) put(contentPolicyHeader, svgContentPolicy)
-        }
 
         fun get(cxt: KdrCxt): ClientWebAssetService = cxt.instanceConfig.get(serviceName) as? ClientWebAssetService
             ?: throw KdrException("The $serviceName is not available on this node.")

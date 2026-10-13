@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.ContentResources
+import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
@@ -141,20 +142,26 @@ class ClientWebAssetsTest : StringSpec({
         served.rptResponseBytes!!.toList() shouldBe png.toList()
         served.rptResponseMimeType shouldBe "image/png"
         served.header("Cache-Control") shouldBe ContentResources.cacheControl
-        served.header(ClientWebAssetService.noSniffHeader) shouldBe ClientWebAssetService.noSniff
+        served.header(HashedFileServing.noSniffHeader) shouldBe HashedFileServing.noSniff
         // Any other address gets the image too, and may not be kept: a wrong hash, and none.
         for (other in listOf(WAS.versionedName(WAS.favicon, "0".repeat(64)), WAS.favicon)) {
             val unmatched = static(member, other)
             unmatched.rptResponseBytes!!.toList() shouldBe png.toList()
             unmatched.header("Cache-Control") shouldBe ContentResources.noStore
         }
+        // What follows the first colon is the hash, whatever it holds: a second colon is part of a hash that is not
+        // the image's, and not part of the slot's name.
+        val twoColons = static(member, "${WAS.favicon}:abc:def")
+        twoColons.rptStatusCode shouldBe EXC.ok
+        twoColons.rptResponseBytes!!.toList() shouldBe png.toList()
+        twoColons.header("Cache-Control") shouldBe ContentResources.noStore
         // An empty slot, and a slot there is none of, are 404s nothing may keep.
         for (absent in listOf(WAS.brandMark, "banner:abc")) {
             val missing = static(member, absent)
             missing.rptStatusCode shouldBe EXC.notFound
             missing.header(ContentResources.cacheControlHeader) shouldBe ContentResources.noStore
             // Its words repeat what the address named, so it too is never to be read as anything but text.
-            missing.header(ClientWebAssetService.noSniffHeader) shouldBe ClientWebAssetService.noSniff
+            missing.header(HashedFileServing.noSniffHeader) shouldBe HashedFileServing.noSniff
         }
     }
 
@@ -264,8 +271,8 @@ class ClientWebAssetsTest : StringSpec({
         val served = static(admin, name)
         served.rptResponseBytes!!.toList() shouldBe svg.toList()
         served.rptResponseMimeType shouldBe "image/svg+xml"
-        served.header(ClientWebAssetService.contentPolicyHeader) shouldBe ClientWebAssetService.svgContentPolicy
-        served.header(ClientWebAssetService.noSniffHeader) shouldBe ClientWebAssetService.noSniff
+        served.header(HashedFileServing.contentPolicyHeader) shouldBe HashedFileServing.svgContentPolicy
+        served.header(HashedFileServing.noSniffHeader) shouldBe HashedFileServing.noSniff
 
         // What the page of a client that is not the caller's own previews: the image, as a download.
         val full = TestUser.createFullAdmin(cxt, "full@$client.test")
@@ -273,7 +280,7 @@ class ClientWebAssetsTest : StringSpec({
         download.rptStatusCode shouldBe EXC.ok
         download.rptResponseBytes!!.toList() shouldBe svg.toList()
         download.header("Cache-Control") shouldBe ContentResources.noStore
-        download.header(ClientWebAssetService.contentPolicyHeader) shouldBe ClientWebAssetService.svgContentPolicy
+        download.header(HashedFileServing.contentPolicyHeader) shouldBe HashedFileServing.svgContentPolicy
         // With the image's hash the address names the image, so the caller's own browser may keep it -- no shared
         // cache, since it is behind a sign-in -- and a hash that is not the image's changes nothing but that.
         fun downloadAs(hash: String) = full.client.sendGetRequest(UADEP.clientWebDownload, mapOf(WAS.client to client, WAS.slot to WAS.favicon, WAS.hash to hash))
@@ -288,7 +295,7 @@ class ClientWebAssetsTest : StringSpec({
         full.expectError(EXC.notFound, UADEP.clientWebDownload, args = mapOf(WAS.client to client, WAS.slot to WAS.brandMark))
         // A raster carries no policy: there is nothing in one to run.
         uploaded(admin, WAS.brandMark, image(png, "image/png"))
-        static(admin, WAS.brandMark).header(ClientWebAssetService.contentPolicyHeader).shouldBeNull()
+        static(admin, WAS.brandMark).header(HashedFileServing.contentPolicyHeader).shouldBeNull()
     }
 
     "a sandbox shows its parent's images and may not change them" {

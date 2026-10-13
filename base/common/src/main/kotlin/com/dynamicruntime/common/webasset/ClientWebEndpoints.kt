@@ -1,6 +1,6 @@
 package com.dynamicruntime.common.webasset
 
-import com.dynamicruntime.common.content.ContentResources
+import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
@@ -133,15 +133,7 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
         val file = assets.file(c, client, def.slot)
             ?: throw KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
-        c.request?.webRequest?.let { web ->
-            // The static address's rule, with one difference: this one is behind a sign-in, so even an address
-            // that names exactly these bytes is the caller's own browser's to keep and no shared cache's -- and
-            // only for the session that was allowed it, since who may have the image is what varies here.
-            val named = request[WAS.hash].toOptStr() == file.meta.hash
-            web.addResponseHeader(ContentResources.cacheControlHeader, ContentResources.privateCacheHeaderFor(named))
-            web.addResponseHeader(ContentResources.varyHeader, ContentResources.varyByCookie)
-            ClientWebAssetService.guardHeaders(file.meta.mimeType).forEach { (header, value) -> web.addResponseHeader(header, value) }
-        }
+        c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, request[WAS.hash].toOptStr()) }
         file.toContentData(inLine = false)
     }
 }

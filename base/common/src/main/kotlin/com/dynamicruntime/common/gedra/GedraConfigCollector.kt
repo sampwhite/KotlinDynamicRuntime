@@ -86,6 +86,9 @@ object GCEL {
 
     /** A customer (issue #1107). */
     const val customer = "customer"
+
+    /** A file ref (issue #1153). */
+    const val fileRef = "fileRef"
 }
 
 /**

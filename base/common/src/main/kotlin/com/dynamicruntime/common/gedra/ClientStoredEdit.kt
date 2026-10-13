@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -107,6 +108,25 @@ object ClientStoredEdit {
     fun createEditConfig(bound: KdrCxt, client: String, build: GedraConfigBuilder.() -> Unit): GedraConfigRow {
         val config = gedraConfig(bound, CPY.copyConfigName, clientNamespace(client), client, build = build)
         return GedraConfigService.get(bound).writeConfig(bound, config, trial = true)
+    }
+
+    /**
+     * The editors' own config of [client]'s, created **empty** when there is none -- and safely against somebody
+     * else creating it at the same moment (issue #1153). The creation is a create, refused under the client's lock
+     * when the config is already there, and that refusal is answered by reading what the other caller made. So an
+     * editor that goes on to *patch* its entry in, under the lock and over the revision as it then stands, cannot
+     * write over an entry made a moment earlier -- which [createEditConfig] with content can: two first edits each
+     * see no config, and the second's authoritative write drops the first's entry after it was acknowledged.
+     */
+    fun ensureEditConfig(bound: KdrCxt, client: String): GedraConfigRow {
+        editConfig(bound, client)?.let { return it }
+        val empty = gedraConfig(bound, CPY.copyConfigName, clientNamespace(client), client) {}
+        return try {
+            GedraConfigService.get(bound).writeConfig(bound, empty, trial = true, mustBeNew = true)
+        } catch (e: KdrException) {
+            if (e.code != EXC.conflict) throw e
+            editConfig(bound, client) ?: throw e
+        }
     }
 
     /**

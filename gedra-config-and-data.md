@@ -328,6 +328,69 @@ strand nobody. Changing such an entry and leaving it at fault is refused; mendin
 "As it stands" means on **this node**: an import that restores another deployment's configuration is judged against
 what the target holds, so an old fault it carries across is refused there and mended at its source.
 
+**A write never deletes a slot the node does not read** (issue #1153). Every write passes through the model, which
+keeps only the slots it knows, and a write is authoritative -- so a node one release behind would otherwise delete a
+newer release's entries from each configuration it edited. The stored entries of a slot that is not in this node's
+`coreConfigTraits` are therefore carried as they are, whatever the write says (`buildFinalEntries`), and so are the
+fields of a file ref's entry this release does not read (`FileRefDef.extra`).
+
+- **It protects the slot after this one, not this one.** The rule arrived with `kdr:fileRefDef`, and the nodes that
+  do not read that slot are the nodes that do not have the rule. So **the release that adds file refs is finished on
+  every node before the first ref is stored**: until then, a copy or menu edit served by a node still on the old
+  release deletes the file refs of the configuration it edits.
+- **A node reports an unread slot when it loads one, and does not judge a write by it.** The load says so
+  (`unknownSlotsIssue`); a write's trial does not, since no write through this node can have put the slot there, and
+  refusing for it would fail every edit on an older node until the release reached it.
+- **No write of a node can remove a slot it does not read.** A slot a later release retires stays in its rows until
+  that release's own migration takes it out.
+
+### File refs: configuration that points outside itself (issue #1153)
+
+`kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a
+client's **file ref** is a named file, and its entry -- `{ refId, source, hash, description? }` -- holds the SHA-256
+of the file's bytes, which are in the file store (bucket `web-assets`, key `clients/<client>/refs/<hash>`).
+
+- **The hash is the pointer.** The key is derived from it and never stored, so an entry names exactly one sequence
+  of bytes, an object is written once and never rewritten, and a draft cannot change what a published revision
+  names. Removing a ref leaves its object, which older revisions still name.
+- **What a file is -- its type, its size, its name -- is not in the entry.** It is the file store's own record,
+  written by the upload that checked the bytes. An entry can be typed through these endpoints, and the content type a
+  file is served under must not come from something that can be typed. Serving checks, on every read, that the file
+  is the one the ref names and a kind a ref may be (`FileRefService.read`).
+- **Drafted and published like any other configuration.** `FileRefService` builds a registry per client from the
+  configurations the collector holds for it, so the tiers and the sandbox need no rule of their own: a sandbox
+  previews a ref its parent has only drafted, and the parent serves the one it published. This is the difference
+  from a client's web assets (#1130), which are not configuration and have neither.
+- **Judged in a fixed order.** A load and a write's trial read a client's configurations in different orders, so
+  the registry orders them by id before it judges them: of two configurations declaring one ref id, the one whose
+  own id sorts first keeps it, in both. A check whose answer depended on the order read would be a new problem to
+  every trial.
+- **Only stored configuration may hold one.** A hash names bytes in one deployment's file store, and source
+  configuration runs on every machine: a ref declared in source is a source problem, which refuses the boot outside
+  production.
+- **A load asks the store once per distinct file**, and goes on the answer for ten minutes (an object is not
+  rewritten, so the answer changes only if one is deleted). A ref whose bytes are missing is a reported problem that
+  costs only the ref: it is kept, listed as missing, and answered as not found. It has to be asked at the load and
+  not on first use: a write's trial subtracts the problems the client already has, and one nobody recorded would
+  refuse every later write. For a client with a sandbox the drafts are loaded only by the sandbox, so the trial
+  counts what the sandbox's load recorded too (`GedraConfigTrial.draftBaseline`); a client that runs only published
+  configuration *without* a sandbox has nobody loading its drafts, and a draft ref whose file has gone is then a
+  problem to each later draft write until the ref is removed or its file uploaded again.
+- **Uploading a file again puts it back.** An upload reads the file it would store before deciding it is already
+  there, so one whose bytes are gone or damaged is written again.
+- **A client is served at most 200 refs.** Holding more is one problem of the client's, with the first 200 served
+  and the rest left out, which is what bounds a load. A write that would take a client over is refused by its
+  trial -- whichever configuration, and whether it is an upload, a typed entry or an import -- and an upload says
+  so before it stores the file. A client already over can still take refs away.
+- **Nothing removes a file.** A replaced or removed ref's object stays for the revisions that still name it, and
+  nothing yet bounds how many a client leaves behind; the sweep of what no revision names is #1147.
+- **An export or import does not carry files.** A configuration imported where the bytes are not -- another
+  deployment's store, or **another client of this one**, since a file is kept under the client whose configuration
+  names it -- is refused, naming each ref whose file is not there.
+
+Not to be confused with `GedraDataType.fileRef`, a kind of *data* gedra with no write path yet -- a claim on a file
+held as data. The two share the word.
+
 **Two things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
 body** (`kdr:schemaDef.schema`, `kdr:traitDef.dataSchema`) need only be an object here, since parsed on its own it
 would be refused for naming a sibling type or for being an alteration of a global one; and what is **inside a
@@ -450,6 +513,7 @@ is what gives the warning teeth.
 | Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership, `traitsFor`, and `$ref` bounded by construction (a client's schema holds only global and its own types) |
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
+| File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only; a file that lives outside the file store is #1154 |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 

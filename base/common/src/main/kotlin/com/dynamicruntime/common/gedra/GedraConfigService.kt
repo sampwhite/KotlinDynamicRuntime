@@ -2,8 +2,8 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -833,6 +833,9 @@ class GedraConfigService : ServiceInitializer {
     ): List<Map<String, Any?>> {
         val stampedByKey = LinkedHashMap<String, Map<String, Any?>>()
         for ((slot, rawEntries) in newBySlot) {
+            // A slot this node does not read is never written from what a write carries -- a copy of a revision
+            // carries it, and this node cannot key its entries -- but taken whole from the stored revision, below.
+            if (slot !in slotPrimaryKeys) continue
             val pk = slotPrimaryKeys[slot].orEmpty()
             for (raw in rawEntries) {
                 val key = entryKey(slot, pk.map { raw[it] })
@@ -853,10 +856,20 @@ class GedraConfigService : ServiceInitializer {
         }
         // Carry forward the prior revision's slots the new config no longer mentions, unless a write is
         // authoritative (implied delete) -- then a dropped slot really is dropped.
-        val carried = if (impliedDelete || latest == null) {
-            emptyList()
-        } else {
-            latest.entries.filter { keyOfStored(it) !in stampedByKey.keys }
+        //
+        // **Except a slot this node does not read** (issue #1153), which no write of this node's can mean to
+        // delete: it could not have carried it. Every write passes through the model, which keeps only the slots
+        // it knows, so without this a node one release behind deletes a newer release's entries from every
+        // configuration it edits. Such entries are carried as they are stored, whatever the write says.
+        //
+        // This protects the slot *after* this one. A node that predates the rule deletes `kdr:fileRefDef` itself
+        // -- the slot whose arrival showed the hole -- so the release that adds file refs is finished on every
+        // node before the first ref is stored. And an unread slot is one no write of this node's can remove: a
+        // slot a later release retires stays in its rows until that release's own migration takes it out.
+        val carried = when {
+            latest == null -> emptyList()
+            impliedDelete -> latest.entries.filter { it[GE.traitId].toOptStr()?.let { slot -> slot !in slotPrimaryKeys } == true }
+            else -> latest.entries.filter { keyOfStored(it) !in stampedByKey.keys }
         }
         return stampedByKey.values.toList() + carried
     }

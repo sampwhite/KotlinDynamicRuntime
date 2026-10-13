@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -51,6 +52,8 @@ class GedraConfigSerializeTest : StringSpec({
         fragmentOverlay("help") { namespace("copy") { key("title", "Help") } }
         uiBlockOverlay("menu") { set("title", "Menu") }
         cfact("acmeReady", "acme", "When acme is set up", toFrontend = true)
+        fileRef("logo", "ab".repeat(32), "The logo.")
+        fileRef("banner", "cd".repeat(32))
     }
 
     "a full config round-trips through its stored entries" {
@@ -58,7 +61,12 @@ class GedraConfigSerializeTest : StringSpec({
         val entries = gedraConfigToEntries(source)
         entries.keys shouldContainExactlyInAnyOrder listOf(
             CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef,
-            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef,
+            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef,
+        )
+        // A file ref's entry is what was authored, and none of the stamp that says where it came from (issue #1153).
+        entries.getValue(CCT.fileRefDef) shouldBe listOf(
+            mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to "ab".repeat(32), CCT.description to "The logo."),
+            mapOf(CCT.refId to "banner", CCT.source to FREF.sourceStore, CCT.hash to "cd".repeat(32)),
         )
         val reassembled = reassembleGedraConfig(cxt, source.gedraId.baseId, source.namespace, source.gedraId.client, entries)
         // The stored form is stable: serialize -> reassemble -> serialize yields the same entries, which is the
@@ -68,6 +76,45 @@ class GedraConfigSerializeTest : StringSpec({
         reassembled.gedraId shouldBe source.gedraId
         reassembled.namespace shouldBe source.namespace
         reassembled.client?.clientId shouldBe "acme"
+        reassembled.fileRefs.map { it.refId } shouldBe listOf("logo", "banner")
+        reassembled.fileRefs.first().configName shouldBe "acmeConfig"
+    }
+
+    // Issue #1153: a file ref is restored as it was stored, good or not -- it is the load that judges one, so that
+    // a ref that is no good costs only itself and not the configuration holding it -- and is stamped with where it
+    // came from, which is what tells a stored ref from one declared in source.
+    "a stored file ref reassembles whatever it holds, stamped as stored, and a sandbox and a template copy carry it" {
+        val entries = mapOf(
+            CCT.fileRefDef to listOf(
+                mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to "ab".repeat(32)),
+                // An id that is no name, a source a later release may add, no hash at all, and an id held twice.
+                mapOf(CCT.refId to "not a name", CCT.source to "elsewhere"),
+                mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to "ef".repeat(32)),
+            ),
+        )
+        val stored = reassembleGedraConfig(cxt, "copy", "client.acme", "acme", entries)
+        stored.fileRefs.map { it.refId } shouldBe listOf("logo", "not a name", "logo")
+        stored.fileRefs.all { it.stored } shouldBe true
+        stored.fileRefs[1].source shouldBe "elsewhere"
+        stored.fileRefs[1].hash shouldBe null
+        // Written back as it was read, an id once: an edit of anything else in the configuration does not rewrite a
+        // ref, and a row holding an id twice is written with the first -- the one a load keeps -- rather than
+        // being unwritable until one was taken out by hand.
+        gedraConfigToEntries(stored).getValue(CCT.fileRefDef) shouldBe entries.getValue(CCT.fileRefDef).take(2)
+        // Declared in source, the same entry is stamped as that.
+        sourceConfig().fileRefs.none { it.stored } shouldBe true
+
+        // A sandbox's copy of its parent's configuration holds the parent's refs as they are, stamp included.
+        val rebound = SandboxConfigs.rebind(stored)
+        rebound.gedraId.client shouldBe sandboxOf("acme")
+        rebound.fileRefs.map { it.refId to it.hash } shouldBe stored.fileRefs.map { it.refId to it.hash }
+        rebound.fileRefs.all { it.stored } shouldBe true
+        // A client built on a template takes the template's refs, less the ones it names itself.
+        val own = gedraConfig(cxt, "mine", "client.kid", "kid") { fileRef("banner", "12".repeat(32)) }
+        val copy = ClientExtension.clones("kid", "acme", listOf(sourceConfig()), listOf(own), GedraConfigOrigin.source).single()
+        copy.fileRefs.map { it.refId } shouldBe listOf("logo")
+        ClientExtension.clones("kid", "acme", listOf(sourceConfig()), emptyList(), GedraConfigOrigin.source).single()
+            .fileRefs.map { it.refId } shouldBe listOf("logo", "banner")
     }
 
     // Issue #1135: each place that takes a `$comment` keeps it through the stored form -- the typed ones (workflow,

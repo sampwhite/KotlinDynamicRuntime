@@ -80,6 +80,9 @@ object SandboxConfigs {
             usages = config.usages,
             reports = config.reports,
             unreadReports = config.unreadReports,
+            // As they are (issue #1153): a ref names bytes by their hash, kept under the parent, and the sandbox
+            // serves the parent's -- which is how it previews a ref its parent has only drafted.
+            fileRefs = config.fileRefs,
             origin = config.origin,
             inheritedFrom = config.inheritedFrom,
         )
@@ -155,7 +158,7 @@ object SandboxConfigs {
 
     /** An entry of [slot] as a person names it: its kind and its id. */
     private fun describe(slot: String, entry: Map<String, Any?>): String {
-        val id = listOf(CCT.traitId, CCT.workflowId, CCT.reportId, CCT.typeName, CCT.blockId, CCT.name)
+        val id = listOf(CCT.traitId, CCT.workflowId, CCT.reportId, CCT.typeName, CCT.blockId, CCT.name, CCT.refId)
             .firstNotNullOfOrNull { entry[it].toOptStr() }
         val kind = when (slot) {
             CCT.traitDef -> "trait"
@@ -164,6 +167,7 @@ object SandboxConfigs {
             CCT.schemaDef -> "type"
             CCT.uiBlockDef -> "block"
             CCT.cfactDef -> "cfact"
+            CCT.fileRefDef -> "file ref"
             else -> slot
         }
         return if (id != null) "$kind '$id'" else kind

@@ -61,6 +61,12 @@ fun sandboxParentOf(client: String): String? {
     return parent.takeIf { it.isNotEmpty() && SBX.roleSep !in it }
 }
 
+/**
+ * The client whose stored configuration, and whose files, [client] runs on: its own, or for a sandbox its parent's.
+ * A sandbox owns neither -- it previews its parent's -- so whatever is kept under a client's id is kept under this.
+ */
+fun configOwnerOf(client: String): String = sandboxParentOf(client) ?: client
+
 /** Whether [client] is a sandbox id, `<parent>:sandbox`; see [sandboxParentOf]. */
 fun isSandboxClient(client: String): Boolean = sandboxParentOf(client) != null
 

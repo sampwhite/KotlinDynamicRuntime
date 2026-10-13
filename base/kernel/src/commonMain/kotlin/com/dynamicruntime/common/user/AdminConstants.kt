@@ -170,6 +170,21 @@ object UADEP {
      */
     const val clientWebDownload = "$clientWeb/download"
 
+    /**
+     * A client's file refs (issue #1153): the named files its stored configuration holds, each with the file
+     * store's record of its file and none of its content. Scoped as [clientDefinition] is.
+     */
+    const val clientFiles = "/${SECT.clientAdmin}/client/files"
+
+    /** Uploads a file as one of a client's file refs: its bytes into the file store, its entry into the configuration. */
+    const val clientFilesUpload = "$clientFiles/upload"
+
+    /** Removes one of a client's file refs from its configuration. */
+    const val clientFilesRemove = "$clientFiles/remove"
+
+    /** The file of one of a **named** client's file refs, as the listing shows it -- a draft included. */
+    const val clientFilesDownload = "$clientFiles/download"
+
     /** The named reports one client may run (issue #981), with how each column was bound. Scoped as [clientDefinition] is. */
     const val reports = "/${SECT.clientAdmin}/reports"
 

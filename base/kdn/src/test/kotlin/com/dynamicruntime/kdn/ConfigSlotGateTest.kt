@@ -1,10 +1,13 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ClientSchemaSource
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
@@ -25,22 +28,20 @@ import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
 import com.dynamicruntime.common.gedra.requireWritableSlots
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.MSCH
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchFailCode
+import com.dynamicruntime.common.schema.SchMetaSchema
+import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
-import com.dynamicruntime.common.schema.MSCH
-import com.dynamicruntime.common.schema.SchMetaSchema
-import com.dynamicruntime.common.schema.parseSchemaTypes
-import io.kotest.matchers.collections.shouldNotBeEmpty
-import com.dynamicruntime.common.context.ClientSchemaSource
-import com.dynamicruntime.common.context.KdrSchemaStore
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -83,6 +84,30 @@ class ConfigSlotGateTest : StringSpec({
         // An entry with no key is named by its place, and its missing key is among its failures.
         // By place, counted from 0 as an array's items are: `[#1]` is the second entry.
         codes(CCT.usageDef, usage(), usage() - CCT.traitId) shouldBe mapOf("${CCT.usageDef}[#1].${CCT.traitId}" to SchFailCode.missingRequired)
+    }
+
+    // Issue #1153. The gate is the only thing that holds a typed file ref to its shape -- the write keeps no guard
+    // of its own, which would judge the whole configuration and not what the write changed.
+    "a file ref is held to its shape: an id that is a name, the source there is, a hash that is one" {
+        val hash = "ab".repeat(32)
+        fun ref(refId: Any? = "logo", source: Any? = FREF.sourceStore, hashOf: Any? = hash) =
+            mapOf(CCT.refId to refId, CCT.source to source, CCT.hash to hashOf)
+        fun failing(entry: Map<String, Any?>) = codes(CCT.fileRefDef, entry).keys
+
+        codes(CCT.fileRefDef, ref()).shouldBeEmpty()
+        codes(CCT.fileRefDef, ref() + (CCT.description to "The logo.")).shouldBeEmpty()
+        for (bad in listOf("my logo", "logo.png", "2logo", "kdr:logo", "a/b", "a".repeat(FREF.maxRefIdLength + 1))) {
+            failing(ref(refId = bad)) shouldBe setOf("${CCT.fileRefDef}[$bad].${CCT.refId}")
+        }
+        for (bad in listOf("abc", hash.uppercase(), hash + "a", "g" + hash.drop(1))) {
+            failing(ref(hashOf = bad)) shouldBe setOf("${CCT.fileRefDef}[logo].${CCT.hash}")
+        }
+        codes(CCT.fileRefDef, ref(source = "elsewhere")) shouldBe mapOf("${CCT.fileRefDef}[logo].${CCT.source}" to SchFailCode.invalidOption)
+        codes(CCT.fileRefDef, ref() - CCT.hash) shouldBe mapOf("${CCT.fileRefDef}[logo].${CCT.hash}" to SchFailCode.missingRequired)
+        codes(CCT.fileRefDef, ref() - CCT.source) shouldBe mapOf("${CCT.fileRefDef}[logo].${CCT.source}" to SchFailCode.missingRequired)
+        failing(ref() + (CCT.description to "x".repeat(FREF.maxDescriptionLength + 1))) shouldBe setOf("${CCT.fileRefDef}[logo].${CCT.description}")
+        // What a file *is* is no field of an entry: its type cannot be typed into one.
+        codes(CCT.fileRefDef, ref() + ("mimeType" to "text/html")) shouldBe mapOf("${CCT.fileRefDef}[logo].mimeType" to SchFailCode.additionalProperty)
     }
 
     "a cfact, a fragment overlay and a UiBlock overlay are each held to their shapes" {

@@ -77,6 +77,7 @@ object ClientExtension {
         val ownSingletonKinds = ownWorkflows.map { it.entry }.filter { it in WfEntry.singletons }.toSet()
         val ownUsages = own.any { it.usages.isNotEmpty() }
         val ownReports = own.flatMap { it.reports.keys }.toSet()
+        val ownFileRefs = own.flatMap { c -> c.fileRefs.map { it.refId } }.toSet()
         return templateConfigs.map { config ->
             GedraConfig(
                 gedraId = GedraId.of(config.gedraId.kind, client, cloneName(template, config.name)),
@@ -89,6 +90,9 @@ object ClientExtension {
                 workflows = config.workflows.filterValues { it.workflowId !in ownWorkflowIds && it.entry !in ownSingletonKinds },
                 usages = if (ownUsages) emptyList() else config.usages,
                 reports = config.reports.filterKeys { it !in ownReports },
+                // The template's refs are the child's, less the ones it names itself (issue #1153) -- whole
+                // replacement by id, as a report is.
+                fileRefs = config.fileRefs.filter { it.refId !in ownFileRefs },
                 origin = origin,
                 inheritedFrom = template,
             )

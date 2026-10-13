@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.webasset
 
+import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -20,7 +21,13 @@ import javax.xml.parsers.SAXParserFactory
  * One kind of image a web asset may be (issue #1130): what a person calls it, the content type it is stored and
  * served as, and the other types an upload may honestly declare it under -- browsers do not agree on an ICO's.
  */
-class WebImageKind(val label: String, val mimeType: String, val alsoDeclaredAs: Set<String> = emptySet())
+class WebImageKind(
+    val label: String,
+    val mimeType: String,
+    /** What a file of this kind is called after its dot, for a name offered when one is saved. */
+    val extension: String,
+    val alsoDeclaredAs: Set<String> = emptySet(),
+)
 
 /**
  * Whether an uploaded web asset is the image it says it is (issue #1130).
@@ -39,11 +46,11 @@ class WebImageKind(val label: String, val mimeType: String, val alsoDeclaredAs: 
  */
 @Suppress("ConstPropertyName")
 object WebAssetCheck {
-    val png = WebImageKind("PNG", "image/png")
-    val svg = WebImageKind("SVG", "image/svg+xml")
-    val ico = WebImageKind("ICO", "image/x-icon", setOf("image/vnd.microsoft.icon", "image/ico"))
-    val jpeg = WebImageKind("JPEG", "image/jpeg", setOf("image/jpg", "image/pjpeg"))
-    val webp = WebImageKind("WebP", "image/webp")
+    val png = WebImageKind("PNG", "image/png", "png")
+    val svg = WebImageKind("SVG", HashedFileServing.svgMimeType, "svg")
+    val ico = WebImageKind("ICO", "image/x-icon", "ico", setOf("image/vnd.microsoft.icon", "image/ico"))
+    val jpeg = WebImageKind("JPEG", "image/jpeg", "jpg", setOf("image/jpg", "image/pjpeg"))
+    val webp = WebImageKind("WebP", "image/webp", "webp")
 
     /** Every kind accepted, in the order a message lists them. */
     val kinds = listOf(png, svg, ico, jpeg, webp)
