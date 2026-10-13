@@ -112,7 +112,7 @@ fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.clien
     listOf(confDemoBase(cxt, client), confDemoCreateTalk(cxt, client))
 
 /**
- * Provisions the demo (issue #1137): each bundle written, published and made live on every node, then an organizer and
+ * Provisions the demo (issue #1137): each bundle written, published, and made live on every node, then an organizer and
  * a speaker to sign in as. [suffix] makes a fresh copy, `confdemo<suffix>` (see [SIM.suffix]).
  */
 fun provisionConfDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {

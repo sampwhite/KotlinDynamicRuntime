@@ -125,7 +125,7 @@ private class DocTarget(val bundle: String, val pointer: String, val illustratio
 private class JsonBlock(val line: Int, val target: DocTarget?, val text: String)
 
 private val markerRegex = Regex("""^\s*<!--\s*kdr-doc:\s*(.*?)\s*-->\s*$""")
-private val linkRegex = Regex("""\[[^\]]*]\(([^)\s]+)\)""")
+private val linkRegex = Regex("""\[[^]]*]\(([^)\s]+)\)""")
 private val gKeywordRegex = Regex("""`(g-[A-Za-z]+)`""")
 
 /** Each ```json block of [page], with the marker on the line before it. */
