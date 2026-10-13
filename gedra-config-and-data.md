@@ -418,7 +418,7 @@ one, is the deployment's to say and is written up in `examples/custom-config.md`
   | | source configuration | stored, by the server's own code or an `allClients` administrator | stored, by a client's own administrator |
   |---|---|---|---|
   | `store` (a hash) | refused: a problem at the load | yes | yes |
-  | `local` (a root and a path) | yes | yes | **no** -- 403 |
+  | `local` (a root and a path) | yes | yes | **no** -- 403, unless the root is open to clients |
 
   A path in configuration is a string naming a file on the server, and stored configuration is written through
   the API by a client's own people. So `GedraConfigService` refuses a write that **adds or changes** a local ref
@@ -431,6 +431,16 @@ one, is the deployment's to say and is written up in `examples/custom-config.md`
   did not write; it may reword the ref's description, which names no file; and it may leave the ref out, or
   upload over it. An edit of theirs that is refused and undone puts back what was there
   (`patchConfig(restoring = …)`).
+- **A root the deployment opens to clients is the exception, and is divided by client** (issue #1164,
+  `KDR_LOCAL_FILE_CLIENT_ROOTS`). A client's own administrator may name a file in such a root
+  (`GedraConfigService.mayNameLocalFile`, asked of the root's *name* and never of the disk, so a root that is not
+  open is refused the same whether or not it exists). What keeps that safe is in the read, not in the write: a
+  ref into an open root reads `<root>/<owner>/<path>`, the owner being the client whose configuration holds it
+  (`LocalFileRoots.locate`), **whoever wrote the ref** -- so there is no entry, typed by anybody, that reaches
+  another client's directory or the root's own top. The entry holds the root and the path as written and not
+  the client's segment: copied to another client, it names that client's own file. A sandbox's owner is its
+  parent. `POST /clientAdmin/client/files/local` is the call that names one, landing as an upload does, and
+  `GET …/files/roots` lists the open roots by name.
 - **What is stored overrides what is shipped.** A stored ref takes the place of a source ref of the same id, with
   no problem said -- as stored copy takes the place of the source's. So an upload replaces a shipped image, and
   removing the upload reveals it again. Any *other* second declaration of an id is still a problem.
@@ -574,7 +584,8 @@ is what gives the warning teeth.
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
 | File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only |
-| File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154; a client's own administrator naming one is not (it wants a root to opt in and to confine each client to its own subdirectory) |
+| File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154 |
+| A client's own administrator naming a local file, in a root the deployment opened to clients | **built** — #1164; the root is divided by client. Browsing what is in a root is not. |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 

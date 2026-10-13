@@ -175,7 +175,7 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
     /** What a file was found to be when it was last read for a load: the file as it then was, and whether it is an image. */
     private class Looked(val stamp: String, val servable: Boolean)
 
-    /** What each file was last found to be, by root and path: see the class note. */
+    /** What each file was last found to be, by client, root and path: see the class note. */
     private val looked = ConcurrentHashMap<String, Looked>()
 
     /**
@@ -218,13 +218,14 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
      * costs a problem said one load late, never a byte served.
      */
     override fun fileProblem(cxt: KdrCxt, ref: FileRef): String? {
-        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty())
+        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), ref.owner)
         val servable = if (at.real == null) {
             sayWhy(cxt, ref, at.reason)
             false
         } else {
             val stamp = "${at.real}|${at.size}|${at.modifiedMs}"
-            val key = "${ref.def.root}/${ref.def.path}"
+            // By client too: in a root divided by client, one root and path are a different file for each.
+            val key = "${ref.owner}/${ref.def.root}/${ref.def.path}"
             looked[key]?.takeIf { it.stamp == stamp }?.servable ?: (read(cxt, ref) != null).also {
                 if (looked.size >= maxRemembered) looked.clear()
                 looked[key] = Looked(stamp, it)
@@ -240,7 +241,7 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
      * hash, the file's own name, and -- as when it was "uploaded" -- when the file last changed.
      */
     override fun read(cxt: KdrCxt, ref: FileRef): StoredFile? {
-        val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty())
+        val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty(), ref.owner)
         val file = read.file
         if (file == null) {
             sayWhy(cxt, ref, read.reason)

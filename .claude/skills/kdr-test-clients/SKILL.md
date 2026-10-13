@@ -255,7 +255,9 @@ with `GCFG.storedCheckEnvVar` at `warn`, where the problem is recorded and the r
 **A ref to a local file** (`fileRef(refId) { local(root, path) }`, issue #1154) needs the file on disk instead,
 under a root in a temporary directory the instance is booted with -- `mapOf(LFENV.dir.name to dir.absolutePath)`,
 the root being a directory under it -- since a unit test is given no location by default; a write of one through
-an endpoint needs `TestUser.createFullAdmin`, a client's own administrator being refused (`LocalFileRefsTest.kt`). **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
+an endpoint needs `TestUser.createFullAdmin`, a client's own administrator being refused -- unless the instance
+opens the root to clients (`LFENV.clientRoots.name to "approved"`, issue #1164), where the file is then looked for
+in the client's own directory, `<root>/<clientId>/<path>` (`LocalFileRefsTest.kt`). **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A client on the **latest** tier loads its latest revision
 whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
 (`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is

@@ -95,6 +95,9 @@ object FREF {
     const val refTypeName = "FileRef"
     const val changeTypeName = "FileRefChange"
 
+    /** The schema type of one root of local files a client may name a file in (issue #1164). */
+    const val rootTypeName = "FileRefRoot"
+
     /** The schema namespace of the endpoints and their types. */
     const val namespace = "kdr.clientFiles"
 

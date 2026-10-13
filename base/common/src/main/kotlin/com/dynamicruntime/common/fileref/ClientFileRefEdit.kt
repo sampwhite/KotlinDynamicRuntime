@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.fileref
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.CCT
@@ -14,9 +15,9 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
- * Changing a client's file refs from the API (issue #1153): uploading a file as a named ref, and removing one. Each
- * is one call that leaves the client's stored configuration and the file store agreeing, by the path the copy and
- * menu editors take ([ClientStoredEdit]).
+ * Changing a client's file refs from the API (issues #1153, #1164): uploading a file as a named ref, naming a local
+ * file as one, and removing one. Each is one call that leaves the client's stored configuration and the file store
+ * agreeing, by the path the copy and menu editors take ([ClientStoredEdit]).
  *
  * **The bytes first, then the entry.** An upload stores the file under the hash of its bytes -- a key nothing else
  * can be at, so storing it changes nothing anyone is served -- and only then patches the entry that names it into
@@ -51,9 +52,7 @@ object ClientFileRefEdit {
      */
     fun upload(cxt: KdrCxt, client: String, refId: String, content: ContentData, description: String?): Result {
         FREF.refIdProblem(refId)?.let { throw KdrException.mkInput(it) }
-        if (description != null && description.length > FREF.maxDescriptionLength) {
-            throw KdrException.mkInput("A file ref's description may be at most ${FREF.maxDescriptionLength} characters; this one is ${description.length}.")
-        }
+        checkDescription(description)
         val bytes = content.contentBytes()
         if (bytes.isEmpty()) throw KdrException.mkInput("The file sent for the ref '$refId' is empty.")
         if (bytes.size > FREF.maxSize) {
@@ -63,6 +62,67 @@ object ClientFileRefEdit {
         }
         val kind = WebAssetCheck.check("file ref", content.mimeType, bytes)
 
+        val at = landing(cxt, client, refId, "a file upload")
+        val hash = bytes.sha256Hex()
+        storeBytes(cxt, at.bound, at.refs, at.owner, refId, hash, ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename))
+        return land(cxt, at, refId, description) { kept, extra -> FileRefDef(refId, FREF.sourceStore, hash, kept, extra = extra) }
+    }
+
+    /**
+     * Names the local file at [path] under the root [root] as [client]'s ref [refId], replacing what the ref named,
+     * and makes that take effect (issue #1164). [description] absent keeps the ref's description; blank clears it.
+     *
+     * No bytes come with it: the file is where the deployment put it, and in a root open to clients that is the
+     * client's own directory there (`LocalFileRoots`). **Who may name a file where is the configuration write's to
+     * decide** (`GedraConfigService.mayNameLocalFile`) -- it is asked here only so that a call that will be refused
+     * leaves nothing behind -- and whether the file is there to be served is the write's trial's, which refuses a
+     * ref to one that is not, saying one thing whatever the reason.
+     */
+    fun nameLocal(cxt: KdrCxt, client: String, refId: String, root: String, path: String, description: String?): Result {
+        FREF.refIdProblem(refId)?.let { throw KdrException.mkInput(it) }
+        checkDescription(description)
+        FREF.rootProblem(root)?.let { throw KdrException.mkInput(it) }
+        LocalFileRoots.pathProblem(path)?.let { throw KdrException.mkInput("'$path' is not a path a local file may have: $it.") }
+        if (!GedraConfigService.get(cxt).mayNameLocalFile(cxt, root)) {
+            // The same words whether or not there is such a root: only that it is not one opened to clients.
+            throw KdrException(
+                "The root '$root' is not one a client's own administrator may name a file in. The roots open to " +
+                    "clients are listed; any other file is uploaded.",
+                code = EXC.notAuthorized,
+            )
+        }
+        val at = landing(cxt, client, refId, "naming a local file")
+        return land(cxt, at, refId, description) { kept, extra ->
+            FileRefDef(refId, FREF.sourceLocal, hash = null, kept, extra = extra, root = root, path = path)
+        }
+    }
+
+    private fun checkDescription(description: String?) {
+        if (description != null && description.length > FREF.maxDescriptionLength) {
+            throw KdrException.mkInput("A file ref's description may be at most ${FREF.maxDescriptionLength} characters; this one is ${description.length}.")
+        }
+    }
+
+    /** Where a ref's entry is about to land, and what was found on the way: see [landing]. */
+    private class Landing(
+        val target: ClientStoredEdit.EditTarget,
+        val svc: GedraConfigService,
+        val refs: FileRefService,
+        /** The stored configuration already holding the ref, or null when none does. */
+        val holder: GedraConfigRow?,
+        /** The refs the client's administrator is shown now. */
+        val shown: Map<String, FileRef>,
+    ) {
+        val bound: KdrCxt get() = target.bound
+        val owner: String get() = target.client
+    }
+
+    /**
+     * Where [client]'s ref [refId] is to be written, having refused what can be refused before anything is: a
+     * client that takes no stored configuration here; a configuration holding somebody's unpublished changes
+     * ([what] names the change, for that refusal); and a client already served as many refs as it may have.
+     */
+    private fun landing(cxt: KdrCxt, client: String, refId: String, what: String): Landing {
         val target = ClientStoredEdit.target(cxt, client, editName)
         val bound = target.bound
         val owner = target.client
@@ -75,28 +135,37 @@ object ClientFileRefEdit {
             )
         }
         val holder = holderOf(bound, owner, refId)
-        holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, "a file upload") }
+        holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, what) }
         val shown = refs.forClient(target.readsAs).refs
         if (refId !in shown && shown.size >= FREF.maxRefs) {
             throw KdrException.mkInput(
                 "Client '$owner' has ${FREF.maxRefs} file refs, which is as many as a client is served. Remove one first.",
             )
         }
+        return Landing(target, svc, refs, holder, shown)
+    }
 
-        val hash = bytes.sha256Hex()
-        storeBytes(cxt, bound, refs, owner, refId, hash, ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename))
-
-        // The entry is always patched in, under the lock and over the revision as it then stands -- into the
-        // configuration already holding the ref, else the editors' own, made empty first when there is none. Never
-        // written as a new configuration with the entry in it, which a second first-upload would write over.
-        val row = holder ?: ClientStoredEdit.ensureEditConfig(bound, owner)
+    /**
+     * Writes the entry [def] builds for [refId] and makes it take effect. The entry is always patched in, under the
+     * lock and over the revision as it then stands -- into the configuration already holding the ref, else the
+     * editors' own, made empty first when there is none. Never written as a new configuration with the entry in it,
+     * which a second first-write would write over. [def] is handed the description to keep and the fields of the
+     * prior entry this release does not read, which are carried.
+     */
+    private fun land(
+        cxt: KdrCxt,
+        at: Landing,
+        refId: String,
+        description: String?,
+        def: (kept: String?, extra: Map<String, Any?>) -> FileRefDef,
+    ): Result {
+        val row = at.holder ?: ClientStoredEdit.ensureEditConfig(at.bound, at.owner)
         val before = storedEntry(row, refId)
         val prior = before?.let { FileRefDef.fromEntry(it, null, stored = true) }
-        // Absent keeps what the ref says now -- of the stored entry, or of the shipped ref this upload is the first to override.
-        val kept = if (description == null) (prior ?: shown[refId]?.def)?.description else description.ifBlank { null }
-        val entry = FileRefDef(refId, FREF.sourceStore, hash, kept, extra = prior?.extra.orEmpty()).toEntry()
-        val written = patchEntry(svc, bound, row, refId, entry)
-        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before, restoring = true) })
+        // Absent keeps what the ref says now -- of the stored entry, or of the shipped ref this is the first to override.
+        val kept = if (description == null) (prior ?: at.shown[refId]?.def)?.description else description.ifBlank { null }
+        val written = patchEntry(at.svc, at.bound, row, refId, def(kept, prior?.extra.orEmpty()).toEntry())
+        return goLive(cxt, at.target, written, refId, undo = { patchEntry(at.svc, at.bound, written, refId, before, restoring = true) })
     }
 
     /**

@@ -6,6 +6,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.FileRefDef
+import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -350,6 +351,10 @@ class GedraConfigService : ServiceInitializer {
      * signed-in caller (a script, a job), and a write that says its content is the code's whoever started it
      * ([ConfigWrite.authoredInCode]: a simulation provisioning a client, which a signed-in caller starts).
      *
+     * **Except into a root the deployment opened to clients** (issue #1164, [mayNameLocalFile]). Such a root is
+     * divided by client -- a ref into it reads the client's own directory there, whoever wrote the ref -- so what a
+     * client's own administrator can name in it is what the deployment put there for that client, and nothing else.
+     *
      * Anybody else's write may **carry** a local ref the revision already holds, naming the same file, so that
      * their edit of the same configuration is not refused for something they did not write; it may reword that
      * ref's description; and it may leave the ref out, which removes it. What it may not do is name a file.
@@ -367,8 +372,8 @@ class GedraConfigService : ServiceInitializer {
         latest: GedraConfigRow?,
         vouched: List<Map<String, Any?>>,
     ): String? {
-        val local = config.fileRefs.filter { it.source == FREF.sourceLocal }
-        if (local.isEmpty() || !cxt.userProfile.isLoggedIn || AdminRules.canSeeAllClients(cxt)) return null
+        val local = config.fileRefs.filter { it.source == FREF.sourceLocal && !mayNameLocalFile(cxt, it.root.orEmpty()) }
+        if (local.isEmpty()) return null
         fun pointers(entries: List<Map<String, Any?>>) = entries.map { FileRefDef.fromEntry(it, null, stored = true) }
             .distinctBy { it.refId }.map { it.refId to it.pointer }
         val carried = (pointers(latest?.entriesBySlot()?.get(CCT.fileRefDef).orEmpty()) + pointers(vouched)).toSet()
@@ -376,8 +381,18 @@ class GedraConfigService : ServiceInitializer {
         if (named.isEmpty()) return null
         return "Config '${config.gedraId}' cannot be written: it names a local file for the file ref" +
             "${if (named.size == 1) "" else "s"} ${named.joinToString { "'$it'" }}. A ref to a local file is written " +
-            "by an administrator who sees every client; a client's own administrator uploads the file instead."
+            "by an administrator who sees every client, unless it is in a root the deployment has opened to clients; " +
+            "a client's own administrator otherwise uploads the file instead."
     }
+
+    /**
+     * Whether the caller may name a local file in the root [root] at all: the server's own code, an administrator
+     * who sees every client, or anybody writing the client's configuration when the deployment opened the root to
+     * clients. **Asked of the root's name and never of the disk**, so the answer says nothing of what is there --
+     * a root that is not open is refused the same whether or not there is such a root.
+     */
+    fun mayNameLocalFile(cxt: KdrCxt, root: String): Boolean =
+        !cxt.userProfile.isLoggedIn || AdminRules.canSeeAllClients(cxt) || FileRefService.getOrNull(cxt)?.opensToClients(root) == true
 
     /**
      * Writes [config] as the current revision of [configId] under an open write transaction, per the version/

@@ -22,8 +22,8 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
- * A client's file refs, for its administrator (issues #1153, #1154): what refs it has, uploading a file as one, removing
- * one, and the file itself.
+ * A client's file refs, for its administrator (issues #1153, #1154, #1164): what refs it has, uploading a file as one,
+ * naming a local file as one, removing one, and the file itself.
  *
  * In the **`clientAdmin`** section, each acting on the caller's own client or, for an administrator who sees every
  * client, a named one -- the rule the other client pages enforce (`overseenClient`).
@@ -77,6 +77,12 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             option(EDM.draft, "Draft")
         }
         property(FREF.ref, "The ref as it now is; absent when the change removed it.") { ref(FREF.refTypeName) }
+    }
+
+    type(FREF.rootTypeName) {
+        type = SCT.kObject
+        description = "One root of local files that is open to clients: a client's own administrator may name a file in it."
+        property(CCT.root, "The root's name: what a ref's `root` is.", required = true)
     }
 
     listEndpoint(
@@ -137,6 +143,53 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         val refs = FileRefService.get(c)
         val client = knownClient(c, request)
         changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty()))
+    }
+
+    generalEndpoint(
+        UADEP.clientFilesLocal,
+        "Names a local file as one of a client's file refs (issue #1164), replacing what the ref named: a file the " +
+            "deployment keeps on the server, under a root it has opened to clients and in the client's own " +
+            "directory there. Nothing is uploaded and nothing is copied -- the ref is served the file as it is, by " +
+            "the hash of its bytes when it is read. Refused with a 403 for a root that is not open to clients, " +
+            "unless the caller sees every client; and with a 400 when the file is not there to be served as an " +
+            "image, which says one thing whatever the reason. Live or a draft as an upload is.",
+        HttpMethod.POST,
+        outputRef = FREF.changeTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(FREF.client)
+            field(CCT.refId, "The ref's id: a variable name. An id the client already has replaces what that ref names.", required = true)
+            field(CCT.root, "The root the file is under: one of those `${UADEP.clientFilesRoots}` lists.", required = true)
+            field(CCT.path, "The file's path under the client's directory in that root, in segments of letters, digits, `.`, `_` and `-`.", required = true) {
+                maxLength = FREF.maxPathLength
+            }
+            field(CCT.description, "What the file is for, in at most ${FREF.maxDescriptionLength} characters. Absent keeps the ref's description; blank clears it.") {
+                emptyIsAbsent = false
+                maxLength = FREF.maxDescriptionLength
+            }
+        },
+    ) { c, request ->
+        val refs = FileRefService.get(c)
+        val client = knownClient(c, request)
+        val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
+        val change = ClientFileRefEdit.nameLocal(
+            c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.root].toOptStr().orEmpty(), request[CCT.path].toOptStr().orEmpty(), description,
+        )
+        changeItem(c, refs, change)
+    }
+
+    listEndpoint(
+        UADEP.clientFilesRoots,
+        "The roots of local files that are open to clients (issue #1164), by name: where a client's own " +
+            "administrator may name a file as a ref. Each is divided by client, so a path named in one is looked " +
+            "for in the client's own directory there. The names only -- what is in a root is not listed. Empty " +
+            "where the deployment has opened none, which is the default.",
+        outputRef = FREF.rootTypeName,
+        // As many as the deployment declared in one variable.
+        noLimit = true,
+        needsClientConfig = true,
+    ) { c, _ ->
+        FileRefService.get(c).clientRoots().map { mapOf(CCT.root to it) }
     }
 
     fileDownloadEndpoint(

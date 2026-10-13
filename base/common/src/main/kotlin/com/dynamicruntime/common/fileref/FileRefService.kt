@@ -88,6 +88,21 @@ class FileRefService : ServiceInitializer, ContentServer {
     /** The file store as a source: there from the start, since it is what an upload writes to. */
     val store = StoreFileSource()
 
+    /** The local files this node reads, once this is set up ([checkInit]); null before, and so "none". */
+    @Volatile
+    var localRoots: LocalFileRoots? = null
+        private set
+
+    /**
+     * Whether a client's own administrator may name a file in the root [root] (issue #1164): the deployment opened
+     * it to clients. What the write of a local ref is judged by (`GedraConfigService`), and what a client is told
+     * it may name from ([clientRoots]).
+     */
+    fun opensToClients(root: String): Boolean = localRoots?.isOpenToClients(root) == true
+
+    /** The roots open to clients, by name, in order. */
+    fun clientRoots(): List<String> = localRoots?.clientRoots.orEmpty().sorted()
+
     /** The sources a ref may name, by what an entry calls them. Local files join when this is set up ([checkInit]). */
     @Volatile
     var sources: Map<String, FileRefSource> = mapOf(store.source to store)
@@ -109,6 +124,7 @@ class FileRefService : ServiceInitializer, ContentServer {
         FileStoreService.get(cxt).checkInit(cxt)
         // Refuses the start over a declaration that is wrong (see there). One that names nothing yet is only said.
         val roots = LocalFileRoots.resolve(cxt)
+        localRoots = roots
         sources = sources + (FREF.sourceLocal to LocalFileSource(roots))
         LogFileRef.info(cxt) { "Local files a file ref may name (${LFENV.dir.name}): ${roots.describe()}." }
         val configs = collector.gedraConfigs.configs

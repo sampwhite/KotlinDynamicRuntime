@@ -240,9 +240,32 @@ Notes:
   is in the node's log.
 - **Who may write one.** Source configuration, always. In *stored* configuration, the server's own code -- a
   script or a job, which runs with no signed-in caller, and a simulation provisioning a client, whoever starts
-  it -- and an administrator who sees every client. A client's own
-  administrator may not name a local file -- they upload one, which overrides a shipped ref of the same id, and
-  removing the upload reveals the shipped image again.
+  it -- and an administrator who sees every client. A client's own administrator may not name a local file,
+  unless the root is one you opened to clients (below) -- they upload one, which overrides a shipped ref of the
+  same id, and removing the upload reveals the shipped image again.
+- **Opening a root to clients.** `KDR_LOCAL_FILE_CLIENT_ROOTS=approved,seasonal` names the roots a client's own
+  administrator may name a file in (issue #1164): a directory of approved imagery kept per client, which each
+  client's administrator picks from without an operator typing every ref. None is open by default. **An open root
+  is divided by client**: a ref into it names `<root>/<clientId>/<path>`, whoever wrote the ref.
+
+  ```
+  localFiles/
+  └── approved/           # KDR_LOCAL_FILE_CLIENT_ROOTS=approved
+      ├── acme/           # what acme's administrator may name from
+      │   └── hero.png    # { root: "approved", path: "hero.png" } in acme's configuration
+      └── globex/
+          └── hero.png    # the same root and path, in globex's
+  ```
+
+  So a client reaches its own directory there and nothing else: not another client's, and not a file at the
+  root's top. That is a property of the root and not of who wrote the ref -- a ref into it from source
+  configuration, or from an administrator who sees every client, is divided the same way -- which also means
+  **opening a root changes what every ref already into it names**. Open a root that was made for the purpose.
+  The client's directory is named exactly as the client's id is, and is not a link. A sandbox reads its
+  parent's directory. A client's administrator names a file with `POST /clientAdmin/client/files/local`, and
+  `GET /clientAdmin/client/files/roots` says which roots are open; what is *in* a root is never listed. A name
+  in the variable that is no root's name refuses the boot; one that names no root yet is said on the startup
+  line.
 - **Roll it out everywhere first.** A node still on the release before this one does not read a `local` ref: it
   leaves the ref out and answers it as not found, and its upload over one writes an entry this release drops. Put
   the release on every node before the first local ref is stored, as with file refs themselves.

@@ -277,6 +277,72 @@ class LocalFileRootsTest : StringSpec({
         r.roots.read("brand", "logo.png").file.shouldNotBeNull()
     }
 
+    // Issue #1164. A root the deployment opens to clients is one a client's own administrator may name a file in, so
+    // it is divided by client: what a ref reaches there is its client's own directory, and nothing else of the root.
+    "a root open to clients is divided by client: a ref reads its own client's directory there, whoever it is" {
+        val location = tempDir()
+        val approved = File(location, "approved").apply { mkdirs() }
+        val brand = File(location, "brand").apply { mkdirs() }
+        File(approved, "acme/marks").mkdirs()
+        File(approved, "other").mkdirs()
+        File(approved, "acme/logo.png").writeBytes(png)
+        File(approved, "acme/marks/mark.svg").writeBytes(svg)
+        File(approved, "other/logo.png").writeBytes(svg)
+        File(approved, "other/theirs.png").writeBytes(png)
+        File(approved, "top.png").writeBytes(png)
+        File(brand, "logo.png").writeBytes(png)
+        val roots = LocalFileRoots.resolve(
+            cxtWith(ENV.unit, LFENV.dir.name to location.absolutePath, LFENV.clientRoots.name to " approved , later "),
+        )
+
+        // Open by its name, whether or not there is such a root: who may write a ref cannot tell what is there.
+        roots.isOpenToClients("approved") shouldBe true
+        roots.isOpenToClients("later") shouldBe true
+        roots.isOpenToClients("brand") shouldBe false
+        roots.describe() shouldBe "'${location.absolutePath}' holds the roots approved, brand; open to clients, each in its own directory: approved, later (of which later is no root here yet)"
+
+        // One root and path, a different file for each client.
+        roots.read("approved", "logo.png", "acme").file.shouldNotBeNull().bytes.toList() shouldBe png.toList()
+        roots.read("approved", "logo.png", "other").file.shouldNotBeNull().bytes.toList() shouldBe svg.toList()
+        roots.read("approved", "marks/mark.svg", "acme").file.shouldNotBeNull()
+        // Nothing of another client's, by any way of writing it, and nothing at the root's own top.
+        for (path in listOf("theirs.png", "other/theirs.png", "../other/theirs.png", "../top.png", "top.png", "acme/logo.png")) {
+            roots.read("approved", path, "acme").file.shouldBeNull()
+        }
+        // A client with no directory there has nothing, and a ref with no client at all has nothing.
+        roots.read("approved", "logo.png", "nobody").file.shouldBeNull()
+        roots.read("approved", "logo.png").file.shouldBeNull()
+        // A client's id is its directory's name, exactly: an id that could not be one finds nothing, and neither
+        // does one that matches a directory only by case, or by being a path.
+        for (owner in listOf("", ".", "..", "Acme", "acme/marks", "acme:sandbox", "a.b", "../brand")) {
+            roots.read("approved", "logo.png", owner).file.shouldBeNull()
+            roots.read("approved", "mark.svg", owner).file.shouldBeNull()
+        }
+        // A client's directory that is a link to another's is no directory of its own: the real path has to be
+        // the root's plus the client plus the path.
+        Files.createSymbolicLink(File(approved, "sly").toPath(), File(approved, "other").toPath())
+        roots.read("approved", "theirs.png", "sly").let {
+            it.file.shouldBeNull()
+            it.reason.orEmpty() shouldContain "reached through a link"
+        }
+        // A root that is not open is not divided: whose ref it is makes no difference to what it names.
+        roots.read("brand", "logo.png", "acme").file.shouldNotBeNull()
+        roots.read("brand", "logo.png").file.shouldNotBeNull()
+
+        // Opening a root is a declaration, and one that is malformed refuses the start, in every environment.
+        for (env in listOf(ENV.unit, ENV.local, ENV.prod)) {
+            refusal(env, LFENV.clientRoots.name to "approved,my root") shouldContain "${LFENV.clientRoots.name} opens a root whose name is no name"
+            refusal(env, LFENV.clientRoots.name to "../approved") shouldContain "whose name is no name"
+        }
+        // None is opened by default.
+        LocalFileRoots.resolve(cxtWith(ENV.unit, LFENV.dir.name to location.absolutePath)).let {
+            it.clientRoots shouldBe emptySet()
+            it.isOpenToClients("approved") shouldBe false
+            // And the same root, not opened, is read whole.
+            it.read("approved", "top.png", "acme").file.shouldNotBeNull()
+        }
+    }
+
     // A write's trial judges every ref of its client, more than once, under the lock every reload takes: it asks
     // only whether a file can be served, and does not read again a file that has not changed.
     "a load does not read again a file it has looked at and that has not changed; serving always reads" {
