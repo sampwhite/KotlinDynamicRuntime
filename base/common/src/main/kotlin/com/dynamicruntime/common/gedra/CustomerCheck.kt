@@ -188,6 +188,39 @@ internal fun customerLinkFaults(
 }
 
 /**
+ * What is wrong with a client **coming into being** as [clientId] under [customerId] -- or under none -- as
+ * [clients]' customers stand, or null (issue #1107). The one moment a client's id is held to a customer's prefix,
+ * asked by every write that defines a client this deployment does not have yet (`GedraConfigService`), so the
+ * operator's create, a bundle write and an import are held alike; after it, the link is the authority, and a client
+ * moved to another customer keeps its id.
+ *
+ * Under a customer, the id is the customer's own id or `<customer>_<name>`, the customer's case as written. Under
+ * none -- a platform or test client, or a self-serve one -- it may not fall under any customer's prefix, case aside,
+ * and an id holding `_` is a self-serve client's (`free_...`).
+ */
+internal fun newClientPrefixFault(clients: ClientService, clientId: String, customerId: String?): String? {
+    val prefix = clientIdPrefix(clientId)
+    if (customerId != null) {
+        clients.customer(customerId)
+            ?: return "Client '$clientId' cannot be created under the customer '$customerId', which this deployment does not declare."
+        if (prefix != customerId) {
+            return "Client '$clientId' cannot be created under the customer '$customerId': a customer's client ids " +
+                "are its own id or '$customerId${CUST.separator}<name>'."
+        }
+        return null
+    }
+    clients.customers.keys.firstOrNull { it.equals(prefix, ignoreCase = true) }?.let { holder ->
+        return "Client '$clientId' falls under the prefix of the customer '$holder'; create it under that customer, " +
+            "or choose an id outside it."
+    }
+    if (isPrefixedClientId(clientId) && prefix != CUST.free) {
+        return "Client '$clientId' holds '${CUST.separator}', which a client id does only under a customer " +
+            "('<customer>${CUST.separator}<name>') or as a self-serve client ('${CUST.free}${CUST.separator}...')."
+    }
+    return null
+}
+
+/**
  * Whether [rootClientId] -- customer [customerId]'s root -- names one of its clients among [clients], or the fault
  * (issue #1107). The root's administrators act for the customer as a whole, so it must be the customer's own.
  */

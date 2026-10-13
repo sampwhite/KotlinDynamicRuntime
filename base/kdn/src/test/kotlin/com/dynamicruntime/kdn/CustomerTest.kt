@@ -67,6 +67,17 @@ class CustomerTest : StringSpec({
         createRefusal("loose_1107") shouldContain "which a client id does only under a customer"
         // The self-serve prefix is no customer's.
         admin.postData(ADEP.clientCreate, createBody("${CUST.free}_t1107"))[CLD.present] shouldBe true
+
+        // A bundle write defining a client that does not exist yet is held alike: whichever write brings a client
+        // into being.
+        val bundled = "${customer}_bundled"
+        admin.expectError(
+            EXC.badInput, ACEP.bundleWrite,
+            mapOf(
+                CFEP.client to bundled, CFEP.name to CLD.definitionConfigName, CFEP.namespaceField to clientNamespace(bundled),
+                CFEP.slots to mapOf(CCT.clientDef to listOf(createBody(bundled))),
+            ),
+        ).toString() shouldContain "falls under the prefix of the customer '$customer'"
     }
 
     "only hub's stored configuration holds customers, and only the platform changes them" {

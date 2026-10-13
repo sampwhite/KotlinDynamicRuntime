@@ -277,6 +277,10 @@ class GedraConfigService : ServiceInitializer {
         return null
     }
 
+    /** Whether [client] has no definition this node knows and no stored configuration: a write defining it makes it. */
+    private fun isNewClient(cxt: KdrCxt, client: String): Boolean =
+        ClientService.get(cxt).known(client) == null && listConfigs(boundToClient(cxt, client)).isEmpty()
+
     private fun checkWritableConfig(cxt: KdrCxt, config: GedraConfig) {
         storedOwnershipProblem(config)?.let { throw KdrException.mkInput(it) }
         // `staticConfig` is a source-only fact (issue #824): a static client takes nothing stored in production, so
@@ -297,6 +301,11 @@ class GedraConfigService : ServiceInitializer {
         // Judged against the definitions this node knows, case-insensitively, since a hostname is.
         config.client?.let { def ->
             routingClaimedByAnother(cxt, def)?.let { throw KdrException.mkInput("Config '${config.gedraId}' cannot be written: $it") }
+            // A client coming into being is held to the customers' prefixes (issue #1107), whichever write brings it.
+            if (isNewClient(cxt, def.clientId)) {
+                newClientPrefixFault(ClientService.get(cxt), def.clientId, def.customerId)
+                    ?.let { throw KdrException.mkInput("Config '${config.gedraId}' cannot be written: $it") }
+            }
         }
         val testFeatures = config.client?.testFeatures.orEmpty()
         if (!cxt.instanceConfig.isTestInstance && testFeatures.isNotEmpty()) {

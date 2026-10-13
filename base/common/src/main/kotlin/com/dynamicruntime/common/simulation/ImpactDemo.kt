@@ -6,7 +6,6 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
-import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -46,7 +45,6 @@ fun impactDemoMain(cxt: KdrCxtBase, client: String = ImpactDemo.client): GedraCo
             ClientDef(
                 clientId = client, name = "Impact demo", usageType = ClientUsageType.demo,
                 audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev), sandbox = true,
-                customerId = CUST.kdr,
             ),
         )
     }
