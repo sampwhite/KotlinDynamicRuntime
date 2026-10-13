@@ -16,6 +16,8 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SL
+import com.dynamicruntime.common.schema.commentRefusedMessage
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -239,6 +241,40 @@ class GedraConfigEndpointTest : StringSpec({
             CFEP.bundleWrite,
             mapOf(CFEP.name to "x", CFEP.namespaceField to namespace, CFEP.slots to slots("x", "x")),
         )
+    }
+
+    // Issue #1135, through the write gate: a comment where one is declared comes back from the bundle read as it was
+    // written; one anywhere else is refused, saying where comments go.
+    "a comment is kept where one is declared and refused elsewhere, saying where one goes" {
+        val u = admin()
+        val name = "commented"
+        val schema = mapOf(
+            SCH.dComment to "A shared shape.",
+            SCH.type to SCT.kObject,
+            SCH.properties to mapOf("x" to mapOf(SCH.type to SCT.string)),
+            SCH.layout to mapOf(
+                SCH.dComment to "Only x, for now.",
+                SL.schemaFields to listOf(mapOf(SL.field to "x", SCH.dComment to "Labeled for the reader.", SL.label to "X")),
+            ),
+        )
+        u.postData(
+            CFEP.bundleWrite,
+            mapOf(
+                CFEP.name to name,
+                CFEP.namespaceField to namespace,
+                CFEP.slots to mapOf(CCT.schemaDef to listOf(mapOf(CCT.typeName to "$namespace.Commented", CCT.schema to schema))),
+            ),
+        )
+        val read = u.getItem(CFEP.bundle, mapOf(CFEP.name to name))[CFEP.slots].toJsonMapOrEmpty()
+        read[CCT.schemaDef].toJsonListOfMaps().single()[CCT.schema] shouldBe schema
+
+        val onCfact = mapOf(CCT.name to ready(name), CCT.group to "grp", CCT.description to "d", SCH.dComment to "no")
+        val refused = u.expectError(
+            EXC.badInput,
+            CFEP.bundleWrite,
+            mapOf(CFEP.name to name, CFEP.namespaceField to namespace, CFEP.slots to mapOf(CCT.cfactDef to listOf(onCfact))),
+        )
+        refused[EP.errorMessage].toString() shouldContain commentRefusedMessage
     }
 
     "an unknown slot key is refused rather than silently dropped" {

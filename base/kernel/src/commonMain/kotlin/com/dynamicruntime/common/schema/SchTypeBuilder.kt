@@ -544,4 +544,14 @@ open class SchTypeBuilder(
         type = SCT.kObject
         data[SCH.schemaDocument] = true
     }
+
+    /**
+     * Declares that this object takes a `$comment` (issue #1135): a note for whoever maintains the definition,
+     * which changes nothing about what it does, and is stored and read back with it. Declared on purpose, and only
+     * on an object an author would want to explain that has no author-facing text of its own -- see
+     * [reservedSchemaKeys] for the rule, and why a `$comment` anywhere else is refused.
+     */
+    fun commentProperty() {
+        property(SCH.dComment, "A note for whoever maintains this definition; it changes nothing about what the definition does.")
+    }
 }

@@ -502,7 +502,7 @@ by a `$ref` property: `type("Wide") { extends("kdr.B"); property("extra", "…")
 clean and do nothing; it is now refused at all three sites (a property, an array's `items`, a union branch), naming
 the key and pointing to `g-extends`. What may stand beside a `$ref` is what the site reads about its own use: a
 `description` and `title` anywhere, and on a property `g-optionalContents`, `g-presentation` and `g-visibleWhen`
-(plus `$comment` and other off-contract annotations).
+(plus `$comment`, and off-contract `_`/`$` annotations).
 
 ## The schema for schema (issue #1056)
 
@@ -565,6 +565,23 @@ mode: stored config is forgiven everywhere but `unit` (`KDR_STORED_CONFIG_CHECK`
 
 The repair runs on the **raw** definitions (`repairTypeDef`, `ClientSchemaRepair.kt`) with the boot checks' own
 helpers, so the later whole-document checks find nothing left in the client's variant.
+
+## Comments: `$comment` (issue #1135)
+
+`$comment` is JSON Schema's note for maintainers, and here it is **kept wherever it is accepted**. It is a reserved
+keyword, not an off-contract annotation like `$note`, which a request drops and stored input refuses (see
+`reservedSchemaKeys`). It is accepted:
+
+- on any schema node: the parser reads past it, and a stored schema keeps it;
+- on a `g-layout` block and a `schemaFields` entry -- `layout(comment = ...) { field(..., comment = ...) }` -- kept
+  in the authored block and never read into `SchLayout`, so it is stored but never delivered to a page;
+- on an object type that declares it with `commentProperty()`: today a workflow, a task, an eligibility test and a
+  report (`WfDefBuilder.comment`, `WfTaskBuilder.comment`, `eligibility(..., comment = ...)`,
+  `ReportBuilder.comment`), whose models carry it so that it survives being stored.
+
+Anywhere else it is an additional property, refused with `commentRefusedMessage`, which says where a comment goes.
+Declare it only on an object an author would want to explain that has no author-facing text of its own -- a
+cfact's or a client's `description` already is that note.
 
 ## Validation & coercion
 
