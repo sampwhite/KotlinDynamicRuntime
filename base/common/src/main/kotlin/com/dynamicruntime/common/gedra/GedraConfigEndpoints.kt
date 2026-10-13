@@ -412,7 +412,7 @@ private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
  * Refuses a change to the customers a configuration declares by anyone but a platform operator (issue #1107). Only
  * `hub`'s stored configuration may hold customers (`storedOwnershipProblem` refuses them anywhere else), and `hub`'s
  * own administrators are not thereby the platform's: a customer decides whose namespace a client id falls in, so
- * only an `allClients` administrator declares, changes or removes one. A write handing back the customers as stored
+ * only an `allClients` administrator declares, changes, or removes one. A write handing back the customers as stored
  * passes, so the rest of the configuration stays editable.
  */
 private fun requireCustomersKept(c: KdrCxt, proposed: List<Map<String, Any?>>?, current: List<Map<String, Any?>>?) {
