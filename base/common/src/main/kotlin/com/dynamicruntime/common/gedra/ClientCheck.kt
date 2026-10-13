@@ -221,10 +221,10 @@ private fun ownProblem(
 
 /** What is wrong with [ClientDef.enabledEnvironments], or null. */
 private fun envProblem(config: GedraConfig, def: ClientDef): GedraConfigIssue? {
-    // No check that the set is non-empty: naming nothing is how a client is **retired**, which is a state to
-    // be able to declare rather than one to refuse. It cannot be reached by accident either, the field
-    // defaulting to a set that is not empty -- so a client enabled nowhere is one somebody wrote `emptySet()`
-    // for, and the design's answer to retirement is exactly that. See `client-definition.md`.
+    // No check that the set is non-empty: a client enabled nowhere is a state to be able to declare rather than one
+    // to refuse, absent everywhere. It cannot be reached by accident either, the field defaulting to a set that is
+    // not empty. (Retiring a client is its own flag, `ClientDef.retired` (issue #1111), so that bringing it back
+    // restores the environments it had; see `client-definition.md`.)
     val unknown = def.enabledEnvironments.filterNot { it in ENV.names }.sorted()
     if (unknown.isNotEmpty()) {
         return GedraConfigIssue(

@@ -66,6 +66,12 @@ object ADEP {
     const val clientCreate = "/${SECT.admin}/client/create"
 
     /**
+     * Retires a client, or brings a retired one back (issue #1111): its data kept, and the client absent everywhere
+     * while retired. Full-scope, as only the platform decides whether a client is there at all.
+     */
+    const val clientRetirementSet = "/${SECT.admin}/client/retirement/set"
+
+    /**
      * One client's full definition — its attributes, its traits (with their data schema), its trait-usage rules,
      * and its workflow ids — for an `allClients` admin who needs to see or act in another client's rules (issue
      * #672). Full-scope only, the same reason [clients] is: it names a client the caller need not belong to.

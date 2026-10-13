@@ -142,17 +142,27 @@ class ClientCheckTest : StringSpec({
         result.issues.single().message shouldContain "differs from the client 'acme' only by case"
     }
 
-    // Retirement, and the only way to do it: the definition stays and access stops everywhere. Declaring it
-    // has to be possible, which is why nothing checks the set is non-empty -- and it cannot happen by
-    // accident, the field defaulting to a set that is not empty.
-    "a client enabled nowhere is retired, not refused" {
+    // The definition stays and access stops everywhere. Declaring it has to be possible, which is why nothing checks
+    // the set is non-empty -- and it cannot happen by accident, the field defaulting to a set that is not empty.
+    "a client enabled nowhere is absent, not refused" {
         val result = checkClientDefs(devCxt, collectorOf(clientConfig("acme", environments = emptySet())))
         result.issues.shouldBeEmpty()
         val retired = result.clients["acme"].shouldNotBeNull()
         ENV.names.forEach { retired.isEnabledIn(it) shouldBe false }
     }
 
-    // A retired client is still *known*, so it can still be referred to. Extension reads the declared set
+    // Issue #1111: retiring is a flag of its own, so the environments are kept for when the client is brought back.
+    "a retired client is absent everywhere, and keeps its environments" {
+        val def = ClientDef(
+            clientId = "acme", name = "Acme", usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+            enabledEnvironments = setOf(ENV.unit, ENV.local), retired = true,
+        )
+        ENV.names.forEach { def.isEnabledIn(it) shouldBe false }
+        def.copy(retired = false).isEnabledIn(ENV.local) shouldBe true
+        ClientDef.fromInfo(def.toInfo()) shouldBe def
+    }
+
+    // A client absent everywhere is still *known*, so it can still be referred to. Extension reads the declared set
     // rather than the present one, which is what lets a retired template still be built on.
     "a client may extend a retired one" {
         val result = checkClientDefs(

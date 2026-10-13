@@ -1153,6 +1153,42 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             ),
         )
     }
+
+    // --- retiring a client (issue #1111) ----------------------------------------------------------------------------
+    generalEndpoint(
+        ADEP.clientRetirementSet,
+        "Retires a client, or brings a retired one back (issue #1111). A retired client keeps everything it stored and " +
+            "is inert: absent in every environment, its users unable to sign in, their open sessions no longer " +
+            "honored, and its sandbox with it. Brought back, it is as it was. Takes effect live, whatever the client's " +
+            "tier. Refused for a client defined in source code (retired there), a sandbox (retired with its parent), " +
+            "a customer's root client, and a definition whose configuration carries unpublished changes.",
+        HttpMethod.POST,
+        outputRef = CLD.retirementResultTypeName,
+        inputFields = {
+            field(CLD.client, "The client to retire or bring back.", required = true)
+            field(CLD.retired, "True to retire the client, false to bring it back.", required = true) {
+                type = SCT.boolean
+                allowCoerce = false
+            }
+        },
+    ) { c, request ->
+        val result = ClientRetirement.set(c, request[CLD.client].toOptStr().orEmpty(), request[CLD.retired] == true)
+        linkedMapOf(
+            CLD.client to result.client,
+            CLD.retired to result.retired,
+            CLD.definition to result.info,
+            CLD.present to result.present,
+        )
+    }
+
+    type(CLD.retirementResultTypeName) {
+        type = SCT.kObject
+        description = "What retiring or bringing back a client did (issue #1111)."
+        property(CLD.client, "The client.", required = true)
+        property(CLD.retired, "Whether it is retired now.", required = true) { type = SCT.boolean }
+        property(CLD.definition, "The client's stored definition.", required = true) { ref(CLD.infoTypeQualified) }
+        property(CLD.present, "Whether this node carries the client now.", required = true) { type = SCT.boolean }
+    }
 }
 
 /**

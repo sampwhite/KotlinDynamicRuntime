@@ -23,6 +23,7 @@ import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientSyncService
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -815,12 +816,17 @@ class RequestService : ServiceInitializer {
      * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the instance key),
      * and if it is valid and unexpired, bind the user. Silently leaves the (system) profile in place otherwise
      * -- an absent/expired/forged cookie simply means "not logged in". Header-token auth is a follow-up.
+     *
+     * So does a session whose client this node does not carry (issue #1111): a client retired since the session
+     * began, or not enabled here. Everything its user would reach is scoped by that client, so the session is
+     * honored only where the client is. A node carrying no clients (an edge) asks nothing.
      */
     fun extractSessionAuth(cxt: KdrCxt, handler: RequestHandler) {
         val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
         val node = NodeService.get(cxt)
         val decoded = UserAuthCookie.decode(node, cookie) ?: return
         if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) return
+        if (ClientService.getOrNull(cxt)?.isPresent(decoded.client) == false) return
         cxt.bindToUserProfile(
             UserProfile(
                 authId = decoded.userId.toString(), userId = decoded.userId,
