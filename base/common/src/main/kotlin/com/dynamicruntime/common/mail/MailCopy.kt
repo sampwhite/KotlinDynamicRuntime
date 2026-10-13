@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.user.AFRAG
+import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.MarkdownHooks
 import com.dynamicruntime.common.util.escapeMarkdown
@@ -28,6 +29,13 @@ object MCOPY {
     const val common = "common"
     const val footer = "footer"
     const val htmlStyle = "htmlStyle"
+
+    /**
+     * The line a public test deployment's mails end with, after the [footer] (issue #1150): the deployment is for
+     * testing and development only. Its own key rather than part of the footer, so a client that signs its mails
+     * with a footer of its own does not drop it.
+     */
+    const val testDeploymentNote = "testDeploymentNote"
 
     // The mails, one namespace each.
     const val verifyCode = "verifyCode"
@@ -130,11 +138,14 @@ object MailCopy {
         val safe = sanitized.mapValues { (_, v) -> if (v is String) v.escapeMarkdown() else v }
         val subject = copy(mail, MCOPY.subject).evalTemplate(sanitized)
         val body = copy(mail, MCOPY.body)
+        // On a public test deployment every mail says so, beneath whatever footer the client signs with (issue #1150).
+        val note = if (PublicTestDeployment.isOn(cxt.instanceConfig)) copy(MCOPY.common, MCOPY.testDeploymentNote) else null
         val footer = copy(MCOPY.common, MCOPY.footer)
 
         // The text part: the same source, rendered to plain text (issue #795).
         val forText = safe + (MCOPY.forHtmlParam to false)
-        val text = (body.evalTemplate(forText) + "\n\n" + footer.evalTemplate(forText)).renderMarkdownText()
+        val text = (body.evalTemplate(forText) + "\n\n" + footer.evalTemplate(forText) +
+            (note?.let { "\n\n" + it.evalTemplate(forText) } ?: "")).renderMarkdownText()
 
         // The HTML part: a URL-valued param written as a Markdown link so the renderer makes it an anchor (the
         // text part keeps the bare URL) -- the label escaped like any value, the target the URL itself; a role a
@@ -144,7 +155,8 @@ object MailCopy {
         } + (MCOPY.forHtmlParam to true)
         val hooks = MarkdownHooks(decorateSpan = ::decorateValue)
         val rendered = body.evalTemplate(forHtml).renderMarkdown(hooks) +
-            "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>"
+            "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>" +
+            (note?.let { "<p style=\"$footerStyle\">" + it.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>" } ?: "")
         return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)))
     }
 

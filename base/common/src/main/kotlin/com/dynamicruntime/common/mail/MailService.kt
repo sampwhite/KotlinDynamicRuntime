@@ -13,6 +13,8 @@ import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.sql.SecretsUtil
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.user.AddressRules
+import com.dynamicruntime.common.user.PublicSignIn
+import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.util.toOptBool
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -46,7 +48,8 @@ object MAIL {
      * loaded; the captured mail is read back through the `forTestingOnly` `/fixture/simulatedEmails` endpoint (so a
      * test or the local frontend can pick up a code). Defaults to the instance's `isTestInstance`, and is
      * refused on a non-test instance (there would be no way to read the captured mail); a real deployment sends
-     * for real.
+     * for real. On a public test deployment it is the env-authed caller's mail that is simulated: a caller without
+     * env auth is mailed as `KDR_PUBLIC_SIGN_IN` says (issue #1150, `MailService.deliveryFor`).
      */
     const val useSimulatedEmail = "useSimulatedEmail"
 
@@ -73,6 +76,12 @@ object MAILENV {
             "locally. Off by default; has no effect on a non-simulating instance, which transmits everything.",
     )
 }
+
+/**
+ * What [MailService.deliveryFor] decides for one mail: whether it is [capture]d for read-back, and whether it is to be
+ * [transmit]ted -- which happens only when the provider's key is configured.
+ */
+data class MailDelivery(val capture: Boolean, val transmit: Boolean)
 
 /** A "sent" (or simulated) email, retained briefly so tests and troubleshooting can inspect what went out. */
 class SentEmail(
@@ -164,8 +173,12 @@ class MailService : ServiceInitializer {
         transmitToAdminDomain = (cxt.instanceConfig.get(MAIL.transmitToAdminDomain) as? Boolean)
             ?: (cxt.getEnvVar(MAILENV.transmitToAdminDomain)?.toOptBool() == true)
         // Only load the (secret) API key when something may transmit: always on a real instance, and on a
-        // simulating one only when the admin-domain opt-in is on. Simulated mail otherwise never needs it.
-        apiKey = if (useSimulatedEmail && !transmitToAdminDomain) {
+        // simulating one only when the admin-domain opt-in is on -- or, on a public test deployment, when a caller
+        // without env auth may be mailed for real (issue #1150). Simulated mail otherwise never needs it.
+        val publicMailsForReal = PublicTestDeployment.isOn(cxt.instanceConfig) &&
+            (PublicTestDeployment.publicSignIn(cxt.instanceConfig) == PublicSignIn.realMail ||
+                PublicTestDeployment.envAuthFromAdminLogin(cxt.instanceConfig))
+        apiKey = if (useSimulatedEmail && !transmitToAdminDomain && !publicMailsForReal) {
             null
         } else {
             val secretName = (cxt.instanceConfig.get(MAIL.mailgunApiKeySecretKey) as? String)
@@ -174,9 +187,32 @@ class MailService : ServiceInitializer {
         }
     }
 
-    /** Whether a mail to [to] goes out for real: every mail on a transmitting instance, and on a simulating one only the admin-domain opt-in's. */
-    private fun transmits(cxt: KdrCxt, to: String): Boolean =
-        apiKey != null && (!useSimulatedEmail || (transmitToAdminDomain && AddressRules.isAdminDomain(cxt, to)))
+    /**
+     * What becomes of a mail to [to] that the caller of [cxt] causes: **captured** (held for read-back through the
+     * test-only fixture), **transmitted** through the provider, or both -- before the provider's key is consulted,
+     * so a test can ask without anything being sent.
+     *
+     * - A real instance transmits everything and captures nothing.
+     * - A simulating one captures everything, and also transmits a mail to the admin domain under the admin-domain
+     *   opt-in ([MAIL.transmitToAdminDomain]).
+     * - On a **public test deployment** (issue #1150) mail follows the **caller** -- whose request caused it, not who
+     *   it is addressed to. An env-authed caller's is as on a simulating instance. A caller without env auth is
+     *   mailed for real when the deployment lets the public sign in ([PublicSignIn.realMail]), or -- under env auth
+     *   from an administrator's login -- at an admin-domain address, signing in to become env-authed; and that mail
+     *   is **never captured**, so nobody, an env-authed caller included, can read their code back. Anything else
+     *   such a caller causes -- the sign-in flows refuse them first, so nothing should -- is captured and not sent.
+     */
+    fun deliveryFor(cxt: KdrCxt, to: String): MailDelivery {
+        if (!useSimulatedEmail) return MailDelivery(capture = false, transmit = true)
+        val config = cxt.instanceConfig
+        val toAdminDomain = AddressRules.isAdminDomain(cxt, to)
+        if (!PublicTestDeployment.isOn(config) || cxt.isEnvAuthEffective) {
+            return MailDelivery(capture = true, transmit = transmitToAdminDomain && toAdminDomain)
+        }
+        val forReal = PublicTestDeployment.publicSignIn(config) == PublicSignIn.realMail ||
+            (PublicTestDeployment.envAuthFromAdminLogin(config) && toAdminDomain)
+        return MailDelivery(capture = !forReal, transmit = forReal)
+    }
 
     /**
      * Sends [text] -- and [html], the `text/html` part of the same message, when given -- to [to] with
@@ -189,15 +225,17 @@ class MailService : ServiceInitializer {
      * [sendFragmentMail], which supplies both from one piece of copy.
      */
     fun sendEmail(cxt: KdrCxt, to: String, subject: String, text: String, html: String? = null, from: String = fromAddressForApp): SentEmail {
-        val transmitted = transmits(cxt, to)
-        if (transmitted) transmit(cxt, to, from, subject, text, html, apiKey!!)
-        if (useSimulatedEmail) LogMail.debug(cxt) { "Simulated email to $to: '$subject'" + (if (transmitted) " (also transmitted)." else ".") }
+        val delivery = deliveryFor(cxt, to)
+        val key = apiKey
+        val transmitted = delivery.transmit && key != null
+        if (transmitted) transmit(cxt, to, from, subject, text, html, key)
+        if (delivery.capture) LogMail.debug(cxt) { "Simulated email to $to: '$subject'" + (if (transmitted) " (also transmitted)." else ".") }
         val sent = SentEmail(
-            mailId.getAndIncrement().toString(), to, from, subject, text, simulated = useSimulatedEmail, html = html, transmitted = transmitted,
+            mailId.getAndIncrement().toString(), to, from, subject, text, simulated = delivery.capture, html = html, transmitted = transmitted,
         )
-        // Retain only on a simulating (test) instance -- the kept copy exists solely to be read back through the
-        // test-only endpoint. A real transmission is never held in memory (issue #158).
-        if (useSimulatedEmail) {
+        // Retain only a captured mail -- the kept copy exists solely to be read back through the test-only endpoint. A
+        // real transmission is never held in memory (issue #158), nor one a public caller was sent for real (#1150).
+        if (delivery.capture) {
             synchronized(recent) {
                 recent.addFirst(sent)
                 while (recent.size > maxRetained) recent.removeLast()

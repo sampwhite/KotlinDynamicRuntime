@@ -52,6 +52,13 @@ object APP {
     const val hasTestAccess = "hasTestAccess"
 
     /**
+     * Feature flag: whether this node is a **public test deployment** (issue #1150) -- one the general public can
+     * reach, for testing and development only. Served to everyone, so the shell draws its band on every page for
+     * every caller, env auth or not.
+     */
+    const val publicTestDeployment = "publicTestDeployment"
+
+    /**
      * Feature flag: whether this request is **currently acting** env-authed (issues #348, #360) -- the
      * *effective* value, not the raw truth of the channel. False when no edge vouched for the request, and
      * also when the session has deliberately suppressed its env auth ([envAuthPath]).

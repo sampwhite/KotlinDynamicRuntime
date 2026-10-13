@@ -20,10 +20,11 @@
 
 /- Shared by every mail. `footer` closes each one; a client overlays it to sign as itself. `htmlStyle` is the
    inline style of the HTML part's body (inline only: mail clients strip stylesheets), where a client sets its
-   colours. -/
+   colors. `testDeploymentNote` follows the footer on a public test deployment only (issue #1150). -/
 # @common
 # +footer This message was sent automatically. If you were not expecting it, you can ignore it.
 # +htmlStyle font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5; color: #222222;
+# +testDeploymentNote This deployment is for testing and development only, and its data may be reset at any time.
 
 /- The frontend's dev autofill and `AuthFlowTest` read the code out of "verification code is <code>." -- keep
    that phrase. -/

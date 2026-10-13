@@ -53,6 +53,7 @@ class ConfigParsersTest {
                     APP.hasTestAccess to true,
                     APP.isEnvAuthed to true,
                     APP.envAuthDebug to true,
+                    APP.publicTestDeployment to true,
                 ),
                 settings = mapOf(APP.idleBumpIntervalMs to 30_000),
             ),
@@ -63,6 +64,7 @@ class ConfigParsersTest {
         assertTrue(cfg.hasTestAccess)
         assertTrue(cfg.isEnvAuthed)
         assertTrue(cfg.envAuthDebug)
+        assertTrue(cfg.publicTestDeployment)
         assertEquals(30_000, cfg.idleBumpIntervalMs)
     }
 
@@ -81,6 +83,8 @@ class ConfigParsersTest {
         assertFalse(cfg.hasTestAccess)
         // The debug state, likewise off until the backend authorizes it (issue #517).
         assertFalse(cfg.envAuthDebug)
+        // No testing band until the backend says this is a public test deployment (issue #1150).
+        assertFalse(cfg.publicTestDeployment)
         assertEquals(APP.defaultIdleBumpIntervalMs, cfg.idleBumpIntervalMs)
     }
 

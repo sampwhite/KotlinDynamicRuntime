@@ -67,6 +67,8 @@ val App = FC<Props> {
     var envAuthSuppressible by useState(false)
     var envAuthActing by useState(false)
     var envAuthDebug by useState(false)
+    // Whether to draw the testing band (issue #1150): from the app config, like the values beside it.
+    var publicTestDeployment by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
     useEffectOnce {
         onWebAppStale { updateAvailable = true }
@@ -100,6 +102,9 @@ val App = FC<Props> {
             envAuthSuppressible = appConfig().envAuthSuppressible
             envAuthActing = appConfig().isEnvAuthed
             envAuthDebug = appConfig().envAuthDebug
+            publicTestDeployment = appConfig().publicTestDeployment
+            // From the config, not the state just set: a state read in this same effect still holds the old value.
+            markPageTestDeployment(appConfig().publicTestDeployment)
         }
     }
 
@@ -146,6 +151,9 @@ val App = FC<Props> {
                             }
                         }
                     }
+                    // Persistent chrome, so inside the backstop with the bar (issue #1150): fixed along the bottom
+                    // edge, so it shows however far a page scrolls without competing with the sticky bar at the top.
+                    if (publicTestDeployment) TestDeploymentBand {}
                     AppBar {
                         this.currentPage = menuPageOf(page)
                         this.onRevisit = { setRevisit { it + 1 } }
