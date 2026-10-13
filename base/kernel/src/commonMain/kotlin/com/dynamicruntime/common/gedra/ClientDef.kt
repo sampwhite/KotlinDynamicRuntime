@@ -729,7 +729,7 @@ data class ClientDef(
          * the raw stored value is reassembled here, and `ClientService` neutralizes it on a non-test instance
          * (`checkClientDefs`), so this stays context-free.
          *
-         * **The lenient reader, for what is already stored.** It checks nothing but that the id, the name and the
+         * **The lenient reader, for what is already stored.** It checks nothing but that the id, the name, and the
          * two choices are there: an unknown key is read past, a flag that is not a boolean reads as false, and an
          * absent list as empty. That is right for a row a write once accepted -- a load reports and degrades, it
          * does not refuse -- and wrong for a definition arriving in a write, which goes through
