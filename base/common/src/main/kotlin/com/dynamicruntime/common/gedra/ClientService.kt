@@ -43,6 +43,14 @@ class ClientService : ServiceInitializer {
     var clients: Map<String, ClientDef> = emptyMap()
         private set
 
+    /**
+     * Every customer this deployment declares that held up (issue #1107), keyed by id: core's, a component's, and the
+     * platform's stored ones in `hub`'s configuration. Read a client's through [customerOf].
+     */
+    @Volatile
+    var customers: Map<String, KeptCustomer> = emptyMap()
+        private set
+
     /** Client definitions that did not hold up. Empty unless a production node degraded; see [checkClientDefs]. */
     var issues: List<GedraConfigIssue> = emptyList()
         private set
@@ -66,6 +74,31 @@ class ClientService : ServiceInitializer {
 
     /** [clientId]'s definition whether or not this node carries it; null when nothing declares it. */
     fun known(clientId: String): ClientDef? = clients[clientId]
+
+    /** The customer [customerId] names, or null when none is declared that held up (issue #1107). */
+    fun customer(customerId: String): CustomerDef? = customers[customerId]?.def
+
+    /**
+     * The customer that owns [clientId] (issue #1107): the one its [ClientDef.customerId] names, when that customer is
+     * there -- and, for a client defined in source code, declared in source too. Null for a client no customer owns,
+     * and for one whose link the load reported, so a customer removed or dropped is answered as none, on every node,
+     * with nothing rebuilt.
+     */
+    fun customerOf(clientId: String): CustomerDef? {
+        val def = clients[clientId] ?: return null
+        val customer = customers[def.customerId ?: return null] ?: return null
+        if (!customer.isSource && originOf(clientId) == GedraConfigOrigin.source) return null
+        return customer.def
+    }
+
+    /**
+     * [customerId]'s root client (issue #1107): the one it names, when that client is there and is the customer's.
+     * Null when it names none, or one the load reported.
+     */
+    fun rootOf(customerId: String): ClientDef? {
+        val root = customers[customerId]?.def?.rootClientId ?: return null
+        return clients[root]?.takeIf { it.customerId == customerId }
+    }
 
     /**
      * [clientId]'s definition **as declared** by the first config declaring it, whether or not a check kept it
@@ -104,6 +137,7 @@ class ClientService : ServiceInitializer {
         env = cxt.instanceConfig.env
         val result = checkClientDefs(cxt, collected.gedraConfigs)
         clients = result.clients
+        customers = result.customers
         issues = result.issues
         val present = presentClients.map { it.clientId }
         LogStartup.info(
@@ -134,7 +168,7 @@ class ClientService : ServiceInitializer {
      */
     fun recheck(cxt: KdrCxt, client: String): ClientCheckResult {
         val collected = collector ?: throw KdrException("$serviceName.recheck ran before onCreate.")
-        return checkClientDefs(cxt, collected.gedraConfigs, setOf(client), clients)
+        return checkClientDefs(cxt, collected.gedraConfigs, setOf(client), clients, customers)
     }
 
     /** [client]'s definition in [result] when it would be present here -- what a reload builds its schema from. */
@@ -147,6 +181,7 @@ class ClientService : ServiceInitializer {
      */
     fun commit(client: String, result: ClientCheckResult) {
         clients = result.clients
+        customers = result.customers
         issues = issues.filter { it.client != client } + result.issues
     }
 

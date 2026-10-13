@@ -147,6 +147,11 @@ later schema rejects" test.
       `reloadClient`. Each entry is written once, trimmed: the `ClientDef` constructor refuses a blank, padded
       or repeated one. A *global* workflow's labels are not checked (there is no single client list).
       `UserLabelsTest` (kdn) is the reference.
+    - **`customerId`** — the customer that owns the client (#1107), optional; a scenario client needs none.
+      **Keep `_` out of a scenario client's id**: an id holding one must fall under a customer's prefix
+      (`acme_east`) or the self-serve one (`free_...`), or the load reports it -- a refused `reloadClient` in a
+      unit test. Customers are declared with `defineCustomer` in source, or in `hub`'s stored configuration;
+      `CustomerTest` (kdn) and `CustomerCheckTest` (common) are the references.
   - **`trait(typeName, traitId, appliesTo, description) { <SchTypeBuilder> }`** — a trait whose data shape is
     written inline; the `{ … }` is the `kdr-schema-builder` DSL. An overload takes `dataType` (a `$ref`) instead.
   - **`workflow(workflowId, entry: WfEntry) { <WfDefBuilder> }`** — a workflow definition (or `workflowFromMap`

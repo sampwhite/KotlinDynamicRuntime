@@ -2,6 +2,7 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
@@ -636,10 +637,11 @@ class GedraConfigLoadService : ServiceInitializer {
 class SandboxBuild(val configs: List<GedraConfig>, val marker: Instant?)
 
 /**
- * Why [config] may not be **stored** as it is owned, or null (issues #292, #873): not by the runtime's `global`
- * client, which is the runtime's -- a stored config is always a real client's. The one rule, asked by the write
- * (`GedraConfigService`), which refuses such a config, and by every load, which drops a row that got past it (a
- * restore, a hand edit) rather than folding it into the configuration every client shares.
+ * Why [config] may not be **stored** as it is owned, or null (issues #292, #873, #1107): not by the runtime's
+ * `global` client, which is the runtime's -- a stored config is always a real client's -- and not declaring a
+ * customer unless it is `hub`'s, the platform's own client, where the platform's stored customers are kept. The one
+ * rule, asked by the write (`GedraConfigService`), which refuses such a config, and by every load, which drops a row
+ * that got past it (a restore, a hand edit) rather than folding it into the configuration every client shares.
  *
  * Its namespace is not judged here: a client's config declares into its own `client.<clientId>` namespace (#949),
  * which keeps it out of the runtime's (`kdr.core` and every other `kdr` one, #950) at the write and at the load.
@@ -648,5 +650,8 @@ fun storedOwnershipProblem(config: GedraConfig): String? = when {
     config.gedraId.client == GID.globalClient ->
         "Config '${config.gedraId}' is owned by the '${GID.globalClient}' client, which is the runtime's. A stored " +
             "config belongs to a real client."
+    config.customers.isNotEmpty() && config.gedraId.client != CL.hub ->
+        "Config '${config.gedraId}' declares the customer(s) ${config.customers.map { "'${it.customerId}'" }}. A " +
+            "customer is the platform's to declare: in source code, or in the stored configuration of '${CL.hub}'."
     else -> null
 }

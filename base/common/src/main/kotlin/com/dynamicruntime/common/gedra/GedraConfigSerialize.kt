@@ -53,6 +53,7 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     val generated = generatedTypeNames(config)
     val out = linkedMapOf<String, List<Map<String, Any?>>>()
     config.client?.let { out[CCT.clientDef] = listOf(it.toInfo()) }
+    out[CCT.customerDef] = config.customers.map { it.toInfo() }
     out[CCT.traitDef] = config.traits.values.map { traitToEntry(config, it) }
     out[CCT.usageDef] = config.usages.map { usageToEntry(it) }
     out[CCT.workflowDef] = config.workflows.values.map {
@@ -133,6 +134,7 @@ fun reassembleGedraConfig(
     entriesBySlot: Map<String, List<Map<String, Any?>>>,
 ): GedraConfig = gedraConfig(cxt, name, namespace, client, GedraConfigOrigin.stored) {
     entriesBySlot[CCT.clientDef]?.firstOrNull()?.let { defineClient(ClientDef.fromInfo(it)) }
+    entriesBySlot[CCT.customerDef]?.forEach { defineCustomer(CustomerDef.fromInfo(it)) }
     // Directly-declared types first, so a trait's shared `$ref` has its target present when the config compiles.
     entriesBySlot[CCT.schemaDef]?.forEach { e ->
         type(e[CCT.typeName].toOptStr().orEmpty()) { data.putAll(e[CCT.schema].toJsonMapOrEmpty()) }

@@ -131,6 +131,57 @@ For the client configuration itself, the client has the following attributes.
  padded or repeated one is refused.
 * `organizations` - A complex definition of organizations associated with this client, we will implement this
  at a later date.
+* `customerId` - The **customer** that owns this client (issue #1107), set only by the platform, like `audience`.
+ A source client names a customer declared in source; a stored client may name either. Optional, since some clients
+ belong to no customer; see "Customers" below.
+
+**Customers** (issue #1107). A customer owns a set of clients, and its id is the **prefix** of the ids of the
+clients created for it: customer `acme` owns the id `acme` itself and every `acme_<name>`, so two customers creating
+clients can never compete for an id. A customer's id is ASCII letters and digits, starting with a letter -- it holds
+no `_`, since the first `_` in a client id is where its prefix ends -- and is unique without regard to case. It also
+names a **root** client (`rootClientId`), one of its own, whose administrators will act for the customer as a whole.
+
+Only the platform declares a customer: in source code, with `defineCustomer` beside a client's definition, or in the
+stored configuration of `hub` (the `kdr:customerDef` slot), which only an `allClients` administrator may change. A
+stored configuration of any other client declaring one is refused at write and dropped at load. Core declares the
+platform's own customer, `kdr`, whose root is `hub`, and `hub` and `public` belong to it.
+
+**Clients with no customer** are a supported kind, and of two sorts:
+
+- **Platform and test clients** -- the simulations' demonstration clients, and the clients tests and fixtures make.
+  Their ids hold no `_`. Only cross-client privilege brings one into being: a test fixture (a simulation), code
+  writing through the configuration service, or an `allClients` administrator's create or bundle write naming no
+  customer.
+- **Self-serve clients** (#1113), whose generated ids are `free_...`.
+
+What a client is, is told by its link, never by its id: a customer's first client usually takes the customer's own
+id (`hub`, `acme`), with no `_` in it either. Whatever is decided by a client having no customer must hold for both
+sorts -- that it creates no clients, say -- while the free plan's quotas are keyed on being **self-serve**, not on
+the missing link, so a demonstration or test client is never held to them.
+
+- **The prefix is judged when a client comes into being**, and only then -- by whichever write brings it: the
+  operator's create, a bundle write or an import defining a client this deployment does not have yet. Under a
+  customer the id is the customer's own or `<customer>_<name>`; under none it may not fall under any customer's
+  prefix, and an id holding `_` is otherwise a self-serve client's (`free_...`). After that the link is the
+  authority: a client moved to another customer keeps its id.
+- **A link is read when it is used** (`ClientService.customerOf`), and answers only for a customer that is there --
+  and, for a source client, declared in source. The load reports a link naming no customer, or an id holding `_`
+  under no customer's prefix; the client stands. A write's trial refuses whichever of these it would introduce.
+- **Customers arrive and leave with `hub`'s configuration.** A customer new to a reload may not take the prefix of
+  ids another customer's clients hold (a client linked to none may sit there, which is how one is adopted), and one
+  a client still uses may not leave -- a prefix is permanent once a client uses it. Both are refused by the trial of
+  the `hub` write that would do it.
+- **A source customer is never redefined by stored configuration**: a stored customer of the same id, case aside,
+  is the second definition -- strict outside production, and in production dropped, the source one standing.
+
+- **A customer's first client can make the customer.** The operator's create takes `newCustomer` (a name, and
+  optionally a description) instead of naming a customer: the customer's id is the client's, and the client is its
+  root. It is three writes, each judged as any is -- the customer into `hub`'s `customers` configuration
+  (`CustomerStore`), the client under it, then the customer's root -- across two clients' locks, so not one
+  transaction: a client the write refuses takes its customer back with it, and a root that cannot be named is said
+  in the result (`customerFailure`) rather than thrown, since the client was made.
+
+The plan a customer is on, and the quotas it sets, are #1109's; the page showing a customer's clients is #1114's.
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.

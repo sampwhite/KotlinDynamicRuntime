@@ -42,6 +42,14 @@ object ClientCreate {
          * create it again, and be refused for an id they would then have no way of knowing they held.
          */
         val loadFailure: String? = null,
+        /** The customer made with the client (issue #1107), as stored; null when none was asked for. */
+        val customer: Map<String, Any?>? = null,
+        /**
+         * Why the customer made with the client was left without the client as its root, when it was: the client
+         * and its customer were made, and the root is named through the customer's configuration once the cause is
+         * mended.
+         */
+        val customerFailure: String? = null,
     )
 
     /**
@@ -49,6 +57,13 @@ object ClientCreate {
      * input type validated them**: reading a request is what trims its text and leaves a blank optional field out,
      * so neither is done again here. The suggested labels are held to the one label rule ([normalizeUserLabels]),
      * as the definition editor holds them, rather than refused for a stray space.
+     *
+     * With [CLD.newCustomer] (issue #1107) it makes a **customer** too, whose id is the client's and whose root the
+     * client is -- the first client of a new customer, in one call. Three writes, each judged as any is: the
+     * customer, through [CustomerStore]; the client, under it; then the customer's root, which can name only a
+     * client that is its own. They take two clients' locks (`hub`'s and the new client's), so they are not one
+     * transaction: a client the write refuses takes its customer back with it, and a root that cannot be named is
+     * said in the result ([Result.customerFailure]) rather than thrown, since the client was made.
      */
     fun create(cxt: KdrCxt, request: Map<String, Any?>): Result {
         val client = request[CLD.clientId].toOptStr().orEmpty()
@@ -63,17 +78,31 @@ object ClientCreate {
         val svc = GedraConfigService.get(bound)
         if (svc.clientExists(bound)) throw taken(cxt, client)
         caseVariant(cxt, client)?.let { throw takenByCase(cxt, client, it) }
-        val slots = mapOf(CCT.clientDef to listOf(definitionOf(request)))
+        val newCustomer = newCustomerOf(cxt, client, request)
+        val customer = newCustomer?.let { CustomerStore.put(cxt, it) }
+        val definition = definitionOf(request) + (newCustomer?.let { mapOf(CLD.customerId to client) } ?: emptyMap())
         val name = CLD.definitionConfigName
-        val config = reassembleForWrite(bound, name, clientNamespace(client), client, slots)
         val written = try {
-            svc.writeConfig(bound, config, trial = true, mustBeNew = true)
-        } catch (e: KdrException) {
-            // The id was free when asked and taken by the time the write held the lock: another create of it.
-            if (e.code != EXC.conflict) throw e
-            throw KdrException(
-                "Client '$client' already exists: its definition was written while this create was under way.", e, EXC.conflict,
-            )
+            val config = reassembleForWrite(bound, name, clientNamespace(client), client, mapOf(CCT.clientDef to listOf(definition)))
+            try {
+                svc.writeConfig(bound, config, trial = true, mustBeNew = true)
+            } catch (e: KdrException) {
+                // The id was free when asked and taken by the time the write held the lock: another create of it.
+                if (e.code != EXC.conflict) throw e
+                throw KdrException(
+                    "Client '$client' already exists: its definition was written while this create was under way.", e, EXC.conflict,
+                )
+            }
+        } catch (e: Exception) {
+            // Nothing of the client was stored, so the customer made for it goes too.
+            if (newCustomer != null) {
+                try {
+                    CustomerStore.remove(cxt, client)
+                } catch (undo: Exception) {
+                    LogGedra.error(cxt, "Customer '$client' was made for a client that was refused, and could not be removed.", undo)
+                }
+            }
+            throw e
         }
         // Published, so the client loads whatever its tier: one asking for a sandbox runs only what is published.
         // The write's trial judged this very definition, alone, so the publish has nothing new to refuse; were it
@@ -90,6 +119,17 @@ object ClientCreate {
             loadFailure = e.message ?: "The load failed."
             emptyList()
         }
+        // The customer's root, now that the client is its own (issue #1107).
+        var customerFailure: String? = null
+        val rooted = newCustomer?.let { def ->
+            try {
+                CustomerStore.put(cxt, def.copy(rootClientId = client))
+            } catch (e: Exception) {
+                LogGedra.error(cxt, "Client '$client' and its customer were created, but naming it the customer's root failed.", e)
+                customerFailure = e.message ?: "Naming the root failed."
+                customer
+            }
+        }
         return Result(
             client = client,
             configName = name,
@@ -98,6 +138,34 @@ object ClientCreate {
             present = ClientService.get(cxt).present(client) != null,
             issues = issues,
             loadFailure = loadFailure,
+            customer = rooted,
+            customerFailure = customerFailure,
+        )
+    }
+
+    /**
+     * The customer [request] asks to be made with [client] (issue #1107), or null when it asks for none: its id the
+     * client's, which is refused when it cannot be a customer's -- a client id holding `_`, a reserved one, one a
+     * customer already holds, case aside -- or when the request also names an existing customer.
+     */
+    private fun newCustomerOf(cxt: KdrCxt, client: String, request: Map<String, Any?>): CustomerDef? {
+        val asked = request[CLD.newCustomer].toJsonMapOrEmpty().takeIf { it.isNotEmpty() } ?: return null
+        if (request[CLD.customerId].toOptStr() != null) {
+            throw KdrException.mkInput("A create names an existing customer or asks for a new one, not both.")
+        }
+        customerIdFault(client)?.let {
+            throw KdrException.mkInput("A new customer takes the client's id, and '$client' cannot be a customer's: it $it.")
+        }
+        CUST.reserved.firstOrNull { it.equals(client, ignoreCase = true) }?.let {
+            throw KdrException.mkInput("A new customer takes the client's id, and '$client' is the reserved '$it'.")
+        }
+        ClientService.get(cxt).customers.keys.firstOrNull { it.equals(client, ignoreCase = true) }?.let {
+            throw KdrException("The customer '$it' already exists; create the client under it instead.", code = EXC.conflict)
+        }
+        return CustomerDef(
+            customerId = client,
+            name = asked[CUST.name].toOptStr() ?: throw KdrException.mkInput("A new customer needs a '${CUST.name}'."),
+            description = asked[CUST.description].toOptStr(),
         )
     }
 
