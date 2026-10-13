@@ -3,6 +3,7 @@ package com.dynamicruntime.common.fileref
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -23,8 +24,9 @@ import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
- * A client's file refs, for its administrator (issues #1153, #1154, #1164): what refs it has, uploading a file as one,
- * naming a local file as one, removing one, and the file itself.
+ * A client's file refs, for its administrator (issues #1153, #1154, #1164, #1176): what refs it has and what one
+ * takes, uploading a file as one, naming a local file as one, rewording one, removing one, the roots open to
+ * clients, and the file itself.
  *
  * In the **`clientAdmin`** section, each acting on the caller's own client or, for an administrator who sees every
  * client, a named one -- the rule the other client pages enforce (`overseenClient`).
@@ -145,6 +147,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
                 emptyIsAbsent = false
                 maxLength = FREF.maxDescriptionLength
             }
+            expectedModeField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
@@ -152,7 +155,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         // A `file` part sent as a plain field is a value, so it passes for "present": it is here that it is no file.
         val content = request[FREF.file] as? ContentData ?: throw KdrException.mkInput("No file was sent.")
         val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
-        changeItem(c, refs, ClientFileRefEdit.upload(c, client, request[CCT.refId].toOptStr().orEmpty(), content, description))
+        changeItem(c, refs, ClientFileRefEdit.upload(c, client, request[CCT.refId].toOptStr().orEmpty(), content, description, request[FREF.mode].toOptStr()))
     }
 
     generalEndpoint(
@@ -165,11 +168,38 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         inputFields = {
             overseenClientField(FREF.client)
             field(CCT.refId, "The ref to remove.", required = true)
+            expectedModeField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
         val client = knownClient(c, request)
-        changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty()))
+        changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty(), request[FREF.mode].toOptStr()))
+    }
+
+    generalEndpoint(
+        UADEP.clientFilesDescribe,
+        "Rewords the description of one of a client's file refs (issue #1176), or clears it with a blank one, live " +
+            "or as a draft as an upload is. The ref names the file it named. A 400 when no stored configuration " +
+            "holds the ref: one the client was shipped with keeps its description until a file is uploaded over it.",
+        HttpMethod.POST,
+        outputRef = FREF.changeTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(FREF.client)
+            field(CCT.refId, "The ref to reword.", required = true)
+            field(CCT.description, "What the file is for, in at most ${FREF.maxDescriptionLength} characters; blank clears it.", required = true) {
+                emptyIsAbsent = false
+                maxLength = FREF.maxDescriptionLength
+            }
+            expectedModeField()
+        },
+    ) { c, request ->
+        val refs = FileRefService.get(c)
+        val client = knownClient(c, request)
+        val described = ClientFileRefEdit.describe(
+            c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.description].toOptStr().orEmpty(), request[FREF.mode].toOptStr(),
+        )
+        changeItem(c, refs, described)
     }
 
     generalEndpoint(
@@ -196,6 +226,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
                 emptyIsAbsent = false
                 maxLength = FREF.maxDescriptionLength
             }
+            expectedModeField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
@@ -203,6 +234,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
         val change = ClientFileRefEdit.nameLocal(
             c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.root].toOptStr().orEmpty(), request[CCT.path].toOptStr().orEmpty(), description,
+            request[FREF.mode].toOptStr(),
         )
         changeItem(c, refs, change)
     }
@@ -270,6 +302,22 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         // is the first uploader's, of whatever ref first held these bytes, and its extension can say anything.
         val extension = WebAssetCheck.declaredKind(file.meta.mimeType)?.extension
         ContentData(file.bytes, file.meta.mimeType, saveAsFilename = listOfNotNull(refId, extension).joinToString("."), inLine = false)
+    }
+}
+
+/**
+ * The input by which a caller says how it expects a change to take effect (issue #1176): what the page told its
+ * user before they acted. A change that would do otherwise is refused with a 409; absent, nothing is asked.
+ */
+private fun InputFieldsBuilder.expectedModeField() {
+    field(
+        FREF.mode,
+        "How the caller expects the change to take effect, as it told its user: live, or a draft. Whether it is a " +
+            "draft is decided at the request, by whether the client has a sandbox then; a change that would take " +
+            "effect the other way is refused with a 409 and nothing is changed. Absent, it is not asked.",
+    ) {
+        option(EDM.live, "Live")
+        option(EDM.draft, "Draft")
     }
 }
 

@@ -32,7 +32,7 @@ val FilePickButton = FC<FilePickButtonProps> { props ->
     val picker = useRef<dynamic>(null)
     input {
         ref = picker.unsafeCast<react.Ref<web.html.HTMLInputElement>>()
-        className = ClassName("web-asset-picker")
+        className = ClassName("file-picker")
         type = "file".unsafeCast<InputType>()
         accept = props.accept.joinToString(",")
         onChange = { e ->

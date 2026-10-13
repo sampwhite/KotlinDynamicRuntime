@@ -336,8 +336,21 @@ class LocalFileRefsTest : StringSpec({
             it.header(ContentResources.cacheControlHeader) shouldBe ContentResources.noStore
         }
 
-        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "mark"))[CCT.refId] shouldBe "mark"
-        listed(admin).getValue("mark")[CCT.source] shouldBe FREF.sourceLocal
+        // The removal answers the ref that is still there under the id: the shipped one, which no stored
+        // configuration holds -- how a page knows what it has just revealed, and that it cannot be removed.
+        val revealed = posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "mark"))
+        revealed[CCT.refId] shouldBe "mark"
+        revealed[FREF.ref].toJsonMapOrEmpty().let {
+            it[CCT.source] shouldBe FREF.sourceLocal
+            it[FREF.stored] shouldBe false
+        }
+        listed(admin).getValue("mark").let {
+            it[CCT.source] shouldBe FREF.sourceLocal
+            it[FREF.stored] shouldBe false
+        }
+        // What it says is its source configuration's, and not the API's to reword.
+        admin.expectError(EXC.badInput, UADEP.clientFilesDescribe, mapOf(CCT.refId to "logo", CCT.description to "Reworded."))[EP.errorMessage] as String shouldContain
+            "keeps its description until a file is uploaded over it"
         static(member, nameOf("mark", svg)).let {
             it.rptResponseBytes!!.toList() shouldBe svg.toList()
             it.header(ContentResources.cacheControlHeader) shouldBe ContentResources.cacheControl
@@ -364,7 +377,10 @@ class LocalFileRefsTest : StringSpec({
         listed(adminOf(built)).getValue("own").let {
             it[CCT.source] shouldBe FREF.sourceClientLocal
             it[FREF.name] shouldBe nameOf("own", png)
+            // Inherited from the template's source configuration: not stored, whatever its source says of where the file is.
+            it[FREF.stored] shouldBe false
         }
+        listed(adminOf(built)).getValue("crest")[FREF.stored] shouldBe false
         val crest = static(memberOf(built), nameOf("crest", svg))
         crest.rptStatusCode shouldBe EXC.ok
         crest.rptResponseBytes!!.toList() shouldBe svg.toList()
@@ -809,6 +825,15 @@ class LocalFileRefsTest : StringSpec({
         GedraConfigReload.reloadClient(cxt, client)
         static(memberOf(client), "pic").rptResponseBytes!!.toList() shouldBe png.toList()
         static(memberOf(client), "top").rptResponseBytes!!.toList() shouldBe otherPng.toList()
+        // Stored is about which configuration holds the entry, not where the file is: an operator's local ref,
+        // typed into stored configuration, is stored -- and so is the client's to reword and to remove.
+        listed(admin).getValue("top").let {
+            it[CCT.source] shouldBe FREF.sourceLocal
+            it[FREF.stored] shouldBe true
+        }
+        posted(admin, UADEP.clientFilesDescribe, mapOf(CCT.refId to "top", CCT.description to "The top of the root."))[FREF.ref]
+            .toJsonMapOrEmpty()[CCT.description] shouldBe "The top of the root."
+        storedRefs(client, "art").single { it[CCT.refId] == "top" } shouldBe localEntry("top", "top.png", root = openRoot) + (CCT.description to "The top of the root.")
         // One who sees every client names a client's own file by the call, for the client they name.
         approve(client, "named.png", png)
         named(full, "named", "named.png", client = client)[FREF.client] shouldBe client
@@ -818,6 +843,11 @@ class LocalFileRefsTest : StringSpec({
         // directory is the client's whose configuration it is, and a sandbox has none of its own.
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
         approve(client, "draft.png", otherPng)
+        // Naming one is held to what the page told its user, as every change is.
+        admin.expectError(
+            EXC.conflict, UADEP.clientFilesLocal,
+            mapOf(CCT.refId to "draft", CCT.root to openRoot, CCT.path to "draft.png", FREF.mode to EDM.live),
+        )[EP.errorMessage] as String shouldContain "This would be a draft"
         named(admin, "draft", "draft.png")[FREF.mode] shouldBe EDM.draft
         refs.forClient(sandboxOf(client)).refs.keys shouldBe setOf("pic", "top", "named", "draft")
         refs.forClient(client).refs.keys shouldBe setOf("pic", "top", "named")

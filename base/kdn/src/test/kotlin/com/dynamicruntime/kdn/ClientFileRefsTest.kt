@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EP
@@ -54,6 +55,7 @@ import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.webasset.WAS
+import com.dynamicruntime.common.webasset.WebAssetCheck
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -233,11 +235,44 @@ class ClientFileRefsTest : StringSpec({
         val takes = admin.getItem(UADEP.clientFilesTakes)
         (takes[WAS.maxSize] as Number).toInt() shouldBe FREF.maxSize
         takes[WAS.kinds] shouldBe listOf("PNG", "SVG", "ICO", "JPEG", "WebP")
+        // Every type an upload may honestly be sent as, and no other: a picker offers exactly these.
+        takes[WAS.mimeTypes] shouldBe WebAssetCheck.acceptedMimeTypes
         (takes[WAS.mimeTypes] as List<*>) shouldContainAll listOf("image/png", "image/svg+xml", "image/x-icon", "image/jpeg", "image/webp")
         (takes[FREF.refLimit] as Number).toInt() shouldBe FREF.maxRefs
         takes[FREF.roots] shouldBe emptyList<String>()
-        // The administrator of a client's to ask, as every call beside it.
+        // Asked as the page asks it, naming the client; and the administrator of a client's to ask, as every call
+        // beside it: not a member's, not another client's, not of a client nobody declared.
+        admin.getItem(UADEP.clientFilesTakes, mapOf(FREF.client to client))[WAS.kinds] shouldBe takes[WAS.kinds]
         member.expectError(EXC.notAuthorized, UADEP.clientFilesTakes)
+        val seesAll = TestUser.createFullAdmin(cxt, "full@fileRefs.test")
+        (seesAll.getItem(UADEP.clientFilesTakes, mapOf(FREF.client to client))[FREF.refLimit] as Number).toInt() shouldBe FREF.maxRefs
+        seesAll.expectError(EXC.notFound, UADEP.clientFilesTakes, args = mapOf(FREF.client to "nosuchclient1176"))
+        TestUser.create(cxt, "solo@refonepublic.test", level = ROLE.admin, userClient = CL.public).expectError(EXC.notAuthorized, UADEP.clientFilesTakes)
+
+        // The description is reworded, and cleared, without touching the file (issue #1176): the entry keeps its hash.
+        fun described(text: String) = admin.client.sendJsonPostRequest(UADEP.clientFilesDescribe, mapOf(CCT.refId to "logo", CCT.description to text))
+        described("Our logo, on a dark ground.").let {
+            it[EP.status].shouldBeNull()
+            val reworded = it[EP.results].toJsonMapOrEmpty()
+            reworded[FREF.mode] shouldBe EDM.live
+            reworded[FREF.ref].toJsonMapOrEmpty()[CCT.description] shouldBe "Our logo, on a dark ground."
+        }
+        storedRefs(client) shouldBe listOf(
+            mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to hash, CCT.description to "Our logo, on a dark ground."),
+        )
+        described("   ")[EP.status].shouldBeNull()
+        storedRefs(client) shouldBe listOf(mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to hash))
+        listed(admin).getValue("logo").containsKey(CCT.description) shouldBe false
+        // Saying what it already says writes nothing: no revision is made for it.
+        val versionBefore = svc.readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))!!.version
+        described("")[EP.status].shouldBeNull()
+        svc.readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))!!.version shouldBe versionBefore
+        described("The logo.")[EP.status].shouldBeNull()
+        // Held to what a description may be, and to a ref there is.
+        (described("x".repeat(FREF.maxDescriptionLength + 1))[EP.status] as Number).toInt() shouldBe EXC.badInput
+        admin.expectError(EXC.badInput, UADEP.clientFilesDescribe, mapOf(CCT.refId to "banner", CCT.description to "None such."))[EP.errorMessage] as String shouldContain
+            "No stored configuration"
+        member.expectError(EXC.notAuthorized, UADEP.clientFilesDescribe, mapOf(CCT.refId to "logo", CCT.description to "Mine."))
 
         val absent = static(member, "banner:${"0".repeat(64)}")
         absent.rptStatusCode shouldBe EXC.notFound
@@ -303,7 +338,8 @@ class ClientFileRefsTest : StringSpec({
         storedRefs(client).single() shouldBe mapOf(
             CCT.refId to "hero", CCT.source to FREF.sourceStore, CCT.hash to svg.sha256Hex(), CCT.description to "First.",
         )
-        uploaded(admin, "hero", image(svg, "image/svg+xml"), description = "")
+        // A change answers the ref as it now is, flag and all: what the page redraws the row from.
+        uploaded(admin, "hero", image(svg, "image/svg+xml"), description = "")[FREF.ref].toJsonMapOrEmpty()[FREF.stored] shouldBe true
         storedRefs(client).single().containsKey(CCT.description) shouldBe false
 
         // The old address gets the new bytes, not kept; the new one is kept, and an SVG goes out able to run nothing.
@@ -316,7 +352,13 @@ class ClientFileRefsTest : StringSpec({
         // Nothing was written over: the first upload's bytes are where they were.
         files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldNotBeNull()
 
-        val removed = admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "hero"))
+        // Told "from the draft" by a page that last saw a sandbox the client no longer has, a removal would take the
+        // file from the client's people at once: it is refused, and nothing is removed. So with each other change.
+        val notADraft = "This would take effect at once for client '$client', not as a draft"
+        admin.expectError(EXC.conflict, UADEP.clientFilesRemove, mapOf(CCT.refId to "hero", FREF.mode to EDM.draft))[EP.errorMessage] as String shouldContain notADraft
+        admin.expectError(EXC.conflict, UADEP.clientFilesDescribe, mapOf(CCT.refId to "hero", CCT.description to "Reworded.", FREF.mode to EDM.draft))[EP.errorMessage] as String shouldContain notADraft
+        storedRefs(client).single()[CCT.refId] shouldBe "hero"
+        val removed = admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "hero", FREF.mode to EDM.live))
         removed[FREF.mode] shouldBe EDM.live
         removed.containsKey(FREF.ref) shouldBe false
         listed(admin).keys.shouldBeEmpty()
@@ -356,14 +398,26 @@ class ClientFileRefsTest : StringSpec({
         val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandbox)
         inSandbox.selfClient() shouldBe sandbox
 
+        // A page says how it told its user a change would take effect (issue #1176). One that would do otherwise is
+        // refused and not made: here a caller who believes the client has no sandbox, when it has.
+        admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.live)).let {
+            (it[EP.status] as? Number)?.toInt() shouldBe EXC.conflict
+            it[EP.errorMessage] as String shouldContain "This would be a draft, not a change that takes effect at once"
+        }
+        storedRefs(client).shouldBeEmpty()
         // A draft: the sandbox, which runs the latest revision, shows it; the client runs what it published.
-        uploaded(admin, "logo", image(png))[FREF.mode] shouldBe EDM.draft
+        admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.draft)).let {
+            it[EP.status].shouldBeNull()
+            it[EP.results].toJsonMapOrEmpty()[FREF.mode] shouldBe EDM.draft
+        }
         val name = nameOf("logo", png)
         static(inSandbox, name).rptResponseBytes!!.toList() shouldBe png.toList()
         static(admin, name).rptStatusCode shouldBe EXC.notFound
         // The administrator is listed the draft, told it is not live, and may look at it from outside the sandbox.
         listed(admin).getValue("logo")[FREF.live] shouldBe false
         listed(inSandbox).getValue("logo")[FREF.live] shouldBe false
+        // A sandbox's copy of its parent's configuration keeps what kind of configuration held the ref.
+        listed(inSandbox).getValue("logo")[FREF.stored] shouldBe true
         admin.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(CCT.refId to "logo")).rptResponseBytes!!.toList() shouldBe png.toList()
 
         // Published, it is the client's people's.

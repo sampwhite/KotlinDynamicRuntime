@@ -981,8 +981,11 @@ object ClientsApi {
      * Uploads [file] -- the browser's own `File` -- as [clientId]'s ref [refId], replacing what that ref named.
      * [description] null keeps the ref's description. Live, or a draft for a client with a sandbox, which the
      * answer says; the backend refuses a file that is not the image it says it is, in its own words.
+     *
+     * [expected] is how the page told its user the change would take effect (`fileRefExpectedMode`), sent with
+     * every change: one that would take effect the other way is refused, and not made.
      */
-    suspend fun uploadFileRef(clientId: String, refId: String, file: Any, description: String?): FileRefChange =
+    suspend fun uploadFileRef(clientId: String, refId: String, file: Any, description: String?, expected: String): FileRefChange =
         fileRefChangeOf(
             Http.uploadApi(
                 UADEP.clientFilesUpload,
@@ -991,6 +994,7 @@ object ClientsApi {
                     put(CCT.refId, refId)
                     put(FREF.file, file)
                     description?.let { put(CCT.description, it) }
+                    put(FREF.mode, expected)
                 },
             ),
         )
@@ -999,7 +1003,9 @@ object ClientsApi {
      * Names the file at [path], in [clientId]'s own directory of the root [root], as its ref [refId] (issue #1164):
      * a file the deployment keeps for the client, in a root it opened to clients. Nothing is uploaded.
      */
-    suspend fun nameLocalFileRef(clientId: String, refId: String, root: String, path: String, description: String?): FileRefChange =
+    suspend fun nameLocalFileRef(
+        clientId: String, refId: String, root: String, path: String, description: String?, expected: String,
+    ): FileRefChange =
         fileRefChangeOf(
             Http.sendApi(
                 "POST", UADEP.clientFilesLocal,
@@ -1009,13 +1015,28 @@ object ClientsApi {
                     put(CCT.root, root)
                     put(CCT.path, path)
                     description?.let { put(CCT.description, it) }
+                    put(FREF.mode, expected)
                 },
             ),
         )
 
     /** Removes [clientId]'s ref [refId]; the answer holds the ref still there under that id, when one was shipped. */
-    suspend fun removeFileRef(clientId: String, refId: String): FileRefChange =
-        fileRefChangeOf(Http.sendApi("POST", UADEP.clientFilesRemove, mapOf(FREF.client to clientId, CCT.refId to refId)))
+    suspend fun removeFileRef(clientId: String, refId: String, expected: String): FileRefChange =
+        fileRefChangeOf(
+            Http.sendApi("POST", UADEP.clientFilesRemove, mapOf(FREF.client to clientId, CCT.refId to refId, FREF.mode to expected)),
+        )
+
+    /**
+     * Makes [description] what [clientId]'s ref [refId] says it is for, a blank one clearing it; the file is as it
+     * was. Only for a ref a stored configuration holds.
+     */
+    suspend fun describeFileRef(clientId: String, refId: String, description: String, expected: String): FileRefChange =
+        fileRefChangeOf(
+            Http.sendApi(
+                "POST", UADEP.clientFilesDescribe,
+                mapOf(FREF.client to clientId, CCT.refId to refId, CCT.description to description, FREF.mode to expected),
+            ),
+        )
 
     private fun fileRefChangeOf(envelope: Map<String, Any?>): FileRefChange = parseFileRefChange(envelope[EP.results].toJsonMapOrEmpty())
 

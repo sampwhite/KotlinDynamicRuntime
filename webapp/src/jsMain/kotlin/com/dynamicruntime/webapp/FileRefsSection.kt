@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.user.UADEP
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -32,22 +33,28 @@ external interface FileRefsSectionProps : Props {
 
 /**
  * A client's file refs on its detail page (issue #1176): each named image its configuration holds -- a preview,
- * what the file is, where it is and the address it is served at -- with **Replace** and **Remove**, and under the
- * list the way to add one: an upload, or where the deployment has opened a root to clients (issue #1164), a file
- * it keeps for the client there. Read from `/clientAdmin/client/files` and `…/files/takes` on mount and again on
- * every refresh generation.
+ * what the file is, where it is and the address it is served at -- with **Replace**, **Reword** and **Remove**,
+ * and under the list the way to add one: an upload, or where the deployment has opened a root to clients (issue
+ * #1164), a file it keeps for the client there. Read from `/clientAdmin/client/files` and `…/files/takes` on mount
+ * and again on every refresh generation.
  *
  * **Unlike a web asset, a file ref is configuration**, so a change is live at once only for a client that runs its
  * latest: for one with a sandbox it is a draft the sandbox shows, and the section says which above the list
  * ([fileRefsIntro]) and again after each change. What is listed is then the sandbox's, each ref marked when the
- * client's own people are not served it yet.
+ * client's own people are not served it yet. Every change is sent with how the page said it would take effect
+ * ([fileRefExpectedMode]), and the backend refuses one that would do otherwise: the page words a removal from what
+ * it last read of the client, and a sandbox can go in between.
  *
  * Picking a file *is* the upload, as for a web asset; a removal is asked about first. Each answers the ref as it
  * now is, which is drawn at once, and bumps the refresh generation through [FileRefsSectionProps.onChanged].
+ *
+ * What it decides and what it says are `FileRefs.kt`'s, pure and tested; what is here is the state and the drawing.
  */
 val FileRefsSection = FC<FileRefsSectionProps> { props ->
     var refs by useState<List<FileRefView>?>(null)
     var takes by useState<FileRefTakes?>(null)
+    // Whether what a ref takes was asked for and could not be had: nothing is added from here then, and it is said.
+    var takesFailed by useState(false)
     var loadError by useState<DisplayError?>(null)
     // What is running -- which ref and which action ([webAssetBusyKey]) -- and where the last failure was: a ref's
     // id, or [FACT.adding] for the form under the list.
@@ -57,6 +64,9 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
     var failure by useState<DisplayError?>(null)
     var problem by useState<String?>(null)
     var note by useState<String?>(null)
+    // The ref whose description is being reworded, and what has been typed for it.
+    var describing by useState<String?>(null)
+    var describeText by useState("")
     // The form that adds one.
     var newId by useState("")
     var newDescription by useState("")
@@ -74,12 +84,15 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             lastClient.current = props.clientId
             refs = null
             takes = null
+            takesFailed = false
             loadError = null
             failedAt = null
             failure = null
             problem = null
             note = null
             confirming = null
+            describing = null
+            describeText = ""
             newId = ""
             newDescription = ""
             newRoot = null
@@ -88,17 +101,34 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
         fileRefsScope.launch {
             try {
                 val loaded = ClientsApi.fileRefs(props.clientId)
-                val taken = ClientsApi.fileRefTakes(props.clientId)
                 if (latest.current == token) {
                     refs = loaded
-                    takes = taken
                     loadError = null
                 }
             } catch (e: Throwable) {
                 if (latest.current == token) loadError = userFacingError(e)
             }
         }
+        // By itself: what a ref takes is not needed to list the refs, and a node that cannot say it -- one a release
+        // behind, mid-deploy -- still lists them. Without it nothing is added from here; the rows keep their actions.
+        fileRefsScope.launch {
+            try {
+                val taken = ClientsApi.fileRefTakes(props.clientId)
+                if (latest.current == token) {
+                    takes = taken
+                    takesFailed = false
+                }
+            } catch (_: Throwable) {
+                if (latest.current == token) {
+                    takes = null
+                    takesFailed = true
+                }
+            }
+        }
     }
+
+    val draft = fileRefIsDraft(props.sandboxOf, props.hasSandbox)
+    val expected = fileRefExpectedMode(draft)
 
     /** Runs [change] for the ref or form [at]; [done] words what it did, and [added] says the form's work is done. */
     fun run(at: String, action: String, added: Boolean, done: (FileRefChange) -> String, change: suspend () -> FileRefChange) {
@@ -116,6 +146,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     // Drawn from the answer, before the re-read the bump below starts.
                     refs = withFileRefChange(refs, changed)
                     note = done(changed)
+                    describing = null
                     if (added) {
                         newId = ""
                         newDescription = ""
@@ -142,21 +173,13 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
         note = null
     }
 
-    fun upload(at: String, refId: String, file: Any, size: Long, description: String?, added: Boolean) {
-        val tooLarge = fileRefFileProblem(takes, size)
-        if (tooLarge != null) refuse(at, tooLarge)
-        else run(at, FACT.upload, added, ::fileRefUploadedNote) { ClientsApi.uploadFileRef(props.clientId, refId, file, description) }
-    }
-
-    val draft = props.sandboxOf != null || props.hasSandbox
     val listed = refs
     val taking = takes
     val editable = !props.staticHere
 
     p {
         className = ClassName("subtitle")
-        +fileRefsIntro(props.sandboxOf, props.hasSandbox)
-        if (!editable) +" This client's configuration comes from source code on this node, so its files are not changed here."
+        +fileRefsIntro(props.sandboxOf, props.hasSandbox, props.staticHere)
     }
     loadError?.let { errorText("Couldn't load this client's files.", it) }
     if (listed == null && loadError == null) {
@@ -165,16 +188,16 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             +"Loading…"
         }
     }
-    note?.let {
-        p {
-            className = ClassName("subtitle")
-            +it
-        }
+    // One element whether or not there is a note, so that what follows keeps its place -- and with it, where the
+    // keyboard is -- when one appears or goes. Empty, it takes no room (`app.css`).
+    p {
+        className = ClassName("subtitle file-ref-note")
+        note?.let { +it }
     }
     if (listed != null && listed.isEmpty()) {
         p {
             className = ClassName("subtitle")
-            +"This client has no files."
+            +fileRefsEmptyText(draft)
         }
     }
     listed?.forEach { ref ->
@@ -192,7 +215,9 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 } else {
                     img {
                         src = preview
-                        alt = ref.description ?: "The file ${ref.refId}"
+                        alt = fileRefAltText(ref)
+                        // A client may hold two hundred: each is fetched as it nears the screen, not all on opening the page.
+                        asDynamic()["loading"] = "lazy"
                     }
                 }
             }
@@ -209,18 +234,54 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                     }
                 }
-                ref.description?.let { described -> div { +described } }
+                if (describing == ref.refId) {
+                    div {
+                        className = ClassName("file-ref-describe")
+                        Input {
+                            value = describeText
+                            placeholder = "What it is for; leave it empty to clear"
+                            maxLength = FREF.maxDescriptionLength
+                            disabled = busy != null
+                            style = js("({ minWidth: 240 })")
+                            onChange = { e -> describeText = e.target.value as String }
+                        }
+                        Button {
+                            type = "primary"
+                            loading = busy == webAssetBusyKey(ref.refId, FACT.describe)
+                            disabled = busy != null && busy != webAssetBusyKey(ref.refId, FACT.describe)
+                            onClick = {
+                                // What was typed, blank included: blank is how a description is cleared.
+                                run(ref.refId, FACT.describe, added = false, ::fileRefDescribedNote) {
+                                    ClientsApi.describeFileRef(props.clientId, ref.refId, describeText, expected)
+                                }
+                            }
+                            +"Save"
+                        }
+                        Button {
+                            disabled = busy != null
+                            onClick = { describing = null }
+                            +"Cancel"
+                        }
+                    }
+                } else {
+                    ref.description?.let { described -> div { +described } }
+                }
                 div { +fileRefHoldsText(ref) }
                 div {
                     className = ClassName("subtitle")
                     +fileRefWhereText(ref)
-                    ref.configName?.let { +" In the configuration '$it'." }
                 }
                 fileRefAddress(ref, Http::fileRefUrl)?.let { address ->
                     div {
-                        className = ClassName("subtitle")
+                        className = ClassName("subtitle file-ref-address")
                         +fileRefAddressLead(ref)
                         code { +address }
+                    }
+                }
+                fileRefShippedHint(ref)?.let { hint ->
+                    div {
+                        className = ClassName("subtitle")
+                        +hint
                     }
                 }
                 if (editable) {
@@ -232,13 +293,30 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                             primary = false
                             this.busy = busy == webAssetBusyKey(ref.refId, FACT.upload)
                             disabled = busy != null
-                            // No description sent: the ref keeps the one it has.
-                            onPicked = { file, size -> upload(ref.refId, ref.refId, file, size, description = null, added = false) }
+                            onPicked = { file, size ->
+                                val tooLarge = fileRefFileProblem(taking, size)
+                                if (tooLarge != null) {
+                                    refuse(ref.refId, tooLarge)
+                                } else {
+                                    // No description sent: the ref keeps the one it has.
+                                    run(ref.refId, FACT.upload, added = false, ::fileRefUploadedNote) {
+                                        ClientsApi.uploadFileRef(props.clientId, ref.refId, file, description = null, expected)
+                                    }
+                                }
+                            }
                         }
                         if (fileRefRemovable(ref)) {
+                            Button {
+                                disabled = busy != null || describing == ref.refId
+                                onClick = {
+                                    describing = ref.refId
+                                    describeText = ref.description.orEmpty()
+                                }
+                                +"Reword…"
+                            }
                             Popconfirm {
                                 title = fileRefRemoveQuestion(ref, props.clientId, draft)
-                                description = fileRefRemoveConsequence(draft)
+                                description = fileRefRemoveConsequence(ref, draft)
                                 okText = "Remove"
                                 cancelText = "Cancel"
                                 placement = "bottomLeft"
@@ -246,7 +324,9 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                                 onOpenChange = { open -> confirming = if (open) ref.refId else null }
                                 onConfirm = {
                                     confirming = null
-                                    run(ref.refId, FACT.remove, added = false, ::fileRefRemovedNote) { ClientsApi.removeFileRef(props.clientId, ref.refId) }
+                                    run(ref.refId, FACT.remove, added = false, ::fileRefRemovedNote) {
+                                        ClientsApi.removeFileRef(props.clientId, ref.refId, expected)
+                                    }
                                 }
                                 okButtonProps = js("({ danger: true })")
                                 disabled = busy != null
@@ -272,8 +352,27 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             }
         }
     }
-    if (editable && listed != null && taking != null) {
+    val atLimit = listed?.let { fileRefAtLimitText(it, taking) }
+    if (editable && listed != null && atLimit != null) {
+        p {
+            key = "at-limit".unsafeCast<Key>()
+            className = ClassName("subtitle")
+            +atLimit
+        }
+    }
+    if (editable && listed != null && takesFailed) {
+        p {
+            key = "no-takes".unsafeCast<Key>()
+            className = ClassName("subtitle")
+            +"What a file may be could not be read just now, so none is added from here. Reload to try again."
+        }
+    }
+    // Only once the backend has said what a file may be: the form offers what will be accepted, in its words.
+    if (editable && listed != null && taking != null && atLimit == null) {
         div {
+            // Keyed, so the form is the same form whatever is drawn above it: a row added by its own upload must
+            // not take the keyboard out of it.
+            key = "add".unsafeCast<Key>()
             className = ClassName("file-ref-add")
             div {
                 className = ClassName("web-asset-name")
@@ -284,15 +383,19 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 Input {
                     value = newId
                     placeholder = "Its id, such as heroImage"
+                    maxLength = FREF.maxRefIdLength
                     disabled = busy != null
-                    style = js("({ width: 220 })")
+                    // antd gives an Input `flex: 1` in a flex row, where a width alone is ignored: an id is
+                    // short and says it does not grow, and what it is for takes the room that leaves.
+                    style = js("({ width: 220, flex: 'none' })")
                     onChange = { e -> newId = (e.target.value as String).trim() }
                 }
                 Input {
                     value = newDescription
                     placeholder = "What it is for (optional)"
+                    maxLength = FREF.maxDescriptionLength
                     disabled = busy != null
-                    style = js("({ width: 320 })")
+                    style = js("({ minWidth: 240 })")
                     onChange = { e -> newDescription = e.target.value as String }
                 }
             }
@@ -304,15 +407,21 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     this.busy = busy == webAssetBusyKey(FACT.adding, FACT.upload)
                     disabled = busy != null
                     onPicked = { file, size ->
-                        val wrong = fileRefNewIdProblem(newId, listed)
-                        if (wrong != null) refuse(FACT.adding, wrong)
-                        else upload(FACT.adding, newId, file, size, newDescription.trim().ifEmpty { null }, added = true)
+                        val wrong = fileRefAddUploadProblem(newId, listed, taking, size)
+                        if (wrong != null) {
+                            refuse(FACT.adding, wrong)
+                        } else {
+                            val described = fileRefNewDescription(newDescription)
+                            run(FACT.adding, FACT.upload, added = true, ::fileRefUploadedNote) {
+                                ClientsApi.uploadFileRef(props.clientId, newId, file, described, expected)
+                            }
+                        }
                     }
                 }
                 span {
                     className = ClassName("subtitle")
                     +fileRefTakesText(taking)
-                    fileRefCountText(listed, taking)?.let { +" This client has $it" }
+                    fileRefCountText(listed, taking)?.let { +" $it" }
                 }
             }
             // Offered only where the deployment has opened a root to clients, which most have not.
@@ -324,7 +433,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 div {
                     className = ClassName("file-ref-add-row")
                     Select {
-                        value = newRoot ?: taking.roots.singleOrNull()
+                        value = fileRefChosenRoot(newRoot, taking.roots)
                         placeholder = "Where"
                         disabled = busy != null
                         style = js("({ minWidth: 160 })")
@@ -339,24 +448,23 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     Input {
                         value = newPath
                         placeholder = "Its path, such as marks/hero.png"
+                        maxLength = FREF.maxPathLength
                         disabled = busy != null
-                        style = js("({ width: 320 })")
+                        style = js("({ minWidth: 240 })")
                         onChange = { e -> newPath = (e.target.value as String).trim() }
                     }
                     Button {
                         loading = busy == webAssetBusyKey(FACT.adding, FACT.local)
                         disabled = busy != null && busy != webAssetBusyKey(FACT.adding, FACT.local)
                         onClick = {
-                            val root = newRoot ?: taking.roots.singleOrNull()
-                            val wrong = fileRefNewIdProblem(newId, listed)
-                                ?: "Choose where the file is.".takeIf { root == null }
-                                ?: "Give the file's path.".takeIf { newPath.isEmpty() }
+                            val root = fileRefChosenRoot(newRoot, taking.roots)
+                            val wrong = fileRefLocalProblem(newId, listed, root, newPath)
                             if (wrong != null || root == null) {
-                                refuse(FACT.adding, wrong ?: "Choose where the file is.")
+                                refuse(FACT.adding, wrong.orEmpty())
                             } else {
-                                val described = newDescription.trim().ifEmpty { null }
+                                val described = fileRefNewDescription(newDescription)
                                 run(FACT.adding, FACT.local, added = true, ::fileRefNamedNote) {
-                                    ClientsApi.nameLocalFileRef(props.clientId, newId, root, newPath, described)
+                                    ClientsApi.nameLocalFileRef(props.clientId, newId, root, newPath, described, expected)
                                 }
                             }
                         }

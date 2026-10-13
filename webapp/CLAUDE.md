@@ -103,26 +103,32 @@ the same way, under their own marker:
   served it once it is published. So the same `refId` can be two different files for the client and for its sandbox,
   each under its own hash -- which is what the hash in the address is for.
 - **The Clients page lists and changes them** (issue #1176): the **Files** section of a client's page
-  (`FileRefsSection.kt`, its wording and parsing pure in `FileRefs.kt` and covered by `FileRefsTest`), under Web
-  assets, which it is drawn like. It reads `GET /clientAdmin/client/files` (each ref with the record of its file
-  -- the file store's, or the disk's for a local one -- whether it is `live` for the client's own people or a
-  draft, whether a `stored` configuration holds it, and whether its bytes are `missing`) and
-  `GET …/files/takes` (the size, kinds and content types an upload is held to, how many refs a client is served,
-  and the roots open to clients: the backend says what it will accept, and the page says that). It changes them
-  with `POST …/files/upload` (multipart `refId`, `file`, `description`; `Http.uploadApi`), `POST …/files/local`
-  and `POST …/files/remove`, and previews through `GET …/files/download {client, refId, hash}` -- the listing's
-  `hash` in the address, so a replaced file is a new one, as the web assets' preview does. Wire names are `FREF`,
-  `CCT` and the file's `FMETA`, all in the kernel.
+  (`FileRefsSection.kt`; what it decides and what it says are pure in `FileRefs.kt`, covered by `FileRefsTest`),
+  under Web assets, which it is drawn like. It is described with the page's other sections, under "The Clients
+  page" below. Its calls: `GET /clientAdmin/client/files` (each ref with the record of its file -- the file
+  store's, or the disk's for a local one -- whether it is `live` for the client's own people or a draft, whether a
+  `stored` configuration holds it, and whether its bytes are `missing`); `GET …/files/takes` (the size, kinds and
+  content types an upload is held to, how many refs a client is served, and the roots open to clients);
+  `POST …/files/upload` (multipart `refId`, `file`, `description`; `Http.uploadApi`), `POST …/files/local`,
+  `POST …/files/describe` and `POST …/files/remove`; and `GET …/files/download {client, refId, hash}` for a
+  preview -- the listing's `hash` in the address, so a replaced file is a new one, as the web assets' preview does.
+  Wire names are `FREF`, `CCT` and the file's `FMETA`, all in the kernel.
   - **A change answers its `mode`** (`EDM.live` / `EDM.draft`), as a copy edit does, and the ref as it now is --
-    which the section draws at once. After a *removal* a ref still being there means the client was shipped with
-    one under that id, which the removed upload stood in front of.
-  - **Only a `stored` ref has Remove.** One the client was shipped with can be uploaded over and cannot be
-    removed (`…/files/remove` answers 400: nothing stored holds it).
+    which the section draws at once. After a *removal* a ref still being there, and not `stored`, is the one the
+    client was shipped with under that id, which the removed upload stood in front of.
+  - **Every change says how the page expects it to take effect** (`mode`, from `fileRefExpectedMode`). Whether a
+    change is a draft is decided at the request, by whether the client has a sandbox *then*; the page told its
+    user which from what it last read. A change that would take effect the other way is a 409, and not made --
+    so a removal confirmed as "from the draft" cannot take a file from the client's people because the sandbox
+    went in between. Send it with any new change you add here.
+  - **Only a `stored` ref has Remove and Reword.** One the client was shipped with can be uploaded over and
+    cannot be removed or reworded (`…/files/remove` and `…/files/describe` answer 400: nothing stored holds it).
   - **A file is picked with `FilePickButton`** (`FilePickButton.kt`), which the web assets' upload uses too:
     picking the file is the upload, and there is no second button.
   - Nothing reads a ref *for use* yet -- resolving one from Markdown copy is a later issue; until then the section
-    shows the address a ref is served at (`Http.fileRefUrl(name)`) for copying, and says of a draft's that it is
-    the sandbox's until published.
+    shows the address a ref is served at (`Http.fileRefUrl(name)`) for copying. That address is the **client's
+    people's**: the static root answers each caller with their own client's ref, so the section says whose it is,
+    and of a draft's that it is the sandbox's until published.
 - **A listed ref says its `source`** (`FREF.sourceStore` / `FREF.sourceLocal`), and a local one its `root` and
   `path`. **`hash` and `name` are absent for a local ref whose file is missing** -- there are no bytes to hash --
   so do not build an address from a ref that is `missing`. A local ref has no upload behind it: its `file` record
@@ -545,6 +551,35 @@ A sandbox's own detail says whose it is. In the listing each sandbox follows its
 (`withSandboxesBesideParents`) with a "sandbox of <id>" note (`sandboxRowNote`); the overview rows carry
 `sandboxOf` and `hasSandbox`. A scoped administrator has no listing (issue #1082), so only an `allClients` one
 sees sandbox rows.
+
+**Files** (issue #1176, `FileRefsSection.kt`, its pure half in `FileRefs.kt`, covered by `FileRefsTest`): under
+Web assets and drawn as they are, a client's **file refs** -- the named images its configuration holds (the calls
+are listed under "A client's file refs" above). A row a ref: a preview, its id with a mark for what is unusual
+(`fileRefTags`: a draft, a missing file, one the client was shipped with), its description, what the file is
+(`fileRefHoldsText`), where it is by its source and which configuration holds it (`fileRefWhereText`), and the
+address it is served at; then **Replace…**, and for a ref a stored configuration holds, **Reword…** and
+**Remove**. Under the list, the way to add one: an id and a description, then **Upload…** -- or, where
+`…/files/takes` lists a root open to clients, a root and a typed path. What is decided here, and why:
+
+- **A section, not a page of its own**, because it mirrors Web assets. A client may hold 200 refs; previews load
+  as they near the screen (`loading="lazy"`), and there is no paging or filter yet.
+- **Unlike a web asset, a ref is configuration.** For a client with a sandbox a change is a **draft**, and the list
+  is the *sandbox's* view: the client's latest, drafts marked. So `fileRefsIntro` says how a change takes effect
+  for this client, and that a file *removed* as a draft is no longer listed though the client's people are still
+  served it. Drafts are published from the **Stored configuration** table below the section, not from here.
+- **A sandbox's own page edits too** -- unlike Web assets, which a sandbox may not change. A change made there is
+  a draft of its parent's, and the calls are sent with the sandbox's id as they are with any client's.
+- **A client that takes nothing stored on this node** (`staticHere`, which for a sandbox is its parent's answer)
+  is listed with no actions, and told so and nothing of drafts.
+- **An id the client already has is refused by the add form**: that ref is replaced, reworded or removed from its
+  own row, where it can be seen. So an existing ref is re-pointed by an upload only; naming a kept file over an
+  existing ref is not offered, though the backend's `…/files/local` would take it.
+- **What a ref takes is asked for separately**, so the list is drawn even when `…/files/takes` cannot be had;
+  nothing is added from the page then, and it says so. At the limit of refs the form gives way to a sentence,
+  since an upload would be sent whole and then refused.
+- **The section keeps its place among the page's.** It and Web assets are keyed, and the Issues block above them
+  is one element with or without issues in it: mending a file ref clears an issue, and were Issues two elements
+  that come and go, every section after it would be remounted and lose what was typed in it.
 
 **Web assets** (issue #1130, `WebAssetsSection.kt`, its pure half in `WebAssets.kt`, covered by
 `WebAssetsTest`): under Sandbox, for a client this node carries, each slot of the client's own web assets -- the
