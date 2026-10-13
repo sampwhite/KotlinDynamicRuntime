@@ -1,6 +1,11 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
+import com.dynamicruntime.common.content.checkedMarkdownDocs
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HCFG
@@ -13,6 +18,7 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.toJsonMap
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -70,7 +76,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         (codeGuide[HFLD.buildId] as String).isNotEmpty() shouldBe true
     }
 
-    // Guards the three-places-in-step footgun (HDOC ids, the homeDocs registry, and the build's md-docs copy):
+    // Guards the three-places-in-step footgun (HDOC ids, the coreDocs declaration, and the build's md-docs copy):
     // a registered document whose resource was not packaged is dropped silently by homeLinks, vanishing from
     // the list and -- worse -- from the link-resolution map. Enumerating the expected ids turns that into a
     // named failure. Keep this list in step when registering a document (issue #492).
@@ -87,6 +93,35 @@ class HomeUiConfigEndpointTest : StringSpec({
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
+        // Every core document is listed; only a suite's inner pages are not (issue #1136).
+        links.forEach { it[HFLD.listed] shouldBe true }
+    }
+
+    // Issue #1136: a component declares its own documents, and one it marks unlisted is still sent -- so a link to it
+    // resolves -- but flagged, so the Documents listing leaves it out.
+    "a component's own documents are served, an unlisted one flagged as such" {
+        val suite = object : ComponentDefinition {
+            override val providerName = "testDocs"
+            override fun docs(cxt: KdrCxt) = listOf(
+                MarkdownDocDef("test-suite-page", "A suite page", "docs/test-suite/page.md", "A page of a suite.", listed = false),
+            )
+        }
+        val cxt = Startup.mkTestBootCxt("uiHomeDocs", "uiHomeDocsTest", additionalComponents = listOf(suite))
+        val links = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig))
+            .obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap() }
+        val page = links.single { it[HFLD.id] == "test-suite-page" }
+        page[HFLD.listed] shouldBe false
+        page[HFLD.sourcePath] shouldBe "docs/test-suite/page.md"
+        (page[HFLD.buildId] as String).isNotEmpty() shouldBe true
+        // The core documents are still there, listed, ahead of it: component order is display order.
+        links.first()[HFLD.id] shouldBe HDOC.readme
+    }
+
+    "two documents with one id, or one source path, are refused at boot" {
+        fun doc(id: String, path: String) = MarkdownDocDef(id, id, path, "d")
+        shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("a", "a.md"), doc("a", "b.md"))) }.message shouldContain "'a'"
+        shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("a", "x.md"), doc("b", "x.md"))) }.message shouldContain "'x.md'"
+        shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("demo/x", "x.md"))) }.message shouldContain "'demo/x'"
     }
 
     "source repo base is absent by default and configured from the env var" {

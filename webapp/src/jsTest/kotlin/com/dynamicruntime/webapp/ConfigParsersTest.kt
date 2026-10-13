@@ -161,6 +161,12 @@ class ConfigParsersTest {
         assertEquals("guide", cfg.links[0].docId)
         assertEquals("b7", cfg.links[0].buildId)
         assertEquals("The guide.", cfg.links[0].description)
+        // Absent, as from an older node that listed every document it sent; said, as sent (issue #1136).
+        assertTrue(cfg.links[0].listed)
+        val unlisted = homeConfigFrom(
+            uiConfig(features = emptyMap(), state = mapOf(HFLD.links to listOf(mapOf(HFLD.id to "p", HFLD.listed to false)))),
+        )
+        assertFalse(unlisted.links.single().listed)
 
         assertEquals(2, cfg.menu.size)
         // One field, two shapes (issue #483): a string is a route, an array is a call. The old pair of

@@ -120,6 +120,20 @@ class GedraConfigEndpointTest : StringSpec({
             .toJsonListOfMaps().single()[CCT.description] shouldBe "Ready v2"
     }
 
+    // Issue #1136: the documentation dumps a bundle's `slots` as its definition, so they must carry nothing a write
+    // stamps -- no entry ids, revisions or times. Those ride beside the slots (version, createdAt, ...), never in them,
+    // so the same definition written again reads back identical.
+    "a bundle's slots are the definition alone, unchanged by writing it again" {
+        val u = admin()
+        val name = "stable"
+        writeBundle(u, name, "Ready")
+        val first = u.getItem(CFEP.bundle, mapOf(CFEP.name to name))
+        writeBundle(u, name, "Ready")
+        val second = u.getItem(CFEP.bundle, mapOf(CFEP.name to name))
+        second[CFEP.slots] shouldBe first[CFEP.slots]
+        second[CFEP.slots] shouldBe slots(name, "Ready")
+    }
+
     "a patch edits one slot entry and leaves the rest (issue #732)" {
         val u = admin()
         val name = "patchtarget"

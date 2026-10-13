@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.uiblock.UiBlockSource
@@ -114,6 +115,14 @@ interface ComponentDefinition : KdrProvider {
      * add up to, so listing bases in one place and overlays in another would describe one thing in two.
      */
     fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = emptyList()
+
+    /**
+     * The Markdown documents this component ships and serves in-app (issue #1136): each one's resource id, label
+     * and source path, and whether the home page's Documents list offers it. Declared for the same reason as
+     * [fragments] -- the classpath is not enumerable, so a document nobody declares is one nothing links to -- and
+     * collected in component order, which is the order the Documents list shows them in.
+     */
+    fun docs(cxt: KdrCxt): List<MarkdownDocDef> = emptyList()
 
     /**
      * The Gedra config bundles this component defines (issue #299) -- traits, workflows, clients. Collected

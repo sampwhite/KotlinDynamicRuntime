@@ -103,6 +103,12 @@ object HP {
     /** Home page: the id of the open Markdown document, or absent for the welcome copy. */
     const val doc = "doc"
 
+    /**
+     * Documents page: the heading of the open document to scroll to (issue #1136) -- the `#section` a link into the
+     * document named, carried here because the hash itself is the app's route.
+     */
+    const val section = "section"
+
     /** Clients page: the client open in the detail view (issue #906), or absent for the listing. */
     const val client = "c"
 

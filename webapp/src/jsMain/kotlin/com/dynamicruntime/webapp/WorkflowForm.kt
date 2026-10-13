@@ -153,6 +153,8 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
     val wf = props.view
     val gedraId = props.gedraId
     val isEdit = gedraId != null
+    // A link in the workflow's copy to a document opens it in the app (issue #1136).
+    val copyLinks = useShellFacts().copyLinkResolver()
 
     // Seed every task's fields from its current entries (empty for a creation view). Trait ids are unique across
     // a workflow's tasks, so one map serves them all.
@@ -441,7 +443,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             when {
                 approval.approved -> p { +approvedLine(approval) }
                 else -> {
-                    if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt }
+                    if (approval.prompt.isNotBlank()) Markdown { source = approval.prompt; linkResolver = copyLinks }
                     val gid = gedraId
                     if (!task.isReviewer || gid == null) {
                         p {
@@ -509,14 +511,14 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             // A disabled display (issue #788) greys the whole step; nothing in it acts (see `isEditable`).
             className = ClassName(if (task.isDisabled) "wf-task wf-task-disabled" else "wf-task")
             if (showLabel && wf.showTaskList && task.label.isNotBlank()) {
-                designFramed(designSession, DesignTarget.Task(task), task.id) { Markdown { source = task.label; inlineUi = true } }
+                designFramed(designSession, DesignTarget.Task(task), task.id) { Markdown { source = task.label; inlineUi = true; linkResolver = copyLinks } }
             }
             // A text display (issue #788) stands in for the task's whole rendering -- fields, saves, an approval's
             // button -- with its placeholders filled from the task's own data.
             displayTextOf(task)?.let { text ->
                 div {
                     className = ClassName("wf-display-text")
-                    Markdown { source = text }
+                    Markdown { source = text; linkResolver = copyLinks }
                 }
                 approvalNotice(task)
                 return@div
@@ -543,7 +545,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 designFramed(designSession, DesignTarget.Trait(trait), trait.traitId) {
                 div {
                     className = ClassName("wf-trait")
-                    trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true } }
+                    trait.fieldLayout?.label?.let { Markdown { source = it; inlineUi = true; linkResolver = copyLinks } }
                         ?: h2 { +traitHeading(trait) }
                     // Locked for this caller (issue #857): shown as stored, and said why -- but only on a task they
                     // could otherwise save. On the locking workflow's own task the lock exempts exactly that task's
@@ -698,7 +700,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
         // over the read-only "View Info" (with the raw editor beside it) and Done while editing, with the
         // saved note beside either.
         formsEditorHeader(title = {
-            designFramed(designSession, DesignTarget.Workflow, wf.workflowId) { MarkdownInline { source = title } }
+            designFramed(designSession, DesignTarget.Workflow, wf.workflowId) { MarkdownInline { source = title; linkResolver = copyLinks } }
         }) {
             if (isEdit) {
                 if (editing) {
@@ -773,7 +775,7 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
                 wf.ineligibleReasons.forEachIndexed { i, r ->
                     li {
                         key = i.toString().unsafeCast<Key>()
-                        MarkdownInline { source = r }
+                        MarkdownInline { source = r; linkResolver = copyLinks }
                     }
                 }
             }

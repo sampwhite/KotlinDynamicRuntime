@@ -14,19 +14,22 @@ class DocLinkUtilTest : StringSpec({
     // as an ordinary document (issue #555); a repo blob base is configured.
     val docsByPath = mapOf(
         "README.md" to "readme", "code-guide.md" to "code-guide", "examples/x.md" to "ex", "LICENSE" to "license",
+        "docs/demo-client/review.md" to "demo-client-review",
     )
     val base = "https://github.com/o/r/blob/main"
 
-    // The app's in-app document href, as the frontend builds it (a same-page hash link).
+    // The app's in-app document href, as the frontend builds it (a same-page hash link), with the section a link
+    // names (issue #1136).
     fun resolve(url: String, from: String = "README.md", repo: String? = base) =
-        resolveDocLink(url, from, docsByPath, repo) { key -> "#doc=$key" }
+        resolveDocLink(url, from, docsByPath, repo) { key, anchor -> "#doc=$key" + (anchor?.let { "&section=$it" } ?: "") }
 
     "a relative link to a registered document becomes an in-app link" {
         resolve("code-guide.md") shouldBe "#doc=code-guide"
         // Resolved against the current document's directory, so a subdir target still matches.
         resolve("examples/x.md") shouldBe "#doc=ex"
-        // A fragment on an in-app doc link is dropped -- the app cannot scroll a fetched doc to a heading.
-        resolve("code-guide.md#usage") shouldBe "#doc=code-guide"
+        // A fragment on an in-app doc link is carried as the section to scroll to (issue #1136); an empty one is none.
+        resolve("code-guide.md#usage") shouldBe "#doc=code-guide&section=usage"
+        resolve("code-guide.md#") shouldBe "#doc=code-guide"
         // The README's `[MIT](LICENSE)` link: an extension-less registered document resolves in-app (issue #555).
         resolve("LICENSE") shouldBe "#doc=license"
     }
@@ -65,6 +68,14 @@ class DocLinkUtilTest : StringSpec({
         resolve("code-guide.md", repo = null) shouldBe "#doc=code-guide"
         // A plain repo file has nowhere to go, so it is unchanged (the pre-#492 behavior, no regression).
         resolve("CHANGELOG", repo = null) shouldBe "CHANGELOG"
+    }
+
+    // Form copy has no document of its own (issue #1136): it names a document by its path from the repo root, which
+    // a leading `/` says whatever the current path is.
+    "a link from the repo root resolves from any page, form copy included" {
+        resolve("/docs/demo-client/review.md", from = "") shouldBe "#doc=demo-client-review"
+        resolve("/docs/demo-client/review.md#tasks", from = "") shouldBe "#doc=demo-client-review&section=tasks"
+        resolve("/code-guide.md", from = "examples/guide.md") shouldBe "#doc=code-guide"
     }
 
     "an empty target stays empty" {
