@@ -90,7 +90,15 @@ class RequestHandler : WebRequest {
 
     /** The requested view (`_view`, issue #972), when it names one the backend knows; assigned to [KdrCxt.view]. */
     var view: String? = null
+
+    /**
+     * The request as the caller sent it, query and all -- echoed back in the response envelope's `requestUri`. Never
+     * logged: the log writes [logRequestSummary] (issue #1168).
+     */
     var logRequestUri: String = ""
+
+    /** The input fields the endpoint declares `g-sensitive` (issue #1168), once the dispatcher has resolved it. */
+    var declaredSensitive: Set<String> = emptySet()
 
     /** Access rules for the request's section; filled in by the dispatcher. */
     var sectionRules: SectionRules? = null
@@ -367,8 +375,20 @@ class RequestHandler : WebRequest {
         return out
     }
 
+    /**
+     * The request as the log writes it (issue #1168): method and path, then its query parameters and its body's fields
+     * through [RequestArgsLog] -- secrets redacted, addresses masked, long values cut, the whole bounded. Never the raw
+     * query. Distinct from [logRequestUri], the caller's own request echoed back to them.
+     */
+    fun logRequestSummary(): String {
+        val sb = StringBuilder("$method:$uri")
+        if (queryParams.isNotEmpty()) sb.append(" query=").append(RequestArgsLog.format(queryParams, declaredSensitive))
+        postData?.takeIf { it.isNotEmpty() }?.let { sb.append(" body=").append(RequestArgsLog.format(it, declaredSensitive)) }
+        return sb.toString()
+    }
+
     fun logSuccess(cxt: KdrCxt, code: Int) {
-        LogRequest.debug(cxt, "$code $logRequestUri (${cxt.durationMs()} ms)")
+        LogRequest.debug(cxt) { "$code ${logRequestSummary()} (${cxt.durationMs()} ms)" }
     }
 
     private fun handleException(cxt: KdrCxt?, t: Throwable) {
@@ -376,7 +396,7 @@ class RequestHandler : WebRequest {
         val code = kdrE?.code ?: EXC.internalError
         // The log always gets the real exception (its message is the raw text, or a KdrMsg's key path) plus the
         // stack; only the *wire* message is fragment-rendered.
-        LogRequest.error(cxt, "Error for request $logRequestUri.", t)
+        LogRequest.error(cxt, "Error for request ${logRequestSummary()}.", t)
         val rendered = clientMessage(cxt, t, kdrE)
         val extraData = errorExtraData(cxt, kdrE)
         try {
@@ -467,7 +487,7 @@ class RequestHandler : WebRequest {
             // The default code (an internal error) is the honest one: this is a bug in the request's ordering,
             // not a condition a caller can do anything about.
             throw KdrException(
-                "Cannot $what for $logRequestUri: the response has already been sent, so anything set now " +
+                "Cannot $what for $method:$uri: the response has already been sent, so anything set now " +
                     "would be dropped.",
             )
         }

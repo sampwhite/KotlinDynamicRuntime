@@ -798,17 +798,19 @@ fun parseProperty(name: String, map: Map<String, Any?>, state: SchParseState, de
     // Read before the split too (issue #564): a visibility gate beside a `$ref` belongs to the use site, and it
     // must reach the parsed property so the frontend -- which re-parses the served schema -- can evaluate it.
     val visibleWhen = map[SCH.visibleWhen].toOptStr()
+    // Read before the split too (issue #1168): a secret beside a `$ref` is this use's.
+    val sensitive = map[SCH.sensitive] == true
     if (ref != null) {
         // What this use of the type says about itself is read above; anything else would do nothing (issue #990).
         refSiblingProblem("Property '$name'", map, propertyRefKeys)?.let { throw it.toException() }
-        val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation, visibleWhen)
+        val prop = SchProperty(name, description, refTargetName(ref), title, optionalContents, presentation, visibleWhen, sensitive)
         state.pendingRefs.add(PendingRef(prop, state.path().orEmpty())) // valueType bound in the resolution pass
         state.exit()
         return prop
     }
     val prop = SchProperty(
         name, description, refName = null, title = title, optionalContents = optionalContents,
-        presentation = presentation, visibleWhen = visibleWhen,
+        presentation = presentation, visibleWhen = visibleWhen, sensitive = sensitive,
     )
     prop.valueType = parseNode(null, map, state, depth + 1, where = "Property '$name'")
     state.exit()
@@ -825,7 +827,8 @@ private val refAnnotationKeys: Set<String> = setOf(SCH.dRef, SCH.description, SC
  * The keys a **property** may carry beside its `$ref`: the annotations, and what the property says about its own use
  * of the type, which [parseProperty] reads before the `$ref` is followed (issues #487, #540, #564).
  */
-private val propertyRefKeys: Set<String> = refAnnotationKeys + setOf(SCH.optionalContents, SCH.presentation, SCH.visibleWhen)
+private val propertyRefKeys: Set<String> =
+    refAnnotationKeys + setOf(SCH.optionalContents, SCH.presentation, SCH.visibleWhen, SCH.sensitive)
 
 /**
  * A `$ref` in [map] at [where] with schema keys beside it, or null when it has none (issue #990). The parser takes a

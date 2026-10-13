@@ -333,6 +333,14 @@ object SCH {
     const val visibleWhen = "g-visibleWhen"
 
     /**
+     * Whether a **property's value is a secret** -- a password, a code, a token -- that must never be written down
+     * (issue #1168). The request log redacts it, keeping the field's name so the line still says it was sent; a name
+     * list stands behind it for input nobody declared. On the property, like [visibleWhen], since it describes this
+     * use of the value. Takes no part in validation, and exports as nothing.
+     */
+    const val sensitive = "g-sensitive"
+
+    /**
      * Per-field error copy: a map from an error key to the message to show when that failure is reported against
      * this field. The keys are [SchFailCode] names plus [errorDefault]; anything else fails at boot.
      *

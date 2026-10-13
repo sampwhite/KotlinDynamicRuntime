@@ -163,6 +163,12 @@ open class SchTypeBuilder(
     var visibleWhen: String? by SchAttr(data, SCH.visibleWhen)
 
     /**
+     * Custom `g-sensitive` keyword (issue #1168): this field's value is a secret -- a password, a code, a token -- so
+     * the request log shows that it was sent and redacts what it was. See [SCH.sensitive].
+     */
+    var sensitive: Boolean? by SchAttr(data, SCH.sensitive)
+
+    /**
      * Whether undeclared properties are allowed. When unset, the parser defaults it (false when the type
      * has declared properties, true when it has none). Set explicitly to allow extras on a defined type.
      *

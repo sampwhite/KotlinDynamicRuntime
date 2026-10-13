@@ -219,6 +219,14 @@ caller (`hideGatedFields`, in the kernel; a write keeps a gated field that is le
 inside an entry shows under the field, led by the entry's key (`FieldErrors.messagesWithin`), and the read-only
 outline names a map for its values ("map of integer") and expands a structured value type beneath it.
 
+## Secrets: `sensitive`
+
+`sensitive = true` on a field (the custom `g-sensitive` keyword, issue #1168) says its value is a secret -- a password,
+a verification code, a token -- that must never be written down. The request log (`RequestArgsLog`, through
+`RequestHandler.logRequestSummary`) shows the field's name and redacts its value. A name list stands behind it for
+input nobody declared (`password`, `verifyCode`, `formAuthToken`, names ending in `token`, `secret`, `credential`, ...),
+so declare a secret whose name the list would not catch. It takes no part in validation, and exports as nothing.
+
 ## Choice lists: written down, or sourced at render time
 
 `option(value, label)` writes the choices into the document, and they then **bind**: the validator rejects

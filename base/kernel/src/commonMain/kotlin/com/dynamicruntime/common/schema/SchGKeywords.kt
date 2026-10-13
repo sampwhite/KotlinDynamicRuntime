@@ -38,6 +38,7 @@ object SchGKeywords {
         SCH.optionalContents to boolean,
         SCH.optionsSource to text,
         SCH.visibleWhen to text,
+        SCH.sensitive to boolean,
         SCH.errors to obj,
         SCH.presentation to SchKeywordShape("one of ${PRES.all.sorted()}", SchShapeForm.Choice(PRES.all.sorted())),
         SCH.layout to obj,
