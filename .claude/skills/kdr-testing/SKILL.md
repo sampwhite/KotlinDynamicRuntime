@@ -466,6 +466,13 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
   pass for the wrong reason, and a fence test that cannot fail is worse than none. Note the consequence —
   `becomeUser` is gone in such an instance, so the caller is anonymous.
 
+- **A public test deployment (issue #1150) is booted with `Startup.mkBootCxt`**, not `mkTestBootCxt`, which forces
+  `ENV.unit`: it is a test instance in `dev` with `KDR_PUBLIC_TEST_DEPLOYMENT` on and the header trust stated
+  (`ACFG.trustEnvAuthHeader`). Such a node mails a caller without env auth **for real** under some settings, so point
+  the provider key at a secret nobody holds (`MAIL.mailgunApiKeySecretKey` to a made-up name) and keep the admin
+  domain under `.test` -- a developer's secrets may hold a real key. Ask `MailService.deliveryFor` what would happen to
+  a mail rather than sending one. `PublicTestDeploymentTest` is the worked example.
+
 ## Two kinds of test: focused, and flow
 
 Most tests are **focused**: limited setup, one behavior, their own instance, as above. But a per-test instance

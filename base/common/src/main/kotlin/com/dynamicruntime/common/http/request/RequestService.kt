@@ -499,6 +499,9 @@ class RequestService : ServiceInitializer {
         // deciding (issue #413).
         cxt.bindToUserProfile(UserProfile.anonymous())
         extractAuth(cxt, handler)
+        // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
+        // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
+        EnvAuthRules.fromAdminLogin(cxt)
 
         // Enforce the section's required role against the acting profile (restored by extractAuth). The test
         // goes through RoleLadder rather than plain set membership, so a higher privilege satisfies a lower

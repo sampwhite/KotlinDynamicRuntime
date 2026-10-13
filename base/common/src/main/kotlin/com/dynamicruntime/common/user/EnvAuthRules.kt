@@ -5,7 +5,9 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.BOOT
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
+import com.dynamicruntime.common.http.request.ROLE
 
 /** Constants for the environment-auth ("env auth") header contract. */
 @Suppress("ConstPropertyName")
@@ -219,6 +221,29 @@ object EnvAuthRules {
         // a test fixture's cookie asserting env auth, is gone (issue #1149): once the fixtures need env auth, only
         // a caller who already had it could have used it.)
         return EnvAuthState(sanitizeAddress(rawHeader) ?: assumed, suppressed, debug)
+    }
+
+    /**
+     * Env auth from an **administrator's login** (issue #1150), for an ephemeral public test deployment with no edge
+     * ([PublicTestDeployment.envAuthFromAdminLogin]): a signed-in user whose address is on the admin domain and who
+     * holds `allClients` is env-authed as that address. Runs once the session is restored and before the section
+     * gate, since [resolve] ran before anyone was signed in; a request an edge already vouched for keeps that.
+     *
+     * Only [AddressRules.isAdminDomain] -- not `isControlledDomain`, which also admits `example.com` outside
+     * production, an address anyone may register. The capability is read **live** ([refreshActingRoles], through the
+     * users cache), so a revoked `allClients` stops granting at once, as does a disabled user. The suppress and debug
+     * cookies [resolve] read apply as they do to an edge's env auth. Keyed on the acting user, not the person: a
+     * session that signs in as another of their users, or as anyone else, has no env auth until it signs in again as
+     * the administrator.
+     */
+    fun fromAdminLogin(cxt: KdrCxt) {
+        if (cxt.envAuthEmail != null || !PublicTestDeployment.envAuthFromAdminLogin(cxt.instanceConfig)) return
+        val profile = cxt.userProfile
+        if (!profile.isRowBacked || !profile.isLoggedIn) return
+        val row = UserService.get(cxt).queryByUserId(cxt, profile.userId) ?: return
+        if (!AddressRules.isAdminDomain(cxt, row.primaryId)) return
+        refreshActingRoles(cxt)
+        if (ROLE.allClients in cxt.userProfile.roles) cxt.envAuthEmail = sanitizeAddress(row.primaryId)
     }
 
     /**

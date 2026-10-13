@@ -995,6 +995,17 @@ node restarts and holds across restarts on a persistent database -- and a run fr
 with no sign-in, since its users are gone (`recentRunsFor`). The pure half (`SimulationsApi.kt`: the report, the
 sign-in body, the start page, the saved runs) is covered by `SimulationsTest`. What a simulation is, and how to add one, is in the `kdr-testing` skill.
 
+## A public test deployment (issue #1150)
+
+A test instance the public can reach (`KDR_PUBLIC_TEST_DEPLOYMENT`, the backend's `PublicTestDeployment`): env-authed
+people get the test surface (#1149); everyone else uses the app as on a real deployment, or by default is refused
+every sign-in and registration with the auth copy's `error.testDeploymentSignIn`. The app config's
+`publicTestDeployment` feature is served to every caller, and while it is true the shell draws `TestDeploymentBand`
+along the bottom edge of every page (`.test-deployment-band`, a deep rose -- apart from the accent, the admin bar, the
+sandbox and success) and marks the page root (`data-test-deployment`, `markPageTestDeployment`) so the last of a
+page's content clears it. Fixed at the bottom, not the top, so it shows at any scroll without competing with the
+sticky bar. Every mail says the same beneath its footer (`common.testDeploymentNote`).
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative

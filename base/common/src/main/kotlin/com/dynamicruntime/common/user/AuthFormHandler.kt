@@ -129,6 +129,9 @@ class AuthFormHandler(
      */
     fun sendVerifyToUser(cxt: KdrCxt, loginId: String, formAuthToken: String, addPassword: Boolean = false) {
         requireValidToken(cxt, formAuthToken)
+        // Refused by the login id as typed, before it is looked up (issue #1150): a refusal for known users alone
+        // would say which ids have accounts. An admin-domain user exempted there signs in by their address.
+        PublicTestDeployment.requireSignInOpen(cxt, loginId)
         val user = userService.queryByLoginId(cxt, loginId)
         if (user == null) {
             // Answer exactly as the success path does, rather than a 404 that would confirm the address has no
@@ -145,8 +148,13 @@ class AuthFormHandler(
         sendVerifyEmail(cxt, user.primaryId, node.computeVerifyCode(formAuthToken, user.primaryId), addPassword, client = user.client)
     }
 
-    /** Throttles verification emails per source IP and per targeted contact, to blunt flooding. */
+    /**
+     * Throttles verification emails per source IP and per targeted contact, to blunt flooding -- the bound a public
+     * test deployment mailing the public for real relies on (issue #1150), which also refuses its sign-in flows to a
+     * caller without env auth first ([PublicTestDeployment.requireSignInOpen]).
+     */
     private fun requireSendAllowed(cxt: KdrCxt, contactAddress: String) {
+        PublicTestDeployment.requireSignInOpen(cxt, contactAddress)
         val nowMs = cxt.now().toEpochMilliseconds()
         val ip = cxt.forwardedFor ?: unknownIp
         if (!rateLimiter.allow("svip:$ip", RL.sendPerIpMax, RL.sendPerIpWindowMs, nowMs) ||
@@ -184,6 +192,8 @@ class AuthFormHandler(
     ): Long {
         val address = contactAddress.normalizeEmail()
         requireValidToken(cxt, formAuthToken)
+        // A registration is a sign-in flow, refused to a caller a public test deployment does not admit (issue #1150).
+        PublicTestDeployment.requireSignInOpen(cxt, address)
         val placing = client != null || persona != null || personaSuffix.isNotEmpty()
         if (placing && !cxt.userProfile.roles.contains(ROLE.allClients)) {
             throw KdrException.mkInput("Only an administrator holding '${ROLE.allClients}' may choose the client, persona or personaSuffix of a new account.")
@@ -289,6 +299,9 @@ class AuthFormHandler(
     /** Logs a user in by verification code ([loginId] -- username or email -- plus code), the primary path. */
     fun loginByCode(cxt: KdrCxt, loginId: String, formAuthToken: String, verifyCode: String): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
+        // Refused by the login id as typed, before it is looked up (issue #1150): a refusal for known users alone
+        // would say which ids have accounts. An admin-domain user exempted there signs in by their address.
+        PublicTestDeployment.requireSignInOpen(cxt, loginId)
         val row = userService.queryByLoginId(cxt, loginId)
             ?: refuseUnknownLogin(cxt, loginId, formAuthToken, verifyCode)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
@@ -305,6 +318,9 @@ class AuthFormHandler(
      * against the login id itself when it names nobody, so an unknown account is throttled all the same.
      */
     fun loginByPassword(cxt: KdrCxt, loginId: String, password: String): Map<String, Any?> {
+        // Refused by the login id as typed, before it is looked up (issue #1150): a refusal for known users alone
+        // would say which ids have accounts. An admin-domain user exempted there signs in by their address.
+        PublicTestDeployment.requireSignInOpen(cxt, loginId)
         val nowMs = cxt.now().toEpochMilliseconds()
         val ip = cxt.forwardedFor ?: unknownIp
         // Resolved before the throttle only to key it; a cache hit, and nothing below runs until it passes.
@@ -441,6 +457,9 @@ class AuthFormHandler(
         cxt: KdrCxt, loginId: String, password: String, formAuthToken: String, verifyCode: String,
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
+        // Refused by the login id as typed, before it is looked up (issue #1150): a refusal for known users alone
+        // would say which ids have accounts. An admin-domain user exempted there signs in by their address.
+        PublicTestDeployment.requireSignInOpen(cxt, loginId)
         val row = userService.queryByLoginId(cxt, loginId)
             ?: refuseUnknownLogin(cxt, loginId, formAuthToken, verifyCode)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
@@ -852,6 +871,9 @@ class AuthFormHandler(
      * it the person's (issue #749).
      */
     private fun completeLogin(cxt: KdrCxt, row: AuthUserRow, byCode: Boolean, register: Boolean = byCode): Map<String, Any?> {
+        // Every login completes here, so a public test deployment refuses a caller without env auth here (issue
+        // #1150) -- by code, password, Google, claim or invitation alike -- as the user's own address decides.
+        PublicTestDeployment.requireSignInOpen(cxt, row.primaryId)
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
         if (register && !row.isRegistered) row.registeredAt = cxt.now()
         // The identity records the proof and which user the person last acted as (the fallback default,

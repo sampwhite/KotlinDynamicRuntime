@@ -85,6 +85,7 @@
 # +tooManyVerifyAttempts Too many verification attempts. Please request a new code and try again.
 # +tooManyVerifyRequests Too many verification requests. Please wait a while before requesting another code.
 # +tooManyLoginAttempts Too many failed login attempts. Please wait and try again, or log in by verification code.
+# +testDeploymentSignIn This deployment is for testing and development only, and does not accept sign-ins or registrations from the public.
 # +googleNotConfigured Google sign-in is not available on this deployment.
 # +googleTokenInvalid Google sign-in could not be verified. Please try again.
 # +googleEmailUnverified Google has not verified the email address on that account, so it cannot be used to sign in here.

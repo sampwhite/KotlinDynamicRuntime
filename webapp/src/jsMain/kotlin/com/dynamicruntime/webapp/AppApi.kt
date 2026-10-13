@@ -61,6 +61,11 @@ class AppConfig(
      * elsewhere, and before the first fetch.
      */
     val dataId: String? = null,
+    /**
+     * Whether this is a **public test deployment** (issue #1150): reachable by the public, for testing and development
+     * only. The shell draws [TestDeploymentBand] on every page while it is true, for every caller.
+     */
+    val publicTestDeployment: Boolean = false,
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): the safe, closed defaults, and the
@@ -110,6 +115,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     envAuthSuppressible = config.features[APP.envAuthSuppressible] == true,
     envAuthDebug = config.features[APP.envAuthDebug] == true,
     dataId = config.settings[APP.dataId] as? String,
+    publicTestDeployment = config.features[APP.publicTestDeployment] == true,
 )
 
 object AppApi {

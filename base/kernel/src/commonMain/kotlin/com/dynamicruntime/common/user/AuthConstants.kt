@@ -186,6 +186,12 @@ object AERR {
     const val tooManyVerifyRequests = "tooManyVerifyRequests"
     const val tooManyLoginAttempts = "tooManyLoginAttempts"
 
+    /**
+     * A public test deployment refuses this caller the sign-in flows (issue #1150): they have no env auth, and the
+     * deployment lets only env-authed people sign in.
+     */
+    const val testDeploymentSignIn = "testDeploymentSignIn"
+
     /** Google sign-in was attempted but the deployment has no client id configured. */
     const val googleNotConfigured = "googleNotConfigured"
 

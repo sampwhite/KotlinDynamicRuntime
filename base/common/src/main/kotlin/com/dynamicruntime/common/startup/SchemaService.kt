@@ -2,6 +2,7 @@ package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.annotation.KdrPrivate
@@ -11,9 +12,7 @@ import com.dynamicruntime.common.cfact.CFactRegistry
 import com.dynamicruntime.common.cfact.buildCFactRegistries
 import com.dynamicruntime.common.cfact.referencedNames
 import com.dynamicruntime.common.context.ClientSchemaSource
-import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
@@ -201,18 +200,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
 
         // Test-only endpoints (issue #125) are dropped from the store -- neither dispatchable nor in the
         // catalog -- unless this is a test instance. And a test instance outside a local/unit environment is a
-        // misconfiguration we refuse to run with, so nothing test-only can ever reach a real environment.
+        // misconfiguration we refuse to run with, so nothing test-only can ever reach a real environment -- except a
+        // public test deployment in `dev`, whose env auth the same check hardens (issue #1150).
         val isTestInstance = cxt.instanceConfig.isTestInstance
-        if (isTestInstance) {
-            val env = cxt.instanceConfig.env
-            if (env != ENV.local && env != ENV.unit) {
-                throw KdrException(
-                    "Refusing to start: this is a test instance in the '$env' environment. Test-only affordances " +
-                        "must NEVER be exposed outside 'local' or 'unit' -- unset ${KdrInstanceConfig.testInstanceEnvVar} " +
-                        "and turn off inMemoryOnly, or run in a local/unit environment.",
-                )
-            }
-        }
+        PublicTestDeployment.checkBoot(cxt.instanceConfig)
         val availableEndpoints =
             if (isTestInstance) collected.endpoints else collected.endpoints.filterNot { it.forTestingOnly }
 

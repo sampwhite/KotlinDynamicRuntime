@@ -106,6 +106,28 @@
     pointer-events: none;
 }
 
+/* A public test deployment (issue #1150): a band fixed along the bottom edge of every page says the deployment is for
+   testing and development only, for every caller. A deep rose, apart from the indigo accent, the admin bar's amber,
+   the sandbox's teal and the success green, so it reads as none of them -- dark enough to be noticed without pulling
+   the eye from the page; white text on it measures 7.9:1. The page keeps its
+   last content clear of it (`markPageTestDeployment`). */
+.test-deployment-band {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1090;
+    padding: 4px 16px;
+    background: #9d174d;
+    color: #fff;
+    font-size: 0.8rem;
+    text-align: center;
+    pointer-events: none;
+}
+:root[data-test-deployment] body {
+    padding-bottom: 32px;
+}
+
 * { box-sizing: border-box; }
 
 body {

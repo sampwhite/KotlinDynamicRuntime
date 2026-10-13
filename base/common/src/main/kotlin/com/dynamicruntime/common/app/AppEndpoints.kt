@@ -12,6 +12,7 @@ import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.ENVA
+import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.util.toOptEnum
 import kotlin.time.Instant
 import com.dynamicruntime.common.node.InstanceConfigService
@@ -56,6 +57,11 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
             property(
                 APP.hasTestAccess,
                 "Whether this caller may use the test-only fixtures: a test instance, with env auth effective.",
+                required = true,
+            ) { type = SCT.boolean }
+            property(
+                APP.publicTestDeployment,
+                "Whether this is a public test deployment: reachable by the public, for testing and development only.",
                 required = true,
             ) { type = SCT.boolean }
             property(
@@ -107,6 +113,8 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 // imply: a tool that demos a forTestingOnly fixture, and the Simulations page, are offered only
                 // where the dispatcher would serve them, so nobody is handed a tool that can only fail.
                 APP.hasTestAccess to c.hasTestAccess,
+                // For everyone (issue #1150): the band saying the deployment is for testing is drawn for every caller.
+                APP.publicTestDeployment to PublicTestDeployment.isOn(c.instanceConfig),
                 // Per-request, unlike its neighbors (issue #348): the answer depends on how this particular
                 // request reached the node, not on how the deployment is configured. Read off the context
                 // rather than the header, so the dispatcher's decision and the frontend's view are one answer.

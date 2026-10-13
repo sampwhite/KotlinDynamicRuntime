@@ -498,3 +498,14 @@ running in memory only.
   `SampleFileStore`; the endpoints' shapes need not change. Left out of #1129 so that change added the store
   without also rewriting its only prior art, and because files already uploaded to `sampleFiles/` on a developer's
   machine would not be found by the new one.
+
+## When an env-authed administrator on a public test deployment needs an invitation to reach the person invited
+
+On a public test deployment (issue #1150) mail follows the **caller**: an env-authed caller's mail is captured for
+read-back, so an administrator's invitation to an outside address is never delivered, and they pass the link on.
+
+- **Capture by recipient domain** *(#1150, deferred here 2026-10-13).* Cedar's answer: designated domains are
+  internal capture, so an env-authed caller's mail to anyone else is delivered for real while test users can still
+  be made quickly at a test domain. The domains would be the reserved names only -- `example.com`, `example.org`,
+  `example.net`, and anything under `.test` or `.invalid` (RFC 2606) -- never `test.com`, which Cedar used and
+  is a real, registered domain. The decision is `MailService.deliveryFor`, which is where it would change.
