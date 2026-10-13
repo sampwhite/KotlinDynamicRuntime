@@ -240,6 +240,10 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
+        if (isHtmlCommentLine(line)) {
+            i++
+            continue
+        }
         if (!isBlankLine(line)) sink.block(i)
         i = when {
             isBlankLine(line) -> i + 1
@@ -262,7 +266,19 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
 @KdrPrivate
 fun startsBlock(line: String): Boolean =
     isBlankLine(line) || fenceMarker(line) != null || headingLevel(line) > 0 || isHorizontalRule(line) ||
-        bulletContent(line) != null || orderedContent(line) != null || isQuoteLine(line)
+        bulletContent(line) != null || orderedContent(line) != null || isQuoteLine(line) || isHtmlCommentLine(line)
+
+/**
+ * Whether [line] is wholly an HTML comment, `<!-- ... -->` (issue #1137), which the renderers drop as GitHub does: how a
+ * document carries a note for its tools -- the demo documentation marks which bundle each JSON block shows -- that no
+ * reader sees, in the app or on GitHub. Only a comment on one line of its own; one spanning lines, or one inside a
+ * paragraph, is text like any other (raw HTML is never passed through).
+ */
+@KdrPrivate
+fun isHtmlCommentLine(line: String): Boolean {
+    val t = line.trim()
+    return t.length >= 7 && t.startsWith("<!--") && t.endsWith("-->")
+}
 
 /** The backtick/tilde run opening a fenced code block, or null when [line] is not a fence. */
 @KdrPrivate

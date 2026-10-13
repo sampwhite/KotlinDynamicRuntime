@@ -1,11 +1,14 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.kdn.confdemo.confDemoDocs
+import com.dynamicruntime.kdn.confdemo.confDemoSimulationSchema
 
 /**
  * The `kdn` module's component. It contributes a small sample schema in its own namespace, proving that
@@ -32,5 +35,10 @@ class KdnComponent : ComponentDefinition {
                 }
             }
         )
+        // The conference demo's simulation (issue #1137): test-only, so it exists on a test instance alone.
+        collector.addModule(confDemoSimulationSchema(cxt))
     }
+
+    /** The conference demo's documentation (issue #1137), the developer docs `docs/demo-client/` holds. */
+    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs()
 }
