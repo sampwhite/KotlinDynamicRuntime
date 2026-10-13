@@ -14,4 +14,8 @@ object CMK {
     /** A whole Markdown *document*, returned verbatim as text to be rendered as a page:
      *  `/<staticRoot>/<appId>/doc/<docId:buildId>`. */
     const val doc = "doc"
+
+    /** A client's own web asset (issue #1130) -- its tab icon, its brand mark -- returned as the image itself:
+     *  `/<staticRoot>/<appId>/web/<slot:hash>`. Always the **caller's** client's; see `WAS.staticPath`. */
+    const val web = "web"
 }

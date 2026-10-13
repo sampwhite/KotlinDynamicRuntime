@@ -175,6 +175,14 @@ class SchemaCollector(
         fileBuckets.add(def)
     }
 
+    /** Declares a file-store bucket only when this node is admitted by [presence] (issue #433): one kept where no
+     *  file store runs -- an edge -- would be a bucket nothing could check or serve. */
+    fun addFileBucket(def: FileBucketDef, presence: Presence) {
+        if (presence.admits(node)) {
+            addFileBucket(def)
+        }
+    }
+
     /** The post-write hooks (issue #675), fired after every gedra data write inside its transaction. */
     val writeHooks: MutableList<GedraWriteHook> = mutableListOf()
 

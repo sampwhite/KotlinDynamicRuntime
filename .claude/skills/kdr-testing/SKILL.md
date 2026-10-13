@@ -496,6 +496,14 @@ the in-process pipeline. It **carries cookies across calls**, so a login on one 
   `RequestHandler`, whose `rptStatusCode` lets you assert an error status (a validation failure is 400, a
   missing resource 404). `method` is an `HttpMethod` (`POST`/`PUT`); a DELETE has its own call because its
   input rides in the query string rather than a body.
+- `sendUploadRequest(path, parts)` → the `RequestHandler` of a `multipart/form-data` request: `parts` is the
+  input fields, a `ContentData` for the file and any other value for a field travelling with it. There is no
+  wire to encode onto, so the parts reach the handler already decoded -- this exercises the endpoint, its
+  validation and its handler, **not** Jetty's multipart parsing, which only a real request does (a browser or
+  `curl -F` against your own server).
+- `sendGetRequestRaw("/st/…")` → the `RequestHandler` for a path **outside the API root** -- a content server's
+  address. Read `rptStatusCode`, `rptResponseBytes` (a binary body; `rptResponseData` is a text one),
+  `rptResponseMimeType` and `rptResponseHeaders` (keyed lower-case) from it.
 - Pull the payload out of the envelope with the shared conversion helpers, exactly as the existing tests do:
 
   ```kotlin
@@ -550,6 +558,12 @@ val opal = TestUser.createOperator(cxt, "opal@example.com")
 opal.getData("/operator/system/info")            // the deployment operator section
 opal.expectError(EXC.notAuthorized, ADEP.users)  // ...but not an admin one
 ```
+
+**An upload as a user is `TestUser.upload(path, parts)`** -- `sendUploadRequest` on the user's client. Unlike
+`getData`/`postData` it returns the **whole envelope**, not `results`, so one call serves a test of a refusal as
+well as of a success: read `[EP.results]` from it, or `[EP.status]` and `[EP.errorMessage]`. `ClientWebAssetsTest`
+(`base/kdn`) is the worked example, and of reading a content server's answer as a signed-in user
+(`user.client.sendGetRequestRaw`).
 
 This works in unit tests because `env == unit` allows test endpoints. Test-only endpoints (marked
 `forTestingOnly` on the builder) are dropped from the store unless a deployment allows them

@@ -10,6 +10,7 @@ import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
 import com.dynamicruntime.common.user.AFEAT
 import com.dynamicruntime.common.user.AFLD
+import com.dynamicruntime.common.webasset.WAS
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -125,6 +126,12 @@ class ConfigParsersTest {
         // backend that does not say leaves a caller listing their own.
         assertTrue(cfg.administersClient)
         assertFalse(homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).administersClient)
+        // The client's own web assets (issue #1130) ride the same config; none, from a backend that sends none.
+        assertEquals(
+            mapOf(WAS.favicon to "favicon:aa"),
+            homeConfigFrom(uiConfig(features = emptyMap(), state = mapOf(HFLD.webAssets to mapOf(WAS.favicon to "favicon:aa")))).webAssets,
+        )
+        assertEquals(emptyMap(), homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap())).webAssets)
         // Its own flag, not the manage-users one beside it: an administrator in `public` has that and not this.
         val publicAdmin = homeConfigFrom(uiConfig(features = mapOf(HFEAT.canManageUsers to true), state = emptyMap()))
         assertTrue(publicAdmin.canManageUsers)

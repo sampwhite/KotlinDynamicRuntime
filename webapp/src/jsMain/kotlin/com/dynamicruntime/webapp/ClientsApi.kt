@@ -34,6 +34,7 @@ import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.webasset.WAS
 
 /**
  * One client as the Clients page lists it (issue #905): a row of `/clientAdmin/clients/overview`. [status] and
@@ -944,6 +945,29 @@ object ClientsApi {
     suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
         Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
             .toJsonMapOrEmpty()[CLD.sandbox] == true
+
+    /** Every slot of [clientId]'s web assets (issue #1130), each with the metadata of the image it holds. */
+    suspend fun webAssets(clientId: String): List<WebAssetSlot> =
+        parseWebAssetSlots(Http.getApi(UADEP.clientWeb + queryString(mapOf(WAS.client to clientId)))[EP.items].toJsonListOfMaps())
+
+    /**
+     * Uploads [file] -- the browser's own `File`, from a picker -- as the image of [slot] of [clientId]'s web assets
+     * (issue #1130), replacing the one there. Live for everyone in the client when this returns, which answers the slot
+     * as it now is; the backend refuses a file that is not the image it says it is, in its own words.
+     */
+    suspend fun uploadWebAsset(clientId: String, slot: String, file: Any): WebAssetSlot? =
+        webAssetSlotOf(Http.uploadApi(UADEP.clientWebUpload, mapOf(WAS.client to clientId, WAS.slot to slot, WAS.file to file)))
+
+    /**
+     * Empties [slot] of [clientId]'s web assets (issue #1130), so its people see the deployment's image again.
+     * Like the upload, answers the slot as it now is.
+     */
+    suspend fun removeWebAsset(clientId: String, slot: String): WebAssetSlot? =
+        webAssetSlotOf(Http.sendApi("POST", UADEP.clientWebRemove, mapOf(WAS.client to clientId, WAS.slot to slot)))
+
+    /** The one slot a change answers under `results`, or null from a backend that answered none. */
+    private fun webAssetSlotOf(envelope: Map<String, Any?>): WebAssetSlot? =
+        parseWebAssetSlots(listOf(envelope[EP.results].toJsonMapOrEmpty())).firstOrNull()
 
     /**
      * Saves a client's definition edit (issue #1026) -- [request] from [definitionEditRequest] -- and makes it take

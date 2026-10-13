@@ -166,7 +166,9 @@ body {
     text-decoration: none;
     letter-spacing: 0.03em;
 }
-.app-bar-logo { display: block; width: 26px; height: 26px; }
+/* `object-fit: contain` because a client may upload a mark of its own (issue #1130), which need not be square:
+   it is fitted inside the box the deployment's square mark fills, never stretched to it. */
+.app-bar-logo { display: block; width: 26px; height: 26px; object-fit: contain; }
 /* The wordmark's loading cue (issue #469): a muted, lighter-weight ellipsis beside the mark, distinct from the
    loaded wordmark so it reads as "still arriving" rather than as the brand itself. Only shown after a short
    delay (see useDelayedFlag), so a fast load never flashes it. */
@@ -455,7 +457,29 @@ body {
 
 /* The home hero: the mark at display size beside the wordmark. */
 .home-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-.home-hero-mark { display: block; width: 64px; height: 64px; flex: none; }
+.home-hero-mark { display: block; width: 64px; height: 64px; flex: none; object-fit: contain; }
+
+/* A client's web assets on its page (issue #1130): one row a slot -- the image as its people see it, in a well
+   the page's own colour so a mark drawn for a dark bar is judged on one, then what is known of it and its actions. */
+.web-asset { display: flex; align-items: flex-start; gap: 16px; margin-top: 14px; }
+.web-asset-preview {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 88px;
+    height: 88px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-page);
+}
+.web-asset-preview img { display: block; max-width: 64px; max-height: 64px; object-fit: contain; }
+.web-asset-none { color: var(--text-muted); font-size: 1.4rem; }
+.web-asset-facts { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.web-asset-name { font-weight: 600; color: var(--text); }
+.web-asset-actions { display: flex; gap: 8px; margin-top: 6px; }
+/* The browser's own picker stays in the page -- a button opens it -- and out of sight. */
+.web-asset-picker { display: none; }
 .home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text); }
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }

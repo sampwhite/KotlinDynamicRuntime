@@ -128,6 +128,14 @@ object HFLD {
 
     /** `state.sandboxOfName`: beside [sandboxOf], the client's display name, for the marker's words. */
     const val sandboxOfName = "sandboxOfName"
+
+    /**
+     * `state.webAssets`: the caller's client's own web assets (issue #1130), a slot (`WAS.favicon`,
+     * `WAS.brandMark`) to its image by name and content (`favicon:<hash>`). Only the slots the client has set are
+     * in it: an absent slot is the deployment's own image, exactly as before. The frontend fetches each at
+     * `WAS.staticPath`, and re-reads this with the rest of the shell config, so an upload shows without a reload.
+     */
+    const val webAssets = "webAssets"
 }
 
 /** Home schema type names (the backend's output type refs; also useful to the frontend). */

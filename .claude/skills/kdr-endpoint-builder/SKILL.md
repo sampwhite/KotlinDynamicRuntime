@@ -170,9 +170,10 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
 - **Keep the file in the file store**, `FileStoreService` (`com.dynamicruntime.common.filestore`), which runs on a
   directory, S3 or memory by configuration (`KDR_FILE_STORE_TYPE`), so your code never knows which:
   - Your component **declares the bucket** it keeps files in, once, in `addSchema`:
-    `collector.addFileBucket(FileBucketDef("web-assets", "What is kept there."))`. A bucket is the store's own
+    `collector.addFileBucket(FileBucketDef("client-files", "What is kept there."))`. A bucket is the store's own
     unit of addressing on every provider (lowercase letters, digits, hyphens), and the boot checks each declared
-    one can be served. A bucket nobody declared is refused.
+    one can be served. A bucket nobody declared is refused, and so is a name declared twice: `web-assets` is the
+    runtime's own (a client's favicon and brand mark), so pick another.
   - `FileStoreService.get(cxt).put(cxt, bucket, key, content, extra)` stores a `ContentData` and answers its
     `FileMeta` — type, size, SHA-256, the uploaded name, who and when, your `extra` — which is also written
     **beside the file** (`<key>.meta.json`). A key is slash-separated segments of letters, digits, `.`, `_`, `-`.
@@ -190,21 +191,30 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
 
 ```kotlin
 // In your component's addSchema: the bucket, declared once.
-collector.addFileBucket(FileBucketDef("web-assets", "A client's own images."))
+collector.addFileBucket(FileBucketDef("client-files", "Files a client's people upload."))
 
 // In an upload handler -- `file` is the upload's ContentData.
 val files = FileStoreService.get(cxt)
-val meta = files.put(cxt, "web-assets", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
+val meta = files.put(cxt, "client-files", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
 
 // In a download handler: the file as the response, or a 404.
-files.get(cxt, "web-assets", "clients/acme/logo")?.toContentData()
+files.get(cxt, "client-files", "clients/acme/logo")?.toContentData()
     ?: throw KdrException("No such file.", code = EXC.notFound)
 
 // What a file is, without fetching it: one file's, or a folder's.
-files.meta(cxt, "web-assets", "clients/acme/logo")
-files.list(cxt, "web-assets", "clients/acme/", limit = 100)
-files.delete(cxt, "web-assets", "clients/acme/logo")
+files.meta(cxt, "client-files", "clients/acme/logo")
+files.list(cxt, "client-files", "clients/acme/", limit = 100)
+files.delete(cxt, "client-files", "clients/acme/logo")
 ```
+
+**The worked example** is a client's web assets (`webasset/ClientWebEndpoints.kt`, issue #1130): an upload
+that checks the file is what it says it is before storing it (`WebAssetCheck` -- an upload's content type is the
+uploader's claim), a listing that answers the store's metadata and no content, and a download that sets its own
+response headers through `c.request?.webRequest`. The same images are served to browsers by a `ContentServer`
+under the static root (`ClientWebAssetService.serve`), which is where a file goes out when it is content rather
+than an API answer. **How long an answer may be kept is `ContentResources`' to say**, not the endpoint's:
+`cacheHeaderFor(matched)` for an address anyone may fetch, `privateCacheHeaderFor(matched)` with `Vary: Cookie`
+for one behind a sign-in, and `noStore` on every miss.
 
 ## Signatures
 

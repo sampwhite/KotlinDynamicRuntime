@@ -10,22 +10,6 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toJsonStr
 import kotlin.time.Instant
 
-/** The keys of a stored file's metadata ([FileMeta]), as its file and its schema type spell them. */
-@Suppress("ConstPropertyName")
-object FMETA {
-    const val mimeType = "mimeType"
-    const val size = "size"
-    const val hash = "hash"
-    const val uploadedAt = "uploadedAt"
-    const val fileName = "fileName"
-    const val uploadedBy = "uploadedBy"
-    const val client = "client"
-    const val extra = "extra"
-
-    /** The schema type [FileMeta.defineInfoType] declares. */
-    const val infoTypeName = "FileMeta"
-}
-
 /**
  * What is known about a stored file, kept **beside** it as a file of its own (issue #1129): at [metaKey], as
  * JSON. It is what makes a file more than bytes -- what type it is, what it was called, who put it there and

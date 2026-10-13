@@ -165,6 +165,9 @@ Notes:
   set. Only the deployed app (`appui`) is branded.
 - **The stylesheet is not brandable.** Replacing `app.css` wholesale would fork it and re-create the drift a
   single sheet exists to prevent; theming wants CSS variables instead.
+- **This is the deployment's branding, not a client's.** A client's administrator uploads a favicon and a brand
+  mark of its own from the Clients page (issue #1130), with no code and no redeploy; those stand in for these for
+  that client's signed-in people. The set here is what everybody else sees, and what every page paints first.
 
 ## Tuning batch jobs
 
