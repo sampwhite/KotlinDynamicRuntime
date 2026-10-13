@@ -21,6 +21,8 @@ import com.dynamicruntime.common.schema.SchTypeBuilder
  * - **[CCT.clientDef]** -- the client definition, single-instance, by **reference** to the canonical
  *   `WrittenClientInfo` ([CLD.writtenInfoTypeQualified]): the definition as a write must give it (issue #1051),
  *   which is `ClientInfo` with the list of environments closed.
+ * - **[CCT.customerDef]** -- a customer (issue #1107), by customer id, its fields declared inline from
+ *   [CustomerDef.declareFields]. Only `hub`'s stored configuration may hold one.
  * - **[CCT.traitDef]** -- a data trait's **declaration**, by trait id. The DSL inputs are stored (`traitId`,
  *   `typeName`, `appliesTo`, `primaryKey`, description, and the data shape as a `schemaDocument()`), **not** the
  *   `<Name>Entry`/`<Name>Data` types the declaration generates: a trait is a declaration re-run on load, not a
@@ -70,6 +72,15 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         dataType = CLD.writtenInfoTypeQualified,
         description = "The client this configuration defines, as a stored entry.",
     )
+    // Only `hub`'s stored configuration holds customers (issue #1107), and only the platform writes them.
+    // Inline, as a keyed slot's data must be, from the one declaration of its fields.
+    configTrait(
+        "CustomerDefEntry", CCT.customerDef, setOf(GedraConfigType.configDoc),
+        "One customer the platform declares, keyed by its customer id.",
+        primaryKey = listOf(CUST.customerId),
+    ) {
+        CustomerDef.declareFields(this)
+    }
     configTrait(
         "TraitDefEntry", CCT.traitDef, setOf(GedraConfigType.configDoc),
         "One data-trait declaration this configuration contributes, keyed by trait id.",

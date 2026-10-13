@@ -158,7 +158,8 @@ object GedraConfigTrial {
         // Phase two's, in the reload's order: the client's definition, the schema, the overlays, the workflows, the reports.
         // The client's definition before its schema, as a reload now orders them (issue #819): a variant is built only
         // for a client that would be present.
-        val def = checkClientDefs(tcxt, scratch.gedraConfigs, setOf(client), ClientService.get(tcxt).clients)
+        val clients = ClientService.get(tcxt)
+        val def = checkClientDefs(tcxt, scratch.gedraConfigs, setOf(client), clients.clients, clients.customers)
             .clients[client]
         val present = def?.takeIf { it.isEnabledIn(tcxt.instanceConfig.env) }
         val schema = SchemaService.get(tcxt).trialClient(tcxt, scratch, client, present)

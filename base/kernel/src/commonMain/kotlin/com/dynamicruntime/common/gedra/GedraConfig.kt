@@ -217,6 +217,13 @@ class GedraConfig(
      */
     val client: ClientDef? = null,
     /**
+     * The customers this config declares (issue #1107). Only the platform declares one -- a source component, or
+     * `hub`'s stored configuration -- and the load judges them all together, across every config
+     * (`checkClientDefs`). A config copied for a sandbox or from a template carries none: a customer is declared
+     * once, where it was written.
+     */
+    val customers: List<CustomerDef> = emptyList(),
+    /**
      * The cfacts this config declares (issue #455) -- names its own data may then write in an expression.
      *
      * **Declaration only, never production.** A component is what makes a cfact true, because that takes
@@ -458,6 +465,21 @@ class GedraConfigBuilder(
     /** The client this config defines, if it declared one; see [defineClient]. */
     var clientDef: ClientDef? = null
         private set
+
+    /** The customers this config declares (issue #1107); see [defineCustomer]. */
+    val customers: MutableList<CustomerDef> = mutableListOf()
+
+    /**
+     * Declares a customer (issue #1107): who owns a set of clients, and the prefix of their ids. Only the platform
+     * declares one, so it is for a source component or `hub`'s stored configuration; a stored config of any other
+     * client declaring one is refused. One config declaring a customer twice throws here, as a second client does.
+     */
+    fun defineCustomer(def: CustomerDef) {
+        if (customers.any { it.customerId == def.customerId }) {
+            throw KdrException.mkConv("This config already declares the customer '${def.customerId}'.")
+        }
+        customers.add(def)
+    }
 
     /** The workflows declared in this block; see [workflow]. */
     @Suppress("MemberVisibilityCanBePrivate")
@@ -816,6 +838,7 @@ fun gedraConfig(
         configTraits = builder.configTraits.toMap(),
         defs = builder.defs.toMap(),
         client = builder.clientDef,
+        customers = builder.customers.toList(),
         cfacts = builder.cfacts.toList(),
         fragments = builder.fragments.toList(),
         uiBlocks = builder.uiBlocks.toList(),

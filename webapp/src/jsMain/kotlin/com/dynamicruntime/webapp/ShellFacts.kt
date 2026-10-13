@@ -17,10 +17,18 @@ import react.use
  * - [administersClient] is whether the caller's listings reach beyond their own rows (`HFEAT.administersClient`):
  *   what the name falls back on. True for a client's administrator, false for everyone else -- and **null until the
  *   shell has been told**, which is a moment after a hard reload, or for good when its config could not be read.
+ * - [docs] and [sourceRepoBase] are the served documents and the source repository's blob base (issue #1136), what a
+ *   link in form copy resolves against -- see [copyLinkResolver]. Empty until the shell has been told, when a link to
+ *   a document is left as written.
  *
  * A data class, so that a refresh which says the same thing is the same value and redraws nothing.
  */
-data class ShellFacts(val administersClient: Boolean? = null, val formsEntryLabel: String? = null)
+data class ShellFacts(
+    val administersClient: Boolean? = null,
+    val formsEntryLabel: String? = null,
+    val docs: List<HomeLink> = emptyList(),
+    val sourceRepoBase: String? = null,
+)
 
 /** The context carrying the [ShellFacts]; [App] is the sole provider. The default is "not yet told". */
 val ShellFactsContext = createContext(ShellFacts())
@@ -36,7 +44,17 @@ fun useShellFacts(): ShellFacts = use(ShellFactsContext)
 fun shellFactsOf(config: HomeConfig): ShellFacts = ShellFacts(
     administersClient = config.administersClient,
     formsEntryLabel = config.menu.firstOrNull { (it.action as? UiRoute)?.page == HMENU.pageForms }?.label?.ifBlank { null },
+    docs = config.links,
+    sourceRepoBase = config.sourceRepoBase,
 )
+
+/**
+ * How a link in **form copy** -- a label, a description, a task's text -- is resolved (issue #1136): as a link in a
+ * document is, from the repo root, since form copy belongs to no document. So `[Review tasks](/docs/demo-client/review.md)`
+ * opens that document in the app where it is served, or in the source repository where it is not and one is
+ * configured; a link to anything else is left as written. Pure, covered under `jsNodeTest`.
+ */
+fun ShellFacts.copyLinkResolver(): (String) -> String = docLinkResolver("", docs, sourceRepoBase)
 
 /**
  * What the forms listing is called for this caller (issue #1091), in its heading and on the way back to it.

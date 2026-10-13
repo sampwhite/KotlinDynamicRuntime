@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HMENU
+import kotlinx.browser.document
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -43,6 +44,8 @@ val DocsPage = FC<Props> {
     // Monotonic token so an out-of-order document response is dropped rather than overwriting the open one.
     val latestDoc = useRef(0)
     val openId = hashParams()[HP.doc]
+    // The heading a link into the document named (issue #1136), scrolled to once the document has rendered.
+    val section = hashParams()[HP.section]
 
     // The same config Home reads (the links, and the fragment carrying the nav copy), re-read per generation.
     useEffect(generation) {
@@ -81,6 +84,14 @@ val DocsPage = FC<Props> {
         }
     }
 
+    // After the document's text is in the page, so the heading it names exists. Again when the section changes on a
+    // document already open -- a link from one of its headings to another.
+    useEffect(docText, section) {
+        if (docText != null && section != null) {
+            document.getElementById(section)?.asDynamic()?.scrollIntoView(js("({ block: 'start' })"))
+        }
+    }
+
     div {
         className = ClassName("card wide")
         val current = config
@@ -104,7 +115,9 @@ val DocsPage = FC<Props> {
             }
             else -> {
                 h1 { +copy.t("nav", "title", "Documents") }
-                if (links.isEmpty()) {
+                // A suite's inner pages are reached from its entry page, not listed (issue #1136).
+                val listed = links.filter { it.listed }
+                if (listed.isEmpty()) {
                     p { className = ClassName("type-hint"); +copy.t("nav", "emptyNote", "") }
                 } else {
                     // A list of links with a line on each, the shape the Operator overview and the Debug index
@@ -112,7 +125,7 @@ val DocsPage = FC<Props> {
                     // the link, so a new document arrives with its own.
                     ul {
                         className = ClassName("index-list")
-                        for (link in links) li {
+                        for (link in listed) li {
                             a { href = docHref(link.id); +link.label }
                             if (link.description.isNotEmpty()) +" \u2014 ${link.description}"
                         }
@@ -134,5 +147,9 @@ fun ChildrenBuilder.docLinks(links: List<HomeLink>) {
     }
 }
 
-/** The href of a document's page. One builder, so Home's links, the listing, and the link resolver agree. */
-fun docHref(id: String): String = hashHref(listOf(HP.page to HMENU.pageDocs, HP.doc to id))
+/**
+ * The href of a document's page, and of a [section] within it (issue #1136) -- a heading's id. One builder, so Home's
+ * links, the listing, and the link resolver agree.
+ */
+fun docHref(id: String, section: String? = null): String =
+    hashHref(listOfNotNull(HP.page to HMENU.pageDocs, HP.doc to id, section?.let { HP.section to it }))

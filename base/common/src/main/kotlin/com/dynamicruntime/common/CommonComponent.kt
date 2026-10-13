@@ -36,6 +36,7 @@ import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.operator.operatorSchema
+import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
@@ -67,6 +68,7 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.app.appSchema
+import com.dynamicruntime.common.home.coreDocs
 import com.dynamicruntime.common.home.homeMenuBlock
 import com.dynamicruntime.common.home.homeSchema
 import com.dynamicruntime.common.simulation.simulationSchema
@@ -260,6 +262,9 @@ class CommonComponent : ComponentDefinition {
 
     /** The app-bar menu, registered as a UiBlock (issue #458) so its items can be varied without an `if`. */
     override fun uiBlocks(cxt: KdrCxt): List<UiBlockSource> = listOf(homeMenuBlock())
+
+    /** The README and the repo docs it links to (issue #492), served in-app and offered on the Documents list. */
+    override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = coreDocs()
 
     /**
      * The Gedra configs this module defines: the traits every deployment has, in the reserved `kdr.core`

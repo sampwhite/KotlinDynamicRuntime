@@ -59,7 +59,8 @@ val Home = FC<Props> {
     }
     val current = config
     val layout = current?.layout
-    val links = current?.links ?: emptyList()
+    // Only the documents the listing offers; a suite's inner pages are reached by links (issue #1136).
+    val links = current?.links?.filter { it.listed } ?: emptyList()
 
     div {
         className = ClassName("home-shell")

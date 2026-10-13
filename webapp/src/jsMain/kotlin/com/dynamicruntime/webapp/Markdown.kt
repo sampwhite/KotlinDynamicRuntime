@@ -71,6 +71,8 @@ private fun scrollSameDocAnchorIntoView(e: dynamic) {
  * whatever it is dropped into and stays valid inside a paragraph or label, where [Markdown]'s `<div>` would
  * not be. Used for copy that emphasizes a substituted value, e.g., an address in `` `${user.email}` ``.
  *
+ * Its links go through [MarkdownProps.linkResolver] as [Markdown]'s do (issue #1136) -- form copy's, to a document.
+ *
  * Safe on the same terms as [Markdown]: the kernel renderer escapes all text and neutralizes unsafe URLs. Note
  * the substitution (`evalTemplate`) must run *before* this, so a value carrying Markdown or HTML is escaped as
  * text rather than interpreted.
@@ -78,7 +80,7 @@ private fun scrollSameDocAnchorIntoView(e: dynamic) {
 val MarkdownInline = FC<MarkdownProps> { props ->
     span {
         className = ClassName("markdown-inline")
-        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdownInline())
+        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdownInline(props.linkResolver))
     }
 }
 

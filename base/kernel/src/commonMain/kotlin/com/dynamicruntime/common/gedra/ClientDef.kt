@@ -106,9 +106,11 @@ object ClientOperatorFields {
      * Each operator-only field (a [CLD] key), with the value it holds for a client that has no definition yet --
      * the least authority, which is all a client's own write could ever start from.
      */
-    val defaults: Map<String, String> = linkedMapOf(
+    val defaults: Map<String, String?> = linkedMapOf(
         CLD.audience to ClientAudience.customer.name,
         CLD.usageType to ClientUsageType.production.name,
+        // Which customer owns the client (issue #1107): none, until the platform files it under one.
+        CLD.customerId to null,
     )
 
     /**
@@ -156,7 +158,7 @@ object ClientPresentationFields {
  */
 object ClientCreateFields {
     val names: List<String> = listOf(
-        CLD.clientId, CLD.name, CLD.description, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
+        CLD.clientId, CLD.name, CLD.description, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
         CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.userLabels, CLD.sandbox,
     )
 }
@@ -199,6 +201,18 @@ object CLD {
     const val testFeatures = "testFeatures"
     const val userLabels = "userLabels"
     const val sandbox = "sandbox"
+
+    /** The customer that owns the client (issue #1107); see [ClientDef.customerId]. */
+    const val customerId = "customerId"
+
+    /** On a create: a customer to make with the client, whose id is the client's and whose root it is (issue #1107). */
+    const val newCustomer = "newCustomer"
+
+    /** On a create's result: the customer made with the client, as stored (issue #1107). */
+    const val customer = "customer"
+
+    /** On a create's result: why the customer made with the client was not finished, when it was not (issue #1107). */
+    const val customerFailure = "customerFailure"
 
     /** On a client overview row that is a sandbox (issue #932): the client whose sandbox it is. */
     const val sandboxOf = "sandboxOf"
@@ -551,6 +565,15 @@ data class ClientDef(
      * definition whose id is a sandbox's is refused wherever one is declared (issue #927).
      */
     val sandbox: Boolean = false,
+    /**
+     * The **customer** that owns this client (issue #1107), a [CustomerDef.customerId] -- the link that says whose
+     * client it is, set only by the platform (it is among [ClientOperatorFields]). A source client names a customer
+     * declared in source; a stored one may name either. The link is judged when the client loads, and read through
+     * `ClientService.customerOf`, which answers only for a customer that is there.
+     *
+     * Null for a client no customer owns: a self-serve one, and for now any client nobody has filed under one.
+     */
+    val customerId: String? = null,
 ) {
     init {
         // Held to the one label rule ([normalizeUserLabels]) that a label on a *user* is held to, and refused here,
@@ -594,6 +617,7 @@ data class ClientDef(
         if (testFeatures.isNotEmpty()) put(CLD.testFeatures, testFeatures.toList())
         if (userLabels.isNotEmpty()) put(CLD.userLabels, userLabels)
         if (sandbox) put(CLD.sandbox, true)
+        if (customerId != null) put(CLD.customerId, customerId)
     }
 
     companion object {
@@ -638,6 +662,7 @@ data class ClientDef(
             testFeatures = m[CLD.testFeatures].toJsonListOfStrings().toSet(),
             userLabels = m[CLD.userLabels].toJsonListOfStrings(),
             sandbox = m[CLD.sandbox] as? Boolean ?: false,
+            customerId = m[CLD.customerId].toOptStr(),
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -677,16 +702,26 @@ data class ClientDef(
             builder.type(CLD.createTypeName) {
                 type = SCT.kObject
                 description = "A client to create: what its definition is to hold."
-                infoProperties(written = true, only = ClientCreateFields.names.toSet(), offerTemplates = true)
+                infoProperties(written = true, only = ClientCreateFields.names.toSet(), offerChoices = true)
+                // Not a field of the definition: a customer made with the client (issue #1107).
+                property(
+                    CLD.newCustomer,
+                    "A customer to create with the client: its id is the client's, and the client is its root. " +
+                        "Instead of naming an existing customer.",
+                ) {
+                    type = SCT.kObject
+                    property(CUST.name, "The name presented for the customer.", required = true)
+                    property(CUST.description, "An internal note about who, what or why.")
+                }
             }
         }
 
         /**
          * The definition's properties, declared once for every type that holds them: all of them, or [only] the
-         * ones named. [written] closes the list of environments; [offerTemplates] sources the choices of
-         * `extendsFromClientId`, for a form.
+         * ones named. [written] closes the list of environments; [offerChoices] sources the choices of
+         * `extendsFromClientId` and `customerId`, for a form.
          */
-        private fun SchTypeBuilder.infoProperties(written: Boolean, only: Set<String>? = null, offerTemplates: Boolean = false) {
+        private fun SchTypeBuilder.infoProperties(written: Boolean, only: Set<String>? = null, offerChoices: Boolean = false) {
             fun prop(name: String, description: String, required: Boolean = false, build: SchTypeBuilder.() -> Unit = {}) {
                 if (only == null || name in only) property(name, description, required, build)
             }
@@ -697,6 +732,10 @@ data class ClientDef(
                 emptyIsAbsent = false
             }
             prop(CLD.description, "An internal note about who, what or why.")
+            // Set only by the platform (issue #1107); a create under a customer gets an id in its namespace.
+            prop(CLD.customerId, "The customer that owns the client; its id is the prefix of the client's.") {
+                if (offerChoices) optionsSource(CUST.customerOptions)
+            }
             prop(CLD.usageType, "What the client is for.", required = true) {
                 options(ClientUsageType.entries)
             }
@@ -724,7 +763,7 @@ data class ClientDef(
                 allowCoerce = false
             }
             prop(CLD.extendsFromClientId, "The client whose definitions this one is built on top of.") {
-                if (offerTemplates) optionsSource(CLD.templateOptions)
+                if (offerChoices) optionsSource(CLD.templateOptions)
             }
             prop(CLD.domainPrefix, "A prefix on a core domain that routes to this client.")
             prop(CLD.customDomain, "A whole hostname the client configured for itself.")

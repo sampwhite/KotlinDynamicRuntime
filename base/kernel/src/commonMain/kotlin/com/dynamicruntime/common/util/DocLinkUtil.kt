@@ -8,7 +8,9 @@ package com.dynamicruntime.common.util
  * where it actually belongs:
  *
  *  - a target that is **itself a served document** ([docKeyByPath]) becomes an **in-app link** to that document
- *    ([docHref] mints the app's own URL for it), so the whole doc set browses without leaving the app;
+ *    ([docHref] mints the app's own URL for it), so the whole doc set browses without leaving the app. Its
+ *    `#section`, if it has one, is handed to [docHref] too (issue #1136): headings carry the same GitHub-style ids
+ *    in the app as on GitHub, so one link reaches the same section in both;
  *  - any other repo file becomes a link into the **source repository** ([repoBlobBase], e.g.
  *    `https://github.com/owner/repo/blob/main`);
  *  - an absolute `http(s)`/`mailto` link, or anything scheme-bearing, is left exactly as written;
@@ -27,14 +29,15 @@ package com.dynamicruntime.common.util
  *   which a relative target is resolved.
  * @param docKeyByPath repo source path -> the app's key for the in-app document served from it.
  * @param repoBlobBase the source repository's blob base (`.../blob/<branch>`), or null when unconfigured.
- * @param docHref how the app addresses an in-app document by its key (its own URL scheme).
+ * @param docHref how the app addresses an in-app document by its key and, when the link names one, the heading
+ *   anchor within it (its own URL scheme).
  */
 fun resolveDocLink(
     rawUrl: String,
     currentSourcePath: String,
     docKeyByPath: Map<String, String>,
     repoBlobBase: String?,
-    docHref: (docKey: String) -> String,
+    docHref: (docKey: String, anchor: String?) -> String,
 ): String {
     val url = rawUrl.trim()
     if (url.isEmpty()) {
@@ -55,9 +58,10 @@ fun resolveDocLink(
     val repoPath = normalizeRepoPath(currentSourcePath, url.substring(0, cut)) ?: return rawUrl
     val docKey = docKeyByPath[repoPath]
     if (docKey != null) {
-        // An in-app document. The app fetches and renders it whole, with no heading anchors, so a fragment is
-        // dropped rather than carried onto a link that could not honor it.
-        return docHref(docKey)
+        // An in-app document, and the section within it the link names, if any (issue #1136). A query is dropped:
+        // the app addresses a document by its key alone.
+        val anchor = url.substringAfter('#', "").ifEmpty { null }
+        return docHref(docKey, anchor)
     }
     return if (repoBlobBase != null) joinUrl(repoBlobBase, repoPath) + url.substring(cut) else rawUrl
 }

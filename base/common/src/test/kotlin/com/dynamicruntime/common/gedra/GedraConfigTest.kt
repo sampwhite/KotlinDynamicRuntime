@@ -219,13 +219,14 @@ class GedraConfigTest : StringSpec({
     "the core config traits declare a slot for every piece of a stored client configuration" {
         val config = coreConfigTraits(cxt)
         config.configTraits.keys.toList() shouldContainExactly listOf(
-            CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef, CCT.reportDef,
+            CCT.clientDef, CCT.customerDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef, CCT.reportDef,
             CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef,
         )
         config.traits.isEmpty() shouldBe true
         // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/usage slots by trait id,
-        // fragments/uiBlocks by their overlay id, cfacts by name; the client is single-instance.
+        // fragments/uiBlocks by their overlay id, cfacts by name, customers by id; the client is single-instance.
         config.configTraits.getValue(CCT.clientDef).primaryKey shouldBe emptyList()
+        config.configTraits.getValue(CCT.customerDef).primaryKey shouldBe listOf(CUST.customerId)
         config.configTraits.getValue(CCT.workflowDef).primaryKey shouldBe listOf(CCT.workflowId)
         config.configTraits.getValue(CCT.reportDef).primaryKey shouldBe listOf(CCT.reportId)
         config.configTraits.getValue(CCT.schemaDef).primaryKey shouldBe listOf(CCT.typeName)

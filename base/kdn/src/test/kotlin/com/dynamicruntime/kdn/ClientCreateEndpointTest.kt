@@ -241,7 +241,8 @@ class ClientCreateEndpointTest : StringSpec({
 
     "the input is a schema a form can be drawn from: the create fields, with their choices" {
         val properties = inputProperties()
-        properties.keys shouldBe ClientCreateFields.names.toSet()
+        // The definition's create fields, and the customer a create may make with the client (issue #1107).
+        properties.keys shouldBe ClientCreateFields.names.toSet() + CLD.newCustomer
         fun choices(field: Map<String, Any?>) = field[SCH.options].toJsonListOfMaps().mapNotNull { it[SCH.value].toOptStr() }
         choices(properties[CLD.usageType].toJsonMapOrEmpty()) shouldBe ClientUsageType.entries.map { it.name }
         val environments = properties[CLD.enabledEnvironments].toJsonMapOrEmpty()[SCH.items].toJsonMapOrEmpty()

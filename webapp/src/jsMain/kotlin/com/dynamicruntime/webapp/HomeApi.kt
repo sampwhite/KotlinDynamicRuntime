@@ -14,12 +14,18 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
  * One navigable Markdown document offered by the home page, already carrying its cache-busting build id.
- * [sourcePath] is its repo-relative source, used to resolve the document's interior links (issue #492).
+ * [sourcePath] is its repo-relative source, used to resolve the document's interior links (issue #492). A data
+ * class, so a refresh that serves the same documents is the same value and redraws nothing that holds them.
  */
-class HomeLink(
+data class HomeLink(
     val id: String, val label: String, val docId: String, val buildId: String, val sourcePath: String,
     /** One line on what the document covers (issue #554); empty when the config carries none. */
     val description: String = "",
+    /**
+     * Whether the Documents listing offers it (issue #1136). An unlisted document is a page of a suite, reached by a
+     * link; it is still here, since a link to it resolves through this list.
+     */
+    val listed: Boolean = true,
 )
 
 /** Which of the three link presentations this deployment enabled. Independent toggles: any combination. */
@@ -96,6 +102,8 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
             buildId = link[HFLD.buildId] as? String ?: "",
             sourcePath = link[HFLD.sourcePath] as? String ?: "",
             description = link[HFLD.description] as? String ?: "",
+            // Absent from an older node, which listed every document it sent.
+            listed = link[HFLD.listed] as? Boolean ?: true,
         )
     }
     val menu = config.state[HFLD.menu].toJsonListOfMaps().map { entry ->
@@ -153,7 +161,7 @@ fun docKeyByPath(links: List<HomeLink>): Map<String, String> =
  */
 fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepoBase: String?): (String) -> String {
     val byPath = docKeyByPath(links)
-    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key -> docHref(key) } }
+    return { raw -> resolveDocLink(raw, currentSourcePath, byPath, sourceRepoBase) { key, section -> docHref(key, section) } }
 }
 
 /**

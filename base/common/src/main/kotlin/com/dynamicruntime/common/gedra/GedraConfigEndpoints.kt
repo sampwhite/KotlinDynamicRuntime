@@ -351,6 +351,7 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     val stored = svc.readLatest(c, configId(c, name))?.entriesBySlot()
     val config = reassembleForWrite(c, name, namespace, c.client, slots, stored)
     requireOperatorFieldsKept(c, config.client)
+    requireCustomersKept(c, slots[CCT.customerDef], stored?.get(CCT.customerDef))
     // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
     val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
@@ -378,6 +379,7 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
             // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not judged
             // here: `patchConfig` gates the edited slots next, and refuses it as what it is.
             requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { readClientDef(c, it).def })
+            requireCustomersKept(c, patched[CCT.customerDef], current[CCT.customerDef])
         }
     }
     return bundleOf(c, edited)
@@ -396,10 +398,31 @@ private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
     val current = stored ?: ClientService.get(c).known(c.client)?.toInfo()
     val changed = ClientOperatorFields.changedBy(proposed.toInfo(), current)
     if (changed.isEmpty()) return
-    val keep = changed.joinToString(", ") { "$it '${current?.get(it) ?: ClientOperatorFields.defaults[it]}'" }
+    val keep = changed.joinToString(", ") { field ->
+        (current?.get(field) ?: ClientOperatorFields.defaults[field])?.let { "$field '$it'" } ?: "$field unset"
+    }
     throw KdrException(
         "Client '${c.client}''s ${changed.joinToString(" and ")} may be set only by a platform operator; a client " +
             "administrator's write must keep them as they are ($keep).",
+        code = EXC.notAuthorized,
+    )
+}
+
+/**
+ * Refuses a change to the customers a configuration declares by anyone but a platform operator (issue #1107). Only
+ * `hub`'s stored configuration may hold customers (`storedOwnershipProblem` refuses them anywhere else), and `hub`'s
+ * own administrators are not thereby the platform's: a customer decides whose namespace a client id falls in, so
+ * only an `allClients` administrator declares, changes, or removes one. A write handing back the customers as stored
+ * passes, so the rest of the configuration stays editable.
+ */
+private fun requireCustomersKept(c: KdrCxt, proposed: List<Map<String, Any?>>?, current: List<Map<String, Any?>>?) {
+    if (AdminRules.canSeeAllClients(c)) return
+    // Compared as definitions, so whatever a stored entry carries beside its fields is no change.
+    fun defs(entries: List<Map<String, Any?>>?): Set<Any> =
+        entries.orEmpty().map { e -> runCatching { CustomerDef.fromInfo(e) }.getOrElse { e } }.toSet()
+    if (defs(proposed) == defs(current)) return
+    throw KdrException(
+        "Client '${c.client}''s customers may be declared, changed or removed only by a platform operator.",
         code = EXC.notAuthorized,
     )
 }
@@ -1015,6 +1038,12 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             .map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
     }
 
+    // The customers a client may be filed under (issue #1107), for a form; whether the id falls in the chosen one's
+    // namespace is the create's to judge.
+    optionsProvider(CUST.customerOptions) { c, _ ->
+        ClientService.get(c).customers.values.map { SchOption(it.def.customerId, clientLabel(it.def.customerId, it.def.name)) }
+    }
+
     type(CLD.createResultTypeName) {
         type = SCT.kObject
         description = "What creating a client did (issue #1054): where its definition was written, the definition as stored, and whether this node carries the client."
@@ -1036,6 +1065,15 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             "Present when the client was created -- stored and published -- but loading it on this node failed: " +
                 "why. The create is not to be repeated; the client is reloaded once the cause is mended.",
         )
+        property(CLD.customer, "The customer made with the client, as stored, when one was asked for.") {
+            type = SCT.kObject
+            CustomerDef.declareFields(this)
+        }
+        property(
+            CLD.customerFailure,
+            "Present when the client and its new customer were made but the client could not be named the " +
+                "customer's root: why. The root is named through the customer's configuration once the cause is mended.",
+        )
     }
 
     generalEndpoint(
@@ -1045,7 +1083,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             "this node's environment is one it is enabled in. The definition is held to what any written definition " +
             "is -- its schema, a domain no other client holds, a trial load that judges its id, its environments " +
             "and the template it extends -- and refused for the same reasons, in the same words. Refused with a 409 " +
-            "for an id that is taken, by a client in source code or in stored configuration. What a definition does " +
+            "for an id that is taken, by a client in source code or in stored configuration. With '" + CLD.newCustomer +
+            "' it makes a customer too, whose id is the client's and whose root the client is (issue #1107). What a definition does " +
             "not hold at creation -- its traits, its workflows, its test features -- is added through its " +
             "configuration afterwards.",
         HttpMethod.POST,
@@ -1061,6 +1100,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
                 CLD.present to result.present,
                 CLD.issues to result.issues.map { it.toWireMap() },
                 CLD.loadFailure to result.loadFailure,
+                CLD.customer to result.customer,
+                CLD.customerFailure to result.customerFailure,
             ),
         )
     }

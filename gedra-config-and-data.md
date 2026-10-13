@@ -346,7 +346,7 @@ fields of a file ref's entry this release does not read (`FileRefDef.extra`).
 
 ### File refs: configuration that points outside itself (issue #1153)
 
-`kdr:fileRefDef` is the tenth slot, and the first whose entries name something that is not in the configuration: a
+`kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a
 client's **file ref** is a named file, and its entry -- `{ refId, source, hash, description? }` -- holds the SHA-256
 of the file's bytes, which are in the file store (bucket `web-assets`, key `clients/<client>/refs/<hash>`).
 

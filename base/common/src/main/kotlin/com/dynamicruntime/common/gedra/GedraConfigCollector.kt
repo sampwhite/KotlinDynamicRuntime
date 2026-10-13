@@ -84,6 +84,9 @@ object GCEL {
     /** A named report (issue #979). */
     const val report = "report"
 
+    /** A customer (issue #1107). */
+    const val customer = "customer"
+
     /** A file ref (issue #1153). */
     const val fileRef = "fileRef"
 }

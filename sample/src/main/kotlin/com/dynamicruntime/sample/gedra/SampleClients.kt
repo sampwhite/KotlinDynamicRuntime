@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.CustomerDef
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.UsageKind
@@ -265,6 +266,8 @@ fun sampleClients(cxt: KdrCxt): List<GedraConfig> = listOf(acmeClient(cxt), glob
  */
 private fun acmeClient(cxt: KdrCxt): GedraConfig =
     gedraConfig(cxt, "${SC.acme}Client", SC.acmeNamespace, SC.acme) {
+        // Its own customer (issue #1107), whose root it is: the clients acme's people make are `acme_<name>`.
+        defineCustomer(CustomerDef(customerId = SC.acme, name = "Acme Corporation", rootClientId = SC.acme))
         defineClient(
             ClientDef(
                 clientId = SC.acme,
@@ -287,6 +290,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // before publishing it. Asking for one makes acme published-only (#930), so the copy and menu
                 // editors save drafts for it; globex keeps the live-at-once path.
                 sandbox = true,
+                customerId = SC.acme,
             ),
         )
 
@@ -678,6 +682,7 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
  */
 private fun globexClient(cxt: KdrCxt): GedraConfig =
     gedraConfig(cxt, "${SC.globex}Client", SC.globexNamespace, SC.globex) {
+        defineCustomer(CustomerDef(customerId = SC.globex, name = "Globex Corporation", rootClientId = SC.globex))
         defineClient(
             ClientDef(
                 clientId = SC.globex,
@@ -687,6 +692,7 @@ private fun globexClient(cxt: KdrCxt): GedraConfig =
                 audience = ClientAudience.customer,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
                 includedTraits = listOf(CLD.allGlobal),
+                customerId = SC.globex,
             ),
         )
 
