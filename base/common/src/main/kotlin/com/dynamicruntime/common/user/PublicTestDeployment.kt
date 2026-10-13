@@ -24,7 +24,6 @@ enum class PublicSignIn {
 }
 
 /** The settings of a public test deployment (issue #1150). */
-@Suppress("ConstPropertyName")
 object PTD {
     /** Env var that opts a test instance into being reachable by the public: see [PublicTestDeployment]. */
     val publicTestDeploymentEnvVar = EnvVarDef(
