@@ -22,7 +22,7 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
- * A client's file refs, for its administrator (issue #1153): what refs it has, uploading a file as one, removing
+ * A client's file refs, for its administrator (issues #1153, #1154): what refs it has, uploading a file as one, removing
  * one, and the file itself.
  *
  * In the **`clientAdmin`** section, each acting on the caller's own client or, for an administrator who sees every
@@ -40,19 +40,29 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
 
     type(FREF.refTypeName) {
         type = SCT.kObject
-        description = "One file ref of a client: a named file its stored configuration holds, by the hash of its bytes."
+        description = "One file ref of a client: a named file its configuration holds, by where its bytes are."
         property(CCT.refId, "The ref's id within its client.", required = true)
-        property(CCT.hash, "The SHA-256 of the file's bytes.", required = true)
-        property(FREF.name, "The ref by name and content, `<refId>:<hash>`: what the static root serves it as, at `/<appId>/ref/<name>`.", required = true)
+        property(CCT.source, "Where the file's bytes are.", required = true) {
+            option(FREF.sourceStore, "The file store")
+            option(FREF.sourceLocal, "A local file")
+        }
+        property(CCT.root, "For a local file, the root it is under.")
+        property(CCT.path, "For a local file, its path under the root.")
+        property(CCT.hash, "The SHA-256 of the file's bytes: the hash the ref names, or for a local file the hash of the file as it is now. Absent for a local file that is missing.")
+        property(FREF.name, "The ref by name and content, `<refId>:<hash>`: what the static root serves it as, at `/<appId>/ref/<name>`. Absent with the hash.")
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
-        property(FREF.configName, "The stored configuration holding the ref's entry.")
+        property(FREF.configName, "The configuration holding the ref's entry: a stored one, or for a ref the client was shipped with, one in source code.")
         property(FREF.live, "Whether the client's own people are served this ref as listed; false for a draft only its sandbox shows.", required = true) {
             type = SCT.boolean
         }
-        property(FREF.missing, "Whether the file store holds no such file, so the ref is answered as not found.", required = true) {
+        property(FREF.missing, "Whether there is no such file to serve, so the ref is answered as not found.", required = true) {
             type = SCT.boolean
         }
-        property(FREF.file, "The file store's record of the file; absent when it is missing.") { ref(FMETA.infoTypeName) }
+        property(
+            FREF.file,
+            "The record of the file -- the file store's, or for a local file what the disk says of it, its " +
+                "`uploadedAt` being when the file last changed; absent when it is missing.",
+        ) { ref(FMETA.infoTypeName) }
         property(FREF.uploadedByName, "Who uploaded the file, as they were called then; absent when that was not recorded.")
     }
 
@@ -165,18 +175,28 @@ private fun knownClient(cxt: KdrCxt, request: Map<String, Any?>): String =
  */
 fun listedRefs(cxt: KdrCxt, refs: FileRefService, client: String): List<Map<String, Any?>> {
     val running = refs.forClient(configOwnerOf(client)).refs
-    return refs.forClient(refs.shownAs(cxt, client)).refs.values.map { refItem(cxt, refs, it, running[it.refId]?.hash == it.hash) }
+    return refs.forClient(refs.shownAs(cxt, client)).refs.values.map { refItem(cxt, refs, it, running[it.refId]?.def?.pointer == it.def.pointer) }
 }
 
-/** One ref as the listing answers it; [live] is whether the client's own people are served these bytes under its id. */
+/**
+ * One ref as the listing answers it; [live] is whether the client's own people are served the same file under its
+ * id -- the same pointer, which for a local file is the same root and path, whatever the file now holds.
+ */
 fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean): Map<String, Any?> {
-    // Asked of the store even for a ref the load found missing: the file may have arrived since. A store that
-    // cannot be asked fails the listing, rather than have it say of every file that it is missing.
-    val meta = refs.metaOf(cxt, ref.owner, ref.hash)
+    // Asked even for a ref the load found missing: the file may have arrived since. A store that cannot be asked
+    // fails the listing, rather than have it say of every file that it is missing.
+    val meta = refs.metaOf(cxt, ref)
+    // The bytes' own hash where there are bytes; else the one the ref names, which a local file's ref does not.
+    val hash = meta?.hash ?: ref.def.hash
     return buildMap {
         put(CCT.refId, ref.refId)
-        put(CCT.hash, ref.hash)
-        put(FREF.name, ref.name)
+        put(CCT.source, ref.def.source)
+        ref.def.root?.let { put(CCT.root, it) }
+        ref.def.path?.let { put(CCT.path, it) }
+        hash?.let {
+            put(CCT.hash, it)
+            put(FREF.name, FREF.versionedName(ref.refId, it))
+        }
         ref.def.description?.let { put(CCT.description, it) }
         ref.def.configName?.let { put(FREF.configName, it) }
         put(FREF.live, live)
@@ -195,5 +215,5 @@ private fun changeItem(cxt: KdrCxt, refs: FileRefService, result: ClientFileRefE
     put(FREF.configName, result.configName)
     put(FREF.mode, result.mode)
     val running = refs.forClient(result.client).refs[result.refId]
-    refs.forClient(result.shownAs).refs[result.refId]?.let { put(FREF.ref, refItem(cxt, refs, it, running?.hash == it.hash)) }
+    refs.forClient(result.shownAs).refs[result.refId]?.let { put(FREF.ref, refItem(cxt, refs, it, running?.def?.pointer == it.def.pointer)) }
 }

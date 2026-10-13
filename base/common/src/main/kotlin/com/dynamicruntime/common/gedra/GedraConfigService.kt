@@ -4,6 +4,8 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.fileref.FREF
+import com.dynamicruntime.common.fileref.FileRefDef
 import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -15,6 +17,7 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
@@ -317,6 +320,33 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
+     * Why the caller may not write [config]'s **local file refs** over [latest], the revision as it stands, or null
+     * (issue #1154).
+     *
+     * A local ref is a path on the server, and stored configuration is written through the API by a client's own
+     * administrators -- who are that client's people, and not the deployment's. So one is written only by the
+     * server's own code, which runs with no signed-in caller (a simulation, a script provisioning a client), or by
+     * an administrator who sees every client. Anybody else's write may **carry** a local ref the revision already
+     * holds, naming the same file, so that their edit of the same configuration is not refused for something they
+     * did not write; it may reword that ref's description; and it may leave the ref out, which removes it. What it
+     * may not do is name a file.
+     *
+     * Asked here, of the revision read under the write's lock, so every write is held to it -- a bundle, a patch,
+     * an import -- and none can be judged against a revision another write has since replaced.
+     */
+    private fun localFileRefProblem(cxt: KdrCxt, config: GedraConfig, latest: GedraConfigRow?): String? {
+        val local = config.fileRefs.filter { it.source == FREF.sourceLocal }
+        if (local.isEmpty() || !cxt.userProfile.isLoggedIn || AdminRules.canSeeAllClients(cxt)) return null
+        val held = latest?.entriesBySlot()?.get(CCT.fileRefDef).orEmpty()
+            .map { FileRefDef.fromEntry(it, null, stored = true) }.associateBy { it.refId }
+        val named = local.filter { held[it.refId]?.pointer != it.pointer }.map { it.refId }
+        if (named.isEmpty()) return null
+        return "Config '${config.gedraId}' cannot be written: it names a local file for the file ref" +
+            "${if (named.size == 1) "" else "s"} ${named.joinToString { "'$it'" }}. A ref to a local file is written " +
+            "by an administrator who sees every client; a client's own administrator uploads the file instead."
+    }
+
+    /**
      * Writes [config] as the current revision of [configId] under an open write transaction, per the version/
      * publish rule (#611): version 1 when the class has no revision, an in-place update while the latest is still
      * editable, or a new version once it is published. The shared tail of [writeConfig] and [patchConfig].
@@ -330,6 +360,7 @@ class GedraConfigService : ServiceInitializer {
         latest: GedraConfigRow?,
         impliedDelete: Boolean,
     ): GedraConfigRow {
+        localFileRefProblem(wcxt, config, latest)?.let { throw KdrException(it, code = EXC.notAuthorized) }
         // Refuses a config carrying config traits (they are hardwired, never stored); one raw entry map per slot.
         val newBySlot = gedraConfigToEntries(config)
         val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()

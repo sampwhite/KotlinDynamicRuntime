@@ -171,7 +171,8 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     // store's record, written by the upload that checked the bytes, and nothing an entry could be typed to claim.
     configTrait(
         "FileRefDefEntry", CCT.fileRefDef, setOf(GedraConfigType.configDoc),
-        "One file ref of this client -- a named file, by the hash of its bytes -- keyed by its ref id.",
+        "One file ref of this client -- a named file, by where its bytes are -- keyed by its ref id. The file " +
+            "store's are named by their `hash`; a local file's by a `root` and a `path` under it, and by no hash.",
         primaryKey = listOf(CCT.refId),
     ) {
         property(CCT.refId, "The ref's id within its client: a variable name, at most ${FREF.maxRefIdLength} characters.", required = true) {
@@ -180,9 +181,16 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         }
         property(CCT.source, "Where the file's bytes are.", required = true) {
             option(FREF.sourceStore, "The file store")
+            option(FREF.sourceLocal, "A local file")
         }
-        property(CCT.hash, "The SHA-256 of the file's bytes, in lowercase hex: what names them in the file store.", required = true) {
+        property(CCT.hash, "For the file store: the SHA-256 of the file's bytes, in lowercase hex, which is what names them there.") {
             pattern = FREF.hashPattern
+        }
+        property(CCT.root, "For a local file: the root it is under, by the name the deployment declared it with.") {
+            pattern = FREF.rootPattern
+        }
+        property(CCT.path, "For a local file: its path under the root, in segments of letters, digits, `.`, `_` and `-`, none beginning with a dot.") {
+            maxLength = FREF.maxPathLength
         }
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
     }

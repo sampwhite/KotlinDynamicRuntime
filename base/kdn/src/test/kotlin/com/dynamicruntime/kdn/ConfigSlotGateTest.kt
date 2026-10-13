@@ -110,6 +110,32 @@ class ConfigSlotGateTest : StringSpec({
         codes(CCT.fileRefDef, ref() + ("mimeType" to "text/html")) shouldBe mapOf("${CCT.fileRefDef}[logo].mimeType" to SchFailCode.additionalProperty)
     }
 
+    // Issue #1154. An entry says where its file is one way, by its source: a hash, or a root and a path.
+    "a file ref to a local file is held to a root that is a name and a path that is plain, and to no hash" {
+        fun local(root: Any? = "brand", path: Any? = "marks/logo.svg") =
+            mapOf(CCT.refId to "logo", CCT.source to FREF.sourceLocal, CCT.root to root, CCT.path to path)
+        val at = "${CCT.fileRefDef}[logo]"
+
+        codes(CCT.fileRefDef, local()).shouldBeEmpty()
+        codes(CCT.fileRefDef, local() + (CCT.description to "The logo.")).shouldBeEmpty()
+        for (bad in listOf("", "..", ".hidden", "my brand", "brand/sub", "/srv/images", "a.b")) {
+            codes(CCT.fileRefDef, local(root = bad)).keys shouldBe setOf("$at.${CCT.root}")
+        }
+        val paths = listOf(
+            "../logo.svg", "marks/../../logo.svg", "/etc/passwd", "marks\\logo.svg", ".hidden/logo.svg", "marks/.logo.svg",
+            "./logo.svg", "marks//logo.svg", "marks/", "", "lo go.svg", "a".repeat(FREF.maxPathLength + 1),
+        )
+        for (bad in paths) codes(CCT.fileRefDef, local(path = bad)).keys shouldBe setOf("$at.${CCT.path}")
+        codes(CCT.fileRefDef, local() - CCT.root) shouldBe mapOf("$at.${CCT.root}" to SchFailCode.missingRequired)
+        codes(CCT.fileRefDef, local() - CCT.path) shouldBe mapOf("$at.${CCT.path}" to SchFailCode.missingRequired)
+        // One or the other: an entry carrying both would be read by its source and look like the other.
+        val hash = "ab".repeat(32)
+        codes(CCT.fileRefDef, local() + (CCT.hash to hash)) shouldBe mapOf("$at.${CCT.hash}" to SchFailCode.badValue)
+        val stored = mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to hash)
+        codes(CCT.fileRefDef, stored + (CCT.root to "brand")) shouldBe mapOf("$at.${CCT.root}" to SchFailCode.badValue)
+        codes(CCT.fileRefDef, stored + (CCT.path to "logo.svg")) shouldBe mapOf("$at.${CCT.path}" to SchFailCode.badValue)
+    }
+
     "a cfact, a fragment overlay and a UiBlock overlay are each held to their shapes" {
         codes(CCT.cfactDef, cfact()).shouldBeEmpty()
         // A cfact with only a name used to be stored with an empty group and description.

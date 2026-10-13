@@ -89,10 +89,11 @@ catalog for the same reason:
   all, so there a client's tab icon appears on the next full load and only when it is a raster image. The
   `apple-touch-icon` (an iOS home-screen icon) is left as the deployment's: there is no slot for one.
 
-### A client's file refs (issue #1153)
+### A client's file refs (issues #1153, #1154)
 
-Beside its two web assets a client has **file refs**: named images its administrator uploads, held in its stored
-configuration. They are served the same way, under their own marker:
+Beside its two web assets a client has **file refs**: named images held in its configuration -- uploaded by its
+administrator into the file store, or (issue #1154) shipped with it as a local file on the server. They are served
+the same way, under their own marker:
 
 **Request:** `GET /st/<appId>/ref/<refId:hash>` -- the kernel's `FREF.staticPath(appId, FREF.versionedName(refId, hash))`.
 
@@ -109,6 +110,12 @@ configuration. They are served the same way, under their own marker:
   `CCT` and the file's `FMETA`, all in the kernel. An upload or removal answers its `mode` (`EDM.live` / `EDM.draft`), as
   a copy edit does. A page for them, and resolving a ref from Markdown copy, are later issues: when you build
   either, the listing's `name` is what goes in the address.
+- **A listed ref says its `source`** (`FREF.sourceStore` / `FREF.sourceLocal`), and a local one its `root` and
+  `path`. **`hash` and `name` are absent for a local ref whose file is missing** -- there are no bytes to hash --
+  so do not build an address from a ref that is `missing`. A local ref has no upload behind it: its `file` record
+  is what the disk says (`uploadedAt` is when the file last changed, and there is no `uploadedByName`). A ref the
+  client was shipped with cannot be removed (`…/files/remove` answers 400: nothing stored holds it), only
+  uploaded over; removing that upload shows the shipped one again.
 
 ## UI-config endpoints: how a widget-group learns what to build (issue #70)
 

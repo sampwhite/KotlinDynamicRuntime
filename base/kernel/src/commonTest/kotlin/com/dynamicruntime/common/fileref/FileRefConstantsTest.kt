@@ -75,6 +75,50 @@ class FileRefConstantsTest {
         assertEquals(mapOf(CCT.refId to "x", CCT.source to ""), bare.toEntry())
     }
 
+    // Issue #1154. A local file's ref is named by a root and a path, and by no hash: there is none to author.
+    @Test
+    fun aLocalRefsEntryHoldsARootAndAPathAndNoHash() {
+        val ref = FileRefDef("logo", FREF.sourceLocal, hash = null, "The logo.", configName = "main", stored = false, root = "brand", path = "marks/logo.svg")
+        assertEquals(
+            mapOf(CCT.refId to "logo", CCT.source to FREF.sourceLocal, CCT.root to "brand", CCT.path to "marks/logo.svg", CCT.description to "The logo."),
+            ref.toEntry(),
+        )
+        val back = FileRefDef.fromEntry(ref.toEntry(), configName = "copy", stored = true)
+        assertEquals("brand", back.root)
+        assertEquals("marks/logo.svg", back.path)
+        assertNull(back.hash)
+        assertTrue(back.extra.isEmpty(), "a root and a path are fields of the entry, not strays carried beside it")
+        assertEquals(ref.toEntry(), back.toEntry())
+    }
+
+    // What a ref points at, as one thing to compare: whether two entries name the same file, whatever else they say.
+    @Test
+    fun aRefsPointerIsWhereItsBytesAreAndNothingElse() {
+        val stored = FileRefDef("logo", FREF.sourceStore, hash)
+        val local = FileRefDef("logo", FREF.sourceLocal, hash = null, root = "brand", path = "logo.png")
+        assertEquals("store:$hash", stored.pointer)
+        assertEquals("local:brand/logo.png", local.pointer)
+        assertEquals(local.pointer, FileRefDef("other", FREF.sourceLocal, null, "Reworded.", root = "brand", path = "logo.png").pointer)
+        assertFalse(local.pointer == FileRefDef("logo", FREF.sourceLocal, null, root = "brand", path = "logo2.png").pointer)
+        assertFalse(local.pointer == FileRefDef("logo", FREF.sourceLocal, null, root = "shared", path = "logo.png").pointer)
+        assertFalse(local.pointer == stored.pointer)
+    }
+
+    @Test
+    fun aRootsNameIsAPlainNameAndThePatternSaysWhatTheFunctionSays() {
+        val pattern = Regex(FREF.rootPattern)
+        val names = listOf(
+            "brand", "acme-repo", "shared_2", "A", "9lives", "", ".", "..", ".hidden", "my brand", "brand/sub", "brand\\sub",
+            "/etc", "br\u00e4nd", "brand\n", "a.b",
+        )
+        for (name in names) {
+            assertEquals(FREF.rootProblem(name) == null, pattern.matches(name), "the pattern and the rule disagree on '$name'")
+        }
+        for (good in listOf("brand", "acme-repo", "shared_2", "A", "9lives")) assertNull(FREF.rootProblem(good), "should accept '$good'")
+        for (bad in listOf("", ".", "..", ".hidden", "my brand", "brand/sub", "/etc", "a.b")) assertNotNull(FREF.rootProblem(bad), "should refuse '$bad'")
+        assertEquals(listOf(FREF.sourceStore, FREF.sourceLocal), FREF.sources)
+    }
+
     // A field this release does not read is a later release's: an edit of anything else in the configuration, made
     // on a node one release behind, writes every ref back, and must write that field back with it.
     @Test

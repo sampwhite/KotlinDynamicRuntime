@@ -54,6 +54,7 @@ class GedraConfigSerializeTest : StringSpec({
         cfact("acmeReady", "acme", "When acme is set up", toFrontend = true)
         fileRef("logo", "ab".repeat(32), "The logo.")
         fileRef("banner", "cd".repeat(32))
+        fileRef("crest", "The crest.") { local("brand", "marks/crest.svg") }
     }
 
     "a full config round-trips through its stored entries" {
@@ -67,7 +68,11 @@ class GedraConfigSerializeTest : StringSpec({
         entries.getValue(CCT.fileRefDef) shouldBe listOf(
             mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to "ab".repeat(32), CCT.description to "The logo."),
             mapOf(CCT.refId to "banner", CCT.source to FREF.sourceStore, CCT.hash to "cd".repeat(32)),
+            // A local file's (issue #1154): a root and a path, and no hash -- nobody authors one.
+            mapOf(CCT.refId to "crest", CCT.source to FREF.sourceLocal, CCT.root to "brand", CCT.path to "marks/crest.svg", CCT.description to "The crest."),
         )
+        // A ref that says where no file is, is a mistake in the code declaring it, and is said there.
+        shouldThrow<KdrException> { gedraConfig(cxt, "bad", "client.acme", "acme") { fileRef("nowhere") {} } }.message.orEmpty().contains("names no file") shouldBe true
         val reassembled = reassembleGedraConfig(cxt, source.gedraId.baseId, source.namespace, source.gedraId.client, entries)
         // The stored form is stable: serialize -> reassemble -> serialize yields the same entries, which is the
         // faithful round trip (GedraConfig has no structural equality of its own to compare against).
@@ -76,7 +81,8 @@ class GedraConfigSerializeTest : StringSpec({
         reassembled.gedraId shouldBe source.gedraId
         reassembled.namespace shouldBe source.namespace
         reassembled.client?.clientId shouldBe "acme"
-        reassembled.fileRefs.map { it.refId } shouldBe listOf("logo", "banner")
+        reassembled.fileRefs.map { it.refId } shouldBe listOf("logo", "banner", "crest")
+        reassembled.fileRefs.last().pointer shouldBe "local:brand/marks/crest.svg"
         reassembled.fileRefs.first().configName shouldBe "acmeConfig"
     }
 
@@ -112,9 +118,9 @@ class GedraConfigSerializeTest : StringSpec({
         // A client built on a template takes the template's refs, less the ones it names itself.
         val own = gedraConfig(cxt, "mine", "client.kid", "kid") { fileRef("banner", "12".repeat(32)) }
         val copy = ClientExtension.clones("kid", "acme", listOf(sourceConfig()), listOf(own), GedraConfigOrigin.source).single()
-        copy.fileRefs.map { it.refId } shouldBe listOf("logo")
+        copy.fileRefs.map { it.refId } shouldBe listOf("logo", "crest")
         ClientExtension.clones("kid", "acme", listOf(sourceConfig()), emptyList(), GedraConfigOrigin.source).single()
-            .fileRefs.map { it.refId } shouldBe listOf("logo", "banner")
+            .fileRefs.map { it.refId } shouldBe listOf("logo", "banner", "crest")
     }
 
     // Issue #1135: each place that takes a `$comment` keeps it through the stored form -- the typed ones (workflow,

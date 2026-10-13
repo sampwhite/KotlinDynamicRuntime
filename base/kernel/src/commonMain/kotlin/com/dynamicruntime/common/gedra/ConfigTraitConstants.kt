@@ -76,4 +76,6 @@ object CCT {
     const val refId = "refId"
     const val source = "source"
     const val hash = "hash"
+    const val root = "root"
+    const val path = "path"
 }

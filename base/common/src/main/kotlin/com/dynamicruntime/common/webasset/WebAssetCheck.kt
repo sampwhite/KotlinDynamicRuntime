@@ -86,6 +86,13 @@ object WebAssetCheck {
     }
 
     /**
+     * The kind of image [bytes] are, going by the bytes alone, or null when they are none we take: a raster by how
+     * it begins, else an SVG when it parses as one that carries no script ([svgProblem]). For a file that arrives
+     * with no claim about itself -- one read from a disk -- where [check] is for one that arrives with a claim.
+     */
+    fun sniff(bytes: ByteArray): WebImageKind? = rasterKind(bytes) ?: svg.takeIf { svgProblem(bytes) == null }
+
+    /**
      * The kind of image [bytes] are, having been uploaded as [declaredType] for [what] ("favicon"). Refuses, as bad
      * input and in words the uploader can act on, a type we do not take, content that is not what it was declared
      * to be, and an SVG that is not one or carries script.

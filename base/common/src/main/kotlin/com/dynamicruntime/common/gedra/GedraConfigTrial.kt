@@ -47,6 +47,9 @@ object GedraConfigTrial {
      * already has (the issues its last load recorded, #840). A pre-existing problem elsewhere in the client does not
      * block the change -- or fixing one of two broken configs would be refused over the other -- but anything the
      * change introduces does, wherever in the client it lands.
+     *
+     * What its file refs "already have" is asked **now** rather than read from the last load ([fileRefBaseline]):
+     * theirs is the one check whose answer changes with no configuration changing.
      */
     fun requireClean(
         cxt: KdrCxt,
@@ -55,7 +58,7 @@ object GedraConfigTrial {
         published: Boolean,
         refusal: String,
     ) {
-        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + draftBaseline(cxt, client)
+        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + draftBaseline(cxt, client) + fileRefBaseline(cxt, client)
         val found = trial(cxt, client, replacing, published).filterNot { issue -> baseline.any { it.sameAs(issue) } }
         if (found.isEmpty()) return
         throw KdrException.mkInput(
@@ -75,10 +78,37 @@ object GedraConfigTrial {
     private fun draftBaseline(cxt: KdrCxt, client: String): List<GedraConfigIssue> {
         if (client == GID.globalClient || isSandboxClient(client)) return emptyList()
         val sandbox = sandboxOf(client)
-        return ClientConfigIssues.get(cxt).issuesFor(sandbox).map { issue ->
-            val asOwners = issue.storedConfigId?.let { GedraId.parseOrNull(it) }?.takeIf { it.client == sandbox }
-                ?.let { GedraId.of(it.kind, client, it.baseId, it.suffix).fullId }
-            GedraConfigIssue(issue.message, issue.degradedTo, client, asOwners ?: issue.storedConfigId, issue.elementKind, issue.elementId)
+        return ClientConfigIssues.get(cxt).issuesFor(sandbox).map { it.asOwners(client, sandbox) }
+    }
+
+    /** This issue of [sandbox]'s load as a trial of [client], its parent, names it: by the parent's own config id. */
+    private fun GedraConfigIssue.asOwners(client: String, sandbox: String): GedraConfigIssue {
+        val asOwners = storedConfigId?.let { GedraId.parseOrNull(it) }?.takeIf { it.client == sandbox }
+            ?.let { GedraId.of(it.kind, client, it.baseId, it.suffix).fullId }
+        return GedraConfigIssue(message, degradedTo, client, asOwners ?: storedConfigId, elementKind, elementId)
+    }
+
+    /**
+     * The problems [client]'s file refs have **as things are now** (issue #1154): the configurations this node
+     * runs for it, and for its sandbox, judged again at the moment of the write.
+     *
+     * Every other check reads only configuration, so what the last load recorded stays true until a configuration
+     * changes. Whether a ref's file is there does not: a local file is edited, moved and deleted on a disk, with
+     * no write and no reload. Judged against the last load alone, a picture that went missing an hour ago would be
+     * a problem "the change introduces" to every later write of the client -- whatever it changed, including the
+     * one that takes the ref away. Asked now, on both sides of the comparison, what was already broken is seen to
+     * be, and a write is refused only for a file that its own ref names and that is not there.
+     */
+    private fun fileRefBaseline(cxt: KdrCxt, client: String): List<GedraConfigIssue> {
+        val refs = FileRefService.getOrNull(cxt) ?: return emptyList()
+        return GedraConfigReload.underReloadLock {
+            val own = refs.problemsNow(cxt, client)
+            if (client == GID.globalClient || isSandboxClient(client)) {
+                own
+            } else {
+                val sandbox = sandboxOf(client)
+                own + refs.problemsNow(cxt, sandbox).map { it.asOwners(client, sandbox) }
+            }
         }
     }
 

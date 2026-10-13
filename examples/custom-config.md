@@ -169,6 +169,75 @@ Notes:
   mark of its own from the Clients page (issue #1130), with no code and no redeploy; those stand in for these for
   that client's signed-in people. The set here is what everybody else sees, and what every page paints first.
 
+## Local files a file ref may name
+
+A client's **file ref** (issue #1153) is a named image its configuration holds. Most are uploaded, and live in the
+file store. But some images are already on the machine -- a source repository's own artwork, the pictures a demo
+client is provisioned with -- and a ref can name one where it is, with **no import** and no second copy to keep in
+step (issue #1154). The configuration names a **root** and a path under it; the deployment says where roots are.
+
+```kotlin
+gedraConfig(cxt, "main", "client.acme", "acme") {
+    fileRef("logo", "The logo acme ships with.") { local("brand", "logo.svg") }
+}
+```
+
+That ref is served as any other is, at `/st/<appId>/ref/logo:<hash>`, the hash being that of the file as it is
+read. Edit the file and its address changes; nothing needs reloading.
+
+**Where local files are** is `KDR_LOCAL_FILES_DIR`, which defaults to `localFiles` in the workspace directory,
+beside `fileStore` and `h2Database`. Each directory directly under it is a root, by its name:
+
+```
+localFiles/
+└── brand/            # the root "brand"
+    ├── logo.svg      # local("brand", "logo.svg")
+    └── marks/
+        └── crest.png # local("brand", "marks/crest.png")
+```
+
+Nothing creates `localFiles` or a root. **Until you make one there are no roots and no local ref resolves** --
+which is the safe default for a deployment that does nothing. The location is resolved as the file store's
+directory is: a relative path is taken from the workspace directory, an absolute one as written, so the images
+need not be in the workspace at all (a mounted volume, a directory another process maintains).
+
+**To make a source repository's artwork a root without copying it**, place the root there by name:
+
+```
+KDR_LOCAL_FILE_ROOTS=brand=acmeRepo/images,shared=/srv/kdr/imagery
+```
+
+Each location is resolved by the same rule, and a root declared this way takes the place of a directory of the
+same name under `KDR_LOCAL_FILES_DIR`. Deployment is a git pull and a build at launch, so a root inside a source
+repository is on every node by the pull; **a location outside the workspace is yours to put on every node**.
+Nodes that hold different files give a ref different addresses, and each answers the other's with `no-store`.
+
+Notes:
+
+- **What may not be a root.** Neither the location nor a root may be inside one of the places that hold the
+  deployment's own data -- the workspace's `private/`, `h2Database/`, `logs/` and `sampleFiles/`, and the file
+  store's directory -- nor be a directory that *contains* one, which rules out the workspace directory itself, a
+  home directory and `/`. This is judged by real path, so a link into such a place is in it. A relative
+  declaration holds no `..` and no name beginning with a dot. **A declaration that breaks any of this refuses the
+  boot, in every environment**: it is a fence, not a preference.
+- **A root's name** is letters, digits, `_` and `-`. A directory under the location with any other name is not a
+  root.
+- **A path is plain**: segments of letters, digits, `.`, `_` and `-`, none beginning with a dot. A file reached
+  through a symbolic link below the root is not served, nor one whose name differs from the path only by case
+  (which would resolve on a Mac and not on Linux). A root may itself be a link.
+- **Images only, up to 2 MB**: PNG, SVG, ICO, JPEG or WebP, told by the bytes and not by the file's name. A file
+  that is anything else is never served, so a local ref cannot be made to disclose anything but a picture.
+- **A ref whose file cannot be served is a configuration problem** when its client loads -- a refused boot in
+  development and in tests, a warning in production, where the ref is answered as not found until the file is
+  there. The problem says one thing whatever the reason; the reason is in the node's log.
+- **Who may write one.** Source configuration, always. In *stored* configuration, the server's own code (a
+  script or a simulation provisioning a client) and an administrator who sees every client. A client's own
+  administrator may not name a local file -- they upload one, which overrides a shipped ref of the same id, and
+  removing the upload reveals the shipped image again.
+- **A unit test never reads the workspace.** In the unit environment the location has no default, and a relative
+  location or root is refused: a test names `KDR_LOCAL_FILES_DIR` as a temporary directory through its instance
+  config (`LocalFileRefsTest.kt`).
+
 ## Tuning batch jobs
 
 A deployment tunes its batch jobs through their **profiles** -- threads, heartbeat, lease, retries, synchronous
