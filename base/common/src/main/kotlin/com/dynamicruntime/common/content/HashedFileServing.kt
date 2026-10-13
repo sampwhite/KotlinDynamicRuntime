@@ -28,9 +28,6 @@ object HashedFileServing {
     /** How many segments `/<appId>/<marker>/<name:hash>` splits into, the leading empty one counted. */
     private const val pathSegments = 4
 
-    /** Separates a name from the hash of its content, as it does a fragment file from its build id. */
-    const val nameSep = ':'
-
     /** Tells a browser to take the declared type as given, and never to guess a page out of a file. */
     const val noSniffHeader = "X-Content-Type-Options"
     const val noSniff = "nosniff"
@@ -47,8 +44,8 @@ object HashedFileServing {
 
     /**
      * The address [handler]'s request names under [marker], or null when the request is not for it: another focus,
-     * another marker, or another shape. Split at the **last** colon, so a name that itself holds one -- a rooted id,
-     * some day -- keeps it.
+     * another marker, or another shape. Split at the **first** [CMK.nameSep], the one constant both sides build an
+     * address with: no name served here holds one, so whatever follows it is the hash, whatever that holds.
      */
     fun addressOf(handler: RequestHandler, marker: String): Address? {
         if (handler.focus != ContextFocus.static) return null
@@ -56,8 +53,7 @@ object HashedFileServing {
         val segments = handler.appPath.split('/')
         if (segments.size != pathSegments || segments[2] != marker) return null
         val named = segments[3]
-        val at = named.lastIndexOf(nameSep)
-        return if (at < 0) Address(named, "") else Address(named.substring(0, at), named.substring(at + 1))
+        return Address(named.substringBefore(CMK.nameSep), named.substringAfter(CMK.nameSep, ""))
     }
 
     /**
@@ -79,10 +75,16 @@ object HashedFileServing {
         handler.sendBytesResponse(file.bytes, EXC.ok, file.meta.mimeType)
     }
 
-    /** The headers a file of [mimeType] is sent with beyond its type and caching: `nosniff`, and for an SVG its policy. */
+    /**
+     * The headers a file of [mimeType] is sent with beyond its type and caching: `nosniff`, and for an SVG its policy.
+     *
+     * An SVG is told by its type as a browser reads it -- parameters and case aside -- and not by an exact match:
+     * a type recorded as `image/svg+xml; charset=utf-8` is drawn as an SVG, and must not go out without the policy
+     * that keeps one from running anything.
+     */
     fun guardHeaders(mimeType: String): Map<String, String> = buildMap {
         put(noSniffHeader, noSniff)
-        if (mimeType == svgMimeType) put(contentPolicyHeader, svgContentPolicy)
+        if (mimeType.substringBefore(';').trim().lowercase() == svgMimeType) put(contentPolicyHeader, svgContentPolicy)
     }
 
     /**

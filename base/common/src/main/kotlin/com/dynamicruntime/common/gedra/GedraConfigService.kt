@@ -4,7 +4,6 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -299,41 +298,11 @@ class GedraConfigService : ServiceInitializer {
         config.client?.let { def ->
             routingClaimedByAnother(cxt, def)?.let { throw KdrException.mkInput("Config '${config.gedraId}' cannot be written: $it") }
         }
-        checkWritableFileRefs(cxt, config)
         val testFeatures = config.client?.testFeatures.orEmpty()
         if (!cxt.instanceConfig.isTestInstance && testFeatures.isNotEmpty()) {
             throw KdrException.mkInput(
                 "Config '${config.gedraId}' sets testFeatures ${testFeatures.sorted()}, which are honored only " +
                     "on a test instance. This node is not one, so the write is refused.",
-            )
-        }
-    }
-
-    /**
-     * The write-time guards on a config's file refs (issue #1153): each is a ref a load would keep -- an id that is
-     * a name, the source this node reads, a hash that is one -- and the client's refs, across its stored
-     * configurations, stay within [FREF.maxRefs]. The cap is what bounds a load: it asks the file store once for
-     * each distinct file a client's refs name.
-     */
-    private fun checkWritableFileRefs(cxt: KdrCxt, config: GedraConfig) {
-        if (config.fileRefs.isEmpty()) return
-        for (ref in config.fileRefs) {
-            val problem = FREF.refIdProblem(ref.refId)
-                ?: "its source is '${ref.source}', and the one a file ref may have is '${FREF.sourceStore}'."
-                    .takeIf { ref.source != FREF.sourceStore }
-                ?: "its hash is '${ref.hash.orEmpty()}', which is not a SHA-256 in lowercase hex."
-                    .takeIf { !FREF.isHash(ref.hash.orEmpty()) }
-            if (problem != null) {
-                throw KdrException.mkInput("Config '${config.gedraId}' cannot be written: the file ref '${ref.refId}' is refused -- $problem")
-            }
-        }
-        val client = config.gedraId.client
-        val elsewhere = listConfigs(cxt).filter { it.client == client && it.configId.baseId != config.name }
-            .sumOf { it.entriesBySlot()[CCT.fileRefDef]?.size ?: 0 }
-        if (elsewhere + config.fileRefs.size > FREF.maxRefs) {
-            throw KdrException.mkInput(
-                "Config '${config.gedraId}' cannot be written: client '$client' would hold " +
-                    "${elsewhere + config.fileRefs.size} file refs, and a client may hold ${FREF.maxRefs}.",
             )
         }
     }
@@ -881,9 +850,13 @@ class GedraConfigService : ServiceInitializer {
         //
         // **Except a slot this node does not read** (issue #1153), which no write of this node's can mean to
         // delete: it could not have carried it. Every write passes through the model, which keeps only the slots
-        // it knows, so without this a node one release behind would delete a newer release's entries from every
-        // configuration it edited -- an administrator's copy edit taking the client's file refs with it. Such
-        // entries are carried as they are stored, whatever the write says.
+        // it knows, so without this a node one release behind deletes a newer release's entries from every
+        // configuration it edits. Such entries are carried as they are stored, whatever the write says.
+        //
+        // This protects the slot *after* this one. A node that predates the rule deletes `kdr:fileRefDef` itself
+        // -- the slot whose arrival showed the hole -- so the release that adds file refs is finished on every
+        // node before the first ref is stored. And an unread slot is one no write of this node's can remove: a
+        // slot a later release retires stays in its rows until that release's own migration takes it out.
         val carried = when {
             latest == null -> emptyList()
             impliedDelete -> latest.entries.filter { it[GE.traitId].toOptStr()?.let { slot -> slot !in slotPrimaryKeys } == true }

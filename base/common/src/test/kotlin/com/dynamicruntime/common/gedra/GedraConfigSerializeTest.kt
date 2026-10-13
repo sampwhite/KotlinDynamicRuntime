@@ -97,8 +97,10 @@ class GedraConfigSerializeTest : StringSpec({
         stored.fileRefs.all { it.stored } shouldBe true
         stored.fileRefs[1].source shouldBe "elsewhere"
         stored.fileRefs[1].hash shouldBe null
-        // Written back as it was read: an edit of anything else in the configuration does not rewrite a ref.
-        gedraConfigToEntries(stored).getValue(CCT.fileRefDef) shouldBe entries.getValue(CCT.fileRefDef)
+        // Written back as it was read, an id once: an edit of anything else in the configuration does not rewrite a
+        // ref, and a row holding an id twice is written with the first -- the one a load keeps -- rather than
+        // being unwritable until one was taken out by hand.
+        gedraConfigToEntries(stored).getValue(CCT.fileRefDef) shouldBe entries.getValue(CCT.fileRefDef).take(2)
         // Declared in source, the same entry is stamped as that.
         sourceConfig().fileRefs.none { it.stored } shouldBe true
 

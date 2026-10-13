@@ -104,8 +104,9 @@ configuration. They are served the same way, under their own marker:
 - **Nothing in the webapp reads one yet.** The administrator's endpoints are `GET /clientAdmin/client/files` (each
   ref with the file store's record of its file, whether it is `live` for the client's own people or a draft, and
   whether its bytes are `missing`), `POST …/files/upload` (multipart `refId`, `file`, `description`; use
-  `Http.uploadApi`), `POST …/files/remove`, and `GET …/files/download` for a preview -- wire names `FREF`, `CCT`
-  and the file's `FMETA`, all in the kernel. An upload or removal answers its `mode` (`EDM.live` / `EDM.draft`), as
+  `Http.uploadApi`), `POST …/files/remove`, and `GET …/files/download {client, refId, hash}` for a preview (pass
+  the listing's `hash` so a replaced file is a new address, as the web assets' preview does) -- wire names `FREF`,
+  `CCT` and the file's `FMETA`, all in the kernel. An upload or removal answers its `mode` (`EDM.live` / `EDM.draft`), as
   a copy edit does. A page for them, and resolving a ref from Markdown copy, are later issues: when you build
   either, the listing's `name` is what goes in the address.
 

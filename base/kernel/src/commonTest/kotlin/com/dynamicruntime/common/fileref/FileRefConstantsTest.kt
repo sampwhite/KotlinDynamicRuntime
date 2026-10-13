@@ -34,6 +34,20 @@ class FileRefConstantsTest {
         assertTrue(FREF.refIdProblem("a".repeat(FREF.maxRefIdLength + 1))!!.contains("too long"))
     }
 
+    // The slot's schema holds an id and a hash to a pattern, and the code to a function: two statements of one
+    // rule, held together here so that neither can be changed without the other.
+    @Test
+    fun thePatternsASchemaUsesSayWhatTheFunctionsSay() {
+        val refId = Regex(FREF.refIdPattern)
+        for (id in listOf("logo", "_x", "hero2", "A_b_3", "", "2logo", "a/b", "logo.png", "kdr:logo", "my logo", "logo-2", "l\u00f6go", "logo\n")) {
+            assertEquals(FREF.refIdProblem(id) == null, refId.matches(id), "the pattern and the rule disagree on '$id'")
+        }
+        val hashRule = Regex(FREF.hashPattern)
+        for (h in listOf(hash, "0123456789abcdef".repeat(4), "", "ab", hash.uppercase(), hash.dropLast(1), hash + "a", "g" + hash.drop(1), "$hash\n")) {
+            assertEquals(FREF.isHash(h), hashRule.matches(h), "the pattern and the rule disagree on '$h'")
+        }
+    }
+
     @Test
     fun aHashIsSixtyFourLowercaseHexCharacters() {
         assertTrue(FREF.isHash(hash))
@@ -59,5 +73,15 @@ class FileRefConstantsTest {
         assertEquals("", bare.source)
         assertNull(bare.hash)
         assertEquals(mapOf(CCT.refId to "x", CCT.source to ""), bare.toEntry())
+    }
+
+    // A field this release does not read is a later release's: an edit of anything else in the configuration, made
+    // on a node one release behind, writes every ref back, and must write that field back with it.
+    @Test
+    fun aFieldThisReleaseDoesNotReadIsCarriedAndWrittenBack() {
+        val entry = mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to hash, "alt" to "Our logo", "focus" to mapOf("x" to 1))
+        val ref = FileRefDef.fromEntry(entry, "copy", stored = true)
+        assertEquals(mapOf("alt" to "Our logo", "focus" to mapOf("x" to 1)), ref.extra)
+        assertEquals(entry, ref.toEntry())
     }
 }

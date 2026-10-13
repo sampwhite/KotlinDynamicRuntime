@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.SchemaCollector
@@ -66,6 +67,16 @@ class ClientService : ServiceInitializer {
 
     /** [clientId]'s definition whether or not this node carries it; null when nothing declares it. */
     fun known(clientId: String): ClientDef? = clients[clientId]
+
+    /**
+     * [clientId], having checked that this node [known]s it; a 404 otherwise. What a call that **names** a client
+     * to keep something under goes through: an administrator who sees every client may name any string, and a name
+     * nobody declared must be told so, not be given files or listed as a client that has merely set nothing.
+     */
+    fun requireKnown(clientId: String): String {
+        if (known(clientId) == null) throw KdrException("This node knows no client '$clientId'.", code = EXC.notFound)
+        return clientId
+    }
 
     /**
      * [clientId]'s definition **as declared** by the first config declaring it, whether or not a check kept it

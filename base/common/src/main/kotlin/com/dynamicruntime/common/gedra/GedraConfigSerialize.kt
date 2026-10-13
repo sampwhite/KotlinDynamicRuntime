@@ -72,7 +72,9 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     }
     out[CCT.uiBlockDef] = config.uiBlocks.map { linkedMapOf(CCT.blockId to it.blockId, CCT.content to it.content) }
     out[CCT.cfactDef] = config.cfacts.map { cfactToEntry(it) }
-    out[CCT.fileRefDef] = config.fileRefs.map { it.toEntry() }
+    // One entry an id: a slot holds one entry per key, and a row edited by hand to hold an id twice would otherwise
+    // be unwritable until one was removed. The first is the one a load keeps, so it is the one written back.
+    out[CCT.fileRefDef] = config.fileRefs.distinctBy { it.refId }.map { it.toEntry() }
     // Drop empty slots so a row holds only the pieces the config actually has.
     return out.filterValues { it.isNotEmpty() }
 }

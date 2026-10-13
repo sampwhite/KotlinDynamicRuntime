@@ -22,8 +22,21 @@ object FREF {
     /** The longest a ref's id may be. */
     const val maxRefIdLength = 64
 
-    /** The most file refs one client's stored configuration may hold. A load reads the store once per distinct file. */
+    /**
+     * The most file refs a client is served. A load asks the file store once for each distinct file its refs name,
+     * so this is what bounds a load; a ref beyond it is reported and not served, and a write that would add one is
+     * refused by its trial.
+     */
     const val maxRefs = 200
+
+    /** The longest a ref's description may be. */
+    const val maxDescriptionLength = 500
+
+    /** [refIdProblem]'s character rule as a pattern, for a schema to hold an id to; a test holds the two together. */
+    const val refIdPattern = "^[A-Za-z_][A-Za-z0-9_]*\$"
+
+    /** [isHash] as a pattern. */
+    const val hashPattern = "^[0-9a-f]{64}\$"
 
     /** The most bytes a ref's file may be. */
     const val maxSize = 2 * 1024 * 1024
@@ -60,8 +73,6 @@ object FREF {
     /** Who uploaded a ref's file, as they were called then; kept with the file, since a user id is no name. */
     const val uploadedByName = "uploadedByName"
 
-    /** On the named download: the hash of the file the caller expects, which lets the caller's own browser keep the answer. */
-    const val expectedHash = "hash"
 
     /** The schema type of one listed ref, and of what a change answers. */
     const val refTypeName = "FileRef"
@@ -71,7 +82,7 @@ object FREF {
     const val namespace = "kdr.clientFiles"
 
     /** Separates a ref's id from the hash of its content in a [versionedName], as it does a file from its build id. */
-    const val nameSep = ':'
+    const val nameSep = CMK.nameSep
 
     /** A ref named by its content: `logo:<hash>`. The frontend puts it in a URL as it is and never takes it apart. */
     fun versionedName(refId: String, hash: String): String = "$refId$nameSep$hash"
@@ -106,6 +117,10 @@ object FREF {
  *
  * [configName] and [stored] are a stamp, not content: which configuration declared this and whether it was read
  * from the database, set by the builder and never written back.
+ *
+ * [extra] is whatever else a stored entry held: fields this release does not read -- a later one's -- kept and
+ * written back as they were, so that an edit of anything else in the configuration, made on a node one release
+ * behind, does not strip them. The rule a write follows for a whole slot it does not read, at the level of a field.
  */
 class FileRefDef(
     /** The ref's id within its client: how it is addressed. */
@@ -117,13 +132,15 @@ class FileRefDef(
     val description: String? = null,
     val configName: String? = null,
     val stored: Boolean = false,
+    val extra: Map<String, Any?> = emptyMap(),
 ) {
-    /** This ref as its stored entry: what was authored, and none of the stamp. */
+    /** This ref as its stored entry: what was authored and what was carried, and none of the stamp. */
     fun toEntry(): Map<String, Any?> = buildMap {
         put(CCT.refId, refId)
         put(CCT.source, source)
         hash?.let { put(CCT.hash, it) }
         description?.let { put(CCT.description, it) }
+        putAll(extra)
     }
 
     companion object {
@@ -138,6 +155,10 @@ class FileRefDef(
             description = entry[CCT.description].toOptStr(),
             configName = configName,
             stored = stored,
+            extra = entry.filterKeys { it !in readFields },
         )
+
+        /** The fields of an entry this release reads; anything else is [extra]. */
+        private val readFields = setOf(CCT.refId, CCT.source, CCT.hash, CCT.description)
     }
 }

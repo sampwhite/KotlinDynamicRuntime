@@ -55,13 +55,31 @@ object GedraConfigTrial {
         published: Boolean,
         refusal: String,
     ) {
-        val baseline = ClientConfigIssues.get(cxt).issuesFor(client)
+        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + draftBaseline(cxt, client)
         val found = trial(cxt, client, replacing, published).filterNot { issue -> baseline.any { it.sameAs(issue) } }
         if (found.isEmpty()) return
         throw KdrException.mkInput(
             "$refusal: loading client '$client' would find ${found.size} problem(s). " +
                 found.joinToString(" ") { it.message },
         )
+    }
+
+    /**
+     * The problems [client]'s **drafts** already have, as its sandbox's last load recorded them (issue #1153). A
+     * write is judged against the client's latest revisions, and for a client with a sandbox those are loaded only
+     * by the sandbox -- so a problem a draft already has is recorded there and not under the client, and without
+     * this it would be found as new by every later write. Re-addressed to the client's own config ids, which is how
+     * a trial of the client names them. It matches only a problem worded without the client that loaded it; the file
+     * refs' are (`FileRefService`).
+     */
+    private fun draftBaseline(cxt: KdrCxt, client: String): List<GedraConfigIssue> {
+        if (client == GID.globalClient || isSandboxClient(client)) return emptyList()
+        val sandbox = sandboxOf(client)
+        return ClientConfigIssues.get(cxt).issuesFor(sandbox).map { issue ->
+            val asOwners = issue.storedConfigId?.let { GedraId.parseOrNull(it) }?.takeIf { it.client == sandbox }
+                ?.let { GedraId.of(it.kind, client, it.baseId, it.suffix).fullId }
+            GedraConfigIssue(issue.message, issue.degradedTo, client, asOwners ?: issue.storedConfigId, issue.elementKind, issue.elementId)
+        }
     }
 
     /**
@@ -126,7 +144,10 @@ object GedraConfigTrial {
                 reportConfigProblem(tcxt, problem, ignored)
                 continue
             }
-            loader.unknownSlotsIssue(row)?.let { reportConfigProblem(tcxt, it, ignored) }
+            // A slot this node does not read is not judged here (issue #1153), though a load reports one. No write
+            // through this node can have put it there -- an unknown slot is refused as input, and the model keeps
+            // none -- so a row that holds one carried it from a newer release, and refusing the write for that
+            // would make every edit on an older node fail until the release reached it.
             loader.unreadReportIssues(config).forEach { reportConfigProblem(tcxt, it, ignored) }
             if (scratch.addGedraConfig(tcxt, config)) taken.add(config)
         }

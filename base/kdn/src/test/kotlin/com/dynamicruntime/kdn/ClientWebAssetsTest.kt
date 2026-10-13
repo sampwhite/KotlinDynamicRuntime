@@ -149,6 +149,12 @@ class ClientWebAssetsTest : StringSpec({
             unmatched.rptResponseBytes!!.toList() shouldBe png.toList()
             unmatched.header("Cache-Control") shouldBe ContentResources.noStore
         }
+        // What follows the first colon is the hash, whatever it holds: a second colon is part of a hash that is not
+        // the image's, and not part of the slot's name.
+        val twoColons = static(member, "${WAS.favicon}:abc:def")
+        twoColons.rptStatusCode shouldBe EXC.ok
+        twoColons.rptResponseBytes!!.toList() shouldBe png.toList()
+        twoColons.header("Cache-Control") shouldBe ContentResources.noStore
         // An empty slot, and a slot there is none of, are 404s nothing may keep.
         for (absent in listOf(WAS.brandMark, "banner:abc")) {
             val missing = static(member, absent)

@@ -22,7 +22,9 @@ import com.dynamicruntime.common.webasset.WebAssetCheck
  * can be at, so storing it changes nothing anyone is served -- and only then patches the entry that names it into
  * the client's configuration, under the client's lock and through a trial. A patch that is refused leaves an
  * object no entry names, which is debris and not a fault; the other order would leave an entry naming bytes that
- * are not there.
+ * are not there. Nothing here removes an object, and nothing yet bounds how many a client leaves behind: a
+ * replaced or removed ref's file stays for the revisions that still name it, until a sweep of what no revision
+ * names exists (issue #1147).
  *
  * **Live, or a draft, by whether the client has a sandbox**, as a copy edit is: without one the entry is published
  * and the client's people are served the file at once; with one it is the parent's draft, which its sandbox shows
@@ -38,12 +40,20 @@ object ClientFileRefEdit {
 
     /**
      * Stores [content] as the file of [client]'s ref [refId], replacing what the ref named, and makes that take
-     * effect. Refused as bad input, **before anything is stored**: an id that is no name, an empty file, one over
-     * [FREF.maxSize], one that is not the image it was sent as ([WebAssetCheck]). [description] absent keeps the
-     * ref's description; blank clears it.
+     * effect. [description] absent keeps the ref's description; blank clears it.
+     *
+     * **Everything that can be refused is refused before any bytes are stored**, since a stored object nothing
+     * names is left where it is: an id that is no name, a description too long, an empty file, one over
+     * [FREF.maxSize], one that is not the image it was sent as ([WebAssetCheck]); a client that takes no stored
+     * configuration here; a configuration holding somebody's unpublished changes; and a client already served as
+     * many refs as it may have. The last is said early as a courtesy -- it is the write's trial that holds a client
+     * to its limit, across every configuration and call.
      */
     fun upload(cxt: KdrCxt, client: String, refId: String, content: ContentData, description: String?): Result {
         FREF.refIdProblem(refId)?.let { throw KdrException.mkInput(it) }
+        if (description != null && description.length > FREF.maxDescriptionLength) {
+            throw KdrException.mkInput("A file ref's description may be at most ${FREF.maxDescriptionLength} characters; this one is ${description.length}.")
+        }
         val bytes = content.contentBytes()
         if (bytes.isEmpty()) throw KdrException.mkInput("The file sent for the ref '$refId' is empty.")
         if (bytes.size > FREF.maxSize) {
@@ -57,36 +67,64 @@ object ClientFileRefEdit {
         val bound = target.bound
         val owner = target.client
         val svc = GedraConfigService.get(bound)
-        // Said here rather than by the patch, which would say it after the bytes were stored.
+        val refs = FileRefService.get(cxt)
         if (svc.isStaticHere(bound, owner)) {
             throw KdrException.mkInput(
                 "Client '$owner' is statically configured: in production its configuration comes from source code, " +
                     "so it takes no file ref here.",
             )
         }
+        val holder = holderOf(bound, owner, refId)
+        holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, "a file upload") }
+        val shown = refs.forClient(target.readsAs).refs
+        if (refId !in shown && shown.size >= FREF.maxRefs) {
+            throw KdrException.mkInput(
+                "Client '$owner' has ${FREF.maxRefs} file refs, which is as many as a client is served. Remove one first.",
+            )
+        }
+
         val hash = bytes.sha256Hex()
+        storeBytes(cxt, bound, refs, owner, refId, hash, ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename))
+
+        // The entry is always patched in, under the lock and over the revision as it then stands -- into the
+        // configuration already holding the ref, else the editors' own, made empty first when there is none. Never
+        // written as a new configuration with the entry in it, which a second first-upload would write over.
+        val row = holder ?: ClientStoredEdit.ensureEditConfig(bound, owner)
+        val before = storedEntry(row, refId)
+        val prior = before?.let { FileRefDef.fromEntry(it, null, stored = true) }
+        val kept = if (description == null) prior?.description else description.ifBlank { null }
+        val entry = FileRefDef(refId, FREF.sourceStore, hash, kept, extra = prior?.extra.orEmpty()).toEntry()
+        val written = patchEntry(svc, bound, row, refId, entry)
+        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before) })
+    }
+
+    /**
+     * Puts [content] at the key its [hash] makes under [owner], unless a whole file of that content is already
+     * there -- in which case nothing is written and the first upload's record of it stands (its name, who sent it
+     * and when).
+     *
+     * **"Already there" is judged by reading the file**, not by its record alone: a file whose bytes are gone or
+     * damaged while its metadata remains is not there, and is written again, which is how uploading a file once
+     * more repairs it. What the store was last said to hold of it is dropped either way.
+     */
+    private fun storeBytes(cxt: KdrCxt, bound: KdrCxt, refs: FileRefService, owner: String, refId: String, hash: String, content: ContentData) {
         val files = FileStoreService.get(bound)
         val key = FileRefService.keyOf(owner, hash)
-        // Already there, when these bytes were uploaded before: nothing to write, and the first upload's record stands.
-        if (files.meta(bound, FileRefService.bucket, key) == null) {
+        val there = try {
+            files.get(bound, FileRefService.bucket, key)
+        } catch (_: KdrException) {
+            // A file that does not match its own record: not one a ref can be served from.
+            null
+        }
+        if (there == null || there.meta.hash != hash || WebAssetCheck.declaredKind(there.meta.mimeType) == null) {
             val extra = buildMap<String, Any?> {
                 put(CCT.refId, refId)
                 cxt.userProfile.takeIf { it.isLoggedIn }?.displayName?.let { put(FREF.uploadedByName, it) }
             }
             // In a context bound to the owner, so the file is recorded as the client's whoever uploaded it.
-            files.put(bound, FileRefService.bucket, key, ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename), extra)
+            files.put(bound, FileRefService.bucket, key, content, extra)
         }
-
-        val holder = holderOf(bound, owner, refId) ?: ClientStoredEdit.editConfig(bound, owner)
-        if (holder == null) {
-            val written = ClientStoredEdit.createEditConfig(bound, owner) { fileRef(refId, hash, description?.ifBlank { null }) }
-            return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, null) })
-        }
-        ClientStoredEdit.requireNoForeignDraft(target, holder, "a file upload")
-        val before = storedEntry(holder, refId)
-        val kept = if (description == null) before?.get(CCT.description).toOptStr() else description.ifBlank { null }
-        val written = patchEntry(svc, bound, holder, refId, FileRefDef(refId, FREF.sourceStore, hash, kept).toEntry())
-        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before) })
+        refs.forget(owner, hash)
     }
 
     /**

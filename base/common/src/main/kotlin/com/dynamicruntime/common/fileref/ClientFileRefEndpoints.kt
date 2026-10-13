@@ -10,6 +10,8 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.filestore.FileMeta
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.configOwnerOf
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.overseenClient
 import com.dynamicruntime.common.gedra.overseenClientField
@@ -17,6 +19,7 @@ import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
  * A client's file refs, for its administrator (issue #1153): what refs it has, uploading a file as one, removing
@@ -41,7 +44,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         property(CCT.refId, "The ref's id within its client.", required = true)
         property(CCT.hash, "The SHA-256 of the file's bytes.", required = true)
         property(FREF.name, "The ref by name and content, `<refId>:<hash>`: what the static root serves it as, at `/<appId>/ref/<name>`.", required = true)
-        property(CCT.description, "What the file is for, in the administrator's words.")
+        property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
         property(FREF.configName, "The stored configuration holding the ref's entry.")
         property(FREF.live, "Whether the client's own people are served this ref as listed; false for a draft only its sandbox shows.", required = true) {
             type = SCT.boolean
@@ -79,7 +82,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         needsClientConfig = true,
     ) { c, request ->
         val refs = FileRefService.get(c)
-        val client = refs.knownClient(c, overseenClient(c, request[FREF.client].toOptStr()))
+        val client = knownClient(c, request)
         listedRefs(c, refs, client)
     }
 
@@ -95,11 +98,14 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             overseenClientField(FREF.client)
             field(CCT.refId, "The ref's id: a variable name. An id the client already has replaces that ref's file.", required = true)
             field(FREF.file, "The file.", required = true) { binaryContent() }
-            field(CCT.description, "What the file is for. Absent keeps the ref's description; blank clears it.") { emptyIsAbsent = false }
+            field(CCT.description, "What the file is for, in at most ${FREF.maxDescriptionLength} characters. Absent keeps the ref's description; blank clears it.") {
+                emptyIsAbsent = false
+                maxLength = FREF.maxDescriptionLength
+            }
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
-        val client = refs.knownClient(c, overseenClient(c, request[FREF.client].toOptStr()))
+        val client = knownClient(c, request)
         // A `file` part sent as a plain field is a value, so it passes for "present": it is here that it is no file.
         val content = request[FREF.file] as? ContentData ?: throw KdrException.mkInput("No file was sent.")
         val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
@@ -119,7 +125,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
-        val client = refs.knownClient(c, overseenClient(c, request[FREF.client].toOptStr()))
+        val client = knownClient(c, request)
         changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty()))
     }
 
@@ -133,25 +139,32 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         inputFields = {
             overseenClientField(FREF.client)
             field(CCT.refId, "The ref whose file to fetch.", required = true)
-            field(FREF.expectedHash, "The hash of the file expected, from the listing; with it the address names the file and the answer may be kept.")
+            field(CCT.hash, "The hash of the file expected, from the listing; with it the address names the file and the answer may be kept.")
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
-        val client = refs.knownClient(c, overseenClient(c, request[FREF.client].toOptStr()))
+        val client = knownClient(c, request)
         val refId = request[CCT.refId].toOptStr().orEmpty()
         val file = refs.forClient(refs.shownAs(c, client)).refs[refId]?.let { refs.read(c, it) }
             ?: throw KdrException("Client '$client' has no file ref '$refId' whose file is there.", code = EXC.notFound)
-        c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, request[FREF.expectedHash].toOptStr()) }
-        file.toContentData(inLine = false)
+        c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, request[CCT.hash].toOptStr()) }
+        // Offered under the ref's own id and its kind's extension, never the name it was uploaded under: that name
+        // is the first uploader's, of whatever ref first held these bytes, and its extension can say anything.
+        val extension = WebAssetCheck.declaredKind(file.meta.mimeType)?.extension
+        ContentData(file.bytes, file.meta.mimeType, saveAsFilename = listOfNotNull(refId, extension).joinToString("."), inLine = false)
     }
 }
+
+/** The client a call acts on: the one it may ([overseenClient]), and one this node knows. */
+private fun knownClient(cxt: KdrCxt, request: Map<String, Any?>): String =
+    ClientService.get(cxt).requireKnown(overseenClient(cxt, request[FREF.client].toOptStr()))
 
 /**
  * [client]'s refs as an administrator is shown them ([FileRefService.shownAs]): the sandbox's where it has one,
  * each marked by whether the client's own registry serves the same bytes under that id.
  */
 fun listedRefs(cxt: KdrCxt, refs: FileRefService, client: String): List<Map<String, Any?>> {
-    val running = refs.forClient(FileRefService.ownerOf(client)).refs
+    val running = refs.forClient(configOwnerOf(client)).refs
     return refs.forClient(refs.shownAs(cxt, client)).refs.values.map { refItem(cxt, refs, it, running[it.refId]?.hash == it.hash) }
 }
 

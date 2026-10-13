@@ -165,23 +165,17 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     ) {
         property(CCT.refId, "The ref's id within its client: a variable name, at most ${FREF.maxRefIdLength} characters.", required = true) {
             maxLength = FREF.maxRefIdLength
-            pattern = refIdPattern
+            pattern = FREF.refIdPattern
         }
         property(CCT.source, "Where the file's bytes are.", required = true) {
             option(FREF.sourceStore, "The file store")
         }
         property(CCT.hash, "The SHA-256 of the file's bytes, in lowercase hex: what names them in the file store.", required = true) {
-            pattern = hashPattern
+            pattern = FREF.hashPattern
         }
-        property(CCT.description, "What the file is for, in the administrator's words.")
+        property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
     }
 }
-
-/** A file ref id as a pattern: a variable name. The slot gate's form of `FREF.refIdProblem`'s rule. */
-private const val refIdPattern = "^[A-Za-z_][A-Za-z0-9_]*$"
-
-/** A SHA-256 in lowercase hex: `FREF.isHash` as a pattern. */
-private const val hashPattern = "^[0-9a-f]{${FREF.hashLength}}$"
 
 /**
  * The declaration fields of a [CCT.traitDef] (issue #625): what a trait's DSL

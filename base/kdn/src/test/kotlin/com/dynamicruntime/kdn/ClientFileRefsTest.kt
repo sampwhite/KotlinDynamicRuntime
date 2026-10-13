@@ -16,10 +16,14 @@ import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientStoredEdit
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.ConfigWrite
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.GC
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GCT
 import com.dynamicruntime.common.gedra.GD
 import com.dynamicruntime.common.gedra.GE
@@ -43,6 +47,7 @@ import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -94,12 +99,13 @@ class ClientFileRefsTest : StringSpec({
     val otherPng = png + byteArrayOf(9, 9)
     val svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>""".toByteArray()
 
-    /** Defines [client], published and loaded. */
-    fun defineClient(client: String) {
-        val setup = cxt.mkSubContext("setup", client).also { it.userId = 11530L }
+    /** Defines [client] on the instance [on], published and loaded. */
+    fun defineClient(client: String, on: KdrCxt = cxt) {
+        val setup = on.mkSubContext("setup", client).also { it.userId = 11530L }
+        val svc = GedraConfigService.get(on)
         svc.writeConfig(
             setup,
-            gedraConfig(cxt, "main", clientNamespace(client), client) {
+            gedraConfig(on, "main", clientNamespace(client), client) {
                 defineClient(
                     ClientDef(
                         clientId = client, name = "Client $client", usageType = ClientUsageType.dev,
@@ -109,10 +115,20 @@ class ClientFileRefsTest : StringSpec({
             },
         )
         svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
-        GedraConfigReload.reloadClient(cxt, client)
+        GedraConfigReload.reloadClient(on, client)
     }
 
-    fun adminOf(client: String) = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client, name = "Chief $client")
+    fun adminOf(client: String, on: KdrCxt = cxt) =
+        TestUser.create(on, "chief@$client.test", level = ROLE.admin, userClient = client, name = "Chief $client")
+
+    /** A context that writes [client]'s configuration in-process, as a script or a restore would. */
+    fun writerOf(client: String, on: KdrCxt = cxt): KdrCxt = on.mkSubContext("write", client).also { it.userId = 11534L }
+
+    /** Puts [bytes] where a ref of [client]'s names them, past the upload: what an import's files would be. */
+    fun plant(client: String, bytes: ByteArray, on: KdrCxt = cxt): String {
+        FileStoreService.get(on).put(writerOf(client, on), FileRefService.bucket, FileRefService.keyOf(client, bytes.sha256Hex()), ContentData(bytes, "image/png"))
+        return bytes.sha256Hex()
+    }
 
     fun image(bytes: ByteArray, type: String = "image/png", name: String = "pic") = ContentData(bytes, type, saveAsFilename = name, inLine = false)
 
@@ -131,8 +147,8 @@ class ClientFileRefsTest : StringSpec({
     fun uploaded(user: TestUser, refId: String, content: ContentData, client: String? = null, description: String? = null): Map<String, Any?> =
         upload(user, refId, content, client, description).also { it[EP.status].shouldBeNull() }[EP.results].toJsonMapOrEmpty()
 
-    fun refused(user: TestUser, refId: String, content: ContentData, status: Int = EXC.badInput, client: String? = null): String {
-        val env = upload(user, refId, content, client)
+    fun refused(user: TestUser, refId: String, content: ContentData, status: Int = EXC.badInput, client: String? = null, description: String? = null): String {
+        val env = upload(user, refId, content, client, description)
         (env[EP.status] as? Number)?.toInt() shouldBe status
         return env[EP.errorMessage] as String
     }
@@ -150,13 +166,13 @@ class ClientFileRefsTest : StringSpec({
     fun nameOf(refId: String, bytes: ByteArray) = FREF.versionedName(refId, bytes.sha256Hex())
 
     /** The entries of [client]'s `copy` configuration in the file-ref slot, as stored. */
-    fun storedRefs(client: String): List<Map<String, Any?>> =
-        svc.readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+    fun storedRefs(client: String, on: KdrCxt = cxt): List<Map<String, Any?>> =
+        GedraConfigService.get(on).readLatest(on.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
             ?.entriesBySlot()?.get(CCT.fileRefDef).orEmpty()
 
     /** One edit of the file-ref slot through the configuration's own patch endpoint: what an administrator types by hand. */
-    fun slotEdit(action: GedraEditAction, entry: Map<String, Any?>): Map<String, Any?> = mapOf(
-        CFEP.name to CPY.copyConfigName,
+    fun slotEdit(action: GedraEditAction, entry: Map<String, Any?>, config: String = CPY.copyConfigName): Map<String, Any?> = mapOf(
+        CFEP.name to config,
         CFEP.edits to listOf(mapOf(CFEP.slot to CCT.fileRefDef, GED.action to action.name, GE.data to entry)),
     )
 
@@ -245,11 +261,15 @@ class ClientFileRefsTest : StringSpec({
         // One who sees every client names any, and a client nobody declared is a 404 from each call.
         val full = TestUser.createFullAdmin(cxt, "full@fileRefs.test")
         listed(full, ours).getValue("logo")[FREF.name] shouldBe ourName
-        val download = full.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(FREF.client to ours, CCT.refId to "logo", FREF.expectedHash to png.sha256Hex()))
+        val download = full.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(FREF.client to ours, CCT.refId to "logo", CCT.hash to png.sha256Hex()))
         download.rptResponseBytes!!.toList() shouldBe png.toList()
         download.header(ContentResources.cacheControlHeader) shouldBe ContentResources.privateCacheControl
         download.header(ContentResources.varyHeader) shouldBe ContentResources.varyByCookie
-        download.header(ContentData.contentDispositionKey).orEmpty() shouldContain "attachment"
+        // A download, offered under the ref's own id and its kind's extension -- never the name it was uploaded
+        // under, whose extension can say anything.
+        download.header(ContentData.contentDispositionKey) shouldBe "attachment; filename=\"logo.png\""
+        full.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(FREF.client to ours, CCT.refId to "logo"))
+            .header(ContentResources.cacheControlHeader) shouldBe ContentResources.noStore
         val nobody = "nosuchclient1153"
         refused(full, "logo", image(png), EXC.notFound, client = nobody) shouldContain "no client"
         full.expectError(EXC.notFound, UADEP.clientFiles, args = mapOf(FREF.client to nobody))
@@ -385,17 +405,135 @@ class ClientFileRefsTest : StringSpec({
         admin.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(CCT.refId to "page"))
         static(admin, "alias").rptResponseBytes!!.toList() shouldBe png.toList()
 
-        // A client holds a bounded number: one more than that is refused whichever configuration would hold it.
-        val writer = cxt.mkSubContext("cap", client).also { it.userId = 11532L }
-        val tooMany = shouldThrow<KdrException> {
-            svc.writeConfig(writer, gedraConfig(cxt, "many", clientNamespace(client), client) { for (n in 1 until FREF.maxRefs) fileRef("r$n", hash) })
-        }
-        tooMany.code shouldBe EXC.badInput
-        tooMany.message.orEmpty() shouldContain "may hold ${FREF.maxRefs}"
-        // And the same id in two of a client's configurations is one the load would drop, so the write is refused.
+        // The same id in two of a client's configurations is one the load would leave out, so the write is refused.
         shouldThrow<KdrException> {
-            svc.writeConfig(writer, gedraConfig(cxt, "twice", clientNamespace(client), client) { fileRef("logo", hash) }, trial = true)
+            svc.writeConfig(writerOf(client), gedraConfig(cxt, "twice", clientNamespace(client), client) { fileRef("logo", hash) }, trial = true)
         }.message.orEmpty() shouldContain "more than once"
+    }
+
+    "an upload refuses what it can before it stores anything" {
+        val client = "refearly"
+        defineClient(client)
+        val admin = adminOf(client)
+        fun stored(bytes: ByteArray) = files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, bytes.sha256Hex()))
+
+        refused(admin, "logo", image(png), description = "x".repeat(FREF.maxDescriptionLength + 1))
+        stored(png).shouldBeNull()
+
+        // A configuration other than the editors' own, holding the ref, with somebody's unpublished changes: an
+        // upload would publish them with it, so it is refused -- and the new bytes are not left behind for it.
+        val writer = writerOf(client)
+        val art = GedraId.of(GedraConfigType.configDoc, client, "art")
+        val hash = plant(client, png)
+        svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("banner", hash) }, trial = true)
+        svc.publish(writer, art)
+        GedraConfigReload.reloadClient(cxt, client)
+        svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("banner", hash, "Half done.") }, trial = true)
+        refused(admin, "banner", image(otherPng)) shouldContain "unpublished changes"
+        stored(otherPng).shouldBeNull()
+        // Published, the same upload is taken, into the configuration that held the ref.
+        svc.publish(writer, art)
+        uploaded(admin, "banner", image(otherPng))[FREF.configName] shouldBe "art"
+
+        // A client already served as many refs as it may have is told so before the file is stored.
+        val full = "refatcap"
+        defineClient(full)
+        val fullHash = plant(full, png)
+        svc.writeConfig(writerOf(full), gedraConfig(cxt, "many", clientNamespace(full), full) { for (n in 1..FREF.maxRefs) fileRef("r$n", fullHash) }, trial = true)
+        svc.publish(writerOf(full), GedraId.of(GedraConfigType.configDoc, full, "many"))
+        GedraConfigReload.reloadClient(cxt, full)
+        refs.forClient(full).refs.size shouldBe FREF.maxRefs
+        val fullAdmin = adminOf(full)
+        refused(fullAdmin, "fresh", image(otherPng)) shouldContain "as many as a client is served"
+        files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(full, otherPng.sha256Hex())).shouldBeNull()
+        // Replacing one it has is no addition.
+        uploaded(fullAdmin, "r7", image(otherPng))
+        // An entry typed into its configuration is held to the same limit, by the write's trial.
+        val typed = fullAdmin.expectError(
+            EXC.badInput, CFEP.bundlePatch,
+            slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "fresh", CCT.source to FREF.sourceStore, CCT.hash to fullHash), "many"),
+        )
+        typed[EP.errorMessage] as String shouldContain "has more than ${FREF.maxRefs} file refs"
+    }
+
+    "the first uploads of a client each keep the other's ref, and what another editor wrote" {
+        val client = "reffirst"
+        defineClient(client)
+        val admin = adminOf(client)
+        val bound = writerOf(client)
+        // The editors' own configuration is made empty and then patched, never written with the entry in it: asked
+        // for twice it is the one configuration, and making it again is refused rather than done over.
+        val made = ClientStoredEdit.ensureEditConfig(bound, client)
+        made.entries.shouldBeEmpty()
+        ClientStoredEdit.ensureEditConfig(bound, client).configId shouldBe made.configId
+        shouldThrow<KdrException> {
+            svc.writeConfig(bound, gedraConfig(cxt, CPY.copyConfigName, clientNamespace(client), client) {}, mustBeNew = true)
+        }.code shouldBe EXC.conflict
+
+        svc.patchConfig(bound, made.configId) { it + (CCT.cfactDef to listOf(mapOf(CCT.name to "firstEdit", CCT.group to "first", CCT.description to "Another editor's."))) }
+        uploaded(admin, "one", image(png))
+        uploaded(admin, "two", image(otherPng))
+        storedRefs(client).map { it[CCT.refId] } shouldContainExactly listOf("one", "two")
+        svc.readLatest(bound, made.configId)!!.entriesBySlot().getValue(CCT.cfactDef).single()[CCT.name] shouldBe "firstEdit"
+    }
+
+    "a file that is gone is noticed, and uploading it again puts it back" {
+        val client = "refrepair"
+        defineClient(client)
+        val admin = adminOf(client)
+        uploaded(admin, "logo", image(png))
+        val key = FileRefService.keyOf(client, png.sha256Hex())
+        files.delete(cxt, FileRefService.bucket, key) shouldBe true
+
+        // Serving reads the store, so it says so at once.
+        static(admin, "logo").rptStatusCode shouldBe EXC.notFound
+        // A listing goes on what the store last said, for a while -- an object is not expected to go -- and then asks.
+        listed(admin).getValue("logo")[FREF.missing] shouldBe false
+        try {
+            refs.nanoTime = { System.nanoTime() + (FileRefService.askedMemoMs + 1) * 1_000_000 }
+            val shown = listed(admin).getValue("logo")
+            shown[FREF.missing] shouldBe true
+            shown.containsKey(FREF.file) shouldBe false
+        } finally {
+            refs.nanoTime = System::nanoTime
+        }
+        // The same file uploaded again is written again, though its hash is one the client already names.
+        uploaded(admin, "logo", image(png))
+        files.meta(cxt, FileRefService.bucket, key).shouldNotBeNull()
+        static(admin, "logo").rptResponseBytes!!.toList() shouldBe png.toList()
+        listed(admin).getValue("logo")[FREF.missing] shouldBe false
+    }
+
+    // What a bulk import writes per client (`writeConfigs`, judged together), called as the import calls it: on the
+    // caller's own context, which is not the client's.
+    "an import is refused for the files it does not bring, and for more refs than a client is served" {
+        val client = "refimport"
+        defineClient(client)
+        fun config(name: String, build: com.dynamicruntime.common.gedra.GedraConfigBuilder.() -> Unit) =
+            ConfigWrite(gedraConfig(cxt, name, clientNamespace(client), client, build = build))
+
+        val absent = shouldThrow<KdrException> {
+            svc.writeConfigs(cxt, client, listOf(config("art") { fileRef("ghost", "0".repeat(64)); fileRef("spirit", "1".repeat(64)) }), trial = true)
+        }
+        absent.code shouldBe EXC.badInput
+        // It names each ref whose file is not here, which is what says what to copy across first.
+        absent.message.orEmpty() shouldContain "File ref 'ghost' of client '$client'"
+        absent.message.orEmpty() shouldContain "File ref 'spirit' of client '$client'"
+        absent.message.orEmpty() shouldContain "not in the file store"
+
+        // Two configurations that are each within the limit and together are not: judged as the set they are.
+        val hash = plant(client, png)
+        val half = FREF.maxRefs / 2 + 1
+        val tooMany = shouldThrow<KdrException> {
+            svc.writeConfigs(
+                cxt, client,
+                listOf(config("art") { for (n in 1..half) fileRef("a$n", hash) }, config("more") { for (n in 1..half) fileRef("b$n", hash) }),
+                trial = true,
+            )
+        }
+        tooMany.message.orEmpty() shouldContain "Client '$client' has more than ${FREF.maxRefs} file refs"
+        // Nothing of either refused import was stored.
+        svc.listConfigs(writerOf(client)).map { it.configId.baseId } shouldContainExactly listOf("main")
     }
 
     // The rolling-deploy hazard the slot brought to light: every write passes through the model, which keeps only
@@ -431,8 +569,9 @@ class ClientFileRefsTest : StringSpec({
         fun futureOf(entries: List<Map<String, Any?>>) = entries.filter { it[GE.traitId] == future }.map { it[GE.data] }
         val both = listOf(mapOf("id" to "a"), mapOf("id" to "b"))
 
-        // An edit of another slot, as a copy or menu editor makes one.
-        val patched = svc.patchConfig(writer, classId) { current ->
+        // An edit of another slot, as a copy or menu editor makes one -- trialled, as theirs are: a slot this node
+        // does not read is nothing the write did, so it is not what the trial judges the write by.
+        val patched = svc.patchConfig(writer, classId, trial = true) { current ->
             current + (CCT.cfactDef to listOf(mapOf(CCT.name to "carryTwo", CCT.group to "carry", CCT.description to "Two.")))
         }
         patched.entriesBySlot().getValue(CCT.cfactDef).single()[CCT.name] shouldBe "carryTwo"
@@ -445,6 +584,117 @@ class ClientFileRefsTest : StringSpec({
         val reopened = svc.revertToEditable(writer, classId)
         reopened.version shouldBe rewritten.version + 1
         futureOf(reopened.entries) shouldBe both
+    }
+
+    // The cases below run where a problem in stored configuration is forgiven -- reported, and the rest loaded -- as
+    // it is on every node but a test's: what a load keeps cannot be seen where the first problem refuses it.
+    val forgiving by lazy {
+        // Its own instance (issue #1075): the stored check's mode is instance-wide.
+        Startup.mkTestBootCxt("fileRefsWarn", "fileRefsWarn1153", mapOf(GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name))
+    }
+
+    fun problemsOf(client: String) = ClientConfigIssues.get(forgiving).issuesFor(client).map { it.message }
+
+    "a load keeps the refs it can serve and says of each other one why it left it out" {
+        val w = forgiving
+        val client = "refload"
+        defineClient(client, w)
+        val wsvc = GedraConfigService.get(w)
+        val hash = plant(client, png, w)
+        val gone = "0".repeat(64)
+        // Stored in-process, which holds an entry to nothing: what a restore or a hand edit can leave in a row.
+        wsvc.writeConfig(
+            writerOf(client, w),
+            gedraConfig(w, "arefs", clientNamespace(client), client) {
+                fileRef("logo", hash, "The first claim on the id.")
+                fileRefFromMap(mapOf(CCT.refId to "not a name", CCT.source to FREF.sourceStore, CCT.hash to hash))
+                fileRefFromMap(mapOf(CCT.refId to "later", CCT.source to "elsewhere", CCT.hash to hash))
+                fileRefFromMap(mapOf(CCT.refId to "nohash", CCT.source to FREF.sourceStore, CCT.hash to "abc"))
+                fileRef("gone", gone)
+            },
+        )
+        wsvc.writeConfig(writerOf(client, w), gedraConfig(w, "bmore", clientNamespace(client), client) { fileRef("logo", hash, "A second."); fileRef("extra", hash) })
+        GedraConfigReload.reloadClient(w, client)
+
+        val kept = FileRefService.get(w).forClient(client).refs
+        kept.keys shouldContainExactly setOf("logo", "gone", "extra")
+        kept.getValue("logo").def.description shouldBe "The first claim on the id."
+        val problems = problemsOf(client)
+        problems.size shouldBe 5
+        problems.single { it.contains("not a name") } shouldContain "whose id is no name"
+        problems.single { it.contains("'later'") } shouldContain "the source 'elsewhere', which this node does not read"
+        problems.single { it.contains("'nohash'") } shouldContain "the hash 'abc', which is not one"
+        problems.single { it.contains("'logo'") } shouldContain "declared more than once"
+        problems.single { it.contains("'gone'") } shouldContain "names a file that is not in the file store ($gone)"
+
+        // A ref whose file is missing is kept, listed as missing, and answered as not found.
+        val admin = adminOf(client, w)
+        val shown = listed(admin)
+        shown.getValue("gone")[FREF.missing] shouldBe true
+        shown.getValue("gone").containsKey(FREF.file) shouldBe false
+        shown.getValue("logo")[FREF.missing] shouldBe false
+        static(admin, "gone").rptStatusCode shouldBe EXC.notFound
+        static(admin, "extra").rptResponseBytes!!.toList() shouldBe png.toList()
+        // And none of it stops an edit of something else in that configuration: what it already had is not judged.
+        val patched = admin.postData(CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "another", CCT.source to FREF.sourceStore, CCT.hash to hash), "arefs"))
+        patched[CFEP.name] shouldBe "arefs"
+        wsvc.publish(writerOf(client, w), GedraId.of(GedraConfigType.configDoc, client, "arefs"))
+        admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "gone"))[CCT.refId] shouldBe "gone"
+    }
+
+    "a client is served a bounded number of refs, and one over it can still take refs away" {
+        val w = forgiving
+        val client = "refcap"
+        defineClient(client, w)
+        val wsvc = GedraConfigService.get(w)
+        val wrefs = FileRefService.get(w)
+        val hash = plant(client, png, w)
+        val over = FREF.maxRefs + 5
+        // More than a client is served, however they came to be stored: across two configurations here.
+        wsvc.writeConfig(writerOf(client, w), gedraConfig(w, "amany", clientNamespace(client), client) { for (n in 1..150) fileRef("r$n", hash) })
+        wsvc.writeConfig(writerOf(client, w), gedraConfig(w, "bmany", clientNamespace(client), client) { for (n in 151..over) fileRef("r$n", hash) })
+        for (name in listOf("amany", "bmany")) wsvc.publish(writerOf(client, w), GedraId.of(GedraConfigType.configDoc, client, name))
+        GedraConfigReload.reloadClient(w, client)
+
+        // It is served the first of them, as many as a client is, and told once that it holds more.
+        wrefs.forClient(client).refs.size shouldBe FREF.maxRefs
+        problemsOf(client).single() shouldBe "Client '$client' has more than ${FREF.maxRefs} file refs, which is as many as a client is served."
+
+        // Over its limit, it is not stranded there: taking a ref away introduces no problem it did not have --
+        // whichever configuration it is taken from, and so whatever order a trial then reads them in.
+        val admin = adminOf(client, w)
+        admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r1"))[CCT.refId] shouldBe "r1"
+        admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r$over"))[CCT.refId] shouldBe "r$over"
+        wrefs.forClient(client).refs.size shouldBe FREF.maxRefs
+        // An upload of a new one is still refused, before it stores the file.
+        refused(admin, "fresh", image(otherPng)) shouldContain "as many as a client is served"
+        // Brought back within it, it has no problem left.
+        for (n in 2..5) admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r$n"))[CCT.refId] shouldBe "r$n"
+        wrefs.forClient(client).refs.size shouldBe FREF.maxRefs - 1
+        problemsOf(client).shouldBeEmpty()
+        uploaded(admin, "fresh", image(otherPng))
+    }
+
+    // A client with a sandbox runs what it published, so its drafts are loaded only by the sandbox -- and a problem a
+    // draft already has is recorded there. The next write to the client has to recognise it as one it already had.
+    "a draft ref whose file went missing does not refuse the client's later edits" {
+        val w = forgiving
+        val client = "refdraft"
+        defineClient(client, w)
+        val admin = adminOf(client, w)
+        admin.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        uploaded(admin, "logo", image(png))[FREF.mode] shouldBe EDM.draft
+
+        FileStoreService.get(w).delete(w, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
+        FileRefService.get(w).forget(client, png.sha256Hex())
+        GedraConfigReload.reloadClient(w, client)
+        // Found by the sandbox's load, and worded by the client whose configuration it is.
+        problemsOf(client).none { it.contains("not in the file store") } shouldBe true
+        problemsOf(sandboxOf(client)).single { it.contains("not in the file store") } shouldContain "File ref 'logo' of client '$client' (config 'copy')"
+
+        // An unrelated draft edit of the same configuration goes through.
+        uploaded(admin, "banner", image(otherPng))[FREF.mode] shouldBe EDM.draft
+        storedRefs(client, w).map { it[CCT.refId] } shouldContainExactly listOf("logo", "banner")
     }
 
     "a file ref declared in source code refuses the boot, where a mistake in source is caught" {

@@ -472,17 +472,18 @@ show the deployment's.
   today, from the domain later -- the shell could link the client's own. Left out because the shell is rendered
   before anything about the caller is consulted, and that is a property worth a decision of its own.
 
-## When a client's configuration is moved to a deployment that does not share its file store
+## When a configuration holding file refs is imported for another client, or into another deployment
 
 A file ref (issue #1153) is an entry in a client's stored configuration that names bytes in the file store by their
-hash. An export carries the entry and not the bytes, so an import into a deployment with another store is refused,
-naming the refs whose files are not there.
+hash, kept under that client. An export carries the entry and not the bytes, so an import is refused, naming the refs
+whose files are not there, wherever the bytes are not under the *target* client: another deployment's store, or a
+clone to another client id in this one.
 
 - **Carry a configuration's files with it** *(#1153, deferred here 2026-10-13).* An export that lists, or bundles,
   the objects its file refs name, and an import that stores them before it writes the entries -- under the target
-  client's prefix, since an object is kept under the client whose configuration holds its ref. Until then the files
-  are copied between stores by hand, key for key (`clients/<client>/refs/<hash>`), before the import. Left out because
-  nothing moves a client between deployments with different stores yet, and the refusal says exactly what is missing.
+  client's prefix. Until then the files are copied by hand, key for key (`clients/<client>/refs/<hash>`), before the
+  import. Left out because no client holds file refs yet, so no import meets the refusal; the first clone or restore
+  of one that does is the trigger, and the refusal says exactly what is missing.
 
 ## When the sample's file endpoints should show how files are really kept
 

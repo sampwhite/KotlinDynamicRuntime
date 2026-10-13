@@ -22,4 +22,11 @@ object CMK {
     /** One of a client's file refs (issue #1153) -- a named file its configuration holds -- returned as the file
      *  itself: `/<staticRoot>/<appId>/ref/<refId:hash>`. Always the **caller's** client's; see `FREF.staticPath`. */
     const val ref = "ref"
+
+    /**
+     * Separates a name from the hash of its content in a static address -- a fragment file from its build id, a web
+     * asset's slot or a file ref's id from its hash. One constant, so the side that builds an address and the side
+     * that parses it cannot come to split it differently.
+     */
+    const val nameSep = ':'
 }

@@ -5,13 +5,13 @@ import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FileMeta
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.StoredFile
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.configOwnerOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.ContentServer
@@ -119,12 +119,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
      * client that has merely set nothing. The shell and the static address never name one: they ask for the
      * caller's own.
      */
-    fun knownClient(cxt: KdrCxt, client: String): String {
-        if (ClientService.get(cxt).known(client) == null) {
-            throw KdrException("This node knows no client '$client'.", code = EXC.notFound)
-        }
-        return client
-    }
+    fun knownClient(cxt: KdrCxt, client: String): String = ClientService.get(cxt).requireKnown(client)
 
     /** The image in [slot] of [client]'s web assets, content and metadata, or null when the slot holds none. */
     fun file(cxt: KdrCxt, client: String, slot: String): StoredFile? =
@@ -261,7 +256,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
          * The client whose web assets [client]'s people see: its own, or for a sandbox its parent's -- a sandbox
          * previews its parent, and has no images of its own to be different by.
          */
-        fun ownerOf(client: String): String = sandboxParentOf(client) ?: client
+        fun ownerOf(client: String): String = configOwnerOf(client)
 
         /** Where [slot] of [owner]'s web assets is kept in the [bucket]. */
         fun keyOf(owner: String, slot: String): String = "clients/$owner/web/$slot"

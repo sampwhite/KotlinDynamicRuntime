@@ -285,8 +285,8 @@ class GedraConfig(
     val unreadReports: Map<String, UnreadReport> = emptyMap(),
     /**
      * The file refs this config declares (issue #1153): its client's named files, each a pointer to bytes kept
-     * elsewhere. A list, not a map by id: a row edited by hand to hold one id twice still reassembles, and the load
-     * says so and drops the second -- costing the duplicate and not the configuration.
+     * elsewhere. A list, not a map by id: a row edited by hand to hold one id twice still reassembles, the load says
+     * so and leaves the second out, and a write stores the first -- costing the duplicate and not the configuration.
      */
     val fileRefs: List<FileRefDef> = emptyList(),
     /**
