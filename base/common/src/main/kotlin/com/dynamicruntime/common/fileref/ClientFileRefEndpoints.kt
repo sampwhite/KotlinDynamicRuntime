@@ -45,9 +45,10 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         property(CCT.source, "Where the file's bytes are.", required = true) {
             option(FREF.sourceStore, "The file store")
             option(FREF.sourceLocal, "A local file")
+            option(FREF.sourceClientLocal, "A local file in the client's own directory of a root open to clients")
         }
         property(CCT.root, "For a local file, the root it is under.")
-        property(CCT.path, "For a local file, its path under the root.")
+        property(CCT.path, "For a local file, its path under the root -- or, for a client's own, under the client's directory there.")
         property(CCT.hash, "The SHA-256 of the file's bytes: the hash the ref names, or for a local file the hash of the file as it is now. Absent for a local file that is missing.")
         property(FREF.name, "The ref by name and content, `<refId>:<hash>`: what the static root serves it as, at `/<appId>/ref/<name>`. Absent with the hash.")
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }
@@ -68,7 +69,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
 
     type(FREF.changeTypeName) {
         type = SCT.kObject
-        description = "What an upload or a removal of a file ref did: where it landed, and how it took effect."
+        description = "What an upload, a naming or a removal of a file ref did: where it landed, and how it took effect."
         property(FREF.client, "The client whose configuration took the change: the one named, or a sandbox's parent.", required = true)
         property(CCT.refId, "The ref.", required = true)
         property(FREF.configName, "The stored configuration the change landed in.", required = true)
@@ -150,9 +151,11 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         "Names a local file as one of a client's file refs (issue #1164), replacing what the ref named: a file the " +
             "deployment keeps on the server, under a root it has opened to clients and in the client's own " +
             "directory there. Nothing is uploaded and nothing is copied -- the ref is served the file as it is, by " +
-            "the hash of its bytes when it is read. Refused with a 403 for a root that is not open to clients, " +
-            "unless the caller sees every client; and with a 400 when the file is not there to be served as an " +
-            "image, which says one thing whatever the reason. Live or a draft as an upload is.",
+            "the hash of its bytes when it is read. The ref is of the `${FREF.sourceClientLocal}` kind, which reaches " +
+            "the client's own directory and nothing else. Refused with a 403 for a root that is not open to clients " +
+            "(a 400 for a caller who sees every client, who names any other file by a typed entry); and with a 400 " +
+            "when the file is not there to be served as an image, which says one thing whatever the reason. Live " +
+            "or a draft as an upload is.",
         HttpMethod.POST,
         outputRef = FREF.changeTypeName,
         needsClientConfig = true,
@@ -181,14 +184,19 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
     listEndpoint(
         UADEP.clientFilesRoots,
         "The roots of local files that are open to clients (issue #1164), by name: where a client's own " +
-            "administrator may name a file as a ref. Each is divided by client, so a path named in one is looked " +
-            "for in the client's own directory there. The names only -- what is in a root is not listed. Empty " +
-            "where the deployment has opened none, which is the default.",
+            "administrator may name a file as a ref, the path being looked for in the client's own directory " +
+            "there. The names as the deployment declared them, and nothing of the disk -- not what is in a root, " +
+            "nor whether there is yet a directory of that name. The same for every client; empty where the " +
+            "deployment has opened none, which is the default.",
         outputRef = FREF.rootTypeName,
         // As many as the deployment declared in one variable.
         noLimit = true,
+        inputFields = { overseenClientField(FREF.client) },
         needsClientConfig = true,
-    ) { c, _ ->
+    ) { c, request ->
+        // The answer is the deployment's and no client's, but who may ask is who may ask of a client's files at
+        // all: the administrator of one, as every call beside this holds.
+        knownClient(c, request)
         FileRefService.get(c).clientRoots().map { mapOf(CCT.root to it) }
     }
 

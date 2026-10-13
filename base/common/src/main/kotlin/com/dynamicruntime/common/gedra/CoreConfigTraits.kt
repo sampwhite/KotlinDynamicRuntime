@@ -183,6 +183,7 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.source, "Where the file's bytes are.", required = true) {
             option(FREF.sourceStore, "The file store")
             option(FREF.sourceLocal, "A local file")
+            option(FREF.sourceClientLocal, "A local file in the client's own directory of a root open to clients")
         }
         property(CCT.hash, "For the file store: the SHA-256 of the file's bytes, in lowercase hex, which is what names them there.") {
             pattern = FREF.hashPattern
@@ -190,7 +191,11 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
         property(CCT.root, "For a local file: the root it is under, by the name the deployment declared it with.") {
             pattern = FREF.rootPattern
         }
-        property(CCT.path, "For a local file: its path under the root, in segments of letters, digits, `.`, `_` and `-`, none beginning with a dot.") {
+        property(
+            CCT.path,
+            "For a local file: its path under the root -- or, for a client's own, under the client's directory there " +
+                "-- in segments of letters, digits, `.`, `_` and `-`, none beginning with a dot.",
+        ) {
             maxLength = FREF.maxPathLength
         }
         property(CCT.description, "What the file is for, in the administrator's words.") { maxLength = FREF.maxDescriptionLength }

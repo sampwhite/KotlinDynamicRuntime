@@ -116,14 +116,16 @@ the same way, under their own marker:
   is what the disk says (`uploadedAt` is when the file last changed, and there is no `uploadedByName`). A ref the
   client was shipped with cannot be removed (`…/files/remove` answers 400: nothing stored holds it), only
   uploaded over; removing that upload shows the shipped one again.
-- **A client's administrator can also pick a file the deployment keeps for the client** (issue #1164), where the
-  deployment has opened a root to clients. `GET …/files/roots` lists the open roots as `[{root}]` -- empty on most
-  deployments, so offer the choice only when it is not -- and `POST …/files/local {client?, refId, root, path,
-  description?}` (JSON, no file part) names the file, answering what an upload answers. The `path` is under the
-  client's own directory in the root; there is no endpoint that lists what is there, so the page takes a typed
-  path. A 403 means the root is not open to this caller; a 400 that the file "is not there to be served as an
-  image" is deliberately one sentence for every reason (missing, not an image, too large) -- do not try to tell
-  them apart. Wire names are `CCT.root`/`CCT.path` and `UADEP.clientFilesLocal`/`clientFilesRoots`.
+- **A client's administrator can also name a file the deployment keeps for the client** (issue #1164), where the
+  deployment has opened a root to clients. No page does this yet; when you build one: `GET …/files/roots
+  {client?}` lists the open roots as `[{root}]` -- empty on most deployments, so offer the choice only when it is
+  not -- and `POST …/files/local {client?, refId, root, path, description?}` (JSON, no file part) names the file,
+  answering what an upload answers. The `path` is under the client's own directory in the root, and nothing
+  lists what is there, so it is a typed path. A 403 means the root is not open to this caller; a 400 that the
+  file "is not there to be served as an image" is deliberately one sentence for every reason (missing, not an
+  image, too large) -- do not try to tell them apart. Such a ref is listed with `source` `FREF.sourceClientLocal`,
+  beside `sourceStore` and `sourceLocal`. Wire names are `CCT.root`/`CCT.path` and
+  `UADEP.clientFilesLocal`/`clientFilesRoots`.
 
 ## UI-config endpoints: how a widget-group learns what to build (issue #70)
 

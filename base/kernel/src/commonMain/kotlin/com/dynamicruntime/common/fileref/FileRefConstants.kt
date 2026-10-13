@@ -27,8 +27,24 @@ object FREF {
      */
     const val sourceLocal = "local"
 
+    /**
+     * A ref whose bytes are a file on the machine **in the client's own directory** of a root the deployment has
+     * opened to clients (issue #1164): `<root>/<clientId>/<path>`. The one kind of local ref a client's own
+     * administrator may write.
+     *
+     * **A source of its own, and not a way of reading [sourceLocal]**, so that what a ref reaches is said by the
+     * ref and not by how a node happens to be configured. A `local` ref names `<root>/<path>` whatever is opened;
+     * this names the client's directory, and where its root is not open -- the deployment closed it, one node was
+     * started without knowing of it, the release was rolled back to one that does not read this source -- it names
+     * nothing and is left out. It never comes to mean the other.
+     */
+    const val sourceClientLocal = "clientLocal"
+
     /** Every source a ref may have. */
-    val sources = listOf(sourceStore, sourceLocal)
+    val sources = listOf(sourceStore, sourceLocal, sourceClientLocal)
+
+    /** The sources that name a file on the machine, by a root and a path. */
+    val localSources = setOf(sourceLocal, sourceClientLocal)
 
     /** The longest a local ref's path may be: a file-store key's length (`FNAME.maxKeyLength`, which a test holds this to), whose rules it is held to. */
     const val maxPathLength = 512
@@ -143,7 +159,8 @@ object FREF {
  * **For a ref in the file store, the hash is the pointer.** Where the bytes are kept is derived from it and never
  * stored, so an entry names exactly one sequence of bytes and nothing can change them under it. **For a local ref
  * (issue #1154) the pointer is a [root] and a [path] under it**, and there is no hash to author: it is the file's,
- * as it is read.
+ * as it is read. Which file that is, is the [source]'s to say: for [FREF.sourceLocal] the path is under the root,
+ * and for [FREF.sourceClientLocal] (issue #1164) under the directory there of the client whose ref it is.
  *
  * Either way, **what the file is -- its type, its size -- is not here**: it is the file store's own record, written
  * by the upload that checked the bytes, or what the local file is found to be each time it is read. An
@@ -168,17 +185,22 @@ class FileRefDef(
     val configName: String? = null,
     val stored: Boolean = false,
     val extra: Map<String, Any?> = emptyMap(),
-    /** For [FREF.sourceLocal]: the name of the declared root its file is under. */
+    /** For [FREF.localSources]: the name of the declared root its file is under. */
     val root: String? = null,
-    /** For [FREF.sourceLocal]: the file's path under its [root], slash-separated. */
+    /**
+     * For [FREF.localSources]: the file's path, slash-separated -- under its [root], or for
+     * [FREF.sourceClientLocal] under the client's own directory in the root. The entry never holds the client's
+     * segment: copied to another client, it names that client's own file.
+     */
     val path: String? = null,
 ) {
     /**
-     * What this ref points at, as one value: the same for two refs exactly when they name the same bytes by the
-     * same means. How a listing tells whether what a client's people are served is what its administrator sees.
+     * What this ref points at, as one value: the same for two refs **of one client** exactly when they name the
+     * same bytes by the same means. How a listing tells whether what a client's people are served is what its
+     * administrator sees, and how a write tells a ref that is carried from one that is re-pointed.
      */
     val pointer: String
-        get() = if (source == FREF.sourceLocal) "$source:${root.orEmpty()}/${path.orEmpty()}" else "$source:${hash.orEmpty()}"
+        get() = if (source in FREF.localSources) "$source:${root.orEmpty()}/${path.orEmpty()}" else "$source:${hash.orEmpty()}"
 
     /** This ref as its stored entry: what was authored and what was carried, and none of the stamp. */
     fun toEntry(): Map<String, Any?> = buildMap {

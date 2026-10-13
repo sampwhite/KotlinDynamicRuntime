@@ -277,70 +277,133 @@ class LocalFileRootsTest : StringSpec({
         r.roots.read("brand", "logo.png").file.shouldNotBeNull()
     }
 
-    // Issue #1164. A root the deployment opens to clients is one a client's own administrator may name a file in, so
-    // it is divided by client: what a ref reaches there is its client's own directory, and nothing else of the root.
-    "a root open to clients is divided by client: a ref reads its own client's directory there, whoever it is" {
+    // Issue #1164. A client's own ref reads the client's own directory of a root the deployment opened to clients.
+    // That it is read so is said by the ref's kind -- handed in here as the client whose directory it is -- and
+    // never worked out from the root: so a root that is not open makes such a ref name nothing, not something else.
+    "a client's own ref reads its client's directory of an open root, and names nothing where the root is not open" {
         val location = tempDir()
         val approved = File(location, "approved").apply { mkdirs() }
         val brand = File(location, "brand").apply { mkdirs() }
         File(approved, "acme/marks").mkdirs()
-        File(approved, "other").mkdirs()
+        File(approved, "acme/globex").mkdirs()
+        File(approved, "globex").mkdirs()
         File(approved, "acme/logo.png").writeBytes(png)
         File(approved, "acme/marks/mark.svg").writeBytes(svg)
-        File(approved, "other/logo.png").writeBytes(svg)
-        File(approved, "other/theirs.png").writeBytes(png)
+        File(approved, "acme/globex/hero.png").writeBytes(png)
+        File(approved, "globex/logo.png").writeBytes(svg)
+        File(approved, "globex/hero.png").writeBytes(svg)
+        File(approved, "globex/theirs.png").writeBytes(png)
         File(approved, "top.png").writeBytes(png)
         File(brand, "logo.png").writeBytes(png)
-        val roots = LocalFileRoots.resolve(
-            cxtWith(ENV.unit, LFENV.dir.name to location.absolutePath, LFENV.clientRoots.name to " approved , later "),
-        )
+        File(brand, "acme").mkdirs()
+        File(brand, "acme/logo.png").writeBytes(svg)
+        val settings = arrayOf<Pair<String, Any?>>(LFENV.dir.name to location.absolutePath)
+        val roots = LocalFileRoots.resolve(cxtWith(ENV.unit, *settings, LFENV.clientRoots.name to " approved , later "))
 
         // Open by its name, whether or not there is such a root: who may write a ref cannot tell what is there.
         roots.isOpenToClients("approved") shouldBe true
         roots.isOpenToClients("later") shouldBe true
         roots.isOpenToClients("brand") shouldBe false
-        roots.describe() shouldBe "'${location.absolutePath}' holds the roots approved, brand; open to clients, each in its own directory: approved, later (of which later is no root here yet)"
+        roots.describe() shouldBe "'${location.absolutePath}' holds the roots approved, brand; open to clients, each to its own directory: approved, later (of which later is no root here yet)"
 
         // One root and path, a different file for each client.
         roots.read("approved", "logo.png", "acme").file.shouldNotBeNull().bytes.toList() shouldBe png.toList()
-        roots.read("approved", "logo.png", "other").file.shouldNotBeNull().bytes.toList() shouldBe svg.toList()
+        roots.read("approved", "logo.png", "globex").file.shouldNotBeNull().bytes.toList() shouldBe svg.toList()
         roots.read("approved", "marks/mark.svg", "acme").file.shouldNotBeNull()
         // Nothing of another client's, by any way of writing it, and nothing at the root's own top.
-        for (path in listOf("theirs.png", "other/theirs.png", "../other/theirs.png", "../top.png", "top.png", "acme/logo.png")) {
+        for (path in listOf("theirs.png", "globex/theirs.png", "../globex/theirs.png", "../top.png", "top.png", "acme/logo.png")) {
             roots.read("approved", path, "acme").file.shouldBeNull()
         }
-        // A client with no directory there has nothing, and a ref with no client at all has nothing.
+        // A client with no directory there has nothing.
         roots.read("approved", "logo.png", "nobody").file.shouldBeNull()
-        roots.read("approved", "logo.png").file.shouldBeNull()
         // A client's id is its directory's name, exactly: an id that could not be one finds nothing, and neither
         // does one that matches a directory only by case, or by being a path.
         for (owner in listOf("", ".", "..", "Acme", "acme/marks", "acme:sandbox", "a.b", "../brand")) {
             roots.read("approved", "logo.png", owner).file.shouldBeNull()
             roots.read("approved", "mark.svg", owner).file.shouldBeNull()
         }
+        roots.read("approved", "mark.svg", "acme/marks").reason.orEmpty() shouldContain "can have no directory in the root"
         // A client's directory that is a link to another's is no directory of its own: the real path has to be
         // the root's plus the client plus the path.
-        Files.createSymbolicLink(File(approved, "sly").toPath(), File(approved, "other").toPath())
+        Files.createSymbolicLink(File(approved, "sly").toPath(), File(approved, "globex").toPath())
         roots.read("approved", "theirs.png", "sly").let {
             it.file.shouldBeNull()
             it.reason.orEmpty() shouldContain "reached through a link"
         }
-        // A root that is not open is not divided: whose ref it is makes no difference to what it names.
-        roots.read("brand", "logo.png", "acme").file.shouldNotBeNull()
-        roots.read("brand", "logo.png").file.shouldNotBeNull()
+
+        // An ordinary local ref is not a client's own, and names the root whole -- open or not. That is an
+        // operator's to write, and opening a root changes nothing of what theirs name.
+        roots.read("approved", "top.png").file.shouldNotBeNull()
+        roots.read("approved", "globex/theirs.png").file.shouldNotBeNull()
+        roots.read("brand", "logo.png").file.shouldNotBeNull().bytes.toList() shouldBe png.toList()
+
+        // In a root that is not open a client's own ref names nothing, though the very directory is there.
+        roots.read("brand", "logo.png", "acme").let {
+            it.file.shouldBeNull()
+            it.reason.orEmpty() shouldContain "is not open to clients on this node"
+        }
+        // And so with the root closed -- the variable dropped, or a node started without it. A ref written while
+        // it was open keeps meaning the client's directory, or nothing: never the path read from the root's top,
+        // which here would be another client's file.
+        val closed = LocalFileRoots.resolve(cxtWith(ENV.unit, *settings))
+        closed.clientRoots shouldBe emptySet()
+        closed.read("approved", "globex/hero.png", "acme").file.shouldBeNull()
+        closed.read("approved", "logo.png", "acme").file.shouldBeNull()
+        closed.read("approved", "globex/hero.png").file.shouldNotBeNull().bytes.toList() shouldBe svg.toList()
+        roots.read("approved", "globex/hero.png", "acme").file.shouldNotBeNull().bytes.toList() shouldBe png.toList()
 
         // Opening a root is a declaration, and one that is malformed refuses the start, in every environment.
         for (env in listOf(ENV.unit, ENV.local, ENV.prod)) {
             refusal(env, LFENV.clientRoots.name to "approved,my root") shouldContain "${LFENV.clientRoots.name} opens a root whose name is no name"
             refusal(env, LFENV.clientRoots.name to "../approved") shouldContain "whose name is no name"
+            refusal(env, LFENV.clientRoots.name to "approved,brand,approved") shouldContain "opens the root 'approved' twice"
         }
-        // None is opened by default.
-        LocalFileRoots.resolve(cxtWith(ENV.unit, LFENV.dir.name to location.absolutePath)).let {
-            it.clientRoots shouldBe emptySet()
-            it.isOpenToClients("approved") shouldBe false
-            // And the same root, not opened, is read whole.
-            it.read("approved", "top.png", "acme").file.shouldNotBeNull()
+    }
+
+    // The two kinds of ref as a source reads them: what each says when its file is not there, and what a listing
+    // is answered without the file being read again.
+    "a client's own ref says it is the client's directory that was looked in, and a listing does not read a file twice" {
+        val location = tempDir()
+        File(location, "approved/acme").mkdirs()
+        val file = File(location, "approved/acme/hero.png").also { it.writeBytes(png) }
+        val cxt = cxtWith(ENV.unit)
+        fun sourceOver(vararg open: String) = LocalFileSource(
+            LocalFileRoots.resolve(cxtWith(ENV.unit, LFENV.dir.name to location.absolutePath, LFENV.clientRoots.name to open.joinToString(","))),
+            FREF.sourceClientLocal,
+        )
+        fun own(path: String, owner: String = "acme") =
+            FileRef(FileRefDef("hero", FREF.sourceClientLocal, hash = null, root = "approved", path = path), owner)
+        val source = sourceOver("approved")
+        source.source shouldBe FREF.sourceClientLocal
+
+        source.fileProblem(cxt, own("hero.png")).shouldBeNull()
+        source.read(cxt, own("hero.png")).shouldNotBeNull().meta.let {
+            it.hash shouldBe png.sha256Hex()
+            it.client shouldBe "acme"
         }
+        // One sentence, whatever is wrong -- and it says whose directory, which is all its administrator needs.
+        val notThere = "names the local file 'approved/absent.png' in the client's own directory of that root, which is not there to be served as an image."
+        source.fileProblem(cxt, own("absent.png")) shouldBe notThere
+        source.fileProblem(cxt, own("hero.png", owner = "globex")) shouldBe notThere.replace("absent", "hero")
+        // The root closed on this node: the same words, and no file.
+        sourceOver().let {
+            it.fileProblem(cxt, own("hero.png")) shouldBe notThere.replace("absent", "hero")
+            it.read(cxt, own("hero.png")).shouldBeNull()
+            it.meta(cxt, own("hero.png")).shouldBeNull()
+        }
+
+        // A listing asks for the file's record, and is answered what was found while the file has not changed: a
+        // client's administrator may name one file under many ids, and each is one read between them.
+        val stamp = file.lastModified()
+        source.meta(cxt, own("hero.png")).shouldNotBeNull().hash shouldBe png.sha256Hex()
+        file.writeBytes(ByteArray(png.size) { 'x'.code.toByte() })
+        file.setLastModified(stamp) shouldBe true
+        source.meta(cxt, own("hero.png")).shouldNotBeNull().hash shouldBe png.sha256Hex()
+        // Serving goes on the bytes, always.
+        source.read(cxt, own("hero.png")).shouldBeNull()
+        // And a file that has changed is read again.
+        file.writeBytes(png + byteArrayOf(7))
+        source.meta(cxt, own("hero.png")).shouldNotBeNull().hash shouldBe (png + byteArrayOf(7)).sha256Hex()
     }
 
     // A write's trial judges every ref of its client, more than once, under the lock every reload takes: it asks

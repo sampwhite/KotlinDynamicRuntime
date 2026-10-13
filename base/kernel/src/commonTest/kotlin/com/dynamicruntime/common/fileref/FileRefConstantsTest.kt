@@ -102,6 +102,13 @@ class FileRefConstantsTest {
         assertFalse(local.pointer == FileRefDef("logo", FREF.sourceLocal, null, root = "brand", path = "logo2.png").pointer)
         assertFalse(local.pointer == FileRefDef("logo", FREF.sourceLocal, null, root = "shared", path = "logo.png").pointer)
         assertFalse(local.pointer == stored.pointer)
+        // A client's own ref (issue #1164) names its file by the same two fields and is a different pointer: the
+        // same root and path, read from the client's own directory. Turning one kind into the other is a re-pointing.
+        val own = FileRefDef("logo", FREF.sourceClientLocal, hash = null, root = "brand", path = "logo.png")
+        assertEquals("clientLocal:brand/logo.png", own.pointer)
+        assertFalse(own.pointer == local.pointer)
+        assertEquals(mapOf(CCT.refId to "logo", CCT.source to FREF.sourceClientLocal, CCT.root to "brand", CCT.path to "logo.png"), own.toEntry())
+        assertEquals(own.pointer, FileRefDef.fromEntry(own.toEntry(), null, stored = true).pointer)
     }
 
     @Test
@@ -116,7 +123,8 @@ class FileRefConstantsTest {
         }
         for (good in listOf("brand", "acme-repo", "shared_2", "A", "9lives")) assertNull(FREF.rootProblem(good), "should accept '$good'")
         for (bad in listOf("", ".", "..", ".hidden", "my brand", "brand/sub", "/etc", "a.b")) assertNotNull(FREF.rootProblem(bad), "should refuse '$bad'")
-        assertEquals(listOf(FREF.sourceStore, FREF.sourceLocal), FREF.sources)
+        assertEquals(listOf(FREF.sourceStore, FREF.sourceLocal, FREF.sourceClientLocal), FREF.sources)
+        assertEquals(setOf(FREF.sourceLocal, FREF.sourceClientLocal), FREF.localSources)
     }
 
     // A field this release does not read is a later release's: an edit of anything else in the configuration, made

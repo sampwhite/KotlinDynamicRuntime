@@ -8,7 +8,9 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientStoredEdit
 import com.dynamicruntime.common.gedra.GedraConfigRow
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.storedConfigCheckMode
 import com.dynamicruntime.common.http.request.ContentData
+import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.util.byteSizeText
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toOptStr
@@ -62,28 +64,39 @@ object ClientFileRefEdit {
         }
         val kind = WebAssetCheck.check("file ref", content.mimeType, bytes)
 
-        val at = landing(cxt, client, refId, "a file upload")
+        val at = landing(cxt, ClientStoredEdit.target(cxt, client, editName), refId, "a file upload")
         val hash = bytes.sha256Hex()
         storeBytes(cxt, at.bound, at.refs, at.owner, refId, hash, ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename))
         return land(cxt, at, refId, description) { kept, extra -> FileRefDef(refId, FREF.sourceStore, hash, kept, extra = extra) }
     }
 
     /**
-     * Names the local file at [path] under the root [root] as [client]'s ref [refId], replacing what the ref named,
-     * and makes that take effect (issue #1164). [description] absent keeps the ref's description; blank clears it.
+     * Names the local file at [path], in [client]'s own directory of the root [root], as its ref [refId] -- replacing
+     * what the ref named -- and makes that take effect (issue #1164). [description] absent keeps the ref's
+     * description; blank clears it.
      *
-     * No bytes come with it: the file is where the deployment put it, and in a root open to clients that is the
-     * client's own directory there (`LocalFileRoots`). **Who may name a file where is the configuration write's to
-     * decide** (`GedraConfigService.mayNameLocalFile`) -- it is asked here only so that a call that will be refused
-     * leaves nothing behind -- and whether the file is there to be served is the write's trial's, which refuses a
-     * ref to one that is not, saying one thing whatever the reason.
+     * No bytes come with it: the file is where the deployment put it. The entry written is a **client's own** ref
+     * ([FREF.sourceClientLocal]), whoever calls this, so what it reaches is that client's directory of a root
+     * open to clients and nothing else -- an ordinary local ref, which names a root whole, is not this call's to
+     * write.
+     *
+     * **Everything that can be refused is refused before anything is written**, the editors' configuration
+     * included: a root that is not open (asked of its name, in the same words whether or not there is such a
+     * root), judged for the caller the write will be judged for; and a file that is not there to be served, in the
+     * one sentence a load says of it. The configuration write and its trial hold both again
+     * (`GedraConfigService.mayNameLocalFile`); they are asked here so that a mistyped path leaves nothing behind.
      */
     fun nameLocal(cxt: KdrCxt, client: String, refId: String, root: String, path: String, description: String?): Result {
         FREF.refIdProblem(refId)?.let { throw KdrException.mkInput(it) }
         checkDescription(description)
         FREF.rootProblem(root)?.let { throw KdrException.mkInput(it) }
         LocalFileRoots.pathProblem(path)?.let { throw KdrException.mkInput("'$path' is not a path a local file may have: $it.") }
-        if (!GedraConfigService.get(cxt).mayNameLocalFile(cxt, root)) {
+        val target = ClientStoredEdit.target(cxt, client, editName)
+        // On the context the write is made on, which inside a sandbox is the parent's actor and not the caller's
+        // own row: asked of any other, this and the write could disagree.
+        val bound = target.bound
+        val svc = GedraConfigService.get(bound)
+        if (!svc.mayNameLocalFile(bound, FREF.sourceClientLocal, root)) {
             // The same words whether or not there is such a root: only that it is not one opened to clients.
             throw KdrException(
                 "The root '$root' is not one a client's own administrator may name a file in. The roots open to " +
@@ -91,9 +104,23 @@ object ClientFileRefEdit {
                 code = EXC.notAuthorized,
             )
         }
-        val at = landing(cxt, client, refId, "naming a local file")
+        if (!FileRefService.get(cxt).opensToClients(root)) {
+            // Reached only by a caller who may write any local ref: this call writes a client's own, which is
+            // read nowhere but in an open root.
+            throw KdrException.mkInput(
+                "The root '$root' is not open to clients (${LFENV.clientRoots.name}), and this names a file in a " +
+                    "client's own directory of one that is. A file anywhere else in a root is named by a " +
+                    "'${FREF.sourceLocal}' ref, written into the configuration.",
+            )
+        }
+        val at = landing(cxt, target, refId, "naming a local file")
+        val def = FileRefDef(refId, FREF.sourceClientLocal, hash = null, root = root, path = path)
+        // As the trial would say it, said before the editors' configuration is made for a ref that will not be written.
+        if (storedConfigCheckMode(bound) != BootCheckMode.off) {
+            at.refs.fileProblem(bound, FileRef(def, at.owner))?.let { throw KdrException.mkInput("File ref '$refId' of client '${at.owner}' $it") }
+        }
         return land(cxt, at, refId, description) { kept, extra ->
-            FileRefDef(refId, FREF.sourceLocal, hash = null, kept, extra = extra, root = root, path = path)
+            FileRefDef(refId, FREF.sourceClientLocal, hash = null, kept, extra = extra, root = root, path = path)
         }
     }
 
@@ -118,12 +145,11 @@ object ClientFileRefEdit {
     }
 
     /**
-     * Where [client]'s ref [refId] is to be written, having refused what can be refused before anything is: a
-     * client that takes no stored configuration here; a configuration holding somebody's unpublished changes
-     * ([what] names the change, for that refusal); and a client already served as many refs as it may have.
+     * Where the ref [refId] of [target]'s client is to be written, having refused what can be refused before
+     * anything is: a client that takes no stored configuration here; a configuration holding somebody's unpublished
+     * changes ([what] names the change, for that refusal); and a client already served as many refs as it may have.
      */
-    private fun landing(cxt: KdrCxt, client: String, refId: String, what: String): Landing {
-        val target = ClientStoredEdit.target(cxt, client, editName)
+    private fun landing(cxt: KdrCxt, target: ClientStoredEdit.EditTarget, refId: String, what: String): Landing {
         val bound = target.bound
         val owner = target.client
         val svc = GedraConfigService.get(bound)
@@ -226,7 +252,8 @@ object ClientFileRefEdit {
      * over the revision as it stands under the lock, so a ref another administrator added a moment ago is kept.
      *
      * [restoring] says [entry] is what the configuration held before this call changed it, put back as the call's
-     * undo: the one write of a local ref a client's own administrator makes, since it names nothing new.
+     * undo: how a client's own administrator comes to write back an operator's local ref, which they could not
+     * have named -- it names nothing new.
      */
     private fun patchEntry(
         svc: GedraConfigService,

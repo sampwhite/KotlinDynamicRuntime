@@ -19,6 +19,7 @@ import com.dynamicruntime.common.webasset.WebImageKind
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import kotlin.time.Instant
@@ -48,10 +49,12 @@ object LFENV {
         "KDR_LOCAL_FILE_CLIENT_ROOTS", group = ENVGRP.fileStore, defaultDoc = "none",
         description = "The roots of local files that are **open to clients**, by name, separated by commas: " +
             "`approved,seasonal`. A client's own administrator may name a file in such a root, where otherwise only " +
-            "the server's own code and an administrator who sees every client may name a local file at all. An " +
-            "open root is **divided by client**: a ref into it names `<root>/<clientId>/<path>`, whoever wrote the " +
-            "ref, so a client reaches its own directory there and no other client's. A name that is no root's " +
-            "name refuses the start; one that names no root yet is said on the startup line.",
+            "the server's own code and an administrator who sees every client may name a local file at all. What " +
+            "they name is a ref of its own kind (`clientLocal`), which reads the client's own directory there, " +
+            "`<root>/<clientId>/<path>`, and no other client's. Such a ref is read only where its root is open: " +
+            "set this the same on every node. A name that is malformed, or given twice, refuses the start; a " +
+            "well-formed name that matches no root -- a typo, or a root not made yet -- opens nothing, and is said " +
+            "on the startup line.",
     )
 }
 
@@ -86,11 +89,12 @@ class LocalAt(val real: Path?, val size: Long, val modifiedMs: Long, val reason:
  *   Asked each time a root is used, not only at startup, since a root may be a link somebody repoints.
  * - **A root under the location is named exactly as its directory is**, case and all: a name that finds the
  *   directory only because the filesystem ignores case would be a root on one machine and none on the next.
- * - **A root open to clients is divided by client** ([clientRoots], issue #1164): a ref into it reads
- *   `<root>/<owner>/<path>`, the owner being the client whose configuration holds the ref. That is a property of
- *   the root and not of who wrote the ref, so there is no ref into such a root that reaches another client's
- *   directory, or the root's own top. The owner's segment is part of the path every rule below is kept over: its
- *   directory is named exactly as the client is, and is no link.
+ * - **A client's own ref reads the client's own directory** (issue #1164). A ref of the `clientLocal` kind names
+ *   `<root>/<client>/<path>`, the client being the one whose ref it is, and only in a root the deployment opened
+ *   to clients ([clientRoots]). That it is read so is said by the ref's kind, handed in here by whoever reads one
+ *   ([locate]'s `clientDir`), and never inferred from how this node is configured: a root that is not open makes
+ *   such a ref name nothing, and never makes it name `<root>/<path>`. The client's segment is part of the path
+ *   every rule below is kept over: its directory is named exactly as the client is, and is no link.
  * - **A path is plain**: a file-store key's rules ([FNAME.keyProblem]), with no segment beginning with a dot.
  * - **The file's real path is exactly the root's real path plus the path.** That refuses a symbolic link anywhere
  *   below the root, and a path differing from the file's name only by case, which resolves on a filesystem that
@@ -110,7 +114,7 @@ class LocalFileRoots(
     val reserved: List<Path>,
     /** Why there is no [location] although nobody asked for none: the default is somewhere it may not be. */
     val locationNote: String? = null,
-    /** The names of the roots open to clients, each divided by client: see the class note. */
+    /** The names of the roots open to clients, where a client's own ref may be read: see the class note. */
     val clientRoots: Set<String> = emptySet(),
 ) {
     /**
@@ -153,20 +157,24 @@ class LocalFileRoots(
 
     /**
      * Where the file at [path] under the root [root] is, held to every rule of the class note about *which* file a
-     * ref may name, and not read: its content is [read]'s to judge. [owner] is the client whose ref it is, and is
-     * where the file is looked for in a root open to clients; no owner finds nothing there.
+     * ref may name, and not read: its content is [read]'s to judge.
+     *
+     * [clientDir] is for a client's own ref, and is the client whose ref it is: the file is then looked for in
+     * that client's directory of the root, and only in a root that is open to clients. Null is an ordinary local
+     * ref, which names the root whole whether or not it is open.
      */
-    fun locate(root: String, path: String, owner: String = ""): LocalAt {
+    fun locate(root: String, path: String, clientDir: String? = null): LocalAt {
         fun none(reason: String?) = LocalAt(null, 0, 0, reason)
         var reason: String? = null
         val rootReal = rootDir(root) { reason = it } ?: return none(reason)
         pathProblem(path)?.let { return none("the path is not one a local file may have ($it)") }
-        val under = if (isOpenToClients(root)) {
-            // A directory's name, as a root's is: a client whose id is not one has no directory here.
-            FREF.rootProblem(owner)?.let { return none("the client '$owner' can have no directory in the root '$root', which is divided by client") }
-            "$owner/$path"
-        } else {
+        val under = if (clientDir == null) {
             path
+        } else {
+            if (!isOpenToClients(root)) return none("the root '$root' is not open to clients on this node (${LFENV.clientRoots.name})")
+            // A directory's name, as a root's is: a client whose id is not one has no directory here.
+            FREF.rootProblem(clientDir)?.let { return none("the client '$clientDir' can have no directory in the root '$root'") }
+            "$clientDir/$path"
         }
         val named = rootReal.resolve(under)
         return try {
@@ -184,15 +192,19 @@ class LocalFileRoots(
         }
     }
 
-    /** The file at [path] under the root [root] -- for [owner], where the root is open to clients -- held to every rule of the class note. */
-    fun read(root: String, path: String, owner: String = ""): LocalRead {
-        val at = locate(root, path, owner)
+    /**
+     * The file at [path] under the root [root] -- in [clientDir]'s directory there, for a client's own ref -- held
+     * to every rule of the class note.
+     */
+    fun read(root: String, path: String, clientDir: String? = null): LocalRead {
+        val at = locate(root, path, clientDir)
         val real = at.real ?: return LocalRead(null, at.reason)
         return try {
-            val bytes = Files.readAllBytes(real)
-            val kind = WebAssetCheck.sniff(bytes)
+            // Opened without following a link, and read no further than a file may be long: the path was proven a
+            // moment ago, and a file can be swapped for a link, or grow, between being proven and being read.
+            val bytes = Files.newInputStream(real, LinkOption.NOFOLLOW_LINKS).use { it.readNBytes(FREF.maxSize + 1) }
+            val kind = if (bytes.size > FREF.maxSize) null else WebAssetCheck.sniff(bytes)
             when {
-                // Asked again of what was read: a file can grow between being measured and being read.
                 bytes.size > FREF.maxSize -> LocalRead(null, tooLarge)
                 kind == null -> LocalRead(null, "it is not an image a file ref may be")
                 else -> LocalRead(LocalFile(bytes, kind, Instant.fromEpochMilliseconds(at.modifiedMs), real.fileName.toString()), null)
@@ -214,8 +226,8 @@ class LocalFileRoots(
             location == null -> "no location is named"
             !location.isDirectory -> "'${location.path}' is not there, so it holds no roots"
             else -> {
-                val names = location.listFiles().orEmpty()
-                    .filter { it.isDirectory && FREF.rootProblem(it.name) == null && it.name !in placed }.map { it.name }.sorted()
+                // By the rule a read is held to, so this never names a root a ref could not be read from.
+                val names = location.list().orEmpty().filter { it !in placed && hasRoot(it) }.sorted()
                 "'${location.path}' holds ${if (names.isEmpty()) "no roots" else "the roots ${names.joinToString()}"}"
             }
         }
@@ -226,7 +238,7 @@ class LocalFileRoots(
             ""
         } else {
             val absent = clientRoots.filterNot { hasRoot(it) }.sorted()
-            "; open to clients, each in its own directory: ${clientRoots.sorted().joinToString()}" +
+            "; open to clients, each to its own directory: ${clientRoots.sorted().joinToString()}" +
                 if (absent.isEmpty()) "" else " (of which ${absent.joinToString()} ${if (absent.size == 1) "is" else "are"} no root here yet)"
         }
         return under + elsewhere + open
@@ -301,7 +313,7 @@ class LocalFileRoots(
             val open = LinkedHashSet<String>()
             for (name in cxt.getEnvVar(LFENV.clientRoots).orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }) {
                 FREF.rootProblem(name)?.let { throw configError("${LFENV.clientRoots.name} opens a root whose name is no name: $it") }
-                open.add(name)
+                if (!open.add(name)) throw configError("${LFENV.clientRoots.name} opens the root '$name' twice.")
             }
             return LocalFileRoots(location, roots, reserved, note, open)
         }
