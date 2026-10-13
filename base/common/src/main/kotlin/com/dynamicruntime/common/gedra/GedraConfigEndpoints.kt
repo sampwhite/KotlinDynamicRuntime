@@ -639,7 +639,7 @@ private fun cfgReloadBody(c: KdrCxt): Map<String, Any?> {
 
 /**
  * Reloads the bound client's stored configuration on this node and announces it to its peers (issues #616, #618) --
- * what the reload endpoint does, and what a write, patch or publish asking for [CFEP.reloadField] does once its
+ * what the reload endpoint does, and what a write, patch, or publish asking for [CFEP.reloadField] does once its
  * change is stored (issue #1156). One function, so the two cannot drift. Answers the reload's result.
  */
 private fun reloadAndAnnounce(c: KdrCxt): Map<String, Any?> {

@@ -12,7 +12,7 @@ import io.kotest.matchers.shouldBe
 
 /**
  * The client definition's field policies (issue #1108): one per field the schema declares, and the lists the create,
- * the definition editor and the write check read from them.
+ * the definition editor, and the write check read from them.
  */
 class ClientFieldPoliciesTest : StringSpec({
     val cxt = KdrCxt("policies", KdrInstanceConfig("policies", ENV.local, ENV.liveSource))

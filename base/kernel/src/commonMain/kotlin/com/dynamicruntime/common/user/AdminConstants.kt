@@ -129,7 +129,7 @@ object UADEP {
     const val userDelete = "/${SECT.clientAdmin}/user"
 
     /**
-     * The clients an administrator oversees, each with its status, origin and counts (issue #904): every known
+     * The clients an administrator oversees, each with its status, origin, and counts (issue #904): every known
      * client for an `allClients` holder, their own for a client-scoped administrator. Here rather than beside
      * [ADEP.clientSummaries] because this is the surface both kinds of administrator reach.
      */
@@ -140,7 +140,7 @@ object UADEP {
 
     /**
      * Adds or removes a client's Shadow Sandbox (issue #932): sets the `sandbox` flag of its stored definition,
-     * publishes it and reloads -- the caller's own client unless they may name another.
+     * publishes it, and reloads -- the caller's own client unless they may name another.
      */
     const val clientSandbox = "/${SECT.clientAdmin}/client/sandbox"
 
