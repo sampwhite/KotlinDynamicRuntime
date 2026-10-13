@@ -241,7 +241,9 @@ class ClientsPageTest {
         val scoped = clientSummaryRows("acme", row, acmeDefinition(), canSeeAllClients = false).toMap()
         assertEquals("production $platformSetNote", scoped["Usage type"])
         assertEquals("customer $platformSetNote", scoped["Audience"])
-        assertEquals("local, unit", scoped["Enabled in"])
+        // As are where it runs and what it is built on, which only the platform changes (issue #1108).
+        assertEquals("local, unit $platformSetNote", scoped["Enabled in"])
+        assertEquals("\u2014", scoped["Extends"])
         // Without a definition (a client this node does not carry), the listing's facts still show.
         val listingOnly = clientSummaryRows("acme", row, null, canSeeAllClients = true).toMap()
         assertEquals("Loaded", listingOnly["Load"])

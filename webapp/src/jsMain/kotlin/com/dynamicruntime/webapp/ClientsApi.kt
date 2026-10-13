@@ -14,7 +14,8 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.MNU
-import com.dynamicruntime.common.gedra.ClientOperatorFields
+import com.dynamicruntime.common.gedra.ClientFieldEdit
+import com.dynamicruntime.common.gedra.ClientFieldPolicies
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientPresentationFields
@@ -780,18 +781,17 @@ const val platformSetNote = "(set by the platform)"
  * what it defines. From the overview [row] when the listing has one (status, origin, counts) and the definition
  * [def] when it could be read; either may be missing -- a client this node does not carry has no definition to
  * retrieve, and a deep link arrives before the listing -- so [clientId] is the hash's, which is always there. The
- * operator-only attributes (`ClientOperatorFields`) are noted as the platform's when the caller may not change
- * them, so the later editor disables exactly those. A list that is empty reads as a dash. Pure, and covered under
- * `jsNodeTest`.
+ * attributes only the platform sets (their policy, `ClientFieldPolicies`, issue #1108) are noted as the platform's
+ * when the caller may not change them. A list that is empty reads as a dash. Pure, and covered under `jsNodeTest`.
  */
 fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinitionView?, canSeeAllClients: Boolean): List<Pair<String, String>> {
     val info = def?.info.orEmpty()
     fun text(key: String): String = info[key].toOptStr()?.ifBlank { null } ?: "\u2014"
     fun list(items: List<String>): String = if (items.isEmpty()) "\u2014" else items.joinToString(", ")
-    fun operatorField(key: String): String {
-        val value = text(key)
-        return if (canSeeAllClients || value == "\u2014") value else "$value $platformSetNote"
-    }
+    // Marked as the platform's when only the platform may change it and this caller may not.
+    fun marked(key: String, value: String): String =
+        if (canSeeAllClients || value == "\u2014" || ClientFieldPolicies.of(key).edit != ClientFieldEdit.platform) value
+        else "$value $platformSetNote"
     val name = row?.name?.ifBlank { null } ?: info[CLD.name].toOptStr().orEmpty()
     return buildList {
         add("Client id" to clientId)
@@ -802,13 +802,13 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
             add("Definition" to clientOriginText(it.origin, it.storedConfigs))
         }
         if (def != null) {
-            // The two the platform sets (#820): a client's own administrator sees them, marked, and may not change them.
-            for (key in ClientOperatorFields.defaults.keys) add(humanizeFieldName(key) to operatorField(key))
-            add("Enabled in" to list(info[CLD.enabledEnvironments].toJsonListOfStrings()))
-            add("Extends" to text(CLD.extendsFromClientId))
+            // The authority the platform sets (#820, #1107): a client's own administrator sees it, marked.
+            for (key in listOf(CLD.audience, CLD.usageType, CLD.customerId)) add(humanizeFieldName(key) to marked(key, text(key)))
+            add("Enabled in" to marked(CLD.enabledEnvironments, list(info[CLD.enabledEnvironments].toJsonListOfStrings())))
+            add("Extends" to marked(CLD.extendsFromClientId, text(CLD.extendsFromClientId)))
             add("Domain" to (info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "\u2014"))
             add("Web resources" to text(CLD.webResourcesId))
-            add("Static config" to if (info[CLD.staticConfig] == true) "Yes" else "No")
+            add("Static config" to marked(CLD.staticConfig, if (info[CLD.staticConfig] == true) "Yes" else "No"))
             add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
             add("Traits" to list(def.traitIds))
             add("Listing columns" to list(def.usageLabels))

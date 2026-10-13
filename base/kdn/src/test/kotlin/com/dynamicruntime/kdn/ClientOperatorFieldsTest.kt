@@ -42,9 +42,11 @@ class ClientOperatorFieldsTest : StringSpec({
         name: String = client,
         usageType: ClientUsageType = ClientUsageType.dev,
         audience: ClientAudience = ClientAudience.internal,
+        environments: Set<String> = setOf(ENV.unit, ENV.local),
+        testFeatures: Set<String> = emptySet(),
     ) = ClientDef(
         clientId = client, name = name, usageType = usageType, audience = audience,
-        enabledEnvironments = setOf(ENV.unit, ENV.local),
+        enabledEnvironments = environments, testFeatures = testFeatures,
     )
 
     fun config(clientDef: ClientDef): GedraConfig =
@@ -90,6 +92,16 @@ class ClientOperatorFieldsTest : StringSpec({
                 ),
             ),
         )[EP.errorMessage].toString() shouldContain CLD.usageType
+    }
+
+    // Issue #1108: the fields whose policy is the platform's, beyond the two #820 named.
+    "a client administrator's write changing where the client runs, or its test features, is refused" {
+        clientAdmin.expectError(EXC.notAuthorized, CFEP.bundleWrite, writeBody(def(environments = setOf(ENV.unit))))
+            .get(EP.errorMessage).toString() shouldContain CLD.enabledEnvironments
+        clientAdmin.expectError(EXC.notAuthorized, CFEP.bundleWrite, writeBody(def(testFeatures = setOf("anything1108"))))
+            .get(EP.errorMessage).toString() shouldContain "${CLD.testFeatures} unset"
+        // The environments are a set: the same ones in another order are no change.
+        clientAdmin.postData(CFEP.bundleWrite, writeBody(def(name = "Op 1108", environments = setOf(ENV.local, ENV.unit))))
     }
 
     "a platform operator may set them" {
