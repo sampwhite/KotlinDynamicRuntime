@@ -13,7 +13,8 @@ import io.kotest.matchers.string.shouldNotContain
 
 /**
  * The request log's view of a request's arguments (issue #1168): secrets redacted with their keys kept, addresses
- * masked wherever they appear, long values cut, nesting followed two levels, bytes as `file`, and the whole bounded.
+ * masked wherever they appear, long values cut, nesting followed [RequestArgsLog.maxDepth] levels -- the body or query
+ * itself the first -- bytes as `file`, and the whole bounded.
  */
 class RequestArgsLogTest : StringSpec({
     fun fmt(args: Map<String, Any?>, declared: Set<String> = emptySet()) = RequestArgsLog.format(args, declared)
@@ -48,8 +49,9 @@ class RequestArgsLogTest : StringSpec({
         fmt(mapOf("note" to long)) shouldBe "{note=${"x".repeat(RequestArgsLog.longValue)}...}"
     }
 
-    "nesting is followed two levels, then reads obj; bytes and file parts read file" {
-        fmt(mapOf("a" to mapOf("b" to mapOf("c" to 1)))) shouldBe "{a={b=obj}}"
+    "nesting is followed three levels, counting the body itself, then reads obj; bytes and file parts read file" {
+        fmt(mapOf("a" to mapOf("b" to mapOf("c" to 1)))) shouldBe "{a={b={c=1}}}"
+        fmt(mapOf("a" to mapOf("b" to mapOf("c" to mapOf("d" to 1))))) shouldBe "{a={b={c=obj}}}"
         fmt(mapOf("ids" to listOf(1, 2, 3))) shouldBe "{ids=[1, 2, 3]}"
         fmt(mapOf("upload" to ContentData(ByteArray(4), "image/png"), "raw" to ByteArray(2))) shouldBe "{upload=file, raw=file}"
     }
