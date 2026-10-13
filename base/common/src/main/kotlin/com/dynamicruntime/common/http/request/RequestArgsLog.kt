@@ -35,7 +35,7 @@ object RequestArgsLog {
     const val cutAt = 400
 
     /** How many levels of nesting are followed; a value deeper reads [nested]. */
-    const val maxDepth = 2
+    const val maxDepth = 3
 
     /** The longest string written whole, within the [budget]. */
     const val longValue = 40
