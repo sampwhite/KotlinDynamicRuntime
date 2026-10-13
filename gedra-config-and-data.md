@@ -419,6 +419,7 @@ one, is the deployment's to say and is written up in `examples/custom-config.md`
   |---|---|---|---|
   | `store` (a hash) | refused: a problem at the load | yes | yes |
   | `local` (a root and a path) | yes | yes | **no** -- 403 |
+  | `clientLocal` (a root and a path, in the client's own directory) | yes | yes | only into a root open to clients -- else 403 |
 
   A path in configuration is a string naming a file on the server, and stored configuration is written through
   the API by a client's own people. So `GedraConfigService` refuses a write that **adds or changes** a local ref
@@ -431,6 +432,27 @@ one, is the deployment's to say and is written up in `examples/custom-config.md`
   did not write; it may reword the ref's description, which names no file; and it may leave the ref out, or
   upload over it. An edit of theirs that is refused and undone puts back what was there
   (`patchConfig(restoring = …)`).
+- **A client's own ref is the third source** (issue #1164). `{ refId, source: "clientLocal", root, path }` reads
+  `<root>/<owner>/<path>`: the directory, in a root the deployment opened to clients
+  (`KDR_LOCAL_FILE_CLIENT_ROOTS`), of the client whose ref it is. It is the one local ref a client's own
+  administrator may write (`GedraConfigService.mayNameLocalFile`, asked of the root's *name* and never of the
+  disk, so a root that is not open is refused the same whether or not it exists).
+  - **Why a source of its own.** What a ref reaches is then said by the ref, and not by how a node is configured.
+    A `local` ref names `<root>/<path>` whatever is opened, so opening a root changes nothing an operator wrote.
+    A `clientLocal` ref names the client's directory, and where its root is not open -- the deployment closed
+    it, one node was started without the variable, the release was rolled back to one that does not read the
+    source -- it names **nothing**, and is reported and answered as not found. It never becomes the other kind.
+    Had division been a property of the root, every one of those would have turned a tenant's ref into one that
+    reads from the root's top.
+  - A write that turns one kind into the other is a re-pointing (`FileRefDef.pointer` carries the source), and
+    is held to the rule for the kind it writes.
+  - The owner is `configOwnerOf(client)`: a sandbox's is its parent, and for a ref a client inherits from a
+    template it is the inheriting client -- so a template's `clientLocal` ref is a file each for the template
+    and for every client built on it. The entry holds the root and the path as written and never the client's
+    segment: copied to another client, it names that client's own file.
+  - `POST /clientAdmin/client/files/local` is the call that names one, landing as an upload does; it refuses a
+    root that is not open, and a file that is not there, before it writes anything. `GET …/files/roots` lists
+    the open roots by name, to the administrator of a client.
 - **What is stored overrides what is shipped.** A stored ref takes the place of a source ref of the same id, with
   no problem said -- as stored copy takes the place of the source's. So an upload replaces a shipped image, and
   removing the upload reveals it again. Any *other* second declaration of an id is still a problem.
@@ -574,7 +596,8 @@ is what gives the warning teeth.
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
 | File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only |
-| File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154; a client's own administrator naming one is not (it wants a root to opt in and to confine each client to its own subdirectory) |
+| File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154 |
+| A client's own administrator naming a local file, in the client's own directory of a root the deployment opened to clients | **built** — #1164, as a third source (`clientLocal`) and two endpoints. Not built: a page for it in the webapp, and browsing what is in a root. |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 

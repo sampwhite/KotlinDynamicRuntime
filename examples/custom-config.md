@@ -240,12 +240,46 @@ Notes:
   is in the node's log.
 - **Who may write one.** Source configuration, always. In *stored* configuration, the server's own code -- a
   script or a job, which runs with no signed-in caller, and a simulation provisioning a client, whoever starts
-  it -- and an administrator who sees every client. A client's own
-  administrator may not name a local file -- they upload one, which overrides a shipped ref of the same id, and
-  removing the upload reveals the shipped image again.
+  it -- and an administrator who sees every client. A client's own administrator may not name a file in a root;
+  they upload one, which overrides a shipped ref of the same id, and removing the upload reveals the shipped
+  image again. What they *may* name is a file you keep for their client, in a root you opened to clients (next).
+- **Opening a root to clients.** `KDR_LOCAL_FILE_CLIENT_ROOTS=approved,seasonal` names the roots a client's own
+  administrator may name a file in (issue #1164): a directory of approved imagery kept per client, which each
+  client's administrator picks from without an operator typing every ref. None is open by default.
+
+  ```
+  localFiles/
+  └── approved/           # KDR_LOCAL_FILE_CLIENT_ROOTS=approved
+      ├── acme/           # what acme's administrator may name from
+      │   └── hero.png    # { source: "clientLocal", root: "approved", path: "hero.png" } in acme's configuration
+      └── globex/
+          └── hero.png    # the same entry, in globex's
+  ```
+
+  What they write is a ref of its own kind, **`clientLocal`**, which reads `<root>/<clientId>/<path>`: the
+  client's own directory there and nothing else -- not another client's, and not a file at the root's top. In
+  source configuration it is `fileRef("hero") { clientLocal("approved", "hero.png") }`.
+  - **The kind says what a ref reaches, not the root.** An ordinary `local` ref names `<root>/<path>` whether or
+    not the root is open, and stays an operator's to write; opening a root changes nothing of what yours name.
+    A `clientLocal` ref names the client's directory, **and where its root is not open it names nothing**: close
+    a root, or start a node without the variable, and those refs are answered as not found and reported -- they
+    never come to name the same path from the root's top.
+  - **Set the variable the same on every node.** A node that does not have a root open does not serve the
+    client's own refs into it, and refuses a client administrator who tries to name one.
+  - The client's directory is named exactly as the client's id is, and is not a link. A sandbox reads its
+    parent's directory. Copied to another client, the same entry names that client's own file.
+  - **A template's `clientLocal` ref is each client's own.** A client built on the template reads its own
+    directory, and the template reads the template's: give each one the file, or the ref is a problem for the
+    one that lacks it (a refused boot in development for a client defined in source).
+  - A client's administrator names a file with `POST /clientAdmin/client/files/local`, and
+    `GET /clientAdmin/client/files/roots` says which roots are open; what is *in* a root is never listed.
+  - A name in the variable that is malformed, or given twice, refuses the boot. A well-formed name that matches
+    no root -- a typo, or a root you have not made yet -- opens nothing, and is said on the startup line.
 - **Roll it out everywhere first.** A node still on the release before this one does not read a `local` ref: it
   leaves the ref out and answers it as not found, and its upload over one writes an entry this release drops. Put
-  the release on every node before the first local ref is stored, as with file refs themselves.
+  the release on every node before the first local ref is stored, as with file refs themselves. The same goes for
+  `clientLocal`: a node that does not know the kind leaves such a ref out, so open a root once every node is on
+  the release that reads it.
 - **A unit test never reads the workspace.** In the unit environment the location has no default, and a relative
   location or root is refused: a test names `KDR_LOCAL_FILES_DIR` as a temporary directory through its instance
   config (`LocalFileRefsTest.kt`).

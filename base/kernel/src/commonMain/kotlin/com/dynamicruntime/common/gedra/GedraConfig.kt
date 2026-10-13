@@ -465,10 +465,10 @@ class GedraConfigBuilder(
     fun fileRef(refId: String, description: String? = null, build: FileRefBuilder.() -> Unit) {
         val built = FileRefBuilder().apply(build)
         val (root, path) = built.local ?: throw KdrException.mkConv(
-            "File ref '$refId' names no file: say where it is, with local(root, path).",
+            "File ref '$refId' names no file: say where it is, with local(root, path) or clientLocal(root, path).",
         )
         fileRefs.add(
-            FileRefDef(refId, FREF.sourceLocal, hash = null, description, configName = stampName, stored = isStored, root = root, path = path),
+            FileRefDef(refId, built.source, hash = null, description, configName = stampName, stored = isStored, root = root, path = path),
         )
     }
 
@@ -795,13 +795,27 @@ class GedraConfigBuilder(
 
 /** Says where a file ref's file is; see [GedraConfigBuilder.fileRef]. */
 class FileRefBuilder {
-    /** The root and path [local] was given, or null when it was not called. */
+    /** The root and path [local] or [clientLocal] was given, or null when neither was called. */
     var local: Pair<String, String>? = null
+        private set
+
+    /** Which of the two it was: [FREF.sourceLocal] or [FREF.sourceClientLocal]. */
+    var source: String = FREF.sourceLocal
         private set
 
     /** The file at [path] under the declared root [root], on this machine's disk. */
     fun local(root: String, path: String) {
         local = root to path
+        source = FREF.sourceLocal
+    }
+
+    /**
+     * The file at [path] in **the client's own directory** of the root [root], which the deployment has opened to
+     * clients (issue #1164): `<root>/<clientId>/<path>`. For a template, each client built on it reads its own.
+     */
+    fun clientLocal(root: String, path: String) {
+        local = root to path
+        source = FREF.sourceClientLocal
     }
 }
 

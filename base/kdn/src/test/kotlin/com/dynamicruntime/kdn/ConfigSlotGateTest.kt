@@ -134,6 +134,15 @@ class ConfigSlotGateTest : StringSpec({
         val stored = mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to hash)
         codes(CCT.fileRefDef, stored + (CCT.root to "brand")) shouldBe mapOf("$at.${CCT.root}" to SchFailCode.badValue)
         codes(CCT.fileRefDef, stored + (CCT.path to "logo.svg")) shouldBe mapOf("$at.${CCT.path}" to SchFailCode.badValue)
+
+        // A client's own ref (issue #1164) is held to the same shape: who may write one, and where it is read, are
+        // not the gate's.
+        fun own(entry: Map<String, Any?>) = entry + (CCT.source to FREF.sourceClientLocal)
+        codes(CCT.fileRefDef, own(local())).shouldBeEmpty()
+        codes(CCT.fileRefDef, own(local(root = "../approved"))).keys shouldBe setOf("$at.${CCT.root}")
+        codes(CCT.fileRefDef, own(local(path = "../other/logo.svg"))).keys shouldBe setOf("$at.${CCT.path}")
+        codes(CCT.fileRefDef, own(local()) - CCT.root) shouldBe mapOf("$at.${CCT.root}" to SchFailCode.missingRequired)
+        codes(CCT.fileRefDef, own(local()) + (CCT.hash to hash)) shouldBe mapOf("$at.${CCT.hash}" to SchFailCode.badValue)
     }
 
     "a cfact, a fragment overlay and a UiBlock overlay are each held to their shapes" {

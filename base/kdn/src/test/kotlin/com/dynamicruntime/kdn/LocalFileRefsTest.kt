@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
@@ -85,6 +86,8 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
         gedraConfig(cxt, "base", clientNamespace(template), template) {
             defineClient(def(template, "Template", ClientUsageType.template))
             fileRef("crest", "The template's crest.") { local(root, "marks/mark.svg") }
+            // A client's own ref (issue #1164): each client built on the template reads its own directory.
+            fileRef("own") { clientLocal(openRoot, "own.png") }
         },
         gedraConfig(cxt, "main", clientNamespace(built), built) {
             defineClient(def(built, "Built on the template", extends = template))
@@ -98,6 +101,9 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
 
     companion object {
         const val root = "brand"
+
+        /** The root the test instances open to clients. */
+        const val openRoot = "approved"
         const val shippedConfig = "art"
         const val shipped = "lfrshipped"
         const val template = "lfrtemplate"
@@ -107,8 +113,9 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
 
 /**
  * File refs to local files (issue #1154), end to end: a ref in source configuration serves a file under a declared
- * root, by the hash of the file as it is; what is stored overrides what is shipped; and only the server's own code
- * and an administrator who sees every client may name a file.
+ * root, by the hash of the file as it is; what is stored overrides what is shipped; only the server's own code and an
+ * administrator who sees every client may name a file in a root; and a client's own administrator may name one in
+ * the client's own directory of a root the deployment opened to clients (issue #1164).
  *
  * **An instance of its own** (issue #1075): where local files are is instance-wide, and the fixture's source
  * configuration names files that have to be there when it boots.
@@ -126,18 +133,36 @@ class LocalFileRefsTest : StringSpec({
         File(brand, "fickle.png").writeBytes(png)
         File(brand, "brittle.png").writeBytes(png)
         File(brand, "marks/mark.svg").writeBytes(svg)
+        // What the template's own ref names, for the template and for the client built on it: a file each.
+        for ((client, bytes) in listOf(LocalFileRefComponent.template to svg, LocalFileRefComponent.built to png)) {
+            File(dir, "${LocalFileRefComponent.openRoot}/$client").mkdirs()
+            File(dir, "${LocalFileRefComponent.openRoot}/$client/own.png").writeBytes(bytes)
+        }
         return dir
     }
 
     val dirs = mutableListOf<File>()
     afterSpec { dirs.forEach { it.deleteRecursively() } }
 
+    val openRoot = LocalFileRefComponent.openRoot
     val files = location().also { dirs.add(it) }
     val brand = File(files, LocalFileRefComponent.root)
+
+    /** Puts [bytes] at [path] in [client]'s own directory of the root open to clients, as the deployment would. */
+    fun approve(client: String, path: String, bytes: ByteArray): File =
+        File(files, "$openRoot/$client/$path").also {
+            it.parentFile.mkdirs()
+            it.writeBytes(bytes)
+        }
+
     // Stored problems reported rather than refused, so a case can break a stored ref's file and load the client.
     val cxt = Startup.mkTestBootCxt(
         "localFileRefs", "localFileRefs1154",
-        mapOf(LFENV.dir.name to files.absolutePath, GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name),
+        mapOf(
+            LFENV.dir.name to files.absolutePath, GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name,
+            // One root opened to clients (issue #1164), made when a case needs it: it is read as it is, each time.
+            LFENV.clientRoots.name to openRoot,
+        ),
         listOf(LocalFileRefComponent()),
     )
     val svc = GedraConfigService.get(cxt)
@@ -186,6 +211,10 @@ class LocalFileRefsTest : StringSpec({
 
     fun localEntry(refId: String, path: String, root: String = LocalFileRefComponent.root): Map<String, Any?> =
         mapOf(CCT.refId to refId, CCT.source to FREF.sourceLocal, CCT.root to root, CCT.path to path)
+
+    /** A client's own ref: the file at [path] in its client's directory of a root open to clients. */
+    fun ownEntry(refId: String, path: String, root: String = openRoot): Map<String, Any?> =
+        mapOf(CCT.refId to refId, CCT.source to FREF.sourceClientLocal, CCT.root to root, CCT.path to path)
 
     /** One edit of the file-ref slot of [config]: what an administrator types by hand; [client] for one who names it. */
     fun slotEdit(action: GedraEditAction, entry: Map<String, Any?>, config: String = "main", client: String? = null): Map<String, Any?> = buildMap {
@@ -325,7 +354,14 @@ class LocalFileRefsTest : StringSpec({
 
     "a client built on a template serves the template's local ref" {
         val built = LocalFileRefComponent.built
-        refs.forClient(built).refs.keys shouldBe setOf("crest")
+        refs.forClient(built).refs.keys shouldBe setOf("crest", "own")
+        // The template's ref to a client's own file is, for the client built on it, that client's file and not
+        // the template's -- one declaration, a picture each.
+        static(memberOf(built), "own").rptResponseBytes!!.toList() shouldBe png.toList()
+        listed(adminOf(built)).getValue("own").let {
+            it[CCT.source] shouldBe FREF.sourceClientLocal
+            it[FREF.name] shouldBe nameOf("own", png)
+        }
         val crest = static(memberOf(built), nameOf("crest", svg))
         crest.rptStatusCode shouldBe EXC.ok
         crest.rptResponseBytes!!.toList() shouldBe svg.toList()
@@ -335,7 +371,7 @@ class LocalFileRefsTest : StringSpec({
     "source configuration with a local ref passes the slot gate in its stored form" {
         val fixture = setOf(shipped, LocalFileRefComponent.template, LocalFileRefComponent.built)
         val configs = SchemaCollector.get(cxt).shouldNotBeNull().gedraConfigs.configs
-            .filter { it.gedraId.client in fixture && !it.isStored && it.fileRefs.any { ref -> ref.source == FREF.sourceLocal } }
+            .filter { it.gedraId.client in fixture && !it.isStored && it.fileRefs.any { ref -> ref.source in FREF.localSources } }
         configs.map { it.gedraId.client }.toSet() shouldBe fixture
         for (config in configs) {
             val entries = gedraConfigToEntries(config)
@@ -608,16 +644,258 @@ class LocalFileRefsTest : StringSpec({
         artRefs() shouldBe listOf(before)
     }
 
+    // --- Issue #1164: a root the deployment opens to clients -----------------------------------------------------------
+
+    /** Names a local file as [user]'s ref; the whole envelope, so a refusal can be read from it as a success can. */
+    fun nameLocal(user: TestUser, refId: String, path: String, root: String = openRoot, client: String? = null, description: String? = null): Map<String, Any?> =
+        user.client.sendJsonPostRequest(
+            UADEP.clientFilesLocal,
+            buildMap {
+                put(CCT.refId, refId)
+                put(CCT.root, root)
+                put(CCT.path, path)
+                client?.let { put(FREF.client, it) }
+                description?.let { put(CCT.description, it) }
+            },
+        )
+
+    fun named(user: TestUser, refId: String, path: String, root: String = openRoot, client: String? = null, description: String? = null): Map<String, Any?> =
+        nameLocal(user, refId, path, root, client, description).also { withClue(it) { it[EP.status].shouldBeNull() } }[EP.results].toJsonMapOrEmpty()
+
+    fun notNamed(user: TestUser, status: Int, refId: String, path: String, root: String = openRoot): String {
+        val env = nameLocal(user, refId, path, root)
+        withClue(env) { (env[EP.status] as? Number)?.toInt() shouldBe status }
+        return env[EP.errorMessage] as String
+    }
+
+    "a client's own administrator names a file in a root open to clients, and it is the one in the client's own directory" {
+        val (client, peer) = "lfropen" to "lfrpeer"
+        defineClient(client)
+        defineClient(peer)
+        val admin = adminOf(client)
+        val peerAdmin = adminOf(peer)
+        approve(client, "hero.png", png)
+        approve(peer, "hero.png", otherPng)
+        approve(peer, "only-theirs.png", png)
+        fun copyConfig() = svc.readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+
+        // What they may name from is said, by name and nothing more -- to the administrator of a client, of their
+        // own client, as every call beside it is.
+        admin.getItems(UADEP.clientFilesRoots) shouldBe listOf(mapOf(CCT.root to openRoot))
+        admin.getItems(UADEP.clientFilesRoots, mapOf(FREF.client to client)) shouldBe listOf(mapOf(CCT.root to openRoot))
+        admin.expectError(EXC.notAuthorized, UADEP.clientFilesRoots, args = mapOf(FREF.client to peer))
+        memberOf(client).expectError(EXC.notAuthorized, UADEP.clientFilesRoots)
+        TestUser.create(cxt, "solo@lfrpublic.test", level = ROLE.admin, userClient = CL.public).expectError(EXC.notAuthorized, UADEP.clientFilesRoots)
+        full.getItems(UADEP.clientFilesRoots, mapOf(FREF.client to client)) shouldBe listOf(mapOf(CCT.root to openRoot))
+        full.expectError(EXC.notFound, UADEP.clientFilesRoots, args = mapOf(FREF.client to "nosuchclient1164"))
+
+        // Nothing of the other client's can be named: not by a path that climbs, and not by one that is only theirs.
+        notNamed(admin, EXC.badInput, "theirs", "../$peer/only-theirs.png") shouldContain "is not a path a local file may have"
+        notNamed(admin, EXC.badInput, "theirs", "$peer/only-theirs.png") shouldBe
+            "File ref 'theirs' of client '$client' names the local file '$openRoot/$peer/only-theirs.png' in the client's own directory of that root, which is not there to be served as an image."
+        notNamed(admin, EXC.badInput, "theirs", "only-theirs.png") shouldContain "which is not there to be served as an image"
+        // Nor by naming the other client: the call acts on the caller's own client, or for one who sees every client a named one.
+        nameLocal(admin, "hero", "hero.png", client = peer).let { withClue(it) { (it[EP.status] as? Number)?.toInt() shouldBe EXC.notAuthorized } }
+        nameLocal(full, "hero", "hero.png", client = "nosuchclient1164").let { withClue(it) { (it[EP.status] as? Number)?.toInt() shouldBe EXC.notFound } }
+        // A file of their own that is no picture is refused in the same words.
+        approve(client, "notes.png", "password=hunter2".toByteArray())
+        notNamed(admin, EXC.badInput, "notes", "notes.png").let {
+            it shouldContain "which is not there to be served as an image"
+            it shouldNotContain "hunter2"
+        }
+        // Each of those was refused before anything was written: a mistyped path leaves no configuration behind.
+        copyConfig().shouldBeNull()
+
+        val change = named(admin, "hero", "hero.png", description = "The hero.")
+        change[FREF.client] shouldBe client
+        change[FREF.configName] shouldBe CPY.copyConfigName
+        change[FREF.mode] shouldBe EDM.live
+        // The entry is a client's own ref, and names the root and the path as written: the client's directory is
+        // the kind's to add, not the entry's.
+        storedRefs(client, CPY.copyConfigName) shouldBe listOf(ownEntry("hero", "hero.png") + (CCT.description to "The hero."))
+        val shown = listed(admin).getValue("hero")
+        shown[CCT.source] shouldBe FREF.sourceClientLocal
+        shown[CCT.root] shouldBe openRoot
+        shown[CCT.path] shouldBe "hero.png"
+        shown[FREF.name] shouldBe nameOf("hero", png)
+        shown[FREF.live] shouldBe true
+        static(memberOf(client), nameOf("hero", png)).let {
+            it.rptStatusCode shouldBe EXC.ok
+            it.rptResponseBytes!!.toList() shouldBe png.toList()
+            it.header(ContentResources.cacheControlHeader) shouldBe ContentResources.cacheControl
+        }
+
+        // The same root and path, named by another client's administrator, is that client's own file.
+        named(peerAdmin, "hero", "hero.png")
+        static(memberOf(peer), "hero").rptResponseBytes!!.toList() shouldBe otherPng.toList()
+        static(memberOf(client), "hero").rptResponseBytes!!.toList() shouldBe png.toList()
+        refs.forClient(client).refs.keys shouldBe setOf("hero")
+
+        // The description is kept when none is said, as an upload keeps it, and cleared by a blank one; and the
+        // ref is theirs to take away.
+        approve(client, "hero2.png", otherPng)
+        named(admin, "hero", "hero2.png")
+        storedRefs(client, CPY.copyConfigName).single() shouldBe ownEntry("hero", "hero2.png") + (CCT.description to "The hero.")
+        static(memberOf(client), "hero").rptResponseBytes!!.toList() shouldBe otherPng.toList()
+        named(admin, "hero", "hero2.png", description = "")
+        storedRefs(client, CPY.copyConfigName).single() shouldBe ownEntry("hero", "hero2.png")
+        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "hero"))[CCT.refId] shouldBe "hero"
+        refs.forClient(client).refs.isEmpty() shouldBe true
+    }
+
+    "a root that is not open to clients is refused in the same words whether or not there is such a root, and leaves nothing behind" {
+        val client = "lfrshut"
+        defineClient(client)
+        val admin = adminOf(client)
+        // `brand` is a root, with this very file in it -- and in a directory named for the client, even; `nowhere`
+        // is no root at all.
+        File(brand, client).mkdirs()
+        File(brand, "$client/logo.png").writeBytes(png)
+        val there = notNamed(admin, EXC.notAuthorized, "logo", "logo.png", root = LocalFileRefComponent.root)
+        val notThere = notNamed(admin, EXC.notAuthorized, "logo", "logo.png", root = "nowhere")
+        there shouldBe "The root '${LocalFileRefComponent.root}' is not one a client's own administrator may name a file in. The roots open to clients are listed; any other file is uploaded."
+        notThere shouldBe there.replace(LocalFileRefComponent.root, "nowhere")
+        // Refused before anything was made: no configuration of the editors' was created for it.
+        svc.readLatest(cxt.mkSubContext("read", client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)).shouldBeNull()
+        // A root's name that is no name, and a path that is no path, are no good from anybody.
+        notNamed(admin, EXC.badInput, "logo", "logo.png", root = "../$openRoot") shouldContain "cannot name a root of local files"
+        notNamed(admin, EXC.badInput, "logo", ".hidden/logo.png") shouldContain "is not a path a local file may have"
+        notNamed(full, EXC.badInput, "logo", "logo.png", root = "my root") shouldContain "cannot name a root of local files"
+        // One who sees every client is told what this call is for: it writes a client's own ref, and those are
+        // read only in an open root. Any other file they name by an entry of the ordinary kind.
+        notNamed(full, EXC.badInput, "logo", "logo.png", root = LocalFileRefComponent.root) shouldContain "is not open to clients (${LFENV.clientRoots.name})"
+
+        // Typed into the configuration by hand, the rule is the same one, ref by ref. A client's own ref into an
+        // open root is taken...
+        approve(client, "typed.png", png)
+        posted(admin, CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, ownEntry("typed", "typed.png")))
+        fun typedRefused(entry: Map<String, Any?>) =
+            admin.expectError(EXC.notAuthorized, CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, entry))[EP.errorMessage] as String
+        // ...and beside it, in the same configuration: one into a root that is not open is not, though the
+        // client's directory there holds the file; and an ordinary local ref is not, into any root -- the open one
+        // with them. That kind names a root whole, and is an operator's.
+        typedRefused(ownEntry("other", "logo.png", root = LocalFileRefComponent.root)) shouldContain "names a local file for the file ref 'other'"
+        typedRefused(localEntry("other", "logo.png")) shouldContain "names a local file for the file ref 'other'"
+        typedRefused(localEntry("other", "$client/typed.png", root = openRoot)) shouldContain "names a local file for the file ref 'other'"
+        // Nor may the one they have be turned into the other kind, which would name the same words from the root's top.
+        typedRefused(localEntry("typed", "typed.png", root = openRoot))
+        storedRefs(client) shouldBe listOf(ownEntry("typed", "typed.png"))
+    }
+
+    // What a ref reaches is said by its kind, and not by the root or by who wrote it. An operator's ordinary local
+    // ref names a root whole, open or not; a client's own names the client's directory, whoever wrote it.
+    "a client's own ref is its client's file whoever wrote it, an operator's ordinary ref still names the root whole, and a sandbox reads its parent's directory" {
+        val client = "lfrsbx"
+        defineClient(client)
+        val admin = adminOf(client)
+        approve(client, "pic.png", png)
+        File(files, "$openRoot/top.png").writeBytes(otherPng)
+
+        // A client's own ref written in-process, and by one who sees every client, is looked for in the client's
+        // directory as any is: the root's top is not there for it.
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic") { clientLocal(openRoot, "pic.png") } }, trial = true)
+        full.expectError(EXC.badInput, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, ownEntry("top", "top.png"), client = client))[EP.errorMessage] as String shouldContain
+            "which is not there to be served as an image"
+        // Their ordinary local ref names the root whole, as it did before the root was opened.
+        posted(full, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, localEntry("top", "top.png", root = openRoot), config = "art", client = client))
+        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "art"))
+        GedraConfigReload.reloadClient(cxt, client)
+        static(memberOf(client), "pic").rptResponseBytes!!.toList() shouldBe png.toList()
+        static(memberOf(client), "top").rptResponseBytes!!.toList() shouldBe otherPng.toList()
+        // One who sees every client names a client's own file by the call, for the client they name.
+        approve(client, "named.png", png)
+        named(full, "named", "named.png", client = client)[FREF.client] shouldBe client
+        storedRefs(client, CPY.copyConfigName) shouldBe listOf(ownEntry("named", "named.png"))
+
+        // With a sandbox, what its administrator names is a draft, and the sandbox is served the parent's file: the
+        // directory is the client's whose configuration it is, and a sandbox has none of its own.
+        posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        approve(client, "draft.png", otherPng)
+        named(admin, "draft", "draft.png")[FREF.mode] shouldBe EDM.draft
+        refs.forClient(sandboxOf(client)).refs.keys shouldBe setOf("pic", "top", "named", "draft")
+        refs.forClient(client).refs.keys shouldBe setOf("pic", "top", "named")
+        listed(admin).getValue("draft").let {
+            it[FREF.live] shouldBe false
+            it[FREF.name] shouldBe nameOf("draft", otherPng)
+        }
+        admin.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(CCT.refId to "draft")).rptResponseBytes!!.toList() shouldBe otherPng.toList()
+        // Somebody in the sandbox is served both, from the parent's directory -- and names a file there the same way.
+        val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandboxOf(client))
+        static(inSandbox, nameOf("draft", otherPng)).rptResponseBytes!!.toList() shouldBe otherPng.toList()
+        static(inSandbox, "pic").rptResponseBytes!!.toList() shouldBe png.toList()
+        named(inSandbox, "pic2", "pic.png")[FREF.mode] shouldBe EDM.draft
+        static(inSandbox, "pic2").rptResponseBytes!!.toList() shouldBe png.toList()
+        static(memberOf(client), "pic2").rptStatusCode shouldBe EXC.notFound
+    }
+
+    // A client's own ref is read only where its root is open. Where it is not -- the deployment closed the root, or
+    // this node was started without knowing of it -- the ref names nothing: it does not come to name the same path
+    // from the root's top, which could be another client's directory.
+    "on a node where the root is not open, a client's own ref is left unserved and never read from the root's top" {
+        val dir = location().also { dirs.add(it) }
+        val root = LocalFileRefComponent.openRoot
+        File(dir, "$root/lfrclosed/globex").mkdirs()
+        File(dir, "$root/globex").mkdirs()
+        File(dir, "$root/lfrclosed/globex/hero.png").writeBytes(png)
+        File(dir, "$root/globex/hero.png").writeBytes(otherPng)
+        // An instance of its own (issue #1075): what is open is instance-wide. Stored and source problems reported
+        // and not refused, as in production, so the node starts over refs it cannot serve.
+        val shut = Startup.mkTestBootCxt(
+            "localClosed", "localFileRefsClosed1164",
+            mapOf(
+                LFENV.dir.name to dir.absolutePath, GCFG.storedCheckEnvVar.name to BootCheckMode.warn.name,
+                GCFG.checkEnvVar.name to BootCheckMode.warn.name,
+            ),
+            listOf(LocalFileRefComponent()),
+        )
+        val client = "lfrclosed"
+        val shutSvc = GedraConfigService.get(shut)
+        val writer = shut.mkSubContext("write", client).also { it.userId = 11640L }
+        // The entry as it was written while the root was open, here by a write that is not trialled.
+        shutSvc.writeConfig(
+            writer,
+            gedraConfig(shut, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = "Closed", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local),
+                    ),
+                )
+                fileRef("hero") { clientLocal(root, "globex/hero.png") }
+            },
+        )
+        shutSvc.publish(writer, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        GedraConfigReload.reloadClient(shut, client)
+
+        ClientConfigIssues.get(shut).issuesFor(client).single().message shouldBe
+            "File ref 'hero' of client '$client' (config 'main') names the local file '$root/globex/hero.png' in the client's own directory of that root, which is not there to be served as an image."
+        val member = TestUser.create(shut, "member@$client.test", userClient = client)
+        member.client.sendGetRequestRaw("/${ContextRoot.st}" + FREF.staticPath("kdr.en", "hero")).rptStatusCode shouldBe EXC.notFound
+        // And nobody may name one there: nothing is open.
+        val admin = TestUser.create(shut, "chief@$client.test", level = ROLE.admin, userClient = client)
+        admin.getItems(UADEP.clientFilesRoots).shouldBeEmpty()
+        admin.expectError(EXC.notAuthorized, UADEP.clientFilesLocal, mapOf(CCT.refId to "x", CCT.root to root, CCT.path to "globex/hero.png"))
+        // The template's own ref is no better served there, for the same reason.
+        FileRefService.get(shut).let { it.read(shut, it.forClient(LocalFileRefComponent.built).refs.getValue("own")).shouldBeNull() }
+    }
+
     "a local ref whose file is not there refuses the boot where a mistake in source is caught, and so does a root declared wrongly" {
         val dir = location().also { dirs.add(it) }
         // Each its own instance (issue #1075): the boot itself is under test.
         shouldThrow<KdrException> {
-            Startup.mkTestBootCxt("localGhost", "localFileRefsGhost1154", mapOf(LFENV.dir.name to dir.absolutePath), listOf(LocalFileRefComponent(missing = true)))
+            Startup.mkTestBootCxt(
+                "localGhost", "localFileRefsGhost1154", mapOf(LFENV.dir.name to dir.absolutePath, LFENV.clientRoots.name to openRoot),
+                listOf(LocalFileRefComponent(missing = true)),
+            )
         }.message.orEmpty() shouldContain "File ref 'ghost' of client '${LocalFileRefComponent.shipped}' (config '${LocalFileRefComponent.shippedConfig}') names the local file 'brand/ghost.png', which is not there to be served as an image."
         // With nowhere to look, every one of them is missing.
         shouldThrow<KdrException> {
             Startup.mkTestBootCxt("localNowhere", "localFileRefsNowhere1154", additionalComponents = listOf(LocalFileRefComponent()))
         }.message.orEmpty() shouldContain "which is not there to be served as an image"
+        // So is opening a root whose name is none.
+        shouldThrow<KdrException> {
+            Startup.mkTestBootCxt("localOpenMalformed", "localFileRefsOpenMalformed1164", mapOf(LFENV.dir.name to dir.absolutePath, LFENV.clientRoots.name to "approved/acme"))
+        }.message.orEmpty() shouldContain "Refusing to start: ${LFENV.clientRoots.name} opens a root whose name is no name"
         // A declaration that is wrong is a fence down, and refuses whatever the configuration holds.
         shouldThrow<KdrException> {
             Startup.mkTestBootCxt("localMalformed", "localFileRefsMalformed1154", mapOf(LFENV.dir.name to dir.absolutePath, LFENV.roots.name to "brand"))

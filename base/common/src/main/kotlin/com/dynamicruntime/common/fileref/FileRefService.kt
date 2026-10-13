@@ -88,6 +88,21 @@ class FileRefService : ServiceInitializer, ContentServer {
     /** The file store as a source: there from the start, since it is what an upload writes to. */
     val store = StoreFileSource()
 
+    /** The local files this node reads, once this is set up ([checkInit]); null before, and so "none". */
+    @Volatile
+    var localRoots: LocalFileRoots? = null
+        private set
+
+    /**
+     * Whether a client's own administrator may name a file in the root [root] (issue #1164): the deployment opened
+     * it to clients. What the write of a client's own local ref is judged by (`GedraConfigService`), and what a
+     * client is told it may name from ([clientRoots]).
+     */
+    fun opensToClients(root: String): Boolean = localRoots?.isOpenToClients(root) == true
+
+    /** The roots open to clients, by name, in order. */
+    fun clientRoots(): List<String> = localRoots?.clientRoots.orEmpty().sorted()
+
     /** The sources a ref may name, by what an entry calls them. Local files join when this is set up ([checkInit]). */
     @Volatile
     var sources: Map<String, FileRefSource> = mapOf(store.source to store)
@@ -109,7 +124,9 @@ class FileRefService : ServiceInitializer, ContentServer {
         FileStoreService.get(cxt).checkInit(cxt)
         // Refuses the start over a declaration that is wrong (see there). One that names nothing yet is only said.
         val roots = LocalFileRoots.resolve(cxt)
-        sources = sources + (FREF.sourceLocal to LocalFileSource(roots))
+        localRoots = roots
+        sources = sources + (FREF.sourceLocal to LocalFileSource(roots)) +
+            (FREF.sourceClientLocal to LocalFileSource(roots, FREF.sourceClientLocal))
         LogFileRef.info(cxt) { "Local files a file ref may name (${LFENV.dir.name}): ${roots.describe()}." }
         val configs = collector.gedraConfigs.configs
         registries = configs.filter { it.fileRefs.isNotEmpty() }.map { it.gedraId.client }.distinct()
@@ -265,6 +282,12 @@ class FileRefService : ServiceInitializer, ContentServer {
      * reading it found -- or null when there is none to serve.
      */
     fun metaOf(cxt: KdrCxt, ref: FileRef): FileMeta? = sources[ref.def.source]?.meta(cxt, ref)
+
+    /**
+     * Why [ref]'s file is not there to be served, as a load would say it, or null when it is -- or when its source
+     * is one this node does not read. For a call that would rather refuse before it writes than have its trial do it.
+     */
+    fun fileProblem(cxt: KdrCxt, ref: FileRef): String? = sources[ref.def.source]?.fileProblem(cxt, ref)
 
     /** Drops what the store was last said to hold of the file [hash] under [owner]: an upload has just changed the answer. */
     fun forget(owner: String, hash: String) {

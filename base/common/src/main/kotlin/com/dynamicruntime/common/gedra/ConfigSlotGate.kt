@@ -190,7 +190,7 @@ private fun fileRefFailures(entry: Map<String, Any?>): List<SchFailure> {
             stray(CCT.root, "has no root: its file is in the file store"),
             stray(CCT.path, "has no path: its file is in the file store"),
         )
-        FREF.sourceLocal -> listOfNotNull(
+        FREF.sourceLocal, FREF.sourceClientLocal -> listOfNotNull(
             missing(CCT.root, "names the root its file is under"),
             missing(CCT.path, "names its file's path under the root"),
             stray(CCT.hash, "carries no hash: a local file's is that of the file as it is read"),

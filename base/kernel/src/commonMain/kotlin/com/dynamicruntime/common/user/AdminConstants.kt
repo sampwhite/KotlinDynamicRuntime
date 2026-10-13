@@ -185,6 +185,15 @@ object UADEP {
     /** The file of one of a **named** client's file refs, as the listing shows it -- a draft included. */
     const val clientFilesDownload = "$clientFiles/download"
 
+    /**
+     * Names a local file as one of a client's file refs (issue #1164): a file under a root the deployment has
+     * opened to clients, in the client's own directory there. No bytes are sent: the file is where it is.
+     */
+    const val clientFilesLocal = "$clientFiles/local"
+
+    /** The roots of local files a client's own administrator may name a file in (issue #1164), by name. */
+    const val clientFilesRoots = "$clientFiles/roots"
+
     /** The named reports one client may run (issue #981), with how each column was bound. Scoped as [clientDefinition] is. */
     const val reports = "/${SECT.clientAdmin}/reports"
 

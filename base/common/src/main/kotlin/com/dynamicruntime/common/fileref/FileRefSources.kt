@@ -158,13 +158,26 @@ class StoreFileSource : FileRefSource {
  * - **Why a file cannot be served is the operator's to read, in the log** ([LocalRead.reason]). Everybody else is
  *   told one thing, whatever the reason: a ref's problem, and a 404. It is said once for a ref and a reason, and
  *   again only after [repeatReasonAfterMs]: a missing picture on a busy page is asked for by every view of it.
- * - **A load does not read a file it has already looked at** ([fileProblem]). A write's trial judges every ref of
- *   its client, more than once, under the lock every client's reload takes -- and whether a file *can be served*
- *   is all it asks. That answer is remembered by where the file is, its size and when it last changed. Serving
- *   remembers nothing: there the answer is the bytes.
+ * - **A load and a listing do not read a file they have already looked at** ([fileProblem], [meta]). A write's
+ *   trial judges every ref of its client, more than once, under the lock every client's reload takes, and a listing
+ *   answers every ref's hash -- and a client's own administrator can name one file under many ids. What a file was
+ *   found to be is remembered by where it is, its size and when it last changed. A stale answer there costs a
+ *   problem said one load late, or a listed address that is answered `no-store`. Serving remembers nothing: there
+ *   the answer is the bytes.
+ *
+ * **Two kinds of ref are read here, and which is said by the ref** ([source]): an ordinary local ref names
+ * `<root>/<path>`, and a client's own (`clientLocal`, issue #1164) names `<root>/<client>/<path>` in a root open to
+ * clients. One never becomes the other by a node's configuration -- see `FREF.sourceClientLocal`.
  */
-class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
-    override val source: String = FREF.sourceLocal
+class LocalFileSource(val roots: LocalFileRoots, override val source: String = FREF.sourceLocal) : FileRefSource {
+    /** Whether this reads the client's own directory of a root: the `clientLocal` kind. */
+    private val ownDirectory = source == FREF.sourceClientLocal
+
+    /** The directory of the root [ref]'s file is looked for in, where that is its client's own; else null. */
+    private fun clientDir(ref: FileRef): String? = ref.owner.takeIf { ownDirectory }
+
+    /** Where [ref]'s file is looked for, from the root down: what an operator needs to find it by. */
+    private fun sought(ref: FileRef): String = listOfNotNull(ref.def.root, clientDir(ref), ref.def.path).joinToString("/")
 
     /** What was last said of a ref whose file could not be served, and when. */
     private class Said(val reason: String, val atNanos: Long)
@@ -172,10 +185,10 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
     /** The reason last logged for each ref whose file cannot be served; gone once the file is served again. */
     private val said = ConcurrentHashMap<String, Said>()
 
-    /** What a file was found to be when it was last read for a load: the file as it then was, and whether it is an image. */
-    private class Looked(val stamp: String, val servable: Boolean)
+    /** What a file was found to be when it was last read: the file as it then was, and its record -- null for one that is no image. */
+    private class Looked(val stamp: String, val meta: FileMeta?)
 
-    /** What each file was last found to be, by root and path: see the class note. */
+    /** What each file was last found to be, by where it is looked for: see the class note. */
     private val looked = ConcurrentHashMap<String, Looked>()
 
     /**
@@ -196,9 +209,8 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
 
     private fun sayWhy(cxt: KdrCxt, ref: FileRef, reason: String?) {
         if (!shouldSay(ref, reason.orEmpty(), System.nanoTime())) return
-        LogFileRef.warn(cxt) {
-            "The local file '${ref.def.root}/${ref.def.path}' of ref '${ref.refId}' (client '${ref.owner}') cannot be served: $reason."
-        }
+        // By where it was looked for, which for a client's own ref is not the root and path its entry holds.
+        LogFileRef.warn(cxt) { "The local file '${sought(ref)}' of ref '${ref.refId}' (client '${ref.owner}') cannot be served: $reason." }
     }
 
     override fun defProblem(def: FileRefDef, ref: String): String? {
@@ -213,34 +225,46 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
     }
 
     /**
-     * That [ref]'s file is not there to be served: no such root, no such file, or a file that is no image. Found
-     * without reading a file this has read before and that has not changed since ([looked]) -- a stale answer here
-     * costs a problem said one load late, never a byte served.
+     * What [ref]'s file was found to be, read only when it has not been looked at as it now is: its record, or null
+     * when there is none to serve -- no such root, no such file, a file that is no image, or for a client's own
+     * ref a root that is not open.
      */
-    override fun fileProblem(cxt: KdrCxt, ref: FileRef): String? {
-        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty())
-        val servable = if (at.real == null) {
+    private fun lookedAt(cxt: KdrCxt, ref: FileRef): FileMeta? {
+        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), clientDir(ref))
+        if (at.real == null) {
             sayWhy(cxt, ref, at.reason)
-            false
-        } else {
-            val stamp = "${at.real}|${at.size}|${at.modifiedMs}"
-            val key = "${ref.def.root}/${ref.def.path}"
-            looked[key]?.takeIf { it.stamp == stamp }?.servable ?: (read(cxt, ref) != null).also {
-                if (looked.size >= maxRemembered) looked.clear()
-                looked[key] = Looked(stamp, it)
-            }
+            return null
         }
-        return if (servable) null else "names the local file '${ref.def.root}/${ref.def.path}', which is not there to be served as an image."
+        // The real path is in the stamp, so one key cannot answer for two files; the key is only what is replaced.
+        val stamp = "${at.real}|${at.size}|${at.modifiedMs}"
+        val key = sought(ref)
+        looked[key]?.takeIf { it.stamp == stamp }?.let { return it.meta }
+        return read(cxt, ref)?.meta.also {
+            if (looked.size >= maxRemembered) looked.clear()
+            looked[key] = Looked(stamp, it)
+        }
     }
 
-    override fun meta(cxt: KdrCxt, ref: FileRef): FileMeta? = read(cxt, ref)?.meta
+    /**
+     * That [ref]'s file is not there to be served, in one sentence whatever the reason. It says where the entry
+     * points and, for a client's own ref, that it is the client's own directory there -- which is all its
+     * administrator needs, and nothing of what else the root holds.
+     */
+    override fun fileProblem(cxt: KdrCxt, ref: FileRef): String? {
+        if (lookedAt(cxt, ref) != null) return null
+        val where = if (ownDirectory) " in the client's own directory of that root" else ""
+        return "names the local file '${ref.def.root}/${ref.def.path}'$where, which is not there to be served as an image."
+    }
+
+    /** The file's record as it was last found to be while it has not changed ([lookedAt]): what a listing answers. */
+    override fun meta(cxt: KdrCxt, ref: FileRef): FileMeta? = lookedAt(cxt, ref)
 
     /**
      * The file as it is now, described as the store describes one: the type the bytes were found to be, their
      * hash, the file's own name, and -- as when it was "uploaded" -- when the file last changed.
      */
     override fun read(cxt: KdrCxt, ref: FileRef): StoredFile? {
-        val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty())
+        val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty(), clientDir(ref))
         val file = read.file
         if (file == null) {
             sayWhy(cxt, ref, read.reason)
