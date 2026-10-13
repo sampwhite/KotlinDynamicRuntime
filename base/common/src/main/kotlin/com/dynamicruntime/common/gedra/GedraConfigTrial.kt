@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
@@ -148,6 +149,8 @@ object GedraConfigTrial {
             .trialClient(tcxt, scratch, client, def, fragments, schema.cfactNames, schema.droppedTypes, schema.store)
         // Reports last, as a reload orders them (issue #980): a report's workflow paths bind to the workflows kept.
         ReportService.get(tcxt).trialClient(tcxt, scratch, client, def, schema.types, schema.droppedTypes, workflows)
+        // And its file refs (issue #1153): a ref naming bytes that are not in the store is refused as a write.
+        FileRefService.getOrNull(tcxt)?.trialClient(tcxt, scratch, client)
         return TrialCandidate(capture.toList(), present != null, schema, workflows)
     }
 }

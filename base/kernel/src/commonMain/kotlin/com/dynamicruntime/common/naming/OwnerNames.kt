@@ -60,13 +60,17 @@ enum class OwnedNameKind(val label: String) {
     task("task id"),
 
     /** A report id (issue #979): a variable name, as a workflow id is -- a report is run by naming it. */
-    report("report id");
+    report("report id"),
+
+    /** A file ref id (issue #1153): a variable name in ASCII -- it is a URL segment, and a dot would read as an extension. */
+    fileRef("file ref id");
 
     /** Whether [local] is a legal local part for this kind. */
     fun isLocalPart(local: String): Boolean = when (this) {
         trait -> local.isNotEmpty() && local.all { it.isAsciiLetterOrDigit() || it == '_' }
         cfact -> local.isNotEmpty() && local.all { it.isLetterOrDigit() || it == '_' || it == '.' }
         workflow, task, report -> local.isVariableName()
+        fileRef -> local.isVariableName() && local.all { it.isAsciiLetterOrDigit() || it == '_' }
     }
 
     /** The local-part rule, as a phrase for a refusal. */
@@ -74,6 +78,7 @@ enum class OwnedNameKind(val label: String) {
         trait -> "letters, digits and underscores"
         cfact -> "letters, digits, underscores and dots"
         workflow, task, report -> "a variable name: a letter or underscore, then letters, digits and underscores"
+        fileRef -> "a variable name in ASCII: a letter or underscore, then letters, digits and underscores"
     }
 }
 

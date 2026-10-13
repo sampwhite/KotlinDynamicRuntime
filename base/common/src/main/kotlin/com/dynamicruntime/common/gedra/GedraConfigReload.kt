@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.report.ReportService
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.http.request.RequestService
@@ -162,6 +163,9 @@ object GedraConfigReload {
         // keeps its paths, so what was cached for the old definition is dropped, or it would refuse the new rows.
         val reportKeys = ReportService.get(cxt).reloadClient(cxt, client)
         RequestService.get(cxt).evictTypes(reportKeys)
+        // The client's file refs (issue #1153), from the configurations it now holds. Absent on a node that keeps
+        // no files.
+        FileRefService.getOrNull(cxt)?.reloadClient(cxt, client)
         val evicted = (typeKeys + reportKeys).size
 
         val inherited = taken.count { it.inheritedFrom != null }

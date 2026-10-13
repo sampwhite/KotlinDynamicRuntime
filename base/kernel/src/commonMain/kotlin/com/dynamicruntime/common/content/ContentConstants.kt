@@ -18,4 +18,8 @@ object CMK {
     /** A client's own web asset (issue #1130) -- its tab icon, its brand mark -- returned as the image itself:
      *  `/<staticRoot>/<appId>/web/<slot:hash>`. Always the **caller's** client's; see `WAS.staticPath`. */
     const val web = "web"
+
+    /** One of a client's file refs (issue #1153) -- a named file its configuration holds -- returned as the file
+     *  itself: `/<staticRoot>/<appId>/ref/<refId:hash>`. Always the **caller's** client's; see `FREF.staticPath`. */
+    const val ref = "ref"
 }

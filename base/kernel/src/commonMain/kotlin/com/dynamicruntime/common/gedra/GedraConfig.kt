@@ -4,26 +4,28 @@ import com.dynamicruntime.common.cfact.CFactDef
 import com.dynamicruntime.common.content.FragmentMapBuilder
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.fragmentInline
-import com.dynamicruntime.common.uiblock.UiBlockBuilder
-import com.dynamicruntime.common.uiblock.UiBlockSource
-import com.dynamicruntime.common.uiblock.uiBlockOverlay
 import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.gedra.workflow.WfDef
-import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
-import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.fileref.FREF
+import com.dynamicruntime.common.fileref.FileRefDef
 import com.dynamicruntime.common.gedra.report.ClientReport
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.report.ReportBuilder
 import com.dynamicruntime.common.gedra.report.UnreadReport
 import com.dynamicruntime.common.gedra.report.clientReportResult
 import com.dynamicruntime.common.gedra.report.parseClientReport
-import com.dynamicruntime.common.util.Parsed
-import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.gedra.workflow.WfDef
+import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.schema.qualifyTypeName
+import com.dynamicruntime.common.uiblock.UiBlockBuilder
+import com.dynamicruntime.common.uiblock.UiBlockSource
+import com.dynamicruntime.common.uiblock.uiBlockOverlay
+import com.dynamicruntime.common.util.Parsed
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * One trait: a `traitId`, the entry type it generates, and the gedra kinds that may carry it (issue #298).
@@ -282,6 +284,12 @@ class GedraConfig(
      */
     val unreadReports: Map<String, UnreadReport> = emptyMap(),
     /**
+     * The file refs this config declares (issue #1153): its client's named files, each a pointer to bytes kept
+     * elsewhere. A list, not a map by id: a row edited by hand to hold one id twice still reassembles, and the load
+     * says so and drops the second -- costing the duplicate and not the configuration.
+     */
+    val fileRefs: List<FileRefDef> = emptyList(),
+    /**
      * Where this config came from (issue #839): declared in source code, or read back from the database. A
      * problem found in a stored config is judged under its own, forgiving check mode, since a boot refused over
      * stored data leaves nothing with which to repair it.
@@ -427,6 +435,24 @@ class GedraConfigBuilder(
                 configName = stampName, stored = isStored,
             ),
         )
+    }
+
+    /** The file refs declared in this block (issue #1153); see [fileRef]. */
+    @Suppress("MemberVisibilityCanBePrivate")
+    val fileRefs: MutableList<FileRefDef> = mutableListOf()
+
+    /**
+     * Declares a file ref whose bytes are in the file store under [hash] (issue #1153) -- see [GedraConfig.fileRefs].
+     * What an upload writes, and how a stored one is restored; **not for source configuration**, since a hash names
+     * bytes in one deployment's store and a source config runs on every machine (the load reports one and drops it).
+     */
+    fun fileRef(refId: String, hash: String, description: String? = null) {
+        fileRefs.add(FileRefDef(refId, FREF.sourceStore, hash, description, configName = stampName, stored = isStored))
+    }
+
+    /** A file ref from its stored entry, stamped with this config's name and origin; see [FileRefDef.fromEntry]. */
+    fun fileRefFromMap(entry: Map<String, Any?>) {
+        fileRefs.add(FileRefDef.fromEntry(entry, configName = stampName, stored = isStored))
     }
 
     /** The client this config defines, if it declared one; see [defineClient]. */
@@ -797,6 +823,7 @@ fun gedraConfig(
         usages = builder.usages.toList(),
         reports = builder.reports.toMap(),
         unreadReports = builder.unreadReports.toMap(),
+        fileRefs = builder.fileRefs.toList(),
         origin = origin,
         contributesTo = contributesTo,
     )

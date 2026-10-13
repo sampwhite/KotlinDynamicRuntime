@@ -23,6 +23,8 @@ import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
 import com.dynamicruntime.common.cfact.cfactSchema
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.fileref.FileRefService
+import com.dynamicruntime.common.fileref.clientFileRefSchema
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.RequestService
@@ -203,6 +205,8 @@ class CommonComponent : ComponentDefinition {
         // images are kept in. Declared only where they are kept: an edge has no file store to check a bucket of.
         collector.addModule(clientWebSchema(cxt), appOnly)
         collector.addFileBucket(ClientWebAssetService.bucketDef(), appOnly)
+        // A client's file refs (issue #1153): the administrator's endpoints. Their files are kept in the same bucket.
+        collector.addModule(clientFileRefSchema(cxt), appOnly)
         // The cfacts an expression may name, for whoever is authoring configuration against them. In the
         // `clientAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
         // has a registry of its own to report -- see `cfactSchema`.
@@ -330,6 +334,9 @@ class CommonComponent : ComponentDefinition {
             // A client's own web assets (issue #1130), served under the static root beside the fragments.
             // Application-only, as the file store they are kept in is.
             service(::ClientWebAssetService, roles = setOf(BOOT.app)),
+            // A client's file refs (issue #1153), read from its configuration and served under the static root.
+            // Application-only, as the file store is.
+            service(::FileRefService, roles = setOf(BOOT.app)),
             // Resolves UiBlocks for a caller (issue #457). A regular service, so the startup tier's
             // SchemaService -- which its boot check reads for each client's cfact vocabulary -- is already
             // compiled by the time this initializes.

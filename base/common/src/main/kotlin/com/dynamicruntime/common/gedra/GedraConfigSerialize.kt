@@ -72,6 +72,7 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     }
     out[CCT.uiBlockDef] = config.uiBlocks.map { linkedMapOf(CCT.blockId to it.blockId, CCT.content to it.content) }
     out[CCT.cfactDef] = config.cfacts.map { cfactToEntry(it) }
+    out[CCT.fileRefDef] = config.fileRefs.map { it.toEntry() }
     // Drop empty slots so a row holds only the pieces the config actually has.
     return out.filterValues { it.isNotEmpty() }
 }
@@ -166,6 +167,8 @@ fun reassembleGedraConfig(
             e[CCT.toFrontend] as? Boolean ?: false,
         )
     }
+    // Forgiving, as a report is: a ref that is no good costs only itself, and it is the load that says so.
+    entriesBySlot[CCT.fileRefDef]?.forEach { fileRefFromMap(it) }
 }
 
 /** The qualified names of every type a config's traits **generate** -- the entry types, and the inline data types. */

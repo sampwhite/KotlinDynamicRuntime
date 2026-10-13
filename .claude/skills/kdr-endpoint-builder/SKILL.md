@@ -174,7 +174,7 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
     `collector.addFileBucket(FileBucketDef("client-files", "What is kept there."))`. A bucket is the store's own
     unit of addressing on every provider (lowercase letters, digits, hyphens), and the boot checks each declared
     one can be served. A bucket nobody declared is refused, and so is a name declared twice: `web-assets` is the
-    runtime's own (a client's favicon and brand mark), so pick another.
+    runtime's own (a client's favicon and brand mark, and the files its configuration names), so pick another.
   - `FileStoreService.get(cxt).put(cxt, bucket, key, content, extra)` stores a `ContentData` and answers its
     `FileMeta` — type, size, SHA-256, the uploaded name, who and when, your `extra` — which is also written
     **beside the file** (`<key>.meta.json`). A key is slash-separated segments of letters, digits, `.`, `_`, `-`.
@@ -215,7 +215,9 @@ response headers through `c.request?.webRequest`. The same images are served to 
 under the static root (`ClientWebAssetService.serve`), which is where a file goes out when it is content rather
 than an API answer. **How long an answer may be kept is `ContentResources`' to say**, not the endpoint's:
 `cacheHeaderFor(matched)` for an address anyone may fetch, `privateCacheHeaderFor(matched)` with `Vary: Cookie`
-for one behind a sign-in, and `noStore` on every miss.
+for one behind a sign-in, and `noStore` on every miss. **Serving a stored file by its content is
+`HashedFileServing`'s** (`addressOf`, `send`, `downloadHeaders`): a client's file refs (`fileref/FileRefService.kt`,
+issue #1153) are the second server on it, and a third should be too rather than answer those questions again.
 
 ## Signatures
 

@@ -38,6 +38,9 @@ object CCT {
     /** One named report, keyed by its report id (issue #979). */
     const val reportDef = "kdr:reportDef"
 
+    /** One file ref -- a named file of the client's, by the hash of its bytes -- keyed by its ref id (issue #1153). */
+    const val fileRefDef = "kdr:fileRefDef"
+
     // --- field names inside the slots' data (each matches its value) ---
 
     const val traitId = "traitId"
@@ -66,4 +69,8 @@ object CCT {
     const val name = "name"
     const val group = "group"
     const val toFrontend = "toFrontend"
+
+    const val refId = "refId"
+    const val source = "source"
+    const val hash = "hash"
 }

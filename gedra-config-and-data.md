@@ -328,6 +328,43 @@ strand nobody. Changing such an entry and leaving it at fault is refused; mendin
 "As it stands" means on **this node**: an import that restores another deployment's configuration is judged against
 what the target holds, so an old fault it carries across is refused there and mended at its source.
 
+**A write never deletes a slot the node does not read** (issue #1153). Every write passes through the model, which
+keeps only the slots it knows, and a write is authoritative -- so a node one release behind would otherwise delete a
+newer release's entries from each configuration it edited: an administrator's copy edit taking the client's file refs
+with it. The stored entries of a slot that is not in this node's `coreConfigTraits` are therefore carried as they are,
+whatever the write says (`buildFinalEntries`). A node still *reports* such a slot when it loads the configuration; it
+simply cannot be the one to remove it.
+
+### File refs: configuration that points outside itself (issue #1153)
+
+`kdr:fileRefDef` is the tenth slot, and the first whose entries name something that is not in the configuration: a
+client's **file ref** is a named file, and its entry -- `{ refId, source, hash, description? }` -- holds the SHA-256
+of the file's bytes, which are in the file store (bucket `web-assets`, key `clients/<client>/refs/<hash>`).
+
+- **The hash is the pointer.** The key is derived from it and never stored, so an entry names exactly one sequence
+  of bytes, an object is written once and never rewritten, and a draft cannot change what a published revision
+  names. Removing a ref leaves its object, which older revisions still name.
+- **What a file is -- its type, its size, its name -- is not in the entry.** It is the file store's own record,
+  written by the upload that checked the bytes. An entry can be typed through these endpoints, and the content type a
+  file is served under must not come from something that can be typed. Serving checks, on every read, that the file
+  is the one the ref names and a kind a ref may be (`FileRefService.read`).
+- **Drafted and published like any other configuration.** `FileRefService` builds a registry per client from the
+  configurations the collector holds for it, so the tiers and the sandbox need no rule of their own: a sandbox
+  previews a ref its parent has only drafted, and the parent serves the one it published. This is the difference
+  from a client's web assets (#1130), which are not configuration and have neither.
+- **Only stored configuration may hold one.** A hash names bytes in one deployment's file store, and source
+  configuration runs on every machine: a ref declared in source is a source problem, which refuses the boot outside
+  production.
+- **A load asks the store once per distinct file** (remembered for the node's life, since an object never changes),
+  and a ref whose bytes are missing is a reported problem that costs only the ref. It has to be asked then, not on
+  first use: a write's trial subtracts the problems the client already has, and one nobody recorded would refuse
+  every later write. A client holds at most 200 refs, refused at the write.
+- **An export or import does not carry files.** A configuration imported into a deployment whose store lacks the
+  bytes is refused, naming the refs.
+
+Not to be confused with `GedraDataType.fileRef`, a kind of *data* gedra with no write path yet -- a claim on a file
+held as data. The two share the word.
+
 **Two things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
 body** (`kdr:schemaDef.schema`, `kdr:traitDef.dataSchema`) need only be an object here, since parsed on its own it
 would be refused for naming a sibling type or for being an alteration of a global one; and what is **inside a
@@ -450,6 +487,7 @@ is what gives the warning teeth.
 | Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership, `traitsFor`, and `$ref` bounded by construction (a client's schema holds only global and its own types) |
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
+| File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only; a file that lives outside the file store is #1154 |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 

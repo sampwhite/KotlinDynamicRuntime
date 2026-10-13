@@ -220,7 +220,7 @@ class GedraConfigTest : StringSpec({
         val config = coreConfigTraits(cxt)
         config.configTraits.keys.toList() shouldContainExactly listOf(
             CCT.clientDef, CCT.traitDef, CCT.usageDef, CCT.workflowDef, CCT.reportDef,
-            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef,
+            CCT.schemaDef, CCT.fragmentDef, CCT.uiBlockDef, CCT.cfactDef, CCT.fileRefDef,
         )
         config.traits.isEmpty() shouldBe true
         // Keyed as #611/#625 say: workflows by id, schema by type name, the trait/usage slots by trait id,
@@ -234,6 +234,8 @@ class GedraConfigTest : StringSpec({
         config.configTraits.getValue(CCT.fragmentDef).primaryKey shouldBe listOf(CCT.fileId)
         config.configTraits.getValue(CCT.uiBlockDef).primaryKey shouldBe listOf(CCT.blockId)
         config.configTraits.getValue(CCT.cfactDef).primaryKey shouldBe listOf(CCT.name)
+        // A file ref by its ref id (issue #1153).
+        config.configTraits.getValue(CCT.fileRefDef).primaryKey shouldBe listOf(CCT.refId)
     }
 
     "the referenced slots point at the canonical shapes, and the schema-doc slots parse their body" {

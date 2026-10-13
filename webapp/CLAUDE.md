@@ -89,6 +89,26 @@ catalog for the same reason:
   all, so there a client's tab icon appears on the next full load and only when it is a raster image. The
   `apple-touch-icon` (an iOS home-screen icon) is left as the deployment's: there is no slot for one.
 
+### A client's file refs (issue #1153)
+
+Beside its two web assets a client has **file refs**: named images its administrator uploads, held in its stored
+configuration. They are served the same way, under their own marker:
+
+**Request:** `GET /st/<appId>/ref/<refId:hash>` -- the kernel's `FREF.staticPath(appId, FREF.versionedName(refId, hash))`.
+
+- The same rules as a web asset: the **caller's** client's ref whatever the address says, kept for good when the
+  hash is the file's own, the current file under `no-store` for any other, a `no-store` 404 for no such ref.
+- **Unlike a web asset, a ref is configuration**: a client with a sandbox drafts one there, and its own people are
+  served it once it is published. So the same `refId` can be two different files for the client and for its sandbox,
+  each under its own hash -- which is what the hash in the address is for.
+- **Nothing in the webapp reads one yet.** The administrator's endpoints are `GET /clientAdmin/client/files` (each
+  ref with the file store's record of its file, whether it is `live` for the client's own people or a draft, and
+  whether its bytes are `missing`), `POST …/files/upload` (multipart `refId`, `file`, `description`; use
+  `Http.uploadApi`), `POST …/files/remove`, and `GET …/files/download` for a preview -- wire names `FREF`, `CCT`
+  and the file's `FMETA`, all in the kernel. An upload or removal answers its `mode` (`EDM.live` / `EDM.draft`), as
+  a copy edit does. A page for them, and resolving a ref from Markdown copy, are later issues: when you build
+  either, the listing's `name` is what goes in the address.
+
 ## UI-config endpoints: how a widget-group learns what to build (issue #70)
 
 A React **widget-group** (the auth flow, the profile page, later the nav/home) fetches a normal API endpoint

@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.report.RDEF
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.schema.SCT
@@ -154,7 +155,33 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
             allowCoerce = false
         }
     }
+    // Declared last, so the slot list a write is held to ends with the newest (issue #1153). What a file *is* --
+    // its type, its size, the name it was uploaded under -- is deliberately no field of this: it is the file
+    // store's record, written by the upload that checked the bytes, and nothing an entry could be typed to claim.
+    configTrait(
+        "FileRefDefEntry", CCT.fileRefDef, setOf(GedraConfigType.configDoc),
+        "One file ref of this client -- a named file, by the hash of its bytes -- keyed by its ref id.",
+        primaryKey = listOf(CCT.refId),
+    ) {
+        property(CCT.refId, "The ref's id within its client: a variable name, at most ${FREF.maxRefIdLength} characters.", required = true) {
+            maxLength = FREF.maxRefIdLength
+            pattern = refIdPattern
+        }
+        property(CCT.source, "Where the file's bytes are.", required = true) {
+            option(FREF.sourceStore, "The file store")
+        }
+        property(CCT.hash, "The SHA-256 of the file's bytes, in lowercase hex: what names them in the file store.", required = true) {
+            pattern = hashPattern
+        }
+        property(CCT.description, "What the file is for, in the administrator's words.")
+    }
 }
+
+/** A file ref id as a pattern: a variable name. The slot gate's form of `FREF.refIdProblem`'s rule. */
+private const val refIdPattern = "^[A-Za-z_][A-Za-z0-9_]*$"
+
+/** A SHA-256 in lowercase hex: `FREF.isHash` as a pattern. */
+private const val hashPattern = "^[0-9a-f]{${FREF.hashLength}}$"
 
 /**
  * The declaration fields of a [CCT.traitDef] (issue #625): what a trait's DSL
