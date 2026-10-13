@@ -31,6 +31,12 @@ object CUST {
      */
     val reserved: Set<String> = setOf(kdr, CL.hub, CL.public, CL.house, GID.globalClient, free)
 
+    /**
+     * The `hub` configuration the customers made over the API are stored in (issue #1107). One bundle, patched one
+     * customer at a time under `hub`'s lock, so two changes cannot overwrite each other.
+     */
+    const val configName = "customers"
+
     /** The choice list of customers a client may be filed under, for a form (issue #1107). */
     const val customerOptions = "customerOptions"
 }

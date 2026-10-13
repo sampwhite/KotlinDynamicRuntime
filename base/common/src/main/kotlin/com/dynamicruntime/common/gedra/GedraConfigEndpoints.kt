@@ -1065,6 +1065,15 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             "Present when the client was created -- stored and published -- but loading it on this node failed: " +
                 "why. The create is not to be repeated; the client is reloaded once the cause is mended.",
         )
+        property(CLD.customer, "The customer made with the client, as stored, when one was asked for.") {
+            type = SCT.kObject
+            CustomerDef.declareFields(this)
+        }
+        property(
+            CLD.customerFailure,
+            "Present when the client and its new customer were made but the client could not be named the " +
+                "customer's root: why. The root is named through the customer's configuration once the cause is mended.",
+        )
     }
 
     generalEndpoint(
@@ -1074,7 +1083,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             "this node's environment is one it is enabled in. The definition is held to what any written definition " +
             "is -- its schema, a domain no other client holds, a trial load that judges its id, its environments " +
             "and the template it extends -- and refused for the same reasons, in the same words. Refused with a 409 " +
-            "for an id that is taken, by a client in source code or in stored configuration. What a definition does " +
+            "for an id that is taken, by a client in source code or in stored configuration. With '" + CLD.newCustomer +
+            "' it makes a customer too, whose id is the client's and whose root the client is (issue #1107). What a definition does " +
             "not hold at creation -- its traits, its workflows, its test features -- is added through its " +
             "configuration afterwards.",
         HttpMethod.POST,
@@ -1090,6 +1100,8 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
                 CLD.present to result.present,
                 CLD.issues to result.issues.map { it.toWireMap() },
                 CLD.loadFailure to result.loadFailure,
+                CLD.customer to result.customer,
+                CLD.customerFailure to result.customerFailure,
             ),
         )
     }

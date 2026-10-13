@@ -174,6 +174,13 @@ the missing link, so a demonstration or test client is never held to them.
 - **A source customer is never redefined by stored configuration**: a stored customer of the same id, case aside,
   is the second definition -- strict outside production, and in production dropped, the source one standing.
 
+- **A customer's first client can make the customer.** The operator's create takes `newCustomer` (a name, and
+  optionally a description) instead of naming a customer: the customer's id is the client's, and the client is its
+  root. It is three writes, each judged as any is -- the customer into `hub`'s `customers` configuration
+  (`CustomerStore`), the client under it, then the customer's root -- across two clients' locks, so not one
+  transaction: a client the write refuses takes its customer back with it, and a root that cannot be named is said
+  in the result (`customerFailure`) rather than thrown, since the client was made.
+
 The plan a customer is on, and the quotas it sets, are #1109's; the page showing a customer's clients is #1114's.
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared

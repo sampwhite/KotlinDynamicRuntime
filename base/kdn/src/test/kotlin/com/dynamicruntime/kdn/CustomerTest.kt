@@ -80,6 +80,32 @@ class CustomerTest : StringSpec({
         ).toString() shouldContain "falls under the prefix of the customer '$customer'"
     }
 
+    "a client and a new customer are made in one call: the customer takes the client's id, and the client is its root" {
+        val client = "newco1107"
+        val result = admin.postData(ADEP.clientCreate, createBody(client) + (CLD.newCustomer to mapOf(CUST.name to "Newco")))
+        result[CLD.present] shouldBe true
+        result[CLD.customer] shouldBe mapOf(CUST.customerId to client, CUST.name to "Newco", CUST.rootClientId to client)
+        result.containsKey(CLD.customerFailure) shouldBe false
+        val clients = ClientService.get(cxt)
+        clients.customerOf(client).shouldNotBeNull().name shouldBe "Newco"
+        clients.rootOf(client).shouldNotBeNull().clientId shouldBe client
+        // Its prefix is held from now on.
+        createRefusal("${client}_x") shouldContain "falls under the prefix of the customer '$client'"
+    }
+
+    "a new customer is refused where the client's id cannot be one, and goes with a client that is refused" {
+        fun withNew(id: String, vararg more: Pair<String, Any?>) = createBody(id) + mapOf(*more) + (CLD.newCustomer to mapOf(CUST.name to "New $id"))
+        admin.expectError(EXC.badInput, ADEP.clientCreate, withNew("both1107", CLD.customerId to customer))
+            .toString() shouldContain "names an existing customer or asks for a new one, not both"
+        admin.expectError(EXC.badInput, ADEP.clientCreate, withNew("free_n1107"))
+            .toString() shouldContain "'free_n1107' cannot be a customer's: it holds '_'"
+        admin.expectError(EXC.conflict, ADEP.clientCreate, withNew("CUST1107b") - CLD.clientId + (CLD.clientId to "Cust1107"))
+        // The client's definition is refused by its write -- it extends a client that is not there -- so the
+        // customer made for it is taken back.
+        admin.expectError(EXC.badInput, ADEP.clientCreate, withNew("undo1107", CLD.extendsFromClientId to "nothere1107"))
+        ClientService.get(cxt).customer("undo1107") shouldBe null
+    }
+
     "only hub's stored configuration holds customers, and only the platform changes them" {
         admin.expectError(
             EXC.badInput, ACEP.bundleWrite,

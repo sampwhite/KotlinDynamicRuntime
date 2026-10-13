@@ -205,6 +205,15 @@ object CLD {
     /** The customer that owns the client (issue #1107); see [ClientDef.customerId]. */
     const val customerId = "customerId"
 
+    /** On a create: a customer to make with the client, whose id is the client's and whose root it is (issue #1107). */
+    const val newCustomer = "newCustomer"
+
+    /** On a create's result: the customer made with the client, as stored (issue #1107). */
+    const val customer = "customer"
+
+    /** On a create's result: why the customer made with the client was not finished, when it was not (issue #1107). */
+    const val customerFailure = "customerFailure"
+
     /** On a client overview row that is a sandbox (issue #932): the client whose sandbox it is. */
     const val sandboxOf = "sandboxOf"
 
@@ -694,6 +703,16 @@ data class ClientDef(
                 type = SCT.kObject
                 description = "A client to create: what its definition is to hold."
                 infoProperties(written = true, only = ClientCreateFields.names.toSet(), offerChoices = true)
+                // Not a field of the definition: a customer made with the client (issue #1107).
+                property(
+                    CLD.newCustomer,
+                    "A customer to create with the client: its id is the client's, and the client is its root. " +
+                        "Instead of naming an existing customer.",
+                ) {
+                    type = SCT.kObject
+                    property(CUST.name, "The name presented for the customer.", required = true)
+                    property(CUST.description, "An internal note about who, what or why.")
+                }
             }
         }
 
