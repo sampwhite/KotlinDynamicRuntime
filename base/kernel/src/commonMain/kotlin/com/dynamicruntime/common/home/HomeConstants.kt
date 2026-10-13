@@ -114,6 +114,12 @@ object HFLD {
     const val description = "description"
 
     /**
+     * `state.links[].listed`: whether the Documents listing offers the document (issue #1136). An unlisted one is a
+     * page of a suite, reached from its entry page; it is still sent, so a link to it resolves.
+     */
+    const val listed = "listed"
+
+    /**
      * `state.sourceRepoBase`: the source repository's blob base (`.../blob/<branch>`), or absent when the
      * deployment did not configure one. Interior links to files that are *not* served as in-app documents are
      * rewritten under it; without it they are left as written (issue #492).

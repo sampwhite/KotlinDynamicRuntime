@@ -4,6 +4,9 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.MDOC
+import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.content.checkedMarkdownDocs
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.context.KdrCxt
@@ -120,12 +123,14 @@ object InstanceRegistry {
             // it ships, and nothing else can find out (the classpath is not enumerable here).
             val fragmentSources = mutableListOf<FragmentSource>()
             val uiBlockSources = mutableListOf<UiBlockSource>()
+            val docs = mutableListOf<MarkdownDocDef>()
             for (component in loaded) {
                 // With the component in hand, so what it contributes is held to its owner root (issue #950).
                 collector.contributingAs(cxt, component) {
                     component.addSchema(cxt, collector)
                     fragmentSources.addAll(component.fragments(cxt))
                     uiBlockSources.addAll(component.uiBlocks(cxt))
+                    docs.addAll(component.docs(cxt))
                     // Same loop, so every config is present before any service binds -- which is what lets
                     // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
                     for (config in component.gedraConfigs(cxt)) {
@@ -157,6 +162,7 @@ object InstanceRegistry {
             // read happens once per boot.
             config.put(FRAG.registryKey, fragmentSources.toList())
             config.put(UIB.registryKey, uiBlockSources.toList())
+            config.put(MDOC.registryKey, checkedMarkdownDocs(docs))
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()

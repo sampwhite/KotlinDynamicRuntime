@@ -1749,10 +1749,25 @@ internal fun ChildrenBuilder.labelSpan(name: String, required: Boolean) {
     }
 }
 
+/**
+ * A field's description, beneath it: inline Markdown (issue #1136), so it may emphasize, quote code, or link -- a
+ * link to a document opening it in the app, resolved as all form copy is ([copyLinkResolver]). A field's *label*
+ * stays plain text: a link there would sit on what focuses the control, and a label also heads a table column.
+ */
 internal fun ChildrenBuilder.desc(text: String) {
+    FieldDescription { this.text = text }
+}
+
+private external interface FieldDescriptionProps : Props {
+    var text: String
+}
+
+/** [desc]'s component, so the description can read the shell's document links. */
+private val FieldDescription = FC<FieldDescriptionProps> { props ->
+    val copyLinks = useShellFacts().copyLinkResolver()
     p {
         className = ClassName("subtitle")
-        +text
+        MarkdownInline { source = props.text; linkResolver = copyLinks }
     }
 }
 

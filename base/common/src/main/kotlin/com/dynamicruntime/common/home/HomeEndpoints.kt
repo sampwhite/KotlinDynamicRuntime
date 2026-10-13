@@ -3,6 +3,8 @@ package com.dynamicruntime.common.home
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.content.MDOC
+import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
@@ -58,6 +60,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
         property(HFLD.buildId, "Cache-busting content hash for the document.", required = true)
         property(HFLD.sourcePath, "The document's repo-relative source path, used to resolve its interior links.", required = true)
         property(HFLD.description, "One line on what the document covers, shown beside its link (issue #554).", required = true)
+        property(
+            HFLD.listed,
+            "Whether the Documents list offers it (issue #1136); an unlisted document is a page of a suite, reached by links.",
+            required = true,
+        ) { type = SCT.boolean }
     }
 
     // One app-bar menu item: an id the frontend can recognize, a label to show, and either a page to navigate
@@ -238,7 +245,7 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
  * - **Signed in / out** was an `if/else` on `isLoggedIn`, and is now the pair [CFACTS.loggedIn] and
  *   [CFACTS.anonymous] -- the positive form on both sides rather than a negation.
  *
- * Labels stay literal, as `homeDocs` link labels do. Their natural home is the `home` fragment file, and
+ * Labels stay literal, as `coreDocs` link labels do. Their natural home is the `home` fragment file, and
  * moving them is deliberately *not* part of this change: the acceptance criterion is a response that does not
  * change, and moving copy in the same step would spend the one check that makes the move verifiable.
  */
@@ -374,21 +381,29 @@ private fun KdrCxt.layoutFlag(key: String, default: Boolean): Boolean =
     (instanceConfig.get(key) as? Boolean) ?: default
 
 /**
- * The documents the home page links to, in display order. Each is paired with its current build id, so the
- * frontend fetches an immutably cacheable URL. A document whose resource is absent (its owning module is not
- * in the deployment) is simply left out, rather than offered as a link that would 404.
+ * The documents the home page links to, in display order: every one a component declared (`docs`, issue #1136),
+ * each with [HFLD.listed] saying whether the Documents list offers it -- an unlisted one is still sent, since a link
+ * to it from another document or from form copy resolves by its source path. Each is paired with its current build
+ * id, so the frontend fetches an immutably cacheable URL. A document whose resource is absent (its owning module is
+ * not in the deployment) is simply left out, rather than offered as a link that would 404.
  */
-private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { doc ->
+private fun homeLinks(cxt: KdrCxt): List<Map<String, Any?>> = declaredDocs(cxt).mapNotNull { doc ->
     val buildId = MarkdownDocService.docBuildId(doc.docId) ?: return@mapNotNull null
     mapOf(
-        HFLD.id to doc.id,
+        HFLD.id to doc.docId,
         HFLD.label to doc.label,
         HFLD.docId to doc.docId,
         HFLD.buildId to buildId,
         HFLD.sourcePath to doc.sourcePath,
         HFLD.description to doc.description,
+        HFLD.listed to doc.listed,
     )
 }
+
+/** The documents the components declared, as the boot collected them (empty on an instance built without them). */
+@Suppress("UNCHECKED_CAST")
+private fun declaredDocs(cxt: KdrCxt): List<MarkdownDocDef> =
+    cxt.instanceConfig.get(MDOC.registryKey) as? List<MarkdownDocDef> ?: emptyList()
 
 /**
  * The Documents list for this caller: empty on an edge's anonymous landing, [homeLinks] everywhere else
@@ -405,43 +420,33 @@ private fun homeLinks(): List<Map<String, Any?>> = homeDocs.mapNotNull { doc ->
 private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
     val registry = SchemaService.get(cxt).cfactsFor(null)
     val onAnonymousEdgeLanding = registry.parse("${CFACTS.anonymous},${CFACTS.edge}").matches(registry.assemble(cxt))
-    return if (onAnonymousEdgeLanding) emptyList() else homeLinks()
+    return if (onAnonymousEdgeLanding) emptyList() else homeLinks(cxt)
 }
 
-/** One row of the home page's document registry: how it is addressed and labelled, and where it came from. */
-private class HomeDocDef(
-    val id: String, val label: String, val docId: String, val sourcePath: String,
-    /** One line on what the document covers, shown beside its link in the Documents listing (issue #554). */
-    val description: String,
-)
-
 /**
- * The home page's document registry (issue #492): the README plus the repo docs it links to. Registering a
- * target here does two things at once -- it is offered in the Documents list, and its repo source path lets the
- * frontend rewrite a link *to* it (from any document) into an in-app link rather than a link into the source
- * repository. A doc whose resource is not in the deployment is simply dropped by [homeLinks]. Grows as more
- * documents are published.
+ * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
+ * component. Other components declare their own (`docs`, issue #1136).
  */
-private val homeDocs: List<HomeDocDef> = listOf(
-    HomeDocDef(HDOC.readme, "Read me", HDOC.readme, "README.md",
+fun coreDocs(): List<MarkdownDocDef> = listOf(
+    MarkdownDocDef(HDOC.readme, "Read me", "README.md",
         "What the runtime is, where it came from, and how to set it up."),
-    HomeDocDef(HDOC.codeGuide, "Code guide", HDOC.codeGuide, "code-guide.md",
+    MarkdownDocDef(HDOC.codeGuide, "Code guide", "code-guide.md",
         "How code here is written, including where it deliberately departs from Kotlin norms."),
-    HomeDocDef(HDOC.clientDefinition, "Client definition", HDOC.clientDefinition, "client-definition.md",
+    MarkdownDocDef(HDOC.clientDefinition, "Client definition", "client-definition.md",
         "How a client is described, what it owns, and what a deployment does with one."),
-    HomeDocDef(HDOC.deferredWork, "Deferred work", HDOC.deferredWork, "deferred-work.md",
+    MarkdownDocDef(HDOC.deferredWork, "Deferred work", "deferred-work.md",
         "What has deliberately not been done yet, each item under the condition that should reopen it."),
-    HomeDocDef(HDOC.gedraConfigAndData, "Gedra config and data", HDOC.gedraConfigAndData, "gedra-config-and-data.md",
+    MarkdownDocDef(HDOC.gedraConfigAndData, "Gedra config and data", "gedra-config-and-data.md",
         "How gedra definitions and stored data are separated, identified, and kept apart."),
-    HomeDocDef(HDOC.gedraEntry, "Gedra entry", HDOC.gedraEntry, "gedra-entry.md",
+    MarkdownDocDef(HDOC.gedraEntry, "Gedra entry", "gedra-entry.md",
         "The design of the universal stored entity and the schema constructs it needs."),
-    HomeDocDef(HDOC.gedraPatch, "Gedra patch", HDOC.gedraPatch, "gedra-patch.md",
+    MarkdownDocDef(HDOC.gedraPatch, "Gedra patch", "gedra-patch.md",
         "How a stored gedra is changed: why a patch, what the input looks like, and the endpoints around it."),
-    HomeDocDef(HDOC.uiBlock, "UI block", HDOC.uiBlock, "ui-block.md",
+    MarkdownDocDef(HDOC.uiBlock, "UI block", "ui-block.md",
         "The UiBlock: declared presentation structure, contributed by components and varied per client."),
-    HomeDocDef(HDOC.reporting, "Reporting", HDOC.reporting, "reporting.md",
+    MarkdownDocDef(HDOC.reporting, "Reporting", "reporting.md",
         "Named reports over a client's forms: paths, combines, the load-time checks, and the cursor-paged run."),
-    HomeDocDef(HDOC.license, "License", HDOC.license, "LICENSE",
+    MarkdownDocDef(HDOC.license, "License", "LICENSE",
         "The MIT license the runtime is released under."),
 )
 
