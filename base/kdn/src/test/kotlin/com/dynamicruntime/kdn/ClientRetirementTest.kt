@@ -41,6 +41,19 @@ class ClientRetirementTest : StringSpec({
     )
     fun retire(client: String, retired: Boolean = true) =
         operator.postData(ADEP.clientRetirementSet, mapOf(CLD.client to client, CLD.retired to retired))
+    /**
+     * Signs [email] in by verification code from a fresh browser, as a person would -- reaching the login's own gate,
+     * which the fixture's create does not when it names a client -- and returns the response envelope.
+     */
+    fun loginByCode(email: String): Map<String, Any?> {
+        val browser = TestHttpClient(cxt.instanceConfig)
+        val token = browser.sendJsonGetRequest(AEP.createToken)[EP.results].toJsonMapOrEmpty()[AFLD.formAuthToken].toOptStr()!!
+        browser.sendJsonPostRequest(AEP.userSendVerify, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token))
+        val code = NodeService.get(cxt).computeVerifyCode(token, email)
+        return browser.sendJsonPostRequest(
+            AEP.loginByCode, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token, AFLD.verifyCode to code),
+        )
+    }
     fun refusal(client: String): String =
         operator.expectError(EXC.badInput, ADEP.clientRetirementSet, mapOf(CLD.client to client, CLD.retired to true)).toString()
 
@@ -60,12 +73,7 @@ class ClientRetirementTest : StringSpec({
             .single { it[CLD.clientId] == client }[CLD.status] shouldBe ClientStatus.retired.name
         // The open session is no longer honored, and signing in again is refused.
         member.selfClient() shouldBe CL.public
-        val browser = TestHttpClient(cxt.instanceConfig)
-        val token = browser.sendJsonGetRequest(AEP.createToken)[EP.results].toJsonMapOrEmpty()[AFLD.formAuthToken].toOptStr()!!
-        browser.sendJsonPostRequest(AEP.userSendVerify, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token))
-        val code = NodeService.get(cxt).computeVerifyCode(token, email)
-        browser.sendJsonPostRequest(AEP.loginByCode, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token, AFLD.verifyCode to code))
-            .get(EP.errorMessage).toOptStr().orEmpty() shouldContain "The account's client '$client' has been retired"
+        loginByCode(email)[EP.errorMessage].toOptStr().orEmpty() shouldContain "The account's client '$client' has been retired"
 
         // Brought back: present, with the environments it had, and the same session honored again.
         retire(client, retired = false)[CLD.present] shouldBe true
@@ -86,12 +94,7 @@ class ClientRetirementTest : StringSpec({
         TestUser.create(cxt, email, userClient = gone)
         retire(gone)
 
-        val browser = TestHttpClient(cxt.instanceConfig)
-        val token = browser.sendJsonGetRequest(AEP.createToken)[EP.results].toJsonMapOrEmpty()[AFLD.formAuthToken].toOptStr()!!
-        browser.sendJsonPostRequest(AEP.userSendVerify, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token))
-        val code = NodeService.get(cxt).computeVerifyCode(token, email)
-        browser.sendJsonPostRequest(AEP.loginByCode, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token, AFLD.verifyCode to code))
-            .get(EP.results).toJsonMapOrEmpty()[UPF.client] shouldBe kept
+        loginByCode(email)[EP.results].toJsonMapOrEmpty()[UPF.client] shouldBe kept
     }
 
     "a source client, a sandbox, and a customer's root are not retired here" {
