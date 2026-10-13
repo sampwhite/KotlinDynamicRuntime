@@ -11,6 +11,8 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WfEntry
@@ -18,6 +20,10 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchLayoutBuilder
+import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.simulation.SimulationReport
 import com.dynamicruntime.common.simulation.Simulations
 import com.dynamicruntime.common.simulation.simulationEndpoint
@@ -52,9 +58,30 @@ object ConfDemo {
     /** The bundle holding the creation workflow -- one bundle per workflow, so each is read and written on its own. */
     const val createTalkConfig = "createTalk"
 
+    /** The bundle holding the survey (issue #1138). */
+    const val talkSurveyConfig = "talkSurvey"
+
     const val createTalkWorkflow = "createTalk"
     const val nameTalkTask = "nameTalk"
     const val createSave = "create"
+
+    const val talkSurveyWorkflow = "talkSurvey"
+    const val describeTask = "describe"
+    const val saveAbout = "saveAbout"
+
+    // The client's own traits, and their fields.
+    const val session = "session"
+    const val sessionEntry = "SessionEntry"
+    const val track = "track"
+    const val workshopTrack = "workshop"
+
+    const val questionnaire = "questionnaire"
+    const val questionnaireEntry = "QuestionnaireEntry"
+    const val firstTalk = "firstTalk"
+    const val audienceLevel = "audienceLevel"
+    const val takeaway = "takeaway"
+    const val recordingOk = "recordingOk"
+    const val needs = "needs"
 
     /** Where the documentation lives in the repository, and the prefix its pages take as doc ids. */
     const val docsDir = "docs/demo-client"
@@ -69,6 +96,7 @@ object ConfDemo {
 fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("README", "Conference demo", "A worked example of a client built from configuration: its JSON, piece by piece.", listed = true),
     confDemoDoc("create-talk", "Conference demo: creating a talk", "The demo's creation workflow."),
+    confDemoDoc("talk-survey", "Conference demo: the talk survey", "The demo's survey, its first traits, and its listing columns."),
 )
 
 private fun confDemoDoc(name: String, label: String, description: String, listed: Boolean = false) =
@@ -91,6 +119,42 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 includedTraits = listOf(GT.name),
             ),
         )
+
+        // The client's own traits (issue #1138). Each workflow page shows the traits that workflow introduces, so a
+        // trait is appended here, never inserted: the pages address each by its place in the bundle.
+        trait(ConfDemo.sessionEntry, ConfDemo.session, setOf(GedraDataType.formDoc), "Where a talk fits in the program.") {
+            property(ConfDemo.track, "The part of the program the talk belongs to.", required = true) {
+                title = "Track"
+                option("kotlin", "Kotlin")
+                option("web", "The web")
+                option("data", "Data")
+                option(ConfDemo.workshopTrack, "Workshop (hands-on)")
+            }
+        }
+        trait(ConfDemo.questionnaireEntry, ConfDemo.questionnaire, setOf(GedraDataType.formDoc), "Five questions every speaker answers.") {
+            // Optional in the data: each workflow that asks a question decides whether its own form requires it.
+            property(ConfDemo.firstTalk, "Whether this is the speaker's first talk at a conference.") {
+                title = "Is this your first conference talk?"
+                type = SCT.boolean
+            }
+            property(ConfDemo.audienceLevel, "How much the audience needs to know already.") {
+                title = "Who is the talk for?"
+                option("beginner", "Beginners")
+                option("intermediate", "People with some experience")
+                option("advanced", "Experts")
+            }
+            property(ConfDemo.takeaway, "What the audience leaves knowing.") { title = "What will the audience take away?" }
+            property(ConfDemo.recordingOk, "Whether the talk may be recorded and published.") {
+                title = "May we record the talk?"
+                type = SCT.boolean
+            }
+            property(ConfDemo.needs, "Anything the organizers should know for the day.") { title = "Anything we should know for the day?" }
+        }
+
+        // The forms listing's columns (issue #1138). A client that declares any replaces the default name column, so
+        // the name is declared here too.
+        traitUsage(GT.name, "Talk", $$"${name}", substring = true)
+        traitUsage(ConfDemo.session, "Track", $$"${track}")
     }
 
 /** The `createTalk` bundle: the workflow that runs when a speaker starts a submission. */
@@ -107,9 +171,36 @@ fun confDemoCreateTalk(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.cl
         }
     }
 
+/**
+ * The `talkSurvey` bundle (issue #1138): the survey, which collects what every talk needs before it is reviewed. It asks
+ * one of the questionnaire's questions; the abstract workflow asks the rest.
+ */
+fun confDemoTalkSurvey(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
+    gedraConfig(cxt, ConfDemo.talkSurveyConfig, clientNamespace(client), client) {
+        workflow(ConfDemo.talkSurveyWorkflow, WfEntry.survey) {
+            comment = "The form's survey: what every talk needs before it is reviewed."
+            label = "About your talk"
+            alterType(
+                "${clientNamespace(client)}.${traitDataTypeName(ConfDemo.questionnaireEntry)}",
+                mapOf(
+                    SCH.layout to SchLayoutBuilder(
+                        null,
+                        mode = SchLayoutMode.authoritative,
+                        comment = "The survey asks one of the five questions. The abstract workflow asks the rest.",
+                    ).apply { field(ConfDemo.firstTalk) }.build(),
+                ),
+            )
+            task(ConfDemo.describeTask, "Track and background") {
+                trait(ConfDemo.session)
+                trait(ConfDemo.questionnaire)
+                save(ConfDemo.saveAbout, "Save", WfSaveKind.edit)
+            }
+        }
+    }
+
 /** Every bundle of the demo, in the order they are written: the client first, since the others need it to exist. */
 fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): List<GedraConfig> =
-    listOf(confDemoBase(cxt, client), confDemoCreateTalk(cxt, client))
+    listOf(confDemoBase(cxt, client), confDemoCreateTalk(cxt, client), confDemoTalkSurvey(cxt, client))
 
 /**
  * Provisions the demo (issue #1137): each bundle written, published, and made live on every node, then an organizer and

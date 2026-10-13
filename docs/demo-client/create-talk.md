@@ -77,3 +77,5 @@ The speaker sees a page titled **Submit a talk**, with one field and one button,
 
 The field is the `name` field of the `kdr:name` trait. Its label, **Name**, and its description, *What to call it.*,
 come from the trait's own schema, which every client shares.
+
+Next: [The talk survey](talk-survey.md).
