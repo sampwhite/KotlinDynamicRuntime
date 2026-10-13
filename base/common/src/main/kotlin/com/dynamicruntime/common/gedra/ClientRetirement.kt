@@ -23,7 +23,10 @@ object ClientRetirement {
     /** What the change did: the definition as stored now, and whether this node carries the client. */
     class Result(val client: String, val retired: Boolean, val info: Map<String, Any?>, val present: Boolean)
 
-    /** Retires [client] when [retired], or brings it back. Setting what it already is changes nothing. */
+    /**
+     * Retires [client] when [retired], or brings it back. Setting what the client already **runs** as changes nothing
+     * -- judged by the definition the node runs, not the stored latest, which may be an unpublished draft.
+     */
     fun set(cxt: KdrCxt, client: String, retired: Boolean): Result {
         sandboxParentOf(client)?.let { parent ->
             throw KdrException.mkInput("'$client' is a sandbox; it is retired with its parent, '$parent'.")
@@ -45,7 +48,7 @@ object ClientRetirement {
         val holder = ClientStoredEdit.definitionHolder(bound)
             ?: throw KdrException.mkInput("Client '$client' has no stored definition to retire or bring back.")
         val before = holder.entriesBySlot()[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty()
-        if ((before[CLD.retired] == true) == retired) return result(cxt, client, retired, before)
+        if (clients.known(client)?.retired == retired) return result(cxt, client, retired, before)
         if (!holder.isPublished) {
             throw KdrException.mkInput(
                 "Configuration '${holder.configId.baseId}' of client '$client' has unpublished changes, which a " +

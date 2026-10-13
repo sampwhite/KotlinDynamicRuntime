@@ -556,6 +556,7 @@ class RequestService : ServiceInitializer {
                 // waiting; a no-op on a node with no config surface (an edge).
                 if (endpoint == null || endpoint.needsClientConfig) {
                     ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
+                    refuseSessionOfAbsentClient(cxt)
                     // A sync may have reloaded and published a new schema store. getGlobalSchema caches per context, so
                     // drop the cached one and re-resolve -- to serve the fresh configuration in this same request,
                     // and to find an endpoint the reload just added.
@@ -574,6 +575,7 @@ class RequestService : ServiceInitializer {
                 // covered rather than per endpoint, since a content request carries no endpoint metadata to opt
                 // in with; still throttled and in memory unless a peer's change is waiting.
                 ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
+                refuseSessionOfAbsentClient(cxt)
                 for (server in contentServers) {
                     if (server.serve(cxt, handler)) {
                         break
@@ -834,6 +836,19 @@ class RequestService : ServiceInitializer {
                 identityId = decoded.identityId, persona = decoded.persona,
             ),
         )
+    }
+
+    /**
+     * Refuses the request (401) when the session restored for it belongs to a client a sync has just taken away
+     * (issue #1111) -- retired on another node, which this node learned of only after [extractSessionAuth] honored
+     * the session. Asked after each sync, so the request that brings the retirement here is refused like every one
+     * after it; traffic that never syncs (auth, health) touches no client configuration to be refused.
+     */
+    private fun refuseSessionOfAbsentClient(cxt: KdrCxt) {
+        val profile = cxt.userProfile
+        if (!profile.isLoggedIn || !profile.isRowBacked) return
+        if (ClientService.getOrNull(cxt)?.isPresent(profile.client) != false) return
+        throw KdrException("The session's client '${profile.client}' is no longer available here.", code = EXC.authNeeded)
     }
 
     @Suppress("UNUSED_PARAMETER")

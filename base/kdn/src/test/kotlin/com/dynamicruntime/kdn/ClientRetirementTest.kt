@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
@@ -72,6 +73,25 @@ class ClientRetirementTest : StringSpec({
         member.selfClient() shouldBe client
         // Setting what it already is changes nothing.
         retire(client, retired = false)[CLD.retired] shouldBe false
+    }
+
+    "a person whose last-used user is in a retired client signs in as another of their users" {
+        val kept = "kept1111"
+        val gone = "gone1111"
+        operator.postData(ADEP.clientCreate, createBody(kept))
+        operator.postData(ADEP.clientCreate, createBody(gone))
+        val email = "both@both1111.test"
+        TestUser.create(cxt, email, userClient = kept)
+        // Made last, so it is the user the person last acted as.
+        TestUser.create(cxt, email, userClient = gone)
+        retire(gone)
+
+        val browser = TestHttpClient(cxt.instanceConfig)
+        val token = browser.sendJsonGetRequest(AEP.createToken)[EP.results].toJsonMapOrEmpty()[AFLD.formAuthToken].toOptStr()!!
+        browser.sendJsonPostRequest(AEP.userSendVerify, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token))
+        val code = NodeService.get(cxt).computeVerifyCode(token, email)
+        browser.sendJsonPostRequest(AEP.loginByCode, mapOf(AFLD.loginId to email, AFLD.formAuthToken to token, AFLD.verifyCode to code))
+            .get(EP.results).toJsonMapOrEmpty()[UPF.client] shouldBe kept
     }
 
     "a source client, a sandbox, and a customer's root are not retired here" {
