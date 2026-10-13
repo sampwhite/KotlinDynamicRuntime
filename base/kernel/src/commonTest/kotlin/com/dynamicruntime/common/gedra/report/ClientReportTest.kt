@@ -15,7 +15,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** A report definition's model, schema and parser (issue #979). Shared source: the frontend reads the same shape. */
+/** A report definition's model, schema, and parser (issue #979). Shared source: the frontend reads the same shape. */
 class ClientReportTest {
     private val cxt: KdrCxtBase = LiteCxt()
 
