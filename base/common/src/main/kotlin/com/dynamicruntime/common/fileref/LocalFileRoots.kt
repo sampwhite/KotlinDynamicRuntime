@@ -12,6 +12,7 @@ import com.dynamicruntime.common.exception.SRC
 import com.dynamicruntime.common.filestore.FNAME
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.sql.SecretsUtil
+import com.dynamicruntime.common.sql.SqlDbBuilder
 import com.dynamicruntime.common.util.byteSizeText
 import com.dynamicruntime.common.webasset.WebAssetCheck
 import com.dynamicruntime.common.webasset.WebImageKind
@@ -30,8 +31,8 @@ object LFENV {
             "**root**, by its name, and a ref names a root and a path under it. A relative path is taken from the " +
             "workspace directory; an absolute one is taken as written, so the files need not be in the workspace. " +
             "Nothing creates it: until a deployment puts a root there, there are none. It may not be inside one of " +
-            "the places that hold the deployment's own data, nor contain one. A unit test must name one, as an " +
-            "absolute path: it never defaults into the workspace.",
+            "the places that hold the deployment's own data, nor contain one. A unit test is given none unless it " +
+            "names one, as an absolute path: it never defaults into the workspace.",
     )
 
     val roots = EnvVarDef(
@@ -54,6 +55,13 @@ class LocalFile(val bytes: ByteArray, val kind: WebImageKind, val modifiedAt: In
 class LocalRead(val file: LocalFile?, val reason: String?)
 
 /**
+ * Where a local file was found, short of reading it: its [real] path, its [size] and when it last changed -- or
+ * [reason], which says why it may not be read. Every rule about *which* file has been kept by the time there is one
+ * of these; what the file holds has not been looked at.
+ */
+class LocalAt(val real: Path?, val size: Long, val modifiedMs: Long, val reason: String?)
+
+/**
  * The directories a file ref may read a local file from, and the reading (issue #1154).
  *
  * **A ref names a root and a path under it, and reaches nothing else.** A path in configuration is a string naming
@@ -64,15 +72,19 @@ class LocalRead(val file: LocalFile?, val reason: String?)
  *   (`KDR_LOCAL_FILES_DIR`), by its name, or one [placed] elsewhere by `KDR_LOCAL_FILE_ROOTS`.
  * - **A root is nowhere near the deployment's own data** ([reserved]): judged by its real path, it is neither
  *   inside one of those places nor a directory that contains one. The second half rules out the workspace
- *   directory itself, a home directory and `/` -- a root is somewhere files were put, not somewhere everything is.
+ *   directory itself, anything above it and `/` -- a root is somewhere files were put, not somewhere everything is.
  *   Asked each time a root is used, not only at startup, since a root may be a link somebody repoints.
+ * - **A root under the location is named exactly as its directory is**, case and all: a name that finds the
+ *   directory only because the filesystem ignores case would be a root on one machine and none on the next.
  * - **A path is plain**: a file-store key's rules ([FNAME.keyProblem]), with no segment beginning with a dot.
  * - **The file's real path is exactly the root's real path plus the path.** That refuses a symbolic link anywhere
  *   below the root, and a path differing from the file's name only by case, which resolves on a filesystem that
  *   ignores case and not on one that does not.
  * - **A regular file, of bounded size, that is an image.** The size is asked before the file is read, and the bytes
- *   are sniffed ([WebAssetCheck.sniff]): a file that is not an image a ref may be is never returned, so a local ref
- *   cannot be made to disclose anything but a picture.
+ *   are sniffed ([WebAssetCheck.sniff]) as an upload's are: a file that does not pass as one of the images a ref
+ *   may be is never returned. (A raster is told by how it begins, so this keeps out everything that is not at
+ *   least dressed as a picture -- a text file, a key, a database -- which is what a path in configuration could
+ *   otherwise be pointed at.)
  */
 class LocalFileRoots(
     /** Where roots are looked for by name; null where there is none -- a unit test that named no location. */
@@ -81,6 +93,8 @@ class LocalFileRoots(
     val placed: Map<String, File>,
     /** The real paths of the places that hold the deployment's own data. */
     val reserved: List<Path>,
+    /** Why there is no [location] although nobody asked for none: the default is somewhere it may not be. */
+    val locationNote: String? = null,
 ) {
     /**
      * The real path of the root [name], or null with [why] said when there is none here: no such root, or a
@@ -91,7 +105,9 @@ class LocalFileRoots(
             why("the root's name is no name")
             return null
         }
-        val dir = placed[name] ?: location?.let { File(it, name) }
+        // Under the location, by the name the directory really has: `isDirectory` alone would find `brand` when
+        // asked for `Brand`, where the filesystem ignores case.
+        val dir = placed[name] ?: location?.takeIf { it.list()?.contains(name) == true }?.let { File(it, name) }
         if (dir == null || !dir.isDirectory) {
             why("there is no root '$name' on this machine")
             return null
@@ -112,33 +128,48 @@ class LocalFileRoots(
     /** Whether there is a root [name] here that a ref may read from. */
     fun hasRoot(name: String): Boolean = rootDir(name) {} != null
 
-    /** The file at [path] under the root [root], held to every rule of the class note. */
-    fun read(root: String, path: String): LocalRead {
+    /**
+     * Where the file at [path] under the root [root] is, held to every rule of the class note about *which* file a
+     * ref may name, and not read: its content is [read]'s to judge.
+     */
+    fun locate(root: String, path: String): LocalAt {
+        fun none(reason: String?) = LocalAt(null, 0, 0, reason)
         var reason: String? = null
-        val rootReal = rootDir(root) { reason = it } ?: return LocalRead(null, reason)
-        pathProblem(path)?.let { return LocalRead(null, "the path is not one a local file may have ($it)") }
+        val rootReal = rootDir(root) { reason = it } ?: return none(reason)
+        pathProblem(path)?.let { return none("the path is not one a local file may have ($it)") }
         val named = rootReal.resolve(path)
         return try {
             val real = named.toRealPath()
             when {
-                real != named -> LocalRead(null, "the path is reached through a link, or differs from the file's own name by case")
-                !Files.isRegularFile(real) -> LocalRead(null, "it is not a file")
-                Files.size(real) > FREF.maxSize -> LocalRead(null, "it is larger than ${byteSizeText(FREF.maxSize.toLong())}")
-                else -> {
-                    val bytes = Files.readAllBytes(real)
-                    val kind = WebAssetCheck.sniff(bytes)
-                    if (kind == null) {
-                        LocalRead(null, "it is not an image a file ref may be")
-                    } else {
-                        val modified = Instant.fromEpochMilliseconds(Files.getLastModifiedTime(real).toMillis())
-                        LocalRead(LocalFile(bytes, kind, modified, real.fileName.toString()), null)
-                    }
-                }
+                real != named -> none("the path is reached through a link, or differs from the file's own name by case")
+                !Files.isRegularFile(real) -> none("it is not a file")
+                Files.size(real) > FREF.maxSize -> none(tooLarge)
+                else -> LocalAt(real, Files.size(real), Files.getLastModifiedTime(real).toMillis(), null)
+            }
+        } catch (_: NoSuchFileException) {
+            none("there is no such file")
+        } catch (_: IOException) {
+            none(unreadable)
+        }
+    }
+
+    /** The file at [path] under the root [root], held to every rule of the class note. */
+    fun read(root: String, path: String): LocalRead {
+        val at = locate(root, path)
+        val real = at.real ?: return LocalRead(null, at.reason)
+        return try {
+            val bytes = Files.readAllBytes(real)
+            val kind = WebAssetCheck.sniff(bytes)
+            when {
+                // Asked again of what was read: a file can grow between being measured and being read.
+                bytes.size > FREF.maxSize -> LocalRead(null, tooLarge)
+                kind == null -> LocalRead(null, "it is not an image a file ref may be")
+                else -> LocalRead(LocalFile(bytes, kind, Instant.fromEpochMilliseconds(at.modifiedMs), real.fileName.toString()), null)
             }
         } catch (_: NoSuchFileException) {
             LocalRead(null, "there is no such file")
-        } catch (e: IOException) {
-            LocalRead(null, "it could not be read (${e.javaClass.simpleName})")
+        } catch (_: IOException) {
+            LocalRead(null, unreadable)
         }
     }
 
@@ -148,6 +179,7 @@ class LocalFileRoots(
      */
     fun describe(): String {
         val under = when {
+            locationNote != null -> locationNote
             location == null -> "no location is named"
             !location.isDirectory -> "'${location.path}' is not there, so it holds no roots"
             else -> {
@@ -167,8 +199,28 @@ class LocalFileRoots(
         /** What the location is called when none is named: beside `fileStore` and `h2Database` in the workspace. */
         const val defaultDirName = "localFiles"
 
-        /** The workspace's own directories no root may be in, or contain: its secrets, its database, its logs, the sample's files. */
-        val reservedWorkspaceDirs = listOf(File(SecretsUtil.secretsPath).parent ?: "private", "h2Database", "logs", "sampleFiles")
+        /** Where the workspace's secrets are, should [SecretsUtil.secretsPath] ever name a bare file. */
+        const val privateDirName = "private"
+
+        /** Where a node's logs are written, by its logging configuration's default. */
+        const val logsDirName = "logs"
+
+        /**
+         * Where the sample component keeps its files -- `SampleFileStore.storeDirName`, which this module cannot see; a
+         * test of the sample's holds the two to one value.
+         */
+        const val sampleFilesDirName = "sampleFiles"
+
+        private const val unreadable = "it could not be read"
+
+        private val tooLarge = "it is larger than ${byteSizeText(FREF.maxSize.toLong())}"
+
+        /**
+         * The workspace's own directories no root may be in, or contain: its secrets, its database, its logs, the
+         * sample's files -- each where it is by default. A deployment that keeps one somewhere else (an H2 file its
+         * database configuration places, a log directory its logging does) keeps its roots clear of it itself.
+         */
+        val reservedWorkspaceDirs = listOf(File(SecretsUtil.secretsPath).parent ?: privateDirName, SqlDbBuilder.h2DirName, logsDirName, sampleFilesDirName)
 
         /**
          * The roots this node reads local files from, as its environment declares them. **Refuses to start** over a
@@ -182,10 +234,20 @@ class LocalFileRoots(
             val reserved = reservedPlaces(cxt)
             val named = cxt.getEnvVar(LFENV.dir)?.trim()?.takeIf { it.isNotEmpty() }
             // No default in a unit test: the default is in the workspace, which is no test's to read.
+            var note: String? = null
             val location = when {
                 named != null -> placed(LFENV.dir.name, named, unit, reserved)
                 unit -> null
-                else -> placed(LFENV.dir.name, defaultDirName, unit, reserved)
+                else -> {
+                    // The default is nobody's declaration, so where it may not be a location it is simply not one:
+                    // a deployment whose file store is the workspace itself, say, named no local files and is
+                    // not refused a start over them.
+                    val byDefault = AppPaths.resolve(defaultDirName)
+                    placeProblem(realOf(byDefault), reserved)?.let {
+                        note = "the default '${byDefault.path}' is not used: it $it. Name a location with ${LFENV.dir.name}"
+                    }
+                    byDefault.takeIf { note == null }
+                }
             }
             val roots = LinkedHashMap<String, File>()
             for (declared in cxt.getEnvVar(LFENV.roots).orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }) {
@@ -198,7 +260,7 @@ class LocalFileRoots(
                 if (name in roots) throw configError("${LFENV.roots.name} declares the root '$name' twice.")
                 roots[name] = placed("${LFENV.roots.name} (root '$name')", where, unit, reserved)
             }
-            return LocalFileRoots(location, roots, reserved)
+            return LocalFileRoots(location, roots, reserved, note)
         }
 
         /** [declared] as the directory it names, having checked it may be a location or a root; [what] names the declaration in a refusal. */
@@ -228,12 +290,14 @@ class LocalFileRoots(
             return null
         }
 
-        /** The real paths of the places that hold the deployment's own data: [reservedWorkspaceDirs], and the file store's directory. */
-        fun reservedPlaces(cxt: KdrCxt): List<Path> {
-            val workspace = realOf(AppPaths.workspaceDir())
-            // As a list of one: a `Path` is itself an `Iterable` of its own segments, and `+` would add those.
-            return reservedWorkspaceDirs.map { workspace.resolve(it) } + listOf(realOf(FileStoreService.localDirOf(cxt)))
-        }
+        /**
+         * The real paths of the places that hold the deployment's own data: [reservedWorkspaceDirs] in [workspace],
+         * and the file store's directory. **Each by its real path**, as a root is judged by its own: a workspace
+         * whose `logs` is a link to `/var/log/kdr` keeps its logs there, and that is the place to stay out of.
+         */
+        fun reservedPlaces(cxt: KdrCxt, workspace: File = AppPaths.workspaceDir()): List<Path> =
+            // The last as a list of one: a `Path` is itself an `Iterable` of its own segments, and `+` would add those.
+            reservedWorkspaceDirs.map { realOf(File(workspace, it)) } + listOf(realOf(FileStoreService.localDirOf(cxt)))
 
         /**
          * [file]'s real path -- links resolved -- or, for one that is not there, the real path of the nearest

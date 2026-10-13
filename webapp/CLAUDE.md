@@ -103,7 +103,7 @@ the same way, under their own marker:
   served it once it is published. So the same `refId` can be two different files for the client and for its sandbox,
   each under its own hash -- which is what the hash in the address is for.
 - **Nothing in the webapp reads one yet.** The administrator's endpoints are `GET /clientAdmin/client/files` (each
-  ref with the file store's record of its file, whether it is `live` for the client's own people or a draft, and
+  ref with the record of its file -- the file store's, or the disk's for a local one -- whether it is `live` for the client's own people or a draft, and
   whether its bytes are `missing`), `POST …/files/upload` (multipart `refId`, `file`, `description`; use
   `Http.uploadApi`), `POST …/files/remove`, and `GET …/files/download {client, refId, hash}` for a preview (pass
   the listing's `hash` so a replaced file is a new address, as the web assets' preview does) -- wire names `FREF`,

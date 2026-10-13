@@ -30,11 +30,14 @@ object SqlDbBuilder {
     const val defaultPasswordSecretKey = "dbPassword"
     const val defaultPostgresPort = 5432
 
+    /** The workspace directory file-backed H2 databases are kept in, unless a configuration places one elsewhere. */
+    const val h2DirName = "h2Database"
+
     /** The default file path for a file-backed H2 database named [defaultDbName]. */
-    const val defaultH2FilePath = "h2Database/$defaultDbName.dat"
+    const val defaultH2FilePath = "$h2DirName/$defaultDbName.dat"
 
     /** The file path for a file-backed H2 database named [name] (relative to the workspace directory). */
-    fun h2FilePathFor(name: String): String = "h2Database/$name.dat"
+    fun h2FilePathFor(name: String): String = "$h2DirName/$name.dat"
 
     /**
      * Resolves the database configuration for this instance:

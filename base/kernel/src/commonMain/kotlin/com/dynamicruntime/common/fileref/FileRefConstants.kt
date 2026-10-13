@@ -7,8 +7,8 @@ import com.dynamicruntime.common.naming.clientNameProblem
 import com.dynamicruntime.common.util.toOptStr
 
 /**
- * A client's file refs (issue #1153): its named files, held in its stored configuration as pointers to bytes kept
- * elsewhere. The names here are the ones the two sides have to agree on -- the backend serves a ref at the address
+ * A client's file refs (issues #1153, #1154): its named files, held in its configuration as pointers to bytes kept
+ * elsewhere -- in the file store, or as a file on the server's own disk. The names here are the ones the two sides have to agree on -- the backend serves a ref at the address
  * the frontend builds ([staticPath]) under the name a listing hands it ([versionedName]).
  *
  * Not to be confused with `GedraDataType.fileRef`, a kind of **data** gedra -- a claim on a file held as data,
@@ -30,7 +30,7 @@ object FREF {
     /** Every source a ref may have. */
     val sources = listOf(sourceStore, sourceLocal)
 
-    /** The longest a local ref's path may be: a file-store key's length, whose rules it is held to. */
+    /** The longest a local ref's path may be: a file-store key's length (`FNAME.maxKeyLength`, which a test holds this to), whose rules it is held to. */
     const val maxPathLength = 512
 
     /** [rootProblem]'s rule as a pattern, for a schema to hold a root's name to; a test holds the two together. */
@@ -72,13 +72,13 @@ object FREF {
     /** A ref by name and content, `<refId>:<hash>` ([versionedName]). */
     const val name = "name"
 
-    /** The stored configuration holding a ref's entry. */
+    /** The configuration holding a ref's entry: a stored one, or for a ref a client is shipped with, one in source code. */
     const val configName = "configName"
 
     /** Whether the client's own people are served this ref as it is listed -- false for a draft only its sandbox shows. */
     const val live = "live"
 
-    /** Whether a ref's bytes could not be found in the file store. */
+    /** Whether a ref's file is not there to be served: not in the file store, or for a local file not on the disk as an image. */
     const val missing = "missing"
 
     /** How a change took effect: live, or a draft; `EDM`'s values. */

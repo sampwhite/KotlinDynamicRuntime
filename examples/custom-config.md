@@ -216,24 +216,36 @@ Notes:
 
 - **What may not be a root.** Neither the location nor a root may be inside one of the places that hold the
   deployment's own data -- the workspace's `private/`, `h2Database/`, `logs/` and `sampleFiles/`, and the file
-  store's directory -- nor be a directory that *contains* one, which rules out the workspace directory itself, a
-  home directory and `/`. This is judged by real path, so a link into such a place is in it. A relative
-  declaration holds no `..` and no name beginning with a dot. **A declaration that breaks any of this refuses the
-  boot, in every environment**: it is a fence, not a preference.
-- **A root's name** is letters, digits, `_` and `-`. A directory under the location with any other name is not a
-  root.
+  store's directory -- nor be a directory that *contains* one, which rules out the workspace directory itself,
+  anything above it and `/`. Both sides are judged by real path, so a link into such a place is in it, and a
+  `logs` that is itself a link is fenced where the logs really are. A relative declaration holds no `..` and no
+  name beginning with a dot. **A declaration that breaks any of this refuses the boot, in every environment**: it
+  is a fence, not a preference. (The default `localFiles` is nobody's declaration: where it may not be a location
+  -- a file store placed at the workspace itself -- there is simply none, and the startup line says so.) The
+  fenced places are the default ones: a deployment that moves its H2 file or its logs elsewhere keeps its roots
+  clear of them itself.
+- **A root's name** is letters, digits, `_` and `-`, and is the directory's own name exactly, case included. A
+  directory under the location with any other name is not a root.
 - **A path is plain**: segments of letters, digits, `.`, `_` and `-`, none beginning with a dot. A file reached
   through a symbolic link below the root is not served, nor one whose name differs from the path only by case
   (which would resolve on a Mac and not on Linux). A root may itself be a link.
-- **Images only, up to 2 MB**: PNG, SVG, ICO, JPEG or WebP, told by the bytes and not by the file's name. A file
-  that is anything else is never served, so a local ref cannot be made to disclose anything but a picture.
-- **A ref whose file cannot be served is a configuration problem** when its client loads -- a refused boot in
-  development and in tests, a warning in production, where the ref is answered as not found until the file is
-  there. The problem says one thing whatever the reason; the reason is in the node's log.
-- **Who may write one.** Source configuration, always. In *stored* configuration, the server's own code (a
-  script or a simulation provisioning a client) and an administrator who sees every client. A client's own
+- **Images only, up to 2 MB**: PNG, SVG, ICO, JPEG or WebP, told by the bytes as an upload's are and not by the
+  file's name. A file that does not pass as one is never served -- which keeps a path in configuration from being
+  pointed at a text file, a key or a database.
+- **A ref whose file cannot be served is a configuration problem** when its client loads. For a ref in *source*
+  configuration that is a refused boot in development and in tests and a warning in production; for one in
+  *stored* configuration it is a warning everywhere but the unit tests, as every stored problem is. Either way the
+  ref is kept and answered as not found until the file is there. A file that goes missing *while the node runs*
+  never refuses anything: the next reload reports it. The problem says one thing whatever the reason; the reason
+  is in the node's log.
+- **Who may write one.** Source configuration, always. In *stored* configuration, the server's own code -- a
+  script or a job, which runs with no signed-in caller, and a simulation provisioning a client, whoever starts
+  it -- and an administrator who sees every client. A client's own
   administrator may not name a local file -- they upload one, which overrides a shipped ref of the same id, and
   removing the upload reveals the shipped image again.
+- **Roll it out everywhere first.** A node still on the release before this one does not read a `local` ref: it
+  leaves the ref out and answers it as not found, and its upload over one writes an entry this release drops. Put
+  the release on every node before the first local ref is stored, as with file refs themselves.
 - **A unit test never reads the workspace.** In the unit environment the location has no default, and a relative
   location or root is refused: a test names `KDR_LOCAL_FILES_DIR` as a temporary directory through its instance
   config (`LocalFileRefsTest.kt`).

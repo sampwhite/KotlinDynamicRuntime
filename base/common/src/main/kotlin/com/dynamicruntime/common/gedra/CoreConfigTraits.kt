@@ -168,7 +168,8 @@ fun coreConfigTraits(cxt: KdrCxtBase): GedraConfig = gedraConfig(cxt, CCT.config
     }
     // Declared last, so the slot list a write is held to ends with the newest (issue #1153). What a file *is* --
     // its type, its size, the name it was uploaded under -- is deliberately no field of this: it is the file
-    // store's record, written by the upload that checked the bytes, and nothing an entry could be typed to claim.
+    // store's record, written by the upload that checked the bytes, or what a local file is found to be when it
+    // is read (issue #1154) -- and nothing an entry could be typed to claim.
     configTrait(
         "FileRefDefEntry", CCT.fileRefDef, setOf(GedraConfigType.configDoc),
         "One file ref of this client -- a named file, by where its bytes are -- keyed by its ref id. The file " +

@@ -113,16 +113,24 @@ class FileRefService : ServiceInitializer, ContentServer {
         LogFileRef.info(cxt) { "Local files a file ref may name (${LFENV.dir.name}): ${roots.describe()}." }
         val configs = collector.gedraConfigs.configs
         registries = configs.filter { it.fileRefs.isNotEmpty() }.map { it.gedraId.client }.distinct()
-            .associateWith { build(cxt, configs, it) }
+            .associateWith { build(cxt, configs, it, running = null) }
             .filterValues { it.refs.isNotEmpty() }
         RequestService.get(cxt).addContentServer(this)
         isInit = true
     }
 
-    /** Rebuilds [client]'s registry off the current collector and swaps it in: a step of the client's reload. */
+    /**
+     * Rebuilds [client]'s registry off the current collector and swaps it in: a step of the client's reload.
+     *
+     * **A ref this node already serves is not refused for its file having gone** -- it is reported, and kept. A
+     * file goes with no configuration changing, so the write that led to this reload could not have been refused
+     * for it (`GedraConfigTrial.fileRefBaseline`) and is stored by now: refusing here, where problems are strict,
+     * would fail every later save of the client after it was committed. A ref the reload *brings* is held as
+     * strictly as ever.
+     */
     fun reloadClient(cxt: KdrCxt, client: String) {
         val collector = SchemaCollector.get(cxt) ?: throw KdrException("$serviceName.reloadClient ran with no schema collector.")
-        val rebuilt = build(cxt, collector.gedraConfigs.configs, client)
+        val rebuilt = build(cxt, collector.gedraConfigs.configs, client, running = forClient(client))
         registries = if (rebuilt.refs.isEmpty()) registries - client else registries + (client to rebuilt)
     }
 
@@ -132,7 +140,7 @@ class FileRefService : ServiceInitializer, ContentServer {
      * not in the store is refused as a write, rather than accepted and served as not found.
      */
     fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String) {
-        build(cxt, scratch.gedraConfigs.configs, client)
+        build(cxt, scratch.gedraConfigs.configs, client, running = null)
     }
 
     /**
@@ -144,7 +152,7 @@ class FileRefService : ServiceInitializer, ContentServer {
         val collector = SchemaCollector.get(cxt) ?: return emptyList()
         val capture = mutableListOf<GedraConfigIssue>()
         val asking = cxt.mkSubContext("fileRefsNow", client).also { it.locals[GCFG.trialCaptureKey] = capture }
-        build(asking, collector.gedraConfigs.configs, client)
+        build(asking, collector.gedraConfigs.configs, client, running = null)
         return capture
     }
 
@@ -171,8 +179,10 @@ class FileRefService : ServiceInitializer, ContentServer {
      * new one to every trial, and would refuse even the removal that mends it. As one problem it is refused when a
      * write first takes a client over, and is no obstacle to a client already over taking refs away. (Such a client
      * may still be given more, by an entry typed into its configuration; they are stored and not served.)
+     *
+     * [running] is the registry a reload is replacing, and null for a boot and a trial: see [reloadClient].
      */
-    private fun build(cxt: KdrCxt, configs: List<GedraConfig>, client: String): FileRefRegistry {
+    private fun build(cxt: KdrCxt, configs: List<GedraConfig>, client: String, running: FileRefRegistry?): FileRefRegistry {
         val owner = configOwnerOf(client)
         val issues = mutableListOf<GedraConfigIssue>()
         val kept = LinkedHashMap<String, FileRef>()
@@ -210,6 +220,8 @@ class FileRefService : ServiceInitializer, ContentServer {
                             GCEL.fileRef, def.refId,
                         ),
                         issues,
+                        // The same ref, naming the same file, as the client is served now: its file has gone.
+                        aroseWhileRunning = running?.refs?.get(def.refId)?.def?.pointer == def.pointer,
                     )
                 }
                 kept[def.refId] = ref

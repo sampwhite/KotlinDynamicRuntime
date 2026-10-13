@@ -85,7 +85,8 @@ object Simulations {
         val client = config.gedraId.client
         val bound = cxt.mkSubContext("simulation", client)
         val service = GedraConfigService.get(cxt)
-        val written = service.writeConfig(bound, config, trial = true)
+        // The simulation's own content, whoever started it: so one may ship a client pictures by local refs (#1154).
+        val written = service.writeConfig(bound, config, trial = true, authoredInCode = true)
         if (publish && !written.isPublished) service.publish(bound, written.configId, trial = true)
         val result = GedraConfigReload.reloadClient(cxt, client)
         ClientSyncService.get(cxt).announceReload(cxt, result)

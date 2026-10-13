@@ -6,7 +6,9 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
+import com.dynamicruntime.common.filestore.FNAME
 import com.dynamicruntime.common.filestore.FSENV
+import com.dynamicruntime.common.util.sha256Hex
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
@@ -115,6 +117,11 @@ class LocalFileRootsTest : StringSpec({
 
     "a declaration that is malformed refuses the start" {
         val dir = tempDir().absolutePath
+        // In every environment, production with them: this is a fence, and not a check a deployment may set to warn.
+        for (env in listOf(ENV.unit, ENV.local, ENV.dev, ENV.prod)) {
+            refusal(env, LFENV.roots.name to "brand") shouldContain "not `name=location`"
+            refusal(env, LFENV.dir.name to File(AppPaths.workspaceDir().absoluteFile, "private").path) shouldContain "is inside"
+        }
         refusal(ENV.local, LFENV.roots.name to "brand") shouldContain "not `name=location`"
         refusal(ENV.local, LFENV.roots.name to "=$dir") shouldContain "not `name=location`"
         refusal(ENV.local, LFENV.roots.name to "brand=") shouldContain "not `name=location`"
@@ -149,9 +156,38 @@ class LocalFileRootsTest : StringSpec({
         val link = File(base, "innocent")
         Files.createSymbolicLink(link.toPath(), store.toPath())
         refusal(ENV.local, FSENV.dir.name to store.absolutePath, LFENV.roots.name to "pics=${link.absolutePath}") shouldContain "is inside"
+        // A place that is not there yet is judged as the place it will be: through the link, under it.
+        refusal(ENV.local, FSENV.dir.name to store.absolutePath, LFENV.roots.name to "pics=${link.absolutePath}/notYet/deeper") shouldContain "is inside"
         // Beside it is fine.
         val beside = File(base, "pictures").apply { mkdirs() }
         LocalFileRoots.resolve(cxtWith(ENV.local, FSENV.dir.name to store.absolutePath, LFENV.dir.name to beside.absolutePath)).location shouldBe beside
+    }
+
+    "a reserved place is fenced where it really is, when the workspace's own directory is a link" {
+        // A workspace of our own, so one of its directories can be a link: `logs` kept on another volume.
+        val workspace = tempDir()
+        val elsewhere = tempDir()
+        Files.createSymbolicLink(File(workspace, LocalFileRoots.logsDirName).toPath(), elsewhere.toPath())
+        val reserved = LocalFileRoots.reservedPlaces(cxtWith(ENV.unit), workspace)
+        fun problem(dir: File) = LocalFileRoots.placeProblem(LocalFileRoots.realOf(dir), reserved)
+
+        problem(File(elsewhere, "pictures")).orEmpty() shouldContain "is inside"
+        problem(File(workspace, "${LocalFileRoots.logsDirName}/pictures")).orEmpty() shouldContain "is inside"
+        problem(elsewhere.parentFile).orEmpty() shouldContain "contains"
+        // One that is not a link is where it is said to be, there yet or not.
+        problem(File(workspace, "${LocalFileRoots.privateDirName}/keys")).orEmpty() shouldContain "is inside"
+        problem(File(workspace, "images")).shouldBeNull()
+    }
+
+    "the default location is nobody's declaration: where it may not be one there is none, and nothing is refused" {
+        // A deployment that keeps its file store at the workspace itself named no local files, and starts.
+        val roots = LocalFileRoots.resolve(cxtWith(ENV.local, FSENV.dir.name to AppPaths.workspaceDir().absolutePath))
+        roots.location.shouldBeNull()
+        roots.hasRoot("brand") shouldBe false
+        roots.describe() shouldContain "is not used: it is inside"
+        roots.describe() shouldContain LFENV.dir.name
+        // Named outright, the same place is a declaration, and refused.
+        refusal(ENV.local, FSENV.dir.name to AppPaths.workspaceDir().absolutePath, LFENV.dir.name to LocalFileRoots.defaultDirName) shouldContain "is inside"
     }
 
     "a root that comes to point at such a place after the start is no root" {
@@ -183,6 +219,15 @@ class LocalFileRootsTest : StringSpec({
             r.roots.hasRoot(name) shouldBe false
             r.roots.read(name, "logo.png").file.shouldBeNull()
         }
+        // And the directory's own name exactly: one that finds it only because the filesystem ignores case would be
+        // a root on a developer's Mac and none in production.
+        for (name in listOf("Brand", "BRAND")) {
+            r.roots.hasRoot(name) shouldBe false
+            r.roots.read(name, "logo.png").file.shouldBeNull()
+        }
+        r.roots.hasRoot("brand") shouldBe true
+        // A path is as long as a file-store key may be, whose rules it is held to: one number, said twice.
+        FREF.maxPathLength shouldBe FNAME.maxKeyLength
     }
 
     "a path is held to a root: no way up, no absolute path, no backslash, no hidden name" {
@@ -232,6 +277,36 @@ class LocalFileRootsTest : StringSpec({
         r.roots.read("brand", "logo.png").file.shouldNotBeNull()
     }
 
+    // A write's trial judges every ref of its client, more than once, under the lock every reload takes: it asks
+    // only whether a file can be served, and does not read again a file that has not changed.
+    "a load does not read again a file it has looked at and that has not changed; serving always reads" {
+        val r = rig()
+        val cxt = cxtWith(ENV.unit)
+        val source = LocalFileSource(r.roots)
+        val file = File(r.brand, "logo.png")
+        val ref = FileRef(FileRefDef("logo", FREF.sourceLocal, hash = null, root = "brand", path = "logo.png"), "acme")
+        source.fileProblem(cxt, ref).shouldBeNull()
+
+        // Rewritten to something that is no picture, the same size and stamped with the same moment: where it is,
+        // its size and its date say it has not changed, so the load goes on what it found -- and serving, which
+        // goes on the bytes, does not.
+        val stamp = file.lastModified()
+        file.writeBytes(ByteArray(png.size) { 'x'.code.toByte() })
+        file.setLastModified(stamp) shouldBe true
+        source.fileProblem(cxt, ref).shouldBeNull()
+        source.read(cxt, ref).shouldBeNull()
+        // Any of the three changing is a file to look at again: found broken, and remembered as that...
+        file.setLastModified(stamp + 5_000) shouldBe true
+        source.fileProblem(cxt, ref) shouldBe "names the local file 'brand/logo.png', which is not there to be served as an image."
+        // ...until it changes again.
+        file.writeBytes(png + byteArrayOf(7))
+        source.fileProblem(cxt, ref).shouldBeNull()
+        source.read(cxt, ref).shouldNotBeNull().meta.hash shouldBe (png + byteArrayOf(7)).sha256Hex()
+        // A file that is gone is never remembered as there.
+        file.delete()
+        source.fileProblem(cxt, ref).shouldNotBeNull()
+    }
+
     "only a regular file that is an image of bounded size is handed back, and the reason says nothing of what a file holds" {
         val r = rig()
         File(r.brand, "folder.png").mkdirs()
@@ -258,13 +333,18 @@ class LocalFileRootsTest : StringSpec({
         // Why is said in the log once for a file and a reason, not once a request: a missing picture on a busy page
         // is asked for by every view of it.
         val source = LocalFileSource(r.roots)
+        fun ref(refId: String, path: String, owner: String = "acme") =
+            FileRef(FileRefDef(refId, FREF.sourceLocal, hash = null, root = "brand", path = path), owner)
         val minute = 60_000_000_000L
-        source.shouldSay("local:brand/absent.png", "there is no such file", 0) shouldBe true
-        source.shouldSay("local:brand/absent.png", "there is no such file", minute) shouldBe false
-        source.shouldSay("local:brand/other.png", "there is no such file", minute) shouldBe true
-        source.shouldSay("local:brand/absent.png", "it is not a file", 2 * minute) shouldBe true
-        source.shouldSay("local:brand/absent.png", "it is not a file", 3 * minute) shouldBe false
-        source.shouldSay("local:brand/absent.png", "it is not a file", 2 * minute + LocalFileSource.repeatReasonAfterMs * 1_000_000) shouldBe true
+        val absent = ref("pic", "absent.png")
+        source.shouldSay(absent, "there is no such file", 0) shouldBe true
+        source.shouldSay(absent, "there is no such file", minute) shouldBe false
+        source.shouldSay(ref("pic", "other.png"), "there is no such file", minute) shouldBe true
+        // Another client naming the same missing picture is told of its own.
+        source.shouldSay(ref("pic", "absent.png", owner = "other"), "there is no such file", minute) shouldBe true
+        source.shouldSay(absent, "it is not a file", 2 * minute) shouldBe true
+        source.shouldSay(absent, "it is not a file", 3 * minute) shouldBe false
+        source.shouldSay(absent, "it is not a file", 2 * minute + LocalFileSource.repeatReasonAfterMs * 1_000_000) shouldBe true
         // The kind is the bytes' own, whatever the file is called.
         r.roots.read("brand", "pic.svg").file.shouldNotBeNull().kind.mimeType shouldBe "image/svg+xml"
         File(r.brand, "really-a-png.svg").writeBytes(png)

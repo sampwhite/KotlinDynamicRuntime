@@ -475,7 +475,8 @@ show the deployment's.
 ## When a configuration holding file refs is imported for another client, or into another deployment
 
 A file ref (issue #1153) is an entry in a client's stored configuration that names bytes in the file store by their
-hash, kept under that client. An export carries the entry and not the bytes, so an import is refused, naming the refs
+hash, kept under that client. (One that names a local file, issue #1154, names nothing in the store: it travels
+whole, and resolves wherever the same root holds the same file.) An export carries the entry and not the bytes, so an import is refused, naming the refs
 whose files are not there, wherever the bytes are not under the *target* client: another deployment's store, or a
 clone to another client id in this one.
 

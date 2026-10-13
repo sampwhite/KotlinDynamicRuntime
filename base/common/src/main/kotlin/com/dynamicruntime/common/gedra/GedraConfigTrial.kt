@@ -50,6 +50,11 @@ object GedraConfigTrial {
      *
      * What its file refs "already have" is asked **now** rather than read from the last load ([fileRefBaseline]):
      * theirs is the one check whose answer changes with no configuration changing.
+     *
+     * **A sandbox's problems are the client's own only for a write.** A write is judged with the client's latest
+     * revisions, which its sandbox runs, so what the sandbox already has is what the client's drafts already have.
+     * A change to what the client itself runs -- [published] -- is judged against the client alone: a draft's
+     * problem is new to the people about to be served it, and publishing it is the change that introduces it.
      */
     fun requireClean(
         cxt: KdrCxt,
@@ -58,7 +63,8 @@ object GedraConfigTrial {
         published: Boolean,
         refusal: String,
     ) {
-        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + draftBaseline(cxt, client) + fileRefBaseline(cxt, client)
+        val drafts = if (published) emptyList() else draftBaseline(cxt, client)
+        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + drafts + fileRefBaseline(cxt, client, withSandbox = !published)
         val found = trial(cxt, client, replacing, published).filterNot { issue -> baseline.any { it.sameAs(issue) } }
         if (found.isEmpty()) return
         throw KdrException.mkInput(
@@ -90,7 +96,7 @@ object GedraConfigTrial {
 
     /**
      * The problems [client]'s file refs have **as things are now** (issue #1154): the configurations this node
-     * runs for it, and for its sandbox, judged again at the moment of the write.
+     * runs for it -- and, [withSandbox], for its sandbox -- judged again at the moment of the write.
      *
      * Every other check reads only configuration, so what the last load recorded stays true until a configuration
      * changes. Whether a ref's file is there does not: a local file is edited, moved and deleted on a disk, with
@@ -99,11 +105,11 @@ object GedraConfigTrial {
      * one that takes the ref away. Asked now, on both sides of the comparison, what was already broken is seen to
      * be, and a write is refused only for a file that its own ref names and that is not there.
      */
-    private fun fileRefBaseline(cxt: KdrCxt, client: String): List<GedraConfigIssue> {
+    private fun fileRefBaseline(cxt: KdrCxt, client: String, withSandbox: Boolean): List<GedraConfigIssue> {
         val refs = FileRefService.getOrNull(cxt) ?: return emptyList()
         return GedraConfigReload.underReloadLock {
             val own = refs.problemsNow(cxt, client)
-            if (client == GID.globalClient || isSandboxClient(client)) {
+            if (!withSandbox || client == GID.globalClient || isSandboxClient(client)) {
                 own
             } else {
                 val sandbox = sandboxOf(client)

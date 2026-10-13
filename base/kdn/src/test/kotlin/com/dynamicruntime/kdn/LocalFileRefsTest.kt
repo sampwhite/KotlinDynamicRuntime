@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -15,6 +16,7 @@ import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
@@ -33,6 +35,7 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.configSlotFailures
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigToEntries
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.ROLE
@@ -43,12 +46,15 @@ import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.sha256Hex
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -65,11 +71,15 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
     override val providerName: String = "localFileRefFixture"
 
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
-        gedraConfig(cxt, "main", clientNamespace(shipped), shipped) {
+        // Named to sort before `copy`, where an upload lands: what is stored overrides what is shipped by being
+        // stored, not by its configuration happening to come first.
+        gedraConfig(cxt, shippedConfig, clientNamespace(shipped), shipped) {
             defineClient(def(shipped, "Shipped"))
             fileRef("logo", "The logo it ships with.") { local(root, "logo.png") }
             fileRef("mark") { local(root, "marks/mark.svg") }
+            fileRef("badge", "The badge it ships with.") { local(root, "marks/mark.svg") }
             fileRef("fickle") { local(root, "fickle.png") }
+            fileRef("brittle") { local(root, "brittle.png") }
             if (missing) fileRef("ghost") { local(root, "ghost.png") }
         },
         gedraConfig(cxt, "base", clientNamespace(template), template) {
@@ -88,6 +98,7 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
 
     companion object {
         const val root = "brand"
+        const val shippedConfig = "art"
         const val shipped = "lfrshipped"
         const val template = "lfrtemplate"
         const val built = "lfrbuilt"
@@ -113,6 +124,7 @@ class LocalFileRefsTest : StringSpec({
         val brand = File(dir, LocalFileRefComponent.root).apply { File(this, "marks").mkdirs() }
         File(brand, "logo.png").writeBytes(png)
         File(brand, "fickle.png").writeBytes(png)
+        File(brand, "brittle.png").writeBytes(png)
         File(brand, "marks/mark.svg").writeBytes(svg)
         return dir
     }
@@ -198,7 +210,7 @@ class LocalFileRefsTest : StringSpec({
         logo[CCT.hash] shouldBe png.sha256Hex()
         logo[FREF.name] shouldBe nameOf("logo", png)
         logo[CCT.description] shouldBe "The logo it ships with."
-        logo[FREF.configName] shouldBe "main"
+        logo[FREF.configName] shouldBe LocalFileRefComponent.shippedConfig
         logo[FREF.live] shouldBe true
         logo[FREF.missing] shouldBe false
         // Described as the store describes a file, by what reading it found -- never by what it is called.
@@ -206,6 +218,9 @@ class LocalFileRefsTest : StringSpec({
         meta[FMETA.mimeType] shouldBe "image/png"
         meta[FMETA.fileName] shouldBe "logo.png"
         (meta[FMETA.size] as Number).toInt() shouldBe png.size
+        // Nobody uploaded it: what stands for when is the moment the file last changed.
+        meta[FMETA.uploadedAt].toString().parseDate().toEpochMilliseconds() shouldBe File(brand, "logo.png").lastModified()
+        logo[FREF.uploadedByName].shouldBeNull()
 
         val served = static(member, nameOf("logo", png))
         served.rptStatusCode shouldBe EXC.ok
@@ -222,8 +237,8 @@ class LocalFileRefsTest : StringSpec({
         download.rptStatusCode shouldBe EXC.ok
         download.rptResponseBytes!!.toList() shouldBe svg.toList()
 
-        // Nothing was copied anywhere: the file store holds nothing of this client's.
-        FileStoreService.get(cxt).list(cxt, FileRefService.bucket, "clients/$shipped/").shouldBeEmpty()
+        // Nothing was copied anywhere: a client that only ships its pictures has nothing in the file store.
+        FileStoreService.get(cxt).list(cxt, FileRefService.bucket, "clients/${LocalFileRefComponent.built}/").shouldBeEmpty()
         // And another client's people are not served it.
         defineClient("lfrother")
         static(memberOf("lfrother"), nameOf("logo", png)).rptStatusCode shouldBe EXC.notFound
@@ -295,6 +310,15 @@ class LocalFileRefsTest : StringSpec({
             it.rptResponseBytes!!.toList() shouldBe svg.toList()
             it.header(ContentResources.cacheControlHeader) shouldBe ContentResources.cacheControl
         }
+        // An upload that says nothing of the description keeps the one the client was shipped with.
+        admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "badge", FREF.file to ContentData(otherPng, "image/png", inLine = false)))
+            .let { withClue(it) { it[EP.status].shouldBeNull() } }
+        listed(admin).getValue("badge").let {
+            it[CCT.source] shouldBe FREF.sourceStore
+            it[CCT.description] shouldBe "The badge it ships with."
+        }
+        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "badge"))[CCT.refId] shouldBe "badge"
+
         // What ships is not the API's to take away: there is nothing stored to remove.
         admin.expectError(EXC.badInput, UADEP.clientFilesRemove, mapOf(CCT.refId to "mark"))[EP.errorMessage] as String shouldContain "No stored configuration"
     }
@@ -309,8 +333,10 @@ class LocalFileRefsTest : StringSpec({
     }
 
     "source configuration with a local ref passes the slot gate in its stored form" {
-        val configs = SchemaCollector.get(cxt).shouldNotBeNull().gedraConfigs.configs.filter { it.fileRefs.any { ref -> ref.source == FREF.sourceLocal } }
-        configs.map { it.gedraId.client }.toSet() shouldBe setOf(shipped, LocalFileRefComponent.template, LocalFileRefComponent.built)
+        val fixture = setOf(shipped, LocalFileRefComponent.template, LocalFileRefComponent.built)
+        val configs = SchemaCollector.get(cxt).shouldNotBeNull().gedraConfigs.configs
+            .filter { it.gedraId.client in fixture && !it.isStored && it.fileRefs.any { ref -> ref.source == FREF.sourceLocal } }
+        configs.map { it.gedraId.client }.toSet() shouldBe fixture
         for (config in configs) {
             val entries = gedraConfigToEntries(config)
             configSlotFailures(cxt, entries).map { "${config.gedraId}: ${it.path}: ${it.message}" }.shouldBeEmpty()
@@ -329,8 +355,8 @@ class LocalFileRefsTest : StringSpec({
         admin.expectError(
             EXC.notAuthorized, CFEP.bundleWrite,
             mapOf(CFEP.name to "extra", CFEP.namespaceField to clientNamespace(client), CFEP.slots to mapOf(CCT.fileRefDef to listOf(localEntry("mine", "logo.png")))),
-        )
-        // An import is not a client administrator's to make at all.
+        )[EP.errorMessage] as String shouldContain "names a local file for the file ref 'mine'"
+        // An import is not a client administrator's to make at all: refused before it is read.
         admin.expectError(
             EXC.notAuthorized, ACEP.import,
             mapOf(
@@ -342,6 +368,17 @@ class LocalFileRefsTest : StringSpec({
         storedRefs(client).shouldBeEmpty()
         storedRefs(client, "extra").shouldBeEmpty()
         refs.forClient(client).refs.isEmpty() shouldBe true
+
+        // The same bundle, written and then imported by one who sees every client, is taken each time.
+        fun bundle(name: String, refId: String) = mapOf(
+            CFEP.client to client, CFEP.name to name, CFEP.namespaceField to clientNamespace(client),
+            CFEP.slots to mapOf(CCT.fileRefDef to listOf(localEntry(refId, "logo.png"))),
+        )
+        posted(full, ACEP.bundleWrite, bundle("extra", "mine"))[CFEP.version] shouldBe 1
+        storedRefs(client, "extra") shouldBe listOf(localEntry("mine", "logo.png"))
+        val imported = posted(full, ACEP.import, mapOf(ACEP.bundlesField to listOf(bundle("more", "theirs"))))
+        withClue(imported) { imported[ACEP.failures].toJsonListOfMaps().shouldBeEmpty() }
+        storedRefs(client, "more") shouldBe listOf(localEntry("theirs", "logo.png"))
     }
 
     "an administrator who sees every client, and the server's own code, may -- and what they wrote is carried by a client administrator's later edits" {
@@ -449,12 +486,134 @@ class LocalFileRefsTest : StringSpec({
         ClientConfigIssues.get(cxt).issuesFor(client).shouldBeEmpty()
     }
 
+    // Source problems are strict here, as they are on a developer's machine. A file that goes missing while the node
+    // runs is the one problem no write could have been refused for, so the reload after a save must not refuse
+    // for it either: the save is stored by then.
+    "a shipped picture that goes missing does not fail the client's later saves: the reload reports it and carries on" {
+        val admin = adminOf(shipped)
+        val file = File(brand, "brittle.png")
+        ClientConfigIssues.get(cxt).issuesFor(shipped).shouldBeEmpty()
+        file.delete()
+
+        // A save of something else: stored, published, and the client reloaded with it.
+        val saved = admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "extra", FREF.file to ContentData(otherPng, "image/png", inLine = false)))
+        withClue(saved) { saved[EP.status].shouldBeNull() }
+        refs.forClient(shipped).refs.keys shouldContainAll setOf("extra", "brittle")
+        ClientConfigIssues.get(cxt).issuesFor(shipped).single().message shouldBe
+            "File ref 'brittle' of client '$shipped' (config '${LocalFileRefComponent.shippedConfig}') names the local file 'brand/brittle.png', which is not there to be served as an image."
+        static(memberOf(shipped), "brittle").rptStatusCode shouldBe EXC.notFound
+        // And the next one, which finds the problem already said.
+        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "extra"))[CCT.refId] shouldBe "extra"
+
+        // Put back, the next reload has nothing to say.
+        file.writeBytes(png)
+        GedraConfigReload.reloadClient(cxt, shipped)
+        ClientConfigIssues.get(cxt).issuesFor(shipped).shouldBeEmpty()
+        static(memberOf(shipped), nameOf("brittle", png)).rptStatusCode shouldBe EXC.ok
+    }
+
+    // A client with a sandbox runs what it published; its drafts are run by the sandbox. What a draft already has is
+    // no obstacle to the next draft edit -- and is an obstacle to publishing it, which is what would bring it to the
+    // client's own people.
+    "a draft ref whose file has gone does not refuse the next draft edit, and does refuse the publish" {
+        val client = "lfrsand"
+        defineClient(client)
+        val admin = adminOf(client)
+        posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        val file = File(brand, "sandpic.png").also { it.writeBytes(png) }
+        posted(full, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, localEntry("pic", "sandpic.png"), client = client))
+        GedraConfigReload.reloadClient(cxt, client)
+        // The sandbox shows the draft; the client's own people are not served it yet.
+        refs.forClient(sandboxOf(client)).refs.keys shouldBe setOf("pic")
+        refs.forClient(client).refs.isEmpty() shouldBe true
+
+        // Gone, with no reload: nothing has recorded it, for the client or for its sandbox.
+        file.delete()
+        ClientConfigIssues.get(cxt).issuesFor(sandboxOf(client)).shouldBeEmpty()
+        val hash = otherPng.sha256Hex()
+        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(otherPng, "image/png"))
+        posted(admin, CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "banner", CCT.source to FREF.sourceStore, CCT.hash to hash)))
+        storedRefs(client).map { it[CCT.refId] } shouldBe listOf("pic", "banner")
+
+        // Publishing is the change that would hand the broken ref to the client's people, and is refused for it --
+        // whether or not the sandbox has been reloaded to say so.
+        val mainId = GedraId.of(GedraConfigType.configDoc, client, "main")
+        shouldThrow<KdrException> { svc.publish(writerOf(client), mainId, trial = true) }.message.orEmpty() shouldContain "File ref 'pic' of client '$client'"
+        GedraConfigReload.reloadClient(cxt, client)
+        ClientConfigIssues.get(cxt).issuesFor(sandboxOf(client)).single().message shouldContain "File ref 'pic' of client '$client'"
+        shouldThrow<KdrException> { svc.publish(writerOf(client), mainId, trial = true) }.message.orEmpty() shouldContain "File ref 'pic' of client '$client'"
+        // With its file back, it publishes.
+        file.writeBytes(png)
+        svc.publish(writerOf(client), mainId, trial = true).isPublished shouldBe true
+    }
+
+    // The slot gate holds what an endpoint writes; source configuration and an in-process write never pass it. What
+    // they declare is judged at the load, and a ref that is no good costs only itself.
+    "a ref the gate never saw is judged at the load: a root that is no name, a path that is not plain, a pointer of both kinds" {
+        val client = "lfrodd"
+        defineClient(client)
+        svc.writeConfig(
+            writerOf(client),
+            gedraConfig(cxt, "odd", clientNamespace(client), client) {
+                fileRef("up") { local("../brand", "logo.png") }
+                fileRef("out") { local(LocalFileRefComponent.root, "../secret.png") }
+                fileRef("hidden") { local(LocalFileRefComponent.root, ".git/logo.png") }
+                fileRefFromMap(localEntry("hashed", "logo.png") + (CCT.hash to png.sha256Hex()))
+                fileRefFromMap(mapOf(CCT.refId to "both", CCT.source to FREF.sourceStore, CCT.hash to png.sha256Hex(), CCT.path to "logo.png"))
+                fileRef("good") { local(LocalFileRefComponent.root, "logo.png") }
+            },
+        )
+        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "odd"))
+        GedraConfigReload.reloadClient(cxt, client)
+
+        refs.forClient(client).refs.keys shouldBe setOf("good")
+        val said = ClientConfigIssues.get(cxt).issuesFor(client).associate { it.elementId to it.message }
+        said.keys shouldBe setOf("up", "out", "hidden", "hashed", "both")
+        said.getValue("up") shouldContain "names no root of local files"
+        said.getValue("out") shouldContain "which is not one a local file may have"
+        said.getValue("hidden") shouldContain "a name in it begins with a dot"
+        said.getValue("hashed") shouldContain "names a local file and carries a hash"
+        said.getValue("both") shouldContain "names both bytes in the file store and a local file"
+    }
+
+    // In-process, where a caller's identity can be put on a context directly: the two ways the server's own code
+    // answers for a local ref that the caller could not have written.
+    "content the server's own code authored, and an entry a call puts back as its undo, are written whoever is signed in" {
+        val client = "lfrundo"
+        defineClient(client)
+        val asAdmin = cxt.mkSubContext("asAdmin", client).also {
+            it.userProfile = UserProfile(authId = "chief-$client", userId = 11541L, client = client, roles = setOf(ROLE.user, ROLE.admin))
+        }
+        val artId = GedraId.of(GedraConfigType.configDoc, client, "art")
+        fun art(path: String) = gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic") { local(LocalFileRefComponent.root, path) } }
+        fun artRefs() = storedRefs(client, "art")
+
+        // A simulation provisioning a client is started by a signed-in caller, and what it writes is its own.
+        shouldThrow<KdrException> { svc.writeConfig(asAdmin, art("logo.png")) }.code shouldBe EXC.notAuthorized
+        artRefs().shouldBeEmpty()
+        svc.writeConfig(asAdmin, art("logo.png"), authoredInCode = true)
+        artRefs() shouldBe listOf(localEntry("pic", "logo.png"))
+
+        // The client's administrator takes the ref out. Putting it back is naming a file, and refused...
+        val before = artRefs().single()
+        fun put(entry: Map<String, Any?>, restoring: List<Map<String, Any?>> = emptyList()) =
+            svc.patchConfig(asAdmin, artId, restoring = restoring) { it + (CCT.fileRefDef to listOf(entry)) }
+        svc.patchConfig(asAdmin, artId) { it - CCT.fileRefDef }
+        artRefs().shouldBeEmpty()
+        shouldThrow<KdrException> { put(before) }.code shouldBe EXC.notAuthorized
+        // ...unless it is the call's own undo, putting back exactly what was there. Nothing else rides on it.
+        shouldThrow<KdrException> { put(localEntry("pic", "marks/mark.svg"), restoring = listOf(before)) }.code shouldBe EXC.notAuthorized
+        shouldThrow<KdrException> { put(localEntry("other", "logo.png"), restoring = listOf(before)) }.code shouldBe EXC.notAuthorized
+        put(before, restoring = listOf(before))
+        artRefs() shouldBe listOf(before)
+    }
+
     "a local ref whose file is not there refuses the boot where a mistake in source is caught, and so does a root declared wrongly" {
         val dir = location().also { dirs.add(it) }
         // Each its own instance (issue #1075): the boot itself is under test.
         shouldThrow<KdrException> {
             Startup.mkTestBootCxt("localGhost", "localFileRefsGhost1154", mapOf(LFENV.dir.name to dir.absolutePath), listOf(LocalFileRefComponent(missing = true)))
-        }.message.orEmpty() shouldContain "File ref 'ghost' of client '${LocalFileRefComponent.shipped}' (config 'main') names the local file 'brand/ghost.png', which is not there to be served as an image."
+        }.message.orEmpty() shouldContain "File ref 'ghost' of client '${LocalFileRefComponent.shipped}' (config '${LocalFileRefComponent.shippedConfig}') names the local file 'brand/ghost.png', which is not there to be served as an image."
         // With nowhere to look, every one of them is missing.
         shouldThrow<KdrException> {
             Startup.mkTestBootCxt("localNowhere", "localFileRefsNowhere1154", additionalComponents = listOf(LocalFileRefComponent()))

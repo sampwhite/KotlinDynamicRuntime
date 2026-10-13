@@ -41,7 +41,7 @@ object CCT {
     /** One customer, keyed by its customer id (issue #1107); only `hub`'s stored configuration holds any. */
     const val customerDef = "kdr:customerDef"
 
-    /** One file ref -- a named file of the client's, by the hash of its bytes -- keyed by its ref id (issue #1153). */
+    /** One file ref -- a named file of the client's, by where its bytes are -- keyed by its ref id (issues #1153, #1154). */
     const val fileRefDef = "kdr:fileRefDef"
 
     // --- field names inside the slots' data (each matches its value) ---

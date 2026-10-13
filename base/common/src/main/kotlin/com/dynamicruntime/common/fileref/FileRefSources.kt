@@ -136,6 +136,7 @@ class StoreFileSource : FileRefSource {
         return file
     }
 
+    @Suppress("ConstPropertyName")
     private companion object {
         const val nanosPerMs = 1_000_000L
     }
@@ -155,28 +156,49 @@ class StoreFileSource : FileRefSource {
  *   `no-store`. Nodes that hold different files give different addresses; the one that does not hold the bytes an
  *   address names says so the same way, so a shared cache only ever keeps the exact bytes an address names.
  * - **Why a file cannot be served is the operator's to read, in the log** ([LocalRead.reason]). Everybody else is
- *   told one thing, whatever the reason: a ref's problem, and a 404. It is said once for a file and a reason, and
+ *   told one thing, whatever the reason: a ref's problem, and a 404. It is said once for a ref and a reason, and
  *   again only after [repeatReasonAfterMs]: a missing picture on a busy page is asked for by every view of it.
+ * - **A load does not read a file it has already looked at** ([fileProblem]). A write's trial judges every ref of
+ *   its client, more than once, under the lock every client's reload takes -- and whether a file *can be served*
+ *   is all it asks. That answer is remembered by where the file is, its size and when it last changed. Serving
+ *   remembers nothing: there the answer is the bytes.
  */
 class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
     override val source: String = FREF.sourceLocal
 
-    /** What was last said of a file that could not be served, and when. */
+    /** What was last said of a ref whose file could not be served, and when. */
     private class Said(val reason: String, val atNanos: Long)
 
-    /** The reason last logged for each file that cannot be served, by its pointer; gone once the file is served again. */
+    /** The reason last logged for each ref whose file cannot be served; gone once the file is served again. */
     private val said = ConcurrentHashMap<String, Said>()
 
+    /** What a file was found to be when it was last read for a load: the file as it then was, and whether it is an image. */
+    private class Looked(val stamp: String, val servable: Boolean)
+
+    /** What each file was last found to be, by root and path: see the class note. */
+    private val looked = ConcurrentHashMap<String, Looked>()
+
     /**
-     * Whether to log that the file at [pointer] cannot be served for [reason], at [nowNanos]: the first time, when
-     * the reason has changed, and once every [repeatReasonAfterMs] while it stays the same.
+     * Whether to log that [ref]'s file cannot be served for [reason], at [nowNanos]: the first time, when the reason
+     * has changed, and once every [repeatReasonAfterMs] while it stays the same. By ref and client as well as file,
+     * so two clients naming one missing picture are each told of their own.
      */
     @KdrPrivate
-    fun shouldSay(pointer: String, reason: String, nowNanos: Long): Boolean {
-        val last = said[pointer]
+    fun shouldSay(ref: FileRef, reason: String, nowNanos: Long): Boolean {
+        val key = "${ref.owner}/${ref.refId}/${ref.def.pointer}"
+        val last = said[key]
         if (last != null && last.reason == reason && nowNanos - last.atNanos < repeatReasonAfterMs * nanosPerMs) return false
-        said[pointer] = Said(reason, nowNanos)
+        // A ref taken out of its configuration is never read again to be forgotten; this is what bounds the map.
+        if (said.size >= maxRemembered) said.clear()
+        said[key] = Said(reason, nowNanos)
         return true
+    }
+
+    private fun sayWhy(cxt: KdrCxt, ref: FileRef, reason: String?) {
+        if (!shouldSay(ref, reason.orEmpty(), System.nanoTime())) return
+        LogFileRef.warn(cxt) {
+            "The local file '${ref.def.root}/${ref.def.path}' of ref '${ref.refId}' (client '${ref.owner}') cannot be served: $reason."
+        }
     }
 
     override fun defProblem(def: FileRefDef, ref: String): String? {
@@ -190,8 +212,26 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
         return null
     }
 
-    override fun fileProblem(cxt: KdrCxt, ref: FileRef): String? =
-        if (read(cxt, ref) != null) null else "names the local file '${ref.def.root}/${ref.def.path}', which is not there to be served as an image."
+    /**
+     * That [ref]'s file is not there to be served: no such root, no such file, or a file that is no image. Found
+     * without reading a file this has read before and that has not changed since ([looked]) -- a stale answer here
+     * costs a problem said one load late, never a byte served.
+     */
+    override fun fileProblem(cxt: KdrCxt, ref: FileRef): String? {
+        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty())
+        val servable = if (at.real == null) {
+            sayWhy(cxt, ref, at.reason)
+            false
+        } else {
+            val stamp = "${at.real}|${at.size}|${at.modifiedMs}"
+            val key = "${ref.def.root}/${ref.def.path}"
+            looked[key]?.takeIf { it.stamp == stamp }?.servable ?: (read(cxt, ref) != null).also {
+                if (looked.size >= maxRemembered) looked.clear()
+                looked[key] = Looked(stamp, it)
+            }
+        }
+        return if (servable) null else "names the local file '${ref.def.root}/${ref.def.path}', which is not there to be served as an image."
+    }
 
     override fun meta(cxt: KdrCxt, ref: FileRef): FileMeta? = read(cxt, ref)?.meta
 
@@ -203,15 +243,11 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
         val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty())
         val file = read.file
         if (file == null) {
-            if (shouldSay(ref.def.pointer, read.reason.orEmpty(), System.nanoTime())) {
-                LogFileRef.warn(cxt) {
-                    "The local file '${ref.def.root}/${ref.def.path}' of ref '${ref.refId}' (client '${ref.owner}') cannot be served: ${read.reason}."
-                }
-            }
+            sayWhy(cxt, ref, read.reason)
             return null
         }
         // Mended: were it to break again, that is news.
-        if (said.isNotEmpty()) said.remove(ref.def.pointer)
+        if (said.isNotEmpty()) said.remove("${ref.owner}/${ref.refId}/${ref.def.pointer}")
         val meta = FileMeta(
             mimeType = file.kind.mimeType, size = file.bytes.size.toLong(), hash = file.bytes.sha256Hex(),
             uploadedAt = file.modifiedAt, fileName = file.name, client = ref.owner,
@@ -221,8 +257,11 @@ class LocalFileSource(val roots: LocalFileRoots) : FileRefSource {
 
     @Suppress("ConstPropertyName")
     companion object {
-        /** How long the same reason for the same file goes unrepeated in the log. */
+        /** How long the same reason for the same ref goes unrepeated in the log. */
         const val repeatReasonAfterMs = 10 * 60_000L
+
+        /** How many refs and files are remembered at once before what is remembered is dropped and learned again. */
+        const val maxRemembered = 5_000
 
         private const val nanosPerMs = 1_000_000L
     }

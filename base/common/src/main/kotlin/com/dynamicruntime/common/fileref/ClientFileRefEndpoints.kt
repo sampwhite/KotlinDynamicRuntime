@@ -81,8 +81,8 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
 
     listEndpoint(
         UADEP.clientFiles,
-        "A client's file refs (issue #1153): the named files its stored configuration holds, each with the file " +
-            "store's record of the file and none of its content. For a client with a sandbox these are the " +
+        "A client's file refs (issues #1153, #1154): the named files its configuration holds, each with the record " +
+            "of the file -- the file store's, or for a local file what the disk says of it -- and none of its content. For a client with a sandbox these are the " +
             "sandbox's -- the latest revision, drafts included -- each saying whether the client's own people are " +
             "served it yet.",
         outputRef = FREF.refTypeName,
@@ -171,7 +171,7 @@ private fun knownClient(cxt: KdrCxt, request: Map<String, Any?>): String =
 
 /**
  * [client]'s refs as an administrator is shown them ([FileRefService.shownAs]): the sandbox's where it has one,
- * each marked by whether the client's own registry serves the same bytes under that id.
+ * each marked by whether the client's own registry serves the same file under that id.
  */
 fun listedRefs(cxt: KdrCxt, refs: FileRefService, client: String): List<Map<String, Any?>> {
     val running = refs.forClient(configOwnerOf(client)).refs

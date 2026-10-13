@@ -1,6 +1,7 @@
 package com.dynamicruntime.sample.file
 
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.fileref.LocalFileRoots
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.util.jsonMap
@@ -107,6 +108,10 @@ class SampleFileApiTest : StringSpec({
         // asked for. (The store is shared across this spec's tests, so this checks what is present and absent
         // rather than the exact directory contents.)
         val store = java.io.File(tempWorkspace, SampleFileStore.storeDirName)
+        // Where the sample keeps its files is one of the places no root of local files may be (issue #1154); the
+        // fence names it by a constant of its own, since `common` cannot see this module's.
+        LocalFileRoots.reservedWorkspaceDirs shouldContain SampleFileStore.storeDirName
+        LocalFileRoots.sampleFilesDirName shouldBe SampleFileStore.storeDirName
         val names = store.listFiles()?.map { it.name }.orEmpty()
         names shouldContain "$id.bin"
         names shouldContain "$id.json"
