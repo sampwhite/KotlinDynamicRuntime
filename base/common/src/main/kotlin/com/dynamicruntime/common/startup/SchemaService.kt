@@ -1987,14 +1987,15 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 SS.actingRoles to cxt.userProfile.roles.sorted(),
                 SS.withheld to bySection,
             )
-            // A sandbox user's admin role the parent-admin rule withholds (issue #929): named, since the acting roles
-            // alone would read as though the user never held it.
+            // The roles a sandbox user's row holds that the sandbox rules withhold (issue #929): named, since the
+            // acting roles alone would read as though the user never held them.
             val profile = cxt.userProfile
             val row = if (profile.isRowBacked && profile.isLoggedIn) UserService.get(cxt).queryByUserId(cxt, profile.userId) else null
-            if (row != null && SandboxAccess.adminWithheld(cxt, row)) {
-                explained[SS.rolesWithheld] = listOf(
-                    linkedMapOf(SS.role to ROLE.admin, SS.rule to SS.sandboxAdminRule),
-                )
+            val rolesWithheld = row?.let { SandboxAccess.withheld(cxt, it) }.orEmpty()
+            if (rolesWithheld.isNotEmpty()) {
+                explained[SS.rolesWithheld] = rolesWithheld.entries.sortedBy { it.key }.map { (role, why) ->
+                    linkedMapOf(SS.role to role, SS.rule to SS.sandboxRuleOf(why))
+                }
             }
             cxt.request?.responseMeta?.put(SS.accessExplained, explained)
         }
@@ -2174,6 +2175,23 @@ object SS {
     const val sandboxAdminRule =
         "sandboxAdmin: in a sandbox, admin takes effect only for an identity that is an administrator in the parent, " +
             "or an allClients administrator"
+
+    /** The rule that withholds any other role of somebody from outside, and a capability on a row that is the sandbox's own. */
+    const val sandboxOutsideRule =
+        "sandboxOutside: in a sandbox, somebody who came from outside it acts with what their user outside holds, " +
+            "and a capability is never a sandbox user's own"
+
+    /** The rule that withholds every role of somebody from outside who is nobody there any more. */
+    const val sandboxStandingRule =
+        "sandboxStanding: a sandbox user holding admin acts for a person outside the sandbox, and this one has no " +
+            "enabled user in the parent and is no allClients administrator"
+
+    /** The rule [why] names, as the access report words it. */
+    fun sandboxRuleOf(why: SandboxAccess.Withheld): String = when (why) {
+        SandboxAccess.Withheld.admin -> sandboxAdminRule
+        SandboxAccess.Withheld.notHeldOutside -> sandboxOutsideRule
+        SandboxAccess.Withheld.noStanding -> sandboxStandingRule
+    }
     const val section = "section"
     const val requiredRole = "requiredRole"
     const val requiredCapability = "requiredCapability"

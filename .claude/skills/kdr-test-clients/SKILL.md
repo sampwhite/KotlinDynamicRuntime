@@ -182,10 +182,14 @@ later schema rejects" test.
   also be reloaded on its own. A test wanting a preview client sets the flag on the parent and places a
   `TestUser` in the sandbox (`userClient = sandboxOf(parent)`) -- `SandboxClientTest.kt` is the reference.
 - **Admin in a sandbox comes from the parent** (issue #929). In a sandbox, `admin` takes effect only while the
-  user's identity also has an enabled admin user in the parent (or an `admin`+`allClients` one) -- so a `TestUser`
-  created straight into the sandbox at `level = ROLE.admin` acts as a plain user there, by design. For a working
-  sandbox administrator, create the admin in the **parent** and have it `postData(AEP.openSandbox, emptyMap())`,
-  which moves that session to the person's own sandbox user (created on first use); `SandboxAccessTest.kt` is the
+  user's identity also has an enabled admin user in the parent (or an `admin`+`allClients` one). A sandbox user
+  whose row holds `admin` is taken for somebody from outside and **acts with exactly what their user outside
+  holds** -- levels and capabilities both, asked at every request -- so a `TestUser` created straight into the
+  sandbox at `level = ROLE.admin` acts as its person's user in the parent does, and **with no roles at all** when
+  the person has none there, by design. A sandbox user *without* `admin` is the sandbox's own and acts with the
+  levels on its row. For a working sandbox administrator, create the admin in the **parent** and have it
+  `postData(AEP.openSandbox, emptyMap())`, which moves that session to the person's own sandbox user (created on
+  first use); to change what it may do, change the **parent** user's roles. `SandboxAccessTest.kt` is the
   reference.
 - **Config edits in a sandbox act on the parent, as drafts** (issue #930). A sandbox has no configuration of its own:
   the `/clientAdmin/config/...` endpoints and the copy and menu editors, called in one, read and write the parent's,

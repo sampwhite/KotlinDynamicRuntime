@@ -762,12 +762,14 @@ class AuthFormHandler(
     /**
      * Opens [named]'s Shadow Sandbox -- the caller's own client when null -- as the caller's own user in it (issue
      * #929, rule 1): found by the caller's identity, persona and suffix, or on first use created there, registered,
-     * with the caller's acting roles. Then a fresh session as that user, the way [switchUser] completes.
+     * with the caller's levels. Then a fresh session as that user, the way [switchUser] completes.
      *
      * Opened from the **parent** side, by an administrator of the parent or an `allClients` administrator: authority
-     * flows from parent to sandbox. No role is kept in step afterwards -- whether the sandbox user's `admin` takes
-     * effect is asked of the parent at every request ([SandboxAccess]). Refused for a client without the `sandbox`
-     * flag, and from inside a sandbox, which has none of its own.
+     * flows from parent to sandbox. **The roles written here are a record of who came, not what they hold**: what
+     * the sandbox user acts with is asked of the person's user outside at every request ([SandboxAccess]), so no
+     * role is kept in step afterwards and none needs to be. A capability is not written at all -- it is never a
+     * sandbox row's to hold. Refused for a client without the `sandbox` flag, and from inside a sandbox, which has
+     * none of its own.
      */
     fun openSandbox(cxt: KdrCxt, named: String?): Map<String, Any?> {
         val profile = cxt.userProfile
@@ -788,7 +790,8 @@ class AuthFormHandler(
         val own = userService.queryByUserId(cxt, profile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         val clone = userService.claimUser(
-            cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix, profile.roles.sorted(),
+            cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix,
+            profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(),
         )
         return completeLogin(cxt, clone, byCode = false)
     }
