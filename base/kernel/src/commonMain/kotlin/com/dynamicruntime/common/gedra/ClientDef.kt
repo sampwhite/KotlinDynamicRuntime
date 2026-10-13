@@ -60,7 +60,7 @@ enum class ClientUsageType {
  * **It is an authority axis, not a label.** It decides what a caller is proactively shown, and it relaxes the
  * functional-group restriction (see [ClientDef.includedTraits]), so a client may not choose its own: it is set in
  * source code, or by a platform operator for a client defined in data -- never by the client's own administrator,
- * or a client could write `internal` and take a capability with it. See [ClientOperatorFields] (issue #820).
+ * or a client could write `internal` and take a capability with it. See [ClientFieldPolicies] (issues #820, #1108).
  */
 @Suppress("EnumEntryName")
 enum class ClientAudience {
@@ -95,41 +95,129 @@ enum class ClientStatus {
 }
 
 /**
- * The [ClientDef] fields a client may not set for **itself** (issue #820): they carry authority over the client, so
- * only we set them -- in source code, or, for a client defined in data, a platform operator (an `allClients`
- * administrator, an import, a service write). A client's own administrator must keep them as they are: a write
- * from one that changes any is refused. Declared here, in one place, so a further field of limited editability is
- * one line rather than another check.
+ * What a client made **by another client** takes for a field of its definition (issue #1108) -- the delegated
+ * create of #1112. The platform's own create sets any field it is given.
  */
-object ClientOperatorFields {
-    /**
-     * Each operator-only field (a [CLD] key), with the value it holds for a client that has no definition yet --
-     * the least authority, which is all a client's own write could ever start from.
-     */
-    val defaults: Map<String, String?> = linkedMapOf(
-        CLD.audience to ClientAudience.customer.name,
-        CLD.usageType to ClientUsageType.production.name,
-        // Which customer owns the client (issue #1107): none, until the platform files it under one.
-        CLD.customerId to null,
-    )
+@Suppress("EnumEntryName")
+enum class ClientFieldAtCreate {
+    /** Whoever makes the client chooses it. */
+    creator,
+
+    /** It is copied from the client that made it. */
+    parent,
+
+    /** It starts empty, or off. */
+    cleared,
+}
+
+/** Who changes a field of a client's definition once the client exists (issue #1108). */
+@Suppress("EnumEntryName")
+enum class ClientFieldEdit {
+    /** The client's own administrator, in the definition editor (issue #1026). */
+    definitionEditor,
 
     /**
-     * The operator-only fields [proposed] sets differently from [current] -- both `ClientInfo` maps
-     * ([ClientDef.toInfo]) -- or, when the client has no definition, from [defaults].
+     * The client's own administrator, through a surface of its own rather than the definition editor: the traits it
+     * includes through its configuration, its sandbox through the sandbox's management.
      */
-    fun changedBy(proposed: Map<String, Any?>, current: Map<String, Any?>?): List<String> =
-        defaults.keys.filter { field ->
-            proposed[field].toOptStr() != (current?.get(field).toOptStr() ?: defaults[field])
-        }
+    ownSurface,
+
+    /**
+     * Only the platform (issue #820): source code, or for a client defined in data a platform operator -- an
+     * `allClients` administrator, an import, a service write. The field carries authority over the client, or moves
+     * what it holds or where it runs, so a write from the client's own administrator that changes it is refused.
+     */
+    platform,
+}
+
+/** One field's policy (issue #1108): what a client made by another takes for it, and who changes it after. */
+class ClientFieldPolicy(val atCreate: ClientFieldAtCreate, val edit: ClientFieldEdit)
+
+/**
+ * The policy of every field of a [ClientDef] (issue #1108), declared once, in the order a form draws them. What a
+ * client's own administrator may change, what the definition editor offers, what the platform's create takes, and
+ * what a client made by another copies or clears are each read from here rather than restated, so a field's
+ * editability is decided where the field is listed. Every field the definition's schema declares must have one:
+ * declaring a field without a policy fails as the schema is built (`ClientDef.defineInfoType`).
+ *
+ * An `allClients` administrator -- the platform -- may set any field.
+ */
+object ClientFieldPolicies {
+    private fun p(atCreate: ClientFieldAtCreate, edit: ClientFieldEdit) = ClientFieldPolicy(atCreate, edit)
+
+    val byField: Map<String, ClientFieldPolicy> = linkedMapOf(
+        CLD.clientId to p(ClientFieldAtCreate.creator, ClientFieldEdit.platform),
+        CLD.name to p(ClientFieldAtCreate.creator, ClientFieldEdit.definitionEditor),
+        CLD.description to p(ClientFieldAtCreate.creator, ClientFieldEdit.definitionEditor),
+        // Authority over the client, and where it runs: the platform's, and a client's maker's to pass on.
+        CLD.customerId to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
+        CLD.usageType to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
+        CLD.audience to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
+        CLD.enabledEnvironments to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
+        // The template a client is built on is chosen when it is made; changing it after moves everything it holds.
+        CLD.extendsFromClientId to p(ClientFieldAtCreate.creator, ClientFieldEdit.platform),
+        // A domain routes to one client, so a copy would refuse every create.
+        CLD.domainPrefix to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
+        CLD.customDomain to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
+        CLD.webResourcesId to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
+        CLD.userLabels to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
+        CLD.sandbox to p(ClientFieldAtCreate.creator, ClientFieldEdit.ownSurface),
+        CLD.includedTraits to p(ClientFieldAtCreate.cleared, ClientFieldEdit.ownSurface),
+        CLD.preload to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        // Only a definition in source code may set it; a stored one claiming it is refused outright.
+        CLD.staticConfig to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        CLD.testFeatures to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+    )
+
+    /** [field]'s policy; a field with none is a fault, since every field the schema declares has one. */
+    fun of(field: String): ClientFieldPolicy =
+        byField[field] ?: throw KdrException.mkConv("Client field '$field' has no policy (issue #1108); declare one.")
+
+    /** The fields only the platform changes. */
+    val platformFields: List<String> = byField.filter { it.value.edit == ClientFieldEdit.platform }.keys.toList()
+
+    /** The fields the definition editor offers a client's own administrator, in the order it draws them. */
+    val editorFields: List<String> = byField.filter { it.value.edit == ClientFieldEdit.definitionEditor }.keys.toList()
+
+    /**
+     * The fields the **platform's** create takes (issue #1054): every field but those a create clears and that are
+     * then changed only through a surface of their own or by the platform -- the traits a client includes, its
+     * preload, its static lock, and its test features, which belong to its configuration once it exists. A field a
+     * create clears but the definition editor offers (a domain, the suggested labels) the operator may fill in at once.
+     */
+    val createFields: List<String> = byField.filter { (_, policy) ->
+        policy.atCreate != ClientFieldAtCreate.cleared || policy.edit == ClientFieldEdit.definitionEditor
+    }.keys.toList()
+
+    /**
+     * The platform-only fields [proposed] sets differently from [current] -- both `ClientInfo` maps
+     * ([ClientDef.toInfo]), and a stored entry may leave out what is off or empty -- or, when the client has no
+     * definition, from the least authority ([leastAuthority]). What refuses a client administrator's write.
+     */
+    fun platformChangesBy(proposed: Map<String, Any?>, current: Map<String, Any?>?): List<String> =
+        platformFields.filter { field -> comparable(field, proposed[field]) != comparable(field, (current ?: leastAuthority)[field]) }
+
+    /**
+     * What a client with no definition yet holds in the fields that carry authority: the least, which is all a
+     * client's own write could ever start from. The rest read as absent.
+     */
+    val leastAuthority: Map<String, Any?> = mapOf(
+        CLD.audience to ClientAudience.customer.name,
+        CLD.usageType to ClientUsageType.production.name,
+    )
+
+    /** [value] of [field] in a form two definitions compare by: a set for a list, a flag for a boolean, else text. */
+    private fun comparable(field: String, value: Any?): Any? = when (field) {
+        CLD.enabledEnvironments, CLD.testFeatures, CLD.includedTraits, CLD.userLabels -> value.toJsonListOfStrings().toSet()
+        CLD.preload, CLD.staticConfig, CLD.sandbox -> value == true
+        else -> value.toOptStr()
+    }
 }
 
 /**
- * The [ClientDef] fields a client's administrator edits from the Clients page (issue #1026): what the client
- * presents and where it is reached -- its name, its note, its routing, its web resources, and the user labels it
- * suggests. Nothing structural: the environments it is enabled in, the template it extends, the traits it includes
- * and its preload stay read-only there, since a change to any of them moves what the client holds or where it
- * runs. The operator-only fields ([ClientOperatorFields]) are never among them. Declared here, in one place, so
- * the editor and the endpoint's input are the same set, and a field joining or leaving it is one line.
+ * The [ClientDef] fields a client's administrator edits from the Clients page (issue #1026): those whose policy is
+ * [ClientFieldEdit.definitionEditor] (issue #1108) -- what the client presents and where it is reached. Each with
+ * what the endpoint says of it, so the editor and the endpoint's input are the same set.
  */
 object ClientPresentationFields {
     /** Each editable field, a [CLD] key, in the order an editor draws them, with what the endpoint says of it. */
@@ -143,24 +231,26 @@ object ClientPresentationFields {
     )
 
     /** The editable fields, in the order an editor draws them. */
-    val names: List<String> get() = descriptions.keys.toList()
+    val names: List<String> get() = ClientFieldPolicies.editorFields
+
+    init {
+        // The policy decides what is editable; this says it in the endpoint's words, so each has its sentence.
+        check(descriptions.keys.toList() == ClientFieldPolicies.editorFields) {
+            "The definition editor's descriptions ${descriptions.keys} are not its fields ${ClientFieldPolicies.editorFields}."
+        }
+    }
 
     /** Whether [name] holds a list of strings rather than one string -- the labels. */
     fun isList(name: String): Boolean = name == CLD.userLabels
 }
 
 /**
- * The fields a client is **created** with (issue #1054), as [CLD] keys: everything a definition holds that
- * somebody decides when a client is made. Not among them: `staticConfig`, which only a
- * definition in source code may set; `preload`, `includedTraits` and `testFeatures`, which belong to the client's
- * configuration and are set through it once the client exists. Declared here, in one place, so the endpoint's
- * input type and the code that reads a request are the same set.
+ * The fields a client is **created** with by the platform (issue #1054), as [CLD] keys -- read from the policies
+ * ([ClientFieldPolicies.createFields], issue #1108), so the endpoint's input type and the code that reads a request
+ * are the same set.
  */
 object ClientCreateFields {
-    val names: List<String> = listOf(
-        CLD.clientId, CLD.name, CLD.description, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
-        CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.userLabels, CLD.sandbox,
-    )
+    val names: List<String> get() = ClientFieldPolicies.createFields
 }
 
 /** Names and field keys for a client definition (issue #343). */
@@ -567,7 +657,7 @@ data class ClientDef(
     val sandbox: Boolean = false,
     /**
      * The **customer** that owns this client (issue #1107), a [CustomerDef.customerId] -- the link that says whose
-     * client it is, set only by the platform (it is among [ClientOperatorFields]). A source client names a customer
+     * client it is, set only by the platform (its policy is [ClientFieldEdit.platform]). A source client names a customer
      * declared in source; a stored one may name either. The link is judged when the client loads, and read through
      * `ClientService.customerOf`, which answers only for a customer that is there.
      *
@@ -723,6 +813,8 @@ data class ClientDef(
          */
         private fun SchTypeBuilder.infoProperties(written: Boolean, only: Set<String>? = null, offerChoices: Boolean = false) {
             fun prop(name: String, description: String, required: Boolean = false, build: SchTypeBuilder.() -> Unit = {}) {
+                // Every field has a policy (issue #1108): a field added here without one fails as the schema is built.
+                ClientFieldPolicies.of(name)
                 if (only == null || name in only) property(name, description, required, build)
             }
             prop(CLD.clientId, "The client's unique key, embedded in every gedra id it owns.", required = true)

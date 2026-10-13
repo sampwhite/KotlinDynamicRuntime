@@ -386,24 +386,26 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
 }
 
 /**
- * Refuses a **client administrator's** change to a field only a platform operator may set ([ClientOperatorFields],
- * issue #820) -- the write by which a client's own administrator would raise its own client's authority, writing
- * `audience: internal`, say. An `allClients` administrator is the operator, on either surface. Judged against the
- * client's definition as it stands -- stored, or in source -- or, for a client with none, the least-authority
- * defaults. Load trusts what is stored, since this is the gate every client-scoped write passes.
+ * Refuses a **client administrator's** change to a field only the platform may set -- a field whose policy is
+ * [ClientFieldEdit.platform] ([ClientFieldPolicies], issues #820, #1108) -- the write by which a client's own
+ * administrator would raise its own client's authority, writing `audience: internal`, say, or move what it holds or
+ * where it runs. An `allClients` administrator is the operator, on either surface. Judged against the client's
+ * definition as it stands -- stored, or in source -- or, for a client with none, the least authority. Load trusts
+ * what is stored, since this is the gate every client-scoped write passes.
  */
 private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
     if (proposed == null || AdminRules.canSeeAllClients(c)) return
     val stored = ClientStoredEdit.definitionHolder(c)?.entriesBySlot()?.get(CCT.clientDef)?.firstOrNull()
     val current = stored ?: ClientService.get(c).known(c.client)?.toInfo()
-    val changed = ClientOperatorFields.changedBy(proposed.toInfo(), current)
+    val changed = ClientFieldPolicies.platformChangesBy(proposed.toInfo(), current)
     if (changed.isEmpty()) return
     val keep = changed.joinToString(", ") { field ->
-        (current?.get(field) ?: ClientOperatorFields.defaults[field])?.let { "$field '$it'" } ?: "$field unset"
+        (current ?: ClientFieldPolicies.leastAuthority)[field]?.let { "$field '$it'" } ?: "$field unset"
     }
+    val fields = if (changed.size <= 2) changed.joinToString(" and ") else "${changed.dropLast(1).joinToString(", ")}, and ${changed.last()}"
     throw KdrException(
-        "Client '${c.client}''s ${changed.joinToString(" and ")} may be set only by a platform operator; a client " +
-            "administrator's write must keep them as they are ($keep).",
+        "Client '${c.client}''s $fields may be set only by a platform operator; a client administrator's write must " +
+            "keep them as they are ($keep).",
         code = EXC.notAuthorized,
     )
 }

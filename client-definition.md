@@ -186,6 +186,29 @@ the missing link, so a demonstration or test client is never held to them.
 
 The plan a customer is on, and the quotas it sets, are #1109's; the page showing a customer's clients is #1114's.
 
+**Who sets each field** (issue #1108). Every field has a policy, declared once beside the definition's schema
+(`ClientFieldPolicies`; a field the schema declares without one fails as it is built). A policy has two parts: what
+a client made **by another client** (#1112) takes for the field, and who changes it once the client exists. The
+platform -- source code, or an `allClients` administrator -- sets any field. What a client's own administrator may
+change (the write check of #820), what the definition editor offers, and what the platform's create takes are all
+read from it.
+
+| Field | Made by another client | Changed after by |
+| --- | --- | --- |
+| `clientId` | the creator | nobody (it is the client) |
+| `name`, `description` | the creator | the definition editor |
+| `customerId`, `usageType`, `audience`, `enabledEnvironments` | copied from the maker | the platform |
+| `extendsFromClientId` | the creator | the platform |
+| `domainPrefix`, `customDomain` | cleared (a domain routes to one client) | the definition editor |
+| `webResourcesId` | copied from the maker | the definition editor |
+| `userLabels` | cleared | the definition editor |
+| `sandbox` | the creator | its own surface (the sandbox's management) |
+| `includedTraits` | cleared | its own surface (the client's configuration) |
+| `preload`, `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
+
+The platform's create takes every field but those a create clears and that are then changed only through their own
+surface or by the platform: the traits a client includes, its preload, its static lock, and its test features.
+
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.
 `WrittenClientInfo` -- compiled on its own as `ClientDefSchema`, and what the `kdr:clientDef` slot is declared as --
