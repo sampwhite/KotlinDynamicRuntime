@@ -653,7 +653,7 @@ val Users = FC<Props> {
                     value = draftLevel
                     options = accessLevelOptions(operatorSelectable)
                     disabled = busy || self
-                    style = js("({ minWidth: 180 })")
+                    style = choiceStyle()
                     onChange = { v ->
                         val level = v as? String ?: ROLE.user
                         draftLevel = level
@@ -712,7 +712,7 @@ val Users = FC<Props> {
                         value = draftClient
                         options = clientOptions(clientChoices)
                         disabled = busy
-                        style = js("({ minWidth: 180 })")
+                        style = choiceStyle()
                         onChange = { v -> draftClient = v as? String ?: draftClient }
                     }
                 }
@@ -756,7 +756,7 @@ val Users = FC<Props> {
                         value = draftPersona
                         options = personaOptions()
                         disabled = busy
-                        style = js("({ minWidth: 180 })")
+                        style = choiceStyle()
                         onChange = { v ->
                             val chosen = v as? String ?: PERSONA.member
                             draftPersona = chosen
@@ -808,7 +808,7 @@ val Users = FC<Props> {
                         )
                         placeholder = "(none)"
                         disabled = busy
-                        style = js("({ minWidth: 240 })")
+                        style = choiceStyle()
                         onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
                     }
                 }
