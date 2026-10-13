@@ -215,11 +215,18 @@ fun GedraConfigIssue.heldBy(
  *
  * Logged at **error** rather than warn, whichever check found it. A dropped definition is not a caveat; it is
  * something the deployment believes it has and does not.
+ *
+ * [aroseWhileRunning] is for the one kind of problem that comes about with no configuration changing (issue #1154):
+ * something outside the configuration, which a definition this node **already runs** points at, has gone. Such a
+ * problem is never refused, whatever the mode -- it is said and recorded, as under `warn`. Refusing a reload would
+ * not bring the thing back, and would fail a reload for something the reload did not bring: the write that led to
+ * it is already stored. What a boot finds is never one of these.
  */
 fun reportConfigProblem(
     cxt: KdrCxt,
     problem: GedraConfigIssue,
     issues: MutableList<GedraConfigIssue>,
+    aroseWhileRunning: Boolean = false,
 ) {
     // A trial (issue #843) only wants to know: captured, and treated as forgiven so the evaluation goes on.
     @Suppress("UNCHECKED_CAST")
@@ -229,7 +236,7 @@ fun reportConfigProblem(
         return
     }
     val stored = problem.origin == GedraConfigOrigin.stored
-    val mode = configCheckMode(cxt, problem.origin)
+    val mode = configCheckMode(cxt, problem.origin).let { if (aroseWhileRunning && it == BootCheckMode.strict) BootCheckMode.warn else it }
     if (mode == BootCheckMode.strict) {
         throw KdrException(
             if (stored) {

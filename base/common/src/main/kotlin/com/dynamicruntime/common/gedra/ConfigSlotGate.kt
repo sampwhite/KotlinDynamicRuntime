@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.context.KdrCxtBase
+import com.dynamicruntime.common.fileref.FREF
+import com.dynamicruntime.common.fileref.LocalFileRoots
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.schema.SchFailCode
@@ -75,6 +77,8 @@ object ConfigSlotShapes {
  *   class keeps (issue #1051).
  * - **A usage rule's `display`** must be a template that parses: it is evaluated per row with its failures
  *   swallowed, so a malformed one blanks its column for every row and says nothing.
+ * - **A file ref** names its file one way, by its `source`: the file store's by a hash, a local file's by a root
+ *   and a path that is plain, and neither by both (issue #1154).
  * - **A type declared twice** (`kdr:schemaDef`) is refused: the second would silently replace the first. No other
  *   slot is held to one entry a key, because elsewhere a repeat is either legal -- two overlays of one fragment
  *   file or one UiBlock are two layers -- or refused already, by the reassembly or the trial, as what it is.
@@ -144,7 +148,11 @@ private fun SchFailure.under(parent: String): SchFailure = copy(path = if (path.
 private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: Map<String, Any?>): List<SchFailure> {
     if (slot == CCT.clientDef) return readClientDef(cxt, entry).failures
     val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, it) }
-    val beyond = if (slot == CCT.usageDef) displayFailures(entry[CCT.display]) else emptyList()
+    val beyond = when (slot) {
+        CCT.usageDef -> displayFailures(entry[CCT.display])
+        CCT.fileRefDef -> fileRefFailures(entry)
+        else -> emptyList()
+    }
     // A key a request may carry off-contract is not one a stored entry may: it would be accepted and then gone.
     return shape + offContractKeyFailures(entry) + beyond
 }
@@ -162,6 +170,37 @@ private fun leftToTheTrial(slot: String, failure: SchFailure): Boolean =
 /** What is wrong with a usage rule's `display` as a template -- one failure per defect, so they are fixed in one pass. */
 private fun displayFailures(display: Any?): List<SchFailure> = (display as? String)?.checkTemplateSyntax().orEmpty().map {
     SchFailure(CCT.display, SchFailCode.badValue, "This is not a template that parses: ${it.message}")
+}
+
+/**
+ * What is wrong with a file ref's entry beyond its shape (issue #1154): the fields that say where its file is have
+ * to be the ones its `source` reads, and no others. An entry carrying a hash *and* a path would be read by whichever
+ * its source says and would look, to anyone reading it, like the other.
+ */
+private fun fileRefFailures(entry: Map<String, Any?>): List<SchFailure> {
+    // An empty string is no value, as the shape reads one: it is neither a root nor a hash, and it strays nowhere.
+    fun given(field: String): Boolean = entry[field].let { it != null && it != "" }
+    fun missing(field: String, why: String) =
+        SchFailure(field, SchFailCode.missingRequired, "A file ref whose source is '${entry[CCT.source]}' $why.").takeIf { !given(field) }
+    fun stray(field: String, why: String) =
+        SchFailure(field, SchFailCode.badValue, "A file ref whose source is '${entry[CCT.source]}' $why.").takeIf { given(field) }
+    return when (entry[CCT.source]) {
+        FREF.sourceStore -> listOfNotNull(
+            missing(CCT.hash, "names its file by the hash of its bytes"),
+            stray(CCT.root, "has no root: its file is in the file store"),
+            stray(CCT.path, "has no path: its file is in the file store"),
+        )
+        FREF.sourceLocal -> listOfNotNull(
+            missing(CCT.root, "names the root its file is under"),
+            missing(CCT.path, "names its file's path under the root"),
+            stray(CCT.hash, "carries no hash: a local file's is that of the file as it is read"),
+            (entry[CCT.path] as? String)?.takeIf { it.isNotEmpty() }?.let { path ->
+                LocalFileRoots.pathProblem(path)?.let { SchFailure(CCT.path, SchFailCode.badValue, "This is not a path a local file may have: $it.") }
+            },
+        )
+        // No source, or one that is none: the shape has said so.
+        else -> emptyList()
+    }
 }
 
 /** How many failures a refusal's message names; all of them are in its structured `failures`. */

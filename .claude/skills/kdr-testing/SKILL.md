@@ -159,6 +159,12 @@ kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
   `KDR_FILE_STORE_TYPE=s3` and put a stand-in `S3Api` in the instance config under
   `FileStoreService.s3ApiConfigKey` (`FakeS3Api` in `base/common`'s tests keeps objects in a map and records
   every call); the real client is refused in a unit test.
+- **The local files a file ref may name** (`KDR_LOCAL_FILES_DIR`, issue #1154) default to `localFiles/` in the
+  workspace, which a server of yours would read. Nothing is ever written there, but to try a local ref name your
+  own: `KDR_LOCAL_FILES_DIR=<a scratch dir>`, with each root a directory under it. **A unit test is given no
+  location at all** and a relative one is refused, so a test names a temporary directory through its instance
+  config -- `Startup.mkTestBootCxt(name, instance, mapOf(LFENV.dir.name to dir.absolutePath))` -- and writes the
+  files its source configuration names *before* it boots, a missing one being a refused boot.
 - `:launch:run` rebuilds and embeds the current `:webapp` bundle, so it serves your frontend changes at `/wa`.
 - API endpoints are under the **`/kda`** context root (`/kda/health`, `/kda/auth/self/info`, …).
 - **Env vars flip options at boot** — the most useful lever for testing a config-gated behavior without

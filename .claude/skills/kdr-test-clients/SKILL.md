@@ -251,7 +251,11 @@ whatever came back -- so assert something of the result, or a refused write pass
 upload itself, `TestUser.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to …, FREF.file to ContentData(…)))`,
 which stores the bytes and patches the entry (`ClientFileRefsTest.kt`). To see what a load does with a ref that is
 no good -- a malformed one goes in through `writeConfig` with `fileRefFromMap(mapOf(…))` -- boot your own instance
-with `GCFG.storedCheckEnvVar` at `warn`, where the problem is recorded and the rest loads; the same file shows it. **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
+with `GCFG.storedCheckEnvVar` at `warn`, where the problem is recorded and the rest loads; the same file shows it.
+**A ref to a local file** (`fileRef(refId) { local(root, path) }`, issue #1154) needs the file on disk instead,
+under a root in a temporary directory the instance is booted with -- `mapOf(LFENV.dir.name to dir.absolutePath)`,
+the root being a directory under it -- since a unit test is given no location by default; a write of one through
+an endpoint needs `TestUser.createFullAdmin`, a client's own administrator being refused (`LocalFileRefsTest.kt`). **Publishing does not go live immediately** — it stamps `publishedAt`, changing which revision a
 later reload/boot picks up for a **published-only** client. A client on the **latest** tier loads its latest revision
 whether published or not. The tier is `publishedOnly(client) = toggled(client, env) || asksForSandbox(client)`
 (`GedraConfigControl`; issue #930): a client whose source or **published** definition sets `sandbox = true` is

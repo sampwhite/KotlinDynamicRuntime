@@ -135,18 +135,14 @@ class FileStoreService : ServiceInitializer {
     }
 
     private fun localDir(cxt: KdrCxt): File {
-        val named = cxt.getEnvVar(FSENV.dir)?.trim()?.takeIf { it.isNotEmpty() }
-        if (named == null) {
-            // The default is in the workspace, which is no test's to write in: a test on this store says where.
-            if (cxt.instanceConfig.env == ENV.unit) {
-                throw configError(
-                    "The '${FST.local}' file store has no directory by default in the unit test environment -- name " +
-                        "one with ${FSENV.dir}, or use the '${FST.memory}' store.",
-                )
-            }
-            return AppPaths.resolve(defaultDirName)
+        // The default is in the workspace, which is no test's to write in: a test on this store says where.
+        if (cxt.getEnvVar(FSENV.dir).isNullOrBlank() && cxt.instanceConfig.env == ENV.unit) {
+            throw configError(
+                "The '${FST.local}' file store has no directory by default in the unit test environment -- name " +
+                    "one with ${FSENV.dir}, or use the '${FST.memory}' store.",
+            )
         }
-        return File(named).takeIf { it.isAbsolute } ?: AppPaths.resolve(named)
+        return localDirOf(cxt)
     }
 
     private fun s3Api(cxt: KdrCxt): S3Api {
@@ -310,6 +306,16 @@ class FileStoreService : ServiceInitializer {
 
         /** The `local` store's directory when [FSENV.dir] names none, under the workspace directory. */
         const val defaultDirName = "fileStore"
+
+        /**
+         * The directory a `local` file store keeps its files in on this node -- the one [FSENV.dir] names, a
+         * relative path taken from the workspace directory, else [defaultDirName] there -- **whether or not that is
+         * the store in use**. For whoever has to keep out of it: the deployment's own data is there, or will be.
+         */
+        fun localDirOf(cxt: KdrCxt): File {
+            val named = cxt.getEnvVar(FSENV.dir)?.trim()?.takeIf { it.isNotEmpty() } ?: return AppPaths.resolve(defaultDirName)
+            return File(named).takeIf { it.isAbsolute } ?: AppPaths.resolve(named)
+        }
 
         /**
          * Instance-config key under which a test hands in the [S3Api] an `s3` store runs over, in place of the

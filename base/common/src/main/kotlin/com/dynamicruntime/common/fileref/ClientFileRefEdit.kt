@@ -92,10 +92,11 @@ object ClientFileRefEdit {
         val row = holder ?: ClientStoredEdit.ensureEditConfig(bound, owner)
         val before = storedEntry(row, refId)
         val prior = before?.let { FileRefDef.fromEntry(it, null, stored = true) }
-        val kept = if (description == null) prior?.description else description.ifBlank { null }
+        // Absent keeps what the ref says now -- of the stored entry, or of the shipped ref this upload is the first to override.
+        val kept = if (description == null) (prior ?: shown[refId]?.def)?.description else description.ifBlank { null }
         val entry = FileRefDef(refId, FREF.sourceStore, hash, kept, extra = prior?.extra.orEmpty()).toEntry()
         val written = patchEntry(svc, bound, row, refId, entry)
-        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before) })
+        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before, restoring = true) })
     }
 
     /**
@@ -140,7 +141,7 @@ object ClientFileRefEdit {
         ClientStoredEdit.requireNoForeignDraft(target, holder, "removing a file ref")
         val before = storedEntry(holder, refId)
         val written = patchEntry(svc, bound, holder, refId, null)
-        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before) })
+        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before, restoring = true) })
     }
 
     /** The stored config of [client]'s that holds the ref [refId], or null when none does. */
@@ -154,6 +155,9 @@ object ClientFileRefEdit {
     /**
      * Patches [row] so its entry for [refId] is [entry] -- or, with null, so it holds none. Run inside `patchConfig`,
      * over the revision as it stands under the lock, so a ref another administrator added a moment ago is kept.
+     *
+     * [restoring] says [entry] is what the configuration held before this call changed it, put back as the call's
+     * undo: the one write of a local ref a client's own administrator makes, since it names nothing new.
      */
     private fun patchEntry(
         svc: GedraConfigService,
@@ -161,7 +165,8 @@ object ClientFileRefEdit {
         row: GedraConfigRow,
         refId: String,
         entry: Map<String, Any?>?,
-    ): GedraConfigRow = svc.patchConfig(bound, row.configId, trial = true) { current ->
+        restoring: Boolean = false,
+    ): GedraConfigRow = svc.patchConfig(bound, row.configId, trial = true, restoring = if (restoring) listOfNotNull(entry) else emptyList()) { current ->
         val out = LinkedHashMap<String, List<Map<String, Any?>>>(current)
         val entries = current[CCT.fileRefDef].orEmpty().toMutableList()
         val at = entries.indexOfFirst { it[CCT.refId].toOptStr() == refId }

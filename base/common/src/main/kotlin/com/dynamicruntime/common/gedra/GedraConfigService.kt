@@ -4,6 +4,8 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.fileref.FREF
+import com.dynamicruntime.common.fileref.FileRefDef
 import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -15,6 +17,7 @@ import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
@@ -24,8 +27,18 @@ import kotlin.time.Instant
  * [mustBeNew] makes the write a **create**: refused with a 409 when the config's class already has a revision. It is
  * judged under the client's lock, with the revision the write would otherwise replace in hand, so two creates of one
  * config cannot both succeed -- which a check made before the write cannot promise (issue #1054).
+ *
+ * [authoredInCode] says the config's content was written by the server's own code, **whoever started the code
+ * running** (issue #1154): a simulation provisioning a client is started by a signed-in caller, and what it writes
+ * is the simulation's. It is what lets such a write name a local file (`GedraConfigService.localFileRefProblem`).
+ * Never set for content a request carried.
  */
-class ConfigWrite(val config: GedraConfig, val impliedDelete: Boolean = true, val mustBeNew: Boolean = false)
+class ConfigWrite(
+    val config: GedraConfig,
+    val impliedDelete: Boolean = true,
+    val mustBeNew: Boolean = false,
+    val authoredInCode: Boolean = false,
+)
 
 /**
  * Stores a client [GedraConfig] as a versioned config row, and publishes a revision (issue #633): the write
@@ -138,8 +151,10 @@ class GedraConfigService : ServiceInitializer {
         trial: Boolean = false,
         /** Refuse the write, with a 409, when the config already has a revision: see [ConfigWrite.mustBeNew]. */
         mustBeNew: Boolean = false,
+        /** The content is the server's own code's, whoever started it: see [ConfigWrite.authoredInCode]. */
+        authoredInCode: Boolean = false,
     ): GedraConfigRow =
-        writeConfigs(cxt, config.gedraId.client, listOf(ConfigWrite(config, impliedDelete, mustBeNew)), trial).single()
+        writeConfigs(cxt, config.gedraId.client, listOf(ConfigWrite(config, impliedDelete, mustBeNew, authoredInCode)), trial).single()
 
     /**
      * Stores several configs of one [client] in **one** transaction under the client's lock (issue #843), each as
@@ -177,7 +192,9 @@ class GedraConfigService : ServiceInitializer {
                         code = EXC.conflict,
                     )
                 }
-                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, write.config, latest, write.impliedDelete)
+                // Its own file refs are what code-authored content vouches for: every one of them is the code's.
+                val vouched = if (write.authoredInCode) gedraConfigToEntries(write.config)[CCT.fileRefDef].orEmpty() else emptyList()
+                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, write.config, latest, write.impliedDelete, vouched)
             }
             if (trial) trialWritten(wcxt, written)
             written
@@ -234,6 +251,13 @@ class GedraConfigService : ServiceInitializer {
         configClassId: GedraId,
         /** As [writeConfig]'s: refuse an edit whose trial reload finds a new problem (issue #843). */
         trial: Boolean = false,
+        /**
+         * File-ref entries this patch **puts back** (issue #1154): what the revision held when the call making it
+         * began, restored by that call's own undo. A local ref among them may be written by a caller who could not
+         * name one ([localFileRefProblem]) -- they are not naming a file, the call is taking back its own change.
+         * Only ever what was read from the stored revision; never anything a request carried.
+         */
+        restoring: List<Map<String, Any?>> = emptyList(),
         applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
     ): GedraConfigRow {
         val configId = configClassId.revisionClass()
@@ -248,7 +272,7 @@ class GedraConfigService : ServiceInitializer {
             // The gate judges what the edits changed: the revision as it stood is handed to it (issue #1052).
             val config = reassembleForWrite(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited, stored)
             checkWritableConfig(wcxt, config)
-            val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true)
+            val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true, restoring)
             if (trial) trialWritten(wcxt, listOf(written))
             written
         }
@@ -317,6 +341,45 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
+     * Why the caller may not write [config]'s **local file refs** over [latest], the revision as it stands, or null
+     * (issue #1154).
+     *
+     * A local ref is a path on the server, and stored configuration is written through the API by a client's own
+     * administrators -- who are that client's people, and not the deployment's. So one is written only by the
+     * server's own code, or by an administrator who sees every client. The server's own code is a write with no
+     * signed-in caller (a script, a job), and a write that says its content is the code's whoever started it
+     * ([ConfigWrite.authoredInCode]: a simulation provisioning a client, which a signed-in caller starts).
+     *
+     * Anybody else's write may **carry** a local ref the revision already holds, naming the same file, so that
+     * their edit of the same configuration is not refused for something they did not write; it may reword that
+     * ref's description; and it may leave the ref out, which removes it. What it may not do is name a file.
+     * [vouched] are the entries the server's own code answers for: a code-authored write's own, and the ones a
+     * call puts back as its undo (`patchConfig`'s `restoring`). They are carried as though the revision held them.
+     *
+     * Of two stored entries with one id the **first** is the one the revision holds, as a load keeps the first.
+     *
+     * Asked here, of the revision read under the write's lock, so every write is held to it -- a bundle, a patch,
+     * an import -- and none can be judged against a revision another write has since replaced.
+     */
+    private fun localFileRefProblem(
+        cxt: KdrCxt,
+        config: GedraConfig,
+        latest: GedraConfigRow?,
+        vouched: List<Map<String, Any?>>,
+    ): String? {
+        val local = config.fileRefs.filter { it.source == FREF.sourceLocal }
+        if (local.isEmpty() || !cxt.userProfile.isLoggedIn || AdminRules.canSeeAllClients(cxt)) return null
+        fun pointers(entries: List<Map<String, Any?>>) = entries.map { FileRefDef.fromEntry(it, null, stored = true) }
+            .distinctBy { it.refId }.map { it.refId to it.pointer }
+        val carried = (pointers(latest?.entriesBySlot()?.get(CCT.fileRefDef).orEmpty()) + pointers(vouched)).toSet()
+        val named = local.filter { (it.refId to it.pointer) !in carried }.map { it.refId }
+        if (named.isEmpty()) return null
+        return "Config '${config.gedraId}' cannot be written: it names a local file for the file ref" +
+            "${if (named.size == 1) "" else "s"} ${named.joinToString { "'$it'" }}. A ref to a local file is written " +
+            "by an administrator who sees every client; a client's own administrator uploads the file instead."
+    }
+
+    /**
      * Writes [config] as the current revision of [configId] under an open write transaction, per the version/
      * publish rule (#611): version 1 when the class has no revision, an in-place update while the latest is still
      * editable, or a new version once it is published. The shared tail of [writeConfig] and [patchConfig].
@@ -329,7 +392,10 @@ class GedraConfigService : ServiceInitializer {
         config: GedraConfig,
         latest: GedraConfigRow?,
         impliedDelete: Boolean,
+        /** The file-ref entries the server's own code answers for: see [localFileRefProblem]. */
+        vouched: List<Map<String, Any?>> = emptyList(),
     ): GedraConfigRow {
+        localFileRefProblem(wcxt, config, latest, vouched)?.let { throw KdrException(it, code = EXC.notAuthorized) }
         // Refuses a config carrying config traits (they are hardwired, never stored); one raw entry map per slot.
         val newBySlot = gedraConfigToEntries(config)
         val priorByKey = latest?.let { keyStoredEntries(it.entries) } ?: emptyMap()

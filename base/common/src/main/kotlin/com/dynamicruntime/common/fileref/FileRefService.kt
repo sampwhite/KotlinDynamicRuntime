@@ -9,14 +9,15 @@ import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.StoredFile
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GCEL
+import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigIssue
+import com.dynamicruntime.common.gedra.checkMode
 import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.configOwnerOf
-import com.dynamicruntime.common.gedra.storedConfigCheckMode
 import com.dynamicruntime.common.http.request.ContentServer
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
@@ -25,8 +26,6 @@ import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.webasset.ClientWebAssetService
-import com.dynamicruntime.common.webasset.WebAssetCheck
-import java.util.concurrent.ConcurrentHashMap
 
 /** Logger for a client's file refs (issue #1153). */
 object LogFileRef : KdrLogger("fileRef")
@@ -38,12 +37,6 @@ class FileRef(
     val owner: String,
 ) {
     val refId: String get() = def.refId
-
-    /** The hash of the ref's bytes. Never null for a ref a registry kept. */
-    val hash: String get() = def.hash.orEmpty()
-
-    /** The ref by name and content, as a listing hands it out and a static address carries it. */
-    val name: String get() = FREF.versionedName(refId, hash)
 }
 
 /** The file refs one client's people are served, by id. */
@@ -54,8 +47,9 @@ class FileRefRegistry(val refs: Map<String, FileRef>) {
 }
 
 /**
- * A client's file refs at run time (issue #1153): the named files its stored configuration holds, each a pointer --
- * by the hash of its bytes -- to a file in the file store.
+ * A client's file refs at run time (issues #1153, #1154): the named files its configuration holds, each a pointer to
+ * bytes kept somewhere this asks a [FileRefSource] for -- the file store, by the hash of what was uploaded
+ * ([StoreFileSource]), or a file on this machine, by a root and a path ([LocalFileSource]).
  *
  * **Configuration, unlike a client's web assets.** A ref is an entry of a config bundle (`kdr:fileRefDef`), so it
  * is drafted, previewed and published with the copy that names it. This holds no rule of its own for any of that:
@@ -63,10 +57,9 @@ class FileRefRegistry(val refs: Map<String, FileRef>) {
  * what each client consumes -- the published revisions for a client that runs only those, the latest for its
  * sandbox. So a sandbox previews a ref its parent has only drafted, and the parent serves the one it published.
  *
- * **Bytes are kept by their hash**, in [bucket] at `clients/<owner>/refs/<hash>`, where the owner is the client whose
- * stored configuration holds the entry. An object is written once and never rewritten, so no upload can change the
- * bytes a published revision names; two refs with the same bytes share one object; and removing a ref leaves its
- * object, which older revisions still name.
+ * **What is stored overrides what is shipped.** Source configuration may declare a ref to a local file, and a ref
+ * of the same id in stored configuration takes its place -- as a piece of stored copy takes the place of the
+ * source's -- so uploading over a shipped image replaces it, and removing the upload reveals it again.
  *
  * **Built when a client loads** ([checkInit], [reloadClient]) and judged in the trial a configuration write runs
  * ([trialClient]), each problem through [reportConfigProblem] and each costing only the ref it is about. A client
@@ -92,21 +85,20 @@ class FileRefService : ServiceInitializer, ContentServer {
     var registries: Map<String, FileRefRegistry> = emptyMap()
         private set
 
-    /** What the store answered for one file, and when. */
-    private class Asked(val atNanos: Long, val meta: FileMeta?)
+    /** The file store as a source: there from the start, since it is what an upload writes to. */
+    val store = StoreFileSource()
 
-    /**
-     * What the file store last said of each file, by owner and hash, for [askedMemoMs]. An object is written once
-     * and never rewritten, so an answer of "there" stays true unless somebody deletes the object -- which is why it
-     * is kept at all, and what makes a reload, a trial and a listing cost only the refs that are new. It is not
-     * kept for good: a deleted object would otherwise be reported present by this node until it restarted, while
-     * another node said it was missing. "Not there" is kept as long, so a ref whose file is gone is not asked for
-     * again by every listing and every write.
-     */
-    private val asked = ConcurrentHashMap<String, Asked>()
+    /** The sources a ref may name, by what an entry calls them. Local files join when this is set up ([checkInit]). */
+    @Volatile
+    var sources: Map<String, FileRefSource> = mapOf(store.source to store)
+        private set
 
-    /** The clock the memo is aged by. A test's to replace; never the instance clock, which a test may travel. */
-    var nanoTime: () -> Long = System::nanoTime
+    /** The clock the store's memo is aged by ([StoreFileSource.nanoTime]). A test's to replace. */
+    var nanoTime: () -> Long
+        get() = store.nanoTime
+        set(value) {
+            store.nanoTime = value
+        }
 
     private var isInit = false
 
@@ -115,18 +107,30 @@ class FileRefService : ServiceInitializer, ContentServer {
         if (isInit) return
         val collector = SchemaCollector.get(cxt) ?: throw KdrException("$serviceName.checkInit ran with no schema collector.")
         FileStoreService.get(cxt).checkInit(cxt)
+        // Refuses the start over a declaration that is wrong (see there). One that names nothing yet is only said.
+        val roots = LocalFileRoots.resolve(cxt)
+        sources = sources + (FREF.sourceLocal to LocalFileSource(roots))
+        LogFileRef.info(cxt) { "Local files a file ref may name (${LFENV.dir.name}): ${roots.describe()}." }
         val configs = collector.gedraConfigs.configs
         registries = configs.filter { it.fileRefs.isNotEmpty() }.map { it.gedraId.client }.distinct()
-            .associateWith { build(cxt, configs, it) }
+            .associateWith { build(cxt, configs, it, running = null) }
             .filterValues { it.refs.isNotEmpty() }
         RequestService.get(cxt).addContentServer(this)
         isInit = true
     }
 
-    /** Rebuilds [client]'s registry off the current collector and swaps it in: a step of the client's reload. */
+    /**
+     * Rebuilds [client]'s registry off the current collector and swaps it in: a step of the client's reload.
+     *
+     * **A ref this node already serves is not refused for its file having gone** -- it is reported, and kept. A
+     * file goes with no configuration changing, so the write that led to this reload could not have been refused
+     * for it (`GedraConfigTrial.fileRefBaseline`) and is stored by now: refusing here, where problems are strict,
+     * would fail every later save of the client after it was committed. A ref the reload *brings* is held as
+     * strictly as ever.
+     */
     fun reloadClient(cxt: KdrCxt, client: String) {
         val collector = SchemaCollector.get(cxt) ?: throw KdrException("$serviceName.reloadClient ran with no schema collector.")
-        val rebuilt = build(cxt, collector.gedraConfigs.configs, client)
+        val rebuilt = build(cxt, collector.gedraConfigs.configs, client, running = forClient(client))
         registries = if (rebuilt.refs.isEmpty()) registries - client else registries + (client to rebuilt)
     }
 
@@ -136,7 +140,20 @@ class FileRefService : ServiceInitializer, ContentServer {
      * not in the store is refused as a write, rather than accepted and served as not found.
      */
     fun trialClient(cxt: KdrCxt, scratch: SchemaCollector, client: String) {
-        build(cxt, scratch.gedraConfigs.configs, client)
+        build(cxt, scratch.gedraConfigs.configs, client, running = null)
+    }
+
+    /**
+     * The problems [client]'s refs have **now**, judged again over the configurations this node runs for it:
+     * nothing reported, nothing swapped in. What a write's trial is compared with (`GedraConfigTrial`), since
+     * whether a file is there can change with no configuration changing.
+     */
+    fun problemsNow(cxt: KdrCxt, client: String): List<GedraConfigIssue> {
+        val collector = SchemaCollector.get(cxt) ?: return emptyList()
+        val capture = mutableListOf<GedraConfigIssue>()
+        val asking = cxt.mkSubContext("fileRefsNow", client).also { it.locals[GCFG.trialCaptureKey] = capture }
+        build(asking, collector.gedraConfigs.configs, client, running = null)
+        return capture
     }
 
     /** The refs [client]'s people are served; none, for a client that has none. */
@@ -144,12 +161,17 @@ class FileRefService : ServiceInitializer, ContentServer {
 
     /**
      * [client]'s registry from the [configs] filed under it, each ref judged and each problem reported
-     * ([reportConfigProblem]). Of two configurations declaring one id, the one whose own id sorts first keeps it.
+     * ([reportConfigProblem]).
+     *
+     * **Whose ref an id is.** A client's stored configurations are read before its source ones, and each in the
+     * order of their ids. A source ref whose id a stored one keeps is **overridden**, which is no problem and is
+     * not reported (see the class note); any other second declaration of an id is, and the first keeps it.
      *
      * A ref is **left out** when it could not be served -- an id that is no name, a source this node does not read,
-     * a hash that is not one, an id already taken, a ref in a configuration that may not hold one. It is **kept**
-     * when it is well formed and its bytes are not in the store: that is reported, but the entry is not wrong, the
-     * file may yet arrive, and serving asks the store itself.
+     * an entry its source cannot read ([FileRefSource.defProblem]), an id already taken, a ref in a configuration
+     * that may not hold one. It is **kept** when it is well formed and its file is not there
+     * ([FileRefSource.fileProblem]): that is reported, but the entry is not wrong, the file may yet arrive, and
+     * serving asks again.
      *
      * **A client is served the first [FREF.maxRefs]** of its well-formed refs, and holding more is one problem, of
      * the client and not of any one ref. Which refs are "the rest" depends on the order the configurations are read
@@ -157,43 +179,52 @@ class FileRefService : ServiceInitializer, ContentServer {
      * new one to every trial, and would refuse even the removal that mends it. As one problem it is refused when a
      * write first takes a client over, and is no obstacle to a client already over taking refs away. (Such a client
      * may still be given more, by an entry typed into its configuration; they are stored and not served.)
+     *
+     * [running] is the registry a reload is replacing, and null for a boot and a trial: see [reloadClient].
      */
-    private fun build(cxt: KdrCxt, configs: List<GedraConfig>, client: String): FileRefRegistry {
+    private fun build(cxt: KdrCxt, configs: List<GedraConfig>, client: String, running: FileRefRegistry?): FileRefRegistry {
         val owner = configOwnerOf(client)
-        // Asking the store is the stored check's to switch off, with every other check of stored configuration.
-        val checksStore = storedConfigCheckMode(cxt) != BootCheckMode.off
         val issues = mutableListOf<GedraConfigIssue>()
         val kept = LinkedHashMap<String, FileRef>()
-        // In the order of their ids, not the order they happen to be held in: a load and a write's trial read a
+        // In an order of their own, not the order they happen to be held in: a load and a write's trial read a
         // client's configurations in different orders, and "the first to declare an id keeps it" has to come out
         // the same in both, or the trial would find the other one the duplicate and call that a new problem.
-        val holding = configs.filter { it.gedraId.client == client && it.fileRefs.isNotEmpty() }.sortedBy { it.gedraId.fullId }
+        val holding = configs.filter { it.gedraId.client == client && it.fileRefs.isNotEmpty() }
+            .sortedWith(compareBy({ config -> if (config.fileRefs.any { it.stored }) 0 else 1 }, { it.gedraId.fullId }))
         var beyond = 0
         for (config in holding) {
+            // Asking after a ref's file is the configuration's own check's to switch off, with its other checks.
+            val checksFile = config.checkMode(cxt) != BootCheckMode.off
             for (def in config.fileRefs) {
-                val problem = defProblem(config, def, owner, kept.keys)
+                val holder = kept[def.refId]
+                // What the client stored in place of what it was shipped with.
+                if (holder != null && holder.def.stored && !def.stored) continue
+                val problem = defProblem(config, def, owner, holder != null)
                 if (problem != null) {
                     reportConfigProblem(cxt, config.issue(problem, "Leaving the file ref out; the rest of the configuration loads.", GCEL.fileRef, def.refId), issues)
                     continue
                 }
-                // Past what a client is served: counted, and not asked of the store -- the limit is what bounds that.
+                // Past what a client is served: counted, and its file not asked after -- the limit is what bounds that.
                 if (kept.size >= FREF.maxRefs) {
                     beyond++
                     continue
                 }
-                val hash = def.hash.orEmpty()
-                if (checksStore && isMissing(cxt, owner, hash)) {
+                val ref = FileRef(def, owner)
+                val fileProblem = if (checksFile) sources.getValue(def.source).fileProblem(cxt, ref) else null
+                if (fileProblem != null) {
                     reportConfigProblem(
                         cxt,
                         config.issue(
-                            "File ref '${def.refId}' of client '$owner' (config '${config.name}') names a file that is not in the file store ($hash).",
+                            "File ref '${def.refId}' of client '$owner' (config '${config.name}') $fileProblem",
                             "Keeping the ref; it is answered as not found until its file is there.",
                             GCEL.fileRef, def.refId,
                         ),
                         issues,
+                        // The same ref, naming the same file, as the client is served now: its file has gone.
+                        aroseWhileRunning = running?.refs?.get(def.refId)?.def?.pointer == def.pointer,
                     )
                 }
-                kept[def.refId] = FileRef(def, owner)
+                kept[def.refId] = ref
             }
         }
         if (beyond > 0) {
@@ -213,76 +244,35 @@ class FileRefService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * What stops [def], declared by [config], being served, or null; [taken] are the ids already kept. Worded by
-     * [owner], the client the configuration is stored under, so the same problem reads the same whichever client's
-     * load found it.
+     * What stops [def], declared by [config], being served, or null; [taken] is whether its id is already kept.
+     * Worded by [owner], the client the configuration is stored under, so the same problem reads the same whichever
+     * client's load found it.
      */
-    private fun defProblem(config: GedraConfig, def: FileRefDef, owner: String, taken: Set<String>): String? {
+    private fun defProblem(config: GedraConfig, def: FileRefDef, owner: String, taken: Boolean): String? {
         FREF.refIdProblem(def.refId)?.let { return "Config '${config.name}' of client '$owner' declares a file ref whose id is no name: $it" }
         val ref = "File ref '${def.refId}' of client '$owner' (config '${config.name}')"
-        return when {
-            config.gedraId.client == GID.globalClient ->
-                "$ref is declared by a global configuration. A file ref is a client's own: there is no client whose files a global one would be."
-            def.source != FREF.sourceStore ->
-                "$ref has the source '${def.source}', which this node does not read; the source it reads is '${FREF.sourceStore}'."
-            !def.stored ->
-                "$ref is declared in source code. A ref names bytes in one deployment's file store, and source " +
-                    "configuration runs on every machine, so only stored configuration may hold one."
-            !FREF.isHash(def.hash.orEmpty()) ->
-                "$ref has the hash '${def.hash.orEmpty()}', which is not one: a SHA-256 is ${FREF.hashLength} lowercase hex characters."
-            def.refId in taken ->
-                "$ref is declared more than once among the client's configurations. The first is kept."
-            else -> null
+        if (config.gedraId.client == GID.globalClient) {
+            return "$ref is declared by a global configuration. A file ref is a client's own: there is no client whose files a global one would be."
         }
+        val source = sources[def.source]
+            ?: return "$ref has the source '${def.source}', which this node does not read; the sources it reads are ${sources.keys.sorted().joinToString { "'$it'" }}."
+        source.defProblem(def, ref)?.let { return it }
+        return if (taken) "$ref is declared more than once among the client's configurations. The first is kept." else null
     }
 
     /**
-     * Whether the store holds no file for [hash] under [owner]. A store that cannot be asked is not a missing file
-     * and not a fault of the configuration: it is logged, and the ref is taken as it stands.
+     * What is known of [ref]'s file without its content -- the file store's record of it, or for a local file what
+     * reading it found -- or null when there is none to serve.
      */
-    private fun isMissing(cxt: KdrCxt, owner: String, hash: String): Boolean =
-        try {
-            metaOf(cxt, owner, hash) == null
-        } catch (e: KdrException) {
-            LogFileRef.warn(cxt) { "Could not ask the file store for the file '$hash' of client '$owner'; taking its ref as it stands. ${e.message}" }
-            false
-        }
+    fun metaOf(cxt: KdrCxt, ref: FileRef): FileMeta? = sources[ref.def.source]?.meta(cxt, ref)
 
-    /**
-     * The file store's record of the file [hash] under [owner], or null when it holds none: from what the store
-     * last said within [askedMemoMs], else asked again. A record says the store *describes* such a file; whether its
-     * bytes are whole is [read]'s to find, on the way out.
-     */
-    fun metaOf(cxt: KdrCxt, owner: String, hash: String): FileMeta? {
-        val memoKey = "$owner/$hash"
-        asked[memoKey]?.takeIf { nanoTime() - it.atNanos < askedMemoMs * nanosPerMs }?.let { return it.meta }
-        return FileStoreService.get(cxt).meta(cxt, bucket, keyOf(owner, hash)).also { asked[memoKey] = Asked(nanoTime(), it) }
-    }
-
-    /** Drops what was last said of the file [hash] under [owner]: an upload has just changed the answer. */
+    /** Drops what the store was last said to hold of the file [hash] under [owner]: an upload has just changed the answer. */
     fun forget(owner: String, hash: String) {
-        asked.remove("$owner/$hash")
+        store.forget(owner, hash)
     }
 
-    /**
-     * The file [ref] names, content and metadata, or null when the store holds none.
-     *
-     * Two things are held to here, on every read, that an entry cannot be trusted for: the file is **the one the
-     * ref names** -- its recorded hash is the ref's, which a key by content makes true unless something wrote the
-     * key directly -- and it is **a kind of file a ref may be**, by the type the checked upload recorded. Anything
-     * else is no file, said in the log.
-     */
-    fun read(cxt: KdrCxt, ref: FileRef): StoredFile? {
-        val file = FileStoreService.get(cxt).get(cxt, bucket, keyOf(ref.owner, ref.hash)) ?: return null
-        if (file.meta.hash != ref.hash || WebAssetCheck.declaredKind(file.meta.mimeType) == null) {
-            LogFileRef.warn(cxt) {
-                "The file kept for ref '${ref.refId}' of client '${ref.owner}' is not what the ref names (hash " +
-                    "${file.meta.hash}, type ${file.meta.mimeType}); answering as though there were none."
-            }
-            return null
-        }
-        return file
-    }
+    /** The file [ref] names, content and what describes it, or null when its source has none to serve ([FileRefSource.read]). */
+    fun read(cxt: KdrCxt, ref: FileRef): StoredFile? = sources[ref.def.source]?.read(cxt, ref)
 
     /**
      * The client whose registry an administrator of [client] is shown and previews from: its sandbox's where it has
@@ -314,8 +304,6 @@ class FileRefService : ServiceInitializer, ContentServer {
 
         /** How long what the store said of a file is gone on: how soon a deleted object is noticed by this node. */
         const val askedMemoMs = 10 * 60_000L
-
-        private const val nanosPerMs = 1_000_000L
 
         /** Where the file [hash] of [owner]'s is kept in the [bucket]: by its content, so it is written once. */
         fun keyOf(owner: String, hash: String): String = "clients/$owner/refs/$hash"

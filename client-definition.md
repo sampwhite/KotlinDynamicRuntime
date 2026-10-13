@@ -83,8 +83,9 @@ For the client configuration itself, the client has the following attributes.
   client's signed-in people in place of the deployment's. They are not configuration -- no draft, no publish --
   and a sandbox shows its parent's. Beside them (issue #1153) a client's stored configuration holds **file refs**:
   named images of its own, kept in the file store by the hash of their bytes, and -- unlike the two above --
-  drafted, previewed in the sandbox and published with the rest of its configuration. A package two clients share
-  is still this field's to become.
+  drafted, previewed in the sandbox and published with the rest of its configuration. A ref may also name an
+  image already on the machine, under a root the deployment declares (issue #1154) -- how a client is shipped
+  with artwork that an upload then overrides. A package two clients share is still this field's to become.
 * `enabledEnvironments` - A list of environments where the client is enabled. Even if not enabled, it
   can still be referred to, but the client will otherwise be considered not to be present. 
   It defaults to the list {'unit', 'local', 'dev'}. It is an error if any environment besides `unit` and `local`

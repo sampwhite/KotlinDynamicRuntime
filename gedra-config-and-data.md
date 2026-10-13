@@ -344,11 +344,13 @@ fields of a file ref's entry this release does not read (`FileRefDef.extra`).
 - **No write of a node can remove a slot it does not read.** A slot a later release retires stays in its rows until
   that release's own migration takes it out.
 
-### File refs: configuration that points outside itself (issue #1153)
+### File refs: configuration that points outside itself (issues #1153, #1154)
 
 `kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a
-client's **file ref** is a named file, and its entry -- `{ refId, source, hash, description? }` -- holds the SHA-256
-of the file's bytes, which are in the file store (bucket `web-assets`, key `clients/<client>/refs/<hash>`).
+client's **file ref** is a named file, and its entry says where the bytes are by its `source`. Most are in the
+**file store** -- `{ refId, source: "store", hash, description? }`, the SHA-256 of the file's bytes, kept in
+bucket `web-assets` at `clients/<client>/refs/<hash>` -- and those are what the points below describe. A ref may
+instead name a **local file**, which the section after covers.
 
 - **The hash is the pointer.** The key is derived from it and never stored, so an entry names exactly one sequence
   of bytes, an object is written once and never rewritten, and a draft cannot change what a published revision
@@ -356,26 +358,38 @@ of the file's bytes, which are in the file store (bucket `web-assets`, key `clie
 - **What a file is -- its type, its size, its name -- is not in the entry.** It is the file store's own record,
   written by the upload that checked the bytes. An entry can be typed through these endpoints, and the content type a
   file is served under must not come from something that can be typed. Serving checks, on every read, that the file
-  is the one the ref names and a kind a ref may be (`FileRefService.read`).
+  is the one the ref names and a kind a ref may be (`StoreFileSource.read`).
 - **Drafted and published like any other configuration.** `FileRefService` builds a registry per client from the
   configurations the collector holds for it, so the tiers and the sandbox need no rule of their own: a sandbox
   previews a ref its parent has only drafted, and the parent serves the one it published. This is the difference
   from a client's web assets (#1130), which are not configuration and have neither.
 - **Judged in a fixed order.** A load and a write's trial read a client's configurations in different orders, so
-  the registry orders them by id before it judges them: of two configurations declaring one ref id, the one whose
-  own id sorts first keeps it, in both. A check whose answer depended on the order read would be a new problem to
-  every trial.
-- **Only stored configuration may hold one.** A hash names bytes in one deployment's file store, and source
-  configuration runs on every machine: a ref declared in source is a source problem, which refuses the boot outside
-  production.
+  the registry orders them itself before it judges them -- the stored ones, then the source ones, each by id: of
+  two configurations declaring one ref id, the first in that order keeps it, in both. A check whose answer
+  depended on the order read would be a new problem to every trial.
+- **Only stored configuration may hold a ref into the file store.** A hash names bytes in one deployment's file
+  store, and source configuration runs on every machine: such a ref declared in source is a source problem, which
+  refuses the boot outside production. (A ref declared in source names a local file.)
 - **A load asks the store once per distinct file**, and goes on the answer for ten minutes (an object is not
   rewritten, so the answer changes only if one is deleted). A ref whose bytes are missing is a reported problem that
-  costs only the ref: it is kept, listed as missing, and answered as not found. It has to be asked at the load and
-  not on first use: a write's trial subtracts the problems the client already has, and one nobody recorded would
-  refuse every later write. For a client with a sandbox the drafts are loaded only by the sandbox, so the trial
-  counts what the sandbox's load recorded too (`GedraConfigTrial.draftBaseline`); a client that runs only published
-  configuration *without* a sandbox has nobody loading its drafts, and a draft ref whose file has gone is then a
-  problem to each later draft write until the ref is removed or its file uploaded again.
+  costs only the ref: it is kept, listed as missing, and answered as not found.
+- **Whether a file is there is asked again at each write** (`GedraConfigTrial.fileRefBaseline`). A write's trial
+  subtracts the problems the client already has, and every other check reads only configuration, so what the last
+  load recorded stays true. A file does not: one that went missing since the load would be a problem "the write
+  introduces" to every later write of the client, including the one that takes the ref away. So the refs the node
+  runs for the client, and for its sandbox, are judged again as the trial is, and a write is refused only for a
+  file its own ref names. One gap remains: a client that runs only published configuration *without* a sandbox
+  has nobody running its drafts, and a draft ref whose file has gone is then a problem to each later draft write
+  until the ref is removed or its file is there again.
+- **A sandbox's problems forgive a write, not a publish.** A write is judged with the latest revisions, which the
+  sandbox runs, so what the sandbox already has the drafts already have. A publish changes what the client's own
+  people are served, and is judged against the client alone: a draft ref whose file has gone is refused there,
+  since publishing it is what would bring the problem to them.
+- **A reload never refuses for a file that went missing under a ref the node already serves**
+  (`reportConfigProblem(aroseWhileRunning = …)`). Where problems are strict, anything else a load finds refuses
+  it; but this one no write could have been refused for, and the write that led to the reload is stored by then.
+  It is reported and recorded, and the ref kept. A boot, and a ref a reload *brings*, are held as strictly as
+  ever.
 - **Uploading a file again puts it back.** An upload reads the file it would store before deciding it is already
   there, so one whose bytes are gone or damaged is written again.
 - **A client is served at most 200 refs.** Holding more is one problem of the client's, with the first 200 served
@@ -390,6 +404,52 @@ of the file's bytes, which are in the file store (bucket `web-assets`, key `clie
 
 Not to be confused with `GedraDataType.fileRef`, a kind of *data* gedra with no write path yet -- a claim on a file
 held as data. The two share the word.
+
+### File refs to local files: an image where it already is (issue #1154)
+
+The second `source`. `{ refId, source: "local", root, path, description? }` names a file on the node's own disk,
+under a **root** the deployment declared -- `fileRef("logo") { local("brand", "logo.svg") }` in source
+configuration. No hash is authored: it is the hash of the file as it is read. Where roots are, and what may not be
+one, is the deployment's to say and is written up in `examples/custom-config.md`; the rules themselves are
+`LocalFileRoots`.
+
+- **Which source may be written where.**
+
+  | | source configuration | stored, by the server's own code or an `allClients` administrator | stored, by a client's own administrator |
+  |---|---|---|---|
+  | `store` (a hash) | refused: a problem at the load | yes | yes |
+  | `local` (a root and a path) | yes | yes | **no** -- 403 |
+
+  A path in configuration is a string naming a file on the server, and stored configuration is written through
+  the API by a client's own people. So `GedraConfigService` refuses a write that **adds or changes** a local ref
+  from anyone but the server's own code or an administrator who sees every client, judged against the revision
+  read under the write's lock -- a bundle write, a patch and an import alike. "The server's own code" is a write
+  with no signed-in caller (a script, a job) and a write that says its content is the code's whoever started it
+  (`ConfigWrite.authoredInCode`, which `Simulations.provisionConfig` sets: a simulation is started by a signed-in
+  caller, and what it writes is the simulation's). **A client's own administrator's** write may still *carry* a
+  local ref the revision already holds, so their edit of the same configuration is not refused for something they
+  did not write; it may reword the ref's description, which names no file; and it may leave the ref out, or
+  upload over it. An edit of theirs that is refused and undone puts back what was there
+  (`patchConfig(restoring = …)`).
+- **What is stored overrides what is shipped.** A stored ref takes the place of a source ref of the same id, with
+  no problem said -- as stored copy takes the place of the source's. So an upload replaces a shipped image, and
+  removing the upload reveals it again. Any *other* second declaration of an id is still a problem.
+- **The entry is held to its source** by the slot gate: a `store` ref has a hash and no root or path, a `local`
+  one a root and a plain path and no hash. An entry with both would be read by one and look like the other.
+- **The bytes are hashed every time they are served** (`LocalFileSource`). Remembering a hash by a file's size and
+  date could give the permanent cache header to bytes the address does not name. So a file edited on disk is a new
+  address with no reload, an old address gets the current bytes under `no-store`, and nodes holding different
+  files answer each other's addresses the same way -- a shared cache only ever keeps the exact bytes an address
+  names. A steady state needs every node to hold the same files.
+- **A file that is missing, unreadable or not an image** is a `no-store` 404 when asked for and a configuration
+  problem when its client loads, which keeps the ref. The problem says one thing whatever the reason, since what a
+  parser says of a file that is not an image can repeat what is in it; the reason is in the node's log.
+- **A listing reads each local file** to say its hash, so its cost is the files'; the limit of 200 refs a client
+  and 2 MB a file is what bounds it. A load and a write's trial do not: they ask only whether a file can be
+  served, and that is remembered for a file that has not changed (where it is, its size, its date), so a save
+  costs a `stat` a ref and not a read. Serving remembers nothing.
+- **Roll it out everywhere first**, as with the slot itself: a node on the release before reads no `local` ref
+  (it leaves one out, as a source it does not read), and its upload over one writes an entry this release drops.
 
 **Two things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
 body** (`kdr:schemaDef.schema`, `kdr:traitDef.dataSchema`) need only be an object here, since parsed on its own it
@@ -513,7 +573,8 @@ is what gives the warning teeth.
 | Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership, `traitsFor`, and `$ref` bounded by construction (a client's schema holds only global and its own types) |
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
-| File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only; a file that lives outside the file store is #1154 |
+| File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only |
+| File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154; a client's own administrator naming one is not (it wants a root to opt in and to confine each client to its own subdirectory) |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 

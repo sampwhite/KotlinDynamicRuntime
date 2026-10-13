@@ -457,6 +457,21 @@ class GedraConfigBuilder(
         fileRefs.add(FileRefDef(refId, FREF.sourceStore, hash, description, configName = stampName, stored = isStored))
     }
 
+    /**
+     * Declares a file ref whose bytes are a **local file** (issue #1154): `fileRef("logo", "The logo.") { local("brand",
+     * "acme/logo.png") }` names the file `acme/logo.png` under the root a deployment declared as `brand`. The form
+     * for source configuration -- nothing is uploaded, and the file is read where it is.
+     */
+    fun fileRef(refId: String, description: String? = null, build: FileRefBuilder.() -> Unit) {
+        val built = FileRefBuilder().apply(build)
+        val (root, path) = built.local ?: throw KdrException.mkConv(
+            "File ref '$refId' names no file: say where it is, with local(root, path).",
+        )
+        fileRefs.add(
+            FileRefDef(refId, FREF.sourceLocal, hash = null, description, configName = stampName, stored = isStored, root = root, path = path),
+        )
+    }
+
     /** A file ref from its stored entry, stamped with this config's name and origin; see [FileRefDef.fromEntry]. */
     fun fileRefFromMap(entry: Map<String, Any?>) {
         fileRefs.add(FileRefDef.fromEntry(entry, configName = stampName, stored = isStored))
@@ -775,6 +790,18 @@ class GedraConfigBuilder(
                         "would silently replace the first, so it is refused here instead.",
                 )
             }
+    }
+}
+
+/** Says where a file ref's file is; see [GedraConfigBuilder.fileRef]. */
+class FileRefBuilder {
+    /** The root and path [local] was given, or null when it was not called. */
+    var local: Pair<String, String>? = null
+        private set
+
+    /** The file at [path] under the declared root [root], on this machine's disk. */
+    fun local(root: String, path: String) {
+        local = root to path
     }
 }
 
