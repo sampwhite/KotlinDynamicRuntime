@@ -14,8 +14,11 @@ class ProfileFeatures(
     val hasPassword: Boolean,
     /** Whether the user may set or change a password at all. */
     val canSetPassword: Boolean,
-    /** Dev only: email is simulated, so the code can be read back from `/test/simulatedEmails`. */
-    val simulatedEmail: Boolean,
+    /**
+     * Dev only: the code can be read back from `/fixture/simulatedEmails` -- email is simulated and this caller has
+     * test access (issue #1149).
+     */
+    val codeReadBack: Boolean,
 )
 
 /**
@@ -42,7 +45,7 @@ fun profileConfigFrom(config: UiConfig): ProfileConfig = ProfileConfig(
     features = ProfileFeatures(
         hasPassword = config.features[AFEAT.hasPassword] == true,
         canSetPassword = config.features[AFEAT.canSetPassword] == true,
-        simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
+        codeReadBack = config.features[AFEAT.codeReadBack] == true,
     ),
     user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
     loginId = config.state.getOptStr(AFLD.loginId) ?: "",

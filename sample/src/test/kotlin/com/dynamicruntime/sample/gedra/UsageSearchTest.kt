@@ -156,10 +156,13 @@ class UsageSearchTest : StringSpec({
         val admin = TestUser.create(cxt, "cache-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
         val unique = "Zephyr Cachecheck"
         postAudit(admin, unique)
-        val resp = admin.client.sendJsonGetRequest(
-            clientPath(GEP.formDocs, SC.acme),
-            mapOf(exact(SC.siteAudit) to unique, EP.debug to GDBG.explainScope),
-        )
+        val resp = admin.withTestAccess {
+            // Diagnostic tags, so they answer a caller with test access (issue #1149).
+            admin.client.sendJsonGetRequest(
+                clientPath(GEP.formDocs, SC.acme),
+                mapOf(exact(SC.siteAudit) to unique, EP.debug to GDBG.explainScope),
+            )
+        }
         // The search returned exactly the uniquely-named row...
         resp[EP.items].toJsonListOfMaps().map { displayValue(it, SC.siteAudit) } shouldBe listOf(unique)
         // ...filtered over the cache's client+kind index, not the SQL fall-back (the diagnostic names which ran).
@@ -175,10 +178,13 @@ class UsageSearchTest : StringSpec({
         val admin = TestUser.create(cxt, "sql-divert-admin@acme.test", level = ROLE.admin, userClient = SC.acme)
         val unique = "Quill Sqlpath"
         postAudit(admin, unique)
-        val resp = admin.client.sendJsonGetRequest(
-            clientPath(GEP.formDocs, SC.acme),
-            mapOf(exact(SC.siteAudit) to unique, EP.debug to "${GDBG.dataFromSql},${GDBG.explainScope}"),
-        )
+        val resp = admin.withTestAccess {
+            // Diagnostic tags, so they answer a caller with test access (issue #1149).
+            admin.client.sendJsonGetRequest(
+                clientPath(GEP.formDocs, SC.acme),
+                mapOf(exact(SC.siteAudit) to unique, EP.debug to "${GDBG.dataFromSql},${GDBG.explainScope}"),
+            )
+        }
         resp[EP.items].toJsonListOfMaps().map { displayValue(it, SC.siteAudit) } shouldBe listOf(unique)
         val explained = resp[EP.meta].toJsonMapOrEmpty()[GDBG.scopeExplained].toJsonMapOrEmpty()
         explained[GDBG.statement] shouldNotBe "cache:${GDX.clientKind}"

@@ -959,9 +959,11 @@ parts of one questionnaire keep each other's answers.
 
 ## The Simulations page (issue #997)
 
-`#page=simulations`, offered on a test instance only (the menu item is gated on `kdr:isTestInstance`; the route is
-Home elsewhere): the simulations the node offers, from `/fixture/simulations` -- the catalog's shape, parsed with
-`parseCatalog`, and not narrowed to the published API, since on a test instance simulations are for anyone testing it.
+`#page=simulations`, offered to a caller with **test access** only -- a test instance, with env auth effective (issue
+#1149; the menu item is gated on `kdr:hasTestAccess`, and the route is Home without the app config's `hasTestAccess`):
+the simulations the node offers, from `/fixture/simulations` -- the catalog's shape, parsed with `parseCatalog`. Like
+every fixture, the simulations exist for nobody else, so a session that suppressed its env auth loses the page, and
+its sign-in buttons stop working, until it turns env auth back on.
 Each gets its input form from its schema (the same `SchemaForm` and `checkInput` the endpoint catalog uses) and a
 **Run**; the run's report becomes **Sign in as …** buttons, which post `/fixture/becomeUser` and `afterSessionChange`
 to the report's start page -- no reload. Each successful run is remembered in this browser's `localStorage`
@@ -1007,9 +1009,10 @@ the fallback, never instead of it: a boundary that displayed prettily and stayed
 pass on a broken page.
 
 On-screen detail (message + component stack) is gated on the `showErrorDetail` app-config feature, which the
-backend sets from `isTestInstance` — the same fence `_debug=explainAccess` uses, rather than a second notion
-of "a dev build". Note the limit: a crash in the *shell* happens before the config fetch returns, so the
-detail is withheld there even on a test instance and the console is where you read it.
+backend sets from the caller's test access (a test instance, with env auth effective — issue #1149) or ENV DEBUG
+— the same fence `_debug=explainAccess` uses, rather than a second notion of "a dev build". Note the limit: a
+crash in the *shell* happens before the config fetch returns, so the detail is withheld there even on a test
+instance and the console is where you read it.
 
 ### An HTTP caller must throw `ApiError` on a non-2xx, or a real 4xx reads as "unreachable"
 
@@ -1089,7 +1092,9 @@ a test fixture rather than the real email-code flow:
 
 - **`POST /kda/fixture/becomeUser`** with `{email, level, client, capabilities, name, persona, personaSuffix}` creates-or-finds the user
   and logs you straight in — **no verification code**. It is a `forTestingOnly` endpoint, so it exists only on a
-  test instance (`KDR_TEST_INSTANCE`, which the in-memory local server is). Call it from the browser page's own
+  test instance (`KDR_TEST_INSTANCE`, which the in-memory local server is), and only for a caller with env auth
+  there (issue #1149) -- which a direct local request is assumed to have, unless the session suppressed it with the
+  app bar's env control. Call it from the browser page's own
   `fetch()` so the session cookie lands in the browser, then reload the app to fetch as the new identity (a
   same-hash navigate does not reload — call `location.reload()`).
 - **Pass `client` to become a *specific* client's user** (`client: "acme"`). This is what a **per-client**
@@ -1143,9 +1148,9 @@ differ per mode, so one invocation cannot honestly produce both. Separate invoca
 
 ## Debug pages (issue #227)
 
-A small area that exists only where the deployment permits it (`allowDebugPages`, from the backend's
-`isTestInstance`), for diagnosing the app rather than using it. Reached by URL, which is what lets a browser
-test drive it with nothing but a link:
+A small area that exists only where the deployment permits it (`allowDebugPages`, from the caller's test access --
+a test instance, with env auth effective, issue #1149 -- or ENV DEBUG), for diagnosing the app rather than using it.
+Reached by URL, which is what lets a browser test drive it with nothing but a link:
 
 ```
 #page=debug                  index of what is available

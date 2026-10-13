@@ -125,7 +125,8 @@ class EdgeMenuTest : StringSpec({
         scope.userProfile = UserProfile(authId = "someone@example.com")
         val ids = (UiBlockService.get(scope).resolve(scope, HMENU.block)?.get(HFLD.menu) as? List<*>)
             ?.map { (it as Map<*, *>)[HFLD.id] as String? }
-        ids shouldBe listOf(HMENU.account, HMENU.profile, HMENU.logout, HMENU.catalog, HMENU.docs, HMENU.forms, HMENU.simulations)
+        // No Simulations: this caller has no env auth, so has no test access on the test instance (issue #1149).
+        ids shouldBe listOf(HMENU.account, HMENU.profile, HMENU.logout, HMENU.catalog, HMENU.docs, HMENU.forms)
     }
 
     "the endpoint an edge does serve reports the same menu, and no Documents for the anonymous landing" {

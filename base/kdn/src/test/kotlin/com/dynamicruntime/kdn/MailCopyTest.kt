@@ -102,8 +102,9 @@ class MailCopyTest : StringSpec({
         sent.html!! shouldContain "\">$code</a>."
         sent.text shouldContain "Your verification code is $code."
         sent.html!! shouldContain "<body style=\""
-        // Both parts reach the test-only read-back the frontend uses.
-        val emails = results(browser.sendJsonGetRequest(TEP.simulatedEmails, mapOf(TSE.to to address)))[TSE.emails].toJsonListOfMaps()
+        // Both parts reach the test-only read-back the frontend uses (for a caller with test access, issue #1149).
+        val emails = results(browser.withTestAccess { browser.sendJsonGetRequest(TEP.simulatedEmails, mapOf(TSE.to to address)) })[TSE.emails]
+            .toJsonListOfMaps()
         emails.first()[TSE.html].toString() shouldContain "<p>Your verification code is"
         // Every mail ends with the shared footer, in both parts.
         sent.text shouldContain "sent automatically"

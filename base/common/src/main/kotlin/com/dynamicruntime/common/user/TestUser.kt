@@ -37,6 +37,13 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     val userId: Long get() = userInfo[UPF.userId].toOptLong() ?: -1L
 
     /** GETs [path] as this user; returns the response's `results` map. */
+    /**
+     * Runs [block] with **test access** (issue #1149): its requests -- this user's, through [client] -- carry env
+     * auth, so a `forTestingOnly` fixture, or a diagnostic `_debug` tag, answers them. The user's other requests go
+     * without, as an ordinary caller's do. See [TestHttpClient.withTestAccess].
+     */
+    fun <T> withTestAccess(block: () -> T): T = client.withTestAccess(block)
+
     fun getData(path: String, args: Map<String, Any?>? = null): Map<String, Any?> =
         client.sendJsonGetRequest(path, args)[EP.results].toJsonMapOrEmpty()
 
@@ -180,7 +187,9 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
                 if (persona != null) put(TEP.persona, persona)
                 if (personaSuffix != null) put(TEP.personaSuffix, personaSuffix)
             }
-            val userInfo = client.sendJsonPostRequest(TEP.becomeUser, body)[EP.results].toJsonMapOrEmpty()
+            // A fixture, so the one call carries test access (issue #1149); the user's own requests after it go
+            // without env auth, as an ordinary caller's do.
+            val userInfo = client.withTestAccess { client.sendJsonPostRequest(TEP.becomeUser, body) }[EP.results].toJsonMapOrEmpty()
             return TestUser(client, cxt, userInfo)
         }
 

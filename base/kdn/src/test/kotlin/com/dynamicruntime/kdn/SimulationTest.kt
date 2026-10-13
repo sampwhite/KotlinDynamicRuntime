@@ -3,6 +3,7 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.clientPath
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.http.request.ROLE
@@ -22,12 +23,13 @@ import io.kotest.matchers.string.shouldContain
 /**
  * Simulations (issue #997): the `design-demo` simulation provisions what its report says -- a client defined in data
  * and users to sign in as -- a suffix makes an independent copy, a rerun is safe, and the listing offers it to a caller
- * without env auth.
+ * with test access, who alone may run it (issue #1149).
  */
 class SimulationTest : StringSpec({
     val cxt = TestInstances.default("simulation997")
-    // An ordinary signed-in user, no env auth: whoever is testing the instance.
-    val tester = TestUser.create(cxt, "tester@simulation997.test")
+    // An ordinary signed-in user, env-authed: whoever is testing the instance. Test access, not a role, is what a
+    // simulation asks of its caller (issue #1149).
+    val tester = TestUser.create(cxt, "tester@simulation997.test").also { it.client.alwaysWithTestAccess() }
     val designDemo = SIM.pathRoot + DesignDemo.simulationName
 
     fun usersOf(report: Map<String, Any?>) = report[SIM.users].toJsonListOfMaps()
@@ -63,13 +65,20 @@ class SimulationTest : StringSpec({
         tester.expectError(400, designDemo, mapOf(SIM.suffix to "Two!")).toString() shouldContain "lowercase letters and digits"
     }
 
-    "the listing offers the simulations to a caller without env auth, in the catalog's shape" {
+    "the listing offers the simulations to a caller with test access, in the catalog's shape" {
         val listed = tester.getData(SIM.list)[EI.endpoints].toJsonListOfMaps()
         listed.map { it[EI.path] } shouldContain designDemo
         // Only simulations: everything listed carries the tag.
         listed.all { SIM.tag in it[EI.tags].toJsonListOfStrings() } shouldBe true
-        // The ordinary catalog, by contrast, confines this caller to the published API.
-        tester.getData("/schema/endpoints").toJsonMapOrEmpty()[EI.endpoints].toJsonListOfMaps()
-            .none { it[EI.path] == designDemo } shouldBe true
+    }
+
+    // A caller without env auth on a test instance takes no advantage of it (issue #1149): to them neither the listing
+    // nor a simulation exists, and the catalog, which confines them to the published API, lists neither.
+    "a caller without env auth can neither list nor run a simulation" {
+        val plain = TestUser.create(cxt, "plain@simulation997.test")
+        plain.expectError(EXC.notFound, SIM.list)
+        plain.expectError(EXC.notFound, designDemo, emptyMap())
+        plain.getData("/schema/endpoints").toJsonMapOrEmpty()[EI.endpoints].toJsonListOfMaps()
+            .none { it[EI.path] == designDemo || it[EI.path] == SIM.list } shouldBe true
     }
 })

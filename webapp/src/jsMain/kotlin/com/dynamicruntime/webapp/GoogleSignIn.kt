@@ -129,7 +129,7 @@ external interface GoogleSignInProps : Props {
  *
  * So instead of reporting a failure it cannot detect, the component states the fact a developer needs
  * (`originHint`) and leaves the diagnosis to them. It is shown only where `showErrorDetail` is on, which is
- * the backend's `isTestInstance` -- the same fence the error boundaries use. A real deployment shows nothing,
+ * the backend's test access -- the same fence the error boundaries use. A real deployment shows nothing,
  * which is what the paragraph above is about.
  */
 val GoogleSignInButton = FC<GoogleSignInProps> { props ->

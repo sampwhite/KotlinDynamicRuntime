@@ -21,10 +21,11 @@ object APP {
      * Feature flag: whether the frontend may show the detail of a caught render failure -- its message and
      * React's component stack -- rather than a generic panel (issue #223).
      *
-     * Set from the backend's `isTestInstance`, deliberately reusing the fence that already governs the other
-     * detailed-diagnostic surface (`explainAccess`, issue #215) instead of inventing a second notion of "a
-     * development build". One rule, already audited, and one that a real deployment cannot turn on by
-     * accident: an instance claiming to be a test instance outside `local`/`unit` refuses to start.
+     * Set from the backend's test access -- a test instance *and* effective env auth (issue #1149) -- deliberately
+     * reusing the fence that already governs the other detailed-diagnostic surface (`explainAccess`, issue #215)
+     * instead of inventing a second notion of "a development build". One rule, already audited, and one that a
+     * real deployment cannot turn on by accident: an instance claiming to be a test instance outside
+     * `local`/`unit` refuses to start.
      */
     const val showErrorDetail = "showErrorDetail"
 
@@ -34,20 +35,21 @@ object APP {
      *
      * Separate from [showErrorDetail] on purpose. They authorize different things -- seeing internals versus
      * *manufacturing a failure* -- and a flag named for disclosure must not silently confer injection. Kept
-     * apart so they can diverge later without one quietly widening the other. Since issue #517 both are
-     * `isTestInstance || isEnvDebug`, so an env-debug operator on a real deployment gets the debug pages too.
+     * apart so they can diverge later without one quietly widening the other. Both are test access (issue #1149) or
+     * `isEnvDebug` (issue #517), so an env-debug operator on a real deployment gets the debug pages too.
      */
     const val allowDebugPages = "allowDebugPages"
 
     /**
-     * Feature flag: whether this is a genuine **test instance**, distinct from [allowDebugPages] since issue
-     * #517 opened the debug pages to an env-debug operator on a real deployment. Some debug tools are
-     * diagnostics that work anywhere (config state, the deliberate fault); others are *demos of a test-only
-     * fixture* (the fragment-pull tool calls a `forTestingOnly` endpoint that a real deployment does not
-     * register). The latter are offered only where this is true, so an env-debug operator is never handed a
-     * tool that can only fail. Set straight from the backend's `isTestInstance`.
+     * Feature flag: whether this caller has **test access** (issue #1149) -- the node is a test instance and the
+     * request's env auth is effective -- so the `forTestingOnly` endpoints exist for them. Distinct from
+     * [allowDebugPages], which an env-debug operator on a real deployment has too (issue #517). Some debug tools
+     * are diagnostics that work anywhere (config state, the deliberate fault); others are *demos of a test-only
+     * fixture* (the fragment-pull tool), and the Simulations page is nothing but test-only endpoints. Those are
+     * offered only where this is true, so nobody is handed a tool that can only fail. Was `isTestInstance`, which
+     * a caller without env auth on a test instance would read as true and then be refused by every fixture.
      */
-    const val isTestInstance = "isTestInstance"
+    const val hasTestAccess = "hasTestAccess"
 
     /**
      * Feature flag: whether this request is **currently acting** env-authed (issues #348, #360) -- the

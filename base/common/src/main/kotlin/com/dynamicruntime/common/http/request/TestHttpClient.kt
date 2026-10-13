@@ -3,6 +3,7 @@ package com.dynamicruntime.common.http.request
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 
@@ -35,6 +36,33 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
 
     fun setHeader(header: String, value: String) {
         curHeaders[header.lowercase()] = mutableListOf(value)
+    }
+
+    /**
+     * Gives every request of this client **test access** (issue #1149), as [withTestAccess] gives one block's: for a
+     * client that exists to exercise the fixtures themselves. Returns this client, so it can follow construction.
+     */
+    fun alwaysWithTestAccess(): TestHttpClient {
+        setHeader(ENVA.header, fixtureEnvAddress)
+        return this
+    }
+
+    /**
+     * Runs [block] with **test access** (issue #1149): its requests carry env auth, as an edge's header naming
+     * [fixtureEnvAddress], which a test instance trusts by default -- so the `forTestingOnly` fixtures exist for
+     * them. For a call that needs a fixture (`becomeUser`, the captured mail, the clock) from a client whose other
+     * requests must go without env auth, as every request in a unit test does unless it says otherwise: the header
+     * is taken off again afterwards, or put back as it was.
+     */
+    fun <T> withTestAccess(block: () -> T): T {
+        val key = ENVA.header.lowercase()
+        val prior = curHeaders[key]
+        curHeaders[key] = mutableListOf(fixtureEnvAddress)
+        try {
+            return block()
+        } finally {
+            if (prior == null) curHeaders.remove(key) else curHeaders[key] = prior
+        }
     }
 
     fun sendGetRequest(endpoint: String, args: Map<String, Any?>? = null): RequestHandler =
@@ -131,5 +159,11 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
                 cookies[nameValue[0].trim()] = nameValue[1].trim()
             }
         }
+    }
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        /** The env-authed address [withTestAccess] sends: `.invalid`, so it can never be anybody's (RFC 2606). */
+        const val fixtureEnvAddress = "fixtures@unit.invalid"
     }
 }

@@ -21,8 +21,11 @@ class AuthFeatures(
     val passwordLogin: Boolean,
     /** Whether Google sign-in is offered (the deployment configured a client id). */
     val googleLogin: Boolean,
-    /** Dev only: email is simulated, so the code can be read back from `/test/simulatedEmails`. */
-    val simulatedEmail: Boolean,
+    /**
+     * Dev only: the code can be read back from `/fixture/simulatedEmails` -- email is simulated and this caller has
+     * test access (issue #1149).
+     */
+    val codeReadBack: Boolean,
 )
 
 /** The auth widget-group's construction manifest: where its copy lives, which features are on, and who (if
@@ -49,7 +52,7 @@ fun authConfigFrom(config: UiConfig): AuthConfig = AuthConfig(
         codeLogin = config.features[AFEAT.codeLogin] == true,
         passwordLogin = config.features[AFEAT.passwordLogin] == true,
         googleLogin = config.features[AFEAT.googleLogin] == true,
-        simulatedEmail = config.features[AFEAT.simulatedEmail] == true,
+        codeReadBack = config.features[AFEAT.codeReadBack] == true,
     ),
     user = UserProfile.fromUserInfo(config.state[AFLD.userInfo].toJsonMapOrEmpty()),
     googleClientId = config.state[AFLD.googleClientId] as? String ?: "",
@@ -259,9 +262,10 @@ object AuthApi {
         userChoicesFrom(Http.getApi(AEP.selfUsers)[EP.results].toJsonMapOrEmpty()[AFLD.users])
 
     /**
-     * Dev convenience: when email is simulated, reads the verification code back from the captured email for
-     * [email] (much as `AuthFlowTest` does), so a login/registration can be completed locally without real
-     * mail. Returns null when the endpoint isn't served (a real deployment) or no code is found.
+     * Dev convenience: when the config's `codeReadBack` says so, reads the verification code back from the captured
+     * email for [email] (much as `AuthFlowTest` does), so a login/registration can be completed locally without real
+     * mail. Returns null when the endpoint isn't served (a real deployment, or a caller without test access) or no
+     * code is found.
      */
     suspend fun fetchDevCode(email: String): String? {
         val results = Http.getApiResult(TEP.simulatedEmails).valueOrNull() ?: return null

@@ -58,9 +58,9 @@ val App = FC<Props> {
     // again -- the debug page would simply never appear. Assigning here re-renders exactly once, when the answer
     // actually changes.
     var debugAllowed by useState(false)
-    // Whether the Simulations route resolves (issue #997): only on a test instance, where simulations exist. State for
-    // the same reason as [debugAllowed].
-    var testInstance by useState(false)
+    // Whether the Simulations route resolves (issue #997): only for a caller with test access, for whom simulations
+    // exist (issue #1149). State for the same reason as [debugAllowed].
+    var testAccess by useState(false)
 
     // The env-auth pair for the bar (issue #360). Held here, beside the other values derived from the app
     // config, because that config arrives asynchronously and its module cache re-renders nothing on its own.
@@ -96,7 +96,7 @@ val App = FC<Props> {
             // Pick up a reconfigured interval; a change re-keys useIdleBump, which retires the old timer.
             idleBumpIntervalMs = appConfig().idleBumpIntervalMs
             debugAllowed = appConfig().allowDebugPages
-            testInstance = appConfig().isTestInstance
+            testAccess = appConfig().hasTestAccess
             envAuthSuppressible = appConfig().envAuthSuppressible
             envAuthActing = appConfig().isEnvAuthed
             envAuthDebug = appConfig().envAuthDebug
@@ -237,8 +237,9 @@ val App = FC<Props> {
                                 // being refused: nothing should acknowledge that a way to break the app is there
                                 // (issue #227).
                                 pageDebug -> if (debugAllowed) DebugPage {} else Home {}
-                                // A test instance's own page (issue #997); elsewhere the route does not exist.
-                                pageSimulations -> if (testInstance) SimulationsPage {} else Home {}
+                                // A test instance's own page (issue #997), for a caller with test access (issue
+                                // #1149); elsewhere the route does not exist.
+                                pageSimulations -> if (testAccess) SimulationsPage {} else Home {}
                                 else -> Home {}
                             }
                         }

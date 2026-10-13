@@ -31,7 +31,8 @@ class SampleSimulationTest : StringSpec({
         "sampleSimulations", "sampleSimulation997", mapOf("KDR_LOAD_SAMPLE" to "true"),
         additionalComponents = listOf(SampleComponent()),
     )
-    val tester = TestUser.create(cxt, "tester@sampleSimulation997.test")
+    // Env-authed: a simulation is for a caller with test access (issue #1149).
+    val tester = TestUser.create(cxt, "tester@sampleSimulation997.test").also { it.client.alwaysWithTestAccess() }
     val reportDemo = SIM.pathRoot + ReportDemo.simulationName
     val historyDemo = SIM.pathRoot + ReportHistoryDemo.simulationName
 

@@ -71,8 +71,6 @@ class HomeMenuTest : StringSpec({
             page(HMENU.register, "Register", HMENU.pageRegister, HMENU.account),
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.docs, "Documents", HMENU.pageDocs),
-            // Every test runs on a test instance, where Simulations is offered to anyone testing it (issue #997).
-            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
     }
 
@@ -85,7 +83,6 @@ class HomeMenuTest : StringSpec({
             page(HMENU.catalog, "Endpoint catalog", HMENU.pageCatalog),
             page(HMENU.docs, "Documents", HMENU.pageDocs),
             page(HMENU.forms, "My forms", HMENU.pageForms),
-            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
     }
 
@@ -107,7 +104,6 @@ class HomeMenuTest : StringSpec({
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             // Their listing is every form in their client, not only their own (issue #1091).
             page(HMENU.clientForms, "Forms", HMENU.pageForms),
-            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
     }
 
@@ -167,8 +163,15 @@ class HomeMenuTest : StringSpec({
             page(HMENU.cacheState, "Cache state", HMENU.pageCacheState, HMENU.operator),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             page(HMENU.forms, "My forms", HMENU.pageForms),
-            page(HMENU.simulations, "Simulations", HMENU.pageSimulations),
         )
+    }
+
+    // Simulations (issue #997) for a caller with test access only (issue #1149): every test runs on a test instance,
+    // and the menus above, which go without env auth, leave it out -- the simulations do not exist for them.
+    "Simulations is offered to an env-authed session on a test instance, signed in or not" {
+        val anon = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
+        menuIn(anon.sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()).map { it[HFLD.id] } shouldContain HMENU.simulations
+        anonymousMenu().map { it[HFLD.id] } shouldNotContain HMENU.simulations
     }
 
     // ---- the Debug menu, driven by env auth (issue #517) ----------------------------------------------

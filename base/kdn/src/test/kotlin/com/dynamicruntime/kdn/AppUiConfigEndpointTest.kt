@@ -32,12 +32,14 @@ class AppUiConfigEndpointTest : StringSpec({
         features(client.sendJsonGetRequest(APP.uiConfig))[APP.obfuscateSensitiveErrors] shouldBe true
     }
 
-    // The error-detail flag (issue #223) tracks isTestInstance rather than a separate dev/prod notion, so both
-    // halves are asserted: on where the app is developed or tested, and off on a node shaped like a real one.
-    // The second is the half that matters -- it is what keeps a stack trace off a user's screen.
+    // The error-detail flag (issue #223) tracks test access rather than a separate dev/prod notion, so every half is
+    // asserted: on where the app is developed or tested, and off for a caller without env auth on a test instance
+    // (issue #1149) and on a node shaped like a real one. The off halves are the ones that matter -- they are what
+    // keep a stack trace off a user's screen.
     "the error-detail flag is on for a test instance and off for a real one" {
         val testCxt = TestInstances.default("appCfgDetail")
-        features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe true
+        features(TestHttpClient(testCxt.instanceConfig).alwaysWithTestAccess().sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe true
+        features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.showErrorDetail] shouldBe false
 
         val realCxt = TestInstances.notTestInstance("appCfgNoDetail")
         realCxt.instanceConfig.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
@@ -49,11 +51,23 @@ class AppUiConfigEndpointTest : StringSpec({
     // one that matters -- it is what keeps a route that deliberately breaks the app off a real deployment.
     "the debug-page flag is on for a test instance and off for a real one" {
         val testCxt = TestInstances.default("appCfgDebug")
-        features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe true
+        features(TestHttpClient(testCxt.instanceConfig).alwaysWithTestAccess().sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe true
+        // A caller without env auth on a test instance takes no advantage of it (issue #1149).
+        features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe false
 
         val realCxt = TestInstances.notTestInstance("appCfgNoDebug")
         realCxt.instanceConfig.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
         features(TestHttpClient(realCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.allowDebugPages] shouldBe false
+    }
+
+    // The test-access flag (issue #1149): what the Simulations page and the fixture-demo tools are offered by, so it
+    // says whether the fixtures exist for this caller -- not merely that the node is a test instance.
+    "the test-access flag is on only for an env-authed caller on a test instance" {
+        val testCxt = TestInstances.default("appCfgTestAccess")
+        features(TestHttpClient(testCxt.instanceConfig).alwaysWithTestAccess().sendJsonGetRequest(APP.uiConfig))[APP.hasTestAccess] shouldBe true
+        features(TestHttpClient(testCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.hasTestAccess] shouldBe false
+        val realCxt = TestInstances.envAuthNotTestInstance("appCfgNoTestAccess")
+        features(TestHttpClient(realCxt.instanceConfig).sendJsonGetRequest(APP.uiConfig))[APP.hasTestAccess] shouldBe false
     }
 
     "the idle-bump interval defaults when the deployment does not tune it" {

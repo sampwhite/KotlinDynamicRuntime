@@ -172,54 +172,6 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
         mapOf(TCLK.instanceNowMs to clock.instanceNow().toEpochMilliseconds())
     }
 
-    // Assert env auth for a browser session no edge vouched for (issue #360), so the env-authed UI can be
-    // seen and driven before an edge server exists. A browser cannot attach a request header, so without this
-    // the env-authed view is simply unreachable in a real browser.
-    //
-    // `forTestingOnly` because this GRANTS, unlike the app-level suppress endpoint, which only subtracts. Note
-    // the fence here is only half of it: `EnvAuthRules` refuses the cookie outside a test instance as well,
-    // because marking the endpoint stops the cookie being issued and does nothing to stop one being typed
-    // into a browser.
-    generalEndpoint(
-        TENV.path,
-        "Test-only: act env-authed as an address (assert), or stop pretending (clear).",
-        HttpMethod.POST, outputRef = APP.envAuthStateType, forTestingOnly = true,
-        inputFields = {
-            field(TENV.op, "Whether to assert env auth for this session or clear the assertion.",
-                required = true) { options(EnvAuthFixtureOp.entries) }
-            field(TENV.email, "For '${EnvAuthFixtureOp.assert}': the address to act env-authed as.")
-        },
-    ) { c, req ->
-        val op = req[TENV.op].toOptEnum<EnvAuthFixtureOp>()
-            ?: throw KdrException.mkInput("A valid '${TENV.op}' is required.")
-        val web = c.request?.webRequest
-        var asserted: String? = null
-        when (op) {
-            EnvAuthFixtureOp.assert -> {
-                val raw = req.getOptStr(TENV.email)
-                    ?: throw KdrException.mkInput("'${TENV.email}' is required for '${EnvAuthFixtureOp.assert}'.")
-                // Sanitized here as well as on the way back in, so a value this node would refuse to repeat is
-                // rejected with a message now rather than silently ignored on the next request.
-                asserted = EnvAuthRules.sanitizeAddress(raw)
-                    ?: throw KdrException.mkInput("'${TENV.email}' is not an address this node will carry.")
-                web?.addResponseCookie(ENVA.assertCookie, asserted, null)
-            }
-            // Clearing returns the session to whatever the channel really is -- NOT the same as suppressing,
-            // which overrides a real env auth. They coincide only where no edge is in front.
-            EnvAuthFixtureOp.clear ->
-                web?.addResponseCookie(ENVA.assertCookie, "", Instant.fromEpochMilliseconds(0))
-        }
-        // The state for the NEXT request, as this one resolved its env auth before the cookie changed.
-        val available = asserted != null || c.envAuthEmail != null
-        mapOf(
-            APP.isEnvAuthed to (available && !c.envAuthSuppressed),
-            APP.envAuthSuppressible to (available && EnvAuthRules.suppressionOffered(c.instanceConfig)),
-            // This fixture does not touch the debug cookie, so debug carries the session's current state
-            // (issue #517).
-            APP.envAuthDebug to (available && !c.envAuthSuppressed && c.envAuthDebug),
-        )
-    }
-
     // Two endpoints on ONE path, differing only by verb -- the shape issue #335 introduced for real at
     // `/gedra/formDoc`. Kept here as a fixture because the hazard is in the dispatcher's compiled-type memo
     // rather than in gedra: see [TVB] for what goes wrong when that memo is keyed by path alone.

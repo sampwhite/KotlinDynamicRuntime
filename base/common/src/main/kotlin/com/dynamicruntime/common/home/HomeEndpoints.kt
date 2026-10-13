@@ -346,10 +346,10 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
         // this item with a real condition (the sample's acme does), the way an overlay turns an item off.
         menuItem(HMENU.workflows, "Workflows", UiRoute(HMENU.pageWorkflows), cfactExpression = CFACT.neverName)
 
-        // Simulations (issue #997): on a test instance, for anyone testing it -- the simulations exist nowhere else, and
-        // provisioning one then signing in as its users is the point, so no login or env auth is asked for.
+        // Simulations (issue #997): for a caller with test access (issue #1149) -- the simulations exist for nobody
+        // else. No login is asked for: provisioning one then signing in as its users is the point.
         menuItem(HMENU.simulations, "Simulations", UiRoute(HMENU.pageSimulations),
-            cfactExpression = "${CFACTS.isTestInstance},${CFACTS.app}")
+            cfactExpression = "${CFACTS.hasTestAccess},${CFACTS.app}")
 
         // Debug (issue #517), offered only in an env-authed session. Not in debug yet: one top-level call to
         // turn it on. In debug: a "Debug" parent whose children drill down under it via parentId -- the debug

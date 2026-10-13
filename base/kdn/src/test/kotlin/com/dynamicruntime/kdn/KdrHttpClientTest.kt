@@ -4,9 +4,11 @@ import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.client.KdrHttpClient
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.http.server.TestHttpServer
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.util.toJsonStr
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -45,14 +47,18 @@ class KdrHttpClientTest : StringSpec({
         resp.isSuccess shouldBe false
     }
 
-    // A POST carries method, content type and body: the fixture becomeUser takes a JSON body and answers 200.
+    // A POST carries method, content type and body: the fixture becomeUser takes a JSON body and answers 200 -- to a
+    // caller with test access, which the env-auth header gives on a test instance (issue #1149).
     "a POST carries its JSON body to the endpoint" {
         val body = mapOf(
             TEP.email to "http-client@example.com",
             TEP.level to ROLE.user,
             TEP.capabilities to emptyList<String>(),
         ).toJsonStr()
-        val resp = client.post(server.url("/kda${TEP.becomeUser}"), "application/json", body)
+        val resp = client.post(
+            server.url("/kda${TEP.becomeUser}"), "application/json", body,
+            headers = mapOf(ENVA.header to TestHttpClient.fixtureEnvAddress),
+        )
         resp.status shouldBe 200
     }
 

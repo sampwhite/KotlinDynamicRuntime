@@ -112,33 +112,6 @@ class EnvAuthRulesTest : StringSpec({
         state.suppressed shouldBe true
     }
 
-    /**
-     * The half a `forTestingOnly` marking does not buy. Fencing the fixture endpoint stops the assert cookie
-     * being *issued*; nothing stops one being typed into a browser. A reader that honored it anywhere would
-     * hand env auth to anyone who can set a cookie -- so the fence has to live here, in the reader.
-     */
-    "the fixture's assert cookie is honored on a test instance and refused anywhere else" {
-        val cookies = mapOf(ENVA.assertCookie to "fixture@gyassa.com")
-
-        val testInstance = config(ENV.unit)
-        testInstance.isTestInstance shouldBe true // guard the premise
-        resolve(testInstance, null, cookies).email shouldBe "fixture@gyassa.com"
-
-        // A node shaped like a real one: trusting the header, but not a test instance.
-        val real = config(ENV.local).apply {
-            put(ACFG.trustEnvAuthHeader, true)
-            put(ACFG.isTestInstance, false)
-        }
-        real.isTestInstance shouldBe false // guard the premise, or the next line proves nothing
-        resolve(real, null, cookies).email shouldBe null
-    }
-
-    "a real header wins over a fixture assertion, so a live edge is never shadowed by a stale cookie" {
-        val c = config(ENV.unit)
-        val cookies = mapOf(ENVA.assertCookie to "fixture@gyassa.com")
-        resolve(c, "real@gyassa.com", cookies).email shouldBe "real@gyassa.com"
-    }
-
     "an address is normalized the way it will be logged and compared" {
         EnvAuthRules.sanitizeAddress("  Sam@Gyassa.COM ") shouldBe "sam@gyassa.com"
         EnvAuthRules.sanitizeAddress("sam+edge@mail.gyassa.com") shouldBe "sam+edge@mail.gyassa.com"

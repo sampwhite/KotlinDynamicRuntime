@@ -50,7 +50,7 @@ object HomeMenuAudiences {
             offered = false,
         ),
         MenuAudience(CFACTS.isDeploymentOperator, "Deployment operators", offered = false),
-        MenuAudience("${CFACTS.isTestInstance},${CFACTS.app}", "Everyone, on a test instance", offered = false),
+        MenuAudience("${CFACTS.hasTestAccess},${CFACTS.app}", "Env-authed sessions, on a test instance", offered = false),
         MenuAudience("${CFACTS.isEnvDebug},${CFACTS.app}", "Sessions in debug", offered = false),
         MenuAudience("${CFACTS.canEnableDebug},${CFACTS.app}", "Sessions that may turn debug on", offered = false),
     )

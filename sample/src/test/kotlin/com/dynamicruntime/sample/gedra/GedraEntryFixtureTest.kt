@@ -58,7 +58,7 @@ class GedraEntryFixtureTest : StringSpec({
         mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to name))
 
     "an entry goes in and comes back filled out" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val response = client.sendJsonPostRequest(fillOut, mapOf<String, Any?>(GFX.entries to listOf(entry("My Expense Form"))))
         val items = response.getValue(EP.items).toJsonListOfMaps()
         items.size shouldBe 1
@@ -88,7 +88,7 @@ class GedraEntryFixtureTest : StringSpec({
     // It is also the first check that a failure INSIDE `data` reports at a nested path rather than at the top
     // level -- exactly the sort of thing pushing trait fields down could have broken quietly.
     "a name longer than the bound fails, at the path inside data" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val handler = client.sendEditRequest(
             fillOut,
             emptyMap(),
@@ -101,7 +101,7 @@ class GedraEntryFixtureTest : StringSpec({
     // Several shapes in one payload is the point of a union: each element validated against the branch its own
     // traitId names. With one trait there is one branch, so the unknown case below carries the other half.
     "an unknown trait falls through rather than taking the payload down" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val response = client.sendJsonPostRequest(
             fillOut,
             mapOf<String, Any?>(
@@ -121,7 +121,7 @@ class GedraEntryFixtureTest : StringSpec({
     // The `_debug` tag reports the two facts the response cannot show: what the union knows, and which branch
     // each entry reached. A filled-out entry looks the same whichever branch accepted it.
     "the debug tag says which branch each entry reached" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val response = client.sendEditRequest(
             fillOut,
             mapOf(EP.debug to GFX.explainEntries),
@@ -159,7 +159,8 @@ class GedraEntryFixtureTest : StringSpec({
             },
         )
         GedraConfigReload.reloadClient(cxt, client)
-        val member = TestUser.create(cxt, "member@explain1072.test", userClient = client)
+        // The fixture, for a caller with test access (issue #1149).
+        val member = TestUser.create(cxt, "member@explain1072.test", userClient = client).also { it.client.alwaysWithTestAccess() }
         val response = member.client.sendEditRequest(
             fillOut, mapOf(EP.debug to GFX.explainEntries), mapOf<String, Any?>(GFX.entries to listOf(entry("Mine"))), HttpMethod.POST,
         ).rptResponseData?.jsonMap() ?: emptyMap()
@@ -172,7 +173,7 @@ class GedraEntryFixtureTest : StringSpec({
     // Several shapes in one payload, each validated against the branch its own traitId names. This is the
     // thing a single-branch union cannot test at all, and the reason the sample contributes traits of its own.
     "one payload carries several shapes, each validated against its own branch" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val response = client.sendJsonPostRequest(
             fillOut,
             mapOf<String, Any?>(
@@ -198,7 +199,7 @@ class GedraEntryFixtureTest : StringSpec({
     // A failure lands on the selected branch's own field, not on the union and not on some other branch's.
     // Try-every-branch would also have to complain that `approved` was missing, from a shape nobody sent.
     "a failure is reported against the branch the traitId selected" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val handler = client.sendEditRequest(
             fillOut,
             emptyMap(),
@@ -220,7 +221,7 @@ class GedraEntryFixtureTest : StringSpec({
     // A derived value is not merely computed -- it is refused on the way in, which is what makes it derived
     // rather than defaulted. The caller's number is dropped and the computed one takes its place.
     "a derived value is dropped on the way in and produced on the way out" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val response = client.sendJsonPostRequest(
             fillOut,
             mapOf<String, Any?>(
@@ -243,7 +244,7 @@ class GedraEntryFixtureTest : StringSpec({
     // conditional deeper, and the form had a bug of exactly that shape in #253 -- so the arrangement is worth
     // driving rather than assuming.
     "a conditional inside data still decides what is required and what is refused" {
-        val client = TestHttpClient(cxt.instanceConfig)
+        val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
 
         fun approval(data: Map<String, Any?>) = client.sendEditRequest(
             fillOut,

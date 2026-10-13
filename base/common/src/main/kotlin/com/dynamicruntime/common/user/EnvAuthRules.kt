@@ -61,8 +61,8 @@ object ENVA {
      * downgrade, so someone who came in through an edge can see the application as an ordinary user does.
      *
      * Honored in every environment, because suppressing only ever **subtracts**: the worst it can do is show
-     * its holder less than they are entitled to. That is why it needs no fence, and why it is a different
-     * cookie from [assertCookie], which needs one.
+     * its holder less than they are entitled to. That is why it needs no fence. Nothing a caller sends can
+     * *grant* env auth: that takes an edge's header on a node trusting it, or a direct local request (issue #1149).
      */
     const val suppressCookie = "kdrEnvOff"
 
@@ -77,21 +77,6 @@ object ENVA {
      * toggle's presence already follows, enforced by the same predicate rather than a second check.
      */
     const val debugCookie = "kdrEnvDebug"
-
-    /**
-     * Session cookie by which the `forTestingOnly` fixture **asserts** env auth no edge granted, so the
-     * env-authed UI can be driven in a browser before an edge exists.
-     *
-     * **Honored only on a test instance, and that check belongs to the reader, not the endpoint.** Fencing
-     * the fixture endpoint stops the cookie being *issued*; it does nothing to stop one being *typed into a
-     * browser*. A reader that honored this anywhere would hand env auth to anyone who could set a cookie, and
-     * the `forTestingOnly` marking would be worth precisely nothing.
-     *
-     * Kept as its own cookie rather than a value of [suppressCookie] for exactly that reason: a reader that
-     * must inspect a value before deciding whether a fence applies is one somebody later simplifies into a
-     * bypass.
-     */
-    const val assertCookie = "kdrEnvFixture"
 
     /**
      * Longest address accepted, matching the 254-character maximum of an SMTP path. Generous on purpose: the
@@ -215,7 +200,7 @@ object EnvAuthRules {
         // the past, so a cleared cookie arrives as `kdrEnvOff=` rather than not arriving at all -- and a
         // `containsKey` check reads that as still suppressed, leaving no way to restore. (Found by the test
         // that restores; a browser drops it eventually, which would have made this intermittent rather than
-        // absent.) The same reasoning covers the assert cookie below, where an empty value fails to sanitize.
+        // absent.)
         val suppressed = suppressionOffered(config) && !cookies[ENVA.suppressCookie].isNullOrEmpty()
         // Read like suppression -- by value, where the app-level controls are offered -- but its effect is gated
         // by isDebugEffective (env active and not suppressed), so it is safe to read even where env auth is not
@@ -230,12 +215,10 @@ object EnvAuthRules {
         if (!isTrusted(config)) {
             return EnvAuthState(assumed, suppressed, debug)
         }
-        // The fixture's assertion stands in for the header, so it passes the same trust gate -- and then one
-        // more that the header does not need. See ENVA.assertCookie for why this check lives here.
-        val asserted = if (config.isTestInstance) sanitizeAddress(cookies[ENVA.assertCookie]) else null
-        // Precedence: a real edge is never shadowed, a deliberate assertion beats a default, and the
-        // assumption only ever fills silence.
-        return EnvAuthState(sanitizeAddress(rawHeader) ?: asserted ?: assumed, suppressed, debug)
+        // Precedence: a real edge is never shadowed, and the assumption only ever fills silence. (A third source,
+        // a test fixture's cookie asserting env auth, is gone (issue #1149): once the fixtures need env auth, only
+        // a caller who already had it could have used it.)
+        return EnvAuthState(sanitizeAddress(rawHeader) ?: assumed, suppressed, debug)
     }
 
     /**

@@ -37,7 +37,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {
             type = SCT.kObject
             property(AFEAT.hasPassword, "Whether the user currently has a password set.", required = true) { type = SCT.boolean }
             property(AFEAT.canSetPassword, "Whether the user may set or change a password.", required = true) { type = SCT.boolean }
-            property(AFEAT.simulatedEmail, "Whether email is simulated (dev: the code can be read back).", required = true) { type = SCT.boolean }
+            property(AFEAT.codeReadBack, "Whether this caller may read a mailed code back (dev: email is simulated, and the caller has test access).", required = true) { type = SCT.boolean }
         }
         property(UIC.state, "Dynamic state for constructing the profile page.", required = true) {
             type = SCT.kObject
@@ -58,7 +58,7 @@ fun profileSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.profile") {
                 AFEAT.hasPassword to row.hasPassword, AFEAT.canSetPassword to true,
                 // Carried here too (the auth config has it as well): the page enters a code, so it wants the
                 // same dev autofill, and a group's config should carry what that group needs.
-                AFEAT.simulatedEmail to MailService.get(c).useSimulatedEmail,
+                AFEAT.codeReadBack to MailService.get(c).readBackOffered(c),
             ),
             // The page needs a login id for the (code-verified) password calls. It is served explicitly rather
             // than reused from the user info's publicName: that is a display name, and only resolves as a login
