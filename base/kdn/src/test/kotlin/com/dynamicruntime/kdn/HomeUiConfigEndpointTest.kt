@@ -85,16 +85,17 @@ class HomeUiConfigEndpointTest : StringSpec({
         val links = results(TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig))
             .obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap() }
         val ids = links.map { it[HFLD.id] }
-        ids shouldContainAll listOf(
+        val core = listOf(
             HDOC.readme, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
             HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraPatch, HDOC.uiBlock, HDOC.reporting, HDOC.license,
         )
+        ids shouldContainAll core
         // Each carries the source path the resolver needs, so none is served without it.
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // Every core document is listed; only a suite's inner pages are not (issue #1136).
-        links.forEach { it[HFLD.listed] shouldBe true }
+        // Every core document is listed; a suite's inner pages -- the conference demo's, say -- are not (issue #1136).
+        links.filter { it[HFLD.id] in core }.forEach { it[HFLD.listed] shouldBe true }
     }
 
     // Issue #1136: a component declares its own documents, and one it marks unlisted is still sent -- so a link to it

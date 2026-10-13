@@ -337,6 +337,10 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
 - `base/kdn/src/test/.../GedraConfigReloadTest.kt` — the service path (write + reload + isolation + rollback).
 - `base/kdn/src/test/.../GedraConfigEndpointTest.kt` — the HTTP path as an admin.
 - `base/kdn/src/test/.../GedraConfigTierTest.kt` — the latest/published-only/static tiers.
+- `base/kdn/src/main/.../confdemo/ConfDemo.kt` — **the full worked example of a client definition** (issue #1137): the
+  conference demo, a client split into a `base` bundle and a bundle per workflow, built with the DSL and provisioned
+  by the `conf-demo` simulation. `docs/demo-client/` walks through its JSON for a reader, and `ConfDemoDocsTest` holds
+  the two together. Read it for how the pieces fit; keep this skill's own examples short and test-shaped.
 - `base/common/.../gedra/GedraConfigService.kt` / `GedraConfigReload.kt` / `GedraConfigControl.kt` — the runtime.
 - Design docs (repo root, also on the home page): `gedra-config-and-data.md` (the model), `client-definition.md`
   (the `ClientDef` spec), `gedra-workflow.md`.
