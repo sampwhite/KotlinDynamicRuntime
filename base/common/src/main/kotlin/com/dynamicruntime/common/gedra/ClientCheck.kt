@@ -10,6 +10,8 @@ class ClientCheckResult(
     val clients: Map<String, ClientDef>,
     /** Problems found, in the order they were found. Empty unless something degraded. */
     val issues: List<GedraConfigIssue>,
+    /** The customers that survived (issue #1107), keyed by [CustomerDef.customerId]; see `checkCustomers`. */
+    val customers: Map<String, KeptCustomer> = emptyMap(),
 )
 
 /**
@@ -39,6 +41,8 @@ fun checkClientDefs(
     only: Set<String>? = null,
     /** The clients the node runs now: what an unchecked client keeps when [only] is given. */
     current: Map<String, ClientDef> = emptyMap(),
+    /** The customers the node runs now (issue #1107): what one this reload does not judge keeps. */
+    currentCustomers: Map<String, KeptCustomer> = emptyMap(),
 ): ClientCheckResult {
     val raw = configs.configs.mapNotNull { config -> config.client?.let { config to it } }
     // A client built on another takes its defaults from it (issue #945, `ClientExtension.mergeDef`) before anything
@@ -77,6 +81,10 @@ fun checkClientDefs(
     // #1106): a reloaded client whose id differs from one of theirs only by case is the newcomer, and is the one
     // that goes.
     val settled = if (only == null) emptySet() else current.keys.filterNotTo(HashSet()) { it in only }
+
+    // Pass zero: the customers (issue #1107), which the clients name. Judged first, so a client's link is judged
+    // against the customers that hold up.
+    val customers = checkCustomers(cxt, configs, only, currentCustomers, declared.map { it.second }, current, issues)
 
     // Pass one: what a definition can be judged on by itself, plus whether one client is declared twice.
     for ((config, def) in declared) {
@@ -124,9 +132,26 @@ fun checkClientDefs(
             }
             kept[def.clientId] = def.copy(includedTraits = def.includedTraits - bad.keys)
         }
+        // Its customer (issue #1107): reported, and the client stands -- the link is read through
+        // `ClientService.customerOf`, which answers only for a customer that is there.
+        for (message in customerLinkFaults(def, !holder.isStored, customers)) {
+            val issue = GedraConfigIssue(message, "The client stands, with no customer of it counted.")
+            reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
+        }
+    }
+    // The roots, now that every client is (issue #1107): of the customers judged here, and of any whose root is a
+    // client judged here -- so a root client's write that walks away from its customer is refused too.
+    for ((id, customer) in customers) {
+        val root = customer.def.rootClientId ?: continue
+        val judged = only == null || customer.config.gedraId.client in only || root in only
+        if (!judged || customer.config.checkMode(cxt) == BootCheckMode.off) continue
+        customerRootFault(id, root, kept)?.let { message ->
+            val issue = GedraConfigIssue(message, "The customer stands, with no root counted.")
+            reportConfigProblem(cxt, issue.heldBy(customer.config, GCEL.customer, id), issues)
+        }
     }
     val clients = if (stripTestFeatures) kept.mapValuesTo(LinkedHashMap()) { effective(it.value) } else kept
-    return ClientCheckResult(clients, issues)
+    return ClientCheckResult(clients, issues, customers)
 }
 
 /**

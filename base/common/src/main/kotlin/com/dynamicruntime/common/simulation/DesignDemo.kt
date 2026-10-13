@@ -7,6 +7,7 @@ import com.dynamicruntime.common.context.LiteCxt
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraDataType
@@ -125,6 +126,8 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
                 includedTraits = listOf(GT.name),
                 // Whoever carries it approves a logistics plan (issue #1071).
                 userLabels = listOf(DesignDemo.reviewerLabel),
+                // One of the platform's own demonstrations (issue #1107).
+                customerId = CUST.kdr,
             ),
         )
         cfact(DesignDemo.planApproved, "designDemo", "True, in the logistics workflow, once a reviewer has approved the plan.")

@@ -351,6 +351,7 @@ private fun cfgWriteBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
     val stored = svc.readLatest(c, configId(c, name))?.entriesBySlot()
     val config = reassembleForWrite(c, name, namespace, c.client, slots, stored)
     requireOperatorFieldsKept(c, config.client)
+    requireCustomersKept(c, slots[CCT.customerDef], stored?.get(CCT.customerDef))
     // Authoritative by default: a bundle is the whole configuration, so a slot the bundle omits is dropped, as
     // the write service defaults. A caller doing a partial, additive write sends `impliedDelete = false`.
     val impliedDelete = request[CFEP.impliedDelete] as? Boolean ?: true
@@ -378,6 +379,7 @@ private fun cfgPatchBody(c: KdrCxt, request: Map<String, Any?>): Map<String, Any
             // Read strictly (issue #1051). A definition the edits left malformed reads as none, and is not judged
             // here: `patchConfig` gates the edited slots next, and refuses it as what it is.
             requireOperatorFieldsKept(c, patched[CCT.clientDef]?.firstOrNull()?.let { readClientDef(c, it).def })
+            requireCustomersKept(c, patched[CCT.customerDef], current[CCT.customerDef])
         }
     }
     return bundleOf(c, edited)
@@ -396,10 +398,31 @@ private fun requireOperatorFieldsKept(c: KdrCxt, proposed: ClientDef?) {
     val current = stored ?: ClientService.get(c).known(c.client)?.toInfo()
     val changed = ClientOperatorFields.changedBy(proposed.toInfo(), current)
     if (changed.isEmpty()) return
-    val keep = changed.joinToString(", ") { "$it '${current?.get(it) ?: ClientOperatorFields.defaults[it]}'" }
+    val keep = changed.joinToString(", ") { field ->
+        (current?.get(field) ?: ClientOperatorFields.defaults[field])?.let { "$field '$it'" } ?: "$field unset"
+    }
     throw KdrException(
         "Client '${c.client}''s ${changed.joinToString(" and ")} may be set only by a platform operator; a client " +
             "administrator's write must keep them as they are ($keep).",
+        code = EXC.notAuthorized,
+    )
+}
+
+/**
+ * Refuses a change to the customers a configuration declares by anyone but a platform operator (issue #1107). Only
+ * `hub`'s stored configuration may hold customers (`storedOwnershipProblem` refuses them anywhere else), and `hub`'s
+ * own administrators are not thereby the platform's: a customer decides whose namespace a client id falls in, so
+ * only an `allClients` administrator declares, changes or removes one. A write handing back the customers as stored
+ * passes, so the rest of the configuration stays editable.
+ */
+private fun requireCustomersKept(c: KdrCxt, proposed: List<Map<String, Any?>>?, current: List<Map<String, Any?>>?) {
+    if (AdminRules.canSeeAllClients(c)) return
+    // Compared as definitions, so whatever a stored entry carries beside its fields is no change.
+    fun defs(entries: List<Map<String, Any?>>?): Set<Any> =
+        entries.orEmpty().map { e -> runCatching { CustomerDef.fromInfo(e) }.getOrElse { e } }.toSet()
+    if (defs(proposed) == defs(current)) return
+    throw KdrException(
+        "Client '${c.client}''s customers may be declared, changed or removed only by a platform operator.",
         code = EXC.notAuthorized,
     )
 }
@@ -1013,6 +1036,12 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         clients.declaredClients()
             .filter { it.usageType == ClientUsageType.template && clients.originOf(it.clientId) == GedraConfigOrigin.source }
             .map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+    }
+
+    // The customers a client may be filed under (issue #1107), for a form; whether the id falls in the chosen one's
+    // namespace is the create's to judge.
+    optionsProvider(CUST.customerOptions) { c, _ ->
+        ClientService.get(c).customers.values.map { SchOption(it.def.customerId, clientLabel(it.def.customerId, it.def.name)) }
     }
 
     type(CLD.createResultTypeName) {

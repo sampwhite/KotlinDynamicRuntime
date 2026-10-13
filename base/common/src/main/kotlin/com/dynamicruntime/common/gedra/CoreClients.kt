@@ -39,9 +39,21 @@ fun coreClients(cxt: KdrCxt): List<GedraConfig> = listOf(hubClient(cxt), publicC
  *
  * Enabled everywhere. It is the acting default for a context that names no client, so an environment where it
  * was absent would be one where internal work had nowhere to happen.
+ *
+ * It also declares the platform's own customer, [CUST.kdr] (issue #1107), whose root it is: the customer `hub`,
+ * `public` and the deployment's internal clients belong to, holding the reserved `kdr` prefix for internal clients
+ * to come. Declared here, by `hub`'s source configuration, which is the one declaration the reserved id is allowed.
  */
 fun hubClient(cxt: KdrCxt): GedraConfig =
     gedraConfig(cxt, CLC.hubConfig, clientNamespace(CL.hub), client = CL.hub) {
+        defineCustomer(
+            CustomerDef(
+                customerId = CUST.kdr,
+                name = "Platform",
+                description = "The platform's own customer: hub, public and the deployment's internal clients.",
+                rootClientId = CL.hub,
+            ),
+        )
         defineClient(
             ClientDef(
                 clientId = CL.hub,
@@ -51,6 +63,7 @@ fun hubClient(cxt: KdrCxt): GedraConfig =
                 audience = ClientAudience.internal,
                 enabledEnvironments = ENV.names.toSet(),
                 includedTraits = listOf(CLD.allGlobal),
+                customerId = CUST.kdr,
             ),
         )
     }
@@ -78,6 +91,7 @@ fun publicClient(cxt: KdrCxt): GedraConfig =
                 audience = ClientAudience.customer,
                 enabledEnvironments = ENV.names.toSet(),
                 includedTraits = listOf(CLD.allGlobal),
+                customerId = CUST.kdr,
             ),
         )
     }

@@ -38,6 +38,9 @@ object CCT {
     /** One named report, keyed by its report id (issue #979). */
     const val reportDef = "kdr:reportDef"
 
+    /** One customer, keyed by its customer id (issue #1107); only `hub`'s stored configuration holds any. */
+    const val customerDef = "kdr:customerDef"
+
     // --- field names inside the slots' data (each matches its value) ---
 
     const val traitId = "traitId"

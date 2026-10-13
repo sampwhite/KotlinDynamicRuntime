@@ -63,6 +63,7 @@ object ClientCreate {
         val svc = GedraConfigService.get(bound)
         if (svc.clientExists(bound)) throw taken(cxt, client)
         caseVariant(cxt, client)?.let { throw takenByCase(cxt, client, it) }
+        prefixFault(cxt, client, request[CLD.customerId].toOptStr())?.let { throw KdrException.mkInput(it) }
         val slots = mapOf(CCT.clientDef to listOf(definitionOf(request)))
         val name = CLD.definitionConfigName
         val config = reassembleForWrite(bound, name, clientNamespace(client), client, slots)
@@ -129,6 +130,38 @@ object ClientCreate {
         val ids = clients.clients.keys + clients.declaredClients().map { it.clientId } +
             GedraConfigService.get(cxt).storedClients(cxt)
         return caseVariantOf(client, ids)
+    }
+
+    /**
+     * What is wrong with creating [client] under [customerId] -- or under none -- as the customers' prefixes stand,
+     * or null (issue #1107). This is the one moment a client's id is held to its customer's prefix; after it, the
+     * link is the authority, and a client moved to another customer keeps its id.
+     *
+     * Under a customer, the id is the customer's own id or `<customer>_<name>`, the customer's case as written.
+     * Under none, it may not fall under any customer's prefix, case aside, and an id holding `_` is a self-serve
+     * client's (`free_...`).
+     */
+    private fun prefixFault(cxt: KdrCxt, client: String, customerId: String?): String? {
+        val clients = ClientService.get(cxt)
+        val prefix = clientIdPrefix(client)
+        if (customerId != null) {
+            clients.customer(customerId)
+                ?: return "Client '$client' cannot be created under the customer '$customerId', which this deployment does not declare."
+            if (prefix != customerId) {
+                return "Client '$client' cannot be created under the customer '$customerId': a customer's client ids are " +
+                    "its own id or '$customerId${CUST.separator}<name>'."
+            }
+            return null
+        }
+        clients.customers.keys.firstOrNull { it.equals(prefix, ignoreCase = true) }?.let { holder ->
+            return "Client '$client' falls under the prefix of the customer '$holder'; create it under that customer, " +
+                "or choose an id outside it."
+        }
+        if (isPrefixedClientId(client) && prefix != CUST.free) {
+            return "Client '$client' holds '${CUST.separator}', which a client id does only under a customer " +
+                "('<customer>${CUST.separator}<name>') or as a self-serve client ('${CUST.free}${CUST.separator}...')."
+        }
+        return null
     }
 
     /** The refusal for an id that [holder] takes up to case, saying where [holder] is defined. */
