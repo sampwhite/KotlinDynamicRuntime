@@ -53,9 +53,11 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.webasset.WAS
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -205,6 +207,8 @@ class ClientFileRefsTest : StringSpec({
         shown[CCT.description] shouldBe "The logo."
         shown[FREF.live] shouldBe true
         shown[FREF.missing] shouldBe false
+        // An upload is held by stored configuration, which is what makes it the API's to remove.
+        shown[FREF.stored] shouldBe true
         shown[FREF.configName] shouldBe CPY.copyConfigName
         shown[FREF.uploadedByName] shouldBe "Chief $client"
         val meta = shown[FREF.file].toJsonMapOrEmpty()
@@ -224,6 +228,17 @@ class ClientFileRefsTest : StringSpec({
             unmatched.rptResponseBytes!!.toList() shouldBe png.toList()
             unmatched.header(ContentResources.cacheControlHeader) shouldBe ContentResources.noStore
         }
+        // What a ref takes is the backend's to say (issue #1176), so a page offers what will be accepted: the limits
+        // an upload is held to, and no root where the deployment has opened none.
+        val takes = admin.getItem(UADEP.clientFilesTakes)
+        (takes[WAS.maxSize] as Number).toInt() shouldBe FREF.maxSize
+        takes[WAS.kinds] shouldBe listOf("PNG", "SVG", "ICO", "JPEG", "WebP")
+        (takes[WAS.mimeTypes] as List<*>) shouldContainAll listOf("image/png", "image/svg+xml", "image/x-icon", "image/jpeg", "image/webp")
+        (takes[FREF.refLimit] as Number).toInt() shouldBe FREF.maxRefs
+        takes[FREF.roots] shouldBe emptyList<String>()
+        // The administrator of a client's to ask, as every call beside it.
+        member.expectError(EXC.notAuthorized, UADEP.clientFilesTakes)
+
         val absent = static(member, "banner:${"0".repeat(64)}")
         absent.rptStatusCode shouldBe EXC.notFound
         absent.header(ContentResources.cacheControlHeader) shouldBe ContentResources.noStore

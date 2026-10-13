@@ -102,14 +102,27 @@ the same way, under their own marker:
 - **Unlike a web asset, a ref is configuration**: a client with a sandbox drafts one there, and its own people are
   served it once it is published. So the same `refId` can be two different files for the client and for its sandbox,
   each under its own hash -- which is what the hash in the address is for.
-- **Nothing in the webapp reads one yet.** The administrator's endpoints are `GET /clientAdmin/client/files` (each
-  ref with the record of its file -- the file store's, or the disk's for a local one -- whether it is `live` for the client's own people or a draft, and
-  whether its bytes are `missing`), `POST …/files/upload` (multipart `refId`, `file`, `description`; use
-  `Http.uploadApi`), `POST …/files/remove`, and `GET …/files/download {client, refId, hash}` for a preview (pass
-  the listing's `hash` so a replaced file is a new address, as the web assets' preview does) -- wire names `FREF`,
-  `CCT` and the file's `FMETA`, all in the kernel. An upload or removal answers its `mode` (`EDM.live` / `EDM.draft`), as
-  a copy edit does. A page for them, and resolving a ref from Markdown copy, are later issues: when you build
-  either, the listing's `name` is what goes in the address.
+- **The Clients page lists and changes them** (issue #1176): the **Files** section of a client's page
+  (`FileRefsSection.kt`, its wording and parsing pure in `FileRefs.kt` and covered by `FileRefsTest`), under Web
+  assets, which it is drawn like. It reads `GET /clientAdmin/client/files` (each ref with the record of its file
+  -- the file store's, or the disk's for a local one -- whether it is `live` for the client's own people or a
+  draft, whether a `stored` configuration holds it, and whether its bytes are `missing`) and
+  `GET …/files/takes` (the size, kinds and content types an upload is held to, how many refs a client is served,
+  and the roots open to clients: the backend says what it will accept, and the page says that). It changes them
+  with `POST …/files/upload` (multipart `refId`, `file`, `description`; `Http.uploadApi`), `POST …/files/local`
+  and `POST …/files/remove`, and previews through `GET …/files/download {client, refId, hash}` -- the listing's
+  `hash` in the address, so a replaced file is a new one, as the web assets' preview does. Wire names are `FREF`,
+  `CCT` and the file's `FMETA`, all in the kernel.
+  - **A change answers its `mode`** (`EDM.live` / `EDM.draft`), as a copy edit does, and the ref as it now is --
+    which the section draws at once. After a *removal* a ref still being there means the client was shipped with
+    one under that id, which the removed upload stood in front of.
+  - **Only a `stored` ref has Remove.** One the client was shipped with can be uploaded over and cannot be
+    removed (`…/files/remove` answers 400: nothing stored holds it).
+  - **A file is picked with `FilePickButton`** (`FilePickButton.kt`), which the web assets' upload uses too:
+    picking the file is the upload, and there is no second button.
+  - Nothing reads a ref *for use* yet -- resolving one from Markdown copy is a later issue; until then the section
+    shows the address a ref is served at (`Http.fileRefUrl(name)`) for copying, and says of a draft's that it is
+    the sandbox's until published.
 - **A listed ref says its `source`** (`FREF.sourceStore` / `FREF.sourceLocal`), and a local one its `root` and
   `path`. **`hash` and `name` are absent for a local ref whose file is missing** -- there are no bytes to hash --
   so do not build an address from a ref that is `missing`. A local ref has no upload behind it: its `file` record
@@ -117,9 +130,9 @@ the same way, under their own marker:
   client was shipped with cannot be removed (`…/files/remove` answers 400: nothing stored holds it), only
   uploaded over; removing that upload shows the shipped one again.
 - **A client's administrator can also name a file the deployment keeps for the client** (issue #1164), where the
-  deployment has opened a root to clients. No page does this yet; when you build one: `GET …/files/roots
-  {client?}` lists the open roots as `[{root}]` -- empty on most deployments, so offer the choice only when it is
-  not -- and `POST …/files/local {client?, refId, root, path, description?}` (JSON, no file part) names the file,
+  deployment has opened a root to clients. The Files section offers it under the upload, and only then: the
+  open roots are `…/files/takes`' `roots` (and `GET …/files/roots {client?}`, as `[{root}]`), empty on most
+  deployments. `POST …/files/local {client?, refId, root, path, description?}` (JSON, no file part) names the file,
   answering what an upload answers. The `path` is under the client's own directory in the root, and nothing
   lists what is there, so it is a typed path. A 403 means the root is not open to this caller; a 400 that the
   file "is not there to be served as an image" is deliberately one sentence for every reason (missing, not an

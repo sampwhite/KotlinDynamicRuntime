@@ -597,7 +597,7 @@ is what gives the warning teeth.
 | Traits for stored config, declared separately from data traits | **built** — #316 |
 | File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only |
 | File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154 |
-| A client's own administrator naming a local file, in the client's own directory of a root the deployment opened to clients | **built** — #1164, as a third source (`clientLocal`) and two endpoints. Not built: a page for it in the webapp, and browsing what is in a root. |
+| A client's own administrator naming a local file, in the client's own directory of a root the deployment opened to clients | **built** — #1164, as a third source (`clientLocal`) and two endpoints. A client's page lists, uploads, names and removes its file refs (#1176). Not built: browsing what is in a root (#1177). |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 

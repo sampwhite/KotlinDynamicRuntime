@@ -19,6 +19,7 @@ import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
@@ -56,6 +57,12 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         property(FREF.live, "Whether the client's own people are served this ref as listed; false for a draft only its sandbox shows.", required = true) {
             type = SCT.boolean
         }
+        property(
+            FREF.stored,
+            "Whether a stored configuration holds the ref's entry. False for a ref the client was shipped with, in " +
+                "source code: an upload overrides one, and it cannot be removed.",
+            required = true,
+        ) { type = SCT.boolean }
         property(FREF.missing, "Whether there is no such file to serve, so the ref is answered as not found.", required = true) {
             type = SCT.boolean
         }
@@ -84,6 +91,25 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         type = SCT.kObject
         description = "One root of local files that is open to clients: a client's own administrator may name a file in it."
         property(CCT.root, "The root's name: what a ref's `root` is.", required = true)
+    }
+
+    type(FREF.takesTypeName) {
+        type = SCT.kObject
+        description = "What a client's file refs take: what a page needs to know before it offers to add one."
+        property(WAS.maxSize, "The most bytes a ref's file may be.", required = true) { type = SCT.integer }
+        property(WAS.mimeTypes, "The content types an upload may be sent as.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(WAS.kinds, "The kinds of image a ref's file may be, as a person names them.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(FREF.refLimit, "How many file refs a client is served.", required = true) { type = SCT.integer }
+        property(FREF.roots, "The roots of local files open to clients, by name: where a file may be named and not uploaded. Empty on most deployments.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
     }
 
     listEndpoint(
@@ -200,6 +226,27 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         FileRefService.get(c).clientRoots().map { mapOf(CCT.root to it) }
     }
 
+    itemEndpoint(
+        UADEP.clientFilesTakes,
+        "What a client's file refs take (issue #1176): the most bytes a file may be, the kinds of image and the " +
+            "content types an upload may be sent as, how many refs a client is served, and the roots open to " +
+            "clients (those `${UADEP.clientFilesRoots}` lists). The deployment's answer and no client's -- it is " +
+            "what a page asks before it offers to add a ref, so that it says what the backend will hold it to.",
+        HttpMethod.GET,
+        outputRef = FREF.takesTypeName,
+        inputFields = { overseenClientField(FREF.client) },
+        needsClientConfig = true,
+    ) { c, request ->
+        knownClient(c, request)
+        mapOf(
+            WAS.maxSize to FREF.maxSize,
+            WAS.mimeTypes to WebAssetCheck.acceptedMimeTypes,
+            WAS.kinds to WebAssetCheck.kinds.map { it.label },
+            FREF.refLimit to FREF.maxRefs,
+            FREF.roots to FileRefService.get(c).clientRoots(),
+        )
+    }
+
     fileDownloadEndpoint(
         UADEP.clientFilesDownload,
         "The file of one of a client's file refs (issue #1153), as the listing shows it: what an administrator " +
@@ -261,6 +308,7 @@ fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean): Map
         ref.def.description?.let { put(CCT.description, it) }
         ref.def.configName?.let { put(FREF.configName, it) }
         put(FREF.live, live)
+        put(FREF.stored, ref.def.stored)
         put(FREF.missing, meta == null)
         if (meta != null) {
             put(FREF.file, meta.toJsonMap())

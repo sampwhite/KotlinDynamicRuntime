@@ -53,6 +53,21 @@ class WebAssetFile(
     val fileName: String?,
 )
 
+/**
+ * A file's record as a listing carries it under a `file` key -- the file store's, written with the upload -- or
+ * null where there is none: an empty slot, a file ref whose file is missing. Shared with a client's file refs
+ * (`FileRefs.kt`), whose listing describes a file the same way.
+ */
+fun storedFileFrom(raw: Any?): WebAssetFile? = raw.toJsonMapOrEmpty().takeIf { it.isNotEmpty() }?.let { meta ->
+    WebAssetFile(
+        mimeType = meta[FMETA.mimeType].toOptStr().orEmpty(),
+        size = (meta[FMETA.size] as? Number)?.toLong() ?: 0L,
+        hash = meta[FMETA.hash].toOptStr().orEmpty(),
+        uploadedAt = meta[FMETA.uploadedAt].toOptStr().orEmpty(),
+        fileName = meta[FMETA.fileName].toOptStr(),
+    )
+}
+
 /** One slot of a client's web assets as the listing answers it: what it takes, and [file] when it holds an image. */
 class WebAssetSlot(
     val slot: String,
@@ -69,15 +84,7 @@ class WebAssetSlot(
 /** The listing's items as slots; one without a slot name is not one. */
 fun parseWebAssetSlots(items: List<Map<String, Any?>>): List<WebAssetSlot> = items.mapNotNull { item ->
     val slot = item[WAS.slot].toOptStr() ?: return@mapNotNull null
-    val file = item[WAS.file].toJsonMapOrEmpty().takeIf { it.isNotEmpty() }?.let { meta ->
-        WebAssetFile(
-            mimeType = meta[FMETA.mimeType].toOptStr().orEmpty(),
-            size = (meta[FMETA.size] as? Number)?.toLong() ?: 0L,
-            hash = meta[FMETA.hash].toOptStr().orEmpty(),
-            uploadedAt = meta[FMETA.uploadedAt].toOptStr().orEmpty(),
-            fileName = meta[FMETA.fileName].toOptStr(),
-        )
-    }
+    val file = storedFileFrom(item[WAS.file])
     WebAssetSlot(
         slot = slot,
         label = item[WAS.label].toOptStr() ?: slot,

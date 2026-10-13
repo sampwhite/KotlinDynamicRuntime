@@ -502,6 +502,21 @@ body {
 .web-asset-actions { display: flex; gap: 8px; margin-top: 6px; }
 /* The browser's own picker stays in the page -- a button opens it -- and out of sight. */
 .web-asset-picker { display: none; }
+/* A client's file refs (issue #1176), drawn as its web assets are: a row a ref. What is unusual about one -- a
+   draft, a missing file, an image the client was shipped with -- is a small mark beside its id. */
+.file-ref-tag {
+    margin-left: 8px;
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.web-asset-facts code { font-size: 0.85rem; }
+/* Adding one, under the list: an id and what it is for, then how -- an upload, or a file the deployment keeps. */
+.file-ref-add { display: flex; flex-direction: column; gap: 8px; margin-top: 22px; }
+.file-ref-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text); }
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }

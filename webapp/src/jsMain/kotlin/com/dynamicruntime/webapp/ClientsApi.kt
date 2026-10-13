@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
@@ -964,6 +965,59 @@ object ClientsApi {
      */
     suspend fun removeWebAsset(clientId: String, slot: String): WebAssetSlot? =
         webAssetSlotOf(Http.sendApi("POST", UADEP.clientWebRemove, mapOf(WAS.client to clientId, WAS.slot to slot)))
+
+    /**
+     * [clientId]'s file refs (issue #1176) as its administrator is shown them: for a client with a sandbox the
+     * sandbox's, drafts included, each saying whether the client's own people are served it yet.
+     */
+    suspend fun fileRefs(clientId: String): List<FileRefView> =
+        parseFileRefs(Http.getApi(UADEP.clientFiles + queryString(mapOf(FREF.client to clientId)))[EP.items].toJsonListOfMaps())
+
+    /** What a file ref takes -- size, kinds, how many, and the roots open to clients -- before one is offered. */
+    suspend fun fileRefTakes(clientId: String): FileRefTakes =
+        parseFileRefTakes(Http.getApi(UADEP.clientFilesTakes + queryString(mapOf(FREF.client to clientId)))[EP.item].toJsonMapOrEmpty())
+
+    /**
+     * Uploads [file] -- the browser's own `File` -- as [clientId]'s ref [refId], replacing what that ref named.
+     * [description] null keeps the ref's description. Live, or a draft for a client with a sandbox, which the
+     * answer says; the backend refuses a file that is not the image it says it is, in its own words.
+     */
+    suspend fun uploadFileRef(clientId: String, refId: String, file: Any, description: String?): FileRefChange =
+        fileRefChangeOf(
+            Http.uploadApi(
+                UADEP.clientFilesUpload,
+                buildMap {
+                    put(FREF.client, clientId)
+                    put(CCT.refId, refId)
+                    put(FREF.file, file)
+                    description?.let { put(CCT.description, it) }
+                },
+            ),
+        )
+
+    /**
+     * Names the file at [path], in [clientId]'s own directory of the root [root], as its ref [refId] (issue #1164):
+     * a file the deployment keeps for the client, in a root it opened to clients. Nothing is uploaded.
+     */
+    suspend fun nameLocalFileRef(clientId: String, refId: String, root: String, path: String, description: String?): FileRefChange =
+        fileRefChangeOf(
+            Http.sendApi(
+                "POST", UADEP.clientFilesLocal,
+                buildMap {
+                    put(FREF.client, clientId)
+                    put(CCT.refId, refId)
+                    put(CCT.root, root)
+                    put(CCT.path, path)
+                    description?.let { put(CCT.description, it) }
+                },
+            ),
+        )
+
+    /** Removes [clientId]'s ref [refId]; the answer holds the ref still there under that id, when one was shipped. */
+    suspend fun removeFileRef(clientId: String, refId: String): FileRefChange =
+        fileRefChangeOf(Http.sendApi("POST", UADEP.clientFilesRemove, mapOf(FREF.client to clientId, CCT.refId to refId)))
+
+    private fun fileRefChangeOf(envelope: Map<String, Any?>): FileRefChange = parseFileRefChange(envelope[EP.results].toJsonMapOrEmpty())
 
     /** The one slot a change answers under `results`, or null from a backend that answered none. */
     private fun webAssetSlotOf(envelope: Map<String, Any?>): WebAssetSlot? =

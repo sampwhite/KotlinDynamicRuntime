@@ -375,6 +375,16 @@ private fun ChildrenBuilder.clientDetail(
                 sandboxOf = row.sandboxOf
                 this.onChanged = onChanged
             }
+            // Its named images (issue #1176). Unlike the two above these are configuration: for a client with a
+            // sandbox a change is a draft, and the sandbox's own page lists what the parent has drafted.
+            h2 { +"Files" }
+            FileRefsSection {
+                this.clientId = clientId
+                sandboxOf = row.sandboxOf
+                hasSandbox = row.hasSandbox
+                staticHere = row.staticHere
+                this.onChanged = onChanged
+            }
         }
         // A sandbox holds no configuration of its own; it runs its parent's latest (issue #1001), listed here as such.
         h2 {

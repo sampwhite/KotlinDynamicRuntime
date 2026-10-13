@@ -194,6 +194,12 @@ object UADEP {
     /** The roots of local files a client's own administrator may name a file in (issue #1164), by name. */
     const val clientFilesRoots = "$clientFiles/roots"
 
+    /**
+     * What a client's file refs take (issue #1176): how large a file may be and of what kinds, how many refs a
+     * client is served, and the roots open to clients -- what a page needs before it offers to add one.
+     */
+    const val clientFilesTakes = "$clientFiles/takes"
+
     /** The named reports one client may run (issue #981), with how each column was bound. Scoped as [clientDefinition] is. */
     const val reports = "/${SECT.clientAdmin}/reports"
 

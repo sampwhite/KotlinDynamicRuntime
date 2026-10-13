@@ -240,6 +240,8 @@ class LocalFileRefsTest : StringSpec({
         logo[FREF.name] shouldBe nameOf("logo", png)
         logo[CCT.description] shouldBe "The logo it ships with."
         logo[FREF.configName] shouldBe LocalFileRefComponent.shippedConfig
+        // Shipped with the client, in source code: no stored configuration holds it, so it is not the API's to remove.
+        logo[FREF.stored] shouldBe false
         logo[FREF.live] shouldBe true
         logo[FREF.missing] shouldBe false
         // Described as the store describes a file, by what reading it found -- never by what it is called.
@@ -323,6 +325,7 @@ class LocalFileRefsTest : StringSpec({
         // The stored ref takes the id, with no problem said of the one it replaces.
         val over = listed(admin).getValue("mark")
         over[CCT.source] shouldBe FREF.sourceStore
+        over[FREF.stored] shouldBe true
         over[FREF.configName] shouldBe CPY.copyConfigName
         over[CCT.root].shouldBeNull()
         static(member, "mark").rptResponseBytes!!.toList() shouldBe otherPng.toList()
@@ -683,6 +686,9 @@ class LocalFileRefsTest : StringSpec({
         // own client, as every call beside it is.
         admin.getItems(UADEP.clientFilesRoots) shouldBe listOf(mapOf(CCT.root to openRoot))
         admin.getItems(UADEP.clientFilesRoots, mapOf(FREF.client to client)) shouldBe listOf(mapOf(CCT.root to openRoot))
+        // And among what a ref takes, which is what a page asks before it offers to add one (issue #1176).
+        admin.getItem(UADEP.clientFilesTakes)[FREF.roots] shouldBe listOf(openRoot)
+        admin.expectError(EXC.notAuthorized, UADEP.clientFilesTakes, args = mapOf(FREF.client to peer))
         admin.expectError(EXC.notAuthorized, UADEP.clientFilesRoots, args = mapOf(FREF.client to peer))
         memberOf(client).expectError(EXC.notAuthorized, UADEP.clientFilesRoots)
         TestUser.create(cxt, "solo@lfrpublic.test", level = ROLE.admin, userClient = CL.public).expectError(EXC.notAuthorized, UADEP.clientFilesRoots)
@@ -715,6 +721,7 @@ class LocalFileRefsTest : StringSpec({
         storedRefs(client, CPY.copyConfigName) shouldBe listOf(ownEntry("hero", "hero.png") + (CCT.description to "The hero."))
         val shown = listed(admin).getValue("hero")
         shown[CCT.source] shouldBe FREF.sourceClientLocal
+        shown[FREF.stored] shouldBe true
         shown[CCT.root] shouldBe openRoot
         shown[CCT.path] shouldBe "hero.png"
         shown[FREF.name] shouldBe nameOf("hero", png)
