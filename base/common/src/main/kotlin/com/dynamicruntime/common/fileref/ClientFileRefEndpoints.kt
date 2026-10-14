@@ -294,10 +294,9 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
-        val client = knownClient(c, request)
-        val refId = request[CCT.refId].toOptStr().orEmpty()
-        val file = refs.forClient(refs.shownAs(c, client)).refs[refId]?.let { refs.read(c, it) }
-            ?: throw KdrException("Client '$client' has no file ref '$refId' whose file is there.", code = EXC.notFound)
+        val shown = shownRef(c, refs, request)
+        val file = shown.ref?.let { refs.read(c, it) } ?: throw shown.noFile()
+        val refId = shown.refId
         c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, request[CCT.hash].toOptStr()) }
         // Offered under the ref's own id and its kind's extension, never the name it was uploaded under: that name
         // is the first uploader's, of whatever ref first held these bytes, and its extension can say anything.
@@ -317,11 +316,21 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
-        val client = knownClient(c, request)
-        val refId = request[CCT.refId].toOptStr().orEmpty()
-        refs.forClient(refs.shownAs(c, client)).refs[refId]?.let { refs.metaOf(c, it) }
-            ?: throw KdrException("Client '$client' has no file ref '$refId' whose file is there.", code = EXC.notFound)
+        val shown = shownRef(c, refs, request)
+        shown.ref?.let { refs.currentMetaOf(c, it) } ?: throw shown.noFile()
     }
+}
+
+/** The ref a download or its meta read names: of the client the request names, as the listing shows it ([listedRefs]). */
+private class ShownRef(val client: String, val refId: String, val ref: FileRef?) {
+    /** The 404 for a ref that is not there, or whose file is not: one answer from the download and its meta read. */
+    fun noFile(): KdrException = KdrException("Client '$client' has no file ref '$refId' whose file is there.", code = EXC.notFound)
+}
+
+private fun shownRef(cxt: KdrCxt, refs: FileRefService, request: Map<String, Any?>): ShownRef {
+    val client = knownClient(cxt, request)
+    val refId = request[CCT.refId].toOptStr().orEmpty()
+    return ShownRef(client, refId, refs.forClient(refs.shownAs(cxt, client)).refs[refId])
 }
 
 /**

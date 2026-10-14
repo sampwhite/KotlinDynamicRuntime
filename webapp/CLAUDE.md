@@ -607,9 +607,10 @@ The **preview is not the static address**: that serves the caller's own client's
 need not be the caller's. It is the named download, `GET /clientAdmin/client/web/download {client, slot, hash}`
 (`webAssetPreviewUrl`), carrying the image's hash so that a replaced image is a new address -- a browser redraws
 an address it has already drawn without asking again. Beside it, `GET …/web/download/meta {client, slot}` answers
-what the image is without the image (issue #1131); the page reads the listing instead, which carries the same. A **sandbox** shows its parent's images and may change
-none (a change would be live for the parent's people): its page draws the slots with no actions under a note
-saying where to make one, and the backend refuses the attempt anyway.
+what the image is without the image (issue #1131); the page reads the listing instead, which carries the same. A
+**sandbox** shows its parent's images and may change none (a change would be live for the parent's people): its
+page draws the slots with no actions under a note saying where to make one, and the backend refuses the attempt
+anyway.
 
 **Copy & menu** (issue #917): what a client's own configuration changes about what its people see, from
 `GET /clientAdmin/client/overrides` (`ClientsApi.overrides`, parsed by the pure `parseClientOverrides`; the wire

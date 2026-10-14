@@ -284,6 +284,12 @@ class FileRefService : ServiceInitializer, ContentServer {
     fun metaOf(cxt: KdrCxt, ref: FileRef): FileMeta? = sources[ref.def.source]?.meta(cxt, ref)
 
     /**
+     * As [metaOf], but what [read] would find now, without the content ([FileRefSource.currentMeta], issue #1131):
+     * what a meta-only read beside the download answers.
+     */
+    fun currentMetaOf(cxt: KdrCxt, ref: FileRef): FileMeta? = sources[ref.def.source]?.currentMeta(cxt, ref)
+
+    /**
      * Why [ref]'s file is not there to be served, as a load would say it, or null when it is -- or when its source
      * is one this node does not read. For a call that would rather refuse before it writes than have its trial do it.
      */

@@ -130,10 +130,8 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         },
     ) { c, request ->
         val assets = ClientWebAssetService.get(c)
-        val client = assets.knownClient(c, overseenClient(c, request[WAS.client].toOptStr()))
-        val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
-        val file = assets.file(c, client, def.slot)
-            ?: throw KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
+        val named = namedSlot(c, assets, request)
+        val file = assets.file(c, named.client, named.def.slot) ?: throw named.empty()
         c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, request[WAS.hash].toOptStr()) }
         file.toContentData(inLine = false)
     }
@@ -151,12 +149,21 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         },
     ) { c, request ->
         val assets = ClientWebAssetService.get(c)
-        val client = assets.knownClient(c, overseenClient(c, request[WAS.client].toOptStr()))
-        val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
-        assets.meta(c, client, def.slot)
-            ?: throw KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
+        val named = namedSlot(c, assets, request)
+        assets.meta(c, named.client, named.def.slot) ?: throw named.empty()
     }
 }
+
+/** The slot a download or its meta read names, of the client the request names -- one the node knows. */
+private class NamedSlot(val client: String, val def: WebSlotDef) {
+    /** The 404 for an empty slot: one answer from the download and its meta read. */
+    fun empty(): KdrException = KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
+}
+
+private fun namedSlot(cxt: KdrCxt, assets: ClientWebAssetService, request: Map<String, Any?>): NamedSlot = NamedSlot(
+    assets.knownClient(cxt, overseenClient(cxt, request[WAS.client].toOptStr())),
+    ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty()),
+)
 
 /** The slots as a field's choices, each by the name a person calls it. */
 private fun SchTypeBuilder.slotOptions() {

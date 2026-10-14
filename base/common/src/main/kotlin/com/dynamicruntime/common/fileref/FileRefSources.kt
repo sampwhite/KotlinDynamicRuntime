@@ -39,6 +39,14 @@ interface FileRefSource {
     /** What is known of [ref]'s file without its content, or null when there is none to serve. */
     fun meta(cxt: KdrCxt, ref: FileRef): FileMeta?
 
+    /**
+     * As [meta], but **the answer [read] would give now**, without the content (issue #1131): nothing a source
+     * remembers to spare a load or a listing stands in for asking. What a meta-only read beside a download answers,
+     * so that the two say the same of whether there is a file. A source whose [meta] already is that answer need
+     * not say it twice.
+     */
+    fun currentMeta(cxt: KdrCxt, ref: FileRef): FileMeta? = meta(cxt, ref)
+
     /** [ref]'s file, content and all, or null when there is none to serve. */
     fun read(cxt: KdrCxt, ref: FileRef): StoredFile?
 }
@@ -98,16 +106,34 @@ class StoreFileSource : FileRefSource {
         return if (missing) "names a file that is not in the file store ($hash)." else null
     }
 
-    override fun meta(cxt: KdrCxt, ref: FileRef): FileMeta? = metaOf(cxt, ref.owner, ref.def.hash.orEmpty())
+    /** The store's record of [ref]'s file, from what it last said ([metaOf]), when it is one [read] would serve. */
+    override fun meta(cxt: KdrCxt, ref: FileRef): FileMeta? =
+        metaOf(cxt, ref.owner, ref.def.hash.orEmpty())?.takeIf { servesAs(it, ref) }
+
+    /** The store's record of [ref]'s file as the store says it now, when it is one [read] would serve (issue #1131). */
+    override fun currentMeta(cxt: KdrCxt, ref: FileRef): FileMeta? =
+        metaOf(cxt, ref.owner, ref.def.hash.orEmpty(), fresh = true)?.takeIf { servesAs(it, ref) }
+
+    /**
+     * Whether the file [meta] describes is one [ref] may be served as: **the one the ref names** -- its recorded
+     * hash is the ref's, which a key by content makes true unless something wrote the key directly -- and **a kind
+     * of file a ref may be**, by the type the checked upload recorded. Asked of the record alone, so a read and a
+     * description of the file cannot disagree about it.
+     */
+    private fun servesAs(meta: FileMeta, ref: FileRef): Boolean =
+        meta.hash == ref.def.hash.orEmpty() && WebAssetCheck.declaredKind(meta.mimeType) != null
 
     /**
      * The file store's record of the file [hash] under [owner], or null when it holds none: from what the store
-     * last said within [FileRefService.askedMemoMs], else asked again. A record says the store *describes* such a
-     * file; whether its bytes are whole is [read]'s to find, on the way out.
+     * last said within [FileRefService.askedMemoMs] unless [fresh] asks the store now, which also renews what is
+     * remembered. A record says the store *describes* such a file; whether its bytes are whole is [read]'s to find,
+     * on the way out.
      */
-    fun metaOf(cxt: KdrCxt, owner: String, hash: String): FileMeta? {
+    fun metaOf(cxt: KdrCxt, owner: String, hash: String, fresh: Boolean = false): FileMeta? {
         val memoKey = "$owner/$hash"
-        asked[memoKey]?.takeIf { nanoTime() - it.atNanos < FileRefService.askedMemoMs * nanosPerMs }?.let { return it.meta }
+        if (!fresh) {
+            asked[memoKey]?.takeIf { nanoTime() - it.atNanos < FileRefService.askedMemoMs * nanosPerMs }?.let { return it.meta }
+        }
         return FileStoreService.get(cxt).meta(cxt, FileRefService.bucket, FileRefService.keyOf(owner, hash))
             .also { asked[memoKey] = Asked(nanoTime(), it) }
     }
@@ -118,15 +144,13 @@ class StoreFileSource : FileRefSource {
     }
 
     /**
-     * Two things are held to here, on every read, that an entry cannot be trusted for: the file is **the one the
-     * ref names** -- its recorded hash is the ref's, which a key by content makes true unless something wrote the
-     * key directly -- and it is **a kind of file a ref may be**, by the type the checked upload recorded. Anything
-     * else is no file, said in the log.
+     * Two things are held to here, on every read, that an entry cannot be trusted for ([servesAs]): the file is the
+     * one the ref names, and a kind of file a ref may be. Anything else is no file, said in the log.
      */
     override fun read(cxt: KdrCxt, ref: FileRef): StoredFile? {
         val hash = ref.def.hash.orEmpty()
         val file = FileStoreService.get(cxt).get(cxt, FileRefService.bucket, FileRefService.keyOf(ref.owner, hash)) ?: return null
-        if (file.meta.hash != hash || WebAssetCheck.declaredKind(file.meta.mimeType) == null) {
+        if (!servesAs(file.meta, ref)) {
             LogFileRef.warn(cxt) {
                 "The file kept for ref '${ref.refId}' of client '${ref.owner}' is not what the ref names (hash " +
                     "${file.meta.hash}, type ${file.meta.mimeType}); answering as though there were none."

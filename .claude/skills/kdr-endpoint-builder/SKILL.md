@@ -212,9 +212,11 @@ files.delete(cxt, "client-files", "clients/acme/logo")
 `com.dynamicruntime.common.filestore`, at the download's path with `/meta` after it, with the same inputs and in the
 same section -- who may read what a file is, is who may download it. It answers the file's `FileMeta` under
 `item` (a GET, `EndpointKind.item`), turns a handler's null into a 404, and declares the `FileMeta` type in the
-module itself, so the answer is never described by nothing (a module may declare it as well; it is one type). There is deliberately no endpoint
-reading metadata by bucket and key: the store has no access rules, so the handler composes the key from what it
-has checked, as the download's does.
+module itself, so the answer is never described by nothing (a module may declare it as well; it is one type).
+There is deliberately no endpoint reading metadata by bucket and key: the store has no access rules, so the
+handler composes the key from what it has checked, as the download's does. **Answer what the download would
+find**: read the record now, and refuse it where the download would refuse the file, so the two never disagree
+about whether there is one.
 
 ```kotlin
 fileDownloadEndpoint("/file/download", "Download a file by id.",

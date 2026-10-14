@@ -8,6 +8,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -47,6 +48,27 @@ class FileMetaEndpointTest : StringSpec({
 
         module.defs.keys shouldContainExactly setOf("metatwo.${FMETA.infoTypeName}")
         module.endpoints.map { it.path } shouldContainExactly listOf("/two/a/meta", "/two/b/meta")
+    }
+
+    "what an endpoint is told reaches the endpoint: a named input type, and every flag" {
+        val module = schemaModule(cxt, "metafour") {
+            type("FileQuery") { type = SCT.kObject; property("id", "Which file.", required = true) }
+            fileMetaEndpoint(
+                "/four/meta", "What the file is.", inputRef = "FileQuery", forTestingOnly = true, publicApi = true,
+                tags = setOf("files"), needsClientConfig = true,
+            ) { _, _ -> meta }
+        }
+        val ep = module.endpoints.single()
+
+        ep.inputTypeRef shouldBe "metafour.FileQuery"
+        ep.forTestingOnly shouldBe true
+        ep.publicApi shouldBe true
+        ep.tags shouldBe setOf("files")
+        ep.needsClientConfig shouldBe true
+        // And none of them is on by default.
+        val plain = schemaModule(cxt, "metafive") { fileMetaEndpoint("/five/meta", "What the file is.") { _, _ -> meta } }.endpoints.single()
+        listOf(plain.forTestingOnly, plain.publicApi, plain.needsClientConfig) shouldBe listOf(false, false, false)
+        plain.tags shouldBe emptySet()
     }
 
     "the answer is the metadata as its file holds it, and no metadata is a 404" {
