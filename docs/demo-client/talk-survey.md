@@ -11,6 +11,9 @@ Adding a survey takes three pieces of configuration, and this page shows all thr
 - [two columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
 - [the survey itself](#survey), in the `talkSurvey` bundle.
 
+The traits and the columns are the `base` bundle's first additions beyond the client itself. The
+[client page](client.md#what-the-bundle-holds) lists everything the bundle holds, as the pages add to it.
+
 ## Traits
 
 Before the survey can collect anything, the client needs traits for it to collect. It defines two of its own,

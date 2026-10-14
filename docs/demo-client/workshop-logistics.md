@@ -12,6 +12,9 @@ Three pieces of configuration go into it, and this page shows all three:
 - [the logistics trait](#the-logistics-trait), in the `base` bundle;
 - [the workflow](#workflow), in the `logistics` bundle.
 
+The facts and the trait are the last additions to the `base` bundle. The [client page](client.md#what-the-bundle-holds)
+lists everything it holds.
+
 ## A computed fact
 
 The client declares two facts of its own in the `kdr:cfactDef` slot of its `base` bundle. The review's
@@ -42,8 +45,10 @@ The client declares two facts of its own in the `kdr:cfactDef` slot of its `base
 | `description` | What the fact means. |
 | `toFrontend` | Whether the fact is sent to the browser, where a form could show or hide a field by it. Neither of these is. |
 
-A declaration says only that the fact exists. Something has to set it, and for `isWorkshop` that is the
-[survey](talk-survey.md), which runs a function after every save:
+A declaration says only that the fact exists. Something has to set it. For `isWorkshop` that is the
+[survey](talk-survey.md), not this workflow: a talk's eligibility is judged before it enters a workflow, so the fact
+has to come from something that has already run, and the survey is where the track is answered. The survey runs a
+function after every save:
 
 <!-- kdr-doc: bundle=talkSurvey pointer=/kdr:workflowDef/0/definition/functions/0 -->
 ```json
@@ -56,8 +61,9 @@ A declaration says only that the fact exists. Something has to set it, and for `
 }
 ```
 
-The function reads the `track` field of the talk's `session` entry. When the value is `workshop`, the talk has the
-fact `isWorkshop`; otherwise it does not. See [Facts and eligibility](reference.md#facts-and-eligibility).
+The function reads the `track` field of the talk's `session` entry, named by `trait` and `valuePath`. Its `op`,
+`isInList`, means the value is compared against the list in `valueMapping`: when the value is `workshop`, the talk has
+the fact `isWorkshop`; otherwise it does not. See [Facts and eligibility](reference.md#facts-and-eligibility).
 
 ## The logistics trait
 

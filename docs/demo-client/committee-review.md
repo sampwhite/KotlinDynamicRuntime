@@ -11,6 +11,9 @@ Two pieces of configuration go into it, and this page shows both:
 - [the review trait](#the-review-trait), in the `base` bundle;
 - [the workflow](#workflow), in the `review` bundle.
 
+The trait is an addition to the `base` bundle; the [client page](client.md#what-the-bundle-holds) lists everything the
+bundle now holds.
+
 The committee itself is a label, `committee`, that the [client](client.md) lists in `userLabels`. An administrator
 puts the label on a user, and that user is a committee member.
 
@@ -131,7 +134,8 @@ that person alone. The speaker sees the task, and the review once it is recorded
 The `locks` list is the other half of that rule, and the platform insisted on it: writing this bundle without the
 lock was refused, because a save rule alone could be bypassed by editing the form another way. The lock says that
 while the talk is in the review, the `review` trait may be changed only by whoever may save `recordReview`, or by an
-administrator overriding it.
+administrator overriding it. Its `when` is the condition under which it holds, and `#always` means for as long as the
+talk is in the workflow.
 
 **An approval task.** The `accept` task collects no traits and offers no saves; its `approval` is a button. Pressing
 it records who accepted the talk and when, and asserts the fact `talkAccepted`, which the client declared in its
@@ -140,7 +144,9 @@ accepted it; before the review is recorded, a note that it comes first, greyed o
 button; for anyone else, a line saying a committee member accepts the talk.
 
 **A singleton.** The `singletons` list turns the workflow's own fact into one about the whole form: once
-`talkAccepted` holds, the form has `kdr:finished`, and the forms list shows the talk as **Finished**.
+`talkAccepted` holds, the form has `kdr:finished`, and the forms list shows the talk as **Finished**. That is a
+different thing from the workflow finishing, which it does when its tasks are complete, as any workflow does. The
+singleton is what lets a workflow decide that the *talk* is done.
 
 ## What the speaker sees
 
@@ -151,9 +157,9 @@ completes this step; you can see it here.* Once the review is recorded, the spea
 ## What a committee member sees
 
 A committee member is an administrator, so their forms list is **Forms**, with every speaker's talks. On a talk whose
-survey is done, **Committee review** opens with the **Record the review** step editable: a **Score** and **Notes for
-the speaker**, and a **Save the review** button. Once saved, the **Accept the talk** step offers its button. After it
-is pressed, the step reads *Accepted by* and the member's name, and the talk's status in the forms list is
-**Finished**.
+survey is done, the member opens **Committee review** and presses **Engage**, as the speaker did for the abstract.
+The **Record the review** step is then editable: a **Score** and **Notes for the speaker**, and a **Save the review**
+button. Once saved, the **Accept the talk** step offers its button. After it is pressed, the step reads *Accepted by*
+and who accepted it, and the talk's status in the forms list is **Finished**.
 
 Next: [Workshop logistics](workshop-logistics.md).
