@@ -807,6 +807,23 @@ class SandboxAccessTest : StringSpec({
         actsAsAdmin(inside) shouldBe true
     }
 
+    "the user a sandbox was opened from stands behind it while it is enabled, claimed or not" {
+        val parent = "sbxunclaimedopener"
+        defineParent(parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        chief.postData(AEP.openSandbox, emptyMap())[UPF.client] shouldBe sandboxOf(parent)
+        actsAsAdmin(chief) shouldBe true
+
+        // Recovered by an administrator after a disable, it is unclaimed again -- and a password login, which claims
+        // nothing, still acts as it outside. Inside follows: the person acted as it to open the sandbox.
+        val users = UserService.get(cxt)
+        val row = users.queryByUserId(cxt, chief.userId).shouldNotBeNull()
+        row.registeredAt = null
+        users.updateUser(cxt, row, isEdit = false)
+        users.queryByUserId(cxt, chief.userId).shouldNotBeNull().isRegistered shouldBe false
+        actsAsAdmin(chief) shouldBe true
+    }
+
     "a sandbox user nobody recorded opening acts in the organization of the parent administrator it acts through" {
         val parent = "sbxorglegacy"
         defineParent(parent)

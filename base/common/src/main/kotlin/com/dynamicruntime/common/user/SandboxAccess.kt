@@ -14,7 +14,7 @@ import com.dynamicruntime.common.http.request.RoleLadder
  * back.** A sandbox user is a row of its own, and the roles on it are not all it takes to say what it may do: the
  * rest is asked of the person's users **outside** the sandbox, at every request, through the same user cache the
  * gate's role refresh reads -- their enabled, registered ones: a user nobody has claimed yet is not the person's to
- * act as (issue #1200). Nothing is kept in step, so nothing can fall out of step. There are two kinds of
+ * act as (issue #1200), save the one an opened user was opened from, which the person did act as to open it. Nothing is kept in step, so nothing can fall out of step. There are two kinds of
  * sandbox user, told apart by [AuthUserRow.openedBy] -- what opening the sandbox records -- and never by the roles
  * on the row, which an administrator can edit.
  *
@@ -26,14 +26,15 @@ import com.dynamicruntime.common.http.request.RoleLadder
  * nothing here. The session reads it live; the sandbox row also stores it, written at each opening and kept in
  * step when an administrator changes the opener's (`UserService.followOpenerOrg`), since who may see and
  * administer the sandbox user goes by the stored one. That user must still stand
- * for the parent -- be enabled, and be the parent's or an `allClients` administrator -- or the sandbox user acts
+ * for the parent -- be enabled, and be the parent's or an `allClients` administrator; registered or not, since the
+ * person acted as it to open the sandbox and may act as it outside -- or the sandbox user acts
  * with **nothing**, as a disabled account does: the person was disabled or removed in the parent, or what let
  * them in from elsewhere was a capability they no longer hold. Opening again records whoever opens it.
  *
  * **A sandbox's own user** -- somebody made there to try the client as a member -- acts with the roles on its
  * row, with these exceptions:
- * - **`admin` takes effect only while the person is an administrator outside**: their identity has an enabled
- *   administrator in the parent, or an enabled `allClients` administrator. That is what lets a sandbox
+ * - **`admin` takes effect only while the person is an administrator outside**: their identity has an enabled,
+ *   registered administrator in the parent, or an enabled, registered `allClients` administrator. That is what lets a sandbox
  *   administrator edit the parent's configuration (#930): whoever is one is, by construction, trusted in the
  *   parent. Granting the role inside the sandbox does not help, and the console refuses it.
  * - **`allClients` is never held**: reach across clients comes from outside, through an opening, or not at all.
@@ -48,7 +49,7 @@ import com.dynamicruntime.common.http.request.RoleLadder
  *   `admin` in a sandbox. Off-ladder roles other than `allClients` are a deployment's own grants and are left as
  *   the row holds them.
  *
- * And one holding `admin` whose identity has no enabled user in the parent and no enabled `allClients`
+ * And one holding `admin` whose identity has no enabled, registered user in the parent and no such `allClients`
  * administrator acts with nothing: that is how a user opened before openings were recorded reads once its person
  * is gone from the parent.
  */
@@ -79,8 +80,8 @@ object SandboxAccess {
         ),
         allClients("sandboxAllClients: in a sandbox, allClients is held only through the user the sandbox was opened from"),
         noStanding(
-            "sandboxStanding: this sandbox user acts for somebody outside it who is no longer an enabled user of the " +
-                "parent, nor an enabled allClients administrator",
+            "sandboxStanding: this sandbox user acts for somebody outside it who has no enabled user of the parent they " +
+                "have claimed, nor an enabled allClients administrator",
         ),
         levelNotHeldOutside(
             "sandboxLevel: in a sandbox, a level beside admin on a user nobody recorded opening takes effect only while " +
@@ -115,15 +116,19 @@ object SandboxAccess {
     /** How [row] stands; outside a sandbox, simply as its own roles say. */
     fun standingOf(cxt: KdrCxt, row: AuthUserRow): Standing {
         val parent = sandboxParentOf(row.client) ?: return Standing(row.roles.toSet(), row.org)
-        // The identity's enabled users outside every sandbox, in the order they were made -- registered ones only
-        // (issue #1200): a user an administrator provisioned that the person has not claimed yet, or recovered
-        // and not reclaimed, is not theirs to act as, so it stands behind nothing here either, as the switcher
-        // and the login landing pass it over.
-        val outside = UserService.get(cxt).enabledUsersOf(cxt, row.identityId)
-            .filter { !isSandboxClient(it.client) && it.isRegistered }.sortedBy { it.userId }
+        // The identity's enabled users outside every sandbox, in the order they were made.
+        val enabledOutside = UserService.get(cxt).enabledUsersOf(cxt, row.identityId)
+            .filter { !isSandboxClient(it.client) }.sortedBy { it.userId }
+        // Of them, those the person has claimed (issue #1200): one an administrator provisioned or recovered, and
+        // not yet claimed, is not theirs to act as, so it stands behind nothing here either -- as the switcher
+        // passes it over, and the login landing does while there is a claimed one.
+        val outside = enabledOutside.filter { it.isRegistered }
         val openedBy = row.openedBy
         if (openedBy != null) {
-            val opener = outside.firstOrNull { it.userId == openedBy && (it.client == parent || isAllClientsAdmin(it)) }
+            // Save the user it was opened from: the person acted as that one to open the sandbox -- a password
+            // login does not claim, so it may be unclaimed and acting outside all the same -- and inside follows
+            // what they may do outside.
+            val opener = enabledOutside.firstOrNull { it.userId == openedBy && (it.client == parent || isAllClientsAdmin(it)) }
                 ?: return nothingStands(row)
             return Standing(
                 opener.roles.toSet(), orgFrom(opener, row.client),
