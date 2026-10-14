@@ -16,7 +16,6 @@ import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfig
-import com.dynamicruntime.common.gedra.GedraConfigBuilder
 import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService

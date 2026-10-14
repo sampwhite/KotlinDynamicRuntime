@@ -134,8 +134,7 @@ fun repairTypeDef(
             repairs.add(DefRepair(problem.message, "Dropping '$key'."))
         }
 
-        val source = out[SCH.optionsSource]
-        when (source) {
+        when (val source = out[SCH.optionsSource]) {
             null -> {}
             !is String -> {
                 out.remove(SCH.optionsSource)
