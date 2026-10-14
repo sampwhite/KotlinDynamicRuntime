@@ -104,7 +104,7 @@ object GedraConfigTrial {
      * runs for it -- and, [withSandbox], for its sandbox -- judged again at the moment of the write.
      *
      * Every other check reads only configuration, so what the last load recorded stays true until a configuration
-     * changes. Whether a ref's file is there does not: a local file is edited, moved and deleted on a disk, with
+     * changes. Whether a ref's file is there does not: a local file is edited, moved, and deleted on a disk, with
      * no write and no reload. Judged against the last load alone, a picture that went missing an hour ago would be
      * a problem "the change introduces" to every later write of the client -- whatever it changed, including the
      * one that takes the ref away. Asked now, on both sides of the comparison, what was already broken is seen to
