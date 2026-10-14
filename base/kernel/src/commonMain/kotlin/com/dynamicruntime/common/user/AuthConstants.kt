@@ -42,6 +42,8 @@ object AEP {
     const val selfUsers = "/user/self/users"
     /** Become another of the person's users; issues a fresh session cookie. */
     const val switchUser = "/user/self/switch"
+    /** Become the person's user in a named client (issue #1110); issues a fresh session cookie. */
+    const val switchClient = "/user/self/switchClient"
     /** Choose which of the person's users an address logs in as. */
     const val setDefaultUser = "/user/self/setDefault"
     /**

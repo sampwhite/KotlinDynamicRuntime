@@ -306,8 +306,8 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * The users the caller may switch to (issue #749): the registered, enabled users of the session's identity,
-     * the current one, and the chosen default marked. Empty for a caller no identity backs -- a logged-out
+     * The users the caller may switch to (issue #749): the registered, enabled users of the session's identity in
+     * the clients this node carries (issue #1110), the current one, and the chosen default marked. Empty for a caller no identity backs -- a logged-out
      * caller, a manufactured profile, or a cookie issued before the split -- and for one whose own user no longer
      * acts for it, which may switch nowhere.
      */
@@ -319,13 +319,25 @@ class UserService : ServiceInitializer {
         // so it is offered nowhere: listing the person's other users would only draw doors the gate then refuses.
         if (queryByUserId(cxt, profile.userId)?.actsForSession(profile) != true) return emptyList()
         val identity = queryIdentityById(cxt, identityId) ?: return emptyList()
-        return registeredUsersOf(cxt, identity).map {
+        // Only users in a client this node carries (issue #1110): one in a retired client, or one not enabled here,
+        // would be a door the switch then refuses. Each named as its client is, for the menu.
+        val clients = ClientService.getOrNull(cxt)
+        return registeredUsersOf(cxt, identity).filter { clients?.isPresent(it.client) != false }.map {
             UserChoice(
                 it.userId, it.client, it.persona, it.personaSuffix, it.name,
                 isCurrent = it.userId == profile.userId, isDefault = it.userId == identity.defaultUserId,
+                clientName = clients?.known(it.client)?.name?.ifBlank { null },
             )
         }
     }
+
+    /**
+     * The user of [identity] a switch **to [client]** lands on (issue #1110): among its registered, enabled users in
+     * that client, the one the person chose as their default, else the one they last acted as, else the earliest --
+     * the rule a login lands by. Null when the person has no such user there.
+     */
+    fun userInClient(cxt: KdrCxt, identity: AuthIdentityRow, client: String): AuthUserRow? =
+        pickDefault(identity, registeredUsersOf(cxt, identity).filter { it.client == client })
 
     private fun pickDefault(identity: AuthIdentityRow, users: List<AuthUserRow>): AuthUserRow? {
         if (users.isEmpty()) return null

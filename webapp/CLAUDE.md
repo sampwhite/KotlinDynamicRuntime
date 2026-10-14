@@ -193,8 +193,10 @@ Current UI-config endpoints:
 - `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
   state `{userInfo}`. Fragment file `profile`.
 - The **switcher** (issue #749), login-required (`user` section): `GET /user/self/users` lists the `UserChoice`s
-  the signed-in person may act as (registered, enabled users of their identity; `isCurrent` / `isDefault`
-  marked), `POST /user/self/switch {userId}` reissues the session as one of them (the app then goes home and
+  the signed-in person may act as (registered, enabled users of their identity in clients this node carries, each
+  with its `clientName`, issue #1110; `isCurrent` / `isDefault` marked), `POST /user/self/switch {userId}` reissues
+  the session as one of them (`POST /user/self/switchClient {client}` as the person's default user in a client,
+  issue #1110) (the app then goes home and
   bumps the refresh generation, as a login does -- no page reload, issue #1015; see `afterSessionChange`, which
   every same-person session change uses), `POST /user/self/setDefault {userId}` chooses which user the
   address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
