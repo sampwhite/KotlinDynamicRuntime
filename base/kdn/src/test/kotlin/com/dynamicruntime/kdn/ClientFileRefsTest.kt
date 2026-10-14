@@ -784,8 +784,11 @@ class ClientFileRefsTest : StringSpec({
         admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r1"))[CCT.refId] shouldBe "r1"
         admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r$over"))[CCT.refId] shouldBe "r$over"
         wrefs.forClient(client).refs.size shouldBe FREF.maxRefs
-        // An upload of a new one is still refused, before it stores the file.
-        refused(admin, "fresh", image(otherPng)) shouldContain "as many as a client is served"
+        // An upload of a new one is still refused, before it stores the file -- told how many must go to make room,
+        // since taking one it is served away only brings one it holds into service (issue #1169).
+        val full = refused(admin, "fresh", image(otherPng))
+        full shouldContain "Client '$client' holds ${over - 2} file refs, more than the ${FREF.maxRefs} a client is served."
+        full shouldContain "Remove ${over - 2 - FREF.maxRefs + 1} first."
         // Brought back within it, it has no problem left.
         for (n in 2..5) admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r$n"))[CCT.refId] shouldBe "r$n"
         wrefs.forClient(client).refs.size shouldBe FREF.maxRefs - 1

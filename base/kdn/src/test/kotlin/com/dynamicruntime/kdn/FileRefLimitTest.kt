@@ -155,6 +155,23 @@ class FileRefLimitTest : StringSpec({
         refs.forClient(client).refs.getValue("s1").def.stored shouldBe true
         // Still one problem, now judged as stored configuration's: the client's own data holds refs.
         overLimit(client).single().origin shouldBe GedraConfigOrigin.stored
+
+        // A new one cannot be made room for by removing what it may: one stored ref, of the six that would have to go.
+        val refused = upload(admin, "extra", otherPng)[EP.errorMessage].toOptStr().orEmpty()
+        refused shouldContain "holds ${FREF.maxRefs + 5} file refs, more than the ${FREF.maxRefs} a client is served"
+        refused shouldContain "only 1 of them are held in stored configuration -- fewer than the 6 that would have to go"
+        refused shouldContain "Upload over one of them to replace its file"
+    }
+
+    "a client shipped with more refs than it is served refuses a strict boot, where a mistake in source is caught" {
+        val refused = runCatching {
+            // Its own instance: the boot itself is under test, under the checks' own strict mode, and is expected to
+            // be refused for the client shipped over the limit -- its refs held by source code alone.
+            Startup.mkTestBootCxt("refLimitStrict", "fileRefLimitStrict1169", mapOf(LFENV.dir.name to files.absolutePath), listOf(RefLimitComponent()))
+        }.exceptionOrNull()
+
+        generateSequence(refused) { it.cause }.mapNotNull { it.message }.joinToString(" | ") shouldContain
+            "Client '${RefLimitComponent.over}' has more than ${FREF.maxRefs} file refs"
     }
 
     "a client full of refs it was shipped with is told what it can do, which is not removing one" {

@@ -171,22 +171,35 @@ object ClientFileRefEdit {
 
     /**
      * What a client served as many refs as it may have is told of a new one (issue #1169): what it **can** do. A ref
-     * it was shipped with cannot be removed here -- nothing stored holds it -- so "remove one" is said only of the
-     * refs its stored configuration holds, and a client whose every ref was shipped is told to upload over one, or
-     * to have its source configuration changed.
+     * it was shipped with cannot be removed here -- nothing stored holds it -- so "remove" is said only of the refs its
+     * stored configuration holds, and a client that could not make room that way is told to upload over one, or to
+     * have its source configuration changed. A client holding **more** than it is served is told how many must go:
+     * taking away one it is served only brings one it holds into service.
      */
-    private fun fullMessage(owner: String, shown: Collection<FileRef>): String {
-        val full = "Client '$owner' has ${shown.size} file refs, which is as many as a client is served"
-        val removable = shown.count { it.def.stored }
-        val shipped = shown.size - removable
+    private fun fullMessage(owner: String, registry: FileRefRegistry): String {
+        val held = registry.held
+        val removable = registry.heldStored
+        val shipped = held - removable
+        // How many must go before one more is served.
+        val toGo = held - FREF.maxRefs + 1
+        val full = if (held > FREF.maxRefs) {
+            "Client '$owner' holds $held file refs, more than the ${FREF.maxRefs} a client is served"
+        } else {
+            "Client '$owner' has $held file refs, which is as many as a client is served"
+        }
+        val remove = if (toGo == 1) "one" else "$toGo"
         return when {
-            shipped == 0 -> "$full. Remove one first."
             removable == 0 ->
                 "$full, and all $shipped were shipped with it, so none can be removed here. Upload over one of them to " +
                     "replace its file, or have the client's source configuration changed."
+            removable < toGo ->
+                "$full, and only $removable of them are held in stored configuration -- fewer than the $toGo that would " +
+                    "have to go to make room, since the other $shipped were shipped with it. Upload over one of them to " +
+                    "replace its file, or have the client's source configuration changed."
+            shipped == 0 -> "$full. Remove $remove first."
             else ->
-                "$full. Remove one of the $removable it holds in stored configuration first ($shipped were shipped with " +
-                    "it and cannot be removed here), or upload over one of them to replace its file."
+                "$full. Remove $remove of the $removable it holds in stored configuration first ($shipped were shipped " +
+                    "with it and cannot be removed here), or upload over one of them to replace its file."
         }
     }
 
@@ -208,8 +221,9 @@ object ClientFileRefEdit {
         }
         val holder = holderOf(bound, owner, refId)
         holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, what) }
-        val shown = refs.forClient(target.readsAs).refs
-        if (refId !in shown && shown.size >= FREF.maxRefs) throw KdrException.mkInput(fullMessage(owner, shown.values))
+        val registry = refs.forClient(target.readsAs)
+        val shown = registry.refs
+        if (refId !in shown && shown.size >= FREF.maxRefs) throw KdrException.mkInput(fullMessage(owner, registry))
         return Landing(target, svc, refs, holder, shown)
     }
 

@@ -44,8 +44,16 @@ class FileRef(
     val refId: String get() = def.refId
 }
 
-/** The file refs one client's people are served, by id. */
-class FileRefRegistry(val refs: Map<String, FileRef>) {
+/**
+ * The file refs one client's people are served, by id -- and how many well-formed refs it **holds** ([held]), which
+ * past the limit is more than it is served, with how many of those a stored configuration holds ([heldStored]): what
+ * a client at the limit is told it must take away before it can add one (issue #1169).
+ */
+class FileRefRegistry(
+    val refs: Map<String, FileRef>,
+    val held: Int = refs.size,
+    val heldStored: Int = refs.values.count { it.def.stored },
+) {
     companion object {
         val empty = FileRefRegistry(emptyMap())
     }
@@ -261,6 +269,7 @@ class FileRefService : ServiceInitializer, ContentServer {
         val holding = configs.filter { it.gedraId.client == client && it.fileRefs.isNotEmpty() }
             .sortedWith(compareBy({ config -> if (config.fileRefs.any { it.stored }) 0 else 1 }, { it.gedraId.fullId }))
         var beyond = 0
+        var beyondStored = 0
         for (config in holding) {
             // Asking after a ref's file is the configuration's own check's to switch off, with its other checks.
             val checksFile = config.checkMode(cxt) != BootCheckMode.off
@@ -276,6 +285,7 @@ class FileRefService : ServiceInitializer, ContentServer {
                 // Past what a client is served: counted, and its file not asked after -- the limit is what bounds that.
                 if (kept.size >= FREF.maxRefs) {
                     beyond++
+                    if (def.stored) beyondStored++
                     continue
                 }
                 val ref = FileRef(def, owner)
@@ -315,7 +325,7 @@ class FileRefService : ServiceInitializer, ContentServer {
             )
         }
         reportCopyNamingNoRef(cxt, configs, client, owner, kept, issues)
-        return FileRefRegistry(kept)
+        return FileRefRegistry(kept, held = kept.size + beyond, heldStored = kept.values.count { it.def.stored } + beyondStored)
     }
 
     /**
