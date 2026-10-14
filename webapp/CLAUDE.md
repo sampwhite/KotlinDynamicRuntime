@@ -216,7 +216,8 @@ Current UI-config endpoints:
   is handed the roles of the user **outside** they opened it from (and, when it is the parent's own, its
   organization), asked at every request, so a role taken away
   outside is gone from the sandbox session too -- and none at all once that user no longer stands for the parent. A
-  sandbox's own user is handed its row's roles, without `allClients`. Every switch made **from inside** a sandbox
+  sandbox's own user is handed its row's roles, without `allClients` -- and, on one holding `admin`, without a level
+  the person's user outside no longer holds (issue #1199). Every switch made **from inside** a sandbox
   goes through `POST /auth/self/leaveSandbox {userId}` instead (issue #1197; `switchesFromSandbox`,
   `AuthApi.leaveSandbox`), which is not gated by role: a sandbox user nobody stands behind any more acts with none.
   The shell config says when a sandbox session acts with no roles (`state.sandboxStranded`), and the chip's popover

@@ -7,6 +7,7 @@ import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 
 /**
  * What a user acts with in a sandbox (issue #929, rule 2): **authority flows from the parent to its sandbox, never
@@ -37,11 +38,14 @@ import com.dynamicruntime.common.http.request.ROLE
  * - **`allClients` is never held**: reach across clients comes from outside, through an opening, or not at all.
  * - While `admin` takes effect through an administrator of the parent, it acts in **that administrator's
  *   organization**, as an opened user does -- so one opened before openings were recorded is confined too.
- * - **One holding `admin` acts with nothing else its row holds** but `user` (issue #1199). Nobody makes such a
- *   user to try the client -- the console does not grant `admin` in a sandbox -- so it is one opened before
- *   openings were recorded, whose row was copied with what its person held that day: an `operator` level taken
- *   away outside since would otherwise go on taking effect here, until the person next opened the sandbox and
- *   the opening was recorded. Reading it this way needs no migration and nothing to run.
+ * - **On one holding `admin`, any other level takes effect only while the person's user outside holds it** (issue
+ *   #1199) -- their user in the parent, or the administrator `admin` takes effect through -- as `admin` itself
+ *   does. Such a row is most often one opened before openings were recorded, copied with the levels its person
+ *   held that day, which would otherwise outlive a demotion outside until the next opening recorded it. Not
+ *   always: the console granted `admin` in a sandbox before #1195, and a test's fixture still makes such users.
+ *   So the rule says what takes effect, not where the row came from, and the console grants no level beside
+ *   `admin` in a sandbox. Off-ladder roles other than `allClients` are a deployment's own grants and are left as
+ *   the row holds them.
  *
  * And one holding `admin` whose identity has no enabled user in the parent and no enabled `allClients`
  * administrator acts with nothing: that is how a user opened before openings were recorded reads once its person
@@ -77,9 +81,9 @@ object SandboxAccess {
             "sandboxStanding: this sandbox user acts for somebody outside it who is no longer an enabled user of the " +
                 "parent, nor an enabled allClients administrator",
         ),
-        unrecorded(
-            "sandboxUnrecorded: a sandbox user holding admin with no opening recorded acts with user and admin only; " +
-                "the rest of its row was copied when it was opened",
+        levelNotHeldOutside(
+            "sandboxLevel: in a sandbox, a level beside admin on a user nobody recorded opening takes effect only while " +
+                "the person's user outside holds it",
         ),
     }
 
@@ -127,12 +131,15 @@ object SandboxAccess {
         if (ROLE.admin in row.roles && actor == null && outside.none { it.client == parent }) {
             return nothingStands(row)
         }
+        // Who outside stands behind a level on a row holding admin (issue #1199): the person's users in the parent,
+        // and the administrator admin takes effect through.
+        val holders = outside.filter { it.client == parent } + listOfNotNull(actor)
         val withheld = buildMap {
             if (ROLE.admin in row.roles && actor == null) put(ROLE.admin, Withheld.admin)
             if (ROLE.allClients in row.roles) put(ROLE.allClients, Withheld.allClients)
-            // Opened before openings were recorded (issue #1199): what else its row holds was copied that day.
             if (ROLE.admin in row.roles) {
-                row.roles.filter { it != ROLE.user && it != ROLE.admin && it != ROLE.allClients }.forEach { put(it, Withheld.unrecorded) }
+                row.roles.filter { it in besideAdmin && holders.none { h -> RoleLadder.satisfies(h.roles.toSet(), it) } }
+                    .forEach { put(it, Withheld.levelNotHeldOutside) }
             }
         }
         val acting = row.roles.toSet() - withheld.keys
@@ -150,6 +157,9 @@ object SandboxAccess {
 
     /** The user outside that makes sandbox user [row] an administrator there, or null: [standingOf]'s. */
     fun parentActor(cxt: KdrCxt, row: AuthUserRow): AuthUserRow? = standingOf(cxt, row).parentActor
+
+    /** The ladder's levels other than `user` and `admin`: those a row holding `admin` keeps only while held outside. */
+    private val besideAdmin: Set<String> = RoleLadder.ordered.toSet() - ROLE.user - ROLE.admin
 
     private fun isAllClientsAdmin(row: AuthUserRow): Boolean = ROLE.admin in row.roles && ROLE.allClients in row.roles
 
