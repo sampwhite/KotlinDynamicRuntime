@@ -23,6 +23,13 @@ object AEP {
     const val setPassword = "/auth/user/setPassword"
     const val authUiConfig = "/auth/ui/config"
     const val selfInfo = "/auth/self/info"
+    /**
+     * Switch from inside a sandbox to another of the person's users (issue #1197); a fresh session cookie, as
+     * [switchUser] issues. In the anonymous `auth` section rather than beside [switchUser] in the gated `user` one,
+     * because it is for the session the gate refuses: a sandbox user nobody stands behind any more acts with no
+     * roles at all, and must still be able to go back the way it came.
+     */
+    const val leaveSandbox = "/auth/self/leaveSandbox"
     const val logout = "/logout"
     const val profileUiConfig = "/profile/ui/config"
     const val profileClearPassword = "/profile/self/clearPassword"

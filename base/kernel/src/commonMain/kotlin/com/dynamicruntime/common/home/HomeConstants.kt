@@ -136,6 +136,15 @@ object HFLD {
     const val sandboxOfName = "sandboxOfName"
 
     /**
+     * `state.sandboxStranded`: beside [sandboxOf], true when the caller's sandbox user acts with no roles (issue
+     * #1197), so the shell says access has ended instead of offering doors that will not open; absent otherwise.
+     * Whatever the reason: the user it was opened from is disabled or no longer stands for the parent (lost the
+     * capability that let it in from elsewhere, say), nobody in the parent stands behind a sandbox user holding
+     * `admin`, or the sandbox user was itself disabled.
+     */
+    const val sandboxStranded = "sandboxStranded"
+
+    /**
      * `state.webAssets`: the caller's client's own web assets (issue #1130), a slot (`WAS.favicon`,
      * `WAS.brandMark`) to its image by name and content (`favicon:<hash>`). Only the slots the client has set are
      * in it: an absent slot is the deployment's own image, exactly as before. The frontend fetches each at

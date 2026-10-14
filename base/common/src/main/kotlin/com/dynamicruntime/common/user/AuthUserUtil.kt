@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.util.hashPassword
@@ -104,7 +105,7 @@ fun refreshActingRoles(cxt: KdrCxt) {
     }
     // In a sandbox, the roles and the organization the person's users outside it say (issues #929, #1196,
     // `SandboxAccess`); a disabled or detached user acts with no roles at all.
-    val live = if (row.enabled && !detached) row.toActingProfile(cxt) else row.toUserProfile().copy(roles = emptySet())
+    val live = if (row.actsForSession(profile)) row.toActingProfile(cxt) else row.toUserProfile().copy(roles = emptySet())
     if (live.roles != profile.roles) {
         LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: ${live.roles}." }
     }
@@ -117,3 +118,12 @@ fun refreshActingRoles(cxt: KdrCxt) {
     // arrived through here.
     cxt.bindToUserProfile(live)
 }
+
+/**
+ * Whether [this] row is still the session [profile]'s to act as: enabled, and of the session's identity. A user
+ * that is not acts with no roles at all ([refreshActingRoles]) and goes nowhere from where it is -- the gate refuses
+ * it, and so does leaving a sandbox (issue #1197), which is not gated. A cookie issued before the identity split
+ * carries no identity and is let through, as the gate lets it through; the next login replaces it.
+ */
+fun AuthUserRow.actsForSession(profile: UserProfile): Boolean =
+    enabled && (profile.identityId == null || identityId == profile.identityId)

@@ -272,6 +272,16 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
         currentUserInfo(c)
     }
 
+    // Leaving a sandbox (issue #1197), in this anonymous section because the session it serves may act with no roles.
+    generalEndpoint(AEP.leaveSandbox, "Switches a session in a sandbox to another of the person's users (a fresh session).",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, tags = setOf(ETAG.frontend), inputFields = {
+            field(AFLD.userId, "The user to become: a registered, enabled user of the caller's own identity.", required = true) {
+                type = SCT.integer
+            }
+        }) { c, req ->
+        authHandler(c).leaveSandbox(c, req.getReqLong(AFLD.userId))
+    }
+
     // The switcher (issue #749), under the login-gated `user` section: the gate re-reads the acting row, so a
     // disabled or detached user cannot switch away from itself, and every call acts on the session's identity.
     generalEndpoint(AEP.selfUsers, "Lists the users the signed-in person may act as.",

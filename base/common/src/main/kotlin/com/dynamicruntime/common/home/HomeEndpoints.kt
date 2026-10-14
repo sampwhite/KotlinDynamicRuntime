@@ -151,6 +151,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
             property(
+                HFLD.sandboxStranded,
+                "Beside sandboxOf, true when the caller's sandbox user acts with no roles (issue #1197) -- nobody stands behind it any more, or it was disabled; absent otherwise.",
+            ) { type = SCT.boolean }
+            property(
                 HFLD.webAssets,
                 "The caller's client's own web assets (issue #1130): each slot it has set, to its image by name and " +
                     "content, served at the static root's `/<appId>/web/<name>`. An absent slot is the deployment's own image.",
@@ -204,6 +208,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 sandboxParentOf(c.client)?.let { parent ->
                     put(HFLD.sandboxOf, parent)
                     put(HFLD.sandboxOfName, ClientService.getOrNull(c)?.known(parent)?.name ?: parent)
+                    // Said, so the shell explains a sandbox where nothing opens rather than offering doors (issue #1197):
+                    // a signed-in sandbox user acting with no roles, whatever the reason -- nobody stands behind it
+                    // any more, or it was itself disabled. Read off the profile refreshed above; no second lookup.
+                    val profile = c.userProfile
+                    if (profile.isLoggedIn && profile.isRowBacked && profile.roles.isEmpty()) put(HFLD.sandboxStranded, true)
                 }
                 // The client's own tab icon and brand mark (issue #1130), where it has set them. An edge keeps none.
                 ClientWebAssetService.getOrNull(c)?.let { put(HFLD.webAssets, it.versionedNames(c, c.client)) }

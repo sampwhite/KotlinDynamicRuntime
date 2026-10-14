@@ -85,8 +85,11 @@ class HomeConfig(
     val webAssets: Map<String, String> = emptyMap(),
 )
 
-/** The client whose sandbox the caller is in (issue #931): its id, and the name the marker speaks of. */
-class SandboxOf(val client: String, val name: String)
+/**
+ * The client whose sandbox the caller is in (issue #931): its id, the name the marker speaks of, and whether nobody
+ * stands behind the caller's sandbox user any more ([stranded], issue #1197), so it acts with no roles.
+ */
+class SandboxOf(val client: String, val name: String, val stranded: Boolean = false)
 
 /**
  * The pure [UiConfig] -> [HomeConfig] mapping, separated from the fetch so it is unit-testable (issue #161):
@@ -133,7 +136,9 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         sourceRepoBase = config.state[HFLD.sourceRepoBase] as? String,
         canOpenSandbox = config.features[HFEAT.canOpenSandbox] == true,
         administersClient = config.features[HFEAT.administersClient] == true,
-        sandboxOf = (config.state[HFLD.sandboxOf] as? String)?.let { SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it) },
+        sandboxOf = (config.state[HFLD.sandboxOf] as? String)?.let {
+            SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it, stranded = config.state[HFLD.sandboxStranded] == true)
+        },
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
     )
 }

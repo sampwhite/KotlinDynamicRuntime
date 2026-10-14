@@ -240,6 +240,13 @@ object AuthApi {
         userFrom(Http.sendApi("POST", AEP.switchUser, mapOf(AFLD.userId to userId)))
 
     /**
+     * Leaves the sandbox the caller is in for [userId], another of their users outside every sandbox (issue #1197),
+     * completing as [switchUser] does. Not gated by role, so it works for a sandbox user acting with none.
+     */
+    suspend fun leaveSandbox(userId: Long): UserProfile =
+        userFrom(Http.sendApi("POST", AEP.leaveSandbox, mapOf(AFLD.userId to userId)))
+
+    /**
      * Opens the caller's client's sandbox (issues #929, #931): the backend issues a fresh session as the person's
      * own user there, created on first use -- so, as after [switchUser], the caller then reloads the app.
      */

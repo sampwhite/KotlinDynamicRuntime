@@ -89,6 +89,15 @@ class UserSwitcherTest {
         assertEquals(emptyList(), switchableUsers(emptyList()))
         assertEquals(emptyList(), switchableUsers(listOf(ada)))
         assertEquals(listOf(ada, batch), switchableUsers(listOf(ada, batch)))
+        // One that is not the acting user -- a stranded sandbox session's only way out (issue #1197) -- is offered.
+        assertEquals(listOf(batch), switchableUsers(listOf(batch)))
+    }
+
+    @Test
+    fun aMenuRowSaysWhatTellsItFromTheOthersOrWhoItIsWhenAlone() {
+        assertEquals("[Member 2]", userMenuEntryText(batch, listOf(ada, batch)))
+        // Alone, nothing tells it apart: the row names it in full rather than showing empty brackets.
+        assertEquals(batch.label(), userMenuEntryText(batch, listOf(batch)))
     }
 }
 

@@ -766,6 +766,36 @@ class AuthFormHandler(
     fun switchUser(cxt: KdrCxt, userId: Long): Map<String, Any?> = completeLogin(cxt, ownUser(cxt, userId), byCode = false)
 
     /**
+     * Switches a session that is **in a sandbox** to [userId], another of the person's own users (issue #1197),
+     * completing as [switchUser] does -- which the webapp sends every switch made from inside a sandbox through.
+     *
+     * Not gated by role, unlike [switchUser]: a sandbox user acts with what the user it was opened from holds, and
+     * with nothing once nobody stands behind it any more (`SandboxAccess`) -- a session left in that state could
+     * reach nothing at all, the way back included. What it still needs is the rest of what a switch asks: the
+     * session's own user still acts for it ([actsForSession]: enabled, and its identity's), so a disabled or
+     * detached user goes no further here than at the gate, and the user it lands on is one of the identity's own,
+     * registered and enabled. Where it lands, what it acts with is decided afresh at the next request, as after
+     * any switch.
+     */
+    fun leaveSandbox(cxt: KdrCxt, userId: Long): Map<String, Any?> {
+        // The live profile, as a gated request would have it: this section refreshes nothing on its own, and the
+        // cookie's roles are a snapshot. Nothing below decides on them today; a later check must not by accident.
+        refreshActingRoles(cxt)
+        val profile = cxt.userProfile
+        if (!profile.isRowBacked || !profile.isLoggedIn) {
+            throw KdrException("Sign in to leave a sandbox.", code = EXC.authNeeded)
+        }
+        if (profile.identityId == null) {
+            throw KdrException("This session predates identities; log in again to switch users.", code = EXC.authNeeded)
+        }
+        val current = userService.queryByUserId(cxt, profile.userId)
+        if (current == null || !isSandboxClient(current.client) || !current.actsForSession(profile)) {
+            throw KdrException.mkInput("This session is not in a sandbox it can leave.")
+        }
+        return completeLogin(cxt, ownUser(cxt, userId), byCode = false)
+    }
+
+    /**
      * Opens [named]'s Shadow Sandbox -- the caller's own client when null -- as the caller's own user in it (issue
      * #929, rule 1): found by the caller's identity, persona and suffix, or on first use created there, registered,
      * with the caller's levels. Then a fresh session as that user, the way [switchUser] completes.
