@@ -470,9 +470,18 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null }
         requireAssignableOrg(c, org)
         val row = loadEditableUser(c, userId)
+        // An opened sandbox user's organization is its opener's (issue #1196): set here, it would be overwritten at
+        // the next opening, and would never have been what the user acts in.
+        if (row.openedBy != null && isSandboxClient(row.client)) {
+            throw KdrException.mkInput(
+                "User $userId was opened from outside the sandbox and is in the organization of the user that opened " +
+                    "it; set that user's organization instead.",
+            )
+        }
         val previous = row.org
         row.org = org
         userService(c).updateUser(c, row)
+        userService(c).followOpenerOrg(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId org: $previous -> $org." }
         row.toAdminInfo()
     }

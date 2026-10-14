@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.sql.KdrColumn
@@ -253,12 +254,14 @@ class UserService : ServiceInitializer {
      * the unregistered recovery `provisionUser` performs for an administrator); none, and a registered user is
      * created with [roles]. Returns the user.
      *
-     * [openedBy], for a sandbox user claimed by opening the sandbox, records the user outside it that opened it,
-     * on the found user as on a new one: the user it then acts as (`SandboxAccess`).
+     * [openedFrom], for a sandbox user claimed by opening the sandbox, is the user outside it that opened it,
+     * recorded on the found user as on a new one: the user it then acts as (`SandboxAccess`). Its organization is
+     * written too ([SandboxAccess.orgFrom]): the session reads the opener's live, but who may see and administer
+     * the sandbox user, and whose a row stamped from it is, go by the stored one (issue #1196).
      */
     fun claimUser(
         cxt: KdrCxt, identity: AuthIdentityRow, client: String, persona: String, personaSuffix: String, roles: List<String>,
-        openedBy: Long? = null,
+        openedFrom: AuthUserRow? = null,
     ): AuthUserRow {
         val now = cxt.now()
         val existing = usersOfIdentity(cxt, identity.identityId)
@@ -269,15 +272,37 @@ class UserService : ServiceInitializer {
                 existing.activatedAt = now
             }
             if (!existing.isRegistered) existing.registeredAt = now
-            if (openedBy != null) existing.openedBy = openedBy
+            if (openedFrom != null) {
+                existing.openedBy = openedFrom.userId
+                existing.org = SandboxAccess.orgFrom(openedFrom, client)
+            }
             updateUser(cxt, existing, isEdit = false) // an activation and a registration, not an edit
             return existing
         }
         val userId = provisionUser(
-            cxt, identity.primaryId, client, roles, createdAt = now, persona = persona, personaSuffix = personaSuffix, registered = true,
-        ) { if (openedBy != null) it[AD.openedBy] = openedBy }
+            cxt, identity.primaryId, client, roles, org = openedFrom?.let { SandboxAccess.orgFrom(it, client) }, createdAt = now,
+            persona = persona, personaSuffix = personaSuffix, registered = true,
+        ) { if (openedFrom != null) it[AD.openedBy] = openedFrom.userId }
         return queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '${identity.primaryId}'.", code = EXC.internalError)
+    }
+
+    /**
+     * Brings the stored organization of every sandbox user opened from [outside] into line with [outside]'s, after
+     * an administrator changed it (issue #1196). The session of such a user reads the opener's organization live
+     * anyway; this keeps what goes by the stored one -- who may see and administer the sandbox user, and whose a
+     * row stamped from it is -- from lagging until the next opening. Found among the person's own users, so it
+     * costs one read of a handful of rows.
+     */
+    fun followOpenerOrg(cxt: KdrCxt, outside: AuthUserRow) {
+        if (isSandboxClient(outside.client)) return
+        for (opened in usersOfIdentity(cxt, outside.identityId)) {
+            if (opened.openedBy != outside.userId || !isSandboxClient(opened.client)) continue
+            val org = SandboxAccess.orgFrom(outside, opened.client)
+            if (opened.org == org) continue
+            opened.org = org
+            updateUser(cxt, opened, isEdit = false) // kept in step, not edited
+        }
     }
 
     /**

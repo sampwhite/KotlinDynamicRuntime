@@ -211,7 +211,8 @@ Current UI-config endpoints:
   moves the session into a client's Shadow Sandbox as the person's own user there, created on first use; it is for
   an administrator of the parent (an `allClients` administrator may name any client), and in a sandbox `admin`
   takes effect only for an identity that is an administrator in the parent. A user somebody opened the sandbox as
-  is handed the roles of the user **outside** they opened it from, asked at every request, so a role taken away
+  is handed the roles of the user **outside** they opened it from (and, when it is the parent's own, its
+  organization), asked at every request, so a role taken away
   outside is gone from the sandbox session too -- and none at all once that user no longer stands for the parent. A
   sandbox's own user is handed its row's roles, without `allClients`. The bar offers **Open sandbox** when the
   shell config's `canOpenSandbox` feature says so; in a sandbox (`state.sandboxOf` / `sandboxOfName`) a chip takes

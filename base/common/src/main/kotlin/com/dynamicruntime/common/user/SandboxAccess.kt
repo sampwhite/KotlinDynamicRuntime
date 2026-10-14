@@ -18,7 +18,12 @@ import com.dynamicruntime.common.http.request.ROLE
  *
  * **A user somebody opened the sandbox as acts as the user they opened it from**: exactly that user's roles,
  * levels and capabilities both, whatever the sandbox row was made with. So a role taken away outside is gone inside
- * at the next request, and one given outside is held inside without a second grant. That user must still stand
+ * at the next request, and one given outside is held inside without a second grant. **Its organization too**
+ * (issue #1196, [orgFrom]), so an administrator confined to one in the parent is confined to it in the sandbox --
+ * but only when that user is the parent's own: an organization is a client's, and one of another client names
+ * nothing here. The session reads it live; the sandbox row also stores it, written at each opening and kept in
+ * step when an administrator changes the opener's (`UserService.followOpenerOrg`), since who may see and
+ * administer the sandbox user goes by the stored one. That user must still stand
  * for the parent -- be enabled, and be the parent's or an `allClients` administrator -- or the sandbox user acts
  * with **nothing**, as a disabled account does: the person was disabled or removed in the parent, or what let
  * them in from elsewhere was a capability they no longer hold. Opening again records whoever opens it.
@@ -30,6 +35,8 @@ import com.dynamicruntime.common.http.request.ROLE
  *   administrator edit the parent's configuration (#930): whoever is one is, by construction, trusted in the
  *   parent. Granting the role inside the sandbox does not help, and the console refuses it.
  * - **`allClients` is never held**: reach across clients comes from outside, through an opening, or not at all.
+ * - While `admin` takes effect through an administrator of the parent, it acts in **that administrator's
+ *   organization**, as an opened user does -- so one opened before openings were recorded is confined too.
  *
  * And one holding `admin` whose identity has no enabled user in the parent and no enabled `allClients`
  * administrator acts with nothing: that is how a user opened before openings were recorded reads once its person
@@ -74,6 +81,8 @@ object SandboxAccess {
     class Standing(
         /** The roles it acts with. */
         val roles: Set<String>,
+        /** The primary organization it acts in, which confines an administrator's reach (`ReadScopeRules`); null for none. */
+        val org: String?,
         /** The roles on its row that do not take effect, each with the rule that withholds it. */
         val withheld: Map<String, Withheld> = emptyMap(),
         /** The user outside it acts as: the one it was opened from, while that one stands; null for a sandbox's own user. */
@@ -91,7 +100,7 @@ object SandboxAccess {
 
     /** How [row] stands; outside a sandbox, simply as its own roles say. */
     fun standingOf(cxt: KdrCxt, row: AuthUserRow): Standing {
-        val parent = sandboxParentOf(row.client) ?: return Standing(row.roles.toSet())
+        val parent = sandboxParentOf(row.client) ?: return Standing(row.roles.toSet(), row.org)
         // The identity's enabled users outside every sandbox, in the order they were made.
         val outside = UserService.get(cxt).enabledUsersOf(cxt, row.identityId)
             .filter { !isSandboxClient(it.client) }.sortedBy { it.userId }
@@ -99,7 +108,10 @@ object SandboxAccess {
         if (openedBy != null) {
             val opener = outside.firstOrNull { it.userId == openedBy && (it.client == parent || isAllClientsAdmin(it)) }
                 ?: return nothingStands(row)
-            return Standing(opener.roles.toSet(), actsAs = opener, parentActor = opener.takeIf { ROLE.admin in it.roles })
+            return Standing(
+                opener.roles.toSet(), orgFrom(opener, row.client),
+                actsAs = opener, parentActor = opener.takeIf { ROLE.admin in it.roles },
+            )
         }
         val admins = outside.filter { ROLE.admin in it.roles }
         val actor = admins.firstOrNull { it.client == parent } ?: admins.firstOrNull { isAllClientsAdmin(it) }
@@ -110,23 +122,35 @@ object SandboxAccess {
             if (ROLE.admin in row.roles && actor == null) put(ROLE.admin, Withheld.admin)
             if (ROLE.allClients in row.roles) put(ROLE.allClients, Withheld.allClients)
         }
-        return Standing(row.roles.toSet() - withheld.keys, withheld, parentActor = actor)
+        val acting = row.roles.toSet() - withheld.keys
+        val org = if (ROLE.admin in acting && actor?.client == parent) actor.org else row.org
+        return Standing(acting, org, withheld, parentActor = actor)
     }
 
-    /** The roles [row] acts with: [standingOf]'s. */
-    fun actingRoles(cxt: KdrCxt, row: AuthUserRow): Set<String> = standingOf(cxt, row).roles
+    /**
+     * The organization a sandbox user of [sandboxClient] opened from [opener] acts in: [opener]'s, when it is a user
+     * of the sandbox's parent; none otherwise, since an organization is a client's and one of another client names
+     * nothing in this one.
+     */
+    fun orgFrom(opener: AuthUserRow, sandboxClient: String): String? =
+        opener.org.takeIf { opener.client == sandboxParentOf(sandboxClient) }
 
     /** The user outside that makes sandbox user [row] an administrator there, or null: [standingOf]'s. */
     fun parentActor(cxt: KdrCxt, row: AuthUserRow): AuthUserRow? = standingOf(cxt, row).parentActor
 
     private fun isAllClientsAdmin(row: AuthUserRow): Boolean = ROLE.admin in row.roles && ROLE.allClients in row.roles
 
-    private fun nothingStands(row: AuthUserRow): Standing = Standing(emptySet(), row.roles.associateWith { Withheld.noStanding })
+    private fun nothingStands(row: AuthUserRow): Standing =
+        Standing(emptySet(), row.org, row.roles.associateWith { Withheld.noStanding })
 }
 
 /**
- * The profile [this] row acts as: [AuthUserRow.toUserProfile] with the roles [SandboxAccess] lets take effect. What
- * every place that builds a session's profile from a row uses, so the cookie, the gate, and the user info agree.
+ * The profile [this] row acts as: [AuthUserRow.toUserProfile] with the roles and the organization [SandboxAccess]
+ * says it acts with. What every place that builds a session's profile from a row uses, so the gate, a login's
+ * cookie, and the user info agree on the roles -- the cookie carries no organization, which only a gated request,
+ * having refreshed the profile, binds.
  */
-fun AuthUserRow.toActingProfile(cxt: KdrCxt): UserProfile =
-    toUserProfile().copy(roles = SandboxAccess.actingRoles(cxt, this))
+fun AuthUserRow.toActingProfile(cxt: KdrCxt): UserProfile {
+    val standing = SandboxAccess.standingOf(cxt, this)
+    return toUserProfile().copy(roles = standing.roles, org = standing.org)
+}
