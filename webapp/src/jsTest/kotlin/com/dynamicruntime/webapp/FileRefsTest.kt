@@ -397,7 +397,17 @@ class FileRefsTest {
         assertNull(fileRefCountText(some(180), null))
 
         assertNull(fileRefAtLimitText(some(199), takes))
-        assertEquals("This client has 200 files, which is as many as a client is served. Remove one to add another.", fileRefAtLimitText(some(200), takes))
+        assertEquals(
+            "This client has 200 files, which is as many as a client is served. Remove one to add another, or replace one of them.",
+            fileRefAtLimitText(some(200), takes),
+        )
+        // A client whose every file was shipped with it cannot remove one here (issue #1169): it is told what it can do.
+        val shipped = List(200) { ref("s$it", source = FREF.sourceLocal, stored = false) }
+        assertEquals(
+            "This client has 200 files, which is as many as a client is served. Every one was shipped with it, so none " +
+                "can be removed here: replace one of them, or have the client's source configuration changed.",
+            fileRefAtLimitText(shipped, takes),
+        )
         // A backend that names no limit holds the page to none.
         val unlimited = FileRefTakes(0, emptyList(), emptyList(), 0, emptyList())
         assertNull(fileRefAtLimitText(some(500), unlimited))

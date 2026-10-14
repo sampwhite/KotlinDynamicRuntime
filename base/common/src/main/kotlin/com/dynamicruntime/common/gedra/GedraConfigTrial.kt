@@ -96,7 +96,7 @@ object GedraConfigTrial {
     private fun GedraConfigIssue.asOwners(client: String, sandbox: String): GedraConfigIssue {
         val asOwners = storedConfigId?.let { GedraId.parseOrNull(it) }?.takeIf { it.client == sandbox }
             ?.let { GedraId.of(it.kind, client, it.baseId, it.suffix).fullId }
-        return GedraConfigIssue(message, degradedTo, client, asOwners ?: storedConfigId, elementKind, elementId)
+        return GedraConfigIssue(message, degradedTo, client, asOwners ?: storedConfigId, elementKind, elementId, judgedAs)
     }
 
     /**

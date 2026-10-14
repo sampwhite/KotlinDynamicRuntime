@@ -170,6 +170,27 @@ object ClientFileRefEdit {
     }
 
     /**
+     * What a client served as many refs as it may have is told of a new one (issue #1169): what it **can** do. A ref
+     * it was shipped with cannot be removed here -- nothing stored holds it -- so "remove one" is said only of the
+     * refs its stored configuration holds, and a client whose every ref was shipped is told to upload over one, or
+     * to have its source configuration changed.
+     */
+    private fun fullMessage(owner: String, shown: Collection<FileRef>): String {
+        val full = "Client '$owner' has ${shown.size} file refs, which is as many as a client is served"
+        val removable = shown.count { it.def.stored }
+        val shipped = shown.size - removable
+        return when {
+            shipped == 0 -> "$full. Remove one first."
+            removable == 0 ->
+                "$full, and all $shipped were shipped with it, so none can be removed here. Upload over one of them to " +
+                    "replace its file, or have the client's source configuration changed."
+            else ->
+                "$full. Remove one of the $removable it holds in stored configuration first ($shipped were shipped with " +
+                    "it and cannot be removed here), or upload over one of them to replace its file."
+        }
+    }
+
+    /**
      * Where the ref [refId] of [target]'s client is to be written, having refused what can be refused before
      * anything is: a client that takes no stored configuration here; a configuration holding somebody's unpublished
      * changes ([what] names the change, for that refusal); and a client already served as many refs as it may have.
@@ -188,11 +209,7 @@ object ClientFileRefEdit {
         val holder = holderOf(bound, owner, refId)
         holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, what) }
         val shown = refs.forClient(target.readsAs).refs
-        if (refId !in shown && shown.size >= FREF.maxRefs) {
-            throw KdrException.mkInput(
-                "Client '$owner' has ${FREF.maxRefs} file refs, which is as many as a client is served. Remove one first.",
-            )
-        }
+        if (refId !in shown && shown.size >= FREF.maxRefs) throw KdrException.mkInput(fullMessage(owner, shown.values))
         return Landing(target, svc, refs, holder, shown)
     }
 
