@@ -191,8 +191,8 @@ later schema rejects" test.
   `ADF.opened` and -- when the caller may know of that user -- which user it was opened from (`ADF.openedBy`,
   `ADF.actsAsClient`); setting the roles or org of an opened user is refused (issue #1198). To change what it may do, change the **parent** user's roles or organization.
   A `TestUser` created straight into the sandbox is the sandbox's own: it acts with its row's roles, except that
-  `admin` takes effect only while its identity has an enabled admin user in the parent (or an
-  `admin`+`allClients` one) and `allClients` never does -- and one at `level = ROLE.admin` whose address has no
+  `admin` takes effect only while its identity has an enabled, registered admin user in the parent (or an
+  `admin`+`allClients` one; a user provisioned and not yet claimed counts for nothing, issue #1200) and `allClients` never does -- and one at `level = ROLE.admin` whose address has no
   user in the parent acts with **no roles at all**, by design. On one holding `admin`, another level (`operator`)
   takes effect only while the person's user outside holds it, as `admin` does (issue #1199); so a test wanting a
   sandbox operator gives that level to the person's user in the parent, or makes the sandbox user without `admin`.

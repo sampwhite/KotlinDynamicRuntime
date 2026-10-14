@@ -13,7 +13,8 @@ import com.dynamicruntime.common.http.request.RoleLadder
  * What a user acts with in a sandbox (issue #929, rule 2): **authority flows from the parent to its sandbox, never
  * back.** A sandbox user is a row of its own, and the roles on it are not all it takes to say what it may do: the
  * rest is asked of the person's users **outside** the sandbox, at every request, through the same user cache the
- * gate's role refresh reads. Nothing is kept in step, so nothing can fall out of step. There are two kinds of
+ * gate's role refresh reads -- their enabled, registered ones: a user nobody has claimed yet is not the person's to
+ * act as (issue #1200). Nothing is kept in step, so nothing can fall out of step. There are two kinds of
  * sandbox user, told apart by [AuthUserRow.openedBy] -- what opening the sandbox records -- and never by the roles
  * on the row, which an administrator can edit.
  *
@@ -114,9 +115,12 @@ object SandboxAccess {
     /** How [row] stands; outside a sandbox, simply as its own roles say. */
     fun standingOf(cxt: KdrCxt, row: AuthUserRow): Standing {
         val parent = sandboxParentOf(row.client) ?: return Standing(row.roles.toSet(), row.org)
-        // The identity's enabled users outside every sandbox, in the order they were made.
+        // The identity's enabled users outside every sandbox, in the order they were made -- registered ones only
+        // (issue #1200): a user an administrator provisioned that the person has not claimed yet, or recovered
+        // and not reclaimed, is not theirs to act as, so it stands behind nothing here either, as the switcher
+        // and the login landing pass it over.
         val outside = UserService.get(cxt).enabledUsersOf(cxt, row.identityId)
-            .filter { !isSandboxClient(it.client) }.sortedBy { it.userId }
+            .filter { !isSandboxClient(it.client) && it.isRegistered }.sortedBy { it.userId }
         val openedBy = row.openedBy
         if (openedBy != null) {
             val opener = outside.firstOrNull { it.userId == openedBy && (it.client == parent || isAllClientsAdmin(it)) }
