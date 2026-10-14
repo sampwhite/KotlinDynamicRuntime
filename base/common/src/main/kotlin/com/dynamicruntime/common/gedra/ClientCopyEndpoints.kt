@@ -41,15 +41,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         property(CPY.stored, "Whether a stored value still sets the key -- false after a reset that left the source or " +
             "shipped value.", required = true) { type = SCT.boolean }
         property(CPY.buildId, "The build id the file's content for this client is now served under.")
-        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
-            option(EDM.live, "Live")
-            option(EDM.draft, "Draft")
-        }
-        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the " +
-            "change itself was refused if it added one.", required = true) {
-            type = SCT.array
-            items { ref(CLD.configIssueTypeQualified) }
-        }
+        saveOutcomeFields()
     }
 
     type(CPY.changeTypeName) {
@@ -79,15 +71,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
             items { ref(CPY.appliedTypeName) }
         }
         property(CPY.buildId, "The build id the file's content for this client is now served under.")
-        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
-            option(EDM.live, "Live")
-            option(EDM.draft, "Draft")
-        }
-        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the " +
-            "save itself was refused if it added one.", required = true) {
-            type = SCT.array
-            items { ref(CLD.configIssueTypeQualified) }
-        }
+        saveOutcomeFields()
     }
 
     listEndpoint(

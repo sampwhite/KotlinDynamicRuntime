@@ -246,14 +246,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(CLD.client, "The client.", required = true)
         property(COV.configName, "The stored configuration the change landed in.", required = true)
         property(CLD.definition, "The client's stored definition after the edit.", required = true) { ref(CLD.infoTypeQualified) }
-        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
-            option(EDM.live, "Live")
-            option(EDM.draft, "Draft")
-        }
-        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing.", required = true) {
-            type = SCT.array
-            items { ref(CLD.configIssueTypeQualified) }
-        }
+        saveOutcomeFields()
     }
 
     generalEndpoint(
@@ -411,6 +404,22 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
         // What its plan allows, and how much of it the client holds (issue #1109); a client on none has no row.
         PlanLimits.usageOf(cxt, clientId, forms, users.total)?.let { put(CLD.planUsage, it.toInfo()) }
+    }
+}
+
+/**
+ * How an editor's save took effect, and the problems the client has after it: the tail of every save result -- the copy,
+ * menu, and definition editors' (issues #918, #930, #1026, #1094) -- spelled once.
+ */
+internal fun SchTypeBuilder.saveOutcomeFields() {
+    property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
+        option(EDM.live, "Live")
+        option(EDM.draft, "Draft")
+    }
+    property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the save itself " +
+        "was refused if it added one.", required = true) {
+        type = SCT.array
+        items { ref(CLD.configIssueTypeQualified) }
     }
 }
 
