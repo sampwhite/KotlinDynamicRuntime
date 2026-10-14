@@ -9,6 +9,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.filestore.FileMeta
+import com.dynamicruntime.common.filestore.fileMetaEndpoint
 import com.dynamicruntime.common.gedra.overseenClient
 import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.http.request.ContentData
@@ -129,14 +130,40 @@ fun clientWebSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, WAS.namespace) {
         },
     ) { c, request ->
         val assets = ClientWebAssetService.get(c)
-        val client = assets.knownClient(c, overseenClient(c, request[WAS.client].toOptStr()))
-        val def = ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty())
-        val file = assets.file(c, client, def.slot)
-            ?: throw KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
+        val named = namedSlot(c, assets, request)
+        val file = assets.file(c, named.client, named.def.slot) ?: throw named.empty()
         c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, request[WAS.hash].toOptStr()) }
         file.toContentData(inLine = false)
     }
+
+    fileMetaEndpoint(
+        UADEP.clientWebDownloadMeta,
+        "What the image in one slot of a client's web assets is, without the image (issue #1131): its type, size " +
+            "and hash, the name it was uploaded under, who uploaded it and when. The download's inputs and the same " +
+            "404s: an empty slot, or a client the node does not know. Read from the store as it is now, not from " +
+            "what this node last read of it.",
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(WAS.client)
+            field(WAS.slot, "The slot whose image to describe.", required = true) { slotOptions() }
+        },
+    ) { c, request ->
+        val assets = ClientWebAssetService.get(c)
+        val named = namedSlot(c, assets, request)
+        assets.meta(c, named.client, named.def.slot) ?: throw named.empty()
+    }
 }
+
+/** The slot a download or its meta read names, of the client the request names -- one the node knows. */
+private class NamedSlot(val client: String, val def: WebSlotDef) {
+    /** The 404 for an empty slot: one answer from the download and its meta read. */
+    fun empty(): KdrException = KdrException("Client '$client' has no ${def.label.lowercase()} of its own.", code = EXC.notFound)
+}
+
+private fun namedSlot(cxt: KdrCxt, assets: ClientWebAssetService, request: Map<String, Any?>): NamedSlot = NamedSlot(
+    assets.knownClient(cxt, overseenClient(cxt, request[WAS.client].toOptStr())),
+    ClientWebAssetService.slotDef(request[WAS.slot].toOptStr().orEmpty()),
+)
 
 /** The slots as a field's choices, each by the name a person calls it. */
 private fun SchTypeBuilder.slotOptions() {

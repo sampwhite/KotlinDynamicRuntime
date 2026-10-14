@@ -301,6 +301,7 @@ class ClientFileRefsTest : StringSpec({
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFiles, args = mapOf(FREF.client to ours))
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFilesRemove, mapOf(FREF.client to ours, CCT.refId to "logo"))
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFilesDownload, args = mapOf(FREF.client to ours, CCT.refId to "logo"))
+        theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFilesDownloadMeta, args = mapOf(FREF.client to ours, CCT.refId to "logo"))
         // Naming our bytes by their hash in their own configuration finds no such file: it is looked for under them.
         val typed = theirAdmin.expectError(
             EXC.badInput, CFEP.bundlePatch,
@@ -324,6 +325,14 @@ class ClientFileRefsTest : StringSpec({
         refused(full, "logo", image(png), EXC.notFound, client = nobody) shouldContain "no client"
         full.expectError(EXC.notFound, UADEP.clientFiles, args = mapOf(FREF.client to nobody))
         full.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(FREF.client to ours, CCT.refId to "banner"))
+        // What the file is, without it (issue #1131): by the download's inputs, the record the listing shows, and
+        // the same 404 for a ref that is not there.
+        val meta = full.getItem(UADEP.clientFilesDownloadMeta, mapOf(FREF.client to ours, CCT.refId to "logo"))
+        meta shouldBe listed(full, ours).getValue("logo")[FREF.file]
+        meta[FMETA.hash] shouldBe png.sha256Hex()
+        full.expectError(EXC.notFound, UADEP.clientFilesDownloadMeta, args = mapOf(FREF.client to ours, CCT.refId to "banner"))[EP.errorMessage] shouldBe
+            full.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(FREF.client to ours, CCT.refId to "banner"))[EP.errorMessage]
+        full.expectError(EXC.notFound, UADEP.clientFilesDownloadMeta, args = mapOf(FREF.client to nobody, CCT.refId to "logo"))
         // Somebody who administers nothing reaches none of it.
         TestUser.create(cxt, "member@$ours.test", userClient = ours).expectError(EXC.notAuthorized, UADEP.clientFiles)
     }
@@ -558,6 +567,11 @@ class ClientFileRefsTest : StringSpec({
         static(admin, "logo").rptStatusCode shouldBe EXC.notFound
         // A listing goes on what the store last said, for a while -- an object is not expected to go -- and then asks.
         listed(admin).getValue("logo")[FREF.missing] shouldBe false
+        // The download and the meta read beside it ask the store now (issue #1131): one answer from the two. And
+        // what the meta read was told is what this node now remembers, so the listing says so too.
+        admin.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(CCT.refId to "logo"))
+        admin.expectError(EXC.notFound, UADEP.clientFilesDownloadMeta, args = mapOf(CCT.refId to "logo"))
+        listed(admin).getValue("logo")[FREF.missing] shouldBe true
         try {
             refs.nanoTime = { System.nanoTime() + (FileRefService.askedMemoMs + 1) * 1_000_000 }
             val shown = listed(admin).getValue("logo")
@@ -571,6 +585,32 @@ class ClientFileRefsTest : StringSpec({
         files.meta(cxt, FileRefService.bucket, key).shouldNotBeNull()
         static(admin, "logo").rptResponseBytes!!.toList() shouldBe png.toList()
         listed(admin).getValue("logo")[FREF.missing] shouldBe false
+    }
+
+    "an object at a ref's key that is not what the ref names is no file, to the meta read as to the download" {
+        val client = "refforeign"
+        defineClient(client)
+        val admin = adminOf(client)
+        uploaded(admin, "logo", image(png))
+        uploaded(admin, "mark", image(svg, "image/svg+xml"))
+        val writer = writerOf(client)
+        // Written past the upload, straight at the keys: other bytes under the logo's hash, and the mark's own bytes
+        // recorded as a type no ref may be.
+        files.put(writer, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), ContentData(otherPng, "image/png"))
+        files.put(writer, FileRefService.bucket, FileRefService.keyOf(client, svg.sha256Hex()), ContentData(svg, "text/plain"))
+
+        for (refId in listOf("logo", "mark")) {
+            admin.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(CCT.refId to refId))
+            admin.expectError(EXC.notFound, UADEP.clientFilesDownloadMeta, args = mapOf(CCT.refId to refId))
+        }
+        // Nor does the listing describe a file it would not serve, once it asks the store again rather than going
+        // on what the store said at the upload.
+        try {
+            refs.nanoTime = { System.nanoTime() + (FileRefService.askedMemoMs + 1) * 1_000_000 }
+            for (refId in listOf("logo", "mark")) listed(admin).getValue(refId)[FREF.missing] shouldBe true
+        } finally {
+            refs.nanoTime = System::nanoTime
+        }
     }
 
     // What a bulk import writes per client (`writeConfigs`, judged together), called as the import calls it: on the

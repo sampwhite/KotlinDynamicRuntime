@@ -208,6 +208,32 @@ files.list(cxt, "client-files", "clients/acme/", limit = 100)
 files.delete(cxt, "client-files", "clients/acme/logo")
 ```
 
+**Beside a download, offer its meta-only read** (issue #1131): `fileMetaEndpoint`, from
+`com.dynamicruntime.common.filestore`, at the download's path with `/meta` after it, with the same inputs and in the
+same section -- who may read what a file is, is who may download it. It answers the file's `FileMeta` under
+`item` (a GET, `EndpointKind.item`), turns a handler's null into a 404, and declares the `FileMeta` type in the
+module itself, so the answer is never described by nothing (a module may declare it as well; it is one type).
+There is deliberately no endpoint reading metadata by bucket and key: the store has no access rules, so the
+handler composes the key from what it has checked, as the download's does. **Answer what the download would
+find**: read the record now, and refuse it where the download would refuse the file, so the two never disagree
+about whether there is one.
+
+```kotlin
+fileDownloadEndpoint("/file/download", "Download a file by id.",
+    inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
+    FileStoreService.get(c).get(c, "client-files", "clients/acme/${request["id"]}")?.toContentData()
+        ?: throw KdrException("No such file.", code = EXC.notFound)
+}
+
+fileMetaEndpoint("/file/download/meta", "What a file is, without the file.",
+    inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
+    FileStoreService.get(c).meta(c, "client-files", "clients/acme/${request["id"]}")  // null: a 404
+}
+```
+
+A handler that can say *why* there is no file throws its own 404 instead, as the download beside it does. Both
+client surfaces have one: `UADEP.clientWebDownloadMeta` and `UADEP.clientFilesDownloadMeta`.
+
 **The worked example** is a client's web assets (`webasset/ClientWebEndpoints.kt`, issue #1130): an upload
 that checks the file is what it says it is before storing it (`WebAssetCheck` -- an upload's content type is the
 uploader's claim), a listing that answers the store's metadata and no content, and a download that sets its own

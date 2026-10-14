@@ -267,6 +267,10 @@ class LocalFileRefsTest : StringSpec({
         val download = admin.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(CCT.refId to "mark"))
         download.rptStatusCode shouldBe EXC.ok
         download.rptResponseBytes!!.toList() shouldBe svg.toList()
+        // What it is, without it (issue #1131): for a local file, what the disk says of it now.
+        val markMeta = admin.getItem(UADEP.clientFilesDownloadMeta, mapOf(CCT.refId to "mark"))
+        markMeta[FMETA.hash] shouldBe svg.sha256Hex()
+        markMeta[FMETA.size] shouldBe svg.size.toLong()
 
         // Nothing was copied anywhere: a client that only ships its pictures has nothing in the file store.
         FileStoreService.get(cxt).list(cxt, FileRefService.bucket, "clients/${LocalFileRefComponent.built}/").shouldBeEmpty()
@@ -309,6 +313,7 @@ class LocalFileRefsTest : StringSpec({
         gone[FREF.name].shouldBeNull()
         gone[CCT.path] shouldBe "fickle.png"
         admin.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(CCT.refId to "fickle"))
+        admin.expectError(EXC.notFound, UADEP.clientFilesDownloadMeta, args = mapOf(CCT.refId to "fickle"))
 
         // Put back, it is served again.
         file.writeBytes(png)

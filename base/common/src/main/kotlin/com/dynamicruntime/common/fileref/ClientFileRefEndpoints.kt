@@ -10,6 +10,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.filestore.FileMeta
+import com.dynamicruntime.common.filestore.fileMetaEndpoint
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.configOwnerOf
@@ -293,16 +294,43 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
-        val client = knownClient(c, request)
-        val refId = request[CCT.refId].toOptStr().orEmpty()
-        val file = refs.forClient(refs.shownAs(c, client)).refs[refId]?.let { refs.read(c, it) }
-            ?: throw KdrException("Client '$client' has no file ref '$refId' whose file is there.", code = EXC.notFound)
+        val shown = shownRef(c, refs, request)
+        val file = shown.ref?.let { refs.read(c, it) } ?: throw shown.noFile()
+        val refId = shown.refId
         c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, request[CCT.hash].toOptStr()) }
         // Offered under the ref's own id and its kind's extension, never the name it was uploaded under: that name
         // is the first uploader's, of whatever ref first held these bytes, and its extension can say anything.
         val extension = WebAssetCheck.declaredKind(file.meta.mimeType)?.extension
         ContentData(file.bytes, file.meta.mimeType, saveAsFilename = listOfNotNull(refId, extension).joinToString("."), inLine = false)
     }
+
+    fileMetaEndpoint(
+        UADEP.clientFilesDownloadMeta,
+        "What the file of one of a client's file refs is, without the file (issue #1131): the record the listing " +
+            "shows of it -- the file store's, or for a local file what the disk says of it now. The download's inputs " +
+            "and the same 404s: no such ref, or its file is missing.",
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(FREF.client)
+            field(CCT.refId, "The ref whose file to describe.", required = true)
+        },
+    ) { c, request ->
+        val refs = FileRefService.get(c)
+        val shown = shownRef(c, refs, request)
+        shown.ref?.let { refs.currentMetaOf(c, it) } ?: throw shown.noFile()
+    }
+}
+
+/** The ref a download or its meta read names: of the client the request names, as the listing shows it ([listedRefs]). */
+private class ShownRef(val client: String, val refId: String, val ref: FileRef?) {
+    /** The 404 for a ref that is not there, or whose file is not: one answer from the download and its meta read. */
+    fun noFile(): KdrException = KdrException("Client '$client' has no file ref '$refId' whose file is there.", code = EXC.notFound)
+}
+
+private fun shownRef(cxt: KdrCxt, refs: FileRefService, request: Map<String, Any?>): ShownRef {
+    val client = knownClient(cxt, request)
+    val refId = request[CCT.refId].toOptStr().orEmpty()
+    return ShownRef(client, refId, refs.forClient(refs.shownAs(cxt, client)).refs[refId])
 }
 
 /**
