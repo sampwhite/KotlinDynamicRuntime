@@ -271,8 +271,10 @@ Notes:
   - **A template's `clientLocal` ref is each client's own.** A client built on the template reads its own
     directory, and the template reads the template's: give each one the file, or the ref is a problem for the
     one that lacks it (a refused boot in development for a client defined in source).
-  - A client's administrator names a file with `POST /clientAdmin/client/files/local`, and
-    `GET /clientAdmin/client/files/roots` says which roots are open; what is *in* a root is never listed.
+  - A client's administrator names a file from the **Files** section of the client's page (issue #1176), which
+    offers it under the upload once a root is open -- a root from the list and a typed path. Behind it are
+    `POST /clientAdmin/client/files/local` and `GET /clientAdmin/client/files/roots`, which says which roots are
+    open; what is *in* a root is never listed.
   - A name in the variable that is malformed, or given twice, refuses the boot. A well-formed name that matches
     no root -- a typo, or a root you have not made yet -- opens nothing, and is said on the startup line.
 - **Roll it out everywhere first.** A node still on the release before this one does not read a `local` ref: it

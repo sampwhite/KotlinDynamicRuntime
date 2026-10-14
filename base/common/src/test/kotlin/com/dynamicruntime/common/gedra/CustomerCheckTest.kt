@@ -32,13 +32,14 @@ class CustomerCheckTest : StringSpec({
         origin: GedraConfigOrigin = GedraConfigOrigin.source,
         defineIt: Boolean = true,
         configName: String = "${client}Client",
+        retired: Boolean = false,
     ): GedraConfig = gedraConfig(devCxt, configName, clientNamespace(client), client, origin) {
         customers.forEach { defineCustomer(it) }
         if (defineIt) {
             defineClient(
                 ClientDef(
                     clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.customer,
-                    enabledEnvironments = setOf(ENV.unit, ENV.local), customerId = customerId,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), customerId = customerId, retired = retired,
                 ),
             )
         }
@@ -123,6 +124,12 @@ class CustomerCheckTest : StringSpec({
             devCxt,
             collectorOf(config("acme", customers = listOf(customer("acme"), customer("beta"))), config("acme_moved", "beta")),
         ).issues.shouldBeEmpty()
+    }
+
+    // Issue #1111: the root's administrators act for the customer, so it is one they can sign in to.
+    "a customer's root is not a retired client" {
+        refusal(config("acme", "acme", listOf(customer("acme", root = "acme")), retired = true))
+            .shouldContain("names the root client 'acme', which is retired")
     }
 
     "a root client reloaded away from its customer is refused, whoever declared the customer" {

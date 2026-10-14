@@ -23,6 +23,7 @@ import com.dynamicruntime.common.endpoint.EndpointKind
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientSyncService
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -555,6 +556,7 @@ class RequestService : ServiceInitializer {
                 // waiting; a no-op on a node with no config surface (an edge).
                 if (endpoint == null || endpoint.needsClientConfig) {
                     ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
+                    refuseSessionOfAbsentClient(cxt)
                     // A sync may have reloaded and published a new schema store. getGlobalSchema caches per context, so
                     // drop the cached one and re-resolve -- to serve the fresh configuration in this same request,
                     // and to find an endpoint the reload just added.
@@ -573,6 +575,7 @@ class RequestService : ServiceInitializer {
                 // covered rather than per endpoint, since a content request carries no endpoint metadata to opt
                 // in with; still throttled and in memory unless a peer's change is waiting.
                 ClientSyncService.getOrNull(cxt)?.checkSync(cxt)
+                refuseSessionOfAbsentClient(cxt)
                 for (server in contentServers) {
                     if (server.serve(cxt, handler)) {
                         break
@@ -815,12 +818,17 @@ class RequestService : ServiceInitializer {
      * Restores the acting [KdrCxt.userProfile] from the session auth cookie: decrypt it (via the instance key),
      * and if it is valid and unexpired, bind the user. Silently leaves the (system) profile in place otherwise
      * -- an absent/expired/forged cookie simply means "not logged in". Header-token auth is a follow-up.
+     *
+     * So does a session whose client this node does not carry (issue #1111): a client retired since the session
+     * began, or not enabled here. Everything its user would reach is scoped by that client, so the session is
+     * honored only where the client is. A node carrying no clients (an edge) asks nothing.
      */
     fun extractSessionAuth(cxt: KdrCxt, handler: RequestHandler) {
         val cookie = handler.getRequestCookies()[AUTHC.authCookie] ?: return
         val node = NodeService.get(cxt)
         val decoded = UserAuthCookie.decode(node, cookie) ?: return
         if (cxt.now().toEpochMilliseconds() > decoded.expireEpochMs) return
+        if (ClientService.getOrNull(cxt)?.isPresent(decoded.client) == false) return
         cxt.bindToUserProfile(
             UserProfile(
                 authId = decoded.userId.toString(), userId = decoded.userId,
@@ -828,6 +836,19 @@ class RequestService : ServiceInitializer {
                 identityId = decoded.identityId, persona = decoded.persona,
             ),
         )
+    }
+
+    /**
+     * Refuses the request (401) when the session restored for it belongs to a client a sync has just taken away
+     * (issue #1111) -- retired on another node, which this node learned of only after [extractSessionAuth] honored
+     * the session. Asked after each sync, so the request that brings the retirement here is refused like every one
+     * after it; traffic that never syncs (auth, health) touches no client configuration to be refused.
+     */
+    private fun refuseSessionOfAbsentClient(cxt: KdrCxt) {
+        val profile = cxt.userProfile
+        if (!profile.isLoggedIn || !profile.isRowBacked) return
+        if (ClientService.getOrNull(cxt)?.isPresent(profile.client) != false) return
+        throw KdrException("The session's client '${profile.client}' is no longer available here.", code = EXC.authNeeded)
     }
 
     @Suppress("UNUSED_PARAMETER")

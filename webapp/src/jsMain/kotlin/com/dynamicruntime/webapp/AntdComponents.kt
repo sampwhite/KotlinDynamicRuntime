@@ -63,6 +63,8 @@ external interface InputProps : PropsWithChildren {
     var disabled: Boolean?
     /** Shows a clear (×) button once the input has a value. */
     var allowClear: Boolean?
+    /** The most characters the browser lets be typed: the HTML `maxlength`, which antd forwards. */
+    var maxLength: Int?
     /** antd passes a change event; read `event.target.value`. */
     var onChange: ((event: dynamic) -> Unit)?
     /** Fires when Enter is pressed inside the input. */

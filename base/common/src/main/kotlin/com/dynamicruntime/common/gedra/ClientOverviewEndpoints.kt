@@ -389,7 +389,9 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         // The tier decides whether an unpublished revision is live (issue #1001); a sandbox runs its parent's latest.
         val configs = GedraConfigService.get(cxt)
         put(CLD.publishedOnly, !isSandboxClient(clientId) && configs.publishedOnly(cxt, clientId))
-        put(CLD.staticHere, configs.isStaticHere(cxt, clientId))
+        // Of the client whose configuration it is: a sandbox's own derived definition is never static, and what is
+        // changed from a sandbox is its parent's.
+        put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
     }
 }
 

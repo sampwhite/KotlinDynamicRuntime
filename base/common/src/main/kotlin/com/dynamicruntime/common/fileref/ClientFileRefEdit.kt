@@ -17,8 +17,8 @@ import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
- * Changing a client's file refs from the API (issues #1153, #1164): uploading a file as a named ref, naming a local
- * file as one, and removing one. Each is one call that leaves the client's stored configuration and the file store
+ * Changing a client's file refs from the API (issues #1153, #1164, #1176): uploading a file as a named ref, naming a
+ * local file as one, rewording one, and removing one. Each is one call that leaves the client's stored configuration and the file store
  * agreeing, by the path the copy and menu editors take ([ClientStoredEdit]).
  *
  * **The bytes first, then the entry.** An upload stores the file under the hash of its bytes -- a key nothing else
@@ -52,7 +52,7 @@ object ClientFileRefEdit {
      * many refs as it may have. The last is said early as a courtesy -- it is the write's trial that holds a client
      * to its limit, across every configuration and call.
      */
-    fun upload(cxt: KdrCxt, client: String, refId: String, content: ContentData, description: String?): Result {
+    fun upload(cxt: KdrCxt, client: String, refId: String, content: ContentData, description: String?, expected: String? = null): Result {
         FREF.refIdProblem(refId)?.let { throw KdrException.mkInput(it) }
         checkDescription(description)
         val bytes = content.contentBytes()
@@ -64,7 +64,7 @@ object ClientFileRefEdit {
         }
         val kind = WebAssetCheck.check("file ref", content.mimeType, bytes)
 
-        val at = landing(cxt, ClientStoredEdit.target(cxt, client, editName), refId, "a file upload")
+        val at = landing(cxt, asExpected(ClientStoredEdit.target(cxt, client, editName), expected), refId, "a file upload")
         val hash = bytes.sha256Hex()
         storeBytes(cxt, at.bound, at.refs, at.owner, refId, hash, ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename))
         return land(cxt, at, refId, description) { kept, extra -> FileRefDef(refId, FREF.sourceStore, hash, kept, extra = extra) }
@@ -86,12 +86,14 @@ object ClientFileRefEdit {
      * one sentence a load says of it. The configuration write and its trial hold both again
      * (`GedraConfigService.mayNameLocalFile`); they are asked here so that a mistyped path leaves nothing behind.
      */
-    fun nameLocal(cxt: KdrCxt, client: String, refId: String, root: String, path: String, description: String?): Result {
+    fun nameLocal(
+        cxt: KdrCxt, client: String, refId: String, root: String, path: String, description: String?, expected: String? = null,
+    ): Result {
         FREF.refIdProblem(refId)?.let { throw KdrException.mkInput(it) }
         checkDescription(description)
         FREF.rootProblem(root)?.let { throw KdrException.mkInput(it) }
         LocalFileRoots.pathProblem(path)?.let { throw KdrException.mkInput("'$path' is not a path a local file may have: $it.") }
-        val target = ClientStoredEdit.target(cxt, client, editName)
+        val target = asExpected(ClientStoredEdit.target(cxt, client, editName), expected)
         // On the context the write is made on, which inside a sandbox is the parent's actor and not the caller's
         // own row: asked of any other, this and the write could disagree.
         val bound = target.bound
@@ -122,6 +124,29 @@ object ClientFileRefEdit {
         return land(cxt, at, refId, description) { kept, extra ->
             FileRefDef(refId, FREF.sourceClientLocal, hash = null, kept, extra = extra, root = root, path = path)
         }
+    }
+
+    /**
+     * [target], having refused it when the change would not take effect the way its caller [expected] -- live, or
+     * as a draft (`EDM`) -- and null asks nothing.
+     *
+     * Whether a change is a draft is decided here, at the request, by whether the client has a sandbox now. A page
+     * tells its user which before they act, from what it last read; and a sandbox can be removed in between. A
+     * removal confirmed as "from the draft" would then take a file from the client's people at once. So a page says
+     * what it told its user, and a change that would do otherwise is a 409 and not done.
+     */
+    private fun asExpected(target: ClientStoredEdit.EditTarget, expected: String?): ClientStoredEdit.EditTarget {
+        if (expected == null || expected == target.mode) return target
+        throw KdrException(
+            if (target.draft) {
+                "This would be a draft, not a change that takes effect at once: client '${target.client}' has a sandbox now. " +
+                    "Nothing was changed; reload to see how it stands."
+            } else {
+                "This would take effect at once for client '${target.client}', not as a draft: it has no sandbox now. " +
+                    "Nothing was changed; reload to see how it stands."
+            },
+            code = EXC.conflict,
+        )
     }
 
     private fun checkDescription(description: String?) {
@@ -227,8 +252,8 @@ object ClientFileRefEdit {
      * Removes [client]'s ref [refId] and makes that take effect. A 400 when no stored configuration holds it. The
      * file it named is left where it is: an older revision of the configuration still names it.
      */
-    fun remove(cxt: KdrCxt, client: String, refId: String): Result {
-        val target = ClientStoredEdit.target(cxt, client, editName)
+    fun remove(cxt: KdrCxt, client: String, refId: String, expected: String? = null): Result {
+        val target = asExpected(ClientStoredEdit.target(cxt, client, editName), expected)
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
         val holder = holderOf(bound, target.client, refId)
@@ -236,6 +261,34 @@ object ClientFileRefEdit {
         ClientStoredEdit.requireNoForeignDraft(target, holder, "removing a file ref")
         val before = storedEntry(holder, refId)
         val written = patchEntry(svc, bound, holder, refId, null)
+        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before, restoring = true) })
+    }
+
+    /**
+     * Makes [description] what [client]'s ref [refId] says it is for -- blank clears it -- and makes that take
+     * effect (issue #1176). Nothing else of the ref changes: it names the file it named.
+     *
+     * A 400 when no stored configuration holds the ref. One the client was shipped with says what its source
+     * configuration says of it, and is reworded by whoever uploads over it. Rewording names no file, so it is a
+     * client's own administrator's to do even to a local ref an operator wrote (`GedraConfigService`'s rule
+     * carries a ref whose pointer has not moved).
+     */
+    fun describe(cxt: KdrCxt, client: String, refId: String, description: String, expected: String? = null): Result {
+        checkDescription(description)
+        val target = asExpected(ClientStoredEdit.target(cxt, client, editName), expected)
+        val bound = target.bound
+        val svc = GedraConfigService.get(bound)
+        val holder = holderOf(bound, target.client, refId)
+            ?: throw KdrException.mkInput(
+                "No stored configuration of client '${target.client}' holds a file ref '$refId'. One the client " +
+                    "was shipped with keeps its description until a file is uploaded over it.",
+            )
+        ClientStoredEdit.requireNoForeignDraft(target, holder, "describing a file ref")
+        val before = storedEntry(holder, refId).orEmpty()
+        val entry = (before - CCT.description).let { if (description.isBlank()) it else it + (CCT.description to description.trim()) }
+        // Nothing to write: answered as it stands, with no revision made for it.
+        if (entry == before) return Result(target.client, refId, holder.configId.baseId, target.mode, target.readsAs)
+        val written = patchEntry(svc, bound, holder, refId, entry)
         return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before, restoring = true) })
     }
 

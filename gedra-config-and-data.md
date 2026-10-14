@@ -453,6 +453,12 @@ one, is the deployment's to say and is written up in `examples/custom-config.md`
   - `POST /clientAdmin/client/files/local` is the call that names one, landing as an upload does; it refuses a
     root that is not open, and a file that is not there, before it writes anything. `GET …/files/roots` lists
     the open roots by name, to the administrator of a client.
+- **A client's page is where its administrator works with them** (issue #1176): the Files section lists each ref
+  -- whether a `stored` configuration holds it, which is what makes it the API's to remove and to reword
+  (`POST …/files/describe`), where one the client was shipped with can only be uploaded over -- and asks
+  `GET …/files/takes` what a ref's file may be, so the page offers what the backend will accept. Each change
+  may say how its caller expects it to take effect (`mode`): whether it is a draft is decided at the request, by
+  whether the client has a sandbox then, and one that would do otherwise than its caller told its user is a 409.
 - **What is stored overrides what is shipped.** A stored ref takes the place of a source ref of the same id, with
   no problem said -- as stored copy takes the place of the source's. So an upload replaces a shipped image, and
   removing the upload reveals it again. Any *other* second declaration of an id is still a problem.
@@ -597,7 +603,7 @@ is what gives the warning teeth.
 | Traits for stored config, declared separately from data traits | **built** — #316 |
 | File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only |
 | File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154 |
-| A client's own administrator naming a local file, in the client's own directory of a root the deployment opened to clients | **built** — #1164, as a third source (`clientLocal`) and two endpoints. Not built: a page for it in the webapp, and browsing what is in a root. |
+| A client's own administrator naming a local file, in the client's own directory of a root the deployment opened to clients | **built** — #1164, as a third source (`clientLocal`) and two endpoints. A client's page lists, uploads, names and removes its file refs (#1176). Not built: browsing what is in a root (#1177). |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
 | Promotion from database to source code | intended |
 

@@ -84,6 +84,9 @@ enum class ClientStatus {
     /** Declared and kept by the checks, but not enabled in this environment. */
     notEnabled,
 
+    /** Declared and kept by the checks, but retired by the platform ([ClientDef.retired], issue #1111): absent everywhere. */
+    retired,
+
     /** Declared, but a check dropped its definition; its issues say why. */
     dropped,
 
@@ -166,6 +169,7 @@ object ClientFieldPolicies {
         CLD.preload to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         // Only a definition in source code may set it; a stored one claiming it is refused outright.
         CLD.staticConfig to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        CLD.retired to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         CLD.testFeatures to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
     )
 
@@ -209,7 +213,7 @@ object ClientFieldPolicies {
     /** [value] of [field] in a form two definitions compare by: a set for a list, a flag for a boolean, else text. */
     private fun comparable(field: String, value: Any?): Any? = when (field) {
         CLD.enabledEnvironments, CLD.testFeatures, CLD.includedTraits, CLD.userLabels -> value.toJsonListOfStrings().toSet()
-        CLD.preload, CLD.staticConfig, CLD.sandbox -> value == true
+        CLD.preload, CLD.staticConfig, CLD.sandbox, CLD.retired -> value == true
         else -> value.toOptStr()
     }
 }
@@ -295,6 +299,12 @@ object CLD {
     /** The customer that owns the client (issue #1107); see [ClientDef.customerId]. */
     const val customerId = "customerId"
 
+    /** Whether the platform retired the client (issue #1111); see [ClientDef.retired]. */
+    const val retired = "retired"
+
+    /** Schema type name for what retiring or bringing back a client did (issue #1111). */
+    const val retirementResultTypeName = "ClientRetirementResult"
+
     /** On a create: a customer to make with the client, whose id is the client's and whose root it is (issue #1107). */
     const val newCustomer = "newCustomer"
 
@@ -318,7 +328,9 @@ object CLD {
 
     /**
      * On an overview row (issue #1001): whether the client takes **nothing** stored on this node -- static in
-     * production (`staticConfig`) -- so publishing its stored configuration changes nothing it runs.
+     * production (`staticConfig`) -- so publishing its stored configuration changes nothing it runs. For a
+     * sandbox it is its parent's answer: a sandbox holds no configuration of its own, and every change made from
+     * it is one to its parent's, which is refused there.
      */
     const val staticHere = "staticHere"
 
@@ -664,6 +676,14 @@ data class ClientDef(
      * Null for a client no customer owns: a self-serve one, and for now any client nobody has filed under one.
      */
     val customerId: String? = null,
+    /**
+     * Whether the platform has **retired** the client (issue #1111): its data is kept, and it is inert -- absent in
+     * every environment, so nothing scoped by it is reached, its users cannot sign in, and a session already open is
+     * no longer honored. Set and cleared only by the platform (`ClientRetirement`), and a client retired is brought
+     * back as it was: its environments are untouched, which is why this is a flag of its own rather than an empty
+     * [enabledEnvironments].
+     */
+    val retired: Boolean = false,
 ) {
     init {
         // Held to the one label rule ([normalizeUserLabels]) that a label on a *user* is held to, and refused here,
@@ -673,8 +693,11 @@ data class ClientDef(
         userLabelsFault(clientId, userLabels)?.let { throw KdrException.mkConv(it) }
     }
 
-    /** Whether [enabledEnvironments] holds [env] -- the whole of whether this client is present on a node. */
-    fun isEnabledIn(env: String): Boolean = env in enabledEnvironments
+    /**
+     * Whether this client is present on a node of [env] -- the whole of it: [enabledEnvironments] holds [env], and the
+     * client is not [retired].
+     */
+    fun isEnabledIn(env: String): Boolean = !retired && env in enabledEnvironments
 
     /** The [includedTraits] entries that are groups rather than trait ids. */
     val includedGroups: List<String> get() = includedTraits.filter { it.startsWith(CLD.groupSigil) }
@@ -708,6 +731,7 @@ data class ClientDef(
         if (userLabels.isNotEmpty()) put(CLD.userLabels, userLabels)
         if (sandbox) put(CLD.sandbox, true)
         if (customerId != null) put(CLD.customerId, customerId)
+        if (retired) put(CLD.retired, true)
     }
 
     companion object {
@@ -753,6 +777,7 @@ data class ClientDef(
             userLabels = m[CLD.userLabels].toJsonListOfStrings(),
             sandbox = m[CLD.sandbox] as? Boolean ?: false,
             customerId = m[CLD.customerId].toOptStr(),
+            retired = m[CLD.retired] as? Boolean ?: false,
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -875,6 +900,10 @@ data class ClientDef(
                 items { type = SCT.string }
             }
             prop(CLD.sandbox, "Whether the client has a sandbox beside it, running its latest configuration.") {
+                type = SCT.boolean
+                allowCoerce = false
+            }
+            prop(CLD.retired, "Whether the platform retired the client: its data kept, and the client absent everywhere.") {
                 type = SCT.boolean
                 allowCoerce = false
             }

@@ -318,10 +318,10 @@ private fun clientSummaryOf(cxt: KdrCxt, def: ClientDef): Map<String, Any?> {
 internal class AbsentClient(val clientId: String, val name: String, val status: ClientStatus)
 
 /**
- * Every client this node knows of but does not carry (issue #828), by client id: one declared and kept but not
- * enabled here ([ClientStatus.notEnabled]); one declared but dropped by a check ([ClientStatus.dropped]); and one
- * known only from stored configuration or its issues, with no loaded config declaring it
- * ([ClientStatus.storedOnly]). What the summary listing's `allKnown` and the administrators' overview (issue #904)
+ * Every client this node knows of but does not carry (issue #828), by client id: one declared and kept but retired
+ * ([ClientStatus.retired], issue #1111) or not enabled here ([ClientStatus.notEnabled]); one declared but dropped by a
+ * check ([ClientStatus.dropped]); and one known only from stored configuration or its issues, with no loaded config
+ * declaring it ([ClientStatus.storedOnly]). What the summary listing's `allKnown` and the administrators' overview (issue #904)
  * both list, so an administrator asking why a client is not working sees the client, not its absence. Costs one
  * query for the stored clients.
  */
@@ -330,7 +330,7 @@ internal fun absentClients(cxt: KdrCxt): List<AbsentClient> {
     val present = service.presentClients.map { it.clientId }.toSet()
     val absent = LinkedHashMap<String, Pair<ClientStatus, String>>()
     for (def in service.clients.values) {
-        if (def.clientId !in present) absent[def.clientId] = ClientStatus.notEnabled to def.name
+        if (def.clientId !in present) absent[def.clientId] = (if (def.retired) ClientStatus.retired else ClientStatus.notEnabled) to def.name
     }
     for (def in service.declaredClients()) {
         if (def.clientId !in present) absent.putIfAbsent(def.clientId, ClientStatus.dropped to def.name)

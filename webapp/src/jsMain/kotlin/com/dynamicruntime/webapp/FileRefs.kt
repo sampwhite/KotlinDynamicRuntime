@@ -1,0 +1,371 @@
+package com.dynamicruntime.webapp
+
+import com.dynamicruntime.common.fileref.FREF
+import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.EDM
+import com.dynamicruntime.common.gedra.sandboxParentOf
+import com.dynamicruntime.common.util.byteSizeText
+import com.dynamicruntime.common.util.toJsonListOfStrings
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.webasset.WAS
+
+/**
+ * A client's file refs on its page (issue #1176): the named images its configuration holds, which its
+ * administrator lists, uploads, names where the deployment keeps one, rewords, and removes (`FileRefsSection`).
+ *
+ * Everything here is pure, and covered under `jsNodeTest`: how the listing is read, what the section decides --
+ * whether a change is a draft, what a form may send, what is wrong with it before it is sent -- and what it says.
+ * Where a ref's file is, is its `source` -- uploaded into the file store, shipped with the client as a file on
+ * the server, or (issue #1164) a file the deployment keeps for the client -- and the wording follows it.
+ */
+
+/** One file ref as the listing answers it. [file] is the record of its file, absent when the file is [missing]. */
+class FileRefView(
+    val refId: String,
+    /** Where its file is: one of `FREF.sources`. */
+    val source: String,
+    /** For a file on the server: the root it is under, and its path there. */
+    val root: String?,
+    val path: String?,
+    /**
+     * The hash of its bytes, and `<refId>:<hash>`, which its address carries. Absent for a file on the server that
+     * is not there, since nobody authored its hash. An upload whose file has gone still says the hash its entry
+     * holds -- so [missing], and not these, is what says there is nothing to show.
+     */
+    val hash: String?,
+    val name: String?,
+    val description: String?,
+    /** The configuration holding its entry. */
+    val configName: String?,
+    /** Whether the client's own people are served it as listed; false for a draft only the sandbox shows. */
+    val live: Boolean,
+    /** Whether a stored configuration holds it. One that is not was shipped with the client, and cannot be removed. */
+    val stored: Boolean,
+    val missing: Boolean,
+    val file: WebAssetFile?,
+    val uploadedByName: String?,
+)
+
+/** The listing's items as refs; one without an id is not one. */
+fun parseFileRefs(items: List<Map<String, Any?>>): List<FileRefView> = items.mapNotNull(::parseFileRef)
+
+/** One listed ref, or null for an item with no id. */
+fun parseFileRef(item: Map<String, Any?>): FileRefView? {
+    val refId = item[CCT.refId].toOptStr() ?: return null
+    return FileRefView(
+        refId = refId,
+        // A listing from before a ref said where its file is names only uploads.
+        source = item[CCT.source].toOptStr() ?: FREF.sourceStore,
+        root = item[CCT.root].toOptStr(),
+        path = item[CCT.path].toOptStr(),
+        hash = item[CCT.hash].toOptStr(),
+        name = item[FREF.name].toOptStr(),
+        description = item[CCT.description].toOptStr(),
+        configName = item[FREF.configName].toOptStr(),
+        live = item[FREF.live] == true,
+        // Absent from a backend that does not say: only a ref that names a root whole is taken for one the client
+        // was shipped with, which is the one the backend would refuse to remove.
+        stored = (item[FREF.stored] as? Boolean) ?: (item[CCT.source].toOptStr() != FREF.sourceLocal),
+        missing = item[FREF.missing] == true,
+        file = storedFileFrom(item[FREF.file]),
+        uploadedByName = item[FREF.uploadedByName].toOptStr(),
+    )
+}
+
+/** What a change -- an upload, a naming, a rewording, a removal -- answered: where it landed, how, and the ref as it now is. */
+class FileRefChange(
+    val refId: String,
+    val configName: String,
+    /** `EDM.live`, or `EDM.draft` for a client with a sandbox. */
+    val mode: String,
+    /** The ref as its administrator is now shown it; null once it is gone. */
+    val ref: FileRefView?,
+)
+
+/** A change's `results`; the mode is live from a backend that says none. */
+fun parseFileRefChange(results: Map<String, Any?>): FileRefChange = FileRefChange(
+    refId = results[CCT.refId].toOptStr().orEmpty(),
+    configName = results[FREF.configName].toOptStr().orEmpty(),
+    mode = results[FREF.mode].toOptStr() ?: EDM.live,
+    ref = results[FREF.ref].toJsonMapOrEmpty().takeIf { it.isNotEmpty() }?.let(::parseFileRef),
+)
+
+/** What a client's file refs take, as the backend says it: so the page offers what will be accepted. */
+class FileRefTakes(
+    val maxSize: Long,
+    /** The content types a file picker should offer. */
+    val mimeTypes: List<String>,
+    /** The kinds of image, as a person names them. */
+    val kinds: List<String>,
+    /** How many refs a client is served. */
+    val refLimit: Int,
+    /** The roots open to clients, where a file may be named and not uploaded. Empty on most deployments. */
+    val roots: List<String>,
+)
+
+fun parseFileRefTakes(item: Map<String, Any?>): FileRefTakes = FileRefTakes(
+    maxSize = (item[WAS.maxSize] as? Number)?.toLong() ?: 0L,
+    mimeTypes = item[WAS.mimeTypes].toJsonListOfStrings(),
+    kinds = item[WAS.kinds].toJsonListOfStrings(),
+    refLimit = (item[FREF.refLimit] as? Number)?.toInt() ?: 0,
+    roots = item[FREF.roots].toJsonListOfStrings(),
+)
+
+/**
+ * Whether a change made on this client's page is a **draft**: the client has a sandbox ([hasSandbox]), or is one
+ * ([sandboxOf] is its parent). The one test the section's wording and what it tells the backend it expects
+ * ([fileRefExpectedMode]) both go by, so the two cannot come to differ.
+ */
+fun fileRefIsDraft(sandboxOf: String?, hasSandbox: Boolean): Boolean = sandboxOf != null || hasSandbox
+
+/**
+ * How the page expects a change to take effect, which it sends with each one. The backend decides at the request,
+ * by whether the client has a sandbox *then*; the page said which before the person acted, from what it last
+ * read. Told what the page said, the backend refuses a change that would do otherwise -- a removal confirmed as
+ * "from the draft" must not take a file from the client's people because the sandbox went in between.
+ */
+fun fileRefExpectedMode(draft: Boolean): String = if (draft) EDM.draft else EDM.live
+
+/**
+ * What the section says above its list: what a file ref is, how a change to one takes effect, and -- where it is a
+ * draft -- that the list is the sandbox's view. Live at once for a client that runs its latest configuration; a
+ * draft for one with a sandbox ([hasSandbox]), unlike a web asset, which is never one; and for a sandbox's own
+ * page ([sandboxOf] is its parent), where what is listed is the parent's latest. A client that takes nothing
+ * stored on this node ([staticHere]) is listed and not changed, and is told that and nothing of drafts.
+ */
+fun fileRefsIntro(sandboxOf: String?, hasSandbox: Boolean, staticHere: Boolean): String {
+    val what = "Named images this client's configuration holds, each served at an address of its own."
+    val owner = sandboxOf ?: "the client"
+    val listed = "What is listed is what the sandbox shows: ${if (sandboxOf != null) "$sandboxOf's" else "the client's"} latest " +
+        "configuration, drafts included. A file removed as a draft is not listed, though $owner's people are served it until that is published."
+    return when {
+        staticHere -> "$what This client's configuration comes from source code on this node, so its files are listed here and not changed."
+        sandboxOf != null -> "The files of $sandboxOf's sandbox. $listed A change made here is a draft of $sandboxOf's, and goes live for its people once that is published."
+        hasSandbox ->
+            "$what This client has a sandbox, so a change here is a draft: the sandbox shows it, and it goes live " +
+                "for the client's people once its configuration is published, from the stored configuration below. $listed"
+        else -> "$what A change takes effect at once for everyone in the client."
+    }
+}
+
+/** What stands in for the list when it is empty. Where the list is the sandbox's view, it does not say the client has none. */
+fun fileRefsEmptyText(draft: Boolean): String =
+    if (draft) "No files in the latest configuration, which is what the sandbox shows." else "This client has no files."
+
+/** What a ref's file may be, for the hint beside an upload: `PNG, SVG, ICO, JPEG or WebP, up to 2 MB.` */
+fun fileRefTakesText(takes: FileRefTakes): String = imageTakesText(takes.kinds, takes.maxSize)
+
+/**
+ * What is wrong with a picked file of [size] bytes before it is sent, or null: only what the browser can know
+ * without reading it. Whether it is the image it claims to be is the backend's to say, in its own words.
+ */
+fun fileRefFileProblem(takes: FileRefTakes?, size: Long): String? {
+    val max = takes?.maxSize ?: return null
+    return if (max in 1 until size) "This file is ${byteSizeText(size)}; a file ref's file may be at most ${byteSizeText(max)}." else null
+}
+
+/**
+ * What stops a new ref being added under [refId], or null: an id that is no name (the kernel's own rule, which the
+ * backend holds it to), or one the client already has -- an existing ref is replaced from its own row, where it
+ * can be seen, and not by typing its id here.
+ */
+fun fileRefNewIdProblem(refId: String, existing: List<FileRefView>): String? = when {
+    refId.isEmpty() -> "Give the file an id: a name for it, such as heroImage."
+    existing.any { it.refId == refId } -> "This client already has a file '$refId'. Replace it from its own row."
+    else -> FREF.refIdProblem(refId)
+}
+
+/**
+ * What stops a new ref being added by an upload of [size] bytes, or null: the id first, then the file -- the
+ * order a person fills the form in, so the first thing said is the first thing to mend.
+ */
+fun fileRefAddUploadProblem(refId: String, existing: List<FileRefView>, takes: FileRefTakes?, size: Long): String? =
+    fileRefNewIdProblem(refId, existing) ?: fileRefFileProblem(takes, size)
+
+/**
+ * The root a file is to be named in: the one [chosen], while it is still one of the [roots] open to clients; else
+ * the only one there is; else none, and the form asks.
+ */
+fun fileRefChosenRoot(chosen: String?, roots: List<String>): String? = chosen?.takeIf { it in roots } ?: roots.singleOrNull()
+
+/**
+ * What stops a file the deployment keeps being named as a new ref, or null: the id, then where, then its path.
+ * Whether there is such a file is the backend's to say, in the one sentence it says of every reason.
+ */
+fun fileRefLocalProblem(refId: String, existing: List<FileRefView>, root: String?, path: String): String? =
+    fileRefNewIdProblem(refId, existing)
+        ?: "Choose where the file is.".takeIf { root == null }
+        ?: "Give the file's path.".takeIf { path.isEmpty() }
+
+/**
+ * The description a **new** ref is sent with, from what was typed: trimmed, and none at all when that leaves
+ * nothing -- a new ref has no description to keep or to clear. (An existing ref's is changed by its own editor,
+ * which sends what was typed, blank included: blank clears it.)
+ */
+fun fileRefNewDescription(typed: String): String? = typed.trim().ifEmpty { null }
+
+/**
+ * Why no further file can be added, or null: the client is served as many as it may be. Said in place of the form,
+ * since an upload would be sent whole and then refused.
+ */
+fun fileRefAtLimitText(refs: List<FileRefView>, takes: FileRefTakes?): String? {
+    val limit = takes?.refLimit?.takeIf { it > 0 } ?: return null
+    return if (refs.size >= limit) "This client has $limit files, which is as many as a client is served. Remove one to add another." else null
+}
+
+/** How many refs the client has of how many it may, once it is near enough the limit to say: `This client has 180 of the 200 a client is served.` */
+fun fileRefCountText(refs: List<FileRefView>, takes: FileRefTakes?): String? {
+    val limit = takes?.refLimit?.takeIf { it > 0 } ?: return null
+    return if (refs.size * 10 >= limit * 9) "This client has ${refs.size} of the $limit a client is served." else null
+}
+
+/** The short marks beside a ref's id: what is unusual about it. */
+fun fileRefTags(ref: FileRefView): List<String> = listOfNotNull(
+    "Draft".takeIf { !ref.live },
+    "Missing".takeIf { ref.missing },
+    "Shipped".takeIf { !ref.stored },
+)
+
+/** What a preview's image is called, for whoever does not see it. */
+fun fileRefAltText(ref: FileRefView): String = ref.description ?: "The file ${ref.refId}"
+
+/**
+ * What a ref's file is, in a line: its type, its size and its own name -- or, for one whose file is not there,
+ * that it is not, which is all the backend says of it whatever the reason.
+ */
+fun fileRefHoldsText(ref: FileRefView): String {
+    val file = ref.file
+    if (ref.missing || file == null) return "Its file is not there to be served: the address answers as not found."
+    return listOfNotNull(file.mimeType.ifEmpty { null }, byteSizeText(file.size), file.fileName).joinToString(" · ")
+}
+
+/**
+ * Where a ref's file is, how it came to be there, and the configuration holding the ref -- by its source. An
+ * upload has a who and a when; a file on the server has a root and a path, and a when that is the file's own last
+ * change. A source this build does not know is said as it is called, not passed off as an upload.
+ */
+fun fileRefWhereText(ref: FileRefView): String {
+    val at = ref.file?.uploadedAt?.takeIf { it.isNotEmpty() }?.let(::formatTimestamp)
+    val place = "${ref.root.orEmpty()}/${ref.path.orEmpty()}"
+    val changed = at?.let { ", last changed $it" }.orEmpty()
+    val where = when (ref.source) {
+        FREF.sourceStore -> "Uploaded" + at?.let { " $it" }.orEmpty() + ref.uploadedByName?.let { " by $it" }.orEmpty() + "."
+        FREF.sourceLocal ->
+            if (ref.stored) "A file on the server: $place$changed." else "Shipped with the client, as a file on the server: $place$changed."
+        FREF.sourceClientLocal -> "A file the deployment keeps for this client: ${ref.path.orEmpty()} in ${ref.root.orEmpty()}$changed."
+        else -> "Kept as '${ref.source}', which this page does not know."
+    }
+    return where + ref.configName?.let { " In the configuration '$it'." }.orEmpty()
+}
+
+/**
+ * What is said of a ref the client was shipped with, where the actions of a stored one would be: why there is no
+ * Remove and no rewording, and what can be done instead. Null for a stored ref, which has both.
+ */
+fun fileRefShippedHint(ref: FileRefView): String? =
+    if (ref.stored) null else "Shipped with the client, so it is not removed or reworded here: uploading a file over it replaces it, and removing that upload shows this one again."
+
+/** Whether a ref can be removed, or its description reworded: only one a stored configuration holds. */
+fun fileRefRemovable(ref: FileRefView): Boolean = ref.stored
+
+/**
+ * The address a ref is served at, given how a versioned name becomes one ([addressOf]) -- or null for a ref with
+ * no file to name. What an administrator copies to use the file, until copy can name a ref itself.
+ */
+fun fileRefAddress(ref: FileRefView, addressOf: (String) -> String): String? = ref.name?.takeIf { !ref.missing }?.let(addressOf)
+
+/**
+ * What goes before a ref's address. It says **whose** address it is: the static root answers each caller with
+ * their own client's ref, so the same address is another file, or none, to an administrator of every client who
+ * opens it from elsewhere. A draft's is real -- the sandbox is served it there -- and is not yet what the client's
+ * own people get.
+ */
+fun fileRefAddressLead(ref: FileRefView): String =
+    if (ref.live) "Served to this client's people at " else "Served in the sandbox, and to the client's people once published, at "
+
+/**
+ * The inputs of the address a ref is previewed from: the **named** download, since the client on the page need not
+ * be the caller's own and a draft is served to nobody outside the sandbox -- with the file's hash, so that a
+ * replaced file is a new address. Null when there is no file to show.
+ */
+fun fileRefPreviewArgs(clientId: String, ref: FileRefView): Map<String, Any?>? {
+    val hash = ref.hash?.takeIf { !ref.missing } ?: return null
+    return mapOf(FREF.client to clientId, CCT.refId to ref.refId, CCT.hash to hash)
+}
+
+/**
+ * The question asked before a ref of [clientId]'s is removed, naming where that acts as every delete's does
+ * (issue #1049) -- or, where it is a draft that is changed ([draft]), that it is.
+ */
+fun fileRefRemoveQuestion(ref: FileRefView, clientId: String, draft: Boolean): String =
+    if (draft) "Remove the file '${ref.refId}' from the draft of ${sandboxParentOf(clientId) ?: clientId}?"
+    else "Remove the file '${ref.refId}' of ${deleteTargetText(clientId)}?"
+
+/**
+ * What removing [ref] does, under [fileRefRemoveQuestion]. Under an upload there may be an image the client was
+ * shipped with, which the listing cannot tell and which then takes its place -- so each says so. A draft's removal
+ * leaves the client's people what they have, which for a ref they are not served yet ([FileRefView.live] false)
+ * is nothing, and is not said.
+ */
+fun fileRefRemoveConsequence(ref: FileRefView, draft: Boolean): String {
+    val shipped = "the image the client was shipped with under this id, where there is one"
+    return if (draft) {
+        "The sandbox stops showing it, or shows $shipped." +
+            if (ref.live) " The client's people are served it until the configuration is published." else ""
+    } else {
+        "The client's people stop being served it at once, or are served $shipped."
+    }
+}
+
+/** What a section says once an upload answers. */
+fun fileRefUploadedNote(change: FileRefChange): String = savedNote("Uploaded '${change.refId}', in ${change.configName}.", change.mode)
+
+/** What a section says once a file the deployment keeps has been named. */
+fun fileRefNamedNote(change: FileRefChange): String =
+    savedNote("'${change.refId}' now names ${change.ref?.path ?: "that file"}, in ${change.configName}.", change.mode)
+
+/** What a section says once a ref's description has been reworded, or cleared. */
+fun fileRefDescribedNote(change: FileRefChange): String =
+    savedNote(if (change.ref?.description == null) "Cleared the description of '${change.refId}'." else "Reworded '${change.refId}'.", change.mode)
+
+/**
+ * What a section says once a removal answers. A ref still there afterwards that no stored configuration holds is
+ * the one the client was shipped with, which the removed upload stood in front of; one a stored configuration
+ * holds is another entry of the same id, which is said as that. A removal made as a draft is worded as one: the
+ * note every other draft gets says the sandbox "shows it", and here there is nothing left to show.
+ */
+fun fileRefRemovedNote(change: FileRefChange): String {
+    val left = change.ref
+    val done = when {
+        left == null -> "Removed '${change.refId}'."
+        left.stored -> "Removed one entry of '${change.refId}'; another configuration, ${left.configName ?: "stored"}, still holds one."
+        else -> "Removed the upload of '${change.refId}': the image the client was shipped with is shown again."
+    }
+    return if (change.mode == EDM.draft) "$done A draft: the sandbox shows the change, and the client's people keep what they have until it is published." else done
+}
+
+/**
+ * [refs] as a change left them: the changed ref in its place, a new one at the end, a removed one gone -- drawn
+ * from the answer, before the listing is read again.
+ */
+fun withFileRefChange(refs: List<FileRefView>?, change: FileRefChange): List<FileRefView>? {
+    refs ?: return null
+    val changed = change.ref ?: return refs.filter { it.refId != change.refId }
+    return if (refs.any { it.refId == changed.refId }) refs.map { if (it.refId == changed.refId) changed else it } else refs + changed
+}
+
+/** What is under way on a ref, as [webAssetBusyKey] names it -- and [adding], which stands where a ref's id would for the form that adds one. */
+@Suppress("ConstPropertyName")
+object FACT {
+    const val upload = "upload"
+    const val local = "local"
+    const val describe = "describe"
+    const val remove = "remove"
+
+    /**
+     * What stands in for a ref's id while one is being added. No ref can have it for an id -- an id holds no
+     * space -- so a failure of the form is never drawn beside a ref; a test holds it to that.
+     */
+    const val adding = "new file"
+}

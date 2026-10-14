@@ -97,6 +97,18 @@ object FREF {
     /** Whether a ref's file is not there to be served: not in the file store, or for a local file not on the disk as an image. */
     const val missing = "missing"
 
+    /**
+     * Whether a **stored** configuration holds a ref's entry -- false for one the client was shipped with, in
+     * source code, which the API can upload over and cannot remove.
+     */
+    const val stored = "stored"
+
+    /** In what file refs take: the roots open to clients, by name. */
+    const val roots = "roots"
+
+    /** In what file refs take: how many refs a client is served ([maxRefs]). */
+    const val refLimit = "refLimit"
+
     /** How a change took effect: live, or a draft; `EDM`'s values. */
     const val mode = "mode"
 
@@ -113,6 +125,9 @@ object FREF {
 
     /** The schema type of one root of local files a client may name a file in (issue #1164). */
     const val rootTypeName = "FileRefRoot"
+
+    /** The schema type of what a client's file refs take (issue #1176). */
+    const val takesTypeName = "FileRefTakes"
 
     /** The schema namespace of the endpoints and their types. */
     const val namespace = "kdr.clientFiles"

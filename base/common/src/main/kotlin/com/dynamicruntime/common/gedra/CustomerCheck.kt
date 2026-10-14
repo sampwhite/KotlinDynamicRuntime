@@ -222,12 +222,17 @@ internal fun newClientPrefixFault(clients: ClientService, clientId: String, cust
 
 /**
  * Whether [rootClientId] -- customer [customerId]'s root -- names one of its clients among [clients], or the fault
- * (issue #1107). The root's administrators act for the customer as a whole, so it must be the customer's own.
+ * (issue #1107). The root's administrators act for the customer as a whole, so it must be the customer's own, and
+ * not retired (issue #1111).
  */
 internal fun customerRootFault(customerId: String, rootClientId: String, clients: Map<String, ClientDef>): String? {
     val root = clients[rootClientId]
         ?: return "Customer '$customerId' names the root client '$rootClientId', which this deployment does not define."
-    if (root.customerId == customerId) return null
-    return "Customer '$customerId' names the root client '$rootClientId', which is " +
-        (root.customerId?.let { "the customer '$it''s" } ?: "no customer's") + ". A customer's root is one of its own clients."
+    if (root.customerId != customerId) {
+        return "Customer '$customerId' names the root client '$rootClientId', which is " +
+            (root.customerId?.let { "the customer '$it''s" } ?: "no customer's") + ". A customer's root is one of its own clients."
+    }
+    // Its administrators act for the customer, so it is one they can sign in to (issue #1111).
+    if (root.retired) return "Customer '$customerId' names the root client '$rootClientId', which is retired."
+    return null
 }
