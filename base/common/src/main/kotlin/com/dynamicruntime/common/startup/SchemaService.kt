@@ -1999,9 +1999,11 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                     linkedMapOf(SS.role to role, SS.rule to why.rule)
                 }
             }
-            // A sandbox user somebody opened acts with that user's roles, not its own row's: named, since the two
-            // differ in either direction.
-            standing?.actsAs?.let { explained[SS.sandboxActsAs] = linkedMapOf(UPF.userId to it.userId, UPF.client to it.client) }
+            // A sandbox user somebody opened acts with that user's roles and organization, not its own row's: named,
+            // since the two differ in either direction.
+            standing?.actsAs?.let {
+                explained[SS.sandboxActsAs] = linkedMapOf(UPF.userId to it.userId, UPF.client to it.client, UPF.org to standing.org)
+            }
             cxt.request?.responseMeta?.put(SS.accessExplained, explained)
         }
 
@@ -2176,7 +2178,7 @@ object SS {
     const val role = "role"
     const val rule = "rule"
 
-    /** In the access report: for a sandbox user somebody opened, the user outside it acts as. */
+    /** In the access report: for a sandbox user somebody opened, the user outside it acts as, and the organization it acts in. */
     const val sandboxActsAs = "sandboxActsAs"
 
     const val section = "section"

@@ -59,7 +59,9 @@ private fun requireUsableForLogin(user: AuthUserRow, identity: AuthIdentityRow) 
 }
 
 /**
- * Re-reads the acting user's roles from their `AuthUsers` row, replacing the ones their session cookie carried.
+ * Re-reads the acting user's roles from their `AuthUsers` row, replacing the ones their session cookie carried --
+ * and with them the rest of the live profile, its organization among it (in a sandbox, the one `SandboxAccess`
+ * says it acts in).
  *
  * The cookie is the fast path -- it holds roles precisely so an ordinary request needs no database read -- but
  * those roles are a *snapshot* taken at login, and a session lasts 30 days ([AUTHC.sessionMillis]). Without
@@ -100,18 +102,18 @@ fun refreshActingRoles(cxt: KdrCxt) {
     if (detached) {
         LogAuth.info(cxt) { "User ${profile.userId} no longer belongs to the session's identity; treating it as disabled." }
     }
-    // In a sandbox, what the person's users outside it say (issues #929, #1196, `SandboxAccess`).
-    val standing = if (row.enabled && !detached) SandboxAccess.standingOf(cxt, row) else null
-    val liveRoles = standing?.roles ?: emptySet()
-    if (liveRoles != profile.roles) {
-        LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: $liveRoles." }
+    // In a sandbox, the roles and the organization the person's users outside it say (issues #929, #1196,
+    // `SandboxAccess`); a disabled or detached user acts with no roles at all.
+    val live = if (row.enabled && !detached) row.toActingProfile(cxt) else row.toUserProfile().copy(roles = emptySet())
+    if (live.roles != profile.roles) {
+        LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: ${live.roles}." }
     }
     // Rebind unconditionally, not only when the roles moved: the row is already loaded, and the profile the
-    // cookie produced carries identity alone -- no display name, no password status, since those would be
-    // stale in a 30-day cookie. Anything that has paid for this read gets the whole live profile.
+    // cookie produced carries identity alone -- no display name, no password status, no organization, since those
+    // would be stale in a 30-day cookie. Anything that has paid for this read gets the whole live profile.
     //
-    // `copy` rather than the constructor (issue #282): the only things being changed are the role set and, for a
-    // sandbox user somebody opened, the organization -- and writing the other fields out by hand is what silently
-    // dropped `org`, and later the entity fields, from every caller that arrived through here.
-    cxt.bindToUserProfile(standing?.let { row.toActingProfile(it) } ?: row.toUserProfile().copy(roles = liveRoles))
+    // Built by `copy` from the row's own profile rather than by the constructor (issue #282): writing the other
+    // fields out by hand is what silently dropped `org`, and later the entity fields, from every caller that
+    // arrived through here.
+    cxt.bindToUserProfile(live)
 }

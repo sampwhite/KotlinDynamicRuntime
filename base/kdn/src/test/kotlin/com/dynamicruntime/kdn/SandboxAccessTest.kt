@@ -28,6 +28,7 @@ import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -492,6 +493,16 @@ class SandboxAccessTest : StringSpec({
         listed().containsAll(listOf(north, south, none)) shouldBe true
     }
 
+    /** The organization the stored row of [userId] holds. */
+    fun storedOrg(userId: Long): String? = UserService.get(cxt).queryByUserId(cxt, userId).shouldNotBeNull().org
+
+    /** Creates a user in [creator]'s client through the console, naming [org] or not; the created user's id. */
+    fun consoleCreate(creator: TestUser, address: String, org: String? = null): Long =
+        creator.client.sendJsonPostRequest(UADEP.userCreate, buildMap {
+            put(ADF.primaryId, address)
+            if (org != null) put(ADF.org, org)
+        }).let { it[EP.status] shouldBe null; it[EP.results].toJsonMapOrEmpty()[ADF.userId].toOptLong().shouldNotBeNull() }
+
     "an allClients administrator from elsewhere brings no organization of theirs into the sandbox" {
         val (parent, home) = "sbxorgaway" to "sbxorgawayhome"
         defineParent(parent)
@@ -500,8 +511,80 @@ class SandboxAccessTest : StringSpec({
         // An organization of their own client, which names nothing in the parent's sandbox.
         setOrg(full.userId, "west")
         full.selfOrg() shouldBe "west"
-        full.postData(AEP.openSandbox, mapOf(AFLD.client to parent))[UPF.client] shouldBe sandboxOf(parent)
-        full.selfOrg() shouldBe null
+        val sandboxUserId = full.postData(AEP.openSandbox, mapOf(AFLD.client to parent))[UPF.userId].toOptLong().shouldNotBeNull()
+        // Read with the client, so an answer is the sandbox session's own and not a refusal's empty one.
+        full.getData(AEP.selfInfo).let { it[UPF.client] shouldBe sandboxOf(parent); it[UPF.org] shouldBe null }
+        storedOrg(sandboxUserId) shouldBe null
+        // And what the gate binds: a user they create in the sandbox takes no organization by default.
+        storedOrg(consoleCreate(full, "made@$parent.test")) shouldBe null
+    }
+
+    "a confined administrator in the sandbox neither sees nor administers another organization's opened user" {
+        val parent = "sbxorgtwo"
+        defineParent(parent)
+        val north = TestUser.create(cxt, "north@$parent.test", level = ROLE.admin, userClient = parent).also { setOrg(it.userId, "north") }
+        val south = TestUser.create(cxt, "south@$parent.test", level = ROLE.admin, userClient = parent).also { setOrg(it.userId, "south") }
+        val northInside = north.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        val southInside = south.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        // Each opened user is stored in its opener's organization, which is what the console goes by.
+        storedOrg(northInside) shouldBe "north"
+        storedOrg(southInside) shouldBe "south"
+
+        val listed = north.getItems(UADEP.users).map { it[ADF.userId].toOptLong() }
+        listed.contains(northInside) shouldBe true
+        listed.contains(southInside) shouldBe false
+        fun disable(userId: Long): Any? = north.client.sendJsonPostRequest(UADEP.userSetEnabled, mapOf(ADF.userId to userId, ADF.enabled to false))[EP.status]
+        // The same request on a user of their own organization goes through; on the other one's, it does not.
+        disable(consoleCreate(north, "made@$parent.test")) shouldBe null
+        disable(southInside).shouldNotBeNull()
+        UserService.get(cxt).queryByUserId(cxt, southInside).shouldNotBeNull().enabled shouldBe true
+    }
+
+    "an organization changed outside is stored on the opened sandbox user too, and is not set on it directly" {
+        val parent = "sbxorgfollow"
+        defineParent(parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent).also { setOrg(it.userId, "north") }
+        val inside = chief.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        storedOrg(inside) shouldBe "north"
+
+        // Moved by an administrator of every client, through the console.
+        val full = TestUser.createFullAdmin(cxt, "full@$parent.test")
+        full.client.sendJsonPostRequest(ADEP.userSetOrg, mapOf(ADF.userId to chief.userId, ADF.org to "south"))[EP.status] shouldBe null
+        storedOrg(inside) shouldBe "south"
+        chief.selfOrg() shouldBe "south"
+
+        // Set on the opened user itself, it would be overwritten at the next opening and was never what it acts in.
+        val refused = full.expectError(EXC.badInput, ADEP.userSetOrg, mapOf(ADF.userId to inside, ADF.org to "west"))
+        (refused[EP.errorMessage] as String).contains("opened") shouldBe true
+        storedOrg(inside) shouldBe "south"
+
+        // Changed some other way than the console: the session follows at once, and the stored one at the next opening.
+        setOrg(chief.userId, "west")
+        chief.selfOrg() shouldBe "west"
+        storedOrg(inside) shouldBe "south"
+        chief.postData(AEP.switchUser, mapOf(AFLD.userId to chief.userId))
+        chief.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong() shouldBe inside
+        storedOrg(inside) shouldBe "west"
+    }
+
+    "a confined opener creates sandbox users in their own organization only" {
+        val parent = "sbxorgmake"
+        defineParent(parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent).also { setOrg(it.userId, "north") }
+        chief.postData(AEP.openSandbox, emptyMap())
+        storedOrg(consoleCreate(chief, "made@$parent.test")) shouldBe "north"
+        chief.expectError(EXC.badInput, UADEP.userCreate, mapOf(ADF.primaryId to "elsewhere@$parent.test", ADF.org to "south"))
+    }
+
+    "a sandbox user nobody recorded opening acts in the organization of the parent administrator it acts through" {
+        val parent = "sbxorglegacy"
+        defineParent(parent)
+        val address = "chief@$parent.test"
+        TestUser.create(cxt, address, level = ROLE.admin, userClient = parent).also { setOrg(it.userId, "north") }
+        // Holding admin in the sandbox with no opening recorded: how a user opened before openings were recorded reads.
+        val legacy = TestUser.create(cxt, address, level = ROLE.admin, userClient = sandboxOf(parent))
+        actsAsAdmin(legacy) shouldBe true
+        legacy.selfOrg() shouldBe "north"
     }
 
     "an allClients administrator opens any client's sandbox, and qualifies there" {

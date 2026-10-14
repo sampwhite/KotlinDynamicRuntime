@@ -771,8 +771,8 @@ class AuthFormHandler(
      * with the caller's levels. Then a fresh session as that user, the way [switchUser] completes.
      *
      * Opened from the **parent** side, by an administrator of the parent or an `allClients` administrator: authority
-     * flows from parent to sandbox. **What is recorded is who opened it** ([AuthUserRow.openedBy]), on the found
-     * user as on a new one, and the sandbox user then acts as that user outside, asked at every request
+     * flows from parent to sandbox. **What is recorded is who opened it** ([AuthUserRow.openedBy]) and that user's
+     * organization, on the found user as on a new one, and the sandbox user then acts as that user outside, asked at every request
      * ([SandboxAccess]) -- so no role is kept in step afterwards and none needs to be. The levels a new one is
      * created with are a record, and a capability is not written at all. Refused for a client without the
      * `sandbox` flag, and from inside a sandbox, which has none of its own.
@@ -797,7 +797,7 @@ class AuthFormHandler(
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         val clone = userService.claimUser(
             cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix,
-            profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(), openedBy = own.userId,
+            profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(), openedFrom = own,
         )
         return completeLogin(cxt, clone, byCode = false)
     }
