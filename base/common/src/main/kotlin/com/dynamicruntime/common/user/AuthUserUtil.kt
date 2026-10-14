@@ -100,8 +100,9 @@ fun refreshActingRoles(cxt: KdrCxt) {
     if (detached) {
         LogAuth.info(cxt) { "User ${profile.userId} no longer belongs to the session's identity; treating it as disabled." }
     }
-    // In a sandbox, what the person's users outside it say (issue #929, `SandboxAccess`).
-    val liveRoles = if (row.enabled && !detached) SandboxAccess.actingRoles(cxt, row) else emptySet()
+    // In a sandbox, what the person's users outside it say (issues #929, #1196, `SandboxAccess`).
+    val standing = if (row.enabled && !detached) SandboxAccess.standingOf(cxt, row) else null
+    val liveRoles = standing?.roles ?: emptySet()
     if (liveRoles != profile.roles) {
         LogAuth.debug(cxt) { "Roles for user ${profile.userId} changed since login: $liveRoles." }
     }
@@ -109,8 +110,8 @@ fun refreshActingRoles(cxt: KdrCxt) {
     // cookie produced carries identity alone -- no display name, no password status, since those would be
     // stale in a 30-day cookie. Anything that has paid for this read gets the whole live profile.
     //
-    // `copy` rather than the constructor (issue #282): the only thing being changed is the role set, and
-    // writing the other fields out by hand is what silently dropped `org`, and later the entity fields, from
-    // every caller that arrived through here.
-    cxt.bindToUserProfile(row.toUserProfile().copy(roles = liveRoles))
+    // `copy` rather than the constructor (issue #282): the only things being changed are the role set and, for a
+    // sandbox user somebody opened, the organization -- and writing the other fields out by hand is what silently
+    // dropped `org`, and later the entity fields, from every caller that arrived through here.
+    cxt.bindToUserProfile(standing?.let { row.toActingProfile(it) } ?: row.toUserProfile().copy(roles = liveRoles))
 }

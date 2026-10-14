@@ -454,6 +454,56 @@ class SandboxAccessTest : StringSpec({
         TestUser.create(cxt, chief, userClient = sandboxOf(parent)).selfRoles() shouldBe listOf(ROLE.user)
     }
 
+    // --- Which organization a sandbox user acts in (issue #1196) ----------------------------------------------------
+
+    fun setOrg(userId: Long, org: String?) {
+        val users = UserService.get(cxt)
+        val row = users.queryByUserId(cxt, userId).shouldNotBeNull()
+        row.org = org
+        users.updateUser(cxt, row)
+    }
+
+    "an administrator confined to an organization in the parent is confined to it in the sandbox" {
+        val parent = "sbxorg"
+        defineParent(parent)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        setOrg(admin.userId, "north")
+        admin.postData(AEP.openSandbox, emptyMap())[UPF.client] shouldBe sandboxOf(parent)
+        admin.selfOrg() shouldBe "north"
+
+        // Three users of the sandbox's own: one in each organization, and one in none.
+        val (north, south, none) = listOf("north", "south", null).mapIndexed { i, org ->
+            TestUser.create(cxt, "tryout$i@$parent.test", userClient = sandboxOf(parent)).also { setOrg(it.userId, org) }.userId
+        }
+        fun listed(): List<Long?> = admin.getItems(UADEP.users).map { it[ADF.userId].toOptLong() }
+        withClue("confined to north") {
+            listed().let { it.containsAll(listOf(north, none)) shouldBe true; it.contains(south) shouldBe false }
+        }
+
+        // Moved outside, it is moved inside at the next request.
+        setOrg(admin.userId, "south")
+        admin.selfOrg() shouldBe "south"
+        withClue("moved to south") {
+            listed().let { it.containsAll(listOf(south, none)) shouldBe true; it.contains(north) shouldBe false }
+        }
+        // And unconfined outside, unconfined inside.
+        setOrg(admin.userId, null)
+        admin.selfOrg() shouldBe null
+        listed().containsAll(listOf(north, south, none)) shouldBe true
+    }
+
+    "an allClients administrator from elsewhere brings no organization of theirs into the sandbox" {
+        val (parent, home) = "sbxorgaway" to "sbxorgawayhome"
+        defineParent(parent)
+        defineParent(home, sandbox = false)
+        val full = TestUser.createFullAdmin(cxt, "full@$parent.test", userClient = home)
+        // An organization of their own client, which names nothing in the parent's sandbox.
+        setOrg(full.userId, "west")
+        full.selfOrg() shouldBe "west"
+        full.postData(AEP.openSandbox, mapOf(AFLD.client to parent))[UPF.client] shouldBe sandboxOf(parent)
+        full.selfOrg() shouldBe null
+    }
+
     "an allClients administrator opens any client's sandbox, and qualifies there" {
         val parent = "sbxhub"
         defineParent(parent)
