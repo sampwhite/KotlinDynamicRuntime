@@ -1,8 +1,12 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientAudience
+import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
@@ -18,6 +22,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * The switcher (issue #749): a signed-in person sees every registered, enabled user under their identity and
@@ -49,6 +54,43 @@ class UserSwitchTest : StringSpec({
         current(choices(ordinary)) shouldBe hubAdmin.userId
         // And the identity remembers who was acted as last, which is what an unnamed login falls back to.
         users.queryIdentityByAddress(cxt, address).shouldNotBeNull().lastUsedUserId shouldBe hubAdmin.userId
+    }
+
+    // Issue #1110: switching between clients is switching between the person's users in them.
+    "the list names each user's client, and leaves out one whose client is retired" {
+        val operator = TestUser.createFullAdmin(cxt, "switch-operator1110@example.com")
+        val (kept, gone) = listOf("swkept1110", "swgone1110").onEach { id ->
+            operator.postData(
+                ADEP.clientCreate,
+                mapOf(
+                    CLD.clientId to id, CLD.name to "Client $id", CLD.usageType to ClientUsageType.dev.name,
+                    CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+                ),
+            )
+        }
+        val address = "switch-names1110@example.com"
+        val inKept = TestUser.create(cxt, address, userClient = kept)
+        TestUser.create(cxt, address, userClient = gone)
+        choices(inKept).associate { it[UCF.client] to it[UCF.clientName] } shouldBe mapOf(kept to "Client $kept", gone to "Client $gone")
+
+        operator.postData(ADEP.clientRetirementSet, mapOf(CLD.client to gone, CLD.retired to true))
+        choices(inKept).map { it[UCF.client] } shouldBe listOf(kept)
+    }
+
+    "switching to a client lands on the person's user there, their default first" {
+        val address = "switch-client1110@example.com"
+        val ordinary = TestUser.create(cxt, address)
+        val hubMember = TestUser.create(cxt, address, userClient = CL.hub, personaSuffix = "M")
+        val hubAdmin = TestUser.create(cxt, address, level = ROLE.admin, userClient = CL.hub)
+        // `hubAdmin` was acted as last; switching to hub lands there...
+        ordinary.postData(AEP.switchClient, mapOf(AFLD.client to CL.hub))[UPF.userId] shouldBe hubAdmin.userId
+        // ...until the person's chosen default is the other hub user.
+        ordinary.postData(AEP.setDefaultUser, mapOf(AFLD.userId to hubMember.userId))
+        ordinary.postData(AEP.switchClient, mapOf(AFLD.client to CL.public))[UPF.client] shouldBe CL.public
+        ordinary.postData(AEP.switchClient, mapOf(AFLD.client to CL.hub))[UPF.userId] shouldBe hubMember.userId
+        // A client the person has no user in is refused.
+        ordinary.expectError(EXC.badInput, AEP.switchClient, mapOf(AFLD.client to "nowhere1110"))
+            .toString() shouldContain "You have no user in the client 'nowhere1110'"
     }
 
     "a user of another identity, or a disabled sibling, is refused with one message" {

@@ -170,8 +170,14 @@ class HomeMenuTest : StringSpec({
     // and the menus above, which go without env auth, leave it out -- the simulations do not exist for them.
     "Simulations is offered to an env-authed session on a test instance, signed in or not" {
         val anon = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
-        menuIn(anon.sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()).map { it[HFLD.id] } shouldContain HMENU.simulations
-        anonymousMenu().map { it[HFLD.id] } shouldNotContain HMENU.simulations
+        val ids = menuIn(anon.sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()).map { it[HFLD.id] }
+        ids shouldContain HMENU.simulations
+        // And becoming someone, under Account (issue #1183), by the same rule.
+        ids shouldContain HMENU.becomeDeploymentAdmin
+        ids shouldContain HMENU.becomeUser
+        val plain = anonymousMenu().map { it[HFLD.id] }
+        plain shouldNotContain HMENU.simulations
+        plain shouldNotContain HMENU.becomeDeploymentAdmin
     }
 
     // ---- the Debug menu, driven by env auth (issue #517) ----------------------------------------------

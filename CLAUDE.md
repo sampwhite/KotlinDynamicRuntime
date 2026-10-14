@@ -24,9 +24,12 @@ subtly wrong.
 | `kdr-endpoint-builder` | `schemaModule` + the endpoint builders, response envelopes, handler lambdas |
 | `kdr-table-cache` | in-memory table caches (`common/sql/cache`) — and which tables must *not* be cached |
 | `kdr-testing` | verifying anything here: booting a server, `mkTestBootCxt`, `TestHttpClient`, `kdr-probe` |
+| `kdr-test-clients` | a new client per test scenario on a shared instance: the `gedraConfig` DSL, stored config, reload |
+| `kdr-demo-docs` | writing `docs/demo-client/`: the page shape, the voice and word rules, the `kdr-doc` markers and their test |
 
 **A skill's code examples are compiled as tests** (`*SkillExamplesTest`), so a signature change breaks the
-build rather than quietly staling the documentation. When you change an API, change its skill in the same
+build rather than quietly staling the documentation. (`kdr-demo-docs` has prose examples instead; the pages it
+describes are held to the code by `ConfDemoDocsTest`.) When you change an API, change its skill in the same
 edit — the test will tell you which one, and a skill is read *instead of* the source, so a wrong one is
 followed rather than noticed.
 

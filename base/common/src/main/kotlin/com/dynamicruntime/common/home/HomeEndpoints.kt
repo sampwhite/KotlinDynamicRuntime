@@ -280,6 +280,12 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             cfactExpression = "${CFACTS.anonymous},${CFACTS.app}", parentId = HMENU.account)
         menuItem(HMENU.register, "Register", UiRoute(HMENU.pageRegister),
             cfactExpression = "${CFACTS.anonymous},${CFACTS.app}", parentId = HMENU.account)
+        // Becoming someone (issue #1183) -- the first thing anyone wants on a test instance -- for a caller with test
+        // access, signed in or not: the fixture they call exists for nobody else (issue #1149).
+        menuItem(HMENU.becomeDeploymentAdmin, "Become deployment admin", UiCall(HACT.becomeDeploymentAdmin),
+            cfactExpression = "${CFACTS.hasTestAccess},${CFACTS.app}", parentId = HMENU.account)
+        menuItem(HMENU.becomeUser, "Become a user…", UiRoute(HMENU.pageBecomeUser),
+            cfactExpression = "${CFACTS.hasTestAccess},${CFACTS.app}", parentId = HMENU.account)
 
         menuItem(HMENU.catalog, "Endpoint catalog", UiRoute(HMENU.pageCatalog))
         // The documents page (issue #554). App-only: an edge serves no documents (its `links` are empty), so

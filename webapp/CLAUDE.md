@@ -193,8 +193,10 @@ Current UI-config endpoints:
 - `GET /profile/ui/config` — **login-required** (`profile` section); features `{hasPassword, canSetPassword}`,
   state `{userInfo}`. Fragment file `profile`.
 - The **switcher** (issue #749), login-required (`user` section): `GET /user/self/users` lists the `UserChoice`s
-  the signed-in person may act as (registered, enabled users of their identity; `isCurrent` / `isDefault`
-  marked), `POST /user/self/switch {userId}` reissues the session as one of them (the app then goes home and
+  the signed-in person may act as (registered, enabled users of their identity in clients this node carries, each
+  with its `clientName`, issue #1110; `isCurrent` / `isDefault` marked), `POST /user/self/switch {userId}` reissues
+  the session as one of them (`POST /user/self/switchClient {client}` as the person's default user in a client,
+  issue #1110) (the app then goes home and
   bumps the refresh generation, as a login does -- no page reload, issue #1015; see `afterSessionChange`, which
   every same-person session change uses), `POST /user/self/setDefault {userId}` chooses which user the
   address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
@@ -1204,6 +1206,13 @@ embeds the bundle, ~a minute). Never ask the developer to look at something only
 never read their window as confirmation of your edit.
 
 ## Signing a browser session in to verify a change (the `becomeUser` fixture)
+
+**In the UI** (issue #1183), for a caller with test access: **Become deployment admin** (one click: `admin` plus
+`allClients`, as `TEP.deploymentAdminEmail`) and **Become a user…** (`#page=becomeUser`, the fixture's form drawn from
+its own schema) under Account in the menu, and the same as a card at the top of Home. Each identity one becomes is kept in
+`localStorage` against the app config's `dataId` and offered again in one click, greyed once the data is reset
+(`BecomeUserApi.kt`, `BecomeUserPage.kt`, covered by `BecomeUserTest`). The fetch below is still the way in from
+script.
 
 Most of the app is behind a login — a login-gated surface (anything in the `gedra` section, the forms pages)
 is not even *visible* to a signed-out caller, so `/schema/endpoints` omits it and a page fetched anonymously

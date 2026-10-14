@@ -294,6 +294,12 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
         }) { c, req ->
         authHandler(c).switchUser(c, req.getReqLong(AFLD.userId))
     }
+    generalEndpoint(AEP.switchClient, "Becomes the signed-in person's user in a client (a fresh session): their default there.",
+        HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
+            field(AFLD.client, "The client to switch to: one the caller's own identity has a registered, enabled user in.", required = true)
+        }) { c, req ->
+        authHandler(c).switchClient(c, req.getReqStr(AFLD.client))
+    }
     // The one cross-client write the Shadow Sandbox adds (issue #929): authority flows from the parent to its sandbox,
     // so it is called from the parent side, and the user it lands on is the caller's own, under their identity.
     generalEndpoint(AEP.openSandbox, "Opens a client's sandbox as the caller's own user in it (a fresh session).",

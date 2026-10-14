@@ -21,6 +21,7 @@ class FrontendActions(
     private val envLogout: (List<String>) -> Unit,
     private val openPath: (String) -> Unit,
     private val setEnvDebug: (Boolean) -> Unit,
+    private val becomeDeploymentAdmin: () -> Unit,
 ) {
     // Every URL an item supplies is guarded here, in the one place item data becomes a navigation. A menu item
     // is data a client may overlay, so an unguarded argument that reaches a full-window navigation is an open
@@ -43,6 +44,9 @@ class FrontendActions(
         // Turn debug behaviors on or off (issue #517); the arg is the boolean as a string. No URL to guard --
         // it moves session state through the env-auth endpoint, which the backend still gates on env auth.
         HACT.setEnvDebug.name to { args -> setEnvDebug(args.firstOrNull() == "true") },
+        // Become the deployment admin (issue #1183). No argument to guard: who it becomes is fixed in the webapp, and
+        // the fixture it calls exists only for a caller with test access.
+        HACT.becomeDeploymentAdmin.name to { _ -> becomeDeploymentAdmin() },
     )
 
     /** Runs [name] with [args], or returns false when nothing implements it. */

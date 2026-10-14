@@ -102,6 +102,15 @@ fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind 
  * choice, a checkbox, a date or a file settle on the **selection** -- picking is finishing -- so those call it
  * right after they emit. A caller that does not care leaves it as the no-op.
  */
+/**
+ * The minimum width of a form's choice controls -- a dropdown, a multi-select, an open choice, the three-state boolean,
+ * a union's branch picker -- in [SchemaForm] and in the hand-built forms laid out a field to a line (the Users editor,
+ * the register form's placement), so a choice reads the same wherever a form asks for it. Wide enough that a label such as `Acme (sandbox) (acme:sandbox)` usually shows whole, in the
+ * box and in its popup, which antd sizes to the box; capped at the container (`min(..., 100%)`), so on a narrow screen
+ * the control fits rather than pushing the page wide. Was 200px, which cut ordinary labels short.
+ */
+internal fun choiceStyle(): dynamic = js("({ minWidth: 'min(300px, 100%)' })")
+
 internal fun ChildrenBuilder.widget(
     vt: SchType, value: Any?, required: Boolean, editable: Boolean, describedBy: String? = null,
     presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
@@ -118,7 +127,7 @@ internal fun ChildrenBuilder.widget(
             options = optionsToJs(vt.itemType?.options.orEmpty())
             this.value = value.toJsonListOfStrings().toTypedArray()
             placeholder = "(choose)"
-            style = js("({ minWidth: 200 })")
+            style = choiceStyle()
             onChange = { v -> emit(jsToList(v)); commit() }
             markInvalid(asDynamic(), describedBy)
         }
@@ -136,7 +145,7 @@ internal fun ChildrenBuilder.widget(
             this.value = value?.toString()
             placeholder = "(choose)"
             allowClear = true
-            style = js("({ minWidth: 200 })")
+            style = choiceStyle()
             onChange = { v -> emit(v as? String); commit() }
             markInvalid(asDynamic(), describedBy)
         }
@@ -154,7 +163,7 @@ internal fun ChildrenBuilder.widget(
             this.value = value?.toString()
             placeholder = "(choose)"
             allowClear = true
-            style = js("({ minWidth: 200 })")
+            style = choiceStyle()
             // A real Boolean, never the option's string: `allowCoerce` defaults **off** for a boolean, so
             // "true" against a boolean type is a plain wrongType failure. Cleared emits null, which
             // `emptyIsAbsent` reads as absent -- the coerced payload drops the key rather than sending null.
@@ -319,7 +328,7 @@ val OpenChoiceField = FC<OpenChoiceFieldProps> { props ->
         value = props.value
         placeholder = "(choose or type)"
         allowClear = true
-        style = js("({ minWidth: 200 })")
+        style = choiceStyle()
         // Show every suggestion whatever is typed; see the class note.
         filterOption = false
         onChange = { v ->
