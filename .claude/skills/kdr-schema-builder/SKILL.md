@@ -257,6 +257,11 @@ checks run in `SchemaService.checkInit`, which is the one moment holding the com
 registry together. In a **client's own** definitions (its config's types) the fault is dropped instead of
 refused, under that config's check mode — see *A client's own definitions* below. Register the callback with `optionsProvider(id) { … }` — see `kdr-endpoint-builder`.
 
+**A client's stored schema names only some sources** (issue #1193): the ones registered with
+`storedConfigMayName`, which answer per caller. Any other is refused when the config is written and dropped, with
+an issue, when it is loaded, as an unregistered id is. A stored alteration or extension may still restate a
+source its base type names **on the same field**, since that list already reaches the same callers.
+
 **Open lists.** `openOptions()` beside the choices says they are *suggestions rather than a bound*: the
 validator stops reporting `invalidOption`, and a data-entry surface draws a combobox instead of a closed
 dropdown. Reach for it whenever the list cannot claim to be complete — one drawn from a table, or assembled

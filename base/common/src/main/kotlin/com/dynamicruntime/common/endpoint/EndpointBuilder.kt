@@ -280,6 +280,8 @@ class SchModule(
     val endpoints: List<KdrEndpoint>,
     /** Options providers declared in the same block, keyed by id (issue #413). Usually empty. */
     val optionsProviders: Map<String, SchOptionsProvider> = emptyMap(),
+    /** The ids among [optionsProviders] that a client's stored schema may name (issue #1193). */
+    val storedConfigMayName: Set<String> = emptySet(),
     /** The namespace the block declares its types in, which its owning component's root is judged by (issue #950). */
     val namespace: String? = null,
     /**
@@ -319,6 +321,9 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
     /** Options providers declared in this block, keyed by id (issue #413). */
     val optionsProviders: MutableMap<String, SchOptionsProvider> = LinkedHashMap()
 
+    /** The ids among [optionsProviders] registered with `storedConfigMayName` (issue #1193). */
+    val storedConfigMayName: MutableSet<String> = LinkedHashSet()
+
     /**
      * Registers the callback that answers for `optionsSource(`[id]`)`, in the same block as the schema naming
      * it (issue #413).
@@ -330,9 +335,17 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
      * Named `optionsProvider` and not `optionsSource` on purpose -- the identically named call inside a
      * property block *consumes* an id, and two DSL calls a line apart that differ only in what they take
      * would be a poor thing to read.
+     *
+     * [storedConfigMayName] says whether a client's **stored** schema may name the source too (issue #1193). The id is
+     * global, so a field a client's administrator writes can name any registered source, and the catalog then
+     * resolves it for whoever is shown that client's forms. A source written for one surface, scoped by that
+     * surface's gate rather than by the caller, would hand its whole list to all of them. So it is off unless set:
+     * set it only on a source that answers **per caller**, as `clientOptions` does. Source-declared schema may name
+     * any source either way, since its code is reviewed with the source's.
      */
-    fun optionsProvider(id: String, provider: SchOptionsProvider) {
+    fun optionsProvider(id: String, storedConfigMayName: Boolean = false, provider: SchOptionsProvider) {
         optionsProviders[id] = provider
+        if (storedConfigMayName) this.storedConfigMayName.add(id)
     }
 
     /**
@@ -656,7 +669,7 @@ fun schemaModule(
     build: SchModuleBuilder.() -> Unit,
 ): SchModule {
     val b = SchModuleBuilder(cxt, namespace).apply(build)
-    return SchModule(b.defs, b.endpoints, b.optionsProviders, namespace, contributesTo)
+    return SchModule(b.defs, b.endpoints, b.optionsProviders, b.storedConfigMayName, namespace, contributesTo)
 }
 
 /**

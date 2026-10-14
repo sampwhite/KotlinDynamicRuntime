@@ -31,6 +31,7 @@ import com.dynamicruntime.common.schema.overlayTypeOutcome
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.util.toJsonMap
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Builds the per-client schema variants at startup (issue #356).
@@ -320,6 +321,12 @@ private fun repairKeywords(
         val (repaired, repairs) = repairTypeDef(
             "Type '$name' (client '$client')", body.toJsonMap(), repair, altersGlobal = name in globalDefs,
             extendsBase = name !in globalDefs && body.containsKey(SCH.extends),
+            // The config holding the type is the one whose definition stands (each replaces the type whole).
+            heldByStoredConfig = { collected.gedraConfigs.contributorOf(client, name)?.isStored == true },
+            // What the type alters, or else what it extends -- the global type whole, else the client's own new one
+            // (an alteration of a global type here is only its difference, which would name too little).
+            base = ((globalDefs[name] ?: body[SCH.extends].toOptStr()?.let { globalDefs[it] ?: authored[it] }) as? Map<*, *>)
+                ?.toJsonMap(),
         )
         if (repairs.isEmpty()) continue
         for (r in repairs) {

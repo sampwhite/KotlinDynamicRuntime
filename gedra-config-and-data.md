@@ -283,7 +283,8 @@ carry an `issues` list, replaced each time the client is loaded. A client whose 
 answers its definition read -- `present: false`, with the issues that say why -- rather than a bare 404.
 
 **A fault costs only itself** (issue #841). In a client's own schema, the smallest faulty piece is dropped rather
-than the boot or the reload refused: an unregistered `g-optionsSource` or a bad `g-visibleWhen` loses the keyword,
+than the boot or the reload refused: an unregistered `g-optionsSource` -- or, in stored config, one not registered
+with `storedConfigMayName` (issue #1193) -- or a bad `g-visibleWhen` loses the keyword,
 a bad `g-errors` message or client-written `g-layout` is dropped, a type that will not compile reverts, and a client
 cfact that redeclares a global one is left out. Beyond schema: an `includedTraits` entry naming nothing is dropped
 rather than the client; a UiBlock or fragment overlay at fault is dropped (a reload now checks them too); a stored
