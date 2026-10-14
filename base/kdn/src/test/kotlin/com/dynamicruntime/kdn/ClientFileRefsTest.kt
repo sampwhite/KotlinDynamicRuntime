@@ -301,6 +301,7 @@ class ClientFileRefsTest : StringSpec({
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFiles, args = mapOf(FREF.client to ours))
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFilesRemove, mapOf(FREF.client to ours, CCT.refId to "logo"))
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFilesDownload, args = mapOf(FREF.client to ours, CCT.refId to "logo"))
+        theirAdmin.expectError(EXC.notAuthorized, UADEP.clientFilesDownloadMeta, args = mapOf(FREF.client to ours, CCT.refId to "logo"))
         // Naming our bytes by their hash in their own configuration finds no such file: it is looked for under them.
         val typed = theirAdmin.expectError(
             EXC.badInput, CFEP.bundlePatch,
@@ -324,6 +325,14 @@ class ClientFileRefsTest : StringSpec({
         refused(full, "logo", image(png), EXC.notFound, client = nobody) shouldContain "no client"
         full.expectError(EXC.notFound, UADEP.clientFiles, args = mapOf(FREF.client to nobody))
         full.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(FREF.client to ours, CCT.refId to "banner"))
+        // What the file is, without it (issue #1131): by the download's inputs, the record the listing shows, and
+        // the same 404 for a ref that is not there.
+        val meta = full.getItem(UADEP.clientFilesDownloadMeta, mapOf(FREF.client to ours, CCT.refId to "logo"))
+        meta shouldBe listed(full, ours).getValue("logo")[FREF.file]
+        meta[FMETA.hash] shouldBe png.sha256Hex()
+        full.expectError(EXC.notFound, UADEP.clientFilesDownloadMeta, args = mapOf(FREF.client to ours, CCT.refId to "banner"))[EP.errorMessage] shouldBe
+            full.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(FREF.client to ours, CCT.refId to "banner"))[EP.errorMessage]
+        full.expectError(EXC.notFound, UADEP.clientFilesDownloadMeta, args = mapOf(FREF.client to nobody, CCT.refId to "logo"))
         // Somebody who administers nothing reaches none of it.
         TestUser.create(cxt, "member@$ours.test", userClient = ours).expectError(EXC.notAuthorized, UADEP.clientFiles)
     }

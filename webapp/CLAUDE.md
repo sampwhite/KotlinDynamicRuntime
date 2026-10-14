@@ -112,6 +112,8 @@ the same way, under their own marker:
   `POST …/files/upload` (multipart `refId`, `file`, `description`; `Http.uploadApi`), `POST …/files/local`,
   `POST …/files/describe` and `POST …/files/remove`; and `GET …/files/download {client, refId, hash}` for a
   preview -- the listing's `hash` in the address, so a replaced file is a new one, as the web assets' preview does.
+  Beside it, `GET …/files/download/meta {client, refId}` answers what the file is without the file (issue #1131);
+  the section has no use for it -- the listing already carries each record -- but a caller after one file does.
   Wire names are `FREF`, `CCT` and the file's `FMETA`, all in the kernel.
   - **A change answers its `mode`** (`EDM.live` / `EDM.draft`), as a copy edit does, and the ref as it now is --
     which the section draws at once. After a *removal* a ref still being there, and not `stored`, is the one the
@@ -604,7 +606,8 @@ after the page has moved to another client is dropped, result and refusal alike.
 The **preview is not the static address**: that serves the caller's own client's, and the client on this page
 need not be the caller's. It is the named download, `GET /clientAdmin/client/web/download {client, slot, hash}`
 (`webAssetPreviewUrl`), carrying the image's hash so that a replaced image is a new address -- a browser redraws
-an address it has already drawn without asking again. A **sandbox** shows its parent's images and may change
+an address it has already drawn without asking again. Beside it, `GET …/web/download/meta {client, slot}` answers
+what the image is without the image (issue #1131); the page reads the listing instead, which carries the same. A **sandbox** shows its parent's images and may change
 none (a change would be live for the parent's people): its page draws the slots with no actions under a note
 saying where to make one, and the backend refuses the attempt anyway.
 

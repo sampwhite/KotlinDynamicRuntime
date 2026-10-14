@@ -126,6 +126,13 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         FileStoreService.get(cxt).get(cxt, bucket, keyOf(ownerOf(client), slotDef(slot).slot))
 
     /**
+     * The metadata of the image in [slot] of [client]'s web assets, without the image, or null when the slot holds
+     * none (issue #1131). The store's own answer, as [file]'s is, never this node's memo of the slots.
+     */
+    fun meta(cxt: KdrCxt, client: String, slot: String): FileMeta? =
+        FileStoreService.get(cxt).meta(cxt, bucket, keyOf(ownerOf(client), slotDef(slot).slot))
+
+    /**
      * Stores [content] as the image of [slot] of [client]'s web assets, replacing the one there, and answers the
      * metadata kept with it. Refused as bad input when the file is empty, larger than the slot takes, or not the
      * image it was declared to be ([WebAssetCheck]); and for a sandbox ([editableOwner]).

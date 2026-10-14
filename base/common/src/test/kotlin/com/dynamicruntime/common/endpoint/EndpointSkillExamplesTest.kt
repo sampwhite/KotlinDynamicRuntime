@@ -6,7 +6,9 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileBucketDef
+import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.filestore.fileMetaEndpoint
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.gedra.namableClients
@@ -224,6 +226,31 @@ class EndpointSkillExamplesTest : StringSpec({
         // "delete(...) says whether there was one."
         files.delete(cxt, "client-files", "clients/acme/logo") shouldBe true
         files.delete(cxt, "client-files", "clients/acme/logo") shouldBe false
+    }
+
+    // Transcribed from the skill's meta-only read, in the Files section: beside a download, by its inputs.
+    fun fileMetaExample(): SchModule = schemaModule(cxt, "file") {
+        fileDownloadEndpoint("/file/download", "Download a file by id.",
+            inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
+            FileStoreService.get(c).get(c, "client-files", "clients/acme/${request["id"]}")?.toContentData()
+                ?: throw KdrException("No such file.", code = EXC.notFound)
+        }
+
+        fileMetaEndpoint("/file/download/meta", "What a file is, without the file.",
+            inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
+            FileStoreService.get(c).meta(c, "client-files", "clients/acme/${request["id"]}")
+        }
+    }
+
+    // "an endpoint answering the file's FileMeta under item, at the download's path with /meta after it"; "the
+    // builder declares the FileMeta type in the module".
+    "the skill's meta-only read is a GET item beside its download, and brings FileMeta with it" {
+        val m = fileMetaExample()
+        val meta = endpoint(m, "/file/download/meta")
+        meta.kind shouldBe EndpointKind.item
+        meta.method shouldBe HttpMethod.GET
+        m.defs.keys shouldContain "file.${FMETA.infoTypeName}"
+        endpoint(m, "/file/download").kind shouldBe EndpointKind.file
     }
 
     // --- the Cursor paging section ------------------------------------------------------------------------

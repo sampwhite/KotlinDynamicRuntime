@@ -191,6 +191,7 @@ class ClientWebAssetsTest : StringSpec({
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientWeb, args = mapOf(WAS.client to ours))
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientWebRemove, mapOf(WAS.client to ours, WAS.slot to WAS.brandMark))
         theirAdmin.expectError(EXC.notAuthorized, UADEP.clientWebDownload, args = mapOf(WAS.client to ours, WAS.slot to WAS.brandMark))
+        theirAdmin.expectError(EXC.notAuthorized, UADEP.clientWebDownloadMeta, args = mapOf(WAS.client to ours, WAS.slot to WAS.brandMark))
         val full = TestUser.createFullAdmin(cxt, "full@webassets.test")
         listed(full, ours).getValue(WAS.brandMark)[WAS.name] shouldBe ourName
         uploaded(full, WAS.favicon, image(svg, "image/svg+xml"), client = ours)
@@ -203,6 +204,8 @@ class ClientWebAssetsTest : StringSpec({
         full.expectError(EXC.notFound, UADEP.clientWeb, args = mapOf(WAS.client to nobody))[EP.errorMessage] shouldBe "This node knows no client '$nobody'."
         full.expectError(EXC.notFound, UADEP.clientWebRemove, mapOf(WAS.client to nobody, WAS.slot to WAS.favicon))
         full.expectError(EXC.notFound, UADEP.clientWebDownload, args = mapOf(WAS.client to nobody, WAS.slot to WAS.favicon))[EP.errorMessage] shouldBe
+            "This node knows no client '$nobody'."
+        full.expectError(EXC.notFound, UADEP.clientWebDownloadMeta, args = mapOf(WAS.client to nobody, WAS.slot to WAS.favicon))[EP.errorMessage] shouldBe
             "This node knows no client '$nobody'."
         // Somebody who administers nothing reaches none of it.
         val member = TestUser.create(cxt, "member@$ours.test", userClient = ours)
@@ -293,6 +296,17 @@ class ClientWebAssetsTest : StringSpec({
         download.header(ContentData.contentDispositionKey).orEmpty() shouldContain "mark.svg"
         // An empty slot has nothing to download.
         full.expectError(EXC.notFound, UADEP.clientWebDownload, args = mapOf(WAS.client to client, WAS.slot to WAS.brandMark))
+
+        // What the image is, without it (issue #1131): by the download's inputs, the record the listing shows.
+        val meta = full.getItem(UADEP.clientWebDownloadMeta, mapOf(WAS.client to client, WAS.slot to WAS.favicon))
+        meta shouldBe listed(full, client).getValue(WAS.favicon)[WAS.file]
+        meta[FMETA.hash] shouldBe svg.sha256Hex()
+        meta[FMETA.fileName] shouldBe "mark.svg"
+        // An empty slot is the same 404 from both, in the same words.
+        full.expectError(EXC.notFound, UADEP.clientWebDownloadMeta, args = mapOf(WAS.client to client, WAS.slot to WAS.brandMark))[EP.errorMessage] shouldBe
+            full.expectError(EXC.notFound, UADEP.clientWebDownload, args = mapOf(WAS.client to client, WAS.slot to WAS.brandMark))[EP.errorMessage]
+        // The client's own administrator asks it of their own client without naming it.
+        admin.getItem(UADEP.clientWebDownloadMeta, mapOf(WAS.slot to WAS.favicon)) shouldBe meta
         // A raster carries no policy: there is nothing in one to run.
         uploaded(admin, WAS.brandMark, image(png, "image/png"))
         static(admin, WAS.brandMark).header(HashedFileServing.contentPolicyHeader).shouldBeNull()

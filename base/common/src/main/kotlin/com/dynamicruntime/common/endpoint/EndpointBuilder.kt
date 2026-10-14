@@ -485,6 +485,9 @@ class SchModuleBuilder(cxt: KdrCxt, namespace: String) : SchTypesBuilder(cxt, na
      *
      * Input is ordinary: [inputRef] or [inputFields] name the file to fetch, and travel in the query string
      * for a GET like any other endpoint's input.
+     *
+     * A download of a file from the file store has its **meta-only read** beside it, at its path with `/meta`
+     * after it: [com.dynamicruntime.common.filestore.fileMetaEndpoint] (issue #1131).
      */
     fun fileDownloadEndpoint(
         path: String,

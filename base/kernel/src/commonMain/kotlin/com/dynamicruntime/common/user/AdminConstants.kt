@@ -177,6 +177,12 @@ object UADEP {
     const val clientWebDownload = "$clientWeb/download"
 
     /**
+     * What the image in one slot of a client's web assets **is** -- its metadata, by the download's own inputs --
+     * without the image (issue #1131): the meta-only read beside [clientWebDownload].
+     */
+    const val clientWebDownloadMeta = "$clientWebDownload/meta"
+
+    /**
      * A client's file refs (issue #1153): the named files its configuration holds -- stored, or shipped with it in
      * source code -- each with the record of its file and none of its content. Scoped as [clientDefinition] is.
      */
@@ -193,6 +199,12 @@ object UADEP {
 
     /** The file of one of a **named** client's file refs, as the listing shows it -- a draft included. */
     const val clientFilesDownload = "$clientFiles/download"
+
+    /**
+     * What the file of one of a client's file refs **is** -- its record, by the download's own inputs -- without
+     * the file (issue #1131): the meta-only read beside [clientFilesDownload].
+     */
+    const val clientFilesDownloadMeta = "$clientFilesDownload/meta"
 
     /**
      * Names a local file as one of a client's file refs (issue #1164): a file under a root the deployment has
