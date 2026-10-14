@@ -15,14 +15,23 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.cfact.CFACTS
+import com.dynamicruntime.common.gedra.workflow.SVY
+import com.dynamicruntime.common.gedra.workflow.WFC
+import com.dynamicruntime.common.gedra.workflow.WSC
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.computeCFactsFromData
+import com.dynamicruntime.common.gedra.workflow.userHasLabel
+import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.home.menuItem
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchLayoutBuilder
+import com.dynamicruntime.common.schema.SchLayoutChoice
 import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.simulation.SimulationReport
 import com.dynamicruntime.common.simulation.Simulations
@@ -61,6 +70,14 @@ object ConfDemo {
     /** The bundle holding the survey (issue #1138). */
     const val talkSurveyConfig = "talkSurvey"
 
+    /** The three normal workflows' bundles (issue #1139). */
+    const val abstractConfig = "abstract"
+    const val reviewConfig = "review"
+    const val logisticsConfig = "logistics"
+
+    /** The fragment file `kdn` ships for the demo's copy (issue #1139). */
+    const val fragmentFile = "confDemo"
+
     const val createTalkWorkflow = "createTalk"
     const val nameTalkTask = "nameTalk"
     const val createSave = "create"
@@ -68,6 +85,27 @@ object ConfDemo {
     const val talkSurveyWorkflow = "talkSurvey"
     const val describeTask = "describe"
     const val saveAbout = "saveAbout"
+
+    const val abstractWorkflow = "abstract"
+    const val writeTask = "write"
+    const val saveAbstract = "saveAbstract"
+
+    const val reviewWorkflow = "review"
+    const val recordReviewTask = "recordReview"
+    const val saveReview = "saveReview"
+    const val acceptTask = "accept"
+
+    const val logisticsWorkflow = "logistics"
+    const val planTask = "plan"
+    const val savePlan = "savePlan"
+
+    /** The client's own cfacts: a talk's track is the workshop track; the committee accepted the talk. */
+    const val isWorkshop = "isWorkshop"
+    const val talkAccepted = "talkAccepted"
+    const val cfactGroup = "confDemo"
+
+    /** The label an administrator carries to review talks. */
+    const val committeeLabel = "committee"
 
     // The client's own traits, and their fields.
     const val session = "session"
@@ -82,6 +120,26 @@ object ConfDemo {
     const val takeaway = "takeaway"
     const val recordingOk = "recordingOk"
     const val needs = "needs"
+
+    const val speakerType = "Speaker"
+    const val abstract = "abstract"
+    const val abstractEntry = "AbstractEntry"
+    const val summary = "summary"
+    const val durationMinutes = "durationMinutes"
+    const val topics = "topics"
+    const val coSpeakers = "coSpeakers"
+    const val programNote = "programNote"
+
+    const val review = "review"
+    const val reviewEntry = "ReviewEntry"
+    const val score = "score"
+    const val notes = "notes"
+
+    const val logistics = "logistics"
+    const val logisticsEntry = "LogisticsEntry"
+    const val room = "room"
+    const val needsLaptops = "needsLaptops"
+    const val setup = "setup"
 
     /** Where the documentation lives in the repository, and the prefix its pages take as doc ids. */
     const val docsDir = "docs/demo-client"
@@ -98,6 +156,9 @@ fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("client", "Conference demo: client", "The demo's client definition."),
     confDemoDoc("create-talk", "Conference demo: creating a talk", "The demo's creation workflow."),
     confDemoDoc("talk-survey", "Conference demo: talk survey", "The demo's survey, its first traits, and the columns of its forms list."),
+    confDemoDoc("abstract", "Conference demo: the abstract", "The demo's first normal workflow: a trait with a list, a multi-select, trimming, and custom errors."),
+    confDemoDoc("committee-review", "Conference demo: committee review", "A workflow gated on the survey, with a field only administrators see and a review task."),
+    confDemoDoc("workshop-logistics", "Conference demo: workshop logistics", "A workflow gated on a computed fact, with a layout that narrows and relabels, and copy from a file."),
     confDemoDoc("reference", "Conference demo: reference", "What the demo's pages have in common: comments, choices, field layouts."),
 )
 
@@ -119,8 +180,26 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 audience = ClientAudience.internal,
                 enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.dev),
                 includedTraits = listOf(GT.name),
+                // Whoever carries it reviews talks (issue #1139).
+                userLabels = listOf(ConfDemo.committeeLabel),
             ),
         )
+        cfact(ConfDemo.isWorkshop, ConfDemo.cfactGroup, "The talk's track is the workshop track; computed by the survey from the session.")
+        cfact(ConfDemo.talkAccepted, ConfDemo.cfactGroup, "True once the committee has accepted the talk.")
+
+        // The workflow pages are off in the shipped menu; a client with normal workflows turns them on (issue #792).
+        uiBlockOverlay(HMENU.block) {
+            items(HFLD.menu) {
+                menuItem(HMENU.workflows, cfactExpression = "${CFACTS.loggedIn},${CFACTS.app}")
+            }
+        }
+
+        // A shared type (issue #1139): declared once, used by the abstract's list of co-speakers.
+        type(ConfDemo.speakerType) {
+            type = SCT.kObject
+            property("name", "The co-speaker's name.", required = true) { title = "Name" }
+            property("email", "Where to reach them.") { title = "Email" }
+        }
 
         // The client's own traits (issue #1138). Each workflow page shows the traits that workflow introduces, so a
         // trait is appended here, never inserted: the pages address each by its place in the bundle.
@@ -151,6 +230,74 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 type = SCT.boolean
             }
             property(ConfDemo.needs, "Anything the organizers should know for the day.") { title = "Anything we should know for the day?" }
+        }
+
+        trait(ConfDemo.abstractEntry, ConfDemo.abstract, setOf(GedraDataType.formDoc), "What the talk is about.") {
+            property(ConfDemo.summary, "The abstract the program will print.", required = true) {
+                title = "Summary"
+                minLength = 50
+                maxLength = 600
+                trimmed()
+                errors {
+                    missingRequired("Every talk needs a summary.")
+                    belowMinimum("A summary is at least 50 characters; give the audience a reason to come.")
+                    aboveMaximum("Keep the summary under 600 characters; the program has limited space.")
+                }
+            }
+            property(ConfDemo.durationMinutes, "How long the talk runs, in minutes.") {
+                title = "Duration (minutes)"
+                type = SCT.integer
+                minimum = 20
+                maximum = 90
+            }
+            property(ConfDemo.topics, "The topics the talk covers; choose up to three.") {
+                title = "Topics"
+                type = SCT.array
+                uniqueItems = true
+                maxItems = 3
+                items {
+                    option("coroutines", "Coroutines")
+                    option("multiplatform", "Multiplatform")
+                    option("compose", "Compose")
+                    option("testing", "Testing")
+                    option("tooling", "Tooling")
+                }
+            }
+            property(ConfDemo.coSpeakers, "Anyone presenting alongside the speaker.") {
+                title = "Co-speakers"
+                type = SCT.array
+                items { ref(ConfDemo.speakerType) }
+            }
+            // Left off the speaker's form (issue #564): shown only to a caller with an administrator's level.
+            property(ConfDemo.programNote, "Scheduling notes for the organizers; the speaker's form leaves this out.") {
+                title = "Organizer's note"
+                visibleWhen = CFACTS.hasAdminLevel
+            }
+        }
+        trait(ConfDemo.reviewEntry, ConfDemo.review, setOf(GedraDataType.formDoc), "The committee's review of the talk.") {
+            property(ConfDemo.score, "The committee's score, from 1 to 5.") {
+                title = "Score"
+                type = SCT.integer
+                minimum = 1
+                maximum = 5
+            }
+            property(ConfDemo.notes, "Feedback the speaker will see.") { title = "Notes for the speaker" }
+        }
+        trait(ConfDemo.logisticsEntry, ConfDemo.logistics, setOf(GedraDataType.formDoc), "What a workshop needs on the day.") {
+            property(ConfDemo.room, "The room the session is in.") {
+                title = "Room"
+                option("hall", "Main hall")
+                option("track1", "Track room 1")
+                option("track2", "Track room 2")
+                option("labA", "Lab A")
+                option("labB", "Lab B")
+            }
+            property(ConfDemo.needsLaptops, "Whether attendees bring a laptop.") {
+                title = "Do attendees need their own laptop?"
+                type = SCT.boolean
+            }
+            property(ConfDemo.setup, "What attendees install before they arrive.") { title = "What should they install beforehand?" }
+            presentWhen(ConfDemo.setup, on = ConfDemo.needsLaptops, value = true)
         }
 
         // The forms listing's columns (issue #1138). A client that declares any replaces the default name column, so
@@ -197,12 +344,118 @@ fun confDemoTalkSurvey(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.cl
                 trait(ConfDemo.questionnaire)
                 save(ConfDemo.saveAbout, "Save", WfSaveKind.edit)
             }
+            // A fact computed from the data (issue #1139): the logistics workflow is for workshops only, and its
+            // eligibility test asks for this fact.
+            function(computeCFactsFromData {
+                trait = ConfDemo.session
+                valuePath = ConfDemo.track
+                map(ConfDemo.workshopTrack, ConfDemo.isWorkshop)
+            })
+        }
+    }
+
+/** The `abstract` bundle (issue #1139): the first normal workflow, open to every talk. */
+fun confDemoAbstract(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
+    gedraConfig(cxt, ConfDemo.abstractConfig, clientNamespace(client), client) {
+        workflow(ConfDemo.abstractWorkflow, WfEntry.normal) {
+            comment = "No eligibility tests: any talk can have its abstract written at any time."
+            label = "Write the abstract"
+            alterType(
+                "${clientNamespace(client)}.${traitDataTypeName(ConfDemo.questionnaireEntry)}",
+                mapOf(
+                    SCH.layout to SchLayoutBuilder(
+                        null,
+                        mode = SchLayoutMode.authoritative,
+                        comment = "The four questions the survey left out.",
+                    ).apply {
+                        field(ConfDemo.audienceLevel)
+                        field(ConfDemo.takeaway)
+                        field(ConfDemo.recordingOk)
+                        field(ConfDemo.needs)
+                    }.build(),
+                ),
+            )
+            task(ConfDemo.writeTask, "The abstract and the rest of the questionnaire") {
+                trait(ConfDemo.abstract)
+                trait(ConfDemo.questionnaire)
+                save(ConfDemo.saveAbstract, "Save the abstract", WfSaveKind.edit)
+            }
+        }
+    }
+
+/** The `review` bundle (issue #1139): the committee's review, open once the survey is complete. */
+fun confDemoReview(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
+    gedraConfig(cxt, ConfDemo.reviewConfig, clientNamespace(client), client) {
+        workflow(ConfDemo.reviewWorkflow, WfEntry.normal) {
+            comment = "The committee reviews a talk once its survey is complete, then accepts it."
+            label = "Committee review"
+            eligibility("surveyDone", SVY.surveyComplete, "The talk's survey has to be complete before the committee reviews it.", comment = "Reviewers need the track.")
+            task(ConfDemo.recordReviewTask, "Record the review") {
+                comment = "Only a committee member may save this task; the speaker sees it read-only."
+                trait(ConfDemo.review)
+                save(ConfDemo.saveReview, "Save the review", WfSaveKind.edit)
+                function(userHasLabel { label = ConfDemo.committeeLabel })
+                saveWhen(WFC.reviewer)
+            }
+            task(ConfDemo.acceptTask, "Accept the talk") {
+                approval(ConfDemo.talkAccepted, "Read the review, then accept the talk for the program.", "Accept the talk")
+                function(userHasLabel { label = ConfDemo.committeeLabel })
+                display {
+                    whenCfacts(ConfDemo.talkAccepted) { text($$"Accepted by ${approvedByName}.") }
+                    whenCfacts("~${WFC.isCta}") {
+                        text("The review has to be recorded before the talk can be accepted.")
+                        disabled = true
+                    }
+                    whenCfacts(WFC.reviewer) { defaultRendering() }
+                    otherwise { text("A committee member accepts the talk.") }
+                }
+            }
+            singleton(WSC.finished, ConfDemo.talkAccepted)
+            // A save rule alone could be bypassed through the raw editor, so the platform insists on a lock to go with
+            // it: while the talk is in the review, only the review's savers may change the review, by any path.
+            lock(ConfDemo.review, writableVia = ConfDemo.recordReviewTask, overrideWhen = CFACTS.hasAdminLevel)
+        }
+    }
+
+/** The `logistics` bundle (issue #1139): planning a workshop, open only to a talk on the workshop track. */
+fun confDemoLogistics(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
+    gedraConfig(cxt, ConfDemo.logisticsConfig, clientNamespace(client), client) {
+        workflow(ConfDemo.logisticsWorkflow, WfEntry.normal) {
+            comment = "For workshops only: the eligibility test asks for the fact the survey computes from the track."
+            label = "Workshop logistics"
+            eligibility("workshopOnly", ConfDemo.isWorkshop, "Only a talk on the workshop track has logistics to plan.")
+            alterType(
+                "${clientNamespace(client)}.${traitDataTypeName(ConfDemo.logisticsEntry)}",
+                mapOf(
+                    SCH.layout to SchLayoutBuilder(
+                        ConfDemo.fragmentFile,
+                        label = "%{@t(\"logistics.heading\")}",
+                        mode = SchLayoutMode.authoritative,
+                        comment = "Authoritative: the labels and descriptions here replace the trait's, and the room list is narrowed to the labs.",
+                    ).apply {
+                        field(
+                            ConfDemo.room, label = "Lab", description = "%{@t(\"logistics.roomHelp\")}",
+                            choices = listOf(SchLayoutChoice("labA", "Lab A (24 seats)"), SchLayoutChoice("labB", "Lab B (40 seats)")),
+                            required = true,
+                        )
+                        field(ConfDemo.needsLaptops, label = "Laptops", description = "Say yes if attendees work on their own machines.")
+                        field(ConfDemo.setup, label = "Setup instructions", description = "Sent to attendees a week before.")
+                    }.build(),
+                ),
+            )
+            task(ConfDemo.planTask, "Plan the workshop") {
+                trait(ConfDemo.logistics)
+                save(ConfDemo.savePlan, "Save the plan", WfSaveKind.edit)
+            }
         }
     }
 
 /** Every bundle of the demo, in the order they are written: the client first, since the others need it to exist. */
 fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): List<GedraConfig> =
-    listOf(confDemoBase(cxt, client), confDemoCreateTalk(cxt, client), confDemoTalkSurvey(cxt, client))
+    listOf(
+        confDemoBase(cxt, client), confDemoCreateTalk(cxt, client), confDemoTalkSurvey(cxt, client),
+        confDemoAbstract(cxt, client), confDemoReview(cxt, client), confDemoLogistics(cxt, client),
+    )
 
 /**
  * Provisions the demo (issue #1137): each bundle written, published, and made live on every node, then an organizer and
@@ -213,11 +466,15 @@ fun provisionConfDemo(cxt: KdrCxt, suffix: String? = null): SimulationReport {
     for (config in confDemoConfigs(cxt, client)) Simulations.provisionConfig(cxt, config)
     val organizer = Simulations.provisionUser(cxt, "organizer@$client.example", client, ROLE.admin, name = "Olive Organizer")
     val speaker = Simulations.provisionUser(cxt, "speaker@$client.example", client, ROLE.user, name = "Pat Speaker")
+    // Reviews talks (issue #1139): an administrator carrying the client's `committee` label.
+    val reviewer = Simulations.provisionUser(cxt, "committee@$client.example", client, ROLE.admin, name = "Casey Committee")
+    Simulations.setLabels(cxt, reviewer, listOf(ConfDemo.committeeLabel))
     return SimulationReport(
         clients = listOf(client),
         users = listOf(
             Simulations.reported(speaker, ROLE.user, "a speaker -- submits talks"),
             Simulations.reported(organizer, ROLE.admin, "an organizer -- an administrator, who sees every talk"),
+            Simulations.reported(reviewer, ROLE.admin, "a committee member -- an administrator carrying the 'committee' label, who reviews and accepts talks"),
         ),
         startPage = "page=${HMENU.pageNewForm}",
         summary = "Client '$client' is ready. Sign in as the speaker to submit a talk.",

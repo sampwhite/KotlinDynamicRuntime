@@ -1,12 +1,15 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.kdn.confdemo.ConfDemo
 import com.dynamicruntime.kdn.confdemo.confDemoDocs
 import com.dynamicruntime.kdn.confdemo.confDemoSimulationSchema
 
@@ -41,4 +44,11 @@ class KdnComponent : ComponentDefinition {
 
     /** The conference demo's documentation (issue #1137), the developer docs `docs/demo-client/` holds. */
     override fun docs(cxt: KdrCxt): List<MarkdownDocDef> = confDemoDocs()
+
+    /**
+     * The conference demo's copy (issue #1139): a fragment file its logistics layout pulls a heading and a description
+     * from, so the docs can show copy that lives in a file and a client's overlay can reword.
+     */
+    override fun fragments(cxt: KdrCxt): List<FragmentSource> =
+        fragmentFiles(ConfDemo.fragmentFile, shownOn = "the conference demo's workshop logistics form")
 }

@@ -11,6 +11,9 @@ Adding a survey takes three pieces of configuration, and this page shows all thr
 - [two columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
 - [the survey itself](#survey), in the `talkSurvey` bundle.
 
+The traits and the columns are the `base` bundle's first additions beyond the client itself. The
+[client page](client.md#what-the-bundle-holds) lists everything the bundle holds, as the pages add to it.
+
 ## Traits
 
 Before the survey can collect anything, the client needs traits for it to collect. It defines two of its own,
@@ -168,6 +171,15 @@ Here is the whole `talkSurvey` bundle:
             "saves": [{ "id": "saveAbout", "label": "Save", "kind": "edit" }]
           }
         ],
+        "functions": [
+          {
+            "fn": "computeCFactsFromData",
+            "trait": "session",
+            "op": "isInList",
+            "valuePath": "track",
+            "valueMapping": [{ "value": "workshop", "cfact": "isWorkshop" }]
+          }
+        ],
         "types": {
           "client.confdemo.QuestionnaireData": {
             "g-layout": {
@@ -183,7 +195,7 @@ Here is the whole `talkSurvey` bundle:
 }
 ```
 
-Most of it reads as the creation workflow does (see [Creating a talk](create-talk.md#workflow)). Three things are
+Most of it reads as the creation workflow does (see [Creating a talk](create-talk.md#workflow)). Four things are
 new.
 
 **The entry is `survey`.** A survey runs on a form that already exists, as often as the speaker likes. It can have more
@@ -194,6 +206,10 @@ than one task, though this one has a single task.
 **The workflow has its own field layout, in `types`.** The survey's form shows only the questionnaire's first question.
 The layout is `authoritative`, so its list of fields is the whole list: `firstTalk`, and nothing else. The other four
 questions are still part of the data. This form simply does not ask them. See [Field layouts](reference.md#field-layouts).
+
+**The workflow runs a function after every save, in `functions`.** It reads the track and, for a workshop, gives the
+talk a fact that a later workflow asks for. [Workshop logistics](workshop-logistics.md#a-computed-fact) explains it,
+where it matters.
 
 ## What the speaker sees
 
@@ -214,4 +230,4 @@ your first conference talk?**, and a **Save** button. Once the speaker saves a t
 A complete survey has one more effect. The platform marks the form with a fact, `kdr:surveyComplete`, and other
 workflows can test for it. The committee's review, on a later page, waits for that fact before it will start.
 
-Next: more pages are on the way. Back to [Contents](README.md#the-pages).
+Next: [Abstract](abstract.md).

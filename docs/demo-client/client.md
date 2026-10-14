@@ -17,7 +17,8 @@ which is the first thing to use them, explains them.
   "enabledEnvironments": ["unit", "local", "dev"],
   "preload": false,
   "staticConfig": false,
-  "includedTraits": ["kdr:name"]
+  "includedTraits": ["kdr:name"],
+  "userLabels": ["committee"]
 }
 ```
 
@@ -31,6 +32,7 @@ which is the first thing to use them, explains them.
 | `enabledEnvironments` | Where the client runs. Every client runs in `unit` and `local`, so that tests and local development can reach it. |
 | `preload`, `staticConfig` | Two switches for production clients, both off here. |
 | `includedTraits` | The shared traits the client uses. Here there is one, `kdr:name`, the trait that gives a form its name. |
+| `userLabels` | Labels an administrator can put on a user. A workflow can ask whether a user has one; [Committee review](committee-review.md) asks for `committee`. |
 
 ## Traits
 
@@ -40,5 +42,20 @@ Some traits, such as `kdr:name`, are defined by the platform and shared by every
 it uses in `includedTraits`. A client can also define traits of its own, with whatever fields it needs. The pages on
 the demo's workflows show several, each where the workflow that collects it is introduced. The first two appear in
 [Talk survey](talk-survey.md).
+
+## What the bundle holds
+
+The pages that follow add to the `base` bundle as they go: the client's own traits, its columns in the forms list,
+a shared type, its facts, and a menu entry. Each is shown on the page where it first matters. This table is the
+bundle as a whole, kept current as the pages add to it.
+
+| Slot | What it holds | Explained on |
+| --- | --- | --- |
+| `kdr:clientDef` | The client's definition, above. | This page |
+| `kdr:traitDef` | Five traits: `session` and `questionnaire`, `abstract`, `review`, and `logistics`. | [Talk survey](talk-survey.md), [Abstract](abstract.md), [Committee review](committee-review.md), [Workshop logistics](workshop-logistics.md) |
+| `kdr:usageDef` | The two columns of the forms list, Talk and Track. | [Talk survey](talk-survey.md#columns-in-the-forms-list) |
+| `kdr:schemaDef` | The shared `Speaker` type. | [Abstract](abstract.md#a-shared-type) |
+| `kdr:cfactDef` | The client's two facts, `isWorkshop` and `talkAccepted`. | [Workshop logistics](workshop-logistics.md#a-computed-fact) |
+| `kdr:uiBlockDef` | The menu entry that turns the Workflows page on. | [Abstract](abstract.md#what-the-speaker-sees) |
 
 Next: [Creating a talk](create-talk.md).

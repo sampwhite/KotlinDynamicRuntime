@@ -329,6 +329,47 @@ The trigger is observable: the first route added for a backend whose application
   The acceptance test already exists: the env-auth toggle from #360 was built partly so this filter could be
   exercised by hand.
 
+## When a client wants to publish part of a bundle separately
+
+A bundle -- one row of the stored-config table -- is the unit of write, publish, revert and the publish impact check.
+So two workflows in one bundle are published together, always, and a client that wants to publish one without the
+other has to have put them in separate bundles when it was written. Nothing moves an entry between bundles afterwards:
+by hand it is a delete from one and a write to the other, two writes with no safe order on the latest tier (the trial
+refuses the client holding a workflow id twice, and deleting first leaves the client without it). The conference demo
+(#1134) keeps one workflow per bundle for this reason, and its README says so.
+
+The trigger is a client asking to split a bundle, or to publish one workflow of several. When one does:
+
+- **The atomic half is already there.** Every config write runs under the client's lock on `GedraConfigClientTran`
+  (`underClientLock`, #843), and `writeConfigs` writes several bundles of one client in one transaction, judged by
+  one trial that runs inside it. A "move these entries to that bundle" operation is one such block: read the source,
+  drop the entries, write both bundles, trial the pair. The import is the one caller of `writeConfigs` today.
+- **Publishing wants the same treatment.** `publish` is per bundle and per call. A split on a published-only client
+  needs "publish these together", with the impact report (#935) run over the pair.
+- **Stored references are the real question.** A form's state names a workflow by `WfRef`, bundle id plus workflow id
+  (`gc.cd.acme.base~2#review`), pinning the revision on purpose. After a move, every engaged form's
+  `computedAgainstRef` and its eligibility-failure records point at the old bundle. Either rewrite them in the same
+  transaction, or let resolution follow a moved workflow by id within the client when the named bundle no longer
+  holds it -- the forgiving choice, which keeps history readable. Decide this before building the operation.
+
+## When a client wants a field whose choices depend on another field
+
+A schema's `if`/`then`/`else` is deliberately one shape (`SchCondition`, issue #253): a property is **required or
+forbidden** depending on what another property holds. It cannot change a field's `g-options`, and the form rules say
+so (`offeredChoices`: "the schema's choices are fixed per field today"). So "the session format offers *workshop*
+only when the speaker has spoken before" is not expressible, and the conference demo (#1139) shows the required-when
+conditional instead of it.
+
+The trigger is a client asking for it; none has. When one does:
+
+- **Let a `then`/`else` carry a property's `g-options`**, merged over the base list by the validator for the data's
+  current state, and by `offeredChoices` for the form -- the one place the form's list meets the schema's, which
+  its KDoc already names as where this would land.
+- **Keep the closed-list promise at both ends** (see the section below): a value valid under the branch that held
+  when it was written must still read back after the deciding field changes, or a stored answer becomes unreadable.
+- **Design View's ghost for a conditional field** (#972) shows a field that is absent; a choice that is absent needs a
+  marking of its own.
+
 ## When a closed choice list has to change
 
 A closed `g-options` list is a promise that nothing else is valid, and the promise is made at **both** ends:
