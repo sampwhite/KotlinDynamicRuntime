@@ -1,25 +1,22 @@
-[← Creating a talk](create-talk.md)
+[← Creating a talk](create-talk.md) · [Contents](README.md#the-pages)
 
-# The talk survey
+# Talk survey
 
 A **survey** collects what every form needs, after the form exists. A client has at most one survey. In the demo, the
 survey asks each speaker for the talk's track and one background question.
 
-A survey is also what the forms list reports on. Each form shows a status that says whether its survey is done, and the
-speaker can open the survey from there.
+Adding a survey takes three pieces of configuration, and this page shows all three:
 
-This page covers three pieces of configuration:
+- [two traits](#traits) for the survey to collect, in the `base` bundle;
+- [two columns](#columns-in-the-forms-list) for the forms list, also in the `base` bundle;
+- [the survey itself](#survey), in the `talkSurvey` bundle.
 
-- [the two traits the survey collects](#the-traits), from the `base` bundle;
-- [the listing columns](#the-listing-columns) that show a form's name and track, also from the `base` bundle;
-- [the survey itself](#the-survey), in the `talkSurvey` bundle.
+## Traits
 
-## The traits
+Before the survey can collect anything, the client needs traits for it to collect. It defines two of its own,
+`session` and `questionnaire`, and keeps them in the `kdr:traitDef` slot of the `base` bundle.
 
-A survey collects traits. The client defines two of its own, `session` and `questionnaire`, in the `kdr:traitDef`
-slot of its `base` bundle.
-
-### The session
+### Session
 
 The `session` trait says where a talk fits in the program. For now it has one field, the track.
 
@@ -52,16 +49,17 @@ The `session` trait says where a talk fits in the program. For now it has one fi
 
 | Field | What it means |
 | --- | --- |
-| `traitId` | The trait's id. A form's entry for the trait is filed under it, and a workflow's task names it. |
-| `typeName` | The name of the trait's entry type: the client's namespace, `client.confdemo`, and the type's own name. |
+| `traitId` | The trait's id. When a form has data for this trait, the entry that holds the data includes this id, so the entry can always be matched to its trait. A workflow's task also picks out the trait by this id. |
+| `typeName` | The name of the trait's entry type: the client's namespace, `client.confdemo`, and the short name for the type, `SessionEntry`. |
 | `description` | A note on what the trait holds. |
-| `appliesTo` | What can carry the trait. The value `formDoc` means a form. |
+| `appliesTo` | What the trait can be part of. The value `formDoc` means a form. |
 | `dataSchema` | The JSON Schema for the trait's data. |
 
 The schema is standard JSON Schema with a few additions. The track is a string, and `g-options` limits it to four
-choices; see [Choices](README.md#choices). Because `required` names it, a `session` entry is not valid without a track.
+choices (see [Choices](reference.md#choices)). Because the `required` list includes `track`, data for a `session` is
+not valid until it has a track.
 
-### The questionnaire
+### Questionnaire
 
 The `questionnaire` trait holds five questions that every speaker answers. The survey asks the first; the abstract
 workflow, on a later page, asks the other four.
@@ -111,10 +109,11 @@ workflow, on a later page, asks the other four.
 }
 ```
 
-No question is required by the schema. Each workflow that asks a question decides whether its own form requires an
-answer, so the data stays valid while the answers arrive in stages.
+The schema requires none of the questions, so the data stays valid as the answers arrive in stages. Each workflow
+that asks questions from the trait can choose which questions to show and which ones its form requires. A requirement
+the workflow adds applies to its form only. The trait's schema does not change.
 
-## The listing columns
+## Columns in the forms list
 
 The forms list shows one row per form. The client chooses the row's columns in the `kdr:usageDef` slot of its `base`
 bundle.
@@ -129,18 +128,18 @@ bundle.
 
 | Field | What it means |
 | --- | --- |
-| `traitId` | The trait the column reads. |
+| `traitId` | The trait the column takes its value from. |
 | `label` | The column's heading. |
 | `display` | What the column shows: a template over the trait's data, in which `${track}` is the `track` field's value. |
-| `kind` | How the value is read when the list is searched. |
+| `kind` | How a search treats the value: as text, a number, or a date. |
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
 
-A client that declares any columns replaces the platform's default, which is a single column for the form's name. That
-is why the demo declares the name column too, under its own heading, **Talk**.
+As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
+demo declares the name column too, and gives it the heading **Talk**.
 
 The track column shows the stored value, such as `workshop`, rather than the choice's label.
 
-## The survey
+## Survey
 
 Here is the whole `talkSurvey` bundle:
 
@@ -181,8 +180,8 @@ Here is the whole `talkSurvey` bundle:
 }
 ```
 
-Most of it reads as the creation workflow does; see [Creating a talk](create-talk.md#the-workflow). Three things
-are new.
+Most of it reads as the creation workflow does (see [Creating a talk](create-talk.md#workflow)). Three things are
+new.
 
 **The entry is `survey`.** A survey runs on a form that already exists, as often as the speaker likes. It can have more
 than one task, though this one has a single task.
@@ -191,12 +190,12 @@ than one task, though this one has a single task.
 
 **The workflow has its own field layout, in `types`.** The survey's form shows only the questionnaire's first question.
 The layout is `authoritative`, so its list of fields is the whole list: `firstTalk`, and nothing else. The other four
-questions stay in the data, unasked here. See [Field layouts](README.md#field-layouts).
+questions are still part of the data. This form simply does not ask them. See [Field layouts](reference.md#field-layouts).
 
-## When a survey is complete
+## What the speaker sees
 
-A survey is **complete** when the form has an entry for every trait its tasks require: here, `session` and
-`questionnaire`. The forms list shows the form's survey status in its **Status** column:
+The forms list shows each talk's survey status in its **Status** column. A survey is **complete** when the form has an
+entry for every trait its tasks require: here, `session` and `questionnaire`.
 
 | Status | What it means |
 | --- | --- |
@@ -204,9 +203,12 @@ A survey is **complete** when the form has an entry for every trait its tasks re
 | **Invalid** | An entry's data does not pass its schema. |
 | **Valid** | Every required trait has an entry, and every entry passes. |
 
-A new talk starts as **Needs Info**, since the creation workflow collects only its name. The status is a link that
-opens the survey, ready to fill in. Once the speaker saves a track and an answer, the talk becomes **Valid** and the
-**Track** column shows the track.
+A new talk starts as **Needs Info**, since the creation workflow collects only its name. The status is a link, and it
+opens the survey ready to fill in: a page titled **About your talk**, with a **Track** choice, the question **Is this
+your first conference talk?**, and a **Save** button. Once the speaker saves a track and an answer, the talk becomes
+**Valid**, and the **Track** column shows the track.
 
-A complete survey also gives the form a fact, `kdr:surveyComplete`, that other workflows can test. The committee's
-review, on a later page, waits for it.
+A complete survey has one more effect. The platform marks the form with a fact, `kdr:surveyComplete`, and other
+workflows can test for it. The committee's review, on a later page, waits for that fact before it will start.
+
+Next: more pages are on the way. Back to [Contents](README.md#the-pages).

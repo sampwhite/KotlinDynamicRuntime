@@ -1,4 +1,4 @@
-[← The conference demo](README.md)
+[← Client](client.md) · [Contents](README.md#the-pages)
 
 # Creating a talk
 
@@ -33,20 +33,20 @@ Here is the whole `createTalk` bundle:
 }
 ```
 
-The bundle has one slot, `kdr:workflowDef`, with one entry. The entry's `workflowId` names the workflow, and its
-`definition` holds the workflow itself.
+The bundle has one slot, `kdr:workflowDef`, with one entry. The entry has the workflow's id in `workflowId`, and the
+workflow itself in `definition`.
 
-## The workflow
+## Workflow
 
 | Field | What it means |
 | --- | --- |
 | `workflowId` | The workflow's id. It is unique within the client, and the entry repeats it. |
-| `entry` | How the workflow starts. A `creation` workflow runs when a form is created. The other two kinds, `survey` and `normal`, run on a form that already exists; later pages cover them. |
-| `$comment` | A note for whoever maintains the workflow. See [Comments](README.md#comments). |
+| `entry` | How the workflow starts. A `creation` workflow runs when a form is created. The other two kinds, `survey` and `normal`, run on a form that already exists, and later pages cover them. |
+| `$comment` | A note for whoever maintains the workflow. See [Comments](reference.md#comments). |
 | `label` | The page's title, above the form. |
 | `tasks` | The workflow's steps, in order. |
 
-## The task
+## Task
 
 A **task** is one step of a workflow: the traits it collects, and the buttons that save them.
 
@@ -64,8 +64,8 @@ A **task** is one step of a workflow: the traits it collects, and the buttons th
 | Field | What it means |
 | --- | --- |
 | `id` | The task's id, unique within the workflow. |
-| `label` | The task's name. A workflow with several tasks lists them by name; a workflow with one task, like this one, does not show it. |
-| `traits` | The traits the task collects. Here there is one, `kdr:name`, the shared trait the client includes in its `base` bundle (see [The client](README.md#the-client)). Its `required: true` means the task is not done until the form has a name. |
+| `label` | The task's name. A workflow with several tasks lists them by name. A workflow with one task, like this one, does not show it. |
+| `traits` | The traits the task collects. Here there is one, `kdr:name`, the shared trait the client includes in its `base` bundle (see [Client](client.md)). Its `required: true` means the task is not complete until the form has a name. |
 | `saves` | The task's buttons. Each has a `label`, the button's text, and a `kind`, what the button does. A save of kind `create` creates the form. |
 
 A creation workflow has exactly one task, and that task has exactly one save, of kind `create`. A definition that
@@ -78,4 +78,4 @@ The speaker sees a page titled **Submit a talk**, with one field and one button,
 The field is the `name` field of the `kdr:name` trait. Its label, **Name**, and its description, *What to call it.*,
 come from the trait's own schema, which every client shares.
 
-Next: [The talk survey](talk-survey.md).
+Next: [Talk survey](talk-survey.md).

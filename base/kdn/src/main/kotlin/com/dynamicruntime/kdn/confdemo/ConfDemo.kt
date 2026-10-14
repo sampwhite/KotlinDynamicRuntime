@@ -95,8 +95,10 @@ object ConfDemo {
  */
 fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("README", "Conference demo", "A worked example of a client built from configuration: its JSON, piece by piece.", listed = true),
+    confDemoDoc("client", "Conference demo: client", "The demo's client definition."),
     confDemoDoc("create-talk", "Conference demo: creating a talk", "The demo's creation workflow."),
-    confDemoDoc("talk-survey", "Conference demo: the talk survey", "The demo's survey, its first traits, and its listing columns."),
+    confDemoDoc("talk-survey", "Conference demo: talk survey", "The demo's survey, its first traits, and the columns of its forms list."),
+    confDemoDoc("reference", "Conference demo: reference", "What the demo's pages have in common: comments, choices, field layouts."),
 )
 
 private fun confDemoDoc(name: String, label: String, description: String, listed: Boolean = false) =
