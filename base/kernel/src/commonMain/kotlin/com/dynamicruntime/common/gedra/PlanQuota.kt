@@ -29,15 +29,17 @@ object PLAN {
     }
 }
 
-/** The measures a plan limits (issue #1109), as their wire names. Each name matches its value. */
+/**
+ * The counted measures a plan limits, as the overview carries them (issue #1109). Each name matches its value. The
+ * per-item limits -- tasks per workflow, attributes per schema -- travel nowhere yet (a refusal says them in words),
+ * so they have no wire name until something sends them.
+ */
 @Suppress("ConstPropertyName")
 object QUOTA {
     const val forms = "forms"
     const val users = "users"
     const val workflows = "workflows"
-    const val tasksPerWorkflow = "tasksPerWorkflow"
     const val schemas = "schemas"
-    const val attributesPerSchema = "attributesPerSchema"
 
     // --- a client's usage, as the overview carries it ---
     const val plan = "plan"
