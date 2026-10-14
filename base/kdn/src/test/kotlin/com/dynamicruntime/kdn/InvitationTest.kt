@@ -142,6 +142,21 @@ class InvitationTest : StringSpec({
         ), method = com.dynamicruntime.common.endpoint.HttpMethod.PUT)
         (refused[EP.errorMessage] as String) shouldContain ROLE.allClients
     }
+
+    // `auth` is not a gated section, so nothing refreshes a caller's roles there: the capability has to be read as it
+    // is now, or one taken away would keep placing users for as long as the session cookie lived.
+    "a placing caller's capability is read as it is now, not as the session cookie recorded it" {
+        val admin = TestUser.createFullAdmin(cxt, "invite-revoked@other.test")
+        val row = users.queryByUserId(cxt, admin.userId).shouldNotBeNull()
+        row.roles = listOf(ROLE.user, ROLE.admin)
+        users.updateUser(cxt, row)
+        val token = admin.getData(AEP.createToken)[AFLD.formAuthToken] as String
+        val refused = admin.expectError(EXC.badInput, AEP.createInitial, mapOf(
+            AFLD.contactAddress to "placed-revoked@other.test", AFLD.contactType to "email",
+            AFLD.formAuthToken to token, AFLD.verifyCode to "y", AFLD.client to CL.hub,
+        ), method = com.dynamicruntime.common.endpoint.HttpMethod.PUT)
+        (refused[EP.errorMessage] as String) shouldContain ROLE.allClients
+    }
 })
 
 /**

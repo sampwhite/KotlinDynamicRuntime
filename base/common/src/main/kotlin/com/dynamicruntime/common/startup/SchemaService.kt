@@ -20,6 +20,7 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.clientPath
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
@@ -1991,12 +1992,16 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // acting roles alone would read as though the user never held them.
             val profile = cxt.userProfile
             val row = if (profile.isRowBacked && profile.isLoggedIn) UserService.get(cxt).queryByUserId(cxt, profile.userId) else null
-            val rolesWithheld = row?.let { SandboxAccess.withheld(cxt, it) }.orEmpty()
+            val standing = row?.let { SandboxAccess.standingOf(cxt, it) }
+            val rolesWithheld = standing?.withheld.orEmpty()
             if (rolesWithheld.isNotEmpty()) {
                 explained[SS.rolesWithheld] = rolesWithheld.entries.sortedBy { it.key }.map { (role, why) ->
-                    linkedMapOf(SS.role to role, SS.rule to SS.sandboxRuleOf(why))
+                    linkedMapOf(SS.role to role, SS.rule to why.rule)
                 }
             }
+            // A sandbox user somebody opened acts with that user's roles, not its own row's: named, since the two
+            // differ in either direction.
+            standing?.actsAs?.let { explained[SS.sandboxActsAs] = linkedMapOf(UPF.userId to it.userId, UPF.client to it.client) }
             cxt.request?.responseMeta?.put(SS.accessExplained, explained)
         }
 
@@ -2164,34 +2169,16 @@ object SS {
     const val withheld = "withheld"
 
     /**
-     * In the access report: roles the caller holds that a rule keeps from taking effect (issue #929), each with the
-     * [role] and the [rule] that withheld it.
+     * In the access report: roles on the caller's row that a rule keeps from taking effect (issue #929), each with
+     * the [role] and the [rule] that withheld it (`SandboxAccess.Withheld`).
      */
     const val rolesWithheld = "rolesWithheld"
     const val role = "role"
     const val rule = "rule"
 
-    /** The rule that withholds a sandbox user's `admin` role from an identity that is no administrator in the parent. */
-    const val sandboxAdminRule =
-        "sandboxAdmin: in a sandbox, admin takes effect only for an identity that is an administrator in the parent, " +
-            "or an allClients administrator"
+    /** In the access report: for a sandbox user somebody opened, the user outside it acts as. */
+    const val sandboxActsAs = "sandboxActsAs"
 
-    /** The rule that withholds any other role of somebody from outside, and a capability on a row that is the sandbox's own. */
-    const val sandboxOutsideRule =
-        "sandboxOutside: in a sandbox, somebody who came from outside it acts with what their user outside holds, " +
-            "and a capability is never a sandbox user's own"
-
-    /** The rule that withholds every role of somebody from outside who is nobody there any more. */
-    const val sandboxStandingRule =
-        "sandboxStanding: a sandbox user holding admin acts for a person outside the sandbox, and this one has no " +
-            "enabled user in the parent and is no allClients administrator"
-
-    /** The rule [why] names, as the access report words it. */
-    fun sandboxRuleOf(why: SandboxAccess.Withheld): String = when (why) {
-        SandboxAccess.Withheld.admin -> sandboxAdminRule
-        SandboxAccess.Withheld.notHeldOutside -> sandboxOutsideRule
-        SandboxAccess.Withheld.noStanding -> sandboxStandingRule
-    }
     const val section = "section"
     const val requiredRole = "requiredRole"
     const val requiredCapability = "requiredCapability"

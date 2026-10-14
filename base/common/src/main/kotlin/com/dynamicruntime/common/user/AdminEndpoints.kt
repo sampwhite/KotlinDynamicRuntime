@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.user
 
 import com.dynamicruntime.common.gedra.overseenClientField
+import com.dynamicruntime.common.gedra.sandboxParentOf
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.EI
@@ -257,8 +259,10 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // administrator creating a user outside their own scope would immediately lose sight of them.
         val org = request[ADF.org].toOptStr()?.trim()?.ifEmpty { null } ?: c.userProfile.org
         requireAssignableOrg(c, org)
+        val client = assignableClient(c, request[ADF.client].toOptStr(), "create users in")
+        requireNoSandboxAdmin(client, roles)
         val userId = service.provisionUser(
-            c, primaryId, assignableClient(c, request[ADF.client].toOptStr(), "create users in"), roles, org, c.now(),
+            c, primaryId, client, roles, org, c.now(),
             persona = persona, personaSuffix = personaSuffix, username = username, registered = ownAddress,
         ) { authUserData ->
             // The address and its contact are the identity's (issue #748), which `provisionUser` creates
@@ -357,6 +361,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // about roles -- the complaint would confirm the id belongs to somebody.
         val row = loadEditableUser(c, userId)
         requireUsableRoles(c, roles, row.roles)
+        requireNoSandboxAdmin(row.client, roles, row.roles)
         // Nobody may change their **own** standing on the admin surface, in either direction.
         //
         // Downward, it stops the last administrator locking the deployment out of its own admin surface.
@@ -716,6 +721,21 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
         // "just tell me the count" request (the matched total still comes back in numAvailable).
         limit = ((request[EP.limit] as? Number)?.toInt() ?: USF.defaultLimit).coerceAtLeast(0),
     )
+}
+
+/**
+ * Refuses giving `admin` to a user of a sandbox [client] (issue #929): there it is never a grant. An administrator
+ * of the parent becomes one in its sandbox by opening it, and a sandbox's own user holding `admin` acts with it
+ * only for a person who is an administrator outside -- and with nothing at all for one who is nobody in the parent
+ * (`SandboxAccess`). Like [requireUsableRoles], a check on *adding*: a role list sent back unchanged passes.
+ */
+private fun requireNoSandboxAdmin(client: String, roles: List<String>, current: List<String> = emptyList()) {
+    if (isSandboxClient(client) && ROLE.admin in roles && ROLE.admin !in current) {
+        throw KdrException.mkInput(
+            "'${ROLE.admin}' is not granted in a sandbox: an administrator of '${sandboxParentOf(client)}' becomes " +
+                "one here by opening the sandbox.",
+        )
+    }
 }
 
 /**

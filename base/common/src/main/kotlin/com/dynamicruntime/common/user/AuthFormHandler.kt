@@ -195,6 +195,9 @@ class AuthFormHandler(
         // A registration is a sign-in flow, refused to a caller a public test deployment does not admit (issue #1150).
         PublicTestDeployment.requireSignInOpen(cxt, address)
         val placing = client != null || persona != null || personaSuffix.isNotEmpty()
+        // The capability as it is now, not as the session cookie recorded it: `auth` is not a gated section, so
+        // nothing has refreshed the roles, and a cookie outlives a revocation by up to its whole life.
+        if (placing) refreshActingRoles(cxt)
         if (placing && !cxt.userProfile.roles.contains(ROLE.allClients)) {
             throw KdrException.mkInput("Only an administrator holding '${ROLE.allClients}' may choose the client, persona or personaSuffix of a new account.")
         }
@@ -765,11 +768,11 @@ class AuthFormHandler(
      * with the caller's levels. Then a fresh session as that user, the way [switchUser] completes.
      *
      * Opened from the **parent** side, by an administrator of the parent or an `allClients` administrator: authority
-     * flows from parent to sandbox. **The roles written here are a record of who came, not what they hold**: what
-     * the sandbox user acts with is asked of the person's user outside at every request ([SandboxAccess]), so no
-     * role is kept in step afterwards and none needs to be. A capability is not written at all -- it is never a
-     * sandbox row's to hold. Refused for a client without the `sandbox` flag, and from inside a sandbox, which has
-     * none of its own.
+     * flows from parent to sandbox. **What is recorded is who opened it** ([AuthUserRow.openedBy]), on the found
+     * user as on a new one, and the sandbox user then acts as that user outside, asked at every request
+     * ([SandboxAccess]) -- so no role is kept in step afterwards and none needs to be. The levels a new one is
+     * created with are a record, and a capability is not written at all. Refused for a client without the
+     * `sandbox` flag, and from inside a sandbox, which has none of its own.
      */
     fun openSandbox(cxt: KdrCxt, named: String?): Map<String, Any?> {
         val profile = cxt.userProfile
@@ -791,7 +794,7 @@ class AuthFormHandler(
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         val clone = userService.claimUser(
             cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix,
-            profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(),
+            profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(), openedBy = own.userId,
         )
         return completeLogin(cxt, clone, byCode = false)
     }
