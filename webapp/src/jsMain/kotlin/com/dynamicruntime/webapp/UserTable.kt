@@ -106,7 +106,7 @@ val UserTable = FC<UserTableProps> { props ->
             }
             for ((field, at) in userTimes(user)) at?.let { row[timeTipKey(field)] = formatTimestamp(it) }
             row.type = if (user.isEntity) "Business" else "Person"
-            row.roles = user.roles.joinToString(", ")
+            row.roles = rolesCellText(user)
             row.status = statusWords(user).joinToString(", ")
             row
         }.toTypedArray()
@@ -316,8 +316,9 @@ private val columnWidths: Map<String, Int> = mapOf(
     // "Forms · Client", which never varies.
     linksColumn to 115,
     // A list, so it is the other one that may wrap -- and now does, on the rows that hold three roles
-    // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority. The 40px
-    // it gave up went to the Registered column (issue #750); two lines on a few rows beat a scrollbar on all.
+    // (`user, admin, allClients`, a full administrator) or a long-named one, which are the minority, and on a
+    // sandbox user whose row and acting roles differ, which says both (issue #1198) and may take three or four.
+    // The 40px it gave up went to the Registered column (issue #750); a few tall rows beat a scrollbar on all.
     rolesColumn to 120,
 )
 

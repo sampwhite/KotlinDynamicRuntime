@@ -490,6 +490,70 @@ class SandboxAccessTest : StringSpec({
         shellSaysStranded(TestUser.create(cxt, "tryout@$parent.test", userClient = sandboxOf(parent))) shouldBe false
     }
 
+    // --- What the console says of a sandbox user (issue #1198) -------------------------------------------------------
+
+    "the console says what a sandbox user acts with, and which user an opened one acts as" {
+        val parent = "sbxconsoleview"
+        defineParent(parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        val inside = chief.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        val tryout = TestUser.create(cxt, "tryout@$parent.test", userClient = sandboxOf(parent))
+        val stranger = TestUser.create(cxt, "stranger@$parent.test", level = ROLE.admin, userClient = sandboxOf(parent))
+
+        // Every user of the person, through an administrator of every client: the person's users, as the console shows them.
+        val full = TestUser.createFullAdmin(cxt, "full@$parent.test")
+        fun shown(userId: Long): Map<String, Any?> =
+            full.getData(ADEP.userIdentity, mapOf(ADF.userId to userId))[ADF.users].toJsonListOfMaps()
+                .single { it[ADF.userId].toOptLong() == userId }
+
+        shown(inside).let {
+            it[ADF.actingRoles] shouldBe listOf(ROLE.admin, ROLE.user)
+            it[ADF.opened] shouldBe true
+            it[ADF.openedBy].toOptLong() shouldBe chief.userId
+            it[ADF.actsAsClient] shouldBe parent
+        }
+        shown(tryout.userId).let { it[ADF.actingRoles] shouldBe listOf(ROLE.user); it.containsKey(ADF.opened) shouldBe false }
+        // Holding admin with nobody in the parent: it acts with nothing, which its row's roles alone would hide.
+        shown(stranger.userId)[ADF.actingRoles] shouldBe emptyList<String>()
+        // Outside a sandbox the row's roles are what it acts with, and nothing more is said.
+        shown(chief.userId).let { info -> listOf(ADF.actingRoles, ADF.opened, ADF.openedBy).none { info.containsKey(it) } shouldBe true }
+
+        // As the sandbox's own administrator sees it, through the scoped surface the webapp calls.
+        val hub = "sbxconsolehub"
+        defineParent(hub, sandbox = false)
+        val visitor = TestUser.createFullAdmin(cxt, "visitor@$parent.test", userClient = hub)
+        val visiting = visitor.postData(AEP.openSandbox, mapOf(AFLD.client to parent))[UPF.userId].toOptLong().shouldNotBeNull()
+        val listed = chief.getItems(UADEP.users).associateBy { it[ADF.userId].toOptLong() }
+        // Opened from the parent: the user it acts as is named, since a sandbox administrator is trusted there.
+        listed[inside].shouldNotBeNull().let { it[ADF.openedBy].toOptLong() shouldBe chief.userId; it[ADF.actsAsClient] shouldBe parent }
+        // Opened from another client by an administrator of every client: said to be opened, and that user left
+        // unnamed -- the sandbox's administrator administers nobody there.
+        listed[visiting].shouldNotBeNull().let {
+            it[ADF.opened] shouldBe true
+            it[ADF.actingRoles] shouldBe listOf(ROLE.admin, ROLE.allClients, ROLE.user)
+            it.containsKey(ADF.openedBy) shouldBe false
+            it.containsKey(ADF.actsAsClient) shouldBe false
+        }
+        // Disabled, an opened user acts with nothing, whoever it was opened from.
+        full.client.sendJsonPostRequest(ADEP.userSetEnabled, mapOf(ADF.userId to visiting, ADF.enabled to false))[EP.status] shouldBe null
+        shown(visiting).let { it[ADF.actingRoles] shouldBe emptyList<String>(); it.containsKey(ADF.actsAsClient) shouldBe false }
+
+        // Its roles are not set on the opened user itself: they would change nothing it may do.
+        val refused = full.expectError(EXC.badInput, ADEP.userSetRoles, mapOf(ADF.userId to inside, ADF.roles to listOf(ROLE.user)))
+        (refused[EP.errorMessage] as String).contains("opened") shouldBe true
+
+        // Once the user it was opened from is gone, the console says it no longer acts as anyone.
+        val users = UserService.get(cxt)
+        val row = users.queryByUserId(cxt, chief.userId).shouldNotBeNull()
+        row.enabled = false
+        users.updateUser(cxt, row)
+        shown(inside).let {
+            it[ADF.actingRoles] shouldBe emptyList<String>()
+            it[ADF.openedBy].toOptLong() shouldBe chief.userId
+            it[ADF.actsAsClient] shouldBe null
+        }
+    }
+
     "with table caching switched off, a sandbox administrator still stands" {
         val parent = "sbxnocache"
         defineParent(parent)

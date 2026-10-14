@@ -94,6 +94,17 @@ class AdminUser(
     val registeredAt: String? = null,
     /** Free-form labels an administrator applied (issue #786) -- what a workflow can test for; they grant nothing. */
     val labels: List<String> = emptyList(),
+    /** In a sandbox (issue #1198): the roles the user acts with, which [roles] -- its row's -- need not say; null outside one. */
+    val actingRoles: List<String>? = null,
+    /** Whether this is a sandbox user somebody opened (issue #1198), which has no roles or organization of its own to set. */
+    val opened: Boolean = false,
+    /**
+     * For a sandbox user somebody opened (issue #1198): the id of the user outside the sandbox it was opened from --
+     * null when that is a user the caller does not administer, which the backend does not name.
+     */
+    val openedBy: Long? = null,
+    /** Beside [openedBy]: that user's client, while it still gives the sandbox user access; null once it does not. */
+    val actsAsClient: String? = null,
 ) {
     /**
      * This user's access level: the highest rung of [RoleLadder] they hold, which is what the Users page's
@@ -338,6 +349,10 @@ object AdminApi {
         lastLoggedInAt = this[USF.lastLoggedIn.at] as? String,
         activatedAt = this[USF.activated.at] as? String,
         labels = this[ADF.labels].toJsonListOfStrings(),
+        actingRoles = this[ADF.actingRoles]?.let { it.toJsonListOfStrings() },
+        opened = this[ADF.opened] == true,
+        openedBy = this[ADF.openedBy].toOptLong(),
+        actsAsClient = this[ADF.actsAsClient] as? String,
     )
 }
 
