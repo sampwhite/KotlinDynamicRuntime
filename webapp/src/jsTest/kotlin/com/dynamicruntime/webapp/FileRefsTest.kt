@@ -469,6 +469,13 @@ class FileRefsTest {
     }
 
     @Test
+    fun theCopyEditorReadsTheRefsOnlyForCopyThatMayNameOne() {
+        assertTrue(copyNamesRef("Welcome ![Logo](ref:logo)"))
+        assertFalse(copyNamesRef("Welcome to the refinery."))
+        assertFalse(copyNamesRef(null))
+    }
+
+    @Test
     fun anImageGoesInWhereTheCursorWasOrOnALineOfItsOwnAtTheEnd() {
         assertEquals("Hello ![x](ref:a)world" to 17, insertAtCaret("Hello world", 6, "![x](ref:a)"))
         assertEquals("Hello\n![x](ref:a)" to 17, insertAtCaret("Hello", null, "![x](ref:a)"))

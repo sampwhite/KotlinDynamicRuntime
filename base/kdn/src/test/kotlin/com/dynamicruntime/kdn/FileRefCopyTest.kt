@@ -148,6 +148,33 @@ class FileRefCopyTest : StringSpec({
         served(client) shouldBe "Before."
     }
 
+    "an image target that could be no ref's id is said to be one, rather than a ref to add" {
+        val client = "refcopybadid"
+        val admin = defineClient(client)
+
+        val refused = writeIntro(admin, "![Logo](ref:\${brand.logo}) and ![Mark](ref:my-mark)")
+
+        (refused[EP.status] as Number).toInt() shouldBe EXC.badInput
+        val message = refused[EP.errorMessage].toOptStr().orEmpty()
+        message shouldContain "shows the image ref:\${brand.logo}, which is no file ref's id"
+        message shouldContain "shows the image ref:my-mark, which is no file ref's id"
+        message shouldNotContain "has no file ref"
+    }
+
+    "copy may name a ref whose file has gone: it is drawn as its alt text, and the copy is not refused for it" {
+        val client = "refcopyabsent"
+        val admin = defineClient(client)
+        uploaded(admin, "logo", png)
+        writeIntro(admin, "![Logo](ref:logo)")[EP.status].shouldBeNull()
+        files.delete(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
+        refs.forget(client, png.sha256Hex())
+
+        writeIntro(admin, "Still ![Logo](ref:logo).")[EP.status].shouldBeNull()
+
+        served(client) shouldBe "Still ![Logo](ref:logo)."
+        refs.forClient(client).refs.keys shouldBe setOf("logo")
+    }
+
     "a ref the copy still names is not taken away, until the copy stops naming it" {
         val client = "refcopyremove"
         val admin = defineClient(client)

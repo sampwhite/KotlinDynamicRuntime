@@ -15,6 +15,7 @@ import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
@@ -38,6 +39,7 @@ import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.gedraConfigTopic
 import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.ContextRoot
 import com.dynamicruntime.common.http.request.ROLE
@@ -54,6 +56,7 @@ import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebAssetCheck
 import io.kotest.assertions.throwables.shouldThrow
@@ -772,6 +775,12 @@ class ClientFileRefsTest : StringSpec({
         // Over its limit, it is not stranded there: taking a ref away introduces no problem it did not have --
         // whichever configuration it is taken from, and so whatever order a trial then reads them in.
         val admin = adminOf(client, w)
+        // Copy may name a ref it is served, and not one past the limit, which it is not (issue #1186).
+        fun intro(value: String) =
+            mapOf(COV.fileId to HFRAG.home, CPY.changes to listOf(mapOf(COV.namespaceField to "home", COV.key to "intro", COV.value to value)))
+        admin.expectError(EXC.badInput, CPY.applyPath, data = intro("![Late](ref:r$over)"))[EP.errorMessage].toOptStr().orEmpty() shouldContain
+            "shows the image ref:r$over, and the client has no file ref 'r$over'."
+        admin.postData(CPY.applyPath, intro("![Early](ref:r10)"))[CPY.mode] shouldBe EDM.live
         admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r1"))[CCT.refId] shouldBe "r1"
         admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "r$over"))[CCT.refId] shouldBe "r$over"
         wrefs.forClient(client).refs.size shouldBe FREF.maxRefs

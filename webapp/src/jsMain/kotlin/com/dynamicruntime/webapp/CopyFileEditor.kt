@@ -67,6 +67,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     // The client's file refs (issue #1186): what an image in its copy may name, offered while a key is edited and
     // drawn in the previews. None when they cannot be read -- the copy is still the copy.
     var refs by useState<List<FileRefView>>(emptyList())
+    val latestRefs = useRef(0)
     // Where the text cursor was last seen in each open key's box, so an image goes in where the writer was.
     val caretAt = useRef(mutableMapOf<CopyAddress, Int>())
 
@@ -81,6 +82,9 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
         raw = emptySet()
         saveError = null
         note = null
+        // Another client's refs are not this one's to offer or draw, and a cursor seen in its boxes is not here.
+        refs = emptyList()
+        caretAt.current?.clear()
     }
 
     // The keys, read for the open client and again whenever the page re-reads (after a save, the values changed); a
@@ -98,9 +102,20 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
             } catch (e: Throwable) {
                 if (latestKeys.current == token) keysError = userFacingError(e)
             }
-            val loadedRefs = apiResult { ClientsApi.fileRefs(props.clientId) }
-            loadedRefs.failureOrNull()?.let { console.error("$errorLogPrefix could not load the client's file refs: ${it.message}") }
-            if (latestKeys.current == token) refs = loadedRefs.valueOrNull().orEmpty()
+        }
+    }
+
+    // The refs, read only once something here needs them -- a key open for editing, or copy naming one -- since the
+    // Files section on the same page reads the same listing for its own use. Again whenever the page re-reads.
+    val wantsRefs = editing.isNotEmpty() || keys?.any { copyNamesRef(it.value) } == true
+    useEffect(props.clientId, generation, wantsRefs) {
+        if (!wantsRefs) return@useEffect
+        val token = (latestRefs.current ?: 0) + 1
+        latestRefs.current = token
+        copyFileScope.launch {
+            val loaded = apiResult { ClientsApi.fileRefs(props.clientId) }
+            loaded.failureOrNull()?.let { console.error("$errorLogPrefix could not load the client's file refs: ${it.message}") }
+            if (latestRefs.current == token) refs = loaded.valueOrNull().orEmpty()
         }
     }
 

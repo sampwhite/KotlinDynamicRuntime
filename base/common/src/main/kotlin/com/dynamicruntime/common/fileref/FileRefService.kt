@@ -28,6 +28,8 @@ import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.imageRefIds
 import com.dynamicruntime.common.webasset.ClientWebAssetService
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /** Logger for a client's file refs (issue #1153). */
 object LogFileRef : KdrLogger("fileRef")
@@ -89,6 +91,15 @@ class FileRefService : ServiceInitializer, ContentServer {
 
     /** The file store as a source: there from the start, since it is what an upload writes to. */
     val store = StoreFileSource()
+
+    /** What [servedNames] last answered for a client, and when (issue #1186). */
+    private class Served(val atNanos: Long, val names: Map<String, String>)
+
+    /** [servedNames]' answers by client, for [servedMemoMs]; a client's is dropped when it reloads. */
+    private val served = ConcurrentHashMap<String, Served>()
+
+    /** Counts the reloads, so an answer worked out while one landed is not kept over it. */
+    private val reloads = AtomicLong()
 
     /** The local files this node reads, once this is set up ([checkInit]); null before, and so "none". */
     @Volatile
@@ -152,6 +163,8 @@ class FileRefService : ServiceInitializer, ContentServer {
         val collector = SchemaCollector.get(cxt) ?: throw KdrException("$serviceName.reloadClient ran with no schema collector.")
         val rebuilt = build(cxt, collector.gedraConfigs.configs, client, running = forClient(client))
         registries = if (rebuilt.refs.isEmpty()) registries - client else registries + (client to rebuilt)
+        reloads.incrementAndGet()
+        served.remove(client)
     }
 
     /**
@@ -182,14 +195,26 @@ class FileRefService : ServiceInitializer, ContentServer {
     /**
      * The refs [client]'s people are served, as the shell config carries them (issue #1186): each id to its file
      * by name and content, `logo:<hash>` -- what copy naming the image `ref:logo` is drawn from. A ref whose file
-     * is not there is left out, so copy naming it draws its alt text. Each ref is answered by its source's own
-     * memory of it ([metaOf]: the store's for [askedMemoMs], a local file's while it has not changed), so a page
-     * load costs a lookup apiece rather than a read.
+     * is not there is left out, so copy naming it draws its alt text.
+     *
+     * **Kept for [servedMemoMs]**, and dropped when the client reloads -- which every upload, replacement and
+     * removal of a ref does -- since the shell config asks for it on every page a client's people open, and a local
+     * ref costs a look at the disk apiece. What only the disk changes (a local file edited in place) is a new name
+     * that long later; the old name is answered meanwhile, with the file as it now is and nothing kept of it.
      *
      * **Never fails the shell.** A ref that cannot be asked after is left out and said in the log: a store that is
      * down costs a client its images in copy, not its app.
      */
-    fun servedNames(cxt: KdrCxt, client: String): Map<String, String> = buildMap {
+    fun servedNames(cxt: KdrCxt, client: String): Map<String, String> {
+        served[client]?.takeIf { nanoTime() - it.atNanos < servedMemoMs * nanosPerMs }?.let { return it.names }
+        val before = reloads.get()
+        val names = namesNow(cxt, client)
+        if (reloads.get() == before) served[client] = Served(nanoTime(), names)
+        return names
+    }
+
+    /** [servedNames] worked out: each ref asked of its source ([metaOf]). */
+    private fun namesNow(cxt: KdrCxt, client: String): Map<String, String> = buildMap {
         for (ref in forClient(client).refs.values) {
             val meta = try {
                 metaOf(cxt, ref)
@@ -316,11 +341,15 @@ class FileRefService : ServiceInitializer, ContentServer {
                         if (!value.contains(namePrefix)) continue
                         for (refId in value.imageRefIds()) {
                             if (refId in kept) continue
+                            // A target that could be no ref's id -- a placeholder, a hyphen -- is said as such: the
+                            // remedy is to the copy, not a ref to add.
+                            val why = FREF.refIdProblem(refId)?.let { "which is no file ref's id: $it" }
+                                ?: "and the client has no file ref '$refId'"
                             reportConfigProblem(
                                 cxt,
                                 config.issue(
                                     "$namespace.$key (file '${layer.fileId}' of client '$owner', config '${config.name}') " +
-                                        "shows the image $namePrefix$refId, and the client has no file ref '$refId'.",
+                                        "shows the image $namePrefix$refId, $why.",
                                     "Keeping the copy; the image is drawn as its alt text.",
                                     GCEL.fragment, layer.fileId,
                                 ),
@@ -406,6 +435,11 @@ class FileRefService : ServiceInitializer, ContentServer {
 
         /** How long what the store said of a file is gone on: how soon a deleted object is noticed by this node. */
         const val askedMemoMs = 10 * 60_000L
+
+        /** How long the shell config's names of a client's refs ([servedNames]) are kept, as a client's web assets are. */
+        const val servedMemoMs = 30_000L
+
+        private const val nanosPerMs = 1_000_000L
 
         /** Where the file [hash] of [owner]'s is kept in the [bucket]: by its content, so it is written once. */
         fun keyOf(owner: String, hash: String): String = "clients/$owner/refs/$hash"

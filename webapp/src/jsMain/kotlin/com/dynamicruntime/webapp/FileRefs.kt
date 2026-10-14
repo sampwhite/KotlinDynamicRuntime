@@ -327,6 +327,9 @@ fun insertAtCaret(value: String, caret: Int?, insert: String): Pair<String, Int>
     return (value.substring(0, caret) + insert + value.substring(caret)) to caret + insert.length
 }
 
+/** Whether a copy [value] may name a file ref as an image (issue #1186): what the copy editor reads the refs for. */
+fun copyNamesRef(value: String?): Boolean = value?.contains("${MDR.refScheme}:") == true
+
 /**
  * The refs the copy editor offers to insert, as choices: each by id, beside its own words, and a ref with no file
  * there said so -- it may still be named, and is drawn as its alt text until its file is.
