@@ -223,8 +223,9 @@ class UserService : ServiceInitializer {
 
     /**
      * The identity [identityId]'s enabled users, registered or not -- from the user cache's `identityId` index when
-     * there is one, as [registeredUsersOf] reads, since this sits on the request gate (issue #929: whether a sandbox
-     * user's identity is an administrator in the parent). SQL when the cache cannot answer ([listingCache]).
+     * there is one, since this sits on the request gate (`SandboxAccess.standingOf`, which narrows it to registered
+     * users save an opened user's opener, issues #929, #1200) and under [registeredUsersOf]. SQL when the cache
+     * cannot answer ([listingCache]).
      */
     fun enabledUsersOf(cxt: KdrCxt, identityId: String): List<AuthUserRow> {
         val rows = listingCache(cxt)?.let { cache ->

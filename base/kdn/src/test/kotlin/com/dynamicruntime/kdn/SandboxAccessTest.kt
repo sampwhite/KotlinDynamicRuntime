@@ -781,6 +781,49 @@ class SandboxAccessTest : StringSpec({
         )
     }
 
+    "a user in the parent the person has not claimed yet stands behind nothing in its sandbox" {
+        val parent = "sbxunclaimed"
+        defineParent(parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        // The person's own user in the sandbox, holding admin, and nobody of theirs in the parent yet.
+        val address = "newcomer@$parent.test"
+        val inside = TestUser.create(cxt, address, level = ROLE.admin, userClient = sandboxOf(parent))
+        actsAsMember(inside) shouldBe false
+
+        // An administrator of the parent provisions them there as an administrator: an invitation, not yet accepted.
+        val provisioned = chief.client.sendJsonPostRequest(UADEP.userCreate, mapOf(
+            ADF.primaryId to address, ADF.roles to listOf(ROLE.user, ROLE.admin),
+        )).let { it[EP.status] shouldBe null; it[EP.results].toJsonMapOrEmpty()[ADF.userId].toOptLong().shouldNotBeNull() }
+        val users = UserService.get(cxt)
+        users.queryByUserId(cxt, provisioned).shouldNotBeNull().isRegistered shouldBe false
+        // Unclaimed, it is not theirs to act as, so it gives the sandbox user nothing.
+        inside.selfRoles() shouldBe emptyList()
+        accessWithheld(inside).values.toSet() shouldBe setOf(SandboxAccess.Withheld.noStanding.rule)
+
+        // Claimed, it stands behind them: an administrator of the parent, so one in its sandbox.
+        val row = users.queryByUserId(cxt, provisioned).shouldNotBeNull()
+        row.registeredAt = cxt.now()
+        users.updateUser(cxt, row, isEdit = false)
+        actsAsAdmin(inside) shouldBe true
+    }
+
+    "the user a sandbox was opened from stands behind it while it is enabled, claimed or not" {
+        val parent = "sbxunclaimedopener"
+        defineParent(parent)
+        val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        chief.postData(AEP.openSandbox, emptyMap())[UPF.client] shouldBe sandboxOf(parent)
+        actsAsAdmin(chief) shouldBe true
+
+        // Recovered by an administrator after a disable, it is unclaimed again -- and a password login, which claims
+        // nothing, still acts as it outside. Inside follows: the person acted as it to open the sandbox.
+        val users = UserService.get(cxt)
+        val row = users.queryByUserId(cxt, chief.userId).shouldNotBeNull()
+        row.registeredAt = null
+        users.updateUser(cxt, row, isEdit = false)
+        users.queryByUserId(cxt, chief.userId).shouldNotBeNull().isRegistered shouldBe false
+        actsAsAdmin(chief) shouldBe true
+    }
+
     "a sandbox user nobody recorded opening acts in the organization of the parent administrator it acts through" {
         val parent = "sbxorglegacy"
         defineParent(parent)
