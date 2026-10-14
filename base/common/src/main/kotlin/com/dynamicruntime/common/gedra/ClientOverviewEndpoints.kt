@@ -101,6 +101,22 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             type = SCT.array
             items { ref(CLD.configIssueTypeQualified) }
         }
+        property(
+            CLD.planUsage,
+            "The client's plan and how much of what it allows the client holds (issue #1109); absent for a client on none.",
+        ) {
+            type = SCT.kObject
+            property(QUOTA.plan, "The plan the client is on.", required = true)
+            property(QUOTA.measures, "Each measure the plan limits: forms, users, workflows, schemas.", required = true) {
+                type = SCT.array
+                items {
+                    type = SCT.kObject
+                    property(QUOTA.measure, "What is measured.", required = true)
+                    property(QUOTA.used, "How much the client holds.", required = true) { type = SCT.integer }
+                    property(QUOTA.limit, "How much its plan allows.", required = true) { type = SCT.integer }
+                }
+            }
+        }
     }
 
     // What a client's own configuration changes about what its people see (issue #916).
@@ -392,6 +408,8 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         // Of the client whose configuration it is: a sandbox's own derived definition is never static, and what is
         // changed from a sandbox is its parent's.
         put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
+        // What its plan allows, and how much of it the client holds (issue #1109); a client on none has no row.
+        PlanLimits.usageOf(cxt, clientId)?.let { put(CLD.planUsage, it.toInfo()) }
     }
 }
 

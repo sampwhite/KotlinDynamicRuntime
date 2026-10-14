@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
@@ -400,6 +401,8 @@ class UserService : ServiceInitializer {
         if (!PERSONASUFFIX.isValid(personaSuffix)) {
             throw KdrException.mkInput("'$personaSuffix' is not a valid personaSuffix: up to ${PERSONASUFFIX.maxLength} letters, digits or underscores.")
         }
+        // What the client's plan allows (issue #1109), before anything is made: a new user and a re-enabled one alike.
+        PlanLimits.requireRoomForUser(cxt, client)
         val identity = getOrCreateIdentity(cxt, primaryId, verifiedAt)
         val siblings = usersOfIdentity(cxt, identity.identityId)
         // The placeholder username is `@<address>` for an identity's first user, as it always was; `username`

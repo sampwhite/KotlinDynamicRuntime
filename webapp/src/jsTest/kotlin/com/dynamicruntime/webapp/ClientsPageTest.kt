@@ -2,6 +2,10 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.gedra.ACEP
+import com.dynamicruntime.common.gedra.PLAN
+import com.dynamicruntime.common.gedra.PlanUsage
+import com.dynamicruntime.common.gedra.QUOTA
+import com.dynamicruntime.common.gedra.QuotaMeasure
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
@@ -64,6 +68,19 @@ class ClientsPageTest {
         assertEquals("Stored config only", clientLoadText(ClientStatus.storedOnly.name, 0))
         // A status this build does not know still says something.
         assertEquals("odd", clientLoadText("odd", 0))
+    }
+
+    @Test
+    fun aClientsPlanReadsAsItsNameAndHowMuchOfEachMeasureItHolds() {
+        // Issue #1109: the plan's name, then each measure it limits.
+        val free = PlanUsage(PLAN.free, listOf(QuotaMeasure(QUOTA.forms, 12, 100), QuotaMeasure(QUOTA.workflows, 3, 4)))
+        assertEquals("Free: 12 of 100 forms, 3 of 4 workflows", planUsageText(free))
+        assertEquals("Unlimited", planUsageText(PlanUsage(PLAN.unlimited, emptyList())))
+        val row = parseClientOverview(listOf(mapOf(CLD.clientId to "free_x", CLD.planUsage to free.toInfo()))).single()
+        assertEquals(free, row.planUsage)
+        assertEquals("Free: 12 of 100 forms, 3 of 4 workflows", clientSummaryRows("free_x", row, null, canSeeAllClients = true).toMap()["Plan"])
+        // A client on no plan has no such row.
+        assertEquals(null, parseClientOverview(listOf(mapOf(CLD.clientId to "plain"))).single().planUsage)
     }
 
     @Test

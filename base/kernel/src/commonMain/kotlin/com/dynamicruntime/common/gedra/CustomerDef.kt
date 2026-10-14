@@ -12,6 +12,7 @@ object CUST {
     const val name = "name"
     const val description = "description"
     const val rootClientId = "rootClientId"
+    const val plan = "plan"
 
     /**
      * The platform's own customer: the one `hub`, `public` and the deployment's internal clients belong to. Declared
@@ -65,6 +66,11 @@ data class CustomerDef(
      * platform, and usually the customer's first client. Null until one is named.
      */
     val rootClientId: String? = null,
+    /**
+     * The plan the customer's clients are on (issue #1109), a [PLAN] name: what they may hold. Null is [PLAN.unlimited].
+     * Set by the platform, as the customer is.
+     */
+    val plan: String? = null,
 ) {
     override fun toString(): String = customerId
 
@@ -74,6 +80,7 @@ data class CustomerDef(
         put(CUST.name, name)
         description?.let { put(CUST.description, it) }
         rootClientId?.let { put(CUST.rootClientId, it) }
+        plan?.let { put(CUST.plan, it) }
     }
 
     companion object {
@@ -84,6 +91,7 @@ data class CustomerDef(
             name = m[CUST.name].toOptStr() ?: throw KdrException.mkConv("A stored customer has no '${CUST.name}'."),
             description = m[CUST.description].toOptStr(),
             rootClientId = m[CUST.rootClientId].toOptStr(),
+            plan = m[CUST.plan].toOptStr(),
         )
 
         /**
@@ -100,6 +108,7 @@ data class CustomerDef(
                 property(CUST.name, "The name presented for the customer.", required = true)
                 property(CUST.description, "An internal note about who, what or why.")
                 property(CUST.rootClientId, "The client whose administrators act for the customer as a whole.")
+                property(CUST.plan, "The plan the customer's clients are on; unlimited when absent.") { PLAN.names.forEach { option(it) } }
             }
         }
     }
@@ -124,6 +133,13 @@ fun customerIdFault(customerId: String): String? {
  * look up, without regard to case.
  */
 fun clientIdPrefix(clientId: String): String = clientId.substringBefore(CUST.separator)
+
+/**
+ * Whether [clientId] is a **self-serve** client's (issues #1109, #1113): under the [CUST.free] prefix, which no
+ * customer holds. What puts a client on the free plan -- not having no customer, which platform and test clients
+ * have too.
+ */
+fun isSelfServeClient(clientId: String): Boolean = isPrefixedClientId(clientId) && clientIdPrefix(clientId) == CUST.free
 
 /** Whether [clientId] holds a [CUST.separator], and so must fall under a customer's prefix or [CUST.free]. */
 fun isPrefixedClientId(clientId: String): Boolean = CUST.separator in clientId

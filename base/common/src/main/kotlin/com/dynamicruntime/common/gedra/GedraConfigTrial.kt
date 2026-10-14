@@ -65,8 +65,13 @@ object GedraConfigTrial {
     ) {
         val drafts = if (published) emptyList() else draftBaseline(cxt, client)
         val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + drafts + fileRefBaseline(cxt, client, withSandbox = !published)
-        val found = trial(cxt, client, replacing, published).filterNot { issue -> baseline.any { it.sameAs(issue) } }
-        if (found.isEmpty()) return
+        val candidate = candidate(cxt, client, replacing, published) ?: return
+        val found = candidate.issues.filterNot { issue -> baseline.any { it.sameAs(issue) } }
+        // What the client's plan allows (issue #1109), judged on the candidate as a whole once it is otherwise sound.
+        if (found.isEmpty()) {
+            PlanLimits.requireConfigWithin(cxt, client, candidate.def, candidate.usage)
+            return
+        }
         throw KdrException.mkInput(
             "$refusal: loading client '$client' would find ${found.size} problem(s). " +
                 found.joinToString(" ") { it.message },
@@ -209,7 +214,7 @@ object GedraConfigTrial {
         ReportService.get(tcxt).trialClient(tcxt, scratch, client, def, schema.types, schema.droppedTypes, workflows)
         // And its file refs (issue #1153): a ref naming bytes that are not in the store is refused as a write.
         FileRefService.getOrNull(tcxt)?.trialClient(tcxt, scratch, client)
-        return TrialCandidate(capture.toList(), present != null, schema, workflows)
+        return TrialCandidate(capture.toList(), present != null, schema, workflows, def, PlanLimits.configUsageOf(scratch, client))
     }
 }
 
@@ -224,4 +229,8 @@ class TrialCandidate(
     val present: Boolean,
     val schema: SchemaTrial,
     val workflows: WorkflowRegistry,
+    /** The client's definition as the candidate would have it; null when it would have none. */
+    val def: ClientDef? = null,
+    /** What the candidate's own configuration holds that a plan counts (issue #1109). */
+    val usage: ConfigUsage = ConfigUsage.empty,
 )

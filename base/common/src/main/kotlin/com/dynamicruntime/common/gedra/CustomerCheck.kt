@@ -66,6 +66,14 @@ internal fun checkCustomers(
         val problem = if (unchecked(config)) null else customerProblem(config, def, kept)
         if (problem == null) {
             kept[def.customerId] = KeptCustomer(def, config)
+            // A plan that is no plan costs only itself (issue #1109): the customer stands, its clients held to the least.
+            def.plan?.takeIf { it !in PLAN.names && !unchecked(config) }?.let { plan ->
+                val issue = GedraConfigIssue(
+                    "Customer '${def.customerId}' names the plan '$plan', which is not one; the plans are ${PLAN.names.joinToString(", ")}.",
+                    "The customer stands, its clients held to the ${PLAN.free} plan.",
+                )
+                reportConfigProblem(cxt, issue.heldBy(config, GCEL.customer, def.customerId), issues)
+            }
         } else {
             reportConfigProblem(cxt, problem.heldBy(config, GCEL.customer, def.customerId), issues)
         }

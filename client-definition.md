@@ -185,7 +185,33 @@ the missing link, so a demonstration or test client is never held to them.
   transaction: a client the write refuses takes its customer back with it, and a root that cannot be named is said
   in the result (`customerFailure`) rather than thrown, since the client was made.
 
-The plan a customer is on, and the quotas it sets, are #1109's; the page showing a customer's clients is #1114's.
+**Plans** (issue #1109). A plan limits **content, never features**: what a client may hold, never what it may do.
+A customer names its plan (`plan`, set by the platform; `unlimited` when it names none), and its clients are on it.
+A self-serve `free_` client is on `free`. A platform or test client, which no customer owns, is on none and holds
+what it likes. A sandbox is on its parent's plan and holds its own forms and users, counted apart from the parent's.
+
+| The free plan holds | |
+| --- | --- |
+| Forms | 100 |
+| Users | 20 |
+| Workflows | 4, of at most 2 tasks each |
+| Schemas | 10, of at most 10 attributes each |
+
+- **What is counted.** A **schema** is a type the client declares as its own: a trait's data type, or one declared
+  directly. A trait's generated entry type is not one, and neither is a narrowing of a global type, which takes
+  away and holds nothing new. A type's **attributes** are its own properties, inline sub-objects included at any
+  depth. A property that is only a `$ref` counts as one, and what the referenced type declares is that type's. A
+  `g-extends` type counts only what it adds. A configuration a template's copy carries is the template's.
+- **Where it is held to.** Workflows, tasks, schemas, and attributes are judged by a configuration write's trial,
+  against the candidate configuration as a whole. Forms and users are counted when one is made, every form create
+  and every user provisioning (a re-enable too). Two creates at once may both pass, a soft limit.
+- **Going over refuses only what adds to it.** Nothing is deleted. A client already over its plan, because its
+  customer moved to a smaller one, may still change and shrink what it has; a change is refused only where it takes
+  a measure over the plan **and** past what the client holds.
+- **Shown.** The Clients overview carries a client's plan and usage (`planUsage`), and its page says it on one
+  row: "Free: 12 of 100 forms, 3 of 20 users, 1 of 4 workflows, 2 of 10 schemas".
+
+The page showing a customer's clients is #1114's.
 
 **Who sets each field** (issue #1108). Every field has a policy, declared once beside the definition's schema
 (`ClientFieldPolicies`; a field the schema declares without one fails as it is built). A policy has two parts: what
