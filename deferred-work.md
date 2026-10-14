@@ -329,6 +329,24 @@ The trigger is observable: the first route added for a backend whose application
   The acceptance test already exists: the env-auth toggle from #360 was built partly so this filter could be
   exercised by hand.
 
+## When a client wants a field whose choices depend on another field
+
+A schema's `if`/`then`/`else` is deliberately one shape (`SchCondition`, issue #253): a property is **required or
+forbidden** depending on what another property holds. It cannot change a field's `g-options`, and the form rules say
+so (`offeredChoices`: "the schema's choices are fixed per field today"). So "the session format offers *workshop*
+only when the speaker has spoken before" is not expressible, and the conference demo (#1139) shows the required-when
+conditional instead of it.
+
+The trigger is a client asking for it; none has. When one does:
+
+- **Let a `then`/`else` carry a property's `g-options`**, merged over the base list by the validator for the data's
+  current state, and by `offeredChoices` for the form -- the one place the form's list meets the schema's, which
+  its KDoc already names as where this would land.
+- **Keep the closed-list promise at both ends** (see the section below): a value valid under the branch that held
+  when it was written must still read back after the deciding field changes, or a stored answer becomes unreadable.
+- **Design View's ghost for a conditional field** (#972) shows a field that is absent; a choice that is absent needs a
+  marking of its own.
+
 ## When a closed choice list has to change
 
 A closed `g-options` list is a promise that nothing else is valid, and the promise is made at **both** ends:

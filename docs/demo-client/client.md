@@ -17,7 +17,8 @@ which is the first thing to use them, explains them.
   "enabledEnvironments": ["unit", "local", "dev"],
   "preload": false,
   "staticConfig": false,
-  "includedTraits": ["kdr:name"]
+  "includedTraits": ["kdr:name"],
+  "userLabels": ["committee"]
 }
 ```
 
@@ -31,6 +32,7 @@ which is the first thing to use them, explains them.
 | `enabledEnvironments` | Where the client runs. Every client runs in `unit` and `local`, so that tests and local development can reach it. |
 | `preload`, `staticConfig` | Two switches for production clients, both off here. |
 | `includedTraits` | The shared traits the client uses. Here there is one, `kdr:name`, the trait that gives a form its name. |
+| `userLabels` | Labels an administrator can put on a user. A workflow can ask whether a user has one; [Committee review](committee-review.md) asks for `committee`. |
 
 ## Traits
 
