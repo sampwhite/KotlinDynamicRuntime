@@ -3,6 +3,7 @@ package com.dynamicruntime.common.fileref
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -19,11 +20,13 @@ import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
- * A client's file refs, for its administrator (issues #1153, #1154, #1164): what refs it has, uploading a file as one,
- * naming a local file as one, removing one, and the file itself.
+ * A client's file refs, for its administrator (issues #1153, #1154, #1164, #1176): what refs it has and what one
+ * takes, uploading a file as one, naming a local file as one, rewording one, removing one, the roots open to
+ * clients, and the file itself.
  *
  * In the **`clientAdmin`** section, each acting on the caller's own client or, for an administrator who sees every
  * client, a named one -- the rule the other client pages enforce (`overseenClient`).
@@ -56,6 +59,12 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         property(FREF.live, "Whether the client's own people are served this ref as listed; false for a draft only its sandbox shows.", required = true) {
             type = SCT.boolean
         }
+        property(
+            FREF.stored,
+            "Whether a stored configuration holds the ref's entry. False for a ref the client was shipped with, in " +
+                "source code: an upload overrides one, and it cannot be removed.",
+            required = true,
+        ) { type = SCT.boolean }
         property(FREF.missing, "Whether there is no such file to serve, so the ref is answered as not found.", required = true) {
             type = SCT.boolean
         }
@@ -84,6 +93,25 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         type = SCT.kObject
         description = "One root of local files that is open to clients: a client's own administrator may name a file in it."
         property(CCT.root, "The root's name: what a ref's `root` is.", required = true)
+    }
+
+    type(FREF.takesTypeName) {
+        type = SCT.kObject
+        description = "What a client's file refs take: what a page needs to know before it offers to add one."
+        property(WAS.maxSize, "The most bytes a ref's file may be.", required = true) { type = SCT.integer }
+        property(WAS.mimeTypes, "The content types an upload may be sent as.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(WAS.kinds, "The kinds of image a ref's file may be, as a person names them.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(FREF.refLimit, "How many file refs a client is served.", required = true) { type = SCT.integer }
+        property(FREF.roots, "The roots of local files open to clients, by name: where a file may be named and not uploaded. Empty on most deployments.", required = true) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
     }
 
     listEndpoint(
@@ -119,6 +147,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
                 emptyIsAbsent = false
                 maxLength = FREF.maxDescriptionLength
             }
+            expectedModeField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
@@ -126,7 +155,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         // A `file` part sent as a plain field is a value, so it passes for "present": it is here that it is no file.
         val content = request[FREF.file] as? ContentData ?: throw KdrException.mkInput("No file was sent.")
         val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
-        changeItem(c, refs, ClientFileRefEdit.upload(c, client, request[CCT.refId].toOptStr().orEmpty(), content, description))
+        changeItem(c, refs, ClientFileRefEdit.upload(c, client, request[CCT.refId].toOptStr().orEmpty(), content, description, request[FREF.mode].toOptStr()))
     }
 
     generalEndpoint(
@@ -139,11 +168,38 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         inputFields = {
             overseenClientField(FREF.client)
             field(CCT.refId, "The ref to remove.", required = true)
+            expectedModeField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
         val client = knownClient(c, request)
-        changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty()))
+        changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty(), request[FREF.mode].toOptStr()))
+    }
+
+    generalEndpoint(
+        UADEP.clientFilesDescribe,
+        "Rewords the description of one of a client's file refs (issue #1176), or clears it with a blank one, live " +
+            "or as a draft as an upload is. The ref names the file it named. A 400 when no stored configuration " +
+            "holds the ref: one the client was shipped with keeps its description until a file is uploaded over it.",
+        HttpMethod.POST,
+        outputRef = FREF.changeTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(FREF.client)
+            field(CCT.refId, "The ref to reword.", required = true)
+            field(CCT.description, "What the file is for, in at most ${FREF.maxDescriptionLength} characters; blank clears it.", required = true) {
+                emptyIsAbsent = false
+                maxLength = FREF.maxDescriptionLength
+            }
+            expectedModeField()
+        },
+    ) { c, request ->
+        val refs = FileRefService.get(c)
+        val client = knownClient(c, request)
+        val described = ClientFileRefEdit.describe(
+            c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.description].toOptStr().orEmpty(), request[FREF.mode].toOptStr(),
+        )
+        changeItem(c, refs, described)
     }
 
     generalEndpoint(
@@ -170,6 +226,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
                 emptyIsAbsent = false
                 maxLength = FREF.maxDescriptionLength
             }
+            expectedModeField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
@@ -177,6 +234,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
         val change = ClientFileRefEdit.nameLocal(
             c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.root].toOptStr().orEmpty(), request[CCT.path].toOptStr().orEmpty(), description,
+            request[FREF.mode].toOptStr(),
         )
         changeItem(c, refs, change)
     }
@@ -198,6 +256,27 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         // all: the administrator of one, as every call beside this holds.
         knownClient(c, request)
         FileRefService.get(c).clientRoots().map { mapOf(CCT.root to it) }
+    }
+
+    itemEndpoint(
+        UADEP.clientFilesTakes,
+        "What a client's file refs take (issue #1176): the most bytes a file may be, the kinds of image and the " +
+            "content types an upload may be sent as, how many refs a client is served, and the roots open to " +
+            "clients (those `${UADEP.clientFilesRoots}` lists). The deployment's answer and no client's -- it is " +
+            "what a page asks before it offers to add a ref, so that it says what the backend will hold it to.",
+        HttpMethod.GET,
+        outputRef = FREF.takesTypeName,
+        inputFields = { overseenClientField(FREF.client) },
+        needsClientConfig = true,
+    ) { c, request ->
+        knownClient(c, request)
+        mapOf(
+            WAS.maxSize to FREF.maxSize,
+            WAS.mimeTypes to WebAssetCheck.acceptedMimeTypes,
+            WAS.kinds to WebAssetCheck.kinds.map { it.label },
+            FREF.refLimit to FREF.maxRefs,
+            FREF.roots to FileRefService.get(c).clientRoots(),
+        )
     }
 
     fileDownloadEndpoint(
@@ -223,6 +302,22 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         // is the first uploader's, of whatever ref first held these bytes, and its extension can say anything.
         val extension = WebAssetCheck.declaredKind(file.meta.mimeType)?.extension
         ContentData(file.bytes, file.meta.mimeType, saveAsFilename = listOfNotNull(refId, extension).joinToString("."), inLine = false)
+    }
+}
+
+/**
+ * The input by which a caller says how it expects a change to take effect (issue #1176): what the page told its
+ * user before they acted. A change that would do otherwise is refused with a 409; absent, nothing is asked.
+ */
+private fun InputFieldsBuilder.expectedModeField() {
+    field(
+        FREF.mode,
+        "How the caller expects the change to take effect, as it told its user: live, or a draft. Whether it is a " +
+            "draft is decided at the request, by whether the client has a sandbox then; a change that would take " +
+            "effect the other way is refused with a 409 and nothing is changed. Absent, it is not asked.",
+    ) {
+        option(EDM.live, "Live")
+        option(EDM.draft, "Draft")
     }
 }
 
@@ -261,6 +356,7 @@ fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean): Map
         ref.def.description?.let { put(CCT.description, it) }
         ref.def.configName?.let { put(FREF.configName, it) }
         put(FREF.live, live)
+        put(FREF.stored, ref.def.stored)
         put(FREF.missing, meta == null)
         if (meta != null) {
             put(FREF.file, meta.toJsonMap())

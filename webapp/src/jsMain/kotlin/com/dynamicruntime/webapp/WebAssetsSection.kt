@@ -7,14 +7,12 @@ import react.Key
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.img
-import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.useEffect
 import react.useRef
 import react.useState
 import web.cssom.ClassName
-import web.html.InputType
 
 private val webAssetsScope = MainScope()
 
@@ -234,34 +232,13 @@ external interface WebAssetUploadProps : Props {
     var onPicked: (file: Any, size: Long) -> Unit
 }
 
-/**
- * The upload control of one slot: a button, and behind it the browser's own file picker, limited to the content
- * types the slot takes. A plain `<input type="file">` rather than antd's Upload, which wants to own the request --
- * as the schema form's file control decided before this one. The input is cleared after each pick, so choosing
- * the same file again -- after a refusal, say -- is still a change the browser reports.
- */
+/** The upload control of one slot: a [FilePickButton] offering the content types the slot takes. */
 private val WebAssetUpload = FC<WebAssetUploadProps> { props ->
-    val picker = useRef<dynamic>(null)
-    input {
-        ref = picker.unsafeCast<react.Ref<web.html.HTMLInputElement>>()
-        className = ClassName("web-asset-picker")
-        type = "file".unsafeCast<InputType>()
-        accept = props.slot.mimeTypes.joinToString(",")
-        onChange = { e ->
-            val target = e.target.asDynamic()
-            val files = target.files
-            if (files != null && (files.length as Int) > 0) {
-                val file = files[0]
-                props.onPicked(file.unsafeCast<Any>(), (file.size as Number).toLong())
-            }
-            target.value = ""
-        }
-    }
-    Button {
-        type = "primary"
-        loading = props.busy
-        disabled = props.disabled && !props.busy
-        onClick = { picker.current?.click() }
-        +(if (props.slot.file == null) "Upload…" else "Replace…")
+    FilePickButton {
+        label = if (props.slot.file == null) "Upload…" else "Replace…"
+        accept = props.slot.mimeTypes
+        busy = props.busy
+        disabled = props.disabled
+        onPicked = props.onPicked
     }
 }

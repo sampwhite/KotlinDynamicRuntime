@@ -346,14 +346,21 @@ private fun ChildrenBuilder.clientDetail(
         // the messages alone), so a dropped client's reasons show either way.
         val issues = def?.issues?.map { "${it.message} ${it.degradedTo}".trim() + (if (it.origin.isEmpty()) "" else " (${it.origin})") }
             ?: row?.issues.orEmpty()
-        if (issues.isNotEmpty()) {
-            h2 { +"Issues" }
-            ul {
-                className = ClassName("wf-reasons")
-                issues.forEachIndexed { i, text ->
-                    li {
-                        key = i.toString().unsafeCast<Key>()
-                        +text
+        // Always one element, with or without issues in it. The sections below are this one's later siblings, and
+        // React keeps a sibling's state by its place: were the heading and the list two elements that come and
+        // go, every section after them would be torn down and made again each time the client's issues appeared
+        // or cleared -- which mending a file ref from its section does (issue #1176), losing that section's note
+        // and whatever was half typed in the ones below.
+        div {
+            if (issues.isNotEmpty()) {
+                h2 { +"Issues" }
+                ul {
+                    className = ClassName("wf-reasons")
+                    issues.forEachIndexed { i, text ->
+                        li {
+                            key = i.toString().unsafeCast<Key>()
+                            +text
+                        }
                     }
                 }
             }
@@ -371,8 +378,22 @@ private fun ChildrenBuilder.clientDetail(
         if (row?.status == ClientStatus.present.name) {
             h2 { +"Web assets" }
             WebAssetsSection {
+                // Keyed, as the section after it is: each keeps its state by what it is, not by how many
+                // elements happen to be drawn above it.
+                key = "web-assets".unsafeCast<Key>()
                 this.clientId = clientId
                 sandboxOf = row.sandboxOf
+                this.onChanged = onChanged
+            }
+            // Its named images (issue #1176). Unlike the two above these are configuration: for a client with a
+            // sandbox a change is a draft, and the sandbox's own page lists what the parent has drafted.
+            h2 { +"Files" }
+            FileRefsSection {
+                key = "files".unsafeCast<Key>()
+                this.clientId = clientId
+                sandboxOf = row.sandboxOf
+                hasSandbox = row.hasSandbox
+                staticHere = row.staticHere
                 this.onChanged = onChanged
             }
         }

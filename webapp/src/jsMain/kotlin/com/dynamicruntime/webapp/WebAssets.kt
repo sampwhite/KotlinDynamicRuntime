@@ -42,16 +42,35 @@ fun markUrlFor(config: HomeConfig?): String = shellMarkUrl(config?.webAssets, br
 /** The address of the client's own tab icon, or null when it has set none and the deployment's stands. */
 fun clientFaviconUrl(config: HomeConfig): String? = config.webAssets[WAS.favicon]?.let(Http::webAssetUrl)
 
-/** The image a slot holds, as the file store describes it. */
+/**
+ * The record of an image a listing describes: the one a web asset's slot holds, or a file ref's file. The file
+ * store's own record of an upload -- or, for a file ref that names a file on the server (`FileRefs.kt`), what the
+ * disk says of it.
+ */
 class WebAssetFile(
     val mimeType: String,
     val size: Long,
     val hash: String,
-    /** When it was uploaded, as the wire's timestamp. */
+    /** When it was uploaded, as the wire's timestamp; for a file on the server, when it last changed. */
     val uploadedAt: String,
-    /** The name it was uploaded under, when it had one. */
+    /** The name it was uploaded under, when it had one; for a file on the server, its own name. */
     val fileName: String?,
 )
+
+/**
+ * A file's record as a listing carries it under a `file` key, or null where there is none: an empty slot, a file
+ * ref whose file is missing. Shared with a client's file refs (`FileRefs.kt`), whose listing describes a file the
+ * same way.
+ */
+fun storedFileFrom(raw: Any?): WebAssetFile? = raw.toJsonMapOrEmpty().takeIf { it.isNotEmpty() }?.let { meta ->
+    WebAssetFile(
+        mimeType = meta[FMETA.mimeType].toOptStr().orEmpty(),
+        size = (meta[FMETA.size] as? Number)?.toLong() ?: 0L,
+        hash = meta[FMETA.hash].toOptStr().orEmpty(),
+        uploadedAt = meta[FMETA.uploadedAt].toOptStr().orEmpty(),
+        fileName = meta[FMETA.fileName].toOptStr(),
+    )
+}
 
 /** One slot of a client's web assets as the listing answers it: what it takes, and [file] when it holds an image. */
 class WebAssetSlot(
@@ -69,15 +88,7 @@ class WebAssetSlot(
 /** The listing's items as slots; one without a slot name is not one. */
 fun parseWebAssetSlots(items: List<Map<String, Any?>>): List<WebAssetSlot> = items.mapNotNull { item ->
     val slot = item[WAS.slot].toOptStr() ?: return@mapNotNull null
-    val file = item[WAS.file].toJsonMapOrEmpty().takeIf { it.isNotEmpty() }?.let { meta ->
-        WebAssetFile(
-            mimeType = meta[FMETA.mimeType].toOptStr().orEmpty(),
-            size = (meta[FMETA.size] as? Number)?.toLong() ?: 0L,
-            hash = meta[FMETA.hash].toOptStr().orEmpty(),
-            uploadedAt = meta[FMETA.uploadedAt].toOptStr().orEmpty(),
-            fileName = meta[FMETA.fileName].toOptStr(),
-        )
-    }
+    val file = storedFileFrom(item[WAS.file])
     WebAssetSlot(
         slot = slot,
         label = item[WAS.label].toOptStr() ?: slot,
@@ -90,9 +101,15 @@ fun parseWebAssetSlots(items: List<Map<String, Any?>>): List<WebAssetSlot> = ite
 }
 
 /** What a slot takes, for the hint under it: `PNG, SVG, ICO, JPEG or WebP, up to 256 KB.` */
-fun webAssetTakesText(slot: WebAssetSlot): String {
-    val kinds = joinAsPhrase(slot.kinds, last = "or").ifEmpty { "An image" }
-    return if (slot.maxSize > 0) "$kinds, up to ${byteSizeText(slot.maxSize)}." else "$kinds."
+fun webAssetTakesText(slot: WebAssetSlot): String = imageTakesText(slot.kinds, slot.maxSize)
+
+/**
+ * What an upload may be, as the backend said it: the [kinds] of image as a person names them, and the most bytes
+ * ([maxSize], none said when it is not positive). Shared with a client's file refs, which take the same.
+ */
+fun imageTakesText(kinds: List<String>, maxSize: Long): String {
+    val named = joinAsPhrase(kinds, last = "or").ifEmpty { "An image" }
+    return if (maxSize > 0) "$named, up to ${byteSizeText(maxSize)}." else "$named."
 }
 
 /**

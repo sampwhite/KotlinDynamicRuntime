@@ -318,7 +318,9 @@ object CLD {
 
     /**
      * On an overview row (issue #1001): whether the client takes **nothing** stored on this node -- static in
-     * production (`staticConfig`) -- so publishing its stored configuration changes nothing it runs.
+     * production (`staticConfig`) -- so publishing its stored configuration changes nothing it runs. For a
+     * sandbox it is its parent's answer: a sandbox holds no configuration of its own, and every change made from
+     * it is one to its parent's, which is refused there.
      */
     const val staticHere = "staticHere"
 

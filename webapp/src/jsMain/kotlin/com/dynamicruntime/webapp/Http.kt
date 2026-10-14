@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.RID
+import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.jsonMap
@@ -245,6 +246,12 @@ object Http {
      * gave it (`favicon:<hash>`): under the static root, where it is cached for good, the name being its content's.
      */
     fun webAssetUrl(versionedName: String): String = staticRoot + WAS.staticPath(appId, versionedName)
+
+    /**
+     * The address one of the caller's client's file refs is served at (issue #1176), from its name as the listing
+     * gave it (`logo:<hash>`): under the static root, cached for good, the name being its content's.
+     */
+    fun fileRefUrl(versionedName: String): String = staticRoot + FREF.staticPath(appId, versionedName)
 
     /**
      * DELETE an API endpoint. Its input is [args], appended as an encoded query string, because this codebase
