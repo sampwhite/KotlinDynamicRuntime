@@ -51,8 +51,9 @@ fun clientCatalogSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.catalogN
     }
 
     // The choice list behind every attribute marked `clientAttribute()` (issue #413). Declared in the same
-    // block as the listing it agrees with, so the two cannot answer differently about who may name what.
-    optionsProvider(CLD.clientOptions) { c, _ ->
+    // block as the listing it agrees with, so the two cannot answer differently about who may name what. It answers
+    // per caller, so a client's stored schema may name it too (issue #1193).
+    optionsProvider(CLD.clientOptions, storedConfigMayName = true) { c, _ ->
         namableClients(c).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
     }
 

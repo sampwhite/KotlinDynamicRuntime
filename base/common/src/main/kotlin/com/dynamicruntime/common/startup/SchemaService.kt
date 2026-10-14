@@ -484,12 +484,12 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
     }
 
     /**
-     * What a definition is repaired against as it is compiled (issue #841): the registered options providers, and
-     * the `g-visibleWhen` check against [registry] (the published global one, unless the caller has it in hand
-     * before anything is published).
+     * What a definition is repaired against as it is compiled (issue #841): the registered options providers, the
+     * ones a client's stored schema may name (issue #1193), and the `g-visibleWhen` check against [registry] (the
+     * published global one, unless the caller has it in hand before anything is published).
      */
     private fun repairContext(collected: SchemaCollector, registry: CFactRegistry? = null): DefRepairContext =
-        DefRepairContext(collected.optionsProviders.keys.toSet()) { expression ->
+        DefRepairContext(collected.optionsProviders.keys.toSet(), collected.storedConfigMayName.toSet()) { expression ->
             visibleWhenExpressionProblem(expression, registry ?: cfactsFor(null))
         }
 

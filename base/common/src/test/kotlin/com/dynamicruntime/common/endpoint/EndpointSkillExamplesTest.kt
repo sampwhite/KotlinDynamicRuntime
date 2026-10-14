@@ -309,10 +309,11 @@ class EndpointSkillExamplesTest : StringSpec({
     // Transcribed from the skill's options-provider example.
     "a module carries the options providers declared in it" {
         val module = schemaModule(cxt, "clientCatalog") {
-            optionsProvider(CLD.clientOptions) { c, _ ->
+            optionsProvider(CLD.clientOptions, storedConfigMayName = true) { c, _ ->
                 namableClients(c).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
             }
         }
         module.optionsProviders.keys shouldContain CLD.clientOptions
+        module.storedConfigMayName shouldContain CLD.clientOptions
     }
 })

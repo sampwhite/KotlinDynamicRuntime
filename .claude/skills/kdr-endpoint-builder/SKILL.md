@@ -62,7 +62,7 @@ A module may also register an **options provider** — the callback behind a pro
 which produces a choice list per caller when the catalog is rendered (issue #413):
 
 ```kotlin
-optionsProvider(CLD.clientOptions) { c, _ ->
+optionsProvider(CLD.clientOptions, storedConfigMayName = true) { c, _ ->
     namableClients(c).map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
 }
 ```
@@ -71,6 +71,13 @@ Declared in the same block as the schema that names the id, so a rename that mis
 rather than emptying a dropdown. It is `optionsProvider` here and `optionsSource` inside a property block
 because one *registers* an id and the other *consumes* one. See `kdr-schema-builder` for what a sourced list
 means for validation.
+
+**`storedConfigMayName`** (issue #1193) says whether a client's *stored* schema may name the source as well. Ids
+are global, so without it a client's administrator could put any source on a field of their own, and the catalog
+would resolve it for everyone shown that client's forms. It is **off by default**: leave it off unless the
+callback answers **per caller**, as `clientOptions` does (it lists only the clients this caller may name). A
+source scoped by its own endpoint's gate -- the customer list, the job types -- stays off. Source-declared
+schema may name any source either way.
 
 ## The kinds (differ by where the payload sits)
 

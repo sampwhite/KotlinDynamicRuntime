@@ -11,6 +11,8 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeSameInstanceAs
 import io.kotest.matchers.types.shouldNotBeSameInstanceAs
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.startup.DefRepairContext
+import com.dynamicruntime.common.startup.repairTypeDef
 
 /**
  * Sourced choice lists: the render-time resolution and the checks that refuse a bad one at boot (issue #413).
@@ -217,5 +219,44 @@ class SchOptionsSourceTest : StringSpec({
     "a non-string source is refused rather than ignored" {
         val type = mapOf<String, Any?>(SCH.properties to mapOf("colour" to mapOf(SCH.optionsSource to 7)))
         optionsSourceProblems("Type 'x'", type, providers).single() shouldContain "not an id"
+    }
+
+    // Which sources a stored definition may name (issue #1193): the repair judges by who holds the type.
+    val repairContext = DefRepairContext(providers.keys, storedConfigMayName = setOf("echoName")) { null }
+
+    fun sourcedType(source: String) =
+        mapOf<String, Any?>(SCH.properties to mapOf("colour" to mapOf(SCH.optionsSource to source)))
+
+    "source-declared schema may name any registered source" {
+        val type = sourcedType("colours")
+        val (kept, repairs) = repairTypeDef("Type 'x'", type, repairContext)
+        repairs.shouldBeEmpty()
+        kept shouldBeSameInstanceAs type
+    }
+
+    "stored schema may name only a source that allows it" {
+        val stored = { true }
+        repairTypeDef("Type 'x'", sourcedType("echoName"), repairContext, heldByStoredConfig = stored).second.shouldBeEmpty()
+        val (kept, repairs) = repairTypeDef("Type 'x'", sourcedType("colours"), repairContext, heldByStoredConfig = stored)
+        repairs.single().message shouldContain "which stored configuration may not name"
+        kept[SCH.properties].toJsonMapOrEmpty()["colour"].toJsonMapOrEmpty().containsKey(SCH.optionsSource) shouldBe false
+    }
+
+    "where the base names a source, a stored definition may restate it there and nowhere else" {
+        val base = sourcedType("colours")
+        fun repairsOver(body: Map<String, Any?>) =
+            repairTypeDef("Type 'x'", body, repairContext, altersGlobal = true, heldByStoredConfig = { true }, base = base).second
+        repairsOver(sourcedType("colours")).shouldBeEmpty()
+        // The same list on another field of the type is a source the base does not name *there*.
+        val moved = mapOf<String, Any?>(SCH.properties to mapOf("shade" to mapOf(SCH.optionsSource to "colours")))
+        repairsOver(moved).single().message shouldContain "property 'shade'"
+    }
+
+    "who holds the type is asked only when it could matter" {
+        var asked = 0
+        val holder = { asked++; true }
+        repairTypeDef("Type 'x'", sourcedType("echoName"), repairContext, heldByStoredConfig = holder)
+        repairTypeDef("Type 'x'", mapOf(SCH.properties to mapOf("plain" to mapOf<String, Any?>())), repairContext, heldByStoredConfig = holder)
+        asked shouldBe 0
     }
 })

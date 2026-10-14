@@ -30,11 +30,13 @@ import com.dynamicruntime.common.util.toJsonMap
 class DefRepair(val message: String, val degradedTo: String)
 
 /**
- * What the keyword repair judges against: the registered options-provider ids, and a check for one
- * `g-visibleWhen` expression (null when sound) -- held by the caller, since only it has the cfact registry.
+ * What the keyword repair judges against: the registered options-provider ids, the ones among them a client's
+ * stored schema may name (issue #1193), and a check for one `g-visibleWhen` expression (null when sound) -- held by
+ * the caller, since only it has the cfact registry.
  */
 class DefRepairContext(
     val optionsProviders: Set<String>,
+    val storedConfigMayName: Set<String> = emptySet(),
     val visibleWhenProblem: (expression: String) -> String?,
 )
 
@@ -42,8 +44,9 @@ class DefRepairContext(
  * [body] -- one type a client authored -- with every **keyword-level** fault removed, and what was removed
  * (issue #841). The smallest drop each fault allows, instead of refusing the boot or the reload:
  *
- * - a `g-optionsSource` naming no registered provider (or not an id): the keyword goes, and the field takes free
- *   input; one declared beside `options`: the keyword goes, and the declared options stand;
+ * - a `g-optionsSource` naming no registered provider (or not an id), or -- in a definition [heldByStoredConfig] --
+ *   one stored configuration may not name (issue #1193): the keyword goes, and the field takes free input; one
+ *   declared beside `options`: the keyword goes, and the declared options stand;
  * - a `g-visibleWhen` that does not pass [DefRepairContext.visibleWhenProblem], or that gates a **required**
  *   property: the keyword goes, and the field shows for everyone -- acceptable, because the gate controls display,
  *   not access;
@@ -75,15 +78,36 @@ fun repairTypeDef(
      * the base, and a `g-merge` there says how its properties merge. Both are read when the extension is resolved.
      */
     extendsBase: Boolean = false,
+    /**
+     * Whether [body] comes from a client's **stored** configuration (issue #1193), which may name only the options
+     * sources registered with `storedConfigMayName` -- a source's own gate is not the caller's, and a stored field is
+     * served to whoever is shown the client's forms. Source-declared schema is reviewed with the source it names.
+     * Asked only when [body] names a source a stored config may not, since finding the holder is a search.
+     */
+    heldByStoredConfig: () -> Boolean = { false },
+    /**
+     * The type [body] alters or extends, as it stands without [body] (issue #1193). A stored definition may name any
+     * source this base names **at the same place**: that list already reaches the callers shown the type, so
+     * restating it -- to change a field's label, say -- hands them nothing new.
+     */
+    base: Map<String, Any?>? = null,
 ): Pair<Map<String, Any?>, List<DefRepair>> {
     val repairs = mutableListOf<DefRepair>()
+    val stored by lazy(heldByStoredConfig)
 
     // Rebuilds as it walks; an unrepaired type is handed back by identity below, so the copies cost nothing
     // that matters. [isSchema] says whether the node is at a place the parser reads as a schema -- the type, a
     // property, an `items`, a map's value schema (`additionalProperties`), a `oneOf` branch. The walk below goes into every map and list, since a `g-` key is ours
     // wherever it turns up; a standard keyword's shape is judged only in a schema, because the same word in a
     // `default`, a `const` or a keyword of the document's own is data (`{"type": "refund"}`), not a keyword.
-    fun repairNode(at: String, node: Map<String, Any?>, requiredHere: Boolean, isSchema: Boolean): Map<String, Any?> {
+    // [baseNode] is the node at the same place in [base], walked in step, or null where the base has none.
+    fun repairNode(
+        at: String,
+        node: Map<String, Any?>,
+        requiredHere: Boolean,
+        isSchema: Boolean,
+        baseNode: Map<String, Any?>?,
+    ): Map<String, Any?> {
         val out = LinkedHashMap(node)
         if (isSchema) {
             for ((key, value) in node) {
@@ -110,7 +134,8 @@ fun repairTypeDef(
             repairs.add(DefRepair(problem.message, "Dropping '$key'."))
         }
 
-        when (val source = out[SCH.optionsSource]) {
+        val source = out[SCH.optionsSource]
+        when (source) {
             null -> {}
             !is String -> {
                 out.remove(SCH.optionsSource)
@@ -130,7 +155,20 @@ fun repairTypeDef(
                     ),
                 )
             }
-            else -> if (out[SCH.options] != null) {
+            // Judged only for a stored definition, and only where its base does not name the same source at the same
+            // place (see `base`). Dropped as an unregistered id is, in a sentence of the same shape: to a stored
+            // definition, a source it may not name is as good as absent. The two are told apart, though -- the ids
+            // are in source code, so saying which it is gives nothing away, and "no component registered" would send
+            // someone hunting a typo.
+            else -> if (source !in context.storedConfigMayName && baseNode?.get(SCH.optionsSource) != source && stored) {
+                out.remove(SCH.optionsSource)
+                repairs.add(
+                    DefRepair(
+                        "$at sources its options from '$source', which stored configuration may not name.",
+                        "Dropping '${SCH.optionsSource}'; the field takes free input.",
+                    ),
+                )
+            } else if (out[SCH.options] != null) {
                 out.remove(SCH.optionsSource)
                 repairs.add(
                     DefRepair(
@@ -196,7 +234,11 @@ fun repairTypeDef(
                 key == SCH.properties && value is Map<*, *> ->
                     value.toJsonMap().mapValuesTo(LinkedHashMap()) { (child, childBody) ->
                         if (childBody is Map<*, *>) {
-                            repairNode("$where property '$child'", childBody.toJsonMap(), child in required, isSchema)
+                            val baseChild = (baseNode?.get(SCH.properties) as? Map<*, *>)?.get(child) as? Map<*, *>
+                            repairNode(
+                                "$where property '$child'", childBody.toJsonMap(), child in required, isSchema,
+                                baseChild?.toJsonMap(),
+                            )
                         } else {
                             childBody
                         }
@@ -207,12 +249,23 @@ fun repairTypeDef(
                 // (issue #1056), so a keyword that learns to hold one is walked and worded here without being named here.
                 isSchema && value is Map<*, *> && SchStdKeywords.isNode(key, value) -> repairNode(
                     "$at (${SchStdKeywords.nodePlace(key)})", value.toJsonMap(), requiredHere = false, isSchema = true,
+                    baseMapAt(baseNode, key),
                 )
-                value is Map<*, *> -> repairNode(at, value.toJsonMap(), requiredHere = false, isSchema = false)
+                value is Map<*, *> ->
+                    repairNode(at, value.toJsonMap(), requiredHere = false, isSchema = false, baseMapAt(baseNode, key))
                 value is List<*> -> {
                     // Asked once for the list, not once an element.
                     val holdsSchemas = isSchema && SchStdKeywords.nodesIn(key, value).isNotEmpty()
-                    value.map { if (it is Map<*, *>) repairNode(at, it.toJsonMap(), requiredHere = false, holdsSchemas) else it }
+                    // A list's elements line up with the base's by position -- a union's branches, say.
+                    val baseList = baseNode?.get(key) as? List<*>
+                    value.mapIndexed { i, it ->
+                        if (it is Map<*, *>) {
+                            val baseElement = (baseList?.getOrNull(i) as? Map<*, *>)?.toJsonMap()
+                            repairNode(at, it.toJsonMap(), requiredHere = false, holdsSchemas, baseElement)
+                        } else {
+                            it
+                        }
+                    }
                 }
                 else -> value
             }
@@ -220,9 +273,12 @@ fun repairTypeDef(
         return out
     }
 
-    val repaired = repairNode(where, body, requiredHere = false, isSchema = true)
+    val repaired = repairNode(where, body, requiredHere = false, isSchema = true, base)
     return (if (repairs.isEmpty()) body else repaired) to repairs
 }
+
+/** The map under [key] in [node], or null -- a step of [repairTypeDef]'s walk through its base. */
+private fun baseMapAt(node: Map<String, Any?>?, key: String): Map<String, Any?>? = (node?.get(key) as? Map<*, *>)?.toJsonMap()
 
 /**
  * Malformed **backend** `%{...}` blocks in a layout's copy (issue #605) -- the registry-free half of the

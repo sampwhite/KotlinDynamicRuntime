@@ -85,13 +85,19 @@ class SchemaCollector(
     val optionsProviders: MutableMap<String, SchOptionsProvider> = LinkedHashMap()
 
     /**
+     * The ids among [optionsProviders] that a client's **stored** schema may name (issue #1193) -- the ones registered
+     * with `storedConfigMayName`. Any other is dropped from a stored definition, and refused when it is written.
+     */
+    val storedConfigMayName: MutableSet<String> = LinkedHashSet()
+
+    /**
      * Registers an options provider under [id], refusing a second one.
      *
      * The issue leaves uniqueness to the registrant, and this is what makes that hold: last-write-wins would
      * mean one component silently answering for another's attribute, visible only as a wrong list on a page
      * nobody connected to the component that took the id.
      */
-    fun addOptionsProvider(id: String, provider: SchOptionsProvider) {
+    fun addOptionsProvider(id: String, provider: SchOptionsProvider, storedConfigMayName: Boolean = false) {
         if (optionsProviders.containsKey(id)) {
             throw KdrException(
                 "Two options providers are registered under '$id'. The id has to be unique across every " +
@@ -99,6 +105,7 @@ class SchemaCollector(
             )
         }
         optionsProviders[id] = provider
+        if (storedConfigMayName) this.storedConfigMayName.add(id)
     }
 
     /**
@@ -353,7 +360,9 @@ class SchemaCollector(
         defs.putAll(module.defs)
         endpoints.addAll(module.endpoints)
         // Through the checked add, so a duplicate is refused whichever route a provider arrives by.
-        module.optionsProviders.forEach { (id, provider) -> addOptionsProvider(id, provider) }
+        module.optionsProviders.forEach { (id, provider) ->
+            addOptionsProvider(id, provider, storedConfigMayName = id in module.storedConfigMayName)
+        }
     }
 
     /**
@@ -397,6 +406,7 @@ class SchemaCollector(
         c.gedraConfigs.absorbAll(gedraConfigs)
         c.sandboxOverlays.addAll(sandboxOverlays)
         c.optionsProviders.putAll(optionsProviders)
+        c.storedConfigMayName.addAll(storedConfigMayName)
         c.cfacts.putAll(cfacts)
         c.cfactSources.putAll(cfactSources)
         c.workflowFunctions.addAll(workflowFunctions)
