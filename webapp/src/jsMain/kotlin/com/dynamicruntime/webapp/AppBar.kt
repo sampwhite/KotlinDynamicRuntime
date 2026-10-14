@@ -328,6 +328,11 @@ val AppBar = FC<AppBarProps> { props ->
                 bump()
             }
         },
+        // Become the deployment admin (issue #1183) and go home re-reading, as the Home card's button does.
+        becomeDeploymentAdmin = {
+            open = false
+            becomeDeploymentAdmin(bump)
+        },
     )
 
     // The bar takes on the elevated-privilege look while the caller holds administrative rights. It reads the

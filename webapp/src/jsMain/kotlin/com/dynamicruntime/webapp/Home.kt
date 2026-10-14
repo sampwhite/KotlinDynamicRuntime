@@ -93,6 +93,8 @@ val Home = FC<Props> {
                     error != null -> errorText("Couldn't load this page.", error!!)
                     // The welcome page: copy from the fragment file, and optionally the links inline.
                     current != null -> {
+                        // On a test instance, for a caller with test access (issue #1183): becoming someone first.
+                        if (appConfig().hasTestAccess) TestAccessCard {}
                         // The hero: the brand mark beside the wordmark. The wordmark is "copy" like everything
                         // else here, so a deployment that names no brand simply gets no hero.
                         copy.opt("home", "brand")?.let { brandName ->

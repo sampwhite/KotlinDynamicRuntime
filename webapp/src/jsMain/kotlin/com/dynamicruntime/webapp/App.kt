@@ -248,6 +248,8 @@ val App = FC<Props> {
                                 // A test instance's own page (issue #997), for a caller with test access (issue
                                 // #1149); elsewhere the route does not exist.
                                 pageSimulations -> if (testAccess) SimulationsPage {} else Home {}
+                                // Becoming someone (issue #1183), for a caller with test access, as Simulations is.
+                                pageBecomeUser -> if (testAccess) BecomeUserPage {} else Home {}
                                 else -> Home {}
                             }
                         }
@@ -336,6 +338,7 @@ private fun menuPageOf(page: String): String = if (page == pageWorkflowForms) pa
 // deployment's `allowDebugPages`, checked at render time where the config is known.
 private const val pageDebug = HMENU.pageDebug
 private const val pageSimulations = HMENU.pageSimulations
+private const val pageBecomeUser = HMENU.pageBecomeUser
 
 /**
  * Resolves the page from the hash: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the catalog,
@@ -373,6 +376,7 @@ private fun currentPage(): String {
         params[HP.page] == pageCreateForUser -> pageCreateForUser
         params[HP.page] == pageDebug -> pageDebug
         params[HP.page] == pageSimulations -> pageSimulations
+        params[HP.page] == pageBecomeUser -> pageBecomeUser
         else -> "home"
     }
 }

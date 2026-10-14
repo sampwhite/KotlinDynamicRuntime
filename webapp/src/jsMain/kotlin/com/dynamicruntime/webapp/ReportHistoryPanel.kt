@@ -248,8 +248,6 @@ private const val historyPanelId = "report-history-panel"
 /** The id of the hit target of the bar at [index] of the chart's bars: what the arrow keys move the focus to. */
 private fun historyHitId(index: Int): String = "rh-hit-$index"
 
-/** A `ResizeObserver` calling [changed] whenever what it observes changes size. */
-private fun resizeObserver(changed: () -> Unit): dynamic = js("new ResizeObserver(function () { changed(); })")
 
 /** What an empty history says: what would fill it. */
 private fun historyEmptyText(report: ReportInfo, otherDefinitions: Int): String = when {

@@ -277,7 +277,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                             disabled = busy || codeSent
                             allowClear = true
                             placeholder = "public"
-                            style = js("({ minWidth: 180 })")
+                            style = choiceStyle()
                             onChange = { v -> placeClient = v as? String ?: "" }
                         }
                     }
@@ -291,7 +291,7 @@ val AuthFlow = FC<AuthFlowProps> { props ->
                         disabled = busy || codeSent
                         allowClear = true
                         placeholder = PERSONA.label(PERSONA.member)
-                        style = js("({ minWidth: 180 })")
+                        style = choiceStyle()
                         onChange = { v -> placePersona = v as? String ?: "" }
                     }
                 }

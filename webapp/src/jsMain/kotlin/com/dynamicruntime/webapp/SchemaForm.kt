@@ -932,7 +932,7 @@ private fun ChildrenBuilder.renderVariant(
                 this.options = choices
                 this.value = chosen
                 placeholder = "(choose)"
-                style = js("({ minWidth: 200 })")
+                style = choiceStyle()
                 this.onChange = { v -> switchTo(v as? String) }
                 markInvalid(asDynamic(), describedBy)
             }

@@ -1,16 +1,19 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.startup.SS
+import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.test.TEP
 import com.dynamicruntime.common.test.testSchema
 import com.dynamicruntime.common.user.ADEP
@@ -145,6 +148,35 @@ class BecomeUserEndpointTest : StringSpec({
         envAuthed.sendEditRequest(TEP.becomeUser, null, body, HttpMethod.POST).rptStatusCode shouldBe EXC.notFound
         envAuthed.cookies.remove(ENVA.suppressCookie)
         envAuthed.sendEditRequest(TEP.becomeUser, null, body, HttpMethod.POST).rptStatusCode shouldBe EXC.ok
+    }
+
+    // The form draws the client field as a dropdown of every client this node carries (issue #1183) -- for a signed-out
+    // tester too, where the shared client attribute would offer only the clients the caller may name, `public` alone.
+    "the client choices are every client the node carries, whoever is asking" {
+        val cxt = TestInstances.default("becomeClientChoices")
+        val anon = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
+        val field = anon.sendJsonGetRequest("/schema/endpoint", mapOf(EI.path to TEP.becomeUser, EI.method to HttpMethod.POST.name))[EP.results]
+            .toJsonMapOrEmpty()[EI.endpoints].toJsonListOfMaps().single()[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties]
+            .toJsonMapOrEmpty()[TEP.client].toJsonMapOrEmpty()
+        val offered = field[SCH.options].toJsonListOfMaps().map { it[SCH.value] }
+        offered shouldContain CL.hub
+        offered shouldContain CL.public
+    }
+
+    // Neither way to the list is open to a caller without test access -- here a client's own administrator, who holds no
+    // allClients and has no env auth. The endpoint, and so its form, is absent for them (#1149); and the source itself
+    // answers nothing, since its id is global and a client's stored schema may name it on a field of its own.
+    "a client administrator without test access cannot reach the fixture's client list" {
+        val cxt = TestInstances.default("becomeClientChoicesFenced")
+        val admin = TestUser.create(cxt, "chief@becomefence.test", level = ROLE.admin)
+        val lookup = admin.client.sendJsonGetRequest("/schema/endpoint", mapOf(EI.path to TEP.becomeUser, EI.method to HttpMethod.POST.name))
+        lookup[EP.results].toJsonMapOrEmpty()[EI.endpoints].toJsonListOfMaps() shouldBe emptyList()
+        val provider = SchemaService.get(cxt).optionsProviders.getValue(TEP.clientOptions)
+        val plain = cxt.mkSubContext("plain").also { it.userProfile = admin.cxt.userProfile }
+        provider(plain, TEP.client) shouldBe emptyList()
+        // The same source, asked for a caller with test access, answers every client.
+        val envAuthed = cxt.mkSubContext("envAuthed").also { it.envAuthEmail = TestHttpClient.fixtureEnvAddress }
+        provider(envAuthed, TEP.client).map { it.value } shouldContain CL.hub
     }
 
     "a test instance outside local/unit fails startup with an aggressive error" {

@@ -18,7 +18,9 @@ import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.normalizeEmail
+import kotlinx.browser.document
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
@@ -72,6 +74,23 @@ val Users = FC<Props> {
     // shared link arrives with the well closed and the filters it carries said as chips. Tuple form so the
     // toggle is a functional update (`{ !it }`), the convention App.kt documents for its own counters.
     val (filtersOpen, setFiltersOpen) = useState(false)
+    // The filter well's width, followed while it is open: how many columns it lays out decides whether the date ranges
+    // start a row of their own ([breakBeforeTall]).
+    var wellWidth by useState(0.0)
+    useEffect(filtersOpen) {
+        if (!filtersOpen) return@useEffect
+        val well = document.getElementById(usersFiltersWellId) ?: return@useEffect
+        val measure: () -> Unit = { wellWidth = well.clientWidth.toDouble() }
+        measure()
+        val observer = resizeObserver(measure)
+        observer.observe(well)
+        // The effect's scope is cancelled when the well closes or the page goes: stop observing then.
+        try {
+            awaitCancellation()
+        } finally {
+            observer.disconnect()
+        }
+    }
     // What the last search reported: how many matched in all, and whether the cap hid some.
     var numAvailable by useState(0)
     var hasMore by useState(false)
@@ -653,7 +672,7 @@ val Users = FC<Props> {
                     value = draftLevel
                     options = accessLevelOptions(operatorSelectable)
                     disabled = busy || self
-                    style = js("({ minWidth: 180 })")
+                    style = choiceStyle()
                     onChange = { v ->
                         val level = v as? String ?: ROLE.user
                         draftLevel = level
@@ -712,7 +731,7 @@ val Users = FC<Props> {
                         value = draftClient
                         options = clientOptions(clientChoices)
                         disabled = busy
-                        style = js("({ minWidth: 180 })")
+                        style = choiceStyle()
                         onChange = { v -> draftClient = v as? String ?: draftClient }
                     }
                 }
@@ -756,7 +775,7 @@ val Users = FC<Props> {
                         value = draftPersona
                         options = personaOptions()
                         disabled = busy
-                        style = js("({ minWidth: 180 })")
+                        style = choiceStyle()
                         onChange = { v ->
                             val chosen = v as? String ?: PERSONA.member
                             draftPersona = chosen
@@ -808,7 +827,7 @@ val Users = FC<Props> {
                         )
                         placeholder = "(none)"
                         disabled = busy
-                        style = js("({ minWidth: 240 })")
+                        style = choiceStyle()
                         onChange = { v -> draftLabels = (v.unsafeCast<Array<String>>()).toList() }
                     }
                 }
@@ -995,10 +1014,17 @@ val Users = FC<Props> {
             // no filter kind (sort-only) draws no control. A from-to pair wider than its track wraps (see
             // `.filter-range`), so the well needs no special width for it.
             filterWell(filtersOpen, usersFiltersWellId) {
-                for (spec in userSearchFieldSpecs) {
-                    if (spec.allClientsOnly && !showClient) continue
+                // The date ranges are taller than the text boxes (two pickers and a hint), and a row is as tall as its
+                // tallest cell: the first of them starts a row of its own when that saves height ([breakBeforeTall]).
+                val shown = userSearchFieldSpecs.filter { (!it.allClientsOnly || showClient) && it.filterKind != null }
+                val dateCount = shown.count { it.filterKind == UserFilterKind.dateRange }
+                val breakForDates = breakBeforeTall(shown.size - dateCount, dateCount, filterWellColumns(wellWidth))
+                var datesStarted = false
+                for (spec in shown) {
                     val kind = spec.filterKind ?: continue
-                    filterGroup(spec.label) {
+                    val startsRow = breakForDates && kind == UserFilterKind.dateRange && !datesStarted
+                    if (kind == UserFilterKind.dateRange) datesStarted = true
+                    filterGroup(spec.label, startsRow) {
                         when (kind) {
                             UserFilterKind.substring -> Input {
                                 value = textFilters[spec.name] ?: ""

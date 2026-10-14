@@ -11,10 +11,13 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.user.PERSONA
@@ -40,6 +43,19 @@ import kotlin.time.Instant
 fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
     // The endpoint returns the acting user's info, so the shared UserInfo type is pulled into this module.
     UserProfile.defineInfoType(this)
+
+    // The fixture's client choices (issue #1183): every client this node carries, labeled as the shared client
+    // attribute labels them. Not `clientAttribute()`, whose list is the clients the *caller* may name -- for a
+    // signed-out tester, none but `public` -- while the fixture becomes a user of any client the node carries.
+    //
+    // **Guarded here, not only by the endpoint.** The fixture is absent for a caller without test access (#1149), so its
+    // form is never rendered for them -- but an option source's id is global, and a client's stored schema may name any
+    // registered one on a field of its own. Without this check, a client's form could hand every client's id and name
+    // to whoever is shown it.
+    optionsProvider(TEP.clientOptions) { c, _ ->
+        if (!c.hasTestAccess) return@optionsProvider emptyList()
+        ClientService.get(c).presentClients.map { SchOption(it.clientId, clientLabel(it.clientId, it.name)) }
+    }
 
     generalEndpoint(
         TEP.becomeUser,
@@ -70,7 +86,7 @@ fun testSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.test") {
                     "(issue #747), found when it exists and created when it does not. Absent, the address's " +
                     "default user; for a new address, whatever the address names, which for an ordinary address " +
                     "is the public client. A client this node does not carry is refused rather than quietly replaced.",
-            )
+            ) { optionsSource(TEP.clientOptions) }
             field(
                 TEP.name,
                 "The created user's real-world name -- a person's full name, distinct from the username. " +

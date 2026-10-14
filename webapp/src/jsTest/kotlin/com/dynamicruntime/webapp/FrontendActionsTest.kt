@@ -18,13 +18,22 @@ class FrontendActionsTest {
 
     @Test
     fun everyDeclaredActionIsImplemented() {
-        assertEquals(emptyList(), FrontendActions(logout = {}, envLogout = {}, openPath = {}, setEnvDebug = {}).missing())
+        assertEquals(emptyList(), FrontendActions(logout = {}, envLogout = {}, openPath = {}, setEnvDebug = {}, becomeDeploymentAdmin = {}).missing())
+    }
+
+    /** The one-click deployment admin (issue #1183): a call with nothing to pass. */
+    @Test
+    fun becomingTheDeploymentAdminRunsItsImplementation() {
+        var became = false
+        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = {}, setEnvDebug = {}, becomeDeploymentAdmin = { became = true })
+        assertTrue(actions.run("becomeDeploymentAdmin", emptyList()))
+        assertTrue(became)
     }
 
     @Test
     fun runsTheImplementationAndReportsAnUnknownName() {
         var loggedOut = false
-        val actions = FrontendActions(logout = { loggedOut = true }, envLogout = {}, openPath = {}, setEnvDebug = {})
+        val actions = FrontendActions(logout = { loggedOut = true }, envLogout = {}, openPath = {}, setEnvDebug = {}, becomeDeploymentAdmin = {})
         assertTrue(actions.run("logout", emptyList()))
         assertTrue(loggedOut)
         // False rather than throwing: a name nothing implements must not break the shell it is rendered in.
@@ -35,7 +44,7 @@ class FrontendActionsTest {
     fun envLogoutReceivesItsCallArgumentsWhenBothAreSameOrigin() {
         // The two URLs the edge supplies reach the implementation when they are same-origin paths (issue #486).
         var received: List<String>? = null
-        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {}, setEnvDebug = {})
+        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {}, setEnvDebug = {}, becomeDeploymentAdmin = {})
         assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout", "/ew")))
         assertEquals(listOf("/ea/auth/env/logout", "/ew"), received)
     }
@@ -45,7 +54,7 @@ class FrontendActionsTest {
         // The landing URL reaches a full-window navigation, so an overlaid off-site value would be an open
         // redirect. Authority is not trust: the edge supplies these, but they are still guarded (issue #498).
         var received: List<String>? = null
-        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {}, setEnvDebug = {})
+        val actions = FrontendActions(logout = {}, envLogout = { received = it }, openPath = {}, setEnvDebug = {}, becomeDeploymentAdmin = {})
 
         // The name is implemented, so run() reports true -- but nothing is handed on.
         assertTrue(actions.run("envLogout", listOf("/ea/auth/env/logout", "//evil.example.com")))
@@ -65,7 +74,7 @@ class FrontendActionsTest {
         // The call carries the boolean as a string (issue #517): "true" turns debug on, anything else off, so
         // the "Debug"/"Turn off debug" menu items reach the same implementation with opposite arguments.
         var received: Boolean? = null
-        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = {}, setEnvDebug = { received = it })
+        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = {}, setEnvDebug = { received = it }, becomeDeploymentAdmin = {})
 
         assertTrue(actions.run("setEnvDebug", listOf("true")))
         assertEquals(true, received)
@@ -83,7 +92,7 @@ class FrontendActionsTest {
         // A menu item's action is data a client may overlay, so every argument that becomes a navigation is
         // dropped unless it is a same-origin path, rather than being followed (issue #493).
         var navigated: String? = null
-        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = { navigated = it }, setEnvDebug = {})
+        val actions = FrontendActions(logout = {}, envLogout = {}, openPath = { navigated = it }, setEnvDebug = {}, becomeDeploymentAdmin = {})
         assertTrue(actions.run("openPath", listOf("/wa")))
         assertEquals("/wa", navigated)
         // An off-site protocol-relative target runs (the name is implemented) but navigates nowhere.
