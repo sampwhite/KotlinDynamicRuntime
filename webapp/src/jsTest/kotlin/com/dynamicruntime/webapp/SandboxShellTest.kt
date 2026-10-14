@@ -48,6 +48,28 @@ class SandboxShellTest {
         assertFalse("Shadow" in sandboxChipLabel(of) + info)
     }
 
+    // Issue #1197: a sandbox user nobody stands behind is said to be one, and the popover says why nothing opens.
+    @Test
+    fun aStrandedSandboxIsCarriedAndExplained() {
+        val state = mapOf(HFLD.sandboxOf to "acme", HFLD.sandboxOfName to "Acme")
+        assertFalse(config(state = state).sandboxOf!!.stranded)
+        val stranded = config(state = state + (HFLD.sandboxStranded to true)).sandboxOf!!
+        assertTrue(stranded.stranded)
+        val info = sandboxInfoText(stranded)
+        assertTrue(info.startsWith("You are in Acme's sandbox, but your access to it has ended"))
+        assertFalse("published" in info)
+    }
+
+    // Issue #1197: a switch out of a sandbox is a leave, which a sandbox user acting with no roles may still make.
+    @Test
+    fun aSwitchOutOfASandboxIsALeave() {
+        val inside = config(state = mapOf(HFLD.sandboxOf to "acme"))
+        assertTrue(leavesSandbox(inside, UserChoice(1, "acme", "admin")))
+        assertFalse(leavesSandbox(inside, UserChoice(2, "globex:sandbox", "admin")))
+        assertFalse(leavesSandbox(inside, null))
+        assertFalse(leavesSandbox(config(), UserChoice(1, "acme", "admin")))
+    }
+
     @Test
     fun backLeadsToThePersonsUserInTheParentOfTheSamePersona() {
         val of = SandboxOf("acme", "Acme")

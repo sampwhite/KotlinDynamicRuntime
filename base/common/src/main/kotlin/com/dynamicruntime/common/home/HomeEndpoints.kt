@@ -151,6 +151,10 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
             property(
+                HFLD.sandboxStranded,
+                "Beside sandboxOf, true when nobody stands behind the caller's sandbox user any more (issue #1197), so it acts with no roles; absent otherwise.",
+            ) { type = SCT.boolean }
+            property(
                 HFLD.webAssets,
                 "The caller's client's own web assets (issue #1130): each slot it has set, to its image by name and " +
                     "content, served at the static root's `/<appId>/web/<name>`. An absent slot is the deployment's own image.",
@@ -204,6 +208,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 sandboxParentOf(c.client)?.let { parent ->
                     put(HFLD.sandboxOf, parent)
                     put(HFLD.sandboxOfName, ClientService.getOrNull(c)?.known(parent)?.name ?: parent)
+                    // Said, so the shell explains a sandbox where nothing opens rather than offering doors (issue #1197).
+                    if (sandboxStranded(c)) put(HFLD.sandboxStranded, true)
                 }
                 // The client's own tab icon and brand mark (issue #1130), where it has set them. An edge keeps none.
                 ClientWebAssetService.getOrNull(c)?.let { put(HFLD.webAssets, it.versionedNames(c, c.client)) }
@@ -492,4 +498,13 @@ object HCFG {
     const val homeTopBar = "homeTopBar"
     const val homeLeftBar = "homeLeftBar"
     const val homeInlineLinks = "homeInlineLinks"
+}
+
+/** Whether [cxt]'s caller is a sandbox user nobody stands behind any more (issue #1197): it acts with no roles. */
+fun sandboxStranded(cxt: KdrCxt): Boolean {
+    val profile = cxt.userProfile
+    if (!profile.isRowBacked || !profile.isLoggedIn) return false
+    val users = UserService.getOrNull(cxt) ?: return false
+    val row = users.queryByUserId(cxt, profile.userId) ?: return false
+    return row.enabled && SandboxAccess.standingOf(cxt, row).stranded
 }

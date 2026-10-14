@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.user.UserChoice
 import web.dom.document
@@ -55,10 +56,27 @@ fun showOpenSandbox(config: HomeConfig?): Boolean = config != null && config.can
  */
 fun sandboxChipLabel(of: SandboxOf): String = "${of.name} Sandbox"
 
-/** What the chip's popover says, above its way back: whose sandbox this is, what it runs, and what an edit here does. */
+/**
+ * What the chip's popover says, above its way back: whose sandbox this is, what it runs, and what an edit here does --
+ * or, when nobody stands behind the caller's sandbox user any more (issue #1197), why nothing here opens for them.
+ */
 fun sandboxInfoText(of: SandboxOf): String =
-    "You are in ${of.name}'s sandbox. It runs ${of.name}'s latest configuration, published or not, with users and " +
-        "data of its own. Configuration changed here is a draft of ${of.name}'s, live there only once published."
+    if (of.stranded) {
+        "You are in ${of.name}'s sandbox, but your access to it has ended: the user you opened it from is no longer " +
+            "one of ${of.name}'s, or no longer active. Nothing here is open to you; go back, or switch to another of " +
+            "your users."
+    } else {
+        "You are in ${of.name}'s sandbox. It runs ${of.name}'s latest configuration, published or not, with users and " +
+            "data of its own. Configuration changed here is a draft of ${of.name}'s, live there only once published."
+    }
+
+/**
+ * Whether switching to [target] leaves the sandbox the caller is in (issue #1197): the caller is in one, and [target]
+ * is outside every sandbox. Such a switch goes through `AuthApi.leaveSandbox`, which a sandbox user acting with no
+ * roles may still call; any other through `AuthApi.switchUser`.
+ */
+fun leavesSandbox(config: HomeConfig?, target: UserChoice?): Boolean =
+    config?.sandboxOf != null && target != null && !isSandboxClient(target.client)
 
 /**
  * The user "Back to <client>" switches to: the person's own user in the client whose sandbox this is -- the one the

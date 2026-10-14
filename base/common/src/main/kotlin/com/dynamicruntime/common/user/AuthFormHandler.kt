@@ -766,6 +766,32 @@ class AuthFormHandler(
     fun switchUser(cxt: KdrCxt, userId: Long): Map<String, Any?> = completeLogin(cxt, ownUser(cxt, userId), byCode = false)
 
     /**
+     * Leaves the sandbox the session is in for [userId], another of the person's users **outside** every sandbox
+     * (issue #1197), completing as [switchUser] does.
+     *
+     * Not gated by role, unlike [switchUser]: a sandbox user acts with what the user it was opened from holds, and
+     * with nothing once that one is disabled or no longer of the parent (`SandboxAccess`) -- a session left in that
+     * state could reach nothing at all, the way back included. What it still needs is the rest of what a switch
+     * asks: the session's own user is enabled and its identity's, so a disabled or detached user goes no further
+     * here than at the gate, and the user it lands on is one of the identity's own, registered and enabled.
+     */
+    fun leaveSandbox(cxt: KdrCxt, userId: Long): Map<String, Any?> {
+        val profile = cxt.userProfile
+        if (!profile.isRowBacked || !profile.isLoggedIn) {
+            throw KdrException("Sign in to leave a sandbox.", code = EXC.authNeeded)
+        }
+        val current = userService.queryByUserId(cxt, profile.userId)
+        if (current == null || !isSandboxClient(current.client) || !current.enabled || current.identityId != profile.identityId) {
+            throw KdrException.mkInput("This session is not in a sandbox it can leave.")
+        }
+        val target = ownUser(cxt, userId)
+        if (isSandboxClient(target.client)) {
+            throw KdrException.mkInput("User $userId is in a sandbox too; leaving one goes to a user outside every sandbox.")
+        }
+        return completeLogin(cxt, target, byCode = false)
+    }
+
+    /**
      * Opens [named]'s Shadow Sandbox -- the caller's own client when null -- as the caller's own user in it (issue
      * #929, rule 1): found by the caller's identity, persona and suffix, or on first use created there, registered,
      * with the caller's levels. Then a fresh session as that user, the way [switchUser] completes.

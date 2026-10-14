@@ -70,10 +70,21 @@ fun identityBadgeText(label: String, users: List<UserChoice>): String {
 
 /**
  * The users the identity badge offers to switch to (issue #749): the list as the backend sent it when there is
- * more than one, and nothing when there is one or none -- a menu with a single entry, the user you already
- * are, is a control that does nothing, so the badge stays a plain label. Pure, covered under `jsNodeTest`.
+ * someone in it to become -- more than one, or one that is not the user the session acts as -- and nothing
+ * otherwise: a menu with a single entry, the user you already are, is a control that does nothing, so the badge
+ * stays a plain label. A session acting as a user the list leaves out -- a sandbox user nobody stands behind any
+ * more (issue #1197) -- is offered its one entry, since that is its way out. Pure, covered under `jsNodeTest`.
  */
-fun switchableUsers(users: List<UserChoice>): List<UserChoice> = if (users.size > 1) users else emptyList()
+fun switchableUsers(users: List<UserChoice>): List<UserChoice> =
+    if (users.size > 1 || users.singleOrNull()?.isCurrent == false) users else emptyList()
+
+/**
+ * One row of the identity badge's menu: what tells [user] from the others in [users], in the badge's brackets --
+ * or, when nothing does because it is the only entry (a stranded sandbox session's way out, issue #1197), its full
+ * label, since an empty pair of brackets names nobody. Pure, covered under `jsNodeTest`.
+ */
+fun userMenuEntryText(user: UserChoice, users: List<UserChoice>): String =
+    user.qualifierWithin(users).let { if (it.isEmpty()) user.label() else "[$it]" }
 
 /**
  * What the app bar's brand area should show -- an explicit **three-state** rather than inferring from an absent
@@ -252,12 +263,14 @@ val AppBar = FC<AppBarProps> { props ->
     // Switching user (issue #749): a fresh session as another of the person's users, then home and a bump, the
     // way a login completes -- no page reload (issue #1015): every per-caller surface re-reads on the bump or fetches
     // as it mounts, and going home unmounts the page that was showing. A failure stays in the console (never
-    // swallowed), and the menus close either way.
+    // swallowed), and the menus close either way. Out of a sandbox it is a leave (issue #1197), which a sandbox
+    // user acting with no roles may still make.
     fun switchUserAction(userId: Long) {
         userMenuOpen = false
         sandboxInfoOpen = false
+        val leaving = leavesSandbox(config, config?.users.orEmpty().firstOrNull { it.userId == userId })
         appBarScope.launch {
-            val switched = apiResult { AuthApi.switchUser(userId) }
+            val switched = apiResult { if (leaving) AuthApi.leaveSandbox(userId) else AuthApi.switchUser(userId) }
             switched.failureOrNull()?.let {
                 console.error("$errorLogPrefix could not switch user: ${it.message}")
                 return@launch
@@ -703,7 +716,7 @@ private fun ChildrenBuilder.userMenu(users: List<UserChoice>, onSwitch: (Long) -
                 disabled = user.isCurrent
                 title = user.label()
                 onClick = { onSwitch(user.userId) }
-                +"[${user.qualifierWithin(users)}]"
+                +userMenuEntryText(user, users)
             }
         }
     }
