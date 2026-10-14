@@ -38,7 +38,7 @@ workflow itself in `definition`.
 
 ## Workflow
 
-| Field | What it means |
+| Key | What it means |
 | --- | --- |
 | `workflowId` | The workflow's id. It is unique within the client, and the entry repeats it. |
 | `entry` | How the workflow starts. A `creation` workflow runs when a form is created. The other two kinds, `survey` and `normal`, run on a form that already exists, and later pages cover them. |
@@ -61,7 +61,7 @@ A **task** is one step of a workflow: the traits it collects, and the buttons th
 }
 ```
 
-| Field | What it means |
+| Key | What it means |
 | --- | --- |
 | `id` | The task's id, unique within the workflow. |
 | `label` | The task's name. A workflow with several tasks lists them by name. A workflow with one task, like this one, does not show it. |

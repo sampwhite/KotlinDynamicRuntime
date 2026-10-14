@@ -1,4 +1,4 @@
-<!-- Conventions for these pages: a field table the first time a shape appears; bold-lead paragraphs for what is new
+<!-- Conventions for these pages: a key table the first time a shape appears; bold-lead paragraphs for what is new
      since the previous page; one nav line at the top of each page and a "Next:" line at the bottom; the reference page
      holds anything the walkthrough would otherwise repeat. ConfDemoDocsTest holds every JSON block to the demo. -->
 

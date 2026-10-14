@@ -21,7 +21,7 @@ which is the first thing to use them, explains them.
 }
 ```
 
-| Field | What it means |
+| Key | What it means |
 | --- | --- |
 | `clientId` | The client's id. Every form and every user that belongs to the client has this id stored on it, so there is never any doubt about which client something belongs to. |
 | `name` | The name people see. |

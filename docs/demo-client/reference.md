@@ -12,9 +12,13 @@ The JSON on each page is a bundle's `slots`, as a running instance returns it fr
 
 The instance may list the keys in a different order from the page. The values are the same.
 
+Two words come up on every page, and they mean different things. A definition is made of **keys**, such as `traitId`
+and `label`, and those are what the tables on each page explain. A trait's data is made of **fields**, such as `track`,
+and those are what a form shows and what a field layout arranges.
+
 ## Comments
 
-A workflow, a task, an eligibility test, a report, and a layout entry can each have a `$comment` field. It is a note
+A workflow, a task, an eligibility test, a report, and a layout entry can each have a `$comment` key. It is a note
 for whoever maintains the definition. It changes nothing about what the definition does, and it is stored and returned
 along with everything else in the definition, so it is there the next time someone reads it.
 

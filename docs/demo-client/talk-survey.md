@@ -47,7 +47,7 @@ The `session` trait says where a talk fits in the program. For now it has one fi
 }
 ```
 
-| Field | What it means |
+| Key | What it means |
 | --- | --- |
 | `traitId` | The trait's id. When a form has data for this trait, the entry that holds the data includes this id, so the entry can always be matched to its trait. A workflow's task also picks out the trait by this id. |
 | `typeName` | The name of the trait's entry type: the client's namespace, `client.confdemo`, and the short name for the type, `SessionEntry`. |
@@ -127,7 +127,7 @@ in the `kdr:usageDef` slot of its `base` bundle.
 ]
 ```
 
-| Field | What it means |
+| Key | What it means |
 | --- | --- |
 | `traitId` | The trait the column takes its value from. |
 | `label` | The column's heading. |
