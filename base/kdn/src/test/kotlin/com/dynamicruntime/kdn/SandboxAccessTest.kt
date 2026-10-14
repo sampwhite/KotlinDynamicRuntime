@@ -714,6 +714,29 @@ class SandboxAccessTest : StringSpec({
         chief.expectError(EXC.badInput, UADEP.userCreate, mapOf(ADF.primaryId to "elsewhere@$parent.test", ADF.org to "south"))
     }
 
+    "a sandbox user nobody recorded opening acts with user and admin only, whatever its row was copied with" {
+        val parent = "sbxunrecorded"
+        defineParent(parent)
+        val address = "chief@$parent.test"
+        val chief = TestUser.create(cxt, address, level = ROLE.admin, userClient = parent)
+        setRoles(chief.userId, listOf(ROLE.user, ROLE.operator, ROLE.admin))
+        // Holding admin in the sandbox with no opening recorded, and the operator level copied the day it was opened.
+        val legacy = TestUser.create(cxt, address, level = ROLE.admin, userClient = sandboxOf(parent))
+        setRoles(legacy.userId, listOf(ROLE.user, ROLE.operator, ROLE.admin))
+        fun operates(): Boolean = legacy.client.sendJsonGetRequest(CFD.cfactsPath)[EP.status] == null
+        legacy.selfRoles().sorted() shouldBe listOf(ROLE.admin, ROLE.user)
+        accessWithheld(legacy) shouldBe mapOf(ROLE.operator to SandboxAccess.Withheld.unrecorded.rule)
+
+        // Demoted outside to a member: admin goes, as it always did -- and the copied operator level with it.
+        setRoles(chief.userId, listOf(ROLE.user))
+        legacy.selfRoles() shouldBe listOf(ROLE.user)
+        operates() shouldBe false
+        accessWithheld(legacy) shouldBe mapOf(
+            ROLE.admin to SandboxAccess.Withheld.admin.rule,
+            ROLE.operator to SandboxAccess.Withheld.unrecorded.rule,
+        )
+    }
+
     "a sandbox user nobody recorded opening acts in the organization of the parent administrator it acts through" {
         val parent = "sbxorglegacy"
         defineParent(parent)

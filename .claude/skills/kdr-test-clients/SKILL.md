@@ -192,7 +192,8 @@ later schema rejects" test.
   `ADF.actsAsClient`); setting the roles or org of an opened user is refused (issue #1198). To change what it may do, change the **parent** user's roles or organization.
   A `TestUser` created straight into the sandbox is the sandbox's own: it acts with its row's roles, except that
   `admin` takes effect only while its identity has an enabled admin user in the parent (or an
-  `admin`+`allClients` one) and `allClients` never does -- and one at `level = ROLE.admin` whose address has no
+  `admin`+`allClients` one) and `allClients` never does; one holding `admin` acts with `user` and `admin` only, nothing
+  else on its row, since it reads as a user opened before openings were recorded (issue #1199) -- and one at `level = ROLE.admin` whose address has no
   user in the parent acts with **no roles at all**, by design. The access report (`_debug=explainAccess`, under
   `withTestAccess`) names each withheld role's rule (`SS.rolesWithheld`) and whom an opened user acts as
   (`SS.sandboxActsAs`). `SandboxAccessTest.kt` is the reference.

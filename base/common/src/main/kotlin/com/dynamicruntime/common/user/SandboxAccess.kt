@@ -29,7 +29,7 @@ import com.dynamicruntime.common.http.request.ROLE
  * them in from elsewhere was a capability they no longer hold. Opening again records whoever opens it.
  *
  * **A sandbox's own user** -- somebody made there to try the client as a member -- acts with the roles on its
- * row, with two exceptions:
+ * row, with these exceptions:
  * - **`admin` takes effect only while the person is an administrator outside**: their identity has an enabled
  *   administrator in the parent, or an enabled `allClients` administrator. That is what lets a sandbox
  *   administrator edit the parent's configuration (#930): whoever is one is, by construction, trusted in the
@@ -37,6 +37,11 @@ import com.dynamicruntime.common.http.request.ROLE
  * - **`allClients` is never held**: reach across clients comes from outside, through an opening, or not at all.
  * - While `admin` takes effect through an administrator of the parent, it acts in **that administrator's
  *   organization**, as an opened user does -- so one opened before openings were recorded is confined too.
+ * - **One holding `admin` acts with nothing else its row holds** but `user` (issue #1199). Nobody makes such a
+ *   user to try the client -- the console does not grant `admin` in a sandbox -- so it is one opened before
+ *   openings were recorded, whose row was copied with what its person held that day: an `operator` level taken
+ *   away outside since would otherwise go on taking effect here, until the person next opened the sandbox and
+ *   the opening was recorded. Reading it this way needs no migration and nothing to run.
  *
  * And one holding `admin` whose identity has no enabled user in the parent and no enabled `allClients`
  * administrator acts with nothing: that is how a user opened before openings were recorded reads once its person
@@ -71,6 +76,10 @@ object SandboxAccess {
         noStanding(
             "sandboxStanding: this sandbox user acts for somebody outside it who is no longer an enabled user of the " +
                 "parent, nor an enabled allClients administrator",
+        ),
+        unrecorded(
+            "sandboxUnrecorded: a sandbox user holding admin with no opening recorded acts with user and admin only; " +
+                "the rest of its row was copied when it was opened",
         ),
     }
 
@@ -121,6 +130,10 @@ object SandboxAccess {
         val withheld = buildMap {
             if (ROLE.admin in row.roles && actor == null) put(ROLE.admin, Withheld.admin)
             if (ROLE.allClients in row.roles) put(ROLE.allClients, Withheld.allClients)
+            // Opened before openings were recorded (issue #1199): what else its row holds was copied that day.
+            if (ROLE.admin in row.roles) {
+                row.roles.filter { it != ROLE.user && it != ROLE.admin && it != ROLE.allClients }.forEach { put(it, Withheld.unrecorded) }
+            }
         }
         val acting = row.roles.toSet() - withheld.keys
         val org = if (ROLE.admin in acting && actor?.client == parent) actor.org else row.org
