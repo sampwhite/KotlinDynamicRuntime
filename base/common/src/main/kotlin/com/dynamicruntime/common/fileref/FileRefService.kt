@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GID
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigIssue
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.checkMode
 import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
@@ -43,8 +44,16 @@ class FileRef(
     val refId: String get() = def.refId
 }
 
-/** The file refs one client's people are served, by id. */
-class FileRefRegistry(val refs: Map<String, FileRef>) {
+/**
+ * The file refs one client's people are served, by id -- and how many well-formed refs it **holds** ([held]), which
+ * past the limit is more than it is served, with how many of those a stored configuration holds ([heldStored]): what
+ * a client at the limit is told it must take away before it can add one (issue #1169).
+ */
+class FileRefRegistry(
+    val refs: Map<String, FileRef>,
+    val held: Int = refs.size,
+    val heldStored: Int = refs.values.count { it.def.stored },
+) {
     companion object {
         val empty = FileRefRegistry(emptyMap())
     }
@@ -244,7 +253,8 @@ class FileRefService : ServiceInitializer, ContentServer {
      * the client and not of any one ref. Which refs are "the rest" depends on the order the configurations are read
      * in, and a write's trial reads them in another order than a load does -- so a problem naming them would be a
      * new one to every trial, and would refuse even the removal that mends it. As one problem it is refused when a
-     * write first takes a client over, and is no obstacle to a client already over taking refs away. (Such a client
+     * write first takes a client over, and is no obstacle to a client already over taking refs away. It is held by
+     * no configuration (issue #1169), since which one holds the first ref changes as refs come and go. (Such a client
      * may still be given more, by an entry typed into its configuration; they are stored and not served.)
      *
      * [running] is the registry a reload is replacing, and null for a boot and a trial: see [reloadClient].
@@ -259,6 +269,7 @@ class FileRefService : ServiceInitializer, ContentServer {
         val holding = configs.filter { it.gedraId.client == client && it.fileRefs.isNotEmpty() }
             .sortedWith(compareBy({ config -> if (config.fileRefs.any { it.stored }) 0 else 1 }, { it.gedraId.fullId }))
         var beyond = 0
+        var beyondStored = 0
         for (config in holding) {
             // Asking after a ref's file is the configuration's own check's to switch off, with its other checks.
             val checksFile = config.checkMode(cxt) != BootCheckMode.off
@@ -274,6 +285,7 @@ class FileRefService : ServiceInitializer, ContentServer {
                 // Past what a client is served: counted, and its file not asked after -- the limit is what bounds that.
                 if (kept.size >= FREF.maxRefs) {
                     beyond++
+                    if (def.stored) beyondStored++
                     continue
                 }
                 val ref = FileRef(def, owner)
@@ -295,20 +307,25 @@ class FileRefService : ServiceInitializer, ContentServer {
             }
         }
         if (beyond > 0) {
-            // Held by the first of them, as every load and trial orders them, so each says it alike.
-            val holder = holding.first()
+            // The client's, held by no configuration (issue #1169): which configuration held the first of its refs
+            // changes as refs come and go -- the first stored one emptied, the first upload over a shipped one -- and
+            // a problem named by it would be a new one to the trial of a write that only takes refs away or replaces
+            // a file. Judged as stored configuration once the client's own data holds any ref, and as source code
+            // while only what it was shipped with does, which is strict where a mistake in source is caught.
             reportConfigProblem(
                 cxt,
-                holder.issue(
+                GedraConfigIssue(
                     "Client '$owner' has more than ${FREF.maxRefs} file refs, which is as many as a client is served.",
                     "Serving the first ${FREF.maxRefs}; the rest are left out.",
-                    GCEL.fileRef,
+                    client = client,
+                    elementKind = GCEL.fileRef,
+                    judgedAs = if (holding.any { it.isStored }) GedraConfigOrigin.stored else GedraConfigOrigin.source,
                 ),
                 issues,
             )
         }
         reportCopyNamingNoRef(cxt, configs, client, owner, kept, issues)
-        return FileRefRegistry(kept)
+        return FileRefRegistry(kept, held = kept.size + beyond, heldStored = kept.values.count { it.def.stored } + beyondStored)
     }
 
     /**

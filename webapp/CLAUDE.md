@@ -611,7 +611,9 @@ address it is served at; then **Replace…**, and for a ref a stored configurati
   existing ref is not offered, though the backend's `…/files/local` would take it.
 - **What a ref takes is asked for separately**, so the list is drawn even when `…/files/takes` cannot be had;
   nothing is added from the page then, and it says so. At the limit of refs the form gives way to a sentence,
-  since an upload would be sent whole and then refused.
+  since an upload would be sent whole and then refused -- one that says what can be done (`fileRefAtLimitText`,
+  issue #1169): a ref the client was shipped with cannot be removed here, so a client whose every ref was shipped
+  is told to replace one, or to have its source configuration changed, and the backend's refusal says the same.
 - **The section keeps its place among the page's.** It and Web assets are keyed, and the Issues block above them
   is one element with or without issues in it: mending a file ref clears an issue, and were Issues two elements
   that come and go, every section after it would be remounted and lose what was typed in it.

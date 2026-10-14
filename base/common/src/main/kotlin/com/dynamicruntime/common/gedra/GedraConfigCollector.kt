@@ -166,10 +166,17 @@ class GedraConfigIssue(
     val elementKind: String? = null,
     /** Which one: its id within [elementKind] (a workflow id, a type name, a function name). */
     val elementId: String? = null,
+    /**
+     * The origin to judge this under when no one config holds it, so [storedConfigId] cannot say (issue #1169): a
+     * problem of a whole client -- more file refs than it is served -- that is the stored configuration's to answer
+     * for once the client's own data holds any of what makes it. Null, the ordinary case, reads it off
+     * [storedConfigId].
+     */
+    val judgedAs: GedraConfigOrigin? = null,
 ) {
     /** Where the offending definition came from, which decides the mode it is judged under. */
     val origin: GedraConfigOrigin
-        get() = if (storedConfigId != null) GedraConfigOrigin.stored else GedraConfigOrigin.source
+        get() = judgedAs ?: if (storedConfigId != null) GedraConfigOrigin.stored else GedraConfigOrigin.source
 }
 
 /**

@@ -208,11 +208,19 @@ fun fileRefNewDescription(typed: String): String? = typed.trim().ifEmpty { null 
 
 /**
  * Why no further file can be added, or null: the client is served as many as it may be. Said in place of the form,
- * since an upload would be sent whole and then refused.
+ * since an upload would be sent whole and then refused -- and saying what **can** be done (issue #1169): a file the
+ * client was shipped with cannot be removed here, so "remove one" is said only where some are its own.
  */
 fun fileRefAtLimitText(refs: List<FileRefView>, takes: FileRefTakes?): String? {
     val limit = takes?.refLimit?.takeIf { it > 0 } ?: return null
-    return if (refs.size >= limit) "This client has $limit files, which is as many as a client is served. Remove one to add another." else null
+    if (refs.size < limit) return null
+    val full = "This client has $limit files, which is as many as a client is served."
+    return if (refs.any { it.stored }) {
+        "$full Remove one to add another, or replace one of them."
+    } else {
+        "$full Every one was shipped with it, so none can be removed here: replace one of them, or have the client's " +
+            "source configuration changed."
+    }
 }
 
 /** How many refs the client has of how many it may, once it is near enough the limit to say: `This client has 180 of the 200 a client is served.` */
