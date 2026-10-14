@@ -208,6 +208,9 @@ what it likes. A sandbox is on its parent's plan and holds its own forms and use
 - **Going over refuses only what adds to it.** Nothing is deleted. A client already over its plan, because its
   customer moved to a smaller one, may still change and shrink what it has; a change is refused only where it takes
   a measure over the plan **and** past what the client holds.
+- **Per client.** The limits are each client's own, not pooled across a customer's clients. How many clients a
+  customer may have is the plan's to say instead: a future paid plan will cap it (a few), and a person starting
+  from `public` makes one (#1113). The free plan makes no clients, so it needs no such cap yet.
 - **Shown.** The Clients overview carries a client's plan and usage (`planUsage`), and its page says it on one
   row: "Free: 12 of 100 forms, 3 of 20 users, 1 of 4 workflows, 2 of 10 schemas".
 

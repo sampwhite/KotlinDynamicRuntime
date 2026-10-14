@@ -34,6 +34,19 @@ class PlanQuotaTest : StringSpec({
         schemaAttributeCount(body) shouldBe 8
     }
 
+    "fields in a composition or a conditional branch count, and a field a branch restates counts once" {
+        val field = mapOf(SCH.type to SCT.string)
+        val body = mapOf(
+            SCH.properties to mapOf("kind" to field),
+            SCH.kThen to mapOf(SCH.properties to mapOf("kind" to field, "extra" to field)),
+            SCH.kElse to mapOf(SCH.properties to mapOf("other" to field)),
+            SCH.allOf to listOf(mapOf(SCH.properties to mapOf("joined" to field))),
+            SCH.additionalProperties to mapOf(SCH.type to SCT.kObject, SCH.properties to mapOf("note" to field)),
+        )
+        // kind, extra, other, joined, and the open map's note -- kind restated in `then` adds nothing.
+        schemaAttributeCount(body) shouldBe 5
+    }
+
     "a client's usage is its own workflows and types: not a trait's entry type, a global type's name, or a template's copy" {
         val client = "plan1109"
         val ns = clientNamespace(client)

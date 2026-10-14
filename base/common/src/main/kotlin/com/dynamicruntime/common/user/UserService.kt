@@ -270,6 +270,8 @@ class UserService : ServiceInitializer {
             .firstOrNull { it.client == client && it.persona == persona && it.personaSuffix == personaSuffix && !it.isDeleted }
         if (existing != null) {
             if (!existing.enabled) {
+                // Coming back counts against the client's plan as a new user does (issue #1109).
+                PlanLimits.requireRoomForUser(cxt, client)
                 existing.enabled = true
                 existing.activatedAt = now
             }

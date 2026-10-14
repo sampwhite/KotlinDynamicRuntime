@@ -98,15 +98,18 @@ object PlanLimits {
 
     /**
      * [client]'s usage against its plan, for the Clients page -- each counted measure its plan limits -- or null for a
-     * client on none.
+     * client on none. [forms] and [users] are the client's counts when the caller already holds them, as the overview
+     * does, so they are not read twice.
      */
-    fun usageOf(cxt: KdrCxt, client: String): PlanUsage? {
+    fun usageOf(cxt: KdrCxt, client: String, forms: Int? = null, users: Int? = null): PlanUsage? {
         val plan = planOf(cxt, client) ?: return null
         val quotas = PLAN.quotasOf(plan)
         val config = SchemaCollector.get(cxt)?.let { configUsageOf(it, client) } ?: ConfigUsage.empty
         val measures = buildList {
-            quotas.forms?.let { add(QuotaMeasure(QUOTA.forms, GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, client), it)) }
-            quotas.users?.let { add(QuotaMeasure(QUOTA.users, UserService.get(cxt).countActiveUsers(cxt, client).total, it)) }
+            quotas.forms?.let {
+                add(QuotaMeasure(QUOTA.forms, forms ?: GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, client), it))
+            }
+            quotas.users?.let { add(QuotaMeasure(QUOTA.users, users ?: UserService.get(cxt).countActiveUsers(cxt, client).total, it)) }
             quotas.workflows?.let { add(QuotaMeasure(QUOTA.workflows, config.workflows, it)) }
             quotas.schemas?.let { add(QuotaMeasure(QUOTA.schemas, config.schemas, it)) }
         }

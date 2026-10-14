@@ -380,6 +380,7 @@ internal fun overseenClient(cxt: KdrCxt, named: String?): String {
 private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatus): Map<String, Any?> {
     val isPresent = status == ClientStatus.present
     val users = UserService.get(cxt).countActiveUsers(cxt, clientId)
+    val forms = GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId)
     return mapOf(
         CLD.clientId to clientId,
         CLD.name to name,
@@ -388,7 +389,7 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         // The loaded set also holds a template's copies (issue #945), which are source, not stored -- and a sandbox's
         // holds its parent's source configs beside the stored ones (issue #932).
         CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).count { it.inheritedFrom == null && it.isStored },
-        CLD.forms to GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId),
+        CLD.forms to forms,
         CLD.users to users.total,
         CLD.unclaimedUsers to users.unclaimed,
         CLD.workflowCount to if (isPresent) workflowIdsFor(cxt, clientId).size else 0,
@@ -409,7 +410,7 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         // changed from a sandbox is its parent's.
         put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
         // What its plan allows, and how much of it the client holds (issue #1109); a client on none has no row.
-        PlanLimits.usageOf(cxt, clientId)?.let { put(CLD.planUsage, it.toInfo()) }
+        PlanLimits.usageOf(cxt, clientId, forms, users.total)?.let { put(CLD.planUsage, it.toInfo()) }
     }
 }
 

@@ -141,20 +141,27 @@ class ConfigUsage(
  * How many attributes a type's [body] declares (issue #1109): each property counts one, and a property that is an
  * inline object -- or an array of inline objects -- adds what it declares, at any depth. A property that is only a
  * `$ref` counts one, and what the type it names declares is that type's, not this one's.
+ *
+ * Fields declared in a composition (`allOf`, `anyOf`, `oneOf`), a conditional branch (`then`, `else`), or an inline
+ * `additionalProperties` object are the type's too, so a client cannot hold fields there uncounted. Counted as
+ * distinct field paths: a branch restating a field the type already declares, to narrow it, adds nothing.
  */
-fun schemaAttributeCount(body: Map<*, *>): Int {
-    val properties = body[SCH.properties] as? Map<*, *> ?: return 0
-    var count = 0
-    for (property in properties.values) {
-        val p = property as? Map<*, *> ?: continue
-        count += 1
-        if (SCH.dRef in p) continue
-        if (p[SCH.type] == SCT.array) {
-            val items = p[SCH.items] as? Map<*, *>
-            if (items != null && SCH.dRef !in items) count += schemaAttributeCount(items)
-        } else {
-            count += schemaAttributeCount(p)
-        }
+fun schemaAttributeCount(body: Map<*, *>): Int = attributePaths(body, "").size
+
+private fun attributePaths(body: Map<*, *>, prefix: String): Set<String> {
+    val out = LinkedHashSet<String>()
+    (body[SCH.properties] as? Map<*, *>)?.forEach { (name, property) ->
+        val p = property as? Map<*, *> ?: return@forEach
+        val path = "$prefix$name"
+        out.add(path)
+        if (SCH.dRef in p) return@forEach
+        val nested = if (p[SCH.type] == SCT.array) (p[SCH.items] as? Map<*, *>)?.takeIf { SCH.dRef !in it } else p
+        nested?.let { out.addAll(attributePaths(it, "$path.")) }
     }
-    return count
+    for (key in listOf(SCH.allOf, SCH.anyOf, SCH.oneOf)) {
+        (body[key] as? List<*>)?.forEach { branch -> (branch as? Map<*, *>)?.let { out.addAll(attributePaths(it, prefix)) } }
+    }
+    for (key in listOf(SCH.kThen, SCH.kElse)) (body[key] as? Map<*, *>)?.let { out.addAll(attributePaths(it, prefix)) }
+    (body[SCH.additionalProperties] as? Map<*, *>)?.takeIf { SCH.dRef !in it }?.let { out.addAll(attributePaths(it, "$prefix*.")) }
+    return out
 }

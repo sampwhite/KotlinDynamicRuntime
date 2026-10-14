@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CUST
@@ -24,6 +25,7 @@ import com.dynamicruntime.common.gedra.workflow.WfSaveKind
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
@@ -103,9 +105,14 @@ class PlanLimitsTest : StringSpec({
             .message.orEmpty() shouldContain "Client '$client' is on the free plan and holds 100 forms, as many as its plan allows (100)"
 
         val users = UserService.get(cxt)
-        repeat(PLAN.freeQuotas.users!!) { users.provisionUser(cxt, "u$it@data1109.test", client, listOf(ROLE.user)) }
+        val made = (0 until PLAN.freeQuotas.users!!).map { users.provisionUser(cxt, "u$it@data1109.test", client, listOf(ROLE.user)) }
         shouldThrow<KdrException> { users.provisionUser(cxt, "over@data1109.test", client, listOf(ROLE.user)) }
             .message.orEmpty() shouldContain "holds 20 users, as many as its plan allows (20)"
+        // A user coming back counts as a new one: disable one, fill its place, and it cannot be re-enabled.
+        operator.postData(ADEP.userSetEnabled, mapOf(ADF.userId to made.first(), ADF.enabled to false))
+        users.provisionUser(cxt, "after@data1109.test", client, listOf(ROLE.user))
+        operator.expectError(EXC.badInput, ADEP.userSetEnabled, mapOf(ADF.userId to made.first(), ADF.enabled to true))
+            .toString() shouldContain "holds 20 users"
     }
 
     "the Clients overview says a client's plan and its usage, and nothing for a client on none" {
