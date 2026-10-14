@@ -61,7 +61,9 @@ entries:
 Here the slots are `kdr:clientDef` and `kdr:workflowDef`. Their entries are shortened placeholders; the pages that
 follow show each one in full.
 
-The demo keeps the client in one bundle, and each workflow in a bundle of its own:
+The demo keeps the client in one bundle, and each workflow in a bundle of its own. That is a choice worth copying: a
+bundle is published as a whole, so two workflows in one bundle are always published together, and there is no way to
+move one out later.
 
 | Bundle | What it holds |
 | --- | --- |
