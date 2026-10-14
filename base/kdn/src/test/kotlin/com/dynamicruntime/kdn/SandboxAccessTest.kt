@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.cfact.CFD
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFEAT
@@ -8,7 +9,9 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.CFEP
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
@@ -21,7 +24,13 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
+import com.dynamicruntime.common.sql.cache.SqlTableCache
+import com.dynamicruntime.common.sql.cache.SqlTableCacheService
+import com.dynamicruntime.common.user.SandboxAccess
+import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.UCF
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -29,6 +38,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -37,10 +47,11 @@ import io.kotest.matchers.shouldNotBe
 
 /**
  * The Shadow Sandbox's access rules (issue #929): authority flows from a parent to its sandbox, never back. Rule 1 --
- * a parent administrator **opens** the sandbox as their own user in it, under the same identity. Rule 2 -- in a
- * sandbox, `admin` takes **effect** only for an identity that is an administrator in the parent (or an `allClients`
- * one). Stated by identity rather than by how a sandbox user came to exist: what is pinned is who acts as an
- * administrator there, whatever granted the role.
+ * a parent administrator **opens** the sandbox as their own user in it, under the same identity. Rule 2 -- a user
+ * somebody opened the sandbox as acts as the user outside they opened it from, while that one stands for the parent;
+ * a sandbox's own user acts with its row, `admin` taking **effect** only for an identity that is an administrator in
+ * the parent (or an `allClients` one). What is pinned is what a session can do, read at each request, whatever its
+ * row was made with.
  *
  * One booted instance; a parent client per case.
  */
@@ -69,6 +80,27 @@ class SandboxAccessTest : StringSpec({
         admitted shouldBe listed
         return admitted
     }
+
+    /** [user]'s access report. A diagnostic tag, so it answers a caller with test access (issue #1149). */
+    fun accessReport(user: TestUser): Map<String, Any?> {
+        val resp = user.withTestAccess { user.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess)) }
+        return resp[EP.meta]!!.toJsonMap()[SS.accessExplained]!!.toJsonMap()
+    }
+
+    /**
+     * The roles the access report says [user]'s row holds and a rule withholds, each with its rule. Read from the
+     * session's own row, so an answer also says the session is still that user's -- which an empty role list alone
+     * would not, since a lost session has none either.
+     */
+    fun accessWithheld(user: TestUser): Map<String, String> =
+        accessReport(user)[SS.rolesWithheld].toJsonListOfMaps()
+            .associate { it[SS.role].toOptStr().shouldNotBeNull() to it[SS.rule].toOptStr().shouldNotBeNull() }
+
+    /** The user outside the sandbox the access report says [user]'s session acts as, or null. */
+    fun accessActsAs(user: TestUser): Long? = accessReport(user)[SS.sandboxActsAs].toJsonMapOrEmpty()[UPF.userId].toOptLong()
+
+    /** Whether [user] may call what any member may: the gate's `user` level, on an endpoint every client serves. */
+    fun actsAsMember(user: TestUser): Boolean = user.client.sendJsonGetRequest(AEP.selfUsers)[EP.status] == null
 
     fun setRoles(userId: Long, roles: List<String>) {
         val users = UserService.get(cxt)
@@ -125,15 +157,16 @@ class SandboxAccessTest : StringSpec({
         actsAsAdmin(granted) shouldBe false
         // Its other roles stand: only admin is withheld.
         granted.selfRoles() shouldContain ROLE.user
-        // And an identity with no user in the parent at all fares the same.
-        actsAsAdmin(TestUser.create(cxt, "stranger@$parent.test", level = ROLE.admin, userClient = sandboxOf(parent))) shouldBe false
+        actsAsMember(granted) shouldBe true
+        // The access report names the rule, so the missing role does not read as never held.
+        accessWithheld(granted) shouldBe mapOf(ROLE.admin to SandboxAccess.Withheld.admin.rule)
 
-        // The access report names the rule, so the missing role does not read as never held. A diagnostic tag, so it
-        // answers a caller with test access (issue #1149).
-        val resp = granted.withTestAccess { granted.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess)) }
-        val withheld = resp[EP.meta]!!.toJsonMap()[SS.accessExplained]!!.toJsonMap()[SS.rolesWithheld].toJsonListOfMaps()
-        withheld.single()[SS.role] shouldBe ROLE.admin
-        withheld.single()[SS.rule].toOptStr().shouldNotBeNull() shouldBe SS.sandboxAdminRule
+        // An identity with no user in the parent at all is nobody there: a sandbox user holding admin acts for
+        // somebody outside, and there is nobody.
+        val stranger = TestUser.create(cxt, "stranger@$parent.test", level = ROLE.admin, userClient = sandboxOf(parent))
+        actsAsAdmin(stranger) shouldBe false
+        actsAsMember(stranger) shouldBe false
+        accessWithheld(stranger) shouldBe mapOf(ROLE.admin to SandboxAccess.Withheld.noStanding.rule, ROLE.user to SandboxAccess.Withheld.noStanding.rule)
     }
 
     "demoting or removing the parent administrator revokes the sandbox user's admin at its next request" {
@@ -154,6 +187,271 @@ class SandboxAccessTest : StringSpec({
         row.enabled = false
         users.updateUser(cxt, row)
         actsAsAdmin(admin) shouldBe false
+    }
+
+    // --- What a sandbox user holds besides `admin` -----------------------------------------------------------------
+    //
+    // A user somebody opened the sandbox as acts as the user outside they opened it from, asked at each request
+    // (`SandboxAccess.standingOf`) -- not with what its own row was made with the day the sandbox was opened. Each
+    // case changes something outside, or the sandbox row, and asks the sandbox session.
+
+    /** What [user]'s session can do across clients: what its roles say, and what three gates answer for [other]. */
+    class Reach(val listed: Boolean, val adminSection: Boolean, val namesOther: Boolean, val overviewShowsOther: Boolean) {
+        val any: Boolean get() = listed || adminSection || namesOther || overviewShowsOther
+        override fun toString(): String =
+            "allClients listed=$listed, admin section admits=$adminSection, names another client=$namesOther, overview lists another=$overviewShowsOther"
+    }
+
+    fun reachOf(user: TestUser, other: String): Reach = Reach(
+        listed = ROLE.allClients in user.selfRoles(),
+        // The `admin` section: `admin` and `allClients` both.
+        adminSection = user.client.sendJsonGetRequest(ACEP.bundles, mapOf(CFEP.client to other))[EP.status] == null,
+        // The scoped surface, naming a client that is not the caller's own: admitted only to one who sees every client.
+        namesOther = user.client.sendJsonGetRequest(UADEP.clientDefinition, mapOf(CLD.client to other))[EP.status] == null,
+        overviewShowsOther = user.getItems(UADEP.clientsOverview).any { it[CLD.clientId] == other },
+    )
+
+    "allClients taken away outside the sandbox is no longer held inside it, for an administrator of the parent" {
+        val (parent, other) = "sbxcap" to "sbxcapother"
+        defineParent(parent)
+        defineParent(other, sandbox = false)
+        // An administrator of the parent who also sees every client.
+        val admin = TestUser.createFullAdmin(cxt, "full@$parent.test", userClient = parent)
+        val parentUserId = admin.userId
+        val opened = admin.postData(AEP.openSandbox, emptyMap())
+        opened[UPF.client] shouldBe sandboxOf(parent)
+        withClue("in the sandbox, while they hold it outside") { reachOf(admin, other).toString() shouldBe Reach(true, true, true, true).toString() }
+        // Held through their user outside: the sandbox user's own row was never given it.
+        UserService.get(cxt).queryByUserId(cxt, opened[UPF.userId].toOptLong().shouldNotBeNull()).shouldNotBeNull().roles shouldBe listOf(ROLE.admin, ROLE.user)
+
+        // The capability is taken away. They stay an administrator of the parent, so they stay one in its sandbox --
+        // of that one client.
+        setRoles(parentUserId, listOf(ROLE.user, ROLE.admin))
+        actsAsAdmin(admin) shouldBe true
+        withClue("in the sandbox, after allClients was taken away outside") { reachOf(admin, other).toString() shouldBe Reach(false, false, false, false).toString() }
+    }
+
+    "opening the sandbox again does not bring back what was taken away" {
+        val (parent, other) = "sbxreopen" to "sbxreopenother"
+        defineParent(parent)
+        defineParent(other, sandbox = false)
+        val admin = TestUser.createFullAdmin(cxt, "full@$parent.test", userClient = parent)
+        val parentUserId = admin.userId
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong()
+        admin.postData(AEP.switchUser, mapOf(AFLD.userId to parentUserId))
+        setRoles(parentUserId, listOf(ROLE.user, ROLE.admin))
+        // Outside, it is gone at once.
+        withClue("outside the sandbox") { reachOf(admin, other).any shouldBe false }
+
+        // The same sandbox user is found again, made when the person held more.
+        admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong() shouldBe sandboxUserId
+        withClue("in the sandbox, opened again after allClients was taken away") { reachOf(admin, other).toString() shouldBe Reach(false, false, false, false).toString() }
+    }
+
+    "an allClients administrator from elsewhere who loses the capability is nobody in the sandbox they opened" {
+        val (parent, other) = "sbxaway" to "sbxawayother"
+        defineParent(parent)
+        defineParent(other, sandbox = false)
+        // Their own client is not the parent: what made them an administrator of its sandbox was the capability alone.
+        val full = TestUser.createFullAdmin(cxt, "full@$parent.test")
+        val homeUserId = full.userId
+        full.postData(AEP.openSandbox, mapOf(AFLD.client to parent))[UPF.client] shouldBe sandboxOf(parent)
+        actsAsAdmin(full) shouldBe true
+
+        setRoles(homeUserId, listOf(ROLE.user, ROLE.admin))
+        // No administrator of the parent and none of every client: the existing rule withholds `admin`.
+        actsAsAdmin(full) shouldBe false
+        withClue("in the sandbox, after allClients was taken away outside") { reachOf(full, other).toString() shouldBe Reach(false, false, false, false).toString() }
+        // Nobody in the parent, and no longer of every client: nothing of theirs stands here.
+        full.selfRoles() shouldBe emptyList()
+    }
+
+    "allClients given outside the sandbox is held inside it too" {
+        val (parent, other) = "sbxgain" to "sbxgainother"
+        defineParent(parent)
+        defineParent(other, sandbox = false)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        val parentUserId = admin.userId
+        admin.postData(AEP.openSandbox, emptyMap())
+        withClue("in the sandbox, before") { reachOf(admin, other).any shouldBe false }
+
+        // The other direction, and no hole whichever way it comes out: only whether the two agree.
+        setRoles(parentUserId, listOf(ROLE.user, ROLE.admin, ROLE.allClients))
+        withClue("in the sandbox, after allClients was given outside") { reachOf(admin, other).toString() shouldBe Reach(true, true, true, true).toString() }
+    }
+
+    "a person whose user in the parent is disabled has no session left in its sandbox" {
+        val parent = "sbxgone"
+        defineParent(parent)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        val parentUserId = admin.userId
+        admin.postData(AEP.openSandbox, emptyMap())
+        admin.selfRoles() shouldContain ROLE.user
+        actsAsMember(admin) shouldBe true
+
+        val users = UserService.get(cxt)
+        val row = users.queryByUserId(cxt, parentUserId).shouldNotBeNull()
+        row.enabled = false
+        users.updateUser(cxt, row)
+        // `admin` is withheld, which the case above already holds. What is asked here is whether anything is left:
+        // the sandbox user is a row of its own, and nothing disabled it.
+        actsAsAdmin(admin) shouldBe false
+        withClue("the sandbox session's roles, after the person's user in the parent was disabled") { admin.selfRoles() shouldBe emptyList() }
+        // And what a member may call refuses them, as it does a disabled account -- the session still theirs.
+        actsAsMember(admin) shouldBe false
+        accessWithheld(admin).values.toSet() shouldBe setOf(SandboxAccess.Withheld.noStanding.rule)
+
+        // Enabled again, they are who they were: nothing was written to the sandbox user either way.
+        row.enabled = true
+        users.updateUser(cxt, row)
+        actsAsAdmin(admin) shouldBe true
+    }
+
+    "a level taken away outside the sandbox is no longer held inside it" {
+        val parent = "sbxlevel"
+        defineParent(parent)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        val parentUserId = admin.userId
+        setRoles(parentUserId, listOf(ROLE.user, ROLE.operator, ROLE.admin))
+        admin.postData(AEP.openSandbox, emptyMap())
+        fun operates(): Boolean = admin.client.sendJsonGetRequest(CFD.cfactsPath)[EP.status] == null
+        operates() shouldBe true
+
+        // Demoted to a member: what stood below `admin` on the sandbox user's own row does not stand in for it.
+        setRoles(parentUserId, listOf(ROLE.user))
+        admin.selfRoles() shouldBe listOf(ROLE.user)
+        operates() shouldBe false
+        // The report says whose roles these are, rather than listing the row's as withheld: they are a record.
+        accessActsAs(admin) shouldBe parentUserId
+        accessWithheld(admin) shouldBe emptyMap()
+    }
+
+    "a sandbox user acts as the user it was opened from, not another of the person's users in the parent" {
+        val parent = "sbxpersona"
+        defineParent(parent)
+        val address = "chief@$parent.test"
+        // A member first -- the lowest user id -- then the administrator the sandbox is opened from.
+        val member = TestUser.create(cxt, address, userClient = parent)
+        val admin = TestUser.create(cxt, address, level = ROLE.admin, userClient = parent, persona = PERSONA.admin)
+        admin.userId shouldNotBe member.userId
+        admin.postData(AEP.openSandbox, emptyMap())[UPF.client] shouldBe sandboxOf(parent)
+
+        // Demoted to an operator: the session follows that user, not the member it would find first.
+        setRoles(admin.userId, listOf(ROLE.user, ROLE.operator))
+        admin.selfRoles().sorted() shouldBe listOf(ROLE.operator, ROLE.user)
+        accessActsAs(admin) shouldBe admin.userId
+        // And when that user is gone, the member does not take its place.
+        val users = UserService.get(cxt)
+        val row = users.queryByUserId(cxt, admin.userId).shouldNotBeNull()
+        row.enabled = false
+        users.updateUser(cxt, row)
+        admin.selfRoles() shouldBe emptyList()
+    }
+
+    "editing the roles on an opened sandbox user changes nothing it acts with" {
+        val parent = "sbxedit"
+        defineParent(parent)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        val parentUserId = admin.userId
+        val sandboxUserId = admin.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
+        // Its `admin` taken off the sandbox row: it is still the person's user from outside, and acts as it.
+        setRoles(sandboxUserId, listOf(ROLE.user))
+        actsAsAdmin(admin) shouldBe true
+        // So it does not become a sandbox user of its own that outlives the person's user in the parent.
+        val users = UserService.get(cxt)
+        val row = users.queryByUserId(cxt, parentUserId).shouldNotBeNull()
+        row.enabled = false
+        users.updateUser(cxt, row)
+        actsAsMember(admin) shouldBe false
+    }
+
+    "opening a sandbox the person already has a user of their own in makes it theirs from outside" {
+        val parent = "sbxadopt"
+        defineParent(parent)
+        val address = "member@$parent.test"
+        val inParent = TestUser.create(cxt, address, userClient = parent)
+        // A user made in the sandbox under the same key (identity, persona, suffix): the one opening will find.
+        val own = TestUser.create(cxt, address, userClient = sandboxOf(parent))
+        own.selfRoles() shouldBe listOf(ROLE.user)
+
+        // Promoted in the parent, they open the sandbox: the found user now acts as them.
+        setRoles(inParent.userId, listOf(ROLE.user, ROLE.admin))
+        inParent.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong() shouldBe own.userId
+        actsAsAdmin(inParent) shouldBe true
+    }
+
+    "the console does not grant admin in a sandbox, where it is never a grant" {
+        val parent = "sbxconsole"
+        defineParent(parent)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        admin.postData(AEP.openSandbox, emptyMap())
+        actsAsAdmin(admin) shouldBe true
+        val tryout = TestUser.create(cxt, "tryout@$parent.test", userClient = sandboxOf(parent))
+
+        val refused = admin.expectError(EXC.badInput, UADEP.userSetRoles, mapOf(ADF.userId to tryout.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)))
+        (refused[EP.errorMessage] as String).contains("sandbox") shouldBe true
+        admin.expectError(EXC.badInput, UADEP.userCreate, mapOf(ADF.primaryId to "made@$parent.test", ADF.roles to listOf(ROLE.user, ROLE.admin)))
+        // What is not a grant of admin still goes through.
+        admin.client.sendJsonPostRequest(UADEP.userSetRoles, mapOf(ADF.userId to tryout.userId, ADF.roles to listOf(ROLE.user)))[EP.status] shouldBe null
+    }
+
+    "a sandbox user nobody stands behind is not where the person's next login lands" {
+        val (parent, home) = "sbxland" to "sbxlandhome"
+        defineParent(parent)
+        defineParent(home, sandbox = false)
+        val full = TestUser.createFullAdmin(cxt, "full@$parent.test", userClient = home)
+        val homeUserId = full.userId
+        val sandboxUserId = full.postData(AEP.openSandbox, mapOf(AFLD.client to parent))[UPF.userId].toOptLong().shouldNotBeNull()
+        val users = UserService.get(cxt)
+        val identityId = users.queryByUserId(cxt, homeUserId).shouldNotBeNull().identityId
+        // The sandbox user is where they last acted, so it is where a login would land while it stands.
+        users.queryIdentityById(cxt, identityId).shouldNotBeNull().lastUsedUserId shouldBe sandboxUserId
+
+        // No longer of every client: nobody stands behind the sandbox user, and a login lands at home instead.
+        setRoles(homeUserId, listOf(ROLE.user, ROLE.admin))
+        full.selfRoles() shouldBe emptyList()
+        val identity = users.queryIdentityById(cxt, identityId).shouldNotBeNull()
+        users.defaultUserOf(cxt, identity).shouldNotBeNull().userId shouldBe homeUserId
+        users.registeredDefaultOf(cxt, identity).shouldNotBeNull().userId shouldBe homeUserId
+    }
+
+    "with table caching switched off, a sandbox administrator still stands" {
+        val parent = "sbxnocache"
+        defineParent(parent)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        admin.postData(AEP.openSandbox, emptyMap())
+        actsAsAdmin(admin) shouldBe true
+
+        // As a node started with `KDR_TABLE_CACHE_DISABLED` holds it: a user cache that is there, and never loads.
+        val service = SqlTableCacheService.get(cxt)
+        val users = UserService.get(cxt)
+        val cache = users.userCache.shouldNotBeNull()
+        service.isDisabled = true
+        users.userCache = SqlTableCache(cache.params).also { it.isDetached = false }
+        try {
+            actsAsAdmin(admin) shouldBe true
+        } finally {
+            users.userCache = cache
+            service.isDisabled = false
+            cache.markChanged()
+        }
+    }
+
+    "a user made in the sandbox itself acts with the levels on its own row, and never a capability" {
+        val parent = "sbxown"
+        defineParent(parent)
+        // Nobody outside: somebody made in the sandbox to try the client as a member.
+        val own = TestUser.create(cxt, "tryout@$parent.test", userClient = sandboxOf(parent))
+        own.selfRoles() shouldBe listOf(ROLE.user)
+        setRoles(own.userId, listOf(ROLE.user, ROLE.operator, ROLE.allClients))
+        own.selfRoles().sorted() shouldBe listOf(ROLE.operator, ROLE.user)
+        accessWithheld(own) shouldBe mapOf(ROLE.allClients to SandboxAccess.Withheld.allClients.rule)
+
+        // An administrator of the parent who is also a member there fares the same: the row is the sandbox's own,
+        // and nobody opened the sandbox as it.
+        val chief = "chief@$parent.test"
+        TestUser.create(cxt, chief, level = ROLE.admin, userClient = parent)
+        TestUser.create(cxt, chief, userClient = sandboxOf(parent)).selfRoles() shouldBe listOf(ROLE.user)
     }
 
     "an allClients administrator opens any client's sandbox, and qualifies there" {

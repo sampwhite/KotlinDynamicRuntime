@@ -181,12 +181,17 @@ later schema rejects" test.
   own. `reloadClient(parent)` reloads it too and returns its result in `.sandbox` (`.all` is both); a sandbox can
   also be reloaded on its own. A test wanting a preview client sets the flag on the parent and places a
   `TestUser` in the sandbox (`userClient = sandboxOf(parent)`) -- `SandboxClientTest.kt` is the reference.
-- **Admin in a sandbox comes from the parent** (issue #929). In a sandbox, `admin` takes effect only while the
-  user's identity also has an enabled admin user in the parent (or an `admin`+`allClients` one) -- so a `TestUser`
-  created straight into the sandbox at `level = ROLE.admin` acts as a plain user there, by design. For a working
-  sandbox administrator, create the admin in the **parent** and have it `postData(AEP.openSandbox, emptyMap())`,
-  which moves that session to the person's own sandbox user (created on first use); `SandboxAccessTest.kt` is the
-  reference.
+- **Admin in a sandbox comes from the parent** (issue #929). For a working sandbox administrator, create the
+  admin in the **parent** and have it `postData(AEP.openSandbox, emptyMap())`, which moves that session to the
+  person's own sandbox user (created on first use) and records who opened it: that user then **acts as the parent
+  user it was opened from** -- its roles, asked at every request, whatever the sandbox row holds -- and with none
+  at all once that user is disabled. To change what it may do, change the **parent** user's roles.
+  A `TestUser` created straight into the sandbox is the sandbox's own: it acts with its row's roles, except that
+  `admin` takes effect only while its identity has an enabled admin user in the parent (or an
+  `admin`+`allClients` one) and `allClients` never does -- and one at `level = ROLE.admin` whose address has no
+  user in the parent acts with **no roles at all**, by design. The access report (`_debug=explainAccess`, under
+  `withTestAccess`) names each withheld role's rule (`SS.rolesWithheld`) and whom an opened user acts as
+  (`SS.sandboxActsAs`). `SandboxAccessTest.kt` is the reference.
 - **Config edits in a sandbox act on the parent, as drafts** (issue #930). A sandbox has no configuration of its own:
   the `/clientAdmin/config/...` endpoints and the copy and menu editors, called in one, read and write the parent's,
   attributed to the person's parent user, and a write reloads the parent (so the sandbox shows it, while the

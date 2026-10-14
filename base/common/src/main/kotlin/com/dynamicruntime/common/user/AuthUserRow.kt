@@ -128,6 +128,17 @@ class AuthUserRow(
     /** The remaining auth-data map (the typed fields promoted out). */
     var authUserData: MutableMap<String, Any?> = mutableMapOf()
 
+    /**
+     * For a sandbox user, the user outside the sandbox that opened it ([AD.openedBy]); null otherwise. Read and
+     * written straight through [authUserData] rather than promoted out of it, so a `customize` pass that sets it
+     * before an insert or a recovery is what persists.
+     */
+    var openedBy: Long?
+        get() = authUserData[AD.openedBy].toOptLong()
+        set(value) {
+            if (value != null) authUserData[AD.openedBy] = value else authUserData.remove(AD.openedBy)
+        }
+
     /** The raw stored row, for callers that mutate and write it back. */
     var data: Map<String, Any?> = emptyMap()
 

@@ -185,17 +185,22 @@ class UserService : ServiceInitializer {
      *
      * **And among the users whose client is present here first** (issue #1111): a person whose default is in a
      * retired client lands on another of their users rather than being turned away, and only one with no other
-     * reaches the retired one -- where the login says the client was retired.
+     * reaches the retired one -- where the login says the client was retired. A sandbox user nobody stands behind
+     * any more (issue #1194) is passed over the same way, as a disabled one is.
      */
     fun defaultUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? {
         val users = usersOfIdentity(cxt, identity.identityId)
         val enabled = users.filter { it.enabled }
-        val registered = enabled.filter { it.isRegistered }
+        // A sandbox user nobody stands behind any more acts with nothing (`SandboxAccess`), so it is passed over
+        // as a disabled one is -- or a person who last acted in a sandbox would land in it at every login, unable
+        // to switch away -- and reached only when it is all the person has.
+        val usable = enabled.filter { !SandboxAccess.standingOf(cxt, it).stranded }
+        val registered = usable.filter { it.isRegistered }
         val clients = ClientService.getOrNull(cxt)
         fun here(rows: List<AuthUserRow>) = if (clients == null) rows else rows.filter { clients.isPresent(it.client) }
         return pickDefault(
             identity,
-            here(registered).ifEmpty { here(enabled) }.ifEmpty { registered }.ifEmpty { enabled }.ifEmpty { users },
+            here(registered).ifEmpty { here(usable) }.ifEmpty { registered }.ifEmpty { usable }.ifEmpty { enabled }.ifEmpty { users },
         )
     }
 
@@ -207,33 +212,36 @@ class UserService : ServiceInitializer {
      * The identity's registered, enabled users, lowest `userId` first -- the ones the person may act as. From
      * the user cache's `identityId` index when there is one: the cache holds exactly the enabled rows, and this
      * sits on the shell config, fetched on every refresh by every signed-in caller, so it must not be the SQL
-     * read `usersOfIdentity` is. SQL only when the cache is absent.
+     * read `usersOfIdentity` is. SQL when the cache cannot answer ([listingCache]). A sandbox user nobody stands
+     * behind any more is left out, as a disabled one is: it acts with nothing (`SandboxAccess`).
      */
-    internal fun registeredUsersOf(cxt: KdrCxt, identity: AuthIdentityRow): List<AuthUserRow> {
-        val cache = userCache
-        val rows = if (cache != null) {
-            cache.checkRefresh(cxt)
-            cache.snapshot.allByIndex(AU.identityId, identity.identityId).map { AuthUserRow.extract(it.value, identityOf(cxt)) }
-        } else {
-            usersOfIdentity(cxt, identity.identityId)
-        }
-        return rows.filter { it.enabled && it.isRegistered }.sortedBy { it.userId }
-    }
+    internal fun registeredUsersOf(cxt: KdrCxt, identity: AuthIdentityRow): List<AuthUserRow> =
+        enabledUsersOf(cxt, identity.identityId)
+            .filter { it.isRegistered && !SandboxAccess.standingOf(cxt, it).stranded }
+            .sortedBy { it.userId }
 
     /**
      * The identity [identityId]'s enabled users, registered or not -- from the user cache's `identityId` index when
      * there is one, as [registeredUsersOf] reads, since this sits on the request gate (issue #929: whether a sandbox
-     * user's identity is an administrator in the parent). SQL only when the cache is absent.
+     * user's identity is an administrator in the parent). SQL when the cache cannot answer ([listingCache]).
      */
     fun enabledUsersOf(cxt: KdrCxt, identityId: String): List<AuthUserRow> {
-        val cache = userCache
-        val rows = if (cache != null) {
-            cache.checkRefresh(cxt)
+        val rows = listingCache(cxt)?.let { cache ->
             cache.snapshot.allByIndex(AU.identityId, identityId).map { AuthUserRow.extract(it.value, identityOf(cxt)) }
-        } else {
-            usersOfIdentity(cxt, identityId)
-        }
+        } ?: usersOfIdentity(cxt, identityId)
         return rows.filter { it.enabled }
+    }
+
+    /**
+     * The [userCache], refreshed, when it can answer a **listing** -- or null, for the caller to read SQL. Unlike a
+     * single-row lookup ([cachedUser]), a listing cannot tell a row the cache lacks from one it never loaded, so
+     * an unloaded cache is no answer: with caching switched off (`KDR_TABLE_CACHE_DISABLED`) the cache is still
+     * registered but never loads, and reading its empty index would say the person has no users at all.
+     */
+    private fun listingCache(cxt: KdrCxt): SqlTableCache<Map<String, Any?>>? {
+        val cache = userCache ?: return null
+        cache.checkRefresh(cxt)
+        return cache.takeIf { it.isLoaded }
     }
 
     /**
@@ -244,9 +252,13 @@ class UserService : ServiceInitializer {
      * roles, username, and name kept, activated now -- and registered (the person is behind this, so it is not
      * the unregistered recovery `provisionUser` performs for an administrator); none, and a registered user is
      * created with [roles]. Returns the user.
+     *
+     * [openedBy], for a sandbox user claimed by opening the sandbox, records the user outside it that opened it,
+     * on the found user as on a new one: the user it then acts as (`SandboxAccess`).
      */
     fun claimUser(
         cxt: KdrCxt, identity: AuthIdentityRow, client: String, persona: String, personaSuffix: String, roles: List<String>,
+        openedBy: Long? = null,
     ): AuthUserRow {
         val now = cxt.now()
         val existing = usersOfIdentity(cxt, identity.identityId)
@@ -257,10 +269,13 @@ class UserService : ServiceInitializer {
                 existing.activatedAt = now
             }
             if (!existing.isRegistered) existing.registeredAt = now
+            if (openedBy != null) existing.openedBy = openedBy
             updateUser(cxt, existing, isEdit = false) // an activation and a registration, not an edit
             return existing
         }
-        val userId = provisionUser(cxt, identity.primaryId, client, roles, createdAt = now, persona = persona, personaSuffix = personaSuffix, registered = true)
+        val userId = provisionUser(
+            cxt, identity.primaryId, client, roles, createdAt = now, persona = persona, personaSuffix = personaSuffix, registered = true,
+        ) { if (openedBy != null) it[AD.openedBy] = openedBy }
         return queryByUserId(cxt, userId)
             ?: throw KdrException("Could not load the just-created user '${identity.primaryId}'.", code = EXC.internalError)
     }

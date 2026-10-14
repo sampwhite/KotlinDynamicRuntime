@@ -195,6 +195,9 @@ class AuthFormHandler(
         // A registration is a sign-in flow, refused to a caller a public test deployment does not admit (issue #1150).
         PublicTestDeployment.requireSignInOpen(cxt, address)
         val placing = client != null || persona != null || personaSuffix.isNotEmpty()
+        // The capability as it is now, not as the session cookie recorded it: `auth` is not a gated section, so
+        // nothing has refreshed the roles, and a cookie outlives a revocation by up to its whole life.
+        if (placing) refreshActingRoles(cxt)
         if (placing && !cxt.userProfile.roles.contains(ROLE.allClients)) {
             throw KdrException.mkInput("Only an administrator holding '${ROLE.allClients}' may choose the client, persona or personaSuffix of a new account.")
         }
@@ -765,12 +768,14 @@ class AuthFormHandler(
     /**
      * Opens [named]'s Shadow Sandbox -- the caller's own client when null -- as the caller's own user in it (issue
      * #929, rule 1): found by the caller's identity, persona and suffix, or on first use created there, registered,
-     * with the caller's acting roles. Then a fresh session as that user, the way [switchUser] completes.
+     * with the caller's levels. Then a fresh session as that user, the way [switchUser] completes.
      *
      * Opened from the **parent** side, by an administrator of the parent or an `allClients` administrator: authority
-     * flows from parent to sandbox. No role is kept in step afterwards -- whether the sandbox user's `admin` takes
-     * effect is asked of the parent at every request ([SandboxAccess]). Refused for a client without the `sandbox`
-     * flag, and from inside a sandbox, which has none of its own.
+     * flows from parent to sandbox. **What is recorded is who opened it** ([AuthUserRow.openedBy]), on the found
+     * user as on a new one, and the sandbox user then acts as that user outside, asked at every request
+     * ([SandboxAccess]) -- so no role is kept in step afterwards and none needs to be. The levels a new one is
+     * created with are a record, and a capability is not written at all. Refused for a client without the
+     * `sandbox` flag, and from inside a sandbox, which has none of its own.
      */
     fun openSandbox(cxt: KdrCxt, named: String?): Map<String, Any?> {
         val profile = cxt.userProfile
@@ -791,7 +796,8 @@ class AuthFormHandler(
         val own = userService.queryByUserId(cxt, profile.userId)
             ?: throw KdrException("The current user could not be found.", code = EXC.notFound)
         val clone = userService.claimUser(
-            cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix, profile.roles.sorted(),
+            cxt, identity, sandboxOf(parent), own.persona, own.personaSuffix,
+            profile.roles.filter { RoleLadder.rankOf(it) != null }.sorted(), openedBy = own.userId,
         )
         return completeLogin(cxt, clone, byCode = false)
     }

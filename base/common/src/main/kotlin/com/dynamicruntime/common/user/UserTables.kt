@@ -188,6 +188,13 @@ object AD {
 
     /** The userId of the administrator who permanently deleted the account -- the audit half of [deletedAt]. */
     const val deletedBy = "deletedBy"
+
+    /**
+     * On a sandbox user, the userId of the person's user **outside** the sandbox that last opened it (issue #929):
+     * the user it acts as (`SandboxAccess`). Absent on a sandbox's own user, and on one opened before openings
+     * were recorded.
+     */
+    const val openedBy = "openedBy"
 }
 
 /**
