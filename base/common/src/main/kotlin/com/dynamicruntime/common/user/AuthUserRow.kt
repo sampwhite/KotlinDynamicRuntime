@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCT
@@ -200,6 +202,21 @@ class AuthUserRow(
         USF.lastEdited.at to lastEditedAt,
     )
 
+    /**
+     * [toAdminInfo], and in a sandbox what the console must say beside the row's own roles (issue #1198): the roles
+     * it acts with ([ADF.actingRoles]), and for a user somebody opened, which user it was opened from and acts as
+     * ([ADF.openedBy], [ADF.actsAsClient]). Read through `SandboxAccess`, so the console says what the gate does.
+     */
+    fun toAdminInfo(cxt: KdrCxt): Map<String, Any?> {
+        if (!isSandboxClient(client)) return toAdminInfo()
+        val standing = SandboxAccess.standingOf(cxt, this)
+        return toAdminInfo() + buildMap {
+            put(ADF.actingRoles, standing.roles.sorted())
+            openedBy?.let { put(ADF.openedBy, it) }
+            standing.actsAs?.let { put(ADF.actsAsClient, it.client) }
+        }
+    }
+
     /** Writes [value] under [key] when it is set, and removes the key when it is not. */
     private fun putDate(data: MutableMap<String, Any?>, key: String, value: Instant?) {
         if (value != null) data[key] = value else data.remove(key)
@@ -363,6 +380,13 @@ class AuthUserRow(
                 property(USF.activated.at, "When the account most recently became active -- at creation, and on each re-enable.") { dateTime() }
                 property(USF.lastLoggedIn.at, "When a login sequence last completed; a refreshed cookie does not count.") { dateTime() }
                 property(USF.lastEdited.at, "When the account was last edited -- not a login, not an activation.") { dateTime() }
+                // In a sandbox (issue #1198): what the user acts with, which its row need not say.
+                property(ADF.actingRoles, "In a sandbox, the roles the user acts with; absent outside one.") {
+                    type = SCT.array
+                    items { type = SCT.string }
+                }
+                property(ADF.openedBy, "For a sandbox user somebody opened, the id of the user outside it was opened from.") { type = SCT.integer }
+                property(ADF.actsAsClient, "Beside openedBy, that user's client, while it still gives the sandbox user access.")
             }
         }
 

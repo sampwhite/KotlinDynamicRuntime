@@ -634,66 +634,79 @@ val Users = FC<Props> {
             // rejected. The backend remains the enforcement point -- this only keeps the UI honest.
             val self = editing != null && editing?.userId == config?.user?.userId
 
-            // The Operator rung is deployment-wide since #464 (it requires allClients), so offer it only to a
-            // caller who can grant that reach -- one holding allClients -- or when the edited user already is an
-            // operator, so the value shows and can be kept (anti-escalation checks adding, not the result set).
-            // Withholding a choice that would only 400 is the rule the All-clients checkbox below already keeps.
-            val operatorSelectable = config?.user?.roles?.contains(ROLE.allClients) == true ||
-                editing?.roles?.contains(ROLE.operator) == true
-
-            div {
-                className = ClassName("row")
-                span {
-                    className = ClassName("field-label")
-                    +"Access level"
+            // A sandbox user somebody opened (issue #1198) acts with the roles and organization of the user it was
+            // opened from, so its own are a record: what it acts with is shown, and nothing is offered to change --
+            // the backend refuses either edit, and a control that could only fail is the drift this page avoids.
+            val openedNote = editing?.let { openedUserNote(it) }
+            if (openedNote != null) {
+                readOnlyField("Acts with", editing?.actingRoles.orEmpty().joinToString(", ").ifEmpty { "no roles" })
+                p {
+                    className = ClassName("type-hint")
+                    +openedNote
                 }
-                // A single choice, not a checkbox each: the levels are rungs of an ordering, so holding two is
-                // not a thing one can be. Picking a rung replaces the one below it (see [RoleLadder.rolesAtLevel]).
-                Select {
-                    value = draftLevel
-                    options = accessLevelOptions(operatorSelectable)
-                    disabled = busy || self
-                    style = js("({ minWidth: 180 })")
-                    onChange = { v ->
-                        val level = v as? String ?: ROLE.user
-                        draftLevel = level
-                        // Roles provide a default persona (issue #750), until one is chosen outright.
-                        if (creating && !personaChosen) draftPersona = personaForLevel(level)
-                    }
-                }
-            }
-            p {
-                className = ClassName("type-hint")
-                +accessLevelHint(operatorSelectable)
-            }
+            } else {
+                // The Operator rung is deployment-wide since #464 (it requires allClients), so offer it only to a
+                // caller who can grant that reach -- one holding allClients -- or when the edited user already is an
+                // operator, so the value shows and can be kept (anti-escalation checks adding, not the result set).
+                // Withholding a choice that would only 400 is the rule the All-clients checkbox below already keeps.
+                val operatorSelectable = config?.user?.roles?.contains(ROLE.allClients) == true ||
+                    editing?.roles?.contains(ROLE.operator) == true
 
-            // Offered only to a caller who holds the capability, because the backend refuses to let anyone
-            // grant reach they do not have themselves -- a control that could only ever produce a 400 is the
-            // advertise-versus-serve drift this codebase keeps removing, just relocated into a form.
-            if (config?.user?.roles?.contains(ROLE.allClients) == true) {
                 div {
                     className = ClassName("row")
-                    Checkbox {
-                        checked = draftAllClients
+                    span {
+                        className = ClassName("field-label")
+                        +"Access level"
+                    }
+                    // A single choice, not a checkbox each: the levels are rungs of an ordering, so holding two is
+                    // not a thing one can be. Picking a rung replaces the one below it (see [RoleLadder.rolesAtLevel]).
+                    Select {
+                        value = draftLevel
+                        options = accessLevelOptions(operatorSelectable)
                         disabled = busy || self
-                        onChange = { event -> draftAllClients = event.target.checked as Boolean }
-                        +"All clients"
+                        style = js("({ minWidth: 180 })")
+                        onChange = { v ->
+                            val level = v as? String ?: ROLE.user
+                            draftLevel = level
+                            // Roles provide a default persona (issue #750), until one is chosen outright.
+                            if (creating && !personaChosen) draftPersona = personaForLevel(level)
+                        }
                     }
                 }
                 p {
                     className = ClassName("type-hint")
-                    +allClientsHint
+                    +accessLevelHint(operatorSelectable)
                 }
-                // Granting the capability below the admin level is allowed and saves cleanly, and it also does
-                // nothing -- the full-scope surface wants both. Without this the checkbox reads as conferring
-                // reach it is not conferring, which is the advertise-versus-serve drift noted above, in the
-                // one direction a hidden control cannot fix: here the state is legal and worth keeping.
-                if (isAllClientsDormant(draftLevel, draftAllClients)) {
+
+                // Offered only to a caller who holds the capability, because the backend refuses to let anyone
+                // grant reach they do not have themselves -- a control that could only ever produce a 400 is the
+                // advertise-versus-serve drift this codebase keeps removing, just relocated into a form.
+                if (config?.user?.roles?.contains(ROLE.allClients) == true) {
+                    div {
+                        className = ClassName("row")
+                        Checkbox {
+                            checked = draftAllClients
+                            disabled = busy || self
+                            onChange = { event -> draftAllClients = event.target.checked as Boolean }
+                            +"All clients"
+                        }
+                    }
                     p {
                         className = ClassName("type-hint")
-                        +allClientsDormantHint
+                        +allClientsHint
+                    }
+                    // Granting the capability below the admin level is allowed and saves cleanly, and it also does
+                    // nothing -- the full-scope surface wants both. Without this the checkbox reads as conferring
+                    // reach it is not conferring, which is the advertise-versus-serve drift noted above, in the
+                    // one direction a hidden control cannot fix: here the state is legal and worth keeping.
+                    if (isAllClientsDormant(draftLevel, draftAllClients)) {
+                        p {
+                            className = ClassName("type-hint")
+                            +allClientsDormantHint
+                        }
                     }
                 }
+
             }
 
             // Chosen at creation and never again (issue #352). A user's content carries their client both in
@@ -779,8 +792,9 @@ val Users = FC<Props> {
             }
 
             // Editable only by someone not confined to an organization: the backend lets a confined
-            // administrator assign only their own, so anything else here could only ever produce a 400.
-            if (config?.user?.org == null) {
+            // administrator assign only their own, so anything else here could only ever produce a 400. Nor on a
+            // sandbox user somebody opened, whose organization is the one it was opened from's (issue #1196).
+            if (config?.user?.org == null && openedNote == null) {
                 textField("Organization", draftOrg, disabled = busy) { draftOrg = it }
                 p {
                     className = ClassName("type-hint")
@@ -1383,3 +1397,28 @@ private fun accessLevelHint(operatorShown: Boolean): String =
         "An administrator manages users in this client. The deployment-operator level is offered only to a " +
             "full-scope administrator, since its surface spans every client."
     }
+
+/**
+ * The users table's Roles cell: the row's roles, and in a sandbox, where the two can differ (issue #1198), what the
+ * user acts with beside them -- so a row reading "admin" does not pass for an administrator the sandbox's rules
+ * withhold. Pure, covered under `jsNodeTest`.
+ */
+fun rolesCellText(user: AdminUser): String {
+    val own = user.roles.joinToString(", ")
+    val acting = user.actingRoles ?: return own
+    if (acting.toSet() == user.roles.toSet()) return own
+    return "$own (acts with: ${acting.joinToString(", ").ifEmpty { "none" }})"
+}
+
+/**
+ * What the user editor says in place of the access and organization controls for a sandbox user somebody opened
+ * (issue #1198) -- which it acts as, or that it no longer does -- or null for any other user. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun openedUserNote(user: AdminUser): String? {
+    val opener = user.openedBy ?: return null
+    val client = user.actsAsClient
+        ?: return "Opened from outside the sandbox by user $opener, which no longer gives it access: it acts with no roles."
+    return "Opened from outside the sandbox: this user acts as user $opener in $client, with that user's roles and " +
+        "organization. Its own here are a record and change nothing; to change what it may do, change that user."
+}

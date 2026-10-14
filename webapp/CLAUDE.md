@@ -365,6 +365,14 @@ only to a caller who holds `allClients` — via `offeredAccessLevels(operatorSel
 (anti-escalation checks *adding*, not the result set). This is the advertise-versus-serve drift issue #211
 exists to remove, relocated into a form: a control that can only produce a 400 is worse than no control.
 
+**A sandbox user is shown with what it acts with** (issue #1198). In a sandbox the console's user info adds
+`actingRoles` -- what the sandbox's rules let the user act with, which its row's `roles` need not say -- and the
+Users table's Roles cell says it beside them when the two differ (`rolesCellText`). A sandbox user somebody
+opened also carries `openedBy` and, while that user still gives it access, `actsAsClient`: it acts with that
+user's roles and organization, so the editor shows "Acts with" and a note naming that user
+(`openedUserNote`) in place of the level, capability and organization controls, which the backend refuses on
+such a user.
+
 Editing **yourself** disables the level, the capability and the enabled flag — another administrator has to
 change those, so an account cannot demote or disable itself into a lock-out. Organization is deliberately *not*
 disabled there: the field is only rendered for a caller who has none, and giving yourself one *narrows* you.

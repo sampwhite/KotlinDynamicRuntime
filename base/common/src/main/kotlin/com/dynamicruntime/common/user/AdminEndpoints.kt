@@ -111,7 +111,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // listUsers trims to the page and reports the whole-set total (issue #499), so a truncated listing says
         // how many there are. Only the page is mapped to admin info.
         val page = userService(c).listUsers(c, request[ADF.search].toOptStr(), limit, ReadScopeRules.forUserAdmin(c))
-        ListPage(page.rows.map { it.toAdminInfo() }, numAvailable = page.numAvailable, hasMore = page.numAvailable > limit)
+        ListPage(page.rows.map { it.toAdminInfo(c) }, numAvailable = page.numAvailable, hasMore = page.numAvailable > limit)
     }
 
     // A richer search than the plain listing above: brute force over the user cache (issue #411), with a
@@ -167,7 +167,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val criteria = parseUserSearch(request)
         val page = userService(c).searchUsers(c, criteria, ReadScopeRules.forUserAdmin(c))
         ListPage(
-            page.rows.map { it.toAdminInfo() },
+            page.rows.map { it.toAdminInfo(c) },
             numAvailable = page.numAvailable,
             hasMore = page.rows.size < page.numAvailable,
         )
@@ -299,7 +299,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                 (if (personaSuffix.isEmpty()) "" else ", personaSuffix '$personaSuffix'") + ") with roles $roles" +
                 (if (!enabled) " (disabled)." else ".")
         }
-        loadUser(c, userId).toAdminInfo()
+        loadUser(c, userId).toAdminInfo(c)
     }
 
     // (Re)send the invitation for a user nobody has claimed (issue #751): a lapsed link, a lost mail, or a
@@ -313,7 +313,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
     ) { c, request ->
         val row = loadEditableUser(c, requireUserId(request))
         authHandler(c).inviteUser(c, row)
-        row.toAdminInfo()
+        row.toAdminInfo(c)
     }
 
     // The person behind a user (issue #770): what the editor shows above the editable data. Read through the
@@ -360,6 +360,14 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         // Loaded before the role checks, so a user outside the caller's scope is a 404 rather than a complaint
         // about roles -- the complaint would confirm the id belongs to somebody.
         val row = loadEditableUser(c, userId)
+        // An opened sandbox user acts with the roles of the user it was opened from (issue #1198): set here, they
+        // would change nothing it may do.
+        if (row.openedBy != null && isSandboxClient(row.client)) {
+            throw KdrException.mkInput(
+                "User $userId was opened from outside the sandbox and acts with the roles of the user that opened " +
+                    "it; change that user's roles instead.",
+            )
+        }
         requireUsableRoles(c, roles, row.roles)
         requireNoSandboxAdmin(row.client, roles, row.roles)
         // Nobody may change their **own** standing on the admin surface, in either direction.
@@ -391,7 +399,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         row.roles = roles
         userService(c).updateUser(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId roles: $previous -> $roles." }
-        row.toAdminInfo()
+        row.toAdminInfo(c)
     }
 
     generalEndpoint(
@@ -420,7 +428,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         }
         userService(c).updateUser(c, row, isEdit = !enabled)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId enabled=$enabled." }
-        row.toAdminInfo()
+        row.toAdminInfo(c)
     }
 
     // A DELETE on the user resource rather than a POST to a `/delete` path (issue #335): the verb carries the
@@ -453,7 +461,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val row = loadEditableUser(c, userId)
         val result = userService(c).deleteUser(c, row, permanent)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} deleted user $userId (permanent=$permanent)." }
-        result.toAdminInfo()
+        result.toAdminInfo(c)
     }
 
     generalEndpoint(
@@ -483,7 +491,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         userService(c).updateUser(c, row)
         userService(c).followOpenerOrg(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId org: $previous -> $org." }
-        row.toAdminInfo()
+        row.toAdminInfo(c)
     }
 
     generalEndpoint(
@@ -507,7 +515,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         row.name = request[ADF.name].toOptStr() // the row normalizes
         userService(c).updateUser(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId name/isEntity=$isEntity." }
-        row.toAdminInfo()
+        row.toAdminInfo(c)
     }
 
     // --- labels (issue #786) --------------------------------------------------
@@ -549,7 +557,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         row.labels = request[ADF.labels].toJsonListOfStrings() // the row normalizes
         userService(c).updateUser(c, row)
         LogAuth.info(c) { "Admin ${c.userProfile.userId} set user $userId labels: $previous -> ${row.labels}." }
-        row.toAdminInfo()
+        row.toAdminInfo(c)
     }
 
     generalEndpoint(
@@ -658,7 +666,7 @@ private fun adminIdentityInfo(cxt: KdrCxt, user: AuthUserRow): Map<String, Any?>
         identity.verifiedAt?.let { put(ADF.verifiedAt, it) }
         put(ADF.hasPassword, identity.hasPassword)
         signsInAs?.let { put(ADF.signsInAsUserId, it) }
-        put(ADF.users, admitted.map { it.toAdminInfo() })
+        put(ADF.users, admitted.map { it.toAdminInfo(cxt) })
     }
 }
 

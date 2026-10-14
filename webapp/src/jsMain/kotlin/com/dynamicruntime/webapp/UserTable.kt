@@ -106,7 +106,7 @@ val UserTable = FC<UserTableProps> { props ->
             }
             for ((field, at) in userTimes(user)) at?.let { row[timeTipKey(field)] = formatTimestamp(it) }
             row.type = if (user.isEntity) "Business" else "Person"
-            row.roles = user.roles.joinToString(", ")
+            row.roles = rolesCellText(user)
             row.status = statusWords(user).joinToString(", ")
             row
         }.toTypedArray()

@@ -269,6 +269,21 @@ object ADF {
      */
     const val labels = "labels"
 
+    /**
+     * In a sandbox (issue #1198): the roles the user **acts** with, which the sandbox's rules decide and [roles] --
+     * what its row holds -- need not say (`SandboxAccess`). Absent outside a sandbox, where the two are one.
+     */
+    const val actingRoles = "actingRoles"
+
+    /**
+     * For a sandbox user somebody opened (issue #1198): the id of the user outside the sandbox it was opened from,
+     * which it acts as -- its roles and organization -- while that user stands for the parent.
+     */
+    const val openedBy = "openedBy"
+
+    /** Beside [openedBy]: the client of the user it was opened from, which it acts as; absent once that user no longer stands. */
+    const val actsAsClient = "actsAsClient"
+
     /** On the delete call: obfuscate the user's identity irrecoverably rather than merely disable them. */
     const val permanent = "permanent"
 
