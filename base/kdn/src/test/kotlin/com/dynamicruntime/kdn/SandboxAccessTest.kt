@@ -508,14 +508,35 @@ class SandboxAccessTest : StringSpec({
 
         shown(inside).let {
             it[ADF.actingRoles] shouldBe listOf(ROLE.admin, ROLE.user)
+            it[ADF.opened] shouldBe true
             it[ADF.openedBy].toOptLong() shouldBe chief.userId
             it[ADF.actsAsClient] shouldBe parent
         }
-        shown(tryout.userId).let { it[ADF.actingRoles] shouldBe listOf(ROLE.user); it[ADF.openedBy] shouldBe null }
+        shown(tryout.userId).let { it[ADF.actingRoles] shouldBe listOf(ROLE.user); it.containsKey(ADF.opened) shouldBe false }
         // Holding admin with nobody in the parent: it acts with nothing, which its row's roles alone would hide.
         shown(stranger.userId)[ADF.actingRoles] shouldBe emptyList<String>()
         // Outside a sandbox the row's roles are what it acts with, and nothing more is said.
-        shown(chief.userId).containsKey(ADF.actingRoles) shouldBe false
+        shown(chief.userId).let { info -> listOf(ADF.actingRoles, ADF.opened, ADF.openedBy).none { info.containsKey(it) } shouldBe true }
+
+        // As the sandbox's own administrator sees it, through the scoped surface the webapp calls.
+        val hub = "sbxconsolehub"
+        defineParent(hub, sandbox = false)
+        val visitor = TestUser.createFullAdmin(cxt, "visitor@$parent.test", userClient = hub)
+        val visiting = visitor.postData(AEP.openSandbox, mapOf(AFLD.client to parent))[UPF.userId].toOptLong().shouldNotBeNull()
+        val listed = chief.getItems(UADEP.users).associateBy { it[ADF.userId].toOptLong() }
+        // Opened from the parent: the user it acts as is named, since a sandbox administrator is trusted there.
+        listed[inside].shouldNotBeNull().let { it[ADF.openedBy].toOptLong() shouldBe chief.userId; it[ADF.actsAsClient] shouldBe parent }
+        // Opened from another client by an administrator of every client: said to be opened, and that user left
+        // unnamed -- the sandbox's administrator administers nobody there.
+        listed[visiting].shouldNotBeNull().let {
+            it[ADF.opened] shouldBe true
+            it[ADF.actingRoles] shouldBe listOf(ROLE.admin, ROLE.allClients, ROLE.user)
+            it.containsKey(ADF.openedBy) shouldBe false
+            it.containsKey(ADF.actsAsClient) shouldBe false
+        }
+        // Disabled, an opened user acts with nothing, whoever it was opened from.
+        full.client.sendJsonPostRequest(ADEP.userSetEnabled, mapOf(ADF.userId to visiting, ADF.enabled to false))[EP.status] shouldBe null
+        shown(visiting).let { it[ADF.actingRoles] shouldBe emptyList<String>(); it.containsKey(ADF.actsAsClient) shouldBe false }
 
         // Its roles are not set on the opened user itself: they would change nothing it may do.
         val refused = full.expectError(EXC.badInput, ADEP.userSetRoles, mapOf(ADF.userId to inside, ADF.roles to listOf(ROLE.user)))

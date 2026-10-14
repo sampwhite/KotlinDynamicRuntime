@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.endpoint.EI
@@ -484,14 +485,18 @@ val Users = FC<Props> {
             note = "Created ${created.primaryId}."
         } else {
             var changed = false
+            // A sandbox user somebody opened has no roles or organization of its own to set (issue #1198): the
+            // editor offers neither, and nothing is sent even should its draft not reproduce the row exactly --
+            // one refused call would abort a save that only touched its name or labels.
+            val opened = openedUserNote(target) != null
             // Compared as sets rather than by level, because the draft now carries two independent things: a
             // rung and a capability. Testing the level alone would silently drop a capability-only edit.
             val desired = draftRoles(target.roles)
-            if (desired.toSet() != target.roles.toSet()) {
+            if (!opened && desired.toSet() != target.roles.toSet()) {
                 AdminApi.setRoles(target.userId, desired)
                 changed = true
             }
-            if (draftOrg.trim().ifEmpty { null } != target.org) {
+            if (!opened && draftOrg.trim().ifEmpty { null } != target.org) {
                 AdminApi.setOrg(target.userId, draftOrg.trim().ifEmpty { null })
                 changed = true
             }
@@ -1412,13 +1417,21 @@ fun rolesCellText(user: AdminUser): String {
 
 /**
  * What the user editor says in place of the access and organization controls for a sandbox user somebody opened
- * (issue #1198) -- which it acts as, or that it no longer does -- or null for any other user. Pure, covered under
- * `jsNodeTest`.
+ * (issue #1198) -- which user it acts as, or that it acts with nothing -- or null for any other user. The user it
+ * acts as goes unnamed when it is one the caller does not administer, as the backend leaves it. Pure, covered
+ * under `jsNodeTest`.
  */
 fun openedUserNote(user: AdminUser): String? {
-    val opener = user.openedBy ?: return null
+    if (!user.opened) return null
+    val record = " Its own roles here are a record and change nothing; to change what it may do, change that user."
+    if (!user.enabled) return "Opened from outside the sandbox, and disabled here: it acts with no roles."
+    if (user.actingRoles.isNullOrEmpty()) {
+        return "Opened from outside the sandbox by a user who no longer gives it access: it acts with no roles."
+    }
     val client = user.actsAsClient
-        ?: return "Opened from outside the sandbox by user $opener, which no longer gives it access: it acts with no roles."
-    return "Opened from outside the sandbox: this user acts as user $opener in $client, with that user's roles and " +
-        "organization. Its own here are a record and change nothing; to change what it may do, change that user."
+        ?: return "Opened from outside the sandbox by an administrator of another client: it acts with that user's roles.$record"
+    // The organization comes with it only from the sandbox's parent: one of another client names nothing here.
+    val what = if (client == sandboxParentOf(user.client)) "that user's roles and organization" else "that user's roles"
+    val who = user.openedBy?.let { "user $it" } ?: "a user"
+    return "Opened from outside the sandbox: this user acts as $who in $client, with $what.$record"
 }

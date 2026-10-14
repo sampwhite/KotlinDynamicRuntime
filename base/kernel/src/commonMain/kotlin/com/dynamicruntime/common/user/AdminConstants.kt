@@ -276,12 +276,23 @@ object ADF {
     const val actingRoles = "actingRoles"
 
     /**
+     * True for a sandbox user somebody opened (issue #1198), which acts as the user outside it was opened from and
+     * has no roles or organization of its own to set; absent otherwise. Said whether or not [openedBy] is, since
+     * that user may be one the caller does not administer.
+     */
+    const val opened = "opened"
+
+    /**
      * For a sandbox user somebody opened (issue #1198): the id of the user outside the sandbox it was opened from,
-     * which it acts as -- its roles and organization -- while that user stands for the parent.
+     * which it acts as while that user still gives it access -- being the parent's, or an `allClients`
+     * administrator's of any client -- with its roles, and its organization when it is the parent's. Given only
+     * when the caller could know of that user anyway: it is the parent's, which a sandbox administrator is
+     * trusted in by construction, or one the caller administers. Withheld otherwise, as the person view
+     * withholds a user the caller cannot see.
      */
     const val openedBy = "openedBy"
 
-    /** Beside [openedBy]: the client of the user it was opened from, which it acts as; absent once that user no longer stands. */
+    /** Beside [openedBy], and like it only when that is given: that user's client, while it still gives the sandbox user access. */
     const val actsAsClient = "actsAsClient"
 
     /** On the delete call: obfuscate the user's identity irrecoverably rather than merely disable them. */

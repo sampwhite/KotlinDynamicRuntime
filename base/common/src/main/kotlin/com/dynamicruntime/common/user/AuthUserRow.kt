@@ -3,6 +3,7 @@ package com.dynamicruntime.common.user
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.gedra.isSandboxClient
+import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.schema.SCT
@@ -141,6 +142,12 @@ class AuthUserRow(
             if (value != null) authUserData[AD.openedBy] = value else authUserData.remove(AD.openedBy)
         }
 
+    /**
+     * Whether this is a sandbox user somebody opened (issues #929, #1198): one that acts as the user outside it was
+     * opened from, with no roles or organization of its own to set.
+     */
+    val isOpenedSandboxUser: Boolean get() = openedBy != null && isSandboxClient(client)
+
     /** The raw stored row, for callers that mutate and write it back. */
     var data: Map<String, Any?> = emptyMap()
 
@@ -204,16 +211,25 @@ class AuthUserRow(
 
     /**
      * [toAdminInfo], and in a sandbox what the console must say beside the row's own roles (issue #1198): the roles
-     * it acts with ([ADF.actingRoles]), and for a user somebody opened, which user it was opened from and acts as
-     * ([ADF.openedBy], [ADF.actsAsClient]). Read through `SandboxAccess`, so the console says what the gate does.
+     * it acts with ([ADF.actingRoles] -- none while it is disabled), and for a user somebody opened, that it was
+     * ([ADF.opened]) and, where the caller may know of that user, which user it acts as ([ADF.openedBy],
+     * [ADF.actsAsClient]). Read through `SandboxAccess`, so the console says what the gate does.
      */
     fun toAdminInfo(cxt: KdrCxt): Map<String, Any?> {
         if (!isSandboxClient(client)) return toAdminInfo()
         val standing = SandboxAccess.standingOf(cxt, this)
         return toAdminInfo() + buildMap {
-            put(ADF.actingRoles, standing.roles.sorted())
-            openedBy?.let { put(ADF.openedBy, it) }
-            standing.actsAs?.let { put(ADF.actsAsClient, it.client) }
+            put(ADF.actingRoles, if (enabled) standing.roles.sorted() else emptyList())
+            if (!isOpenedSandboxUser) return@buildMap
+            put(ADF.opened, true)
+            val opener = standing.actsAs ?: openedBy?.let { UserService.get(cxt).queryByUserId(cxt, it) } ?: return@buildMap
+            // The parent's users a sandbox administrator is trusted in by construction; anyone else only when the
+            // caller administers them -- the rule the person view keeps for a user the caller cannot see.
+            val known = opener.client == sandboxParentOf(client) ||
+                ReadScopeRules.forUserAdmin(cxt).admitsUserRow(opener.client, opener.org, opener.userId, opener.identityId)
+            if (!known) return@buildMap
+            put(ADF.openedBy, opener.userId)
+            if (enabled && standing.actsAs != null) put(ADF.actsAsClient, opener.client)
         }
     }
 
@@ -385,7 +401,12 @@ class AuthUserRow(
                     type = SCT.array
                     items { type = SCT.string }
                 }
-                property(ADF.openedBy, "For a sandbox user somebody opened, the id of the user outside it was opened from.") { type = SCT.integer }
+                property(ADF.opened, "True for a sandbox user somebody opened, which acts as the user it was opened from; absent otherwise.") {
+                    type = SCT.boolean
+                }
+                property(ADF.openedBy, "For a sandbox user somebody opened, the id of the user outside it was opened from -- when the caller may know of that user.") {
+                    type = SCT.integer
+                }
                 property(ADF.actsAsClient, "Beside openedBy, that user's client, while it still gives the sandbox user access.")
             }
         }

@@ -16,10 +16,12 @@ class SandboxUserViewTest {
         actingRoles: List<String>? = null,
         openedBy: Long? = null,
         actsAsClient: String? = null,
+        opened: Boolean = openedBy != null,
+        enabled: Boolean = true,
     ) = AdminUser(
         userId = 7L, primaryId = "chief@acme.test", username = "chief", roles = roles, client = "acme:sandbox",
-        org = null, isEntity = false, name = null, enabled = true, hasPassword = false, deleted = false,
-        actingRoles = actingRoles, openedBy = openedBy, actsAsClient = actsAsClient,
+        org = null, isEntity = false, name = null, enabled = enabled, hasPassword = false, deleted = false,
+        actingRoles = actingRoles, opened = opened, openedBy = openedBy, actsAsClient = actsAsClient,
     )
 
     @Test
@@ -36,8 +38,16 @@ class SandboxUserViewTest {
     fun anOpenedUserSaysWhomItActsAsOrThatItNoLongerDoes() {
         assertNull(openedUserNote(user(listOf(ROLE.user), listOf(ROLE.user))))
         val actsAs = openedUserNote(user(listOf(ROLE.user, ROLE.admin), listOf(ROLE.user, ROLE.admin), openedBy = 3L, actsAsClient = "acme"))!!
-        assertTrue(actsAs.contains("acts as user 3 in acme"))
+        assertTrue(actsAs.contains("acts as user 3 in acme, with that user's roles and organization."))
+        // Opened from another client by an administrator of every client: its roles, and no organization of theirs.
+        val fromHub = openedUserNote(user(listOf(ROLE.user, ROLE.admin), listOf(ROLE.user, ROLE.admin, ROLE.allClients), openedBy = 4L, actsAsClient = "hub"))!!
+        assertTrue(fromHub.contains("acts as user 4 in hub, with that user's roles."))
         val gone = openedUserNote(user(listOf(ROLE.user, ROLE.admin), emptyList(), openedBy = 3L))!!
-        assertTrue(gone.contains("user 3, which no longer gives it access"))
+        assertTrue(gone.contains("by a user who no longer gives it access: it acts with no roles."))
+        val off = openedUserNote(user(listOf(ROLE.user, ROLE.admin), emptyList(), openedBy = 3L, actsAsClient = "acme", enabled = false))!!
+        assertTrue(off.contains("disabled here: it acts with no roles."))
+        // Opened by a user the caller does not administer: said to be opened, and that user left unnamed.
+        val unnamed = openedUserNote(user(listOf(ROLE.user, ROLE.admin), listOf(ROLE.user, ROLE.admin, ROLE.allClients), opened = true))!!
+        assertTrue(unnamed.contains("by an administrator of another client: it acts with that user's roles."))
     }
 }

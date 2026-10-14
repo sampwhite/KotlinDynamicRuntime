@@ -362,7 +362,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val row = loadEditableUser(c, userId)
         // An opened sandbox user acts with the roles of the user it was opened from (issue #1198): set here, they
         // would change nothing it may do.
-        if (row.openedBy != null && isSandboxClient(row.client)) {
+        if (row.isOpenedSandboxUser) {
             throw KdrException.mkInput(
                 "User $userId was opened from outside the sandbox and acts with the roles of the user that opened " +
                     "it; change that user's roles instead.",
@@ -480,7 +480,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val row = loadEditableUser(c, userId)
         // An opened sandbox user's organization is its opener's (issue #1196): set here, it would be overwritten at
         // the next opening, and would never have been what the user acts in.
-        if (row.openedBy != null && isSandboxClient(row.client)) {
+        if (row.isOpenedSandboxUser) {
             throw KdrException.mkInput(
                 "User $userId was opened from outside the sandbox and is in the organization of the user that opened " +
                     "it; set that user's organization instead.",

@@ -186,7 +186,10 @@ later schema rejects" test.
   person's own sandbox user (created on first use) and records who opened it: that user then **acts as the parent
   user it was opened from** -- its roles, and its organization when it is the parent's own (issue #1196), asked
   at every request, whatever the sandbox row holds -- and with none at all once that user is disabled; such a
-  session can still switch away through `AEP.leaveSandbox` (issue #1197), which is not gated by role. To change what it may do, change the **parent** user's roles or organization.
+  session can still switch away through `AEP.leaveSandbox` (issue #1197), which is not gated by role. The
+  console's user info for a sandbox user adds what it acts with (`ADF.actingRoles`) and, for an opened one,
+  `ADF.opened` and -- when the caller may know of that user -- which user it was opened from (`ADF.openedBy`,
+  `ADF.actsAsClient`); setting the roles or org of an opened user is refused (issue #1198). To change what it may do, change the **parent** user's roles or organization.
   A `TestUser` created straight into the sandbox is the sandbox's own: it acts with its row's roles, except that
   `admin` takes effect only while its identity has an enabled admin user in the parent (or an
   `admin`+`allClients` one) and `allClients` never does -- and one at `level = ROLE.admin` whose address has no
