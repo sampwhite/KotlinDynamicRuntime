@@ -22,4 +22,11 @@ object MDR {
     /** The attributes an image may carry, numeric only; anything else in an attribute block is dropped. */
     const val width = "width"
     const val height = "height"
+
+    /**
+     * The scheme an image's source names a client's **file ref** by (issue #1186): `![Our logo](ref:logo)`. Not a
+     * path, so copy says *which image* and never which bytes -- a replaced image is the same copy. What it is drawn
+     * from is the surface's to say ([MarkdownHooks.refAddress]); a surface that cannot say draws its alt text.
+     */
+    const val refScheme = "ref"
 }

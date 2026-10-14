@@ -48,8 +48,10 @@ class MdHeading(val level: Int, val text: String, val slug: String, val line: In
 /**
  * A link or image ([image]) target as written ([target]), what the surface's resolver made of it ([resolved]),
  * and its 1-based [line] -- the line of the block it is in. [inert] when the resolved target was refused.
+ * [refId] is the file ref an image names (issue #1186): its [resolved] is the surface's address for the ref,
+ * empty where it has none -- not inert, since the image is then drawn as its alt text, which is what a ref asks.
  */
-class MdLink(val target: String, val resolved: String, val image: Boolean, val inert: Boolean, val line: Int)
+class MdLink(val target: String, val resolved: String, val image: Boolean, val inert: Boolean, val line: Int, val refId: String? = null)
 
 /** A fenced code block: its [language] (empty when the fence names none) and the 1-based [line] it opens on. */
 class MdCodeBlock(val language: String, val line: Int)
@@ -146,6 +148,11 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
     }
 
     private fun record(target: String, image: Boolean) {
+        val refId = if (image) imageRefIdOf(target) else null
+        if (refId != null) {
+            links.add(MdLink(target, hooks.refAddress?.invoke(refId).orEmpty(), image = true, inert = false, line = line + 1, refId = refId))
+            return
+        }
         val resolved = hooks.resolveUrl?.invoke(target) ?: target
         val inert = resolved.isNotBlank() && safeUrl(resolved).isEmpty()
         links.add(MdLink(target, resolved, image, inert, line + 1))
@@ -169,6 +176,13 @@ class ReportingSink(private val html: HtmlSink, private val hooks: MarkdownHooks
         }
     }
 }
+
+/**
+ * The file refs [this] Markdown's images name (issue #1186), each once, in the order they first appear: what a
+ * client's copy has to be able to draw. A placeholder's value is not known here, so an image a `${...}` would
+ * produce is not counted; what is written is.
+ */
+fun String.imageRefIds(): List<String> = analyzeMarkdown().links.mapNotNull { it.refId }.distinct()
 
 /** A target with no scheme that is not a same-document anchor or protocol-relative: a path the resolver maps. */
 private fun isRelativeTarget(target: String): Boolean {

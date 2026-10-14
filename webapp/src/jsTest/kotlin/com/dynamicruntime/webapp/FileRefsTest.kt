@@ -5,6 +5,9 @@ import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.webasset.WAS
+import com.dynamicruntime.common.util.renderMarkdownInline
+import com.dynamicruntime.common.util.MarkdownHooks
+import com.dynamicruntime.common.home.HFLD
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -400,5 +403,76 @@ class FileRefsTest {
         assertNull(fileRefAtLimitText(some(500), unlimited))
         assertNull(fileRefCountText(some(500), unlimited))
         assertNull(fileRefAtLimitText(some(500), null))
+    }
+
+    // Copy naming a ref (issue #1186): what the shell hands the page, and where a ref image is drawn from.
+    @Test
+    fun theShellsRefsAreReadOnlyAsNamesOfTheirOwnIdWithAHash() {
+        val raw = mapOf(
+            "logo" to "logo:$hash",
+            "banner" to "logo:$hash", // another id's name
+            "crest" to "crest:nothash",
+            "bad id" to "bad id:$hash",
+            "hero" to 42,
+        )
+        assertEquals(mapOf("logo" to "logo:$hash"), fileRefNamesFrom(raw))
+        assertEquals(emptyMap(), fileRefNamesFrom(null))
+    }
+
+    @Test
+    fun aRefImageIsDrawnFromItsServedNameAndOneNotServedIsNot() {
+        val address = refAddressFrom(mapOf("logo" to "logo:$hash")) { "/st/kdr.en/ref/$it" }
+        assertEquals("/st/kdr.en/ref/logo:$hash", address("logo"))
+        assertNull(address("banner"))
+        // The shell's facts say so for every copy surface, from the home config's own field.
+        val facts = shellFactsOf(homeConfigFrom(UiConfig(FragmentRef("home", "b1"), emptyMap(), emptyMap(), mapOf(HFLD.fileRefs to mapOf("logo" to "logo:$hash")))))
+        assertEquals(mapOf("logo" to "logo:$hash"), facts.fileRefs)
+        // And through the kernel renderer, as Markdown draws copy: drawn, or its alt text.
+        val hooks = MarkdownHooks(refAddress = address)
+        assertEquals("<img src=\"/st/kdr.en/ref/logo:$hash\" alt=\"Logo\">", "![Logo](ref:logo)".renderMarkdownInline(hooks))
+        assertEquals("Banner", "![Banner](ref:banner)".renderMarkdownInline(hooks))
+    }
+
+    @Test
+    fun everyCopySurfaceDrawsTheCallersRefsUnlessItSaysWhereFrom() {
+        val facts = ShellFacts(fileRefs = mapOf("logo" to "logo:$hash"))
+        val addressOf: (String) -> String = { "/st/kdr.en/ref/$it" }
+        // What a page gets with no prop of its own: the shell's refs.
+        val shell = markdownHooksFor(null, null, facts, addressOf)
+        assertEquals("<img src=\"/st/kdr.en/ref/logo:$hash\" alt=\"L\">", "![L](ref:logo)".renderMarkdownInline(shell))
+        // A surface drawing another client's copy says where from, and the shell's are not asked.
+        val own = markdownHooksFor(null, { id -> "download/$id" }, facts, addressOf)
+        assertEquals("<img src=\"download/logo\" alt=\"L\">", "![L](ref:logo)".renderMarkdownInline(own))
+        // Before the shell has been told, a ref image is its alt text; the link resolver rides along either way.
+        val untold = markdownHooksFor({ "/docs/$it" }, null, ShellFacts(), addressOf)
+        assertEquals("L <a href=\"/docs/x.md\">d</a>", "![L](ref:logo) [d](x.md)".renderMarkdownInline(untold))
+    }
+
+    @Test
+    fun aPageAboutAClientDrawsItsRefsFromTheNamedDownloadNotTheCallersStaticRoot() {
+        val refs = listOf(ref(), ref(refId = "gone", missing = true))
+        val address = refPreviewAddressFrom("acme", refs) { args -> "download?" + args.entries.joinToString("&") { "${it.key}=${it.value}" } }
+        assertEquals("download?client=acme&refId=logo&hash=$hash", address("logo"))
+        assertNull(address("gone"))
+        assertNull(address("banner"))
+    }
+
+    @Test
+    fun theMarkdownForARefNamesItAndTakesItsAltTextFromItsOwnWords() {
+        assertEquals("![The file logo](ref:logo)", fileRefImageMarkdown(ref()))
+        assertEquals("![Our logo, as of 2026](ref:logo)", fileRefImageMarkdown(ref(description = "Our [logo], as of\n2026")))
+        // What the copy editor offers: each ref by id beside its words, a missing file said so.
+        assertEquals(
+            listOf("logo \u2014 The logo." to "logo", "gone \u2014 file missing" to "gone"),
+            fileRefInsertChoices(listOf(ref(description = "The logo."), ref(refId = "gone", missing = true))),
+        )
+    }
+
+    @Test
+    fun anImageGoesInWhereTheCursorWasOrOnALineOfItsOwnAtTheEnd() {
+        assertEquals("Hello ![x](ref:a)world" to 17, insertAtCaret("Hello world", 6, "![x](ref:a)"))
+        assertEquals("Hello\n![x](ref:a)" to 17, insertAtCaret("Hello", null, "![x](ref:a)"))
+        assertEquals("Hello\n![x](ref:a)" to 17, insertAtCaret("Hello\n", null, "![x](ref:a)"))
+        assertEquals("![x](ref:a)" to 11, insertAtCaret("", 99, "![x](ref:a)"))
     }
 }

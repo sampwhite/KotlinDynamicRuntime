@@ -83,6 +83,11 @@ class HomeConfig(
      * its image by name and content. A slot not in it is the deployment's own image.
      */
     val webAssets: Map<String, String> = emptyMap(),
+    /**
+     * The file refs the caller's client is served (issue #1186), each id to its name (`logo:<hash>`) -- what copy
+     * naming the image `ref:logo` is drawn from ([ShellFacts.copyRefAddress]). A ref not in it draws its alt text.
+     */
+    val fileRefs: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -140,6 +145,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
             SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it, stranded = config.state[HFLD.sandboxStranded] == true)
         },
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
+        fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
     )
 }
 

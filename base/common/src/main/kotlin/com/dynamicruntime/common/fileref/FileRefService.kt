@@ -25,6 +25,8 @@ import com.dynamicruntime.common.logging.KdrLogger
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.MDR
+import com.dynamicruntime.common.util.imageRefIds
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 
 /** Logger for a client's file refs (issue #1153). */
@@ -129,7 +131,8 @@ class FileRefService : ServiceInitializer, ContentServer {
             (FREF.sourceClientLocal to LocalFileSource(roots, FREF.sourceClientLocal))
         LogFileRef.info(cxt) { "Local files a file ref may name (${LFENV.dir.name}): ${roots.describe()}." }
         val configs = collector.gedraConfigs.configs
-        registries = configs.filter { it.fileRefs.isNotEmpty() }.map { it.gedraId.client }.distinct()
+        // A client whose copy names a ref is judged too, refs or none: copy naming one it lacks is its problem.
+        registries = configs.filter { it.fileRefs.isNotEmpty() || it.fragments.isNotEmpty() }.map { it.gedraId.client }.distinct()
             .associateWith { build(cxt, configs, it, running = null) }
             .filterValues { it.refs.isNotEmpty() }
         RequestService.get(cxt).addContentServer(this)
@@ -175,6 +178,28 @@ class FileRefService : ServiceInitializer, ContentServer {
 
     /** The refs [client]'s people are served; none, for a client that has none. */
     fun forClient(client: String): FileRefRegistry = registries[client] ?: FileRefRegistry.empty
+
+    /**
+     * The refs [client]'s people are served, as the shell config carries them (issue #1186): each id to its file
+     * by name and content, `logo:<hash>` -- what copy naming the image `ref:logo` is drawn from. A ref whose file
+     * is not there is left out, so copy naming it draws its alt text. Each ref is answered by its source's own
+     * memory of it ([metaOf]: the store's for [askedMemoMs], a local file's while it has not changed), so a page
+     * load costs a lookup apiece rather than a read.
+     *
+     * **Never fails the shell.** A ref that cannot be asked after is left out and said in the log: a store that is
+     * down costs a client its images in copy, not its app.
+     */
+    fun servedNames(cxt: KdrCxt, client: String): Map<String, String> = buildMap {
+        for (ref in forClient(client).refs.values) {
+            val meta = try {
+                metaOf(cxt, ref)
+            } catch (e: KdrException) {
+                LogFileRef.warn(cxt) { "Could not ask after the file of ref '${ref.refId}' of client '$client'; leaving it out of the shell. ${e.message}" }
+                null
+            } ?: continue
+            put(ref.refId, FREF.versionedName(ref.refId, meta.hash))
+        }
+    }
 
     /**
      * [client]'s registry from the [configs] filed under it, each ref judged and each problem reported
@@ -257,7 +282,55 @@ class FileRefService : ServiceInitializer, ContentServer {
                 issues,
             )
         }
+        reportCopyNamingNoRef(cxt, configs, client, owner, kept, issues)
         return FileRefRegistry(kept)
+    }
+
+    /**
+     * Reports each image the copy of [client]'s own configurations names by a file ref ([MDR.refScheme],
+     * `![alt](ref:logo)`) that is not among the refs [kept] for it (issue #1186): a problem of the copy, as a `$ref`
+     * to a type the client does not have is. Judged here, beside the refs, so that one build judges both -- a load, a
+     * reload and a write's trial alike -- and a write that adds copy naming a ref, or takes away a ref copy still
+     * names, is refused where it is written. The copy is kept: the image is drawn as its alt text.
+     *
+     * A ref kept and its file missing is not this problem (its own is said above): copy may name it, and it is
+     * drawn as its alt text until the file is there. Worded by [owner], as the ref problems are, so a sandbox and
+     * its parent say it alike.
+     */
+    private fun reportCopyNamingNoRef(
+        cxt: KdrCxt,
+        configs: List<GedraConfig>,
+        client: String,
+        owner: String,
+        kept: Map<String, FileRef>,
+        issues: MutableList<GedraConfigIssue>,
+    ) {
+        val namePrefix = MDR.refScheme + ":"
+        for (config in configs) {
+            if (config.gedraId.client != client || config.fragments.isEmpty() || config.checkMode(cxt) == BootCheckMode.off) continue
+            for (layer in config.fragments) {
+                val content = layer.load() ?: continue
+                for ((namespace, keys) in content) {
+                    for ((key, value) in keys) {
+                        // Cheap enough to ask of every value, so the parse is for the few that may name one.
+                        if (!value.contains(namePrefix)) continue
+                        for (refId in value.imageRefIds()) {
+                            if (refId in kept) continue
+                            reportConfigProblem(
+                                cxt,
+                                config.issue(
+                                    "$namespace.$key (file '${layer.fileId}' of client '$owner', config '${config.name}') " +
+                                        "shows the image $namePrefix$refId, and the client has no file ref '$refId'.",
+                                    "Keeping the copy; the image is drawn as its alt text.",
+                                    GCEL.fragment, layer.fileId,
+                                ),
+                                issues,
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.sandboxParentOf
+import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.byteSizeText
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -271,7 +272,8 @@ fun fileRefRemovable(ref: FileRefView): Boolean = ref.stored
 
 /**
  * The address a ref is served at, given how a versioned name becomes one ([addressOf]) -- or null for a ref with
- * no file to name. What an administrator copies to use the file, until copy can name a ref itself.
+ * no file to name. What copy naming the ref (`ref:<id>`, [fileRefImageMarkdown]) resolves to for the client's
+ * people, shown beside it so an administrator can see which file that is.
  */
 fun fileRefAddress(ref: FileRefView, addressOf: (String) -> String): String? = ref.name?.takeIf { !ref.missing }?.let(addressOf)
 
@@ -285,6 +287,56 @@ fun fileRefAddressLead(ref: FileRefView): String =
     if (ref.live) "Served to this client's people at " else "Served in the sandbox, and to the client's people once published, at "
 
 /**
+ * `state.fileRefs` as ref id to name (issue #1186): the refs the caller's client is served, each by the name the
+ * static root serves it under, `<refId>:<hash>`. An entry that is not that -- an id that is no ref's, a name that is
+ * not the id's with a hash -- is left out rather than drawn from, so copy naming it draws its alt text.
+ */
+fun fileRefNamesFrom(raw: Any?): Map<String, String> = raw.toJsonMapOrEmpty().mapNotNull { (refId, name) ->
+    val prefix = "$refId${FREF.nameSep}"
+    (name as? String)?.takeIf { FREF.refIdProblem(refId) == null && it.startsWith(prefix) && FREF.isHash(it.removePrefix(prefix)) }
+        ?.let { refId to it }
+}.toMap()
+
+/**
+ * Where copy naming the image `ref:<id>` is drawn from (issue #1186), given the [names] refs are served by and how
+ * a name becomes an address: null for a ref not among them, which the renderer draws as its alt text.
+ */
+fun refAddressFrom(names: Map<String, String>, addressOf: (String) -> String): (String) -> String? =
+    { refId -> names[refId]?.let(addressOf) }
+
+/**
+ * The Markdown that shows [ref] as an image in copy (issue #1186): `![<alt>](ref:<id>)`, its alt text the ref's
+ * own words ([fileRefAltText]) -- what a reader is shown where the image cannot be drawn, a mail included. A
+ * bracket would end the alt text early and a line break the image, so brackets are taken out and lines joined.
+ */
+fun fileRefImageMarkdown(ref: FileRefView): String {
+    val alt = fileRefAltText(ref).replace(Regex("[\\[\\]]"), "").replace(Regex("\\s+"), " ").trim()
+    return "![$alt](${MDR.refScheme}:${ref.refId})"
+}
+
+/**
+ * [value] with [insert] put at [caret] -- the text cursor, as last seen in the box -- and where the cursor then is,
+ * just after it. With no cursor known, or one past the end, it goes at the end, on a line of its own when the value
+ * does not already end in one.
+ */
+fun insertAtCaret(value: String, caret: Int?, insert: String): Pair<String, Int> {
+    if (caret == null || caret < 0 || caret > value.length) {
+        val joined = if (value.isEmpty() || value.endsWith("\n")) value + insert else value + "\n" + insert
+        return joined to joined.length
+    }
+    return (value.substring(0, caret) + insert + value.substring(caret)) to caret + insert.length
+}
+
+/**
+ * The refs the copy editor offers to insert, as choices: each by id, beside its own words, and a ref with no file
+ * there said so -- it may still be named, and is drawn as its alt text until its file is.
+ */
+fun fileRefInsertChoices(refs: List<FileRefView>): List<Pair<String, String>> = refs.map { ref ->
+    val words = listOfNotNull(ref.refId, ref.description, "file missing".takeIf { ref.missing })
+    words.joinToString(" \u2014 ") to ref.refId
+}
+
+/**
  * The inputs of the address a ref is previewed from: the **named** download, since the client on the page need not
  * be the caller's own and a draft is served to nobody outside the sandbox -- with the file's hash, so that a
  * replaced file is a new address. Null when there is no file to show.
@@ -293,6 +345,14 @@ fun fileRefPreviewArgs(clientId: String, ref: FileRefView): Map<String, Any?>? {
     val hash = ref.hash?.takeIf { !ref.missing } ?: return null
     return mapOf(FREF.client to clientId, CCT.refId to ref.refId, CCT.hash to hash)
 }
+
+/**
+ * Where an image naming one of [clientId]'s refs is drawn from on a page **about** that client (issue #1186): its
+ * preview, by the named download [urlOf] makes of [fileRefPreviewArgs] -- the static root answers the caller's own
+ * client, which the client on the page need not be. Null for a ref [refs] does not list or whose file is not there.
+ */
+fun refPreviewAddressFrom(clientId: String, refs: List<FileRefView>, urlOf: (Map<String, Any?>) -> String): (String) -> String? =
+    { refId -> refs.firstOrNull { it.refId == refId }?.let { fileRefPreviewArgs(clientId, it) }?.let(urlOf) }
 
 /**
  * The question asked before a ref of [clientId]'s is removed, naming where that acts as every delete's does

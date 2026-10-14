@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.util.MarkdownHooks
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
 import kotlinx.browser.document
@@ -20,10 +21,21 @@ import web.cssom.ClassName
  * [MarkdownProps.linkResolver], when set, rewrites each link's target as it is rendered -- how a *document*
  * served to the frontend retargets its repo-relative interior links (issue #492; see [docLinkResolver]). The
  * renderer still runs the result through its URL safety check, so a resolver can only retarget a link.
+ *
+ * An image naming a **file ref** (`![Our logo](ref:logo)`, issue #1186) is drawn from the caller's client's ref as
+ * the shell was told it ([ShellFacts.copyRefAddress]) -- every copy surface gets that with no prop of its own -- or,
+ * where [MarkdownProps.refAddress] is set, from where that says; a ref neither knows is drawn as its alt text.
  */
 external interface MarkdownProps : Props {
     var source: String
     var linkResolver: ((String) -> String)?
+    /**
+     * Where an image naming a file ref is drawn from, given the ref's id, or null for one it cannot draw (issue
+     * #1186). Unset, the caller's own client's refs, from the shell: what every page wants. Set by a surface drawing
+     * *another* client's copy -- the copy editor, for the client on its page -- which the static root, answering the
+     * caller's own client, would draw wrong.
+     */
+    var refAddress: ((String) -> String?)?
     /**
      * **Inline-UI** rendering (issue #631): when true the block renders `class="markdown markdown-inline-ui"`,
      * whose CSS makes Markdown read as a piece of *UI* rather than a document -- collapsed lead-in and
@@ -43,9 +55,21 @@ val Markdown = FC<MarkdownProps> { props ->
         // hash router consume it (issue #492); everything else, including an in-app `#doc=` route link, is
         // left to the browser.
         onClick = { e -> scrollSameDocAnchorIntoView(e) }
-        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdown(props.linkResolver))
+        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdown(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
     }
 }
+
+/**
+ * What the renderer is told (issue #1186): the [linkResolver], and where a ref image is drawn from -- [refAddress]
+ * where the surface set one, else the caller's own client's refs as the shell was told them ([facts]), each made an
+ * address by [addressOf]. Pure, covered under `jsNodeTest`.
+ */
+fun markdownHooksFor(
+    linkResolver: ((String) -> String)?,
+    refAddress: ((String) -> String?)?,
+    facts: ShellFacts,
+    addressOf: (String) -> String = Http::fileRefUrl,
+): MarkdownHooks = MarkdownHooks(resolveUrl = linkResolver, refAddress = refAddress ?: facts.copyRefAddress(addressOf))
 
 /**
  * If a click landed on a same-document anchor link, scroll its target heading into view and stop the browser
@@ -71,7 +95,8 @@ private fun scrollSameDocAnchorIntoView(e: dynamic) {
  * whatever it is dropped into and stays valid inside a paragraph or label, where [Markdown]'s `<div>` would
  * not be. Used for copy that emphasizes a substituted value, e.g., an address in `` `${user.email}` ``.
  *
- * Its links go through [MarkdownProps.linkResolver] as [Markdown]'s do (issue #1136) -- form copy's, to a document.
+ * Its links go through [MarkdownProps.linkResolver] as [Markdown]'s do (issue #1136) -- form copy's, to a document --
+ * and an image naming a file ref is drawn as [Markdown] draws one (issue #1186).
  *
  * Safe on the same terms as [Markdown]: the kernel renderer escapes all text and neutralizes unsafe URLs. Note
  * the substitution (`evalTemplate`) must run *before* this, so a value carrying Markdown or HTML is escaped as
@@ -80,7 +105,7 @@ private fun scrollSameDocAnchorIntoView(e: dynamic) {
 val MarkdownInline = FC<MarkdownProps> { props ->
     span {
         className = ClassName("markdown-inline")
-        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdownInline(props.linkResolver))
+        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdownInline(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
     }
 }
 
