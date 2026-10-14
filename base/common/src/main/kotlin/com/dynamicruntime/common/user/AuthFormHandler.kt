@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
@@ -248,6 +249,8 @@ class AuthFormHandler(
         return if (existing != null) {
             // A lingering row (started-but-unfinished, or recoverably deleted) is re-provisioned in place; its
             // identity is marked verified now, as a fresh one would be.
+            // A recoverably deleted row coming back counts against its client's plan as a new user does (issue #1109).
+            if (!existing.enabled) PlanLimits.requireRoomForUser(cxt, existing.client)
             userService.getOrCreateIdentity(cxt, address, verifiedAt = now)
             existing.username = AuthUserRow.usernameTmpPrefix + address
             existing.roles = AdminRules.rolesInClient(existing.client, initialRoles)

@@ -126,6 +126,13 @@ class CustomerCheckTest : StringSpec({
         ).issues.shouldBeEmpty()
     }
 
+    // Issue #1109: a plan that is not one costs only itself.
+    "a customer naming a plan that is not one stands, reported" {
+        val result = checkClientDefs(prodCxt, collectorOf(config("acme", "acme", listOf(CustomerDef("acme", "Acme", plan = "gold")))))
+        result.customers.keys shouldContainExactly setOf("acme")
+        result.issues.single().message shouldContain "names the plan 'gold', which is not one"
+    }
+
     // Issue #1111: the root's administrators act for the customer, so it is one they can sign in to.
     "a customer's root is not a retired client" {
         refusal(config("acme", "acme", listOf(customer("acme", root = "acme")), retired = true))

@@ -15,6 +15,7 @@ import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.SECT
@@ -419,6 +420,8 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
             throw KdrException.mkInput("You cannot disable your own account.")
         }
         val row = loadEditableUser(c, userId)
+        // A user coming back counts against the client's plan as a new one does (issue #1109).
+        if (enabled && !row.enabled) PlanLimits.requireRoomForUser(c, row.client)
         row.enabled = enabled
         // Re-enabling is an **activation**, not an edit (issue #462): it is the account coming back into
         // being, which is the same event as its creation and the one `activatedAt` records. Disabling is an

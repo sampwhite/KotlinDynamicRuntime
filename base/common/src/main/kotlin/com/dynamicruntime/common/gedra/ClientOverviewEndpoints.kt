@@ -101,6 +101,22 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             type = SCT.array
             items { ref(CLD.configIssueTypeQualified) }
         }
+        property(
+            CLD.planUsage,
+            "The client's plan and how much of what it allows the client holds (issue #1109); absent for a client on none.",
+        ) {
+            type = SCT.kObject
+            property(QUOTA.plan, "The plan the client is on.", required = true)
+            property(QUOTA.measures, "Each measure the plan limits: forms, users, workflows, schemas.", required = true) {
+                type = SCT.array
+                items {
+                    type = SCT.kObject
+                    property(QUOTA.measure, "What is measured.", required = true)
+                    property(QUOTA.used, "How much the client holds.", required = true) { type = SCT.integer }
+                    property(QUOTA.limit, "How much its plan allows.", required = true) { type = SCT.integer }
+                }
+            }
+        }
     }
 
     // What a client's own configuration changes about what its people see (issue #916).
@@ -230,14 +246,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         property(CLD.client, "The client.", required = true)
         property(COV.configName, "The stored configuration the change landed in.", required = true)
         property(CLD.definition, "The client's stored definition after the edit.", required = true) { ref(CLD.infoTypeQualified) }
-        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
-            option(EDM.live, "Live")
-            option(EDM.draft, "Draft")
-        }
-        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing.", required = true) {
-            type = SCT.array
-            items { ref(CLD.configIssueTypeQualified) }
-        }
+        saveOutcomeFields()
     }
 
     generalEndpoint(
@@ -364,6 +373,7 @@ internal fun overseenClient(cxt: KdrCxt, named: String?): String {
 private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatus): Map<String, Any?> {
     val isPresent = status == ClientStatus.present
     val users = UserService.get(cxt).countActiveUsers(cxt, clientId)
+    val forms = GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId)
     return mapOf(
         CLD.clientId to clientId,
         CLD.name to name,
@@ -372,7 +382,7 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         // The loaded set also holds a template's copies (issue #945), which are source, not stored -- and a sandbox's
         // holds its parent's source configs beside the stored ones (issue #932).
         CLD.storedConfigs to GedraConfigLoadService.get(cxt).loadedFor(clientId).count { it.inheritedFrom == null && it.isStored },
-        CLD.forms to GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId),
+        CLD.forms to forms,
         CLD.users to users.total,
         CLD.unclaimedUsers to users.unclaimed,
         CLD.workflowCount to if (isPresent) workflowIdsFor(cxt, clientId).size else 0,
@@ -392,6 +402,24 @@ private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: Cli
         // Of the client whose configuration it is: a sandbox's own derived definition is never static, and what is
         // changed from a sandbox is its parent's.
         put(CLD.staticHere, configs.isStaticHere(cxt, configOwnerOf(clientId)))
+        // What its plan allows, and how much of it the client holds (issue #1109); a client on none has no row.
+        PlanLimits.usageOf(cxt, clientId, forms, users.total)?.let { put(CLD.planUsage, it.toInfo()) }
+    }
+}
+
+/**
+ * How an editor's save took effect, and the problems the client has after it: the tail of every save result -- the copy,
+ * menu, and definition editors' (issues #918, #930, #1026, #1094) -- spelled once.
+ */
+internal fun SchTypeBuilder.saveOutcomeFields() {
+    property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
+        option(EDM.live, "Live")
+        option(EDM.draft, "Draft")
+    }
+    property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing: the save itself " +
+        "was refused if it added one.", required = true) {
+        type = SCT.array
+        items { ref(CLD.configIssueTypeQualified) }
     }
 }
 

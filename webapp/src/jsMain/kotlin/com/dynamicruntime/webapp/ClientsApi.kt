@@ -8,6 +8,7 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.ACEP
+import com.dynamicruntime.common.gedra.PlanUsage
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.CFEP
 import com.dynamicruntime.common.gedra.CLD
@@ -67,6 +68,8 @@ class ClientOverview(
     val publishedOnly: Boolean = false,
     /** Whether the client takes nothing stored on this node -- static in production (issue #1001). */
     val staticHere: Boolean = false,
+    /** The client's plan and its usage against it (issue #1109); null for a client on none. */
+    val planUsage: PlanUsage? = null,
 )
 
 /** The overview endpoint's items as rows; one without a client id is not a client. Pure, and covered under `jsNodeTest`. */
@@ -91,7 +94,19 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         hasSandbox = row[CLD.hasSandbox] == true,
         publishedOnly = row[CLD.publishedOnly] == true,
         staticHere = row[CLD.staticHere] == true,
+        planUsage = PlanUsage.fromInfo(row[CLD.planUsage].toJsonMapOrEmpty().ifEmpty { null }),
     )
+}
+
+/**
+ * A client's plan as its summary says it (issue #1109): the plan's name, then how much of each measure it limits the
+ * client holds -- `Free: 12 of 100 forms, 3 of 20 users, 1 of 4 workflows, 2 of 10 schemas`. A plan that limits
+ * nothing reads as its name alone. Pure, and covered under `jsNodeTest`.
+ */
+fun planUsageText(usage: PlanUsage): String {
+    val name = usage.plan.replaceFirstChar { it.uppercase() }
+    if (usage.measures.isEmpty()) return name
+    return "$name: " + usage.measures.joinToString(", ") { "${it.used} of ${it.limit} ${it.measure}" }
 }
 
 /**
@@ -819,6 +834,7 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
         row?.let {
             add(summaryFormsRow to it.forms.toString())
             add(summaryUsersRow to userCountText(it.users, it.unclaimedUsers))
+            it.planUsage?.let { usage -> add("Plan" to planUsageText(usage)) }
         }
     }
 }

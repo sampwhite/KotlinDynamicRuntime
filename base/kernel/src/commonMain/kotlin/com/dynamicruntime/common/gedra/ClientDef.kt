@@ -299,6 +299,9 @@ object CLD {
     /** The customer that owns the client (issue #1107); see [ClientDef.customerId]. */
     const val customerId = "customerId"
 
+    /** On an overview row: the client's usage against its plan ([PlanUsage], issue #1109); absent for one on none. */
+    const val planUsage = "planUsage"
+
     /** Whether the platform retired the client (issue #1111); see [ClientDef.retired]. */
     const val retired = "retired"
 

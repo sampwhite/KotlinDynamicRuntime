@@ -54,14 +54,7 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         property(MNU.condition, "The condition the item is now offered under; `#never` withdraws it.")
         property(MNU.audience, "What that condition's audience is called; absent for a withdrawn item and for a condition with no name.")
         property(CPY.stored, "Whether a stored change to the item remains -- false after a reset.", required = true) { type = SCT.boolean }
-        property(CPY.mode, "How the save took effect (issue #930): live for the client at once, or a draft its sandbox runs until it is published.", required = true) {
-            option(EDM.live, "Live")
-            option(EDM.draft, "Draft")
-        }
-        property(CPY.issues, "The problems the client's configuration has after the reload, all pre-existing.", required = true) {
-            type = SCT.array
-            items { ref(CLD.configIssueTypeQualified) }
-        }
+        saveOutcomeFields()
     }
 
     listEndpoint(

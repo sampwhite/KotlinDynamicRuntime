@@ -522,6 +522,8 @@ class GedraDataService : ServiceInitializer {
         stored: List<Map<String, Any?>>,
         creationWorkflowId: com.dynamicruntime.common.gedra.workflow.WfRef?,
     ): GedraDataRow {
+        // What the client's plan allows (issue #1109): every create of a form passes here, an import's too.
+        if (kind == GedraDataType.formDoc) PlanLimits.requireRoomForForm(cxt, cxt.client)
         val gedraId = gedraService.intern(cxt.mkGedraId(kind, cxt.client, GedraIdContext.ui))
         // Run the whole write on a transaction-scoped context created before the transaction (issue #687), so it
         // owns the transaction's session and a post-write hook that rebinds the owner and writes state reuses
