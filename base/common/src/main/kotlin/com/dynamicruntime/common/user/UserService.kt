@@ -308,12 +308,16 @@ class UserService : ServiceInitializer {
     /**
      * The users the caller may switch to (issue #749): the registered, enabled users of the session's identity,
      * the current one, and the chosen default marked. Empty for a caller no identity backs -- a logged-out
-     * caller, a manufactured profile, or a cookie issued before the split.
+     * caller, a manufactured profile, or a cookie issued before the split -- and for one whose own user no longer
+     * acts for it, which may switch nowhere.
      */
     fun selfUserChoices(cxt: KdrCxt): List<UserChoice> {
         val profile = cxt.userProfile
         val identityId = profile.identityId ?: return emptyList()
         if (!profile.isLoggedIn) return emptyList()
+        // A session whose own user no longer acts for it -- disabled, or detached -- switches nowhere (issue #749),
+        // so it is offered nowhere: listing the person's other users would only draw doors the gate then refuses.
+        if (queryByUserId(cxt, profile.userId)?.actsForSession(profile) != true) return emptyList()
         val identity = queryIdentityById(cxt, identityId) ?: return emptyList()
         return registeredUsersOf(cxt, identity).map {
             UserChoice(

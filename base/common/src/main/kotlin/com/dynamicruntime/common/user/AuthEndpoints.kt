@@ -273,9 +273,9 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
     }
 
     // Leaving a sandbox (issue #1197), in this anonymous section because the session it serves may act with no roles.
-    generalEndpoint(AEP.leaveSandbox, "Leaves the sandbox the session is in for another of the person's users outside it (a fresh session).",
+    generalEndpoint(AEP.leaveSandbox, "Switches a session in a sandbox to another of the person's users (a fresh session).",
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, tags = setOf(ETAG.frontend), inputFields = {
-            field(AFLD.userId, "The user to become: a registered, enabled user of the caller's own identity, outside every sandbox.", required = true) {
+            field(AFLD.userId, "The user to become: a registered, enabled user of the caller's own identity.", required = true) {
                 type = SCT.integer
             }
         }) { c, req ->

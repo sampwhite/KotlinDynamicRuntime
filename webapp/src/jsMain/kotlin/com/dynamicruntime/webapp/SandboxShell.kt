@@ -1,6 +1,5 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.user.UserChoice
 import web.dom.document
@@ -58,25 +57,25 @@ fun sandboxChipLabel(of: SandboxOf): String = "${of.name} Sandbox"
 
 /**
  * What the chip's popover says, above its way back: whose sandbox this is, what it runs, and what an edit here does --
- * or, when nobody stands behind the caller's sandbox user any more (issue #1197), why nothing here opens for them.
+ * or, when the caller's sandbox user acts with no roles ([SandboxOf.stranded], issue #1197), that access has ended,
+ * and the way out there is: back, or another of their users, when [hasWayOut]; signing out when not, which the
+ * popover then offers itself. The reasons are several -- the user it was opened from gone, a capability lost, the
+ * sandbox user itself disabled -- and the person needs none of them to know what to do.
  */
-fun sandboxInfoText(of: SandboxOf): String =
+fun sandboxInfoText(of: SandboxOf, hasWayOut: Boolean = true): String =
     if (of.stranded) {
-        "You are in ${of.name}'s sandbox, but your access to it has ended: the user you opened it from is no longer " +
-            "one of ${of.name}'s, or no longer active. Nothing here is open to you; go back, or switch to another of " +
-            "your users."
+        "You are in ${of.name}'s sandbox, but your access to it has ended, so nothing here is open to you. " +
+            if (hasWayOut) "Go back, or switch to another of your users." else "Sign out, and sign in again as another of your users."
     } else {
         "You are in ${of.name}'s sandbox. It runs ${of.name}'s latest configuration, published or not, with users and " +
             "data of its own. Configuration changed here is a draft of ${of.name}'s, live there only once published."
     }
 
 /**
- * Whether switching to [target] leaves the sandbox the caller is in (issue #1197): the caller is in one, and [target]
- * is outside every sandbox. Such a switch goes through `AuthApi.leaveSandbox`, which a sandbox user acting with no
- * roles may still call; any other through `AuthApi.switchUser`.
+ * Whether a switch goes through `AuthApi.leaveSandbox` (issue #1197): every switch made from inside a sandbox does,
+ * since a sandbox user acting with no roles may still make that one and not the role-gated `AuthApi.switchUser`.
  */
-fun leavesSandbox(config: HomeConfig?, target: UserChoice?): Boolean =
-    config?.sandboxOf != null && target != null && !isSandboxClient(target.client)
+fun switchesFromSandbox(config: HomeConfig?): Boolean = config?.sandboxOf != null
 
 /**
  * The user "Back to <client>" switches to: the person's own user in the client whose sandbox this is -- the one the

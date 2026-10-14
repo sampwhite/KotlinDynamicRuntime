@@ -57,17 +57,21 @@ class SandboxShellTest {
         assertTrue(stranded.stranded)
         val info = sandboxInfoText(stranded)
         assertTrue(info.startsWith("You are in Acme's sandbox, but your access to it has ended"))
+        assertTrue(info.endsWith("Go back, or switch to another of your users."))
         assertFalse("published" in info)
+        // With nowhere listed to go, the exit that remains is named instead.
+        assertTrue(sandboxInfoText(stranded, hasWayOut = false).endsWith("Sign out, and sign in again as another of your users."))
+        // A sandbox somebody stands behind reads as before, whatever the exits.
+        assertEquals(sandboxInfoText(SandboxOf("acme", "Acme")), sandboxInfoText(SandboxOf("acme", "Acme"), hasWayOut = false))
     }
 
-    // Issue #1197: a switch out of a sandbox is a leave, which a sandbox user acting with no roles may still make.
+    // Issue #1197: every switch from inside a sandbox goes through the leave, which a sandbox user acting with no
+    // roles may still make; any other through the gated switch.
     @Test
-    fun aSwitchOutOfASandboxIsALeave() {
-        val inside = config(state = mapOf(HFLD.sandboxOf to "acme"))
-        assertTrue(leavesSandbox(inside, UserChoice(1, "acme", "admin")))
-        assertFalse(leavesSandbox(inside, UserChoice(2, "globex:sandbox", "admin")))
-        assertFalse(leavesSandbox(inside, null))
-        assertFalse(leavesSandbox(config(), UserChoice(1, "acme", "admin")))
+    fun aSwitchFromInsideASandboxIsALeave() {
+        assertTrue(switchesFromSandbox(config(state = mapOf(HFLD.sandboxOf to "acme"))))
+        assertFalse(switchesFromSandbox(config()))
+        assertFalse(switchesFromSandbox(null))
     }
 
     @Test

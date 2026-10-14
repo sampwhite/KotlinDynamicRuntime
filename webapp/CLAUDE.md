@@ -214,11 +214,13 @@ Current UI-config endpoints:
   is handed the roles of the user **outside** they opened it from (and, when it is the parent's own, its
   organization), asked at every request, so a role taken away
   outside is gone from the sandbox session too -- and none at all once that user no longer stands for the parent. A
-  sandbox's own user is handed its row's roles, without `allClients`. A switch **out of** a sandbox goes through
-  `POST /auth/self/leaveSandbox {userId}` instead (issue #1197; `leavesSandbox` decides, `AuthApi.leaveSandbox`),
-  which is not gated by role: a sandbox user nobody stands behind any more acts with none, and the shell config
-  says so (`state.sandboxStranded`), so the chip's popover explains that access has ended rather than describing
-  the sandbox. The bar offers **Open sandbox** when the
+  sandbox's own user is handed its row's roles, without `allClients`. Every switch made **from inside** a sandbox
+  goes through `POST /auth/self/leaveSandbox {userId}` instead (issue #1197; `switchesFromSandbox`,
+  `AuthApi.leaveSandbox`), which is not gated by role: a sandbox user nobody stands behind any more acts with none.
+  The shell config says when a sandbox session acts with no roles (`state.sandboxStranded`), and the chip's popover
+  then explains that access has ended rather than describing the sandbox -- offering **Sign out** when no way back
+  and no other user is listed, which is the case for a sandbox user that was itself disabled (the switcher list is
+  empty for a session whose own user no longer acts for it). The bar offers **Open sandbox** when the
   shell config's `canOpenSandbox` feature says so; in a sandbox (`state.sandboxOf` / `sandboxOfName`) a chip takes
   its place -- **Acme Sandbox**, on screen however far a page scrolls, as the bar is -- whose popover says what the
   sandbox runs and offers **Back to Acme**, a switch to the person's own user there (`SandboxShell.kt`:

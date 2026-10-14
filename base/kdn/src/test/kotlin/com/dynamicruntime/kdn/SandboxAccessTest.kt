@@ -439,7 +439,7 @@ class SandboxAccessTest : StringSpec({
         setRoles(homeUserId, listOf(ROLE.user, ROLE.admin))
         actsAsMember(full) shouldBe false
         shellSaysStranded(full) shouldBe true
-        full.client.sendJsonPostRequest(AEP.switchUser, mapOf(AFLD.userId to homeUserId))[EP.status].shouldNotBeNull()
+        full.expectError(EXC.notAuthorized, AEP.switchUser, mapOf(AFLD.userId to homeUserId))
 
         // Leaving is not gated by role, so the way back stays open.
         full.postData(AEP.leaveSandbox, mapOf(AFLD.userId to homeUserId))[UPF.client] shouldBe home
@@ -447,7 +447,7 @@ class SandboxAccessTest : StringSpec({
         actsAsAdmin(full) shouldBe true
     }
 
-    "leaving goes only from a sandbox, to one of the person's own users outside every sandbox" {
+    "leaving goes only from a sandbox, to one of the person's own users" {
         val parent = "sbxleaveonly"
         defineParent(parent)
         val chief = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
@@ -455,25 +455,39 @@ class SandboxAccessTest : StringSpec({
         // From outside a sandbox: nothing to leave.
         chief.expectError(EXC.badInput, AEP.leaveSandbox, mapOf(AFLD.userId to chief.userId))
         // Signed out: nobody to leave as.
-        TestHttpClient(cxt.instanceConfig).sendJsonPostRequest(AEP.leaveSandbox, mapOf(AFLD.userId to chief.userId))[EP.status].shouldNotBeNull()
+        TestHttpClient(cxt.instanceConfig).sendJsonPostRequest(AEP.leaveSandbox, mapOf(AFLD.userId to chief.userId))[EP.status]
+            .toOptLong() shouldBe EXC.authNeeded.toLong()
 
         val inside = chief.postData(AEP.openSandbox, emptyMap())[UPF.userId].toOptLong().shouldNotBeNull()
-        // Not to a user of somebody else's, nor to a sandbox user.
+        // Not to a user of somebody else's.
         chief.expectError(EXC.badInput, AEP.leaveSandbox, mapOf(AFLD.userId to other.userId))
-        chief.expectError(EXC.badInput, AEP.leaveSandbox, mapOf(AFLD.userId to inside))
         chief.selfClient() shouldBe sandboxOf(parent)
 
-        // A sandbox user that was itself disabled goes no further here than at the gate.
+        // A sandbox user that was itself disabled goes no further here than at the gate -- and, acting with no
+        // roles, is said to be stranded and offered no doors, since none would open.
         val users = UserService.get(cxt)
         val row = users.queryByUserId(cxt, inside).shouldNotBeNull()
         row.enabled = false
         users.updateUser(cxt, row)
         chief.expectError(EXC.badInput, AEP.leaveSandbox, mapOf(AFLD.userId to chief.userId))
+        shellSaysStranded(chief) shouldBe true
+        chief.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.users].toJsonListOfMaps() shouldBe emptyList()
         row.enabled = true
         users.updateUser(cxt, row)
+        shellSaysStranded(chief) shouldBe false
 
         // And a session somebody stands behind leaves the same way.
         chief.postData(AEP.leaveSandbox, mapOf(AFLD.userId to chief.userId))[UPF.client] shouldBe parent
+    }
+
+    "a sandbox's own administrator with nobody in the parent is said to be stranded" {
+        val parent = "sbxleaveown"
+        defineParent(parent)
+        val stranger = TestUser.create(cxt, "stranger@$parent.test", level = ROLE.admin, userClient = sandboxOf(parent))
+        actsAsMember(stranger) shouldBe false
+        shellSaysStranded(stranger) shouldBe true
+        // A sandbox's own member, acting with its row's roles, is not.
+        shellSaysStranded(TestUser.create(cxt, "tryout@$parent.test", userClient = sandboxOf(parent))) shouldBe false
     }
 
     "with table caching switched off, a sandbox administrator still stands" {

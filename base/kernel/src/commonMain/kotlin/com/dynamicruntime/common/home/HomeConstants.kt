@@ -136,9 +136,11 @@ object HFLD {
     const val sandboxOfName = "sandboxOfName"
 
     /**
-     * `state.sandboxStranded`: beside [sandboxOf], true when nobody stands behind the caller's sandbox user any more
-     * (issue #1197) -- the user it was opened from is disabled, or no longer of the parent -- so it acts with no
-     * roles and the shell says why instead of offering doors that will not open; absent otherwise.
+     * `state.sandboxStranded`: beside [sandboxOf], true when the caller's sandbox user acts with no roles (issue
+     * #1197), so the shell says access has ended instead of offering doors that will not open; absent otherwise.
+     * Whatever the reason: the user it was opened from is disabled or no longer stands for the parent (lost the
+     * capability that let it in from elsewhere, say), nobody in the parent stands behind a sandbox user holding
+     * `admin`, or the sandbox user was itself disabled.
      */
     const val sandboxStranded = "sandboxStranded"
 

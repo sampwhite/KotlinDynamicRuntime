@@ -263,12 +263,12 @@ val AppBar = FC<AppBarProps> { props ->
     // Switching user (issue #749): a fresh session as another of the person's users, then home and a bump, the
     // way a login completes -- no page reload (issue #1015): every per-caller surface re-reads on the bump or fetches
     // as it mounts, and going home unmounts the page that was showing. A failure stays in the console (never
-    // swallowed), and the menus close either way. Out of a sandbox it is a leave (issue #1197), which a sandbox
-    // user acting with no roles may still make.
+    // swallowed), and the menus close either way. From inside a sandbox it goes through the leave (issue #1197),
+    // which a sandbox user acting with no roles may still make.
     fun switchUserAction(userId: Long) {
         userMenuOpen = false
         sandboxInfoOpen = false
-        val leaving = leavesSandbox(config, config?.users.orEmpty().firstOrNull { it.userId == userId })
+        val leaving = switchesFromSandbox(config)
         appBarScope.launch {
             val switched = apiResult { if (leaving) AuthApi.leaveSandbox(userId) else AuthApi.switchUser(userId) }
             switched.failureOrNull()?.let {
@@ -514,15 +514,29 @@ val AppBar = FC<AppBarProps> { props ->
                     div {
                         className = ClassName("app-menu sandbox-info")
                         asDynamic()["role"] = "dialog"
-                        p { +sandboxInfoText(inSandbox) }
-                        sandboxWayBack(inSandbox, config?.users.orEmpty())?.let { back ->
+                        val users = config?.users.orEmpty()
+                        val back = sandboxWayBack(inSandbox, users)
+                        // A stranded session with nowhere listed to go (issue #1197) is offered the exit that remains.
+                        val hasWayOut = back != null || switchableUsers(users).isNotEmpty()
+                        p { +sandboxInfoText(inSandbox, hasWayOut) }
+                        back?.let { way ->
                             button {
                                 className = ClassName("sandbox-back")
                                 onClick = {
                                     sandboxInfoOpen = false
-                                    switchUserAction(back.userId)
+                                    switchUserAction(way.userId)
                                 }
                                 +"Back to ${inSandbox.name}"
+                            }
+                        }
+                        if (inSandbox.stranded && !hasWayOut) {
+                            button {
+                                className = ClassName("sandbox-back")
+                                onClick = {
+                                    sandboxInfoOpen = false
+                                    logoutAction()
+                                }
+                                +"Sign out"
                             }
                         }
                     }
