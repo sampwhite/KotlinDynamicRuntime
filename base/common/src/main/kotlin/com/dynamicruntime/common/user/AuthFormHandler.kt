@@ -597,7 +597,10 @@ class AuthFormHandler(
         val client = named ?: return AddressRules.defaultClient(cxt, roles)
         val clients = ClientService.get(cxt)
         if (!clients.isPresent(client)) {
-            val why = if (clients.known(client) != null) {
+            val known = clients.known(client)
+            val why = if (known?.retired == true) {
+                "it has been retired"
+            } else if (known != null) {
                 "it is declared but not enabled in '${cxt.instanceConfig.env}'"
             } else {
                 "no config declares it"
@@ -875,6 +878,13 @@ class AuthFormHandler(
         // #1150) -- by code, password, Google, claim or invitation alike -- as the user's own address decides.
         PublicTestDeployment.requireSignInOpen(cxt, row.primaryId)
         if (!row.enabled) throw KdrException("The user account is not active.", code = EXC.badInput)
+        // A user whose client is not carried here -- retired (issue #1111), or not enabled in this environment --
+        // does not get in: everything they would reach is scoped by that client.
+        val clients = ClientService.get(cxt)
+        if (!clients.isPresent(row.client)) {
+            val why = if (clients.known(row.client)?.retired == true) "has been retired" else "is not available here"
+            throw KdrException("The account's client '${row.client}' $why.", code = EXC.badInput)
+        }
         if (register && !row.isRegistered) row.registeredAt = cxt.now()
         // The identity records the proof and which user the person last acted as (the fallback default,
         // issue #747); written only when either moved, so the ordinary repeat login costs no identity write.

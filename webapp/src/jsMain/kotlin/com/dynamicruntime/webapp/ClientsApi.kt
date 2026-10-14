@@ -153,6 +153,7 @@ private fun issues(n: Int): String = if (n == 1) "1 issue" else "$n issues"
 fun clientLoadText(status: String, issueCount: Int): String = when (status) {
     ClientStatus.present.name -> if (issueCount == 0) "Loaded" else "Loaded, ${issues(issueCount)} forgiven"
     ClientStatus.notEnabled.name -> "Not enabled here"
+    ClientStatus.retired.name -> "Retired"
     ClientStatus.dropped.name -> "Dropped by a check" + (if (issueCount == 0) "" else " \u2014 ${issues(issueCount)}")
     ClientStatus.storedOnly.name -> "Stored config only"
     else -> status

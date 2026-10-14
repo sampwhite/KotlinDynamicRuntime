@@ -205,7 +205,7 @@ read from it.
 | `userLabels` | cleared | the definition editor |
 | `sandbox` | the creator | its own surface (the sandbox's management) |
 | `includedTraits` | cleared | its own surface (the client's configuration) |
-| `preload`, `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
+| `preload`, `staticConfig`, `retired`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
 
 The platform's create takes every field but those a create clears and that are then changed only through their own
 surface or by the platform: the traits a client includes, its preload, its static lock, and its test features.
@@ -424,10 +424,15 @@ five.
 rule: a client in active use must never be one that local development and the unit tests are locked out of.
 `integration` is a real environment; `staging` is anticipated and does not exist.
 
-**Retirement is by un-enabling, not deleting** — reversibly, on purpose. The definition stays, the content
-stays, only access stops. That is the same decision #326 made for a gedra one level up: keep the row, flip a
-flag, let reads treat it as absent. Two things follow from the resemblance being real. **Un-enabling reclaims
-nothing** — a retired client's content is still stored and re-enabling brings all of it back, including data
+**Retirement is by a flag, not deleting** — reversibly, on purpose (issue #1111). The platform sets `retired` on a
+client's stored definition (`POST /admin/client/retirement/set`), and the client is absent in every environment:
+nothing scoped by it is reached, its users cannot sign in, a session already open is no longer honored, and its
+sandbox goes with it. Clearing the flag brings it back as it was -- its `enabledEnvironments` were never touched,
+which is why retiring is a flag of its own rather than emptying them (a client enabled nowhere is still legal,
+and absent everywhere). A client defined in source code is retired there; a customer's root is retired only once
+another root is named. The definition stays, the content stays, only access stops. That is the same decision #326 made for a gedra one level up: keep the row, flip a
+flag, let reads treat it as absent. Two things follow from the resemblance being real. **Retiring reclaims
+nothing** — a retired client's content is still stored and bringing it back brings all of it back, including data
 somebody may have assumed was gone; deleting a client for real is a different question with the shape of a
 purge. And **the client list only grows**, which is fine for a per-request set lookup though every definition
 still loads at boot.

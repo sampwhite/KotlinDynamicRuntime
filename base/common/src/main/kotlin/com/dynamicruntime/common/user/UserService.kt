@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
+import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.mail.MailService
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.sql.KdrColumn
@@ -181,12 +182,21 @@ class UserService : ServiceInitializer {
      * unregistered user is what registers it, so it must be reachable when it is all there is -- and only when
      * none is enabled does the same rule pick a disabled one, so a login reports that account as inactive
      * rather than as unknown, and an administrative lookup by address still lands on a user.
+     *
+     * **And among the users whose client is present here first** (issue #1111): a person whose default is in a
+     * retired client lands on another of their users rather than being turned away, and only one with no other
+     * reaches the retired one -- where the login says the client was retired.
      */
     fun defaultUserOf(cxt: KdrCxt, identity: AuthIdentityRow): AuthUserRow? {
         val users = usersOfIdentity(cxt, identity.identityId)
         val enabled = users.filter { it.enabled }
         val registered = enabled.filter { it.isRegistered }
-        return pickDefault(identity, registered.ifEmpty { enabled }.ifEmpty { users })
+        val clients = ClientService.getOrNull(cxt)
+        fun here(rows: List<AuthUserRow>) = if (clients == null) rows else rows.filter { clients.isPresent(it.client) }
+        return pickDefault(
+            identity,
+            here(registered).ifEmpty { here(enabled) }.ifEmpty { registered }.ifEmpty { enabled }.ifEmpty { users },
+        )
     }
 
     /** [defaultUserOf] confined to the registered, enabled users, or null when the identity has none (issue #749). */
