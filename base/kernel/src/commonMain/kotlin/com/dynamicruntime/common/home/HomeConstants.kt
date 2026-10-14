@@ -151,6 +151,15 @@ object HFLD {
      * `WAS.staticPath`, and re-reads this with the rest of the shell config, so an upload shows without a reload.
      */
     const val webAssets = "webAssets"
+
+    /**
+     * `state.fileRefs`: the file refs the caller's client is served (issue #1186) -- the sandbox's, drafts included,
+     * for someone in it -- each id to its file by name and content (`logo:<hash>`). What copy naming an image
+     * `ref:logo` is drawn from, at `FREF.staticPath`: the name changes when the file does, so a browser keeps an
+     * image for good and a replaced one is a new address. A ref whose file is not there is left out, and copy
+     * naming it draws its alt text. Re-read with the rest of the shell config, as [webAssets] is.
+     */
+    const val fileRefs = "fileRefs"
 }
 
 /** Home schema type names (the backend's output type refs; also useful to the frontend). */

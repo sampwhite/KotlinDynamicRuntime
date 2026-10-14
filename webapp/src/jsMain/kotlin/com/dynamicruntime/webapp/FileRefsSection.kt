@@ -271,6 +271,12 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     className = ClassName("subtitle")
                     +fileRefWhereText(ref)
                 }
+                // What to write in copy to show it (issue #1186), and the address that resolves to for its people.
+                div {
+                    className = ClassName("subtitle file-ref-address")
+                    +"In copy: "
+                    code { +fileRefImageMarkdown(ref) }
+                }
                 fileRefAddress(ref, Http::fileRefUrl)?.let { address ->
                     div {
                         className = ClassName("subtitle file-ref-address")

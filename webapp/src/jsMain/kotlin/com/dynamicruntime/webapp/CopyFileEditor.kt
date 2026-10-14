@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.home.HMENU
+import com.dynamicruntime.common.user.UADEP
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -63,6 +64,12 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     var saveError by useState<DisplayError?>(null)
     var note by useState<String?>(null)
     val latestKeys = useRef(0)
+    // The client's file refs (issue #1186): what an image in its copy may name, offered while a key is edited and
+    // drawn in the previews. None when they cannot be read -- the copy is still the copy.
+    var refs by useState<List<FileRefView>>(emptyList())
+    val latestRefs = useRef(0)
+    // Where the text cursor was last seen in each open key's box, so an image goes in where the writer was.
+    val caretAt = useRef(mutableMapOf<CopyAddress, Int>())
 
     // A new client under the same editor: nothing of the previous one's editing state carries over.
     useEffect(props.clientId) {
@@ -75,6 +82,9 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
         raw = emptySet()
         saveError = null
         note = null
+        // Another client's refs are not this one's to offer or draw, and a cursor seen in its boxes is not here.
+        refs = emptyList()
+        caretAt.current?.clear()
     }
 
     // The keys, read for the open client and again whenever the page re-reads (after a save, the values changed); a
@@ -92,6 +102,20 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
             } catch (e: Throwable) {
                 if (latestKeys.current == token) keysError = userFacingError(e)
             }
+        }
+    }
+
+    // The refs, read only once something here needs them -- a key open for editing, or copy naming one -- since the
+    // Files section on the same page reads the same listing for its own use. Again whenever the page re-reads.
+    val wantsRefs = editing.isNotEmpty() || keys?.any { copyNamesRef(it.value) } == true
+    useEffect(props.clientId, generation, wantsRefs) {
+        if (!wantsRefs) return@useEffect
+        val token = (latestRefs.current ?: 0) + 1
+        latestRefs.current = token
+        copyFileScope.launch {
+            val loaded = apiResult { ClientsApi.fileRefs(props.clientId) }
+            loaded.failureOrNull()?.let { console.error("$errorLogPrefix could not load the client's file refs: ${it.message}") }
+            if (latestRefs.current == token) refs = loaded.valueOrNull().orEmpty()
         }
     }
 
@@ -130,6 +154,8 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
     val groups = copyFileGroups(rows, query, pending)
     val acrossFiles = copyViewSpansFiles(query)
     val refused = saveError?.let { copyKeysNamedIn(it.text, pending.keys) }.orEmpty()
+    // The page's client's refs, as its listing gives them -- the static root would answer the caller's own client.
+    val refAddress = refPreviewAddressFrom(props.clientId, refs) { args -> Http.apiUrl(UADEP.clientFilesDownload, args) }
 
     fun edit(row: CopyKeyRow, draft: String) {
         pending = pendingAfterEdit(pending, row, draft)
@@ -269,6 +295,17 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
                             onRevert = { revert(row.address) },
                             onPreview = { on -> previewing = if (on) previewing + row.address else previewing - row.address },
                             onRaw = { on -> raw = if (on) raw + row.address else raw - row.address },
+                            refs = refs,
+                            refAddress = refAddress,
+                            onCaret = { at -> caretAt.current?.set(row.address, at) },
+                            onInsertRef = { refId ->
+                                refs.firstOrNull { it.refId == refId }?.let { ref ->
+                                    val current = pending[row.address]?.value ?: row.value.orEmpty()
+                                    val (next, caret) = insertAtCaret(current, caretAt.current?.get(row.address), fileRefImageMarkdown(ref))
+                                    caretAt.current?.set(row.address, caret)
+                                    edit(row, next)
+                                }
+                            },
                         )
                     }
                 }
@@ -328,6 +365,10 @@ private fun ChildrenBuilder.copyKeyItem(
     onRevert: () -> Unit,
     onPreview: (Boolean) -> Unit,
     onRaw: (Boolean) -> Unit,
+    refs: List<FileRefView>,
+    refAddress: (String) -> String?,
+    onCaret: (Int) -> Unit,
+    onInsertRef: (String) -> Unit,
 ) {
     val change = pending[row.address]
     val editable = copyRowEditable(row, pending)
@@ -400,11 +441,29 @@ private fun ChildrenBuilder.copyKeyItem(
                 value = change?.value ?: row.value
                 disabled = busy
                 spellCheck = true
-                onChange = { e -> onDraft(e.target.value) }
+                onChange = { e ->
+                    onCaret(e.target.selectionStart)
+                    onDraft(e.target.value)
+                }
+                onSelect = { e -> onCaret(e.currentTarget.selectionStart) }
             }
             p {
                 className = ClassName("type-hint")
                 +copySyntaxHint(row.audience)
+            }
+            // The client's refs, to put one in as an image where the cursor is (issue #1186).
+            if (refs.isNotEmpty()) {
+                div {
+                    className = ClassName("row")
+                    Select {
+                        value = null
+                        placeholder = "Insert an image\u2026"
+                        options = choiceOptions(fileRefInsertChoices(refs))
+                        disabled = busy
+                        style = js("({ minWidth: 260 })")
+                        onChange = { v -> (v as? String)?.let(onInsertRef) }
+                    }
+                }
             }
             div {
                 className = ClassName("row")
@@ -420,9 +479,9 @@ private fun ChildrenBuilder.copyKeyItem(
                     +"Close"
                 }
             }
-            if (isPreviewing) copyValuePanel(change?.value ?: row.value, isRaw = false)
+            if (isPreviewing) copyValuePanel(change?.value ?: row.value, isRaw = false, refAddress)
         } else {
-            copyValuePanel(copyRowShownValue(row, pending), isRaw)
+            copyValuePanel(copyRowShownValue(row, pending), isRaw, refAddress)
         }
         // What the client's change replaced: the shipped copy, and its own source value when a stored one overrides it.
         val o = row.override
@@ -434,13 +493,13 @@ private fun ChildrenBuilder.copyKeyItem(
                     className = ClassName("subtitle")
                     +"Shipped:"
                 }
-                copyValuePanel(o.baseValue, isRaw)
+                copyValuePanel(o.baseValue, isRaw, refAddress)
                 o.sourceValue?.let {
                     p {
                         className = ClassName("subtitle")
                         +"Set in the client's source configuration (what a reset returns to):"
                     }
-                    copyValuePanel(it, isRaw)
+                    copyValuePanel(it, isRaw, refAddress)
                 }
             }
         }
@@ -450,9 +509,10 @@ private fun ChildrenBuilder.copyKeyItem(
 /**
  * A value in its panel: rendered as Markdown, or as written. A long one scrolls within the panel, so a whole file
  * does not take the page's height; placeholders and pulls show as written either way -- there is nothing here to fill
- * them from. An empty value says so, rather than drawing an empty box.
+ * them from. An empty value says so, rather than drawing an empty box. An image naming a file ref is drawn from
+ * [refAddress], the client on the page's refs (issue #1186), not the caller's own.
  */
-private fun ChildrenBuilder.copyValuePanel(value: String?, isRaw: Boolean) {
+private fun ChildrenBuilder.copyValuePanel(value: String?, isRaw: Boolean, refAddress: (String) -> String?) {
     if (value.isNullOrEmpty()) {
         p {
             className = ClassName("subtitle copy-value-empty")
@@ -468,7 +528,10 @@ private fun ChildrenBuilder.copyValuePanel(value: String?, isRaw: Boolean) {
     } else {
         div {
             className = ClassName("copy-value")
-            Markdown { source = value }
+            Markdown {
+                source = value
+                this.refAddress = refAddress
+            }
         }
     }
 }

@@ -20,6 +20,8 @@ import react.use
  * - [docs] and [sourceRepoBase] are the served documents and the source repository's blob base (issue #1136), what a
  *   link in form copy resolves against -- see [copyLinkResolver]. Empty until the shell has been told, when a link to
  *   a document is left as written.
+ * - [fileRefs] are the file refs the caller's client is served (issue #1186), what an image in copy naming one is
+ *   drawn from -- see [copyRefAddress]. Empty until the shell has been told, when such an image draws its alt text.
  *
  * A data class, so that a refresh which says the same thing is the same value and redraws nothing.
  */
@@ -28,6 +30,7 @@ data class ShellFacts(
     val formsEntryLabel: String? = null,
     val docs: List<HomeLink> = emptyList(),
     val sourceRepoBase: String? = null,
+    val fileRefs: Map<String, String> = emptyMap(),
 )
 
 /** The context carrying the [ShellFacts]; [App] is the sole provider. The default is "not yet told". */
@@ -46,7 +49,16 @@ fun shellFactsOf(config: HomeConfig): ShellFacts = ShellFacts(
     formsEntryLabel = config.menu.firstOrNull { (it.action as? UiRoute)?.page == HMENU.pageForms }?.label?.ifBlank { null },
     docs = config.links,
     sourceRepoBase = config.sourceRepoBase,
+    fileRefs = config.fileRefs,
 )
+
+/**
+ * Where an image in copy naming one of the caller's client's file refs (`![Our logo](ref:logo)`) is drawn from
+ * (issue #1186): the static root's address of its current file, `/<appId>/ref/logo:<hash>`, which a browser keeps for
+ * good -- a replaced image is a new name, so a new address -- and nothing for a ref the client is not served, which
+ * then draws its alt text. What [Markdown] uses unless it is told otherwise.
+ */
+fun ShellFacts.copyRefAddress(addressOf: (String) -> String = Http::fileRefUrl): (String) -> String? = refAddressFrom(fileRefs, addressOf)
 
 /**
  * How a link in **form copy** -- a label, a description, a task's text -- is resolved (issue #1136): as a link in a

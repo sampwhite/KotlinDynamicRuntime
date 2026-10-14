@@ -553,10 +553,11 @@ fun copyFileLabel(choice: CopyFileChoice): String = choice.shownOn?.let { "${cho
 fun copySyntaxHint(audience: String): String = when (audience) {
     FragmentAudience.frontend.name ->
         $$"Markdown for the page: ${...} placeholders, such as ${user.publicName}, are filled in as it renders; " +
-            "a server-side %{...} is refused here."
+            "a server-side %{...} is refused here. ![alt](ref:logo) shows the client's file ref logo as an image."
     FragmentAudience.backend.name ->
         $$"Markdown resolved on the server: ${...} is filled from what sends it (a mail's code or address, say), " +
-            "and %{@t(\"file.namespace.key\")} pulls in other copy."
+            "and %{@t(\"file.namespace.key\")} pulls in other copy. An image ![alt](ref:logo) shows as its alt " +
+            "text: a mail is read where none of the client's files can be fetched."
     else -> "Markdown."
 }
 

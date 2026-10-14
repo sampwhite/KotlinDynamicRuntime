@@ -95,6 +95,9 @@ class BundleRowsTest {
         val backend = copySyntaxHint(FragmentAudience.backend.name)
         assertTrue("resolved on the server" in backend)
         assertTrue("%{@t(" in backend)
+        // An image naming a file ref (issue #1186): drawn on a page, its alt text in a mail.
+        assertTrue("![alt](ref:logo)" in frontend)
+        assertTrue("shows as its alt text" in backend)
         assertEquals("Markdown.", copySyntaxHint("somethingNew"))
     }
 

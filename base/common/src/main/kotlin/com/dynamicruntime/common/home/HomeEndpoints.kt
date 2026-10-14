@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.home
 
 import com.dynamicruntime.common.user.SandboxAccess
+import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.content.MDOC
@@ -162,6 +163,12 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 type = SCT.kObject
                 for (def in ClientWebAssetService.slotDefs) property(def.slot, "The client's ${def.label.lowercase()}, as `${def.slot}:<hash>`.")
             }
+            property(
+                HFLD.fileRefs,
+                "The file refs the caller's client is served (issue #1186), each id to its file by name and content " +
+                    "(`<refId>:<hash>`), served at the static root's `/<appId>/ref/<name>`: what copy naming an image " +
+                    "`ref:<refId>` is drawn from. A ref whose file is not there is absent.",
+            ) { mapOfValues { type = SCT.string } }
         }
     }
 
@@ -216,6 +223,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 }
                 // The client's own tab icon and brand mark (issue #1130), where it has set them. An edge keeps none.
                 ClientWebAssetService.getOrNull(c)?.let { put(HFLD.webAssets, it.versionedNames(c, c.client)) }
+                // The images its copy may name (issue #1186), as the static root serves them to this caller.
+                FileRefService.getOrNull(c)?.let { put(HFLD.fileRefs, it.servedNames(c, c.client)) }
             },
         )
     }

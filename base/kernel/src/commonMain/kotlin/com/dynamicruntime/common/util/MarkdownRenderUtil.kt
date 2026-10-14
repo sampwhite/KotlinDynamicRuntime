@@ -22,7 +22,19 @@ class MarkdownHooks(
      * holds through it.
      */
     val decorateSpan: ((roles: List<String>, innerHtml: String) -> String?)? = null,
+    /**
+     * Where the file ref an image names (`![alt](ref:logo)`, [MDR.refScheme]) is drawn from on this surface, given
+     * its id, or null when it cannot be drawn here (issue #1186): no such ref, its file missing, or a surface with
+     * no refs -- a mail, read outside any session. An image it cannot draw is drawn as its **alt text**, never as
+     * an empty `<img>`; null for the hook, the default, draws every ref image so. The address is still guarded by
+     * [safeUrl], and [resolveUrl] is never asked about a ref: it rewrites paths, and a ref is no path.
+     */
+    val refAddress: ((refId: String) -> String?)? = null,
 )
+
+/** The file ref an image's [src] names -- `ref:logo` names `logo` -- or null when it names none ([MDR.refScheme]). */
+fun imageRefIdOf(src: String): String? =
+    src.trim().takeIf { it.startsWith(MDR.refScheme + ":") }?.substring(MDR.refScheme.length + 1)?.takeIf { it.isNotEmpty() }
 
 /**
  * Where a rendering goes (issue #795): each callback takes already-rendered children and returns the rendering of
@@ -71,7 +83,12 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
     override fun span(roles: List<String>, inner: String): String =
         hooks.decorateSpan?.invoke(roles, inner) ?: ("<span class=\"" + roleClasses(roles) + "\">" + inner + "</span>")
     override fun image(alt: String, src: String, attrs: MdAttrs?): String {
-        val resolved = hooks.resolveUrl?.invoke(src) ?: src
+        val refId = imageRefIdOf(src)
+        val resolved = if (refId != null) {
+            hooks.refAddress?.invoke(refId) ?: return escapeHtml(alt)
+        } else {
+            hooks.resolveUrl?.invoke(src) ?: src
+        }
         val sb = StringBuilder("<img src=\"").append(escapeHtml(safeUrl(resolved))).append("\" alt=\"").append(escapeHtml(alt)).append('"')
         if (attrs != null) {
             if (attrs.roles.isNotEmpty()) sb.append(" class=\"").append(roleClasses(attrs.roles)).append('"')
@@ -185,7 +202,8 @@ private const val markdownSignificant = "\\*_`[]()!{}<>#"
  * ## Safety
  * All text is HTML-escaped, and link URLs are restricted to http/https/mailto or a relative path
  * (see [safeUrl]) -- a `javascript:` URL renders inert. Content today is our own resources, but it is served
- * to a browser, so it is treated as untrusted.
+ * to a browser, so it is treated as untrusted. An image naming a file ref (`ref:logo`) is drawn from where
+ * [MarkdownHooks.refAddress] says, still guarded, and as its alt text where it says nothing (issue #1186).
  *
  * ## Link resolution
  * [resolveUrl] is an optional hook, applied to each link's raw target *before* [safeUrl] (so it can never
@@ -711,7 +729,8 @@ fun roleClasses(roles: List<String>): String = roles.joinToString(" ") { MDR.cla
 /**
  * An image `![alt](src)`, with an optional attribute block `{.role width=240}` placing and sizing it (issue
  * #795); returns the characters consumed, or 0 when [start] opens no image. The source ends at the first `)`,
- * as a link's target does, and goes through the same resolution and guarding; the alt text is escaped. Roles
+ * as a link's target does, and goes through the same resolution and guarding -- or, naming a file ref, the
+ * surface's address for it ([MarkdownHooks.refAddress]); the alt text is escaped. Roles
  * become classes as a span's do, and width and height are emitted as the plain attributes they are --
  * numbers, so nothing else can ride in on them.
  */

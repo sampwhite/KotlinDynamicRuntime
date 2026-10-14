@@ -41,6 +41,17 @@ into copy, so an address like `_ops_@acme.test` reads as written (the mails do t
 same source renders to plain text with `renderMarkdownText()` (emphasis and roles dropped, a link as
 `text (url)`, an image as its alt text), which is how a mail gets its text part from the one body.
 
+**An image may name a client's file ref** (issue #1186): `![Our logo](ref:logo)` (`MDR.refScheme`). Copy says
+*which* image and never which bytes, so a replaced image needs no edit to the copy. The renderer asks
+`MarkdownHooks.refAddress` where the ref is drawn from and draws the image as its **alt text** when that says
+nothing -- no such ref, its file missing, or no hook at all, which is a mail's case (a mail is read where none of
+the client's files can be fetched). The `Markdown` and `MarkdownInline` components pass the caller's client's refs
+from the shell config (`state.fileRefs`, each id to its `logo:<hash>` name; `ShellFacts.copyRefAddress`), so every
+copy surface draws refs with no prop of its own; a surface drawing *another* client's copy -- the copy editor --
+sets `refAddress` itself. A `[link](ref:logo)` is not a ref: refs are images, and it renders inert. Copy naming a
+ref the client does not have is refused at the write (the file-ref check, `FileRefService.build`), and so is
+removing a ref that copy still names.
+
 **Using a fragment value:** each value is Markdown that may embed `${namespace.key}` placeholders. Resolve
 them with the kernel's `String.evalTemplate(data)` — the fragment map *is* the data map, so `${email.subject}`
 reads `map["email"]["subject"]` — then render the resulting Markdown.
@@ -127,10 +138,10 @@ the same way, under their own marker:
     cannot be removed or reworded (`…/files/remove` and `…/files/describe` answer 400: nothing stored holds it).
   - **A file is picked with `FilePickButton`** (`FilePickButton.kt`), which the web assets' upload uses too:
     picking the file is the upload, and there is no second button.
-  - Nothing reads a ref *for use* yet -- resolving one from Markdown copy is a later issue; until then the section
-    shows the address a ref is served at (`Http.fileRefUrl(name)`) for copying. That address is the **client's
-    people's**: the static root answers each caller with their own client's ref, so the section says whose it is,
-    and of a draft's that it is the sandbox's until published.
+  - **Each row says what to write in copy to show it** (issue #1186): `![<its words>](ref:<id>)`
+    (`fileRefImageMarkdown`), and beside it the address that resolves to (`Http.fileRefUrl(name)`). That address
+    is the **client's people's**: the static root answers each caller with their own client's ref, so the section
+    says whose it is, and of a draft's that it is the sandbox's until published.
 - **A listed ref says its `source`** (`FREF.sourceStore` / `FREF.sourceLocal`), and a local one its `root` and
   `path`. **`hash` and `name` are absent for a local ref whose file is missing** -- there are no bytes to hash --
   so do not build an address from a ref that is `missing`. A local ref has no upload behind it: its `file` record
@@ -668,7 +679,12 @@ file's changed keys -- the client's customizations at a glance (`copyViewSpansFi
 (the shipped value, and the source value a reset returns to) a click away.
 
 **Edit** opens the key's text with a **Preview** (the hint says which template syntax the file takes, by its
-`audience` -- `copySyntaxHint`, issue #1001); **Reset**, for a stored value only, removes it -- data cannot remove
+`audience` -- `copySyntaxHint`, issue #1001), and, for a client with file refs, **Insert an image…**: the client's refs
+(`fileRefInsertChoices`), the chosen one put in as `![<its words>](ref:<id>)` where the cursor last was
+(`insertAtCaret`; at the end, on a line of its own, when the box has not been clicked). Every value the editor draws
+-- preview, rendered value, what it replaces -- draws a ref image from the **page's client's** refs, by the named
+download (`refPreviewAddressFrom`), never the static root, which answers the caller's own client (issue #1186).
+**Reset**, for a stored value only, removes it -- data cannot remove
 what source code or the shipped file says (`copyRowOffersReset`). Neither saves: each is a **pending** change
 (`pendingAfterEdit`; typed back to the value it is no change), marked down the key's left edge with a **Revert**, and
 the panel shows it as it will read once saved (`copyRowShownValue`). A sticky bar saves every pending change to the
