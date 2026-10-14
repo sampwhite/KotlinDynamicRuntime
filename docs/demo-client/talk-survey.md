@@ -115,8 +115,9 @@ the workflow adds applies to its form only. The trait's schema does not change.
 
 ## Columns in the forms list
 
-The forms list shows one row per form. The client chooses the row's columns in the `kdr:usageDef` slot of its `base`
-bundle.
+The forms list as it appears in the application shows one row per form. Some columns in the forms list
+are specified by the application, but the leading columns can be configured. The client chooses the configurable columns
+in the `kdr:usageDef` slot of its `base` bundle.
 
 <!-- kdr-doc: bundle=base pointer=/kdr:usageDef -->
 ```json
@@ -134,8 +135,10 @@ bundle.
 | `kind` | How a search treats the value: as text, a number, or a date. |
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
 
+For this example, we are promoting the `name` attribute from the built-in `kdr:name` trait and `track` from our
+custom trait `session` to be visible columns in the application. These promoted values become available for search.
 As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
-demo declares the name column too, and gives it the heading **Talk**.
+demo redeclares the name column too, but relabels the heading to be **Talk**.
 
 The track column shows the stored value, such as `workshop`, rather than the choice's label.
 
