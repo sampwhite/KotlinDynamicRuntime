@@ -135,8 +135,8 @@ in the `kdr:usageDef` slot of its `base` bundle.
 | `kind` | How a search treats the value: as text, a number, or a date. |
 | `substring` | Whether a search may match part of the value. On the talk's name, a search for `scale` finds `Kotlin at scale`. |
 
-For this example, we are promoting the `name` attribute from the built-in `kdr:name` trait and `track` from our
-custom trait `session` to be visible columns in the application. These promoted values become available for search.
+In this example, the demo promotes two fields to be columns: `name`, from the built-in `kdr:name` trait, and `track`,
+from its own `session` trait. A promoted value also becomes available for search.
 As soon as a client declares columns of its own, the platform's default column, the form's name, disappears. So the
 demo redeclares the name column too, but relabels the heading to be **Talk**.
 

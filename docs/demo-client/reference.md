@@ -2,7 +2,8 @@
 
 # Reference
 
-The things the demo's pages have in common, which we explain here only once. Each page links here the first time it uses one of them.
+The things the demo's pages have in common, explained here once so that no page has to repeat them. Each page links
+here the first time it uses one of them.
 
 ## Reading the JSON on these pages
 
