@@ -16,6 +16,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.getOptBool
@@ -744,13 +745,23 @@ private fun parseUserSearch(request: Map<String, Any?>): UserSearchCriteria {
  * Refuses giving `admin` to a user of a sandbox [client] (issue #929): there it is never a grant. An administrator
  * of the parent becomes one in its sandbox by opening it, and a sandbox's own user holding `admin` acts with it
  * only for a person who is an administrator outside -- and with nothing at all for one who is nobody in the parent
- * (`SandboxAccess`). Like [requireUsableRoles], a check on *adding*: a role list sent back unchanged passes.
+ * (`SandboxAccess`). Nor, beside `admin`, another level (issue #1199): on such a user one takes effect only while
+ * the person's user outside holds it, so granting it here would save and change nothing. Like
+ * [requireUsableRoles], a check on *adding*: a role list sent back unchanged passes.
  */
 private fun requireNoSandboxAdmin(client: String, roles: List<String>, current: List<String> = emptyList()) {
-    if (isSandboxClient(client) && ROLE.admin in roles && ROLE.admin !in current) {
+    if (!isSandboxClient(client) || ROLE.admin !in roles) return
+    if (ROLE.admin !in current) {
         throw KdrException.mkInput(
             "'${ROLE.admin}' is not granted in a sandbox: an administrator of '${sandboxParentOf(client)}' becomes " +
                 "one here by opening the sandbox.",
+        )
+    }
+    val added = roles.filter { it !in current && it != ROLE.user && RoleLadder.rankOf(it) != null }
+    if (added.isNotEmpty()) {
+        throw KdrException.mkInput(
+            "'${added.first()}' is not granted beside '${ROLE.admin}' in a sandbox: it takes effect there only while " +
+                "the person's user in '${sandboxParentOf(client)}' holds it.",
         )
     }
 }

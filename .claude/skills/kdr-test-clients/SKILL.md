@@ -193,7 +193,10 @@ later schema rejects" test.
   A `TestUser` created straight into the sandbox is the sandbox's own: it acts with its row's roles, except that
   `admin` takes effect only while its identity has an enabled admin user in the parent (or an
   `admin`+`allClients` one) and `allClients` never does -- and one at `level = ROLE.admin` whose address has no
-  user in the parent acts with **no roles at all**, by design. The access report (`_debug=explainAccess`, under
+  user in the parent acts with **no roles at all**, by design. On one holding `admin`, another level (`operator`)
+  takes effect only while the person's user outside holds it, as `admin` does (issue #1199); so a test wanting a
+  sandbox operator gives that level to the person's user in the parent, or makes the sandbox user without `admin`.
+  The console refuses granting a level beside `admin` in a sandbox. The access report (`_debug=explainAccess`, under
   `withTestAccess`) names each withheld role's rule (`SS.rolesWithheld`) and whom an opened user acts as
   (`SS.sandboxActsAs`). `SandboxAccessTest.kt` is the reference.
 - **Config edits in a sandbox act on the parent, as drafts** (issue #930). A sandbox has no configuration of its own:

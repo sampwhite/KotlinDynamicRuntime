@@ -714,6 +714,73 @@ class SandboxAccessTest : StringSpec({
         chief.expectError(EXC.badInput, UADEP.userCreate, mapOf(ADF.primaryId to "elsewhere@$parent.test", ADF.org to "south"))
     }
 
+    "a level beside admin on a sandbox user nobody recorded opening takes effect only while held outside" {
+        val parent = "sbxunrecorded"
+        defineParent(parent)
+        val address = "chief@$parent.test"
+        val chief = TestUser.create(cxt, address, level = ROLE.admin, userClient = parent)
+        setRoles(chief.userId, listOf(ROLE.user, ROLE.operator, ROLE.admin))
+        // Holding admin in the sandbox with no opening recorded, and the operator level its person held that day.
+        val legacy = TestUser.create(cxt, address, level = ROLE.admin, userClient = sandboxOf(parent))
+        setRoles(legacy.userId, listOf(ROLE.user, ROLE.operator, ROLE.admin))
+        fun operates(): Boolean = legacy.client.sendJsonGetRequest(CFD.cfactsPath)[EP.status] == null
+        legacy.selfRoles().sorted() shouldBe listOf(ROLE.admin, ROLE.operator, ROLE.user)
+        accessWithheld(legacy) shouldBe emptyMap()
+
+        // Demoted outside to an operator: admin goes, as it always did; the operator level the person still holds stays.
+        setRoles(chief.userId, listOf(ROLE.user, ROLE.operator))
+        legacy.selfRoles().sorted() shouldBe listOf(ROLE.operator, ROLE.user)
+        operates() shouldBe true
+
+        // Demoted to a member: the copied operator level goes with what it stood on.
+        setRoles(chief.userId, listOf(ROLE.user))
+        legacy.selfRoles() shouldBe listOf(ROLE.user)
+        operates() shouldBe false
+        accessWithheld(legacy) shouldBe mapOf(
+            ROLE.admin to SandboxAccess.Withheld.admin.rule,
+            ROLE.operator to SandboxAccess.Withheld.levelNotHeldOutside.rule,
+        )
+    }
+
+    "a level beside admin is not granted to a sandbox user in the console, where it would change nothing" {
+        val parent = "sbxlevelgrant"
+        defineParent(parent)
+        val address = "chief@$parent.test"
+        TestUser.create(cxt, address, level = ROLE.admin, userClient = parent)
+        val legacy = TestUser.create(cxt, address, level = ROLE.admin, userClient = sandboxOf(parent))
+        val full = TestUser.createFullAdmin(cxt, "full@$parent.test")
+        val refused = full.expectError(EXC.badInput, ADEP.userSetRoles, mapOf(ADF.userId to legacy.userId, ADF.roles to listOf(ROLE.user, ROLE.operator, ROLE.admin)))
+        (refused[EP.errorMessage] as String).contains("beside") shouldBe true
+        // Sent back as it is, the list goes through: a check on adding, as the console's others are.
+        full.client.sendJsonPostRequest(ADEP.userSetRoles, mapOf(ADF.userId to legacy.userId, ADF.roles to listOf(ROLE.user, ROLE.admin)))[EP.status] shouldBe null
+    }
+
+    "a level beside admin stands on an administrator outside, whom admin outranks it in, and each withheld role says why" {
+        val (parent, hub) = "sbxlevelhub" to "sbxlevelhubhome"
+        defineParent(parent)
+        defineParent(hub, sandbox = false)
+        val address = "full@$parent.test"
+        TestUser.createFullAdmin(cxt, address, userClient = hub)
+        // Nobody recorded opening it. Through an administrator of every client its admin takes effect, and an
+        // administrator holds the operator level too -- the ladder's rule, as at the gate.
+        val legacy = TestUser.create(cxt, address, level = ROLE.admin, userClient = sandboxOf(parent))
+        setRoles(legacy.userId, listOf(ROLE.user, ROLE.operator, ROLE.admin, ROLE.allClients))
+        legacy.selfRoles().sorted() shouldBe listOf(ROLE.admin, ROLE.operator, ROLE.user)
+        accessWithheld(legacy) shouldBe mapOf(ROLE.allClients to SandboxAccess.Withheld.allClients.rule)
+
+        // A member of the parent and nobody's administrator: three roles withheld, each with its own rule.
+        val member = "member@$parent.test"
+        TestUser.create(cxt, member, userClient = parent)
+        val granted = TestUser.create(cxt, member, level = ROLE.admin, userClient = sandboxOf(parent))
+        setRoles(granted.userId, listOf(ROLE.user, ROLE.operator, ROLE.admin, ROLE.allClients))
+        granted.selfRoles() shouldBe listOf(ROLE.user)
+        accessWithheld(granted) shouldBe mapOf(
+            ROLE.admin to SandboxAccess.Withheld.admin.rule,
+            ROLE.allClients to SandboxAccess.Withheld.allClients.rule,
+            ROLE.operator to SandboxAccess.Withheld.levelNotHeldOutside.rule,
+        )
+    }
+
     "a sandbox user nobody recorded opening acts in the organization of the parent administrator it acts through" {
         val parent = "sbxorglegacy"
         defineParent(parent)
