@@ -1163,6 +1163,8 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 .filter-well .filter-actions { grid-column: 1 / -1; }
 
 .filter-group { display: flex; flex-direction: column; gap: 4px; }
+/* A group that begins a new row of the well (`filterGroup(startsRow = true)`): the first of the taller date ranges. */
+.filter-well .filter-row-start { grid-column-start: 1; }
 
 .filter-label { font-size: 12px; color: var(--text-muted); }
 
