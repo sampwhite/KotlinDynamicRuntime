@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SchTypesBuilder
 import com.dynamicruntime.common.util.getOptLong
@@ -15,6 +16,7 @@ object UCF {
     const val name = "name"
     const val isCurrent = "isCurrent"
     const val isDefault = "isDefault"
+    const val clientName = "clientName"
 }
 
 /**
@@ -36,14 +38,16 @@ data class UserChoice(
     val isCurrent: Boolean = false,
     /** Whether this is the identity's chosen default (`setDefaultUser`), as distinct from the fallback rule. */
     val isDefault: Boolean = false,
+    /** The name of the user's [client] (issue #1110), what a person calls it; null when it has none to give. */
+    val clientName: String? = null,
 ) {
     /**
      * The full label: the client and persona, the personaSuffix when there is one, and the name when there is one --
-     * `acme / Admin`, `acme / Member 2 -- Ada Lovelace`. Client first because it is what most often differs
+     * `acme / Admin`, `acme / Member 2 -- Ada Lovelace`; the client as `Acme (acme)` when its name is known. Client first because it is what most often differs
      * between a person's users; the name last because it usually does not. What a tooltip says; the bar shows
      * the shorter `qualifierWithin`. Pure, covered under `jsNodeTest`.
      */
-    fun label(): String = userKeyLabel(client, persona, personaSuffix, name)
+    fun label(): String = userKeyLabel(clientName?.let { clientLabel(client, it) } ?: client, persona, personaSuffix, name)
 
     /**
      * What tells this user from the others in [siblings], the person's users (issue #749): the client when
@@ -58,7 +62,8 @@ data class UserChoice(
         // The persona and the personaSuffix read as one term (`Member 2`), as they do in the full label.
         val personaPart = listOfNotNull(if (personaShown) PERSONA.label(persona) else null, personaSuffix.ifEmpty { null })
         val parts = buildList {
-            if (siblings.any { it.client != client }) add(client)
+            // By its name when it has one (issue #1110): `Acme East`, not `acme_east`. The id is the tooltip's.
+            if (siblings.any { it.client != client }) add(clientName?.ifBlank { null } ?: client)
             if (personaPart.isNotEmpty()) add(personaPart.joinToString(" "))
         }
         return parts.joinToString(" · ")
@@ -72,6 +77,7 @@ data class UserChoice(
         if (name != null) put(UCF.name, name)
         if (isCurrent) put(UCF.isCurrent, true)
         if (isDefault) put(UCF.isDefault, true)
+        if (clientName != null) put(UCF.clientName, clientName)
     }
 
     @Suppress("ConstPropertyName")
@@ -88,6 +94,7 @@ data class UserChoice(
             name = info.getOptStr(UCF.name),
             isCurrent = info[UCF.isCurrent] == true,
             isDefault = info[UCF.isDefault] == true,
+            clientName = info.getOptStr(UCF.clientName),
         )
 
         /** Defines the [infoTypeName] schema type (the shape of [toInfo]) on [builder], kept beside the serialization. */
@@ -101,6 +108,7 @@ data class UserChoice(
                 property(UCF.name, "The user's real-world name, when it has one.")
                 property(UCF.isCurrent, "Whether the session is acting as this user.") { type = SCT.boolean }
                 property(UCF.isDefault, "Whether this is the identity's chosen default user.") { type = SCT.boolean }
+                property(UCF.clientName, "The name of the user's client, when it has one.")
             }
         }
     }

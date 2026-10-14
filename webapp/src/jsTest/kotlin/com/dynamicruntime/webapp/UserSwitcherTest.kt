@@ -61,6 +61,17 @@ class UserSwitcherTest {
     }
 
     @Test
+    fun aClientIsShownByItsNameWhenItHasOne() {
+        // Issue #1110: the bracket says what a person calls the client; the tooltip keeps its id beside the name.
+        val east = UserChoice(11L, "acme_east", "member", clientName = "Acme East")
+        val hub = UserChoice(12L, "hub", "member")
+        assertEquals("Acme East", east.qualifierWithin(listOf(east, hub)))
+        assertEquals("hub", hub.qualifierWithin(listOf(east, hub)))
+        assertEquals("Acme East (acme_east) / Member", east.label())
+        assertEquals(east, UserChoice.fromInfo(east.toInfo()))
+    }
+
+    @Test
     fun theBadgeAppendsTheQualifierInBrackets() {
         val member = UserChoice(8L, "acme", "member")
         assertEquals("Ada [Admin]", identityBadgeText("Ada", listOf(ada, member)))

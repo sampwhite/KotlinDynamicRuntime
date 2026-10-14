@@ -766,6 +766,22 @@ class AuthFormHandler(
     fun switchUser(cxt: KdrCxt, userId: Long): Map<String, Any?> = completeLogin(cxt, ownUser(cxt, userId), byCode = false)
 
     /**
+     * Becomes the person's user in [client] (issue #1110): the switch by client rather than by user, for a surface that
+     * names a client -- the one a person just made, one of their customer's -- with no user id in hand. Lands on
+     * [UserService.userInClient], the person's default there, and completes as [switchUser] does. Refused when the
+     * person has no registered, enabled user in [client].
+     */
+    fun switchClient(cxt: KdrCxt, client: String): Map<String, Any?> {
+        val identityId = cxt.userProfile.identityId
+            ?: throw KdrException("This session predates identities; log in again to switch clients.", code = EXC.authNeeded)
+        val identity = userService.queryIdentityById(cxt, identityId)
+            ?: throw KdrException("This session's identity could not be found; log in again.", code = EXC.authNeeded)
+        val user = userService.userInClient(cxt, identity, client)
+            ?: throw KdrException.mkInput("You have no user in the client '$client'.")
+        return completeLogin(cxt, user, byCode = false)
+    }
+
+    /**
      * Switches a session that is **in a sandbox** to [userId], another of the person's own users (issue #1197),
      * completing as [switchUser] does -- which the webapp sends every switch made from inside a sandbox through.
      *
