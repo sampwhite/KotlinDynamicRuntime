@@ -1,12 +1,9 @@
 package com.dynamicruntime.script
 
 import com.dynamicruntime.common.context.ACFG
-import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.http.request.ROLE
-import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.kdn.Startup
@@ -57,7 +54,7 @@ object GrantRole {
         val role = positional.getOrNull(1) ?: ROLE.admin
         val revoke = GRF.revoke in flags
 
-        val cxt = bootCxt()
+        val cxt = bootScriptCxt("grantRole")
         if (cxt.instanceConfig.get(ACFG.inMemoryOnly) == true) {
             return fail(
                 "Refusing to run against an in-memory database -- the change would be discarded on exit.\n" +
@@ -97,17 +94,6 @@ object GrantRole {
             println("It takes effect on their next request; they do not need to log in again.")
         }
         return 0
-    }
-
-    /** Boots the runtime without a server, under an instance named for this script. */
-    private fun bootCxt(): KdrCxt {
-        val preBoot = KdrInstanceConfig.preBootLoadConfig()
-        val cxt = KdrCxt.mkSimpleCxt("preBoot", preBoot)
-        val env = cxt.getEnvVar(KdrInstanceConfig.envName) ?: ENV.local
-        // Init logging before mkBootCxt (which also calls ensureInit, then a no-op), passing the cxt so the
-        // defaults file is honored for KDR_LOG_LEVEL (issue #524).
-        LogSetup.ensureInit(env, cxt::getEnvVar)
-        return Startup.mkBootCxt("grantRole", env, preBoot.entries().toMap())
     }
 
     /** `--list`: shows the users matching [search], so an operator can find the right loginId. */

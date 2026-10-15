@@ -2,6 +2,8 @@ package com.dynamicruntime.common.filestore
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.sha256Hex
+import kotlin.time.Instant
 
 /**
  * A file store in S3 (issue #1129), or in anything that speaks its API. Each declared bucket is an S3 bucket
@@ -114,6 +116,41 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
             asked *= 2
         }
     }
+
+    override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> = api.listObjects(physicalBucket(bucket), "")
+
+    /**
+     * S3 has no lock to hold, so what is asked again is asked a moment before the removal: which of the key's two
+     * objects are there and when each was last written, in one listing, and the metadata's text when it is there --
+     * a write that came to the key since it was found has rewritten it. What is left is a write that lands between
+     * that and the removal, which [cutoff] makes a write of a key nothing has touched for that long.
+     */
+    override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean {
+        // An S3 store writes no temporary objects ([tmpKeyOf]), so nothing is ever found as one.
+        if (leftover.kind == FLEFT.tmp) return false
+        val key = FNAME.checkKey(leftover.key)
+        val physical = physicalBucket(bucket)
+        val there = objectsOf(physical, key)
+        val metaText = if (FileMeta.metaKey(key) in there) api.get(physical, FileMeta.metaKey(key))?.toString(Charsets.UTF_8) else null
+        if (FileStoreCheck.kindNow(key in there, metaText) != leftover.kind) return false
+        if (there.values.any { it > cutoff }) return false
+        api.delete(physical, FileMeta.metaKey(key))
+        api.delete(physical, key)
+        return true
+    }
+
+    override fun rewriteMeta(cxt: KdrCxt, bucket: String, key: String, meta: FileMeta, cutoff: Instant): Boolean {
+        val physical = physicalBucket(bucket)
+        val current = meta(cxt, bucket, FNAME.checkKey(key)) ?: return false
+        val hash = api.get(physical, key)?.sha256Hex() ?: return false
+        if (hash != meta.hash || hash == current.hash || objectsOf(physical, key).values.any { it > cutoff }) return false
+        api.put(physical, FileMeta.metaKey(key), meta.toFileText().toByteArray(Charsets.UTF_8), FileMeta.metaMimeType)
+        return true
+    }
+
+    /** [key]'s own objects in [physical] -- its content and its metadata, those there -- with when each was written. */
+    private fun objectsOf(physical: String, key: String): Map<String, Instant> =
+        api.listObjects(physical, key).filter { it.name == key || it.name == FileMeta.metaKey(key) }.associate { it.name to it.modifiedAt }
 
     @Suppress("ConstPropertyName")
     companion object {
