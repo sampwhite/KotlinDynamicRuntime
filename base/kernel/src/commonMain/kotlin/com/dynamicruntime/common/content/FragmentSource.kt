@@ -117,9 +117,11 @@ class FragmentSource(
      */
     val inheritedFrom: String? = null,
     /**
-     * The position of the deployment flavor this layer came from in the active list (issue #1219), or null when it
-     * came from no flavor. A flavor's layers rank above the components' own and below every client layer, and among
-     * themselves by this -- the later flavor wins ([overlayPrecedence], `mergeFragmentLayers`).
+     * Where this layer ranks among deployment-flavor layers (issue #1219), or null when it came from no flavor. A
+     * flavor's layers rank above the components' own and below every client layer, and among themselves by this:
+     * two steps per active flavor, in `KDR_DEPLOY_FLAVORS` order -- the components' layers for it, then the
+     * deployment's own copy of it from the flavor directory (issue #1220). So a later flavor wins, and within a
+     * flavor the deployment's copy wins ([overlayPrecedence], `mergeFragmentLayers`, `flavorLayerRank`).
      */
     val flavorRank: Int? = null,
     /**
@@ -175,6 +177,12 @@ fun overlayPrecedence(client: String?, stored: Boolean, inherited: Boolean = fal
     !stored -> 3
     else -> 4
 }
+
+/**
+ * The [FragmentSource.flavorRank] of a layer of the flavor at [position] in the active list (issue #1220): the
+ * components' layers for it, or with [deploymentCopy] the deployment's own copy, which ranks just above them.
+ */
+fun flavorLayerRank(position: Int, deploymentCopy: Boolean = false): Int = position * 2 + if (deploymentCopy) 1 else 0
 
 /** The suffix marking a classpath fragment file as an overlay: `<fileId>_overlay.md`. */
 const val fragmentOverlaySuffix = "_overlay"

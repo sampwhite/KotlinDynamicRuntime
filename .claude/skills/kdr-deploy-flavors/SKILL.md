@@ -51,6 +51,14 @@ source, and stored): a deployment varies what components ship, and a client that
 wording. Among flavors, the later in `KDR_DEPLOY_FLAVORS` wins; within one, component order. The rule is
 `overlayPrecedence` plus each layer's `flavorRank`, not the order layers happened to register in.
 
+**A deployment's own copy** goes in the **flavor directory** (issue #1220): `KDR_FLAVOR_DIR`, by default
+`flavor-overlays/` under the workspace (a relative path resolves there; on a server, point it anywhere, such as
+`/etc/kdr/flavor-overlays`). It holds one `<flavor>.md` per flavor, in the omnibus format, ranked just above every
+component's layers for that flavor -- so below a later flavor's -- key by key: it names only what the deployment
+changes, and its name matches no component's file. A missing directory or file is normal. The startup log names
+each file read; one that will not parse is left out and judged as a fragment fault (refused outside production,
+reported in it). In ranks, that is two steps per flavor (`flavorLayerRank`): the components', then the deployment's.
+
 `EachFlavorBootsTest` (sample module) boots once with each declared flavor on its own, so a flavor overlay naming
 a key its base dropped fails the build. It enumerates the declarations: a new flavor is covered with no change.
 

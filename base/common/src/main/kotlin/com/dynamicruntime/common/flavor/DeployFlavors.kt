@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.flavor
 
 import com.dynamicruntime.common.content.FragmentSource
+import com.dynamicruntime.common.content.flavorLayerRank
+import com.dynamicruntime.common.context.AppPaths
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EVSRC
 import com.dynamicruntime.common.context.EnvVarDef
@@ -14,6 +16,8 @@ import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.schema.PRES
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.util.parseOmnibusFragments
+import java.io.File
 import com.dynamicruntime.common.startup.ComponentDefinition
 
 /*
@@ -35,6 +39,21 @@ object FLV {
 
     /** The instance-config key holding the resolved [DeployFlavors]. */
     const val registryKey = "deployFlavors"
+
+    /** Under the workspace, the flavor directory when [flavorDirEnvVar] does not name one (issue #1220). */
+    const val defaultFlavorDir = "flavor-overlays"
+
+    /** The instance-config key holding what was wrong with flavor-directory files, for the fragment check. */
+    const val copyFaultsKey = "deployFlavorCopyFaults"
+
+    val flavorDirEnvVar = EnvVarDef(
+        "KDR_FLAVOR_DIR", group = ENVGRP.application, defaultDoc = "`$defaultFlavorDir` under the workspace",
+        description = "The flavor directory: where a deployment keeps its own copy for its active deployment " +
+            "flavors, one `<flavor>.md` each in the omnibus fragment format (`# !<fileId>` above the ordinary " +
+            "`# @namespace` / `# +key`). Each is layered over every component's copy for that flavor, key by key, " +
+            "so it names only what it changes. A relative path resolves against the workspace. A missing " +
+            "directory or file is normal.",
+    )
 
     /** The operator view of the deployment flavors. */
     const val operatorPath = "/${SECT.operator}/flavors"
@@ -180,7 +199,7 @@ class DeployFlavors(
      */
     fun fragmentLayers(loaded: Set<String>): List<FragmentSource> =
         activeContributions.filter { it.first in loaded }.flatMap { (component, c) ->
-            val rank = active.indexOf(c.flavor)
+            val rank = flavorLayerRank(active.indexOf(c.flavor))
             c.fragmentLayers.flatMap { it() }.map { layer ->
                 if (!layer.isOverlay || layer.client != null) {
                     throw KdrException(
@@ -191,6 +210,41 @@ class DeployFlavors(
                 layer.refiled(flavorRank = rank)
             }
         }
+
+    /**
+     * The deployment's own copy for its active flavors, from the flavor directory (issue #1220): `<flavor>.md` for
+     * each, in the omnibus format, ranked **above** every component's layers for that flavor -- and so below a later
+     * flavor's -- key by key. A key the file does not name keeps the flavor's (or the base's) value, so the file
+     * names only what the deployment changes, and its name need match no component's file.
+     *
+     * A missing directory or file is normal and silent. Each file read is logged with its path, since copy read from
+     * outside the build is the first thing to check when the words look wrong. A file that will not read or parse is
+     * left out, and what was wrong is kept under [FLV.copyFaultsKey] for the fragment check, which judges it as it
+     * judges every fragment problem: refused outside production, reported in production.
+     */
+    fun deploymentCopyLayers(cxt: KdrCxt): List<FragmentSource> {
+        val dir = flavorDir(cxt.instanceConfig)
+        val faults = mutableListOf<String>()
+        val layers = active.flatMapIndexed { position, flavorName ->
+            val file = File(dir, "$flavorName.md")
+            if (!file.isFile) return@flatMapIndexed emptyList()
+            val sections = try {
+                file.readText().parseOmnibusFragments()
+            } catch (e: Exception) {
+                faults.add("the flavor directory file '${file.path}' for flavor '$flavorName' does not parse: ${e.message}")
+                return@flatMapIndexed emptyList()
+            }
+            LogStartup.info(cxt, "Deployment flavor '$flavorName': the deployment's own copy from '${file.path}'.")
+            sections.map { (fileId, content) ->
+                FragmentSource(
+                    fileId, isOverlay = true, client = null, origin = file.path,
+                    flavorRank = flavorLayerRank(position, deploymentCopy = true),
+                ) { content }
+            }
+        }
+        cxt.instanceConfig.put(FLV.copyFaultsKey, faults.toList())
+        return layers
+    }
 
     /** The operator view's result ([defineOperatorEndpoint]). */
     fun toReport(): Map<String, Any?> = mapOf(
@@ -307,6 +361,17 @@ class DeployFlavors(
         }
 
         private fun refuse(message: String): Nothing = throw KdrException("Refusing to start: $message")
+
+        /** The flavor directory: [FLV.flavorDirEnvVar], a relative path resolved against the workspace, or the default there. */
+        fun flavorDir(config: KdrInstanceConfig): File {
+            val named = config.getEnvVar(FLV.flavorDirEnvVar)?.trim()?.ifEmpty { null } ?: return AppPaths.resolve(FLV.defaultFlavorDir)
+            val file = File(named)
+            return if (file.isAbsolute) file else AppPaths.resolve(named)
+        }
+
+        /** What was wrong with the flavor-directory files read on [cxt]'s instance, for the fragment check. */
+        fun deploymentCopyFaults(cxt: KdrCxt): List<String> =
+            (cxt.instanceConfig.get(FLV.copyFaultsKey) as? List<*>)?.map { it.toString() }.orEmpty()
 
         private fun checkContributions(declared: Set<String>, contributions: List<Pair<String, FlavorContribution>>) {
             for ((component, c) in contributions) {
