@@ -102,6 +102,10 @@ class PlanQuotaTest : StringSpec({
         isSelfServeClient("acme_east") shouldBe false
         PLAN.quotasOf(PLAN.unlimited).isLimited shouldBe false
         PLAN.quotasOf("gold").forms shouldBe PLAN.freeQuotas.forms
+        // Read through one rule wherever a plan decides something: none named is unlimited, one that is no plan free.
+        PLAN.named(null) shouldBe PLAN.unlimited
+        PLAN.named("gold") shouldBe PLAN.free
+        PLAN.named(PLAN.unlimited) shouldBe PLAN.unlimited
         PlanUsage.fromInfo(PlanUsage(PLAN.free, listOf(QuotaMeasure(QUOTA.forms, 3, 100))).toInfo()) shouldBe
             PlanUsage(PLAN.free, listOf(QuotaMeasure(QUOTA.forms, 3, 100)))
     }
