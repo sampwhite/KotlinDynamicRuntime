@@ -2,14 +2,23 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.content.fragmentFiles
+import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.flavor.FLV
+import com.dynamicruntime.common.flavor.FlavorContribution
+import com.dynamicruntime.common.flavor.flavor
+import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
+import com.dynamicruntime.common.startup.ServiceEntry
+import com.dynamicruntime.common.startup.service
 import com.dynamicruntime.kdn.confdemo.ConfDemo
+import com.dynamicruntime.kdn.confdemo.ConfDemoBootService
 import com.dynamicruntime.kdn.confdemo.confDemoDocs
 import com.dynamicruntime.kdn.confdemo.confDemoSimulationSchema
 
@@ -50,5 +59,26 @@ class KdnComponent : ComponentDefinition {
      * from, so the docs can show copy that lives in a file and a client's overlay can reword.
      */
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
-        fragmentFiles(ConfDemo.fragmentFile, shownOn = "the conference demo's workshop logistics form")
+        fragmentFiles(ConfDemo.fragmentFile, shownOn = "the conference demo's workshop logistics form") +
+            // The help line under each demo workflow's title (issue #1221), empty as shipped, so none shows: the
+            // keys an overlay fills -- the `reference` flavor's links to the walkthrough -- and the check holds it to.
+            fragmentInline(
+                WVF.helpFile, origin = "KdnComponent", isOverlay = false, audience = FragmentAudience.backend,
+                shownOn = "the conference demo's workflow pages, under the title", shownFor = ConfDemo.client,
+            ) {
+                namespace(ConfDemo.client) { ConfDemo.workflows.forEach { key(it, "") } }
+            }
+
+    /**
+     * What kdn changes under a reference deployment (issue #1221): the conference demo is provisioned as the node
+     * starts, and each of its workflow pages links to the walkthrough page that explains it.
+     */
+    override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
+        flavor(FLV.reference) {
+            set(ConfDemo.provisionAtBootKey, true)
+            omnibusOverlay("kdrConfDemoReference")
+        },
+    )
+
+    override fun services(cxt: KdrCxt): List<ServiceEntry> = listOf(service(::ConfDemoBootService))
 }

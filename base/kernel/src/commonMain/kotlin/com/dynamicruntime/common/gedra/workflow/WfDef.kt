@@ -183,6 +183,17 @@ object WVF {
     const val found = "found"
 
     /**
+     * A line of Markdown help the page shows under the workflow's title (issue #1221), absent when there is none. It is
+     * copy, not part of the workflow's definition: the backend file [helpFile] under the client's id as the namespace
+     * and the workflow's id as the key -- so a component, a client's configuration or a deployment flavor can explain
+     * a workflow without changing it.
+     */
+    const val help = "help"
+
+    /** The backend fragment file a workflow's [help] is read from: namespace the client, key the workflow. */
+    const val helpFile = "workflowHelp"
+
+    /**
      * A normal workflow's [WfPhase] at the moment of the view (issue #790), by name -- so a page can draw a frozen
      * workflow (`lifetimeOnly`) read-only and offer engaging only when `engageable`. Absent for creation and survey.
      */

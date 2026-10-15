@@ -157,6 +157,11 @@ class WorkflowView(
      */
     val label: String = "",
     /**
+     * Markdown help shown under the title (issue #1221) -- copy kept beside the workflow rather than in it, so a
+     * deployment can explain a workflow without changing it. Empty for none.
+     */
+    val help: String = "",
+    /**
      * The caller's frontend-delivered cfacts (issue #569), `name -> present`, which each rendered trait's
      * [SchemaForm] evaluates a property's `g-visibleWhen` against — so an admin-only field is hidden from an
      * ordinary caller. The same shape the endpoint catalog delivers.
@@ -296,6 +301,7 @@ fun parseWorkflowView(results: Map<String, Any?>): WorkflowView? {
         showTaskList = results[WVF.showTaskList] == true,
         tasks = tasks,
         label = results[WFD.label].toOptStr().orEmpty(),
+        help = results[WVF.help].toOptStr().orEmpty(),
         cfacts = cfacts,
         fieldLayouts = fieldLayouts,
         focusTask = results[WVF.focusTask].toOptStr(),

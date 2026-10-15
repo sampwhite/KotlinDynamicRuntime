@@ -158,6 +158,15 @@ object ConfDemo {
     /** Where the documentation lives in the repository, and the prefix its pages take as doc ids. */
     const val docsDir = "docs/demo-client"
     const val docIdPrefix = "demo-client-"
+
+    /**
+     * The instance-config key that has the demo provisioned as the node starts (issue #1221), by
+     * [ConfDemoBootService]. The `reference` deployment flavor sets it.
+     */
+    const val provisionAtBootKey = "confDemoProvisionAtBoot"
+
+    /** The demo's workflows, the ones a workflow page shows help for (issue #1221). */
+    val workflows = listOf(createTalkWorkflow, talkSurveyWorkflow, abstractWorkflow, reviewWorkflow, logisticsWorkflow)
 }
 
 /**

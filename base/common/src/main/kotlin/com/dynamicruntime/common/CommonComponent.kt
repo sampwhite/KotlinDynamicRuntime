@@ -26,6 +26,10 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.fileref.clientFileRefSchema
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.flavor.FLV
+import com.dynamicruntime.common.flavor.FlavorContribution
+import com.dynamicruntime.common.flavor.FlavorDef
+import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.job.JobService
@@ -289,6 +293,16 @@ class CommonComponent : ComponentDefinition {
             fragmentFiles(FRAG.sample) +
             // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.
             backendFragmentFiles(AFRAG.mail, shownOn = "the mails the sign-in and invitation flows send")
+
+    /** The deployment flavors core owns (issue #1221). */
+    override fun flavorDefs(cxt: KdrCxt): List<FlavorDef> = listOf(
+        FlavorDef(FLV.reference, "A reference deployment: a public instance to look around, saying so on its pages."),
+    )
+
+    /** What core changes under a reference deployment (issue #1221): its home page, and why sign-in is limited. */
+    override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
+        flavor(FLV.reference) { omnibusOverlay("kdrReference") },
+    )
 
     /**
      * Startup services -- fully initialized before regular services. [GedraConfigLoadService] leads (issue

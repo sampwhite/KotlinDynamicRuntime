@@ -12,6 +12,7 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.AERR
+import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.analyzeTemplate
@@ -108,12 +109,14 @@ class FragmentCheckTest : StringSpec({
         // The server-computed verdict the operator page colours (issue #540): a present, clean file is `ok`.
         // It is derived here (found + issueCount), so a page never re-derives "is this file alright?".
         items.all { it[FCHK.status] == PSTAT.ok } shouldBe true
-        // Every file this instance ships is a delivered one -- except the mail copy (issue #773), which is
-        // private by declaration -- and no two bases disagree about that (issue #514). The second is the one
-        // worth asserting: a conflict resolves *safely* -- backend wins -- so it would take a file private
-        // without failing anything, and this is where that would show up.
-        items.filter { it[FCHK.fileId] != AFRAG.mail }.all { it[FCHK.audience] == FragmentAudience.frontend.name } shouldBe true
-        items.single { it[FCHK.fileId] == AFRAG.mail }[FCHK.audience] shouldBe FragmentAudience.backend.name
+        // Every file this instance ships is a delivered one -- except the mail copy (issue #773) and the workflow
+        // help (issue #1221), which are private by declaration -- and no two bases disagree about that (issue #514).
+        // The second is the one worth asserting: a conflict resolves *safely* -- backend wins -- so it would take a
+        // file private without failing anything, and this is where that would show up.
+        val privateFiles = setOf(AFRAG.mail, WVF.helpFile)
+        items.filter { it[FCHK.fileId] !in privateFiles }.all { it[FCHK.audience] == FragmentAudience.frontend.name } shouldBe true
+        items.filter { it[FCHK.fileId] in privateFiles }.map { it[FCHK.audience] } shouldBe
+            List(privateFiles.size) { FragmentAudience.backend.name }
         items.all { it[FCHK.audienceConflict] == false } shouldBe true
 
         // Narrowed to one file, so an author fixing a single fragment can ask about just that one.

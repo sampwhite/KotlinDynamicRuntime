@@ -40,6 +40,12 @@ object FLV {
     /** The value of [deployFlavorsEnvVar] that says, explicitly, no flavors. */
     const val none = "none"
 
+    /**
+     * A **reference deployment** (issue #1221): a public instance to look around, such as the one at
+     * dynamicruntime.com. Declared by core; core, the sample and kdn each contribute what it changes.
+     */
+    const val reference = "reference"
+
     /** The instance-config key holding the resolved [DeployFlavors]. */
     const val registryKey = "deployFlavors"
 

@@ -220,6 +220,11 @@ fun resolveWorkflowView(
         WVF.fieldLayouts to resolveDeliveredLayouts(cxt, store.layoutsFor(defs)),
     )
     focusTask?.let { view[WVF.focusTask] = it }
+    // Help under the title (issue #1221): copy outside the definition, so whoever explains a workflow need not change
+    // it. Through the backend pass like a label, so it may pull other copy; blank is no help.
+    fragments.resolveFragment(cxt, WVF.helpFile, client, declared.def.workflowId)
+        ?.let { label(it) }?.takeIf { it.isNotBlank() }
+        ?.let { view[WVF.help] = it }
     // Design View (issue #972): where the workflow and each type the page draws were declared. Added beside an
     // otherwise identical view, and only for a caller entitled to it, so an ordinary response never carries it.
     if (DesignView.isOn(cxt)) view[DSV.designBlock] = DesignView.workflowBlock(cxt, declared, defs, clientStore, store)

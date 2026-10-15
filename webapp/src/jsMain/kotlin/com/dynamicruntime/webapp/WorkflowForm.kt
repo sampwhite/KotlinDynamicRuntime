@@ -760,6 +760,13 @@ val WorkflowForm = FC<WorkflowFormProps> { props ->
             }
         }
 
+        // Help the workflow's copy gives it (issue #1221), under the title: what this form is for, or where to read more.
+        if (wf.help.isNotBlank()) {
+            div {
+                className = ClassName("wf-help")
+                Markdown { source = wf.help; linkResolver = copyLinks }
+            }
+        }
         // Why a normal workflow's tasks cannot be worked on here (issue #791), when they cannot.
         workflowNote(wf)?.let { note ->
             p {
