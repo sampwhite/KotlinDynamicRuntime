@@ -74,6 +74,12 @@ class UserService : ServiceInitializer {
     fun queryIdentityById(cxt: KdrCxt, identityId: String): AuthIdentityRow? =
         cachedIdentity(cxt) { it.snapshot.get(it.idOf(identityId)) } ?: queryOneIdentity(cxt, AI.identityId, identityId)
 
+    /**
+     * The identity with [identityId] as stored now, read past the cache, or null: the base for a guarded write
+     * ([updateIdentity]), which a cached read a few seconds old would see refused for no change of the caller's.
+     */
+    fun queryIdentityFresh(cxt: KdrCxt, identityId: String): AuthIdentityRow? = queryOneIdentity(cxt, AI.identityId, identityId)
+
     /** The identity at the (normalized) [address], cache-first, or null. */
     fun queryIdentityByAddress(cxt: KdrCxt, address: String): AuthIdentityRow? =
         cachedIdentity(cxt) { it.snapshot.byIndex(AI.primaryId, address) } ?: queryOneIdentity(cxt, AI.primaryId, address)
@@ -148,14 +154,36 @@ class UserService : ServiceInitializer {
         sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, row) }
     }
 
-    /** Writes [row] back to its `AuthIdentities` record (by `identityId`), re-stamping protocol columns. */
-    fun updateIdentity(cxt: KdrCxt, row: AuthIdentityRow) {
+    /**
+     * Writes [row] back to its `AuthIdentities` record (by `identityId`), re-stamping protocol columns.
+     *
+     * [guarded] writes only over the version [row] was read at, as [updateUser] always does, and is refused
+     * ([EXC.conflict]) when the row moved since -- for a write deciding on what the row held, such as the one claim of
+     * a self-serve client (issue #1113), which two requests at once must not both make. Unguarded by default: the
+     * other writes (a login's stamps, a contact) carry no decision a concurrent one could invalidate.
+     */
+    fun updateIdentity(cxt: KdrCxt, row: AuthIdentityRow, guarded: Boolean = false) {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
         val table = authIdentitiesTable(cxt)
         val data = row.toMap().toMutableMap()
+        val priorUpdatedAt = data[PF.updatedAt].toOptInstant()
         SqlTopicUtil.prepForStdExecute(cxt, table, data)
-        val stmt = SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
-        sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
+        if (guarded && priorUpdatedAt != null) {
+            data[priorUpdatedAtParam] = priorUpdatedAt
+            val stmt = mkGuardedUpdateStmt(sqlCxt, table, "uAuthIdentitiesGuarded")
+            var count = 0
+            sqlCxt.sqlDb.withSession(cxt) { count = sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
+            if (count == 0) {
+                SqlTableCacheService.get(cxt).noteTableChanged(cxt, UT.authIdentities)
+                throw KdrException(
+                    "Identity ${row.identityId} was modified concurrently; re-read it and retry the change.",
+                    code = EXC.conflict,
+                )
+            }
+        } else {
+            val stmt = SqlTopicUtil.mkTableUpdateStmt(sqlCxt, table)
+            sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
+        }
         row.data = row.data.toMutableMap().also { it[PF.updatedAt] = data[PF.updatedAt] }
         row.updatedAt = data[PF.updatedAt].toOptInstant()
     }
@@ -820,7 +848,7 @@ class UserService : ServiceInitializer {
             sqlCxt.sqlDb.withSession(cxt) { sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
         } else {
             data[priorUpdatedAtParam] = priorUpdatedAt
-            val stmt = mkGuardedUserUpdateStmt(sqlCxt, table)
+            val stmt = mkGuardedUpdateStmt(sqlCxt, table, "uAuthUsersGuarded")
             sqlCxt.sqlDb.withSession(cxt) { count = sqlCxt.sqlDb.executeStatement(cxt, stmt, data) }
         }
         if (count == 0) {
@@ -900,12 +928,12 @@ class UserService : ServiceInitializer {
     }
 
     /**
-     * The update-by-userId statement with the optimistic-concurrency condition added: `... and updatedAt =
-     * :priorUpdatedAt`. The bind parameter needs its own column definition (cloned from `updatedAt`, so it
-     * binds as a date) because the standard update already binds `updatedAt` to the *new* value in its SET
-     * clause -- one name cannot carry both.
+     * [table]'s update-by-primary-key statement, named [name], with the optimistic-concurrency condition added:
+     * `... and updatedAt = :priorUpdatedAt`. The bind parameter needs its own column definition (cloned from
+     * `updatedAt`, so it binds as a date) because the standard update already binds `updatedAt` to the *new* value
+     * in its SET clause -- one name cannot carry both.
      */
-    private fun mkGuardedUserUpdateStmt(sqlCxt: SqlCxt, table: KdrTable): SqlStatement {
+    private fun mkGuardedUpdateStmt(sqlCxt: SqlCxt, table: KdrTable, name: String): SqlStatement {
         val setColumns = table.columns.filter { col ->
             col.name != PF.touchedAt && col.name != PF.createdAt && col.name != PF.createdBy && !col.autoIncrement
         }
@@ -916,7 +944,7 @@ class UserService : ServiceInitializer {
             priorUpdatedAtParam, updatedAtCol.schema, updatedAtCol.storeType, updatedAtCol.isList,
             required = false, autoIncrement = false,
         )
-        return SqlStmtUtil.prepareSql(sqlCxt, "uAuthUsersGuarded", table.columns + priorCol, query)
+        return SqlStmtUtil.prepareSql(sqlCxt, name, table.columns + priorCol, query)
     }
 
     // --- LinkedUsers: external identities -----------------------------------
