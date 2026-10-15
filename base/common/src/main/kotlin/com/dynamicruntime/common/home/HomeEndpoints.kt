@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.content.lastDocOrder
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
@@ -472,7 +473,7 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.reporting, "Reporting", "reporting.md",
         "Named reports over a client's forms: paths, combines, the load-time checks, and the cursor-paged run.", listed = false),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
-        "The MIT license the runtime is released under."),
+        "The MIT license the runtime is released under.", order = lastDocOrder),
 )
 
 /**

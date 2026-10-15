@@ -25,18 +25,28 @@ class MarkdownDocDef(
     val description: String,
     /** Whether the Documents listing offers it; a suite lists its entry page and links the rest (issue #1136). */
     val listed: Boolean = true,
+    /**
+     * Where the document sorts in the listing (issue #1238): documents are listed by rising [order], and within one
+     * order as declared, component by component. Most leave it at 0; the license is declared last so that it reads
+     * last whichever components contribute documents after the one declaring it.
+     */
+    val order: Int = 0,
 )
 
-/** Where the components' declared documents are kept in the instance config, in declaration order. */
+/** The [MarkdownDocDef.order] of a document that reads last: the license. */
+const val lastDocOrder = 100
+
+/** Where the components' declared documents are kept in the instance config, in listing order ([checkedMarkdownDocs]). */
 @Suppress("ConstPropertyName")
 object MDOC {
     const val registryKey = "markdownDocs"
 }
 
 /**
- * [docs] as the boot keeps them, refused when two share a [MarkdownDocDef.docId] or a [MarkdownDocDef.sourcePath]:
- * either would make one of them unreachable -- a link resolves to a single id, and an id to a single resource -- and
- * which one won would depend on component order. Declarations are code, so this is a bug to fix, not data to forgive.
+ * [docs] as the boot keeps them -- in listing order, by [MarkdownDocDef.order] and then as declared -- refused when
+ * two share a [MarkdownDocDef.docId] or a [MarkdownDocDef.sourcePath]: either would make one of them unreachable --
+ * a link resolves to a single id, and an id to a single resource -- and which one won would depend on component
+ * order. Declarations are code, so this is a bug to fix, not data to forgive.
  */
 fun checkedMarkdownDocs(docs: List<MarkdownDocDef>): List<MarkdownDocDef> {
     for ((what, key) in listOf<Pair<String, (MarkdownDocDef) -> String>>("id" to { it.docId }, "source path" to { it.sourcePath })) {
@@ -49,5 +59,6 @@ fun checkedMarkdownDocs(docs: List<MarkdownDocDef>): List<MarkdownDocDef> {
             "Document id '${it.docId}' cannot name a resource: a document id is letters, digits, '-' and '_' only.",
         )
     }
-    return docs
+    // A stable sort: documents of one order keep the order they were declared in.
+    return docs.sortedBy { it.order }
 }

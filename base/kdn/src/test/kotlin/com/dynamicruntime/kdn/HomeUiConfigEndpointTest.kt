@@ -3,6 +3,8 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.checkedMarkdownDocs
+import io.kotest.matchers.collections.shouldContainExactly
+import com.dynamicruntime.common.content.lastDocOrder
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -99,6 +101,8 @@ class HomeUiConfigEndpointTest : StringSpec({
         // but unlisted, as a suite's inner pages -- the conference demo's, say -- are (issue #1136).
         val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
         listed shouldContainAll listOf(HDOC.readme, HDOC.codeGuide, HDOC.license)
+        // The license reads last, after the documents components loaded after `common` contribute (issue #1238).
+        listed.last() shouldBe HDOC.license
         core.filterNot { it in listOf(HDOC.readme, HDOC.codeGuide, HDOC.license) }.forEach { it shouldNotBeIn listed }
     }
 
@@ -126,6 +130,9 @@ class HomeUiConfigEndpointTest : StringSpec({
         fun doc(id: String, path: String) = MarkdownDocDef(id, id, path, "d")
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("a", "a.md"), doc("a", "b.md"))) }.message shouldContain "'a'"
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("a", "x.md"), doc("b", "x.md"))) }.message shouldContain "'x.md'"
+        // Listing order (issue #1238): by order, and within one order as declared.
+        val last = MarkdownDocDef("z", "z", "z.md", "d", order = lastDocOrder)
+        checkedMarkdownDocs(listOf(last, doc("a", "a.md"), doc("b", "b.md"))).map { it.docId } shouldContainExactly listOf("a", "b", "z")
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("demo/x", "x.md"))) }.message shouldContain "'demo/x'"
     }
 
