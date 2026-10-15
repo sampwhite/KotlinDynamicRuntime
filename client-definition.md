@@ -189,6 +189,16 @@ the missing link, so a demonstration or test client is never held to them.
   session; a creator's user that could not be made is said in the result (`userFailure`), the client made all the
   same. Only the root's client-wide administrators make clients -- not one confined to an organization -- and not on
   the free plan, which makes none (nor on a plan name that is no plan, read as free).
+- **A person makes their own self-serve client** (issue #1113), at `POST /user/self/createClient`, from `public`:
+  one per person, counted per identity rather than per user, since a `public` administrator makes more users of
+  their own. The person names the client, and the system names its id, `free_<name><random>`. It has no customer, so
+  it is on the free plan and makes no clients, which is why the limit is enforced on this one route. Its audience is
+  `customer`; its usage type is `production` where the deployment runs in `prod`, and `dev` elsewhere; it is enabled
+  where the deployment runs (and in `unit` and `local`); and it has a sandbox, so it runs only what is published.
+  The creator gets their own admin user there, and the session moves to it. The one is recorded on the identity
+  (`selfServeClient`) by a guarded write before the client is made, so two creates at once cannot both pass; a
+  refused create gives it back, and once made it stays used, whatever becomes of the client. Moving the client to a
+  customer later is the platform's to do: it keeps its id, and the link makes it the customer's.
 - **A customer's first client can make the customer.** The operator's create takes `newCustomer` (a name, and
   optionally a description) instead of naming a customer: the customer's id is the client's, and the client is its
   root. It is three writes, each judged as any is -- the customer into `hub`'s `customers` configuration

@@ -83,6 +83,12 @@ object IDD {
 
     /** List of contact addresses that have been verified -- the address, once `verifiedAt` is set. */
     const val validatedContacts = "validatedContacts"
+
+    /**
+     * The self-serve client the person created (issue #1113), which they create one of. Kept when the client is
+     * retired, or moved to a customer: the one was used.
+     */
+    const val selfServeClient = "selfServeClient"
 }
 
 /** Keys of one contact descriptor in [IDD.contacts]. Each name matches its value. */

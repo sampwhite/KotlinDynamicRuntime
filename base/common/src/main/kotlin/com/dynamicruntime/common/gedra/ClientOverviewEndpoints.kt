@@ -5,6 +5,7 @@ import com.dynamicruntime.common.cfact.CFACTS
 import com.dynamicruntime.common.content.FragmentAudience
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
@@ -14,7 +15,9 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.uiblock.UiBlockService
+import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.authHandler
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toOptStr
@@ -277,6 +280,50 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         result.created.wireFields() + buildMap {
             result.userId?.let { put(CLD.userId, it) }
             result.userFailure?.let { put(CLD.userFailure, it) }
+        }
+    }
+
+    // --- a person's own self-serve client (issue #1113) -------------------------------------------------------------
+    type(CLD.selfServeCreateResultTypeName) {
+        type = SCT.kObject
+        description = "What creating the caller's self-serve client did (issue #1113)."
+        clientCreateResultFields()
+        property(CLD.userId, "The creator's own admin user in the new client; absent when making it failed.") {
+            type = SCT.integer
+        }
+        property(
+            CLD.userFailure,
+            "Present when the client was created but its creator's user could not be made: why. The create is not to " +
+                "be repeated.",
+        )
+        property(
+            CLD.switched,
+            "Whether the session moved to the creator's user in the new client: false when the user could not be " +
+                "made, or the client is not carried on this node.",
+            required = true,
+        ) { type = SCT.boolean }
+    }
+
+    generalEndpoint(
+        AEP.createOwnClient,
+        "Creates the caller's own self-serve client (issue #1113), for a person signed in to '${CL.public}', who " +
+            "creates one. Its id is generated from its name ('${CUST.free}${CUST.separator}...'); it has no " +
+            "customer, so it is on the free plan, and it has a sandbox. The creator gets their own admin user there, " +
+            "and the session moves to it. Otherwise refused for what the platform's create refuses, in the same words.",
+        HttpMethod.POST,
+        outputRef = CLD.selfServeCreateResultTypeName,
+        inputFields = {
+            field(CLD.name, ClientPresentationFields.descriptions.getValue(CLD.name), required = true)
+            field(CLD.description, "An internal note about who, what, or why.")
+        },
+    ) { c, request ->
+        val result = ClientSelfServeCreate.create(c, request.getValue(CLD.name).toOptStr().orEmpty(), request[CLD.description].toOptStr())
+        val switched = result.userId != null && result.created.present
+        if (switched) authHandler(c).switchClient(c, result.created.client)
+        result.created.wireFields() + buildMap {
+            result.userId?.let { put(CLD.userId, it) }
+            result.userFailure?.let { put(CLD.userFailure, it) }
+            put(CLD.switched, switched)
         }
     }
 

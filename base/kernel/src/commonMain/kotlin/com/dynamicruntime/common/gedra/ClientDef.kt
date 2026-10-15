@@ -337,6 +337,12 @@ object CLD {
     /** On a root administrator's create: why the creator's user could not be made, when it could not (issue #1112). */
     const val userFailure = "userFailure"
 
+    /** Schema type name for what creating a person's self-serve client did (issue #1113). */
+    const val selfServeCreateResultTypeName = "ClientSelfServeCreateResult"
+
+    /** On a self-serve create: whether the session moved to the creator's user in the new client (issue #1113). */
+    const val switched = "switched"
+
     /** Schema type name for what retiring or bringing back a client did (issue #1111). */
     const val retirementResultTypeName = "ClientRetirementResult"
 
