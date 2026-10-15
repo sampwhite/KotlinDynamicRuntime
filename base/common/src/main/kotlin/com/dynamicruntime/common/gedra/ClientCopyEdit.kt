@@ -109,17 +109,17 @@ object ClientCopyEdit {
         fun only(): Result = keys.single().let { Result(configName, it.value, it.stored, buildId, issues, mode) }
     }
 
-    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it take effect: live, or a draft. */
-    fun set(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String, value: String): Result =
-        apply(cxt, client, fileId, listOf(Change(namespace, key, value))).only()
+    /** Sets [key]'s [value] for [client] -- see the class note -- and makes it take effect: live, or a draft ([apply]'s [expected]). */
+    fun set(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String, value: String, expected: String? = null): Result =
+        apply(cxt, client, fileId, listOf(Change(namespace, key, value)), expected).only()
 
     /**
      * Removes [client]'s stored value for [key] and makes that take effect, live or as a draft. A 400 when no stored
      * layer sets it: a value from the client's source config, or the shipped copy, is not something data can take
-     * away.
+     * away. [expected] as for [apply].
      */
-    fun reset(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String): Result =
-        apply(cxt, client, fileId, listOf(Change(namespace, key, null))).only()
+    fun reset(cxt: KdrCxt, client: String, fileId: String, namespace: String, key: String, expected: String? = null): Result =
+        apply(cxt, client, fileId, listOf(Change(namespace, key, null)), expected).only()
 
     /**
      * Sets and resets several keys of one file for [client] in one save (issue #1062), so they take effect together:
@@ -130,15 +130,17 @@ object ClientCopyEdit {
      * The keys land in one stored config: the one already setting any of them, else the first overlaying the file,
      * else [CPY.copyConfigName] -- so a new key joins the batch's other keys. Keys that **two** stored configs hold
      * are refused, naming both: saving them would publish each config on its own, which is not one save.
+     *
+     * [expected] is how the caller told its user the save would take effect, held to by [ClientStoredEdit.target].
      */
-    fun apply(cxt: KdrCxt, client: String, fileId: String, changes: List<Change>): ApplyResult {
+    fun apply(cxt: KdrCxt, client: String, fileId: String, changes: List<Change>, expected: String? = null): ApplyResult {
         if (changes.isEmpty()) throw KdrException.mkInput("No changes to apply to the fragment file '$fileId'.")
         changes.groupBy { it.namespace to it.key }.entries.firstOrNull { it.value.size > 1 }?.let { (at, _) ->
             throw KdrException.mkInput("'$fileId: ${at.first}.${at.second}' is changed more than once; a save changes each key once.")
         }
         for (c in changes) if (c.value != null) requireShippedKey(cxt, fileId, c.namespace, c.key)
         // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
-        val target = ClientStoredEdit.target(cxt, client, "copyEdit")
+        val target = ClientStoredEdit.target(cxt, client, "copyEdit", expected)
         val bound = target.bound
         val owner = target.client
         val svc = GedraConfigService.get(bound)

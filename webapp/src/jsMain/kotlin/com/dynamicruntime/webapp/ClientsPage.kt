@@ -275,6 +275,9 @@ private fun ChildrenBuilder.clientDetail(
     /** What a copy edit calls once it is live (issue #918): the page re-reads, and so does the shell. */
     onChanged: () -> Unit,
 ) {
+    // Whether a save made here is a draft, as the page last read the client: the one answer every editor below says
+    // beside its save and sends with it (issue #1191). The listing's row when it holds one, else the definition read.
+    val savesDraft = pageSavesDraft(clientId, row, defSandbox = def?.info?.get(CLD.sandbox) == true)
     div {
         className = ClassName("card wide")
         // No way back to a listing that would only open this page again; a listing the page was opened *from*
@@ -295,6 +298,7 @@ private fun ChildrenBuilder.clientDetail(
                     DefinitionEditor {
                         this.clientId = clientId
                         baseline = stored
+                        this.savesDraft = savesDraft
                         this.onChanged = onChanged
                     }
                 }
@@ -444,12 +448,14 @@ private fun ChildrenBuilder.clientDetail(
                     this.clientId = clientId
                     this.inPlace = inPlace
                     this.overrides = overrides.copy
+                    this.savesDraft = savesDraft
                     this.onChanged = onChanged
                 }
                 // The home menu and its editor (issue #919): every item, renamed, hidden, shown or reset here.
                 h3 { +"Menu" }
                 MenuEditor {
                     this.clientId = clientId
+                    this.savesDraft = savesDraft
                     // The overrides report's home-menu rows say which config -- source or stored -- set an item.
                     setBy = overrides.blocks.filter { it.blockId == HMENU.block && it.itemId != null }.associate { it.itemId!! to blockSetByText(it) }
                     this.onChanged = onChanged
@@ -470,6 +476,8 @@ external interface DefinitionEditorProps : Props {
     var clientId: String
     /** The client's stored definition, which the draft is seeded from and diffed against. */
     var baseline: Map<String, Any?>
+    /** Whether a save is a draft, as the page last read the client ([savesAsDraft]): said beside Save, and sent with it. */
+    var savesDraft: Boolean
     var onChanged: () -> Unit
 }
 
@@ -481,7 +489,9 @@ external interface DefinitionEditorProps : Props {
  * in the read-only rows above. A save takes effect as the copy and menu editors' do -- live, or a draft for a
  * client with a sandbox, which the note says ([savedNote]) -- and [DefinitionEditorProps.onChanged] re-reads the
  * page and the shell, so the heading and the listing row follow the new name. A refusal is shown in the backend's
- * words under the fields, the draft kept, so it can be corrected rather than retyped.
+ * words under the fields, the draft kept, so it can be corrected rather than retyped. Beside Save it says how the
+ * save will take effect ([saveEffectText]), and sends that ([expectedMode]); a save refused for no longer taking
+ * effect so ([saveConflict]) re-reads the page, which then says how it does.
  */
 private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
     var editing by useState(false)
@@ -514,7 +524,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
     }
 
     fun save() {
-        val request = definitionEditRequest(props.clientId, baseline, draft)
+        val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft))
         if (!definitionEditChanges(request)) return
         val token = latest.current
         busy = true
@@ -529,7 +539,8 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
                 }
                 props.onChanged()
             } catch (e: Throwable) {
-                if (latest.current == token) editError = userFacingError(e)
+                val shown = saveFailure(e, props.onChanged)
+                if (latest.current == token) editError = shown
             } finally {
                 if (latest.current == token) busy = false
             }
@@ -545,14 +556,14 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
             }
         }
     } else {
-        val request = definitionEditRequest(props.clientId, baseline, draft)
+        val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft))
         // The one list the endpoint's input is built from, so a field joining it is drawn here without a change.
         for (name in ClientPresentationFields.names) {
             textField(humanizeFieldName(name), draft[name].orEmpty(), disabled = busy) { v -> draft = draft + (name to v) }
         }
         p {
             className = ClassName("subtitle")
-            +"Labels are comma-separated; each is matched exactly as written."
+            +"Labels are comma-separated; each is matched exactly as written. ${saveEffectText(props.savesDraft)}"
         }
         p {
             Button {
@@ -905,6 +916,8 @@ external interface MenuEditorProps : Props {
     var clientId: String
     /** Which config set each changed item, by item id -- from the overrides report, which knows source from stored. */
     var setBy: Map<String, String>
+    /** Whether a change is a draft, as the page last read the client ([savesAsDraft]): said under the table, and sent with each. */
+    var savesDraft: Boolean
     var onChanged: () -> Unit
 }
 
@@ -918,7 +931,9 @@ external interface MenuEditorProps : Props {
  *
  * Hiding or showing is presentation, not permission -- the section gate still decides who may reach a page -- and
  * the hint under the table says so. A change is written, trial-checked, published and made live in one call, as a
- * copy edit is; a refusal is shown in the backend's words.
+ * copy edit is -- or a draft, which the hint says beforehand ([saveEffectText]) and each change sends
+ * ([expectedMode]); a refusal is shown in the backend's words, and one for no longer taking effect so
+ * ([saveConflict]) re-reads the page.
  */
 private val MenuEditor = FC<MenuEditorProps> { props ->
     var items by useState<List<MenuItemView>?>(null)
@@ -976,7 +991,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                 showing = null
                 props.onChanged()
             } catch (e: Throwable) {
-                editError = userFacingError(e)
+                editError = saveFailure(e, props.onChanged)
             } finally {
                 busy = false
             }
@@ -995,7 +1010,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
             // A rename is sent only when it would change something; Enter and the Save button agree on that.
             fun rename(item: MenuItemView) {
                 if (draft.isBlank() || draft == item.label) return
-                run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
+                run({ ClientsApi.setMenuItem(props.clientId, item.itemId, draft, null, null, expectedMode(props.savesDraft)) }) { "Renamed ${item.itemId} to \"${it.label}\"." }
             }
             div {
                 className = ClassName("op-table-scroll")
@@ -1092,7 +1107,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                                 loading = busy
                                                 disabled = audience == null
                                                 onClick = {
-                                                    run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.show, audience) }) { menuShownNote(item.itemId, it) }
+                                                    run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.show, audience, expectedMode(props.savesDraft)) }) { menuShownNote(item.itemId, it) }
                                                 }
                                                 +"Show"
                                             }
@@ -1134,7 +1149,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                                     size = "small"
                                                     disabled = busy
                                                     onClick = {
-                                                        run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.hide, null) }) { "${item.itemId} is now hidden." }
+                                                        run({ ClientsApi.setMenuItem(props.clientId, item.itemId, null, MNU.hide, null, expectedMode(props.savesDraft)) }) { "${item.itemId} is now hidden." }
                                                     }
                                                     +"Hide"
                                                 }
@@ -1145,7 +1160,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                                                     size = "small"
                                                     disabled = busy
                                                     onClick = {
-                                                        run({ ClientsApi.resetMenuItem(props.clientId, item.itemId) }) { "Reset ${item.itemId}; it shows as shipped." }
+                                                        run({ ClientsApi.resetMenuItem(props.clientId, item.itemId, expectedMode(props.savesDraft)) }) { "Reset ${item.itemId}; it shows as shipped." }
                                                     }
                                                     +"Reset"
                                                 }
@@ -1160,7 +1175,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
             }
             p {
                 className = ClassName("type-hint")
-                +"Hiding or showing an item changes what is offered, not who may reach the page behind it: the section gate still decides that."
+                +"Hiding or showing an item changes what is offered, not who may reach the page behind it: the section gate still decides that. ${saveEffectText(props.savesDraft)}"
             }
             editError?.let { errorText("Couldn't change the menu.", it) }
             note?.let {

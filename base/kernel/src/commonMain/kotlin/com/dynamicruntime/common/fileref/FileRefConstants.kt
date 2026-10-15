@@ -2,6 +2,7 @@ package com.dynamicruntime.common.fileref
 
 import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.naming.OwnedNameKind
 import com.dynamicruntime.common.naming.clientNameProblem
 import com.dynamicruntime.common.util.toOptStr
@@ -116,8 +117,11 @@ object FREF {
     /** In what file refs take: how many refs a client is served ([maxRefs]). */
     const val refLimit = "refLimit"
 
-    /** How a change took effect: live, or a draft; `EDM`'s values. */
-    const val mode = "mode"
+    /**
+     * How a change took effect: live, or a draft; `EDM`'s values. The same wire name as the editors' [CPY.mode] by
+     * construction, since a file-ref change is sent with the editors' shared expected-mode field (issue #1191).
+     */
+    const val mode = CPY.mode
 
     /** In what a change answers: the ref as it now is; absent when the change removed it. */
     const val ref = "ref"

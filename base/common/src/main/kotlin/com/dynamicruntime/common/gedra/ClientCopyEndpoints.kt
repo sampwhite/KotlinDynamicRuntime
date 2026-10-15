@@ -116,7 +116,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
             ?: throw KdrException.mkInput("A '${COV.value}' is required; to remove a stored value, reset the key.")
         ClientCopyEdit.set(
             c, client, request.getReqNonBlankStr(COV.fileId), request.getReqNonBlankStr(COV.namespaceField),
-            request.getReqNonBlankStr(COV.key), value,
+            request.getReqNonBlankStr(COV.key), value, expectedModeOf(request),
         ).toWireMap(client, request)
     }
 
@@ -134,7 +134,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
         val client = overseenClient(c, request[COV.client].toOptStr())
         ClientCopyEdit.reset(
             c, client, request.getReqNonBlankStr(COV.fileId), request.getReqNonBlankStr(COV.namespaceField),
-            request.getReqNonBlankStr(COV.key),
+            request.getReqNonBlankStr(COV.key), expectedModeOf(request),
         ).toWireMap(client, request)
     }
 
@@ -157,6 +157,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
                 type = SCT.array
                 items { ref(CPY.changeTypeName) }
             }
+            expectedModeField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[COV.client].toOptStr())
@@ -171,7 +172,7 @@ fun clientCopySchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CPY.namespace) 
             }
             ClientCopyEdit.Change(namespace, key, value)
         }
-        val result = ClientCopyEdit.apply(c, client, fileId, changes)
+        val result = ClientCopyEdit.apply(c, client, fileId, changes, expectedModeOf(request))
         linkedMapOf<String, Any?>(
             COV.client to client,
             COV.fileId to fileId,
@@ -196,6 +197,7 @@ private fun InputFieldsBuilder.copyKeyInput() {
     field(COV.fileId, "The fragment file.", required = true)
     field(COV.namespaceField, "The namespace within the file.", required = true)
     field(COV.key, "The key within the namespace.", required = true)
+    expectedModeField()
 }
 
 private fun ClientCopyEdit.Result.toWireMap(client: String, request: Map<String, Any?>): Map<String, Any?> {

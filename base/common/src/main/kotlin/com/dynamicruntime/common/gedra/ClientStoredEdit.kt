@@ -38,12 +38,41 @@ object ClientStoredEdit {
         val readsAs: String get() = if (draft) sandboxOf(client) else client
     }
 
-    /** Where a save of [client]'s presentation lands -- see [EditTarget]; [what] names the editor's sub context. */
-    fun target(cxt: KdrCxt, client: String, what: String): EditTarget {
-        SandboxEdits.parentCxt(cxt, client)?.let { return EditTarget(it, it.client, draft = true) }
-        val draft = ClientService.get(cxt).known(client)?.sandbox == true
-        return EditTarget(cxt.mkSubContext(what, client), client, draft)
+    /**
+     * Where a save of [client]'s presentation lands -- see [EditTarget]; [what] names the editor's sub context.
+     *
+     * **Held to what the caller told its user** (issues #1176, #1191). Whether a save is a draft is decided here, at
+     * the request, by whether the client has a sandbox *now*; a page told its user which before they acted, from what
+     * it last read, and a sandbox can be removed in between. [expected] is what the page said ([EDM]), and a save
+     * expected to be a draft that would be live is refused with a 409, nothing changed: a change the person meant to
+     * look at first must not reach the client's people. The other way -- told live, saved as a draft -- goes ahead,
+     * since nothing reaches anyone, and the result's mode says which it was. Null asks nothing (a script, an older
+     * page).
+     *
+     * A save naming a sandbox this node no longer carries is refused the same way, whatever was expected: its
+     * parent's sandbox was removed, so a "draft" of the parent's configuration could be live at the parent's next load.
+     */
+    fun target(cxt: KdrCxt, client: String, what: String, expected: String? = null): EditTarget {
+        if (expected != null && expected != EDM.live && expected != EDM.draft) {
+            throw KdrException.mkInput("'$expected' is not how a save takes effect: it is '${EDM.live}' or '${EDM.draft}'.")
+        }
+        if (isSandboxClient(client) && !ClientService.get(cxt).isPresent(client)) {
+            throw notAsExpected("'$client' is a sandbox this node no longer carries: its parent's sandbox has been removed. Nothing was changed.")
+        }
+        val target = SandboxEdits.parentCxt(cxt, client)?.let { EditTarget(it, it.client, draft = true) }
+            ?: EditTarget(cxt.mkSubContext(what, client), client, ClientService.get(cxt).known(client)?.sandbox == true)
+        if (expected == EDM.draft && !target.draft) {
+            throw notAsExpected(
+                "This would take effect at once for client '${target.client}', not as a draft: it has no sandbox now. " +
+                    "Nothing was changed.",
+            )
+        }
+        return target
     }
+
+    /** [target]'s refusal of a save that would not take effect as its caller said: a 409 carrying [EDM.notAsExpected]. */
+    private fun notAsExpected(message: String): KdrException =
+        KdrException(message, code = EXC.conflict).also { it.extraData[KdrException.errorCodeKey] = EDM.notAsExpected }
 
     /**
      * Makes a save take effect: published and live ([publishAndReload]), or -- a draft -- the owner reloaded, which

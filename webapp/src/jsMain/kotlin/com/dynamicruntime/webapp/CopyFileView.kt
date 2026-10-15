@@ -195,10 +195,11 @@ fun copyRowShownValue(row: CopyKeyRow, pending: Map<CopyAddress, PendingCopy>): 
 
 /**
  * The request that saves [pending] -- every change to one file -- for [clientId] (issue #1062): the file, and each
- * key set to its value or reset, in the order the file declares them ([order]) so the result lists them that way.
- * Pure, and covered under `jsNodeTest`.
+ * key set to its value or reset, in the order the file declares them ([order]) so the result lists them that way,
+ * and how the page said the save would take effect ([expected], from `expectedMode`). Pure, and covered under
+ * `jsNodeTest`.
  */
-fun copyApplyRequest(clientId: String, pending: Map<CopyAddress, PendingCopy>, order: List<CopyAddress>): Map<String, Any?> {
+fun copyApplyRequest(clientId: String, pending: Map<CopyAddress, PendingCopy>, order: List<CopyAddress>, expected: String): Map<String, Any?> {
     val fileId = pendingCopyFile(pending).orEmpty()
     val rank = order.withIndex().associate { it.value to it.index }
     val changes = pending.entries.sortedBy { rank[it.key] ?: Int.MAX_VALUE }.map { (at, change) ->
@@ -206,7 +207,7 @@ fun copyApplyRequest(clientId: String, pending: Map<CopyAddress, PendingCopy>, o
             if (change.reset) it[CPY.reset] = true else it[COV.value] = change.value
         }
     }
-    return linkedMapOf(COV.client to clientId, COV.fileId to fileId, CPY.changes to changes)
+    return linkedMapOf(COV.client to clientId, COV.fileId to fileId, CPY.changes to changes, CPY.mode to expected)
 }
 
 /** What a save of a file's changes did (issue #1062): where it landed, how it took effect, and the issues after it. */

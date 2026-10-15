@@ -48,9 +48,9 @@ object ClientDefinitionEdit {
     /**
      * Sets [fields] -- [ClientPresentationFields] keys to their new values -- on [client]'s stored definition and makes
      * that take effect, live or as a draft. An absent field is left as it is; a blank string, or an empty list,
-     * clears an optional one. At least one field must be given.
+     * clears an optional one. At least one field must be given. [expected] is how the caller told its user the save would take effect, held to by [ClientStoredEdit.target].
      */
-    fun set(cxt: KdrCxt, client: String, fields: Map<String, Any?>): Result {
+    fun set(cxt: KdrCxt, client: String, fields: Map<String, Any?>, expected: String? = null): Result {
         val changes = cleaned(client, fields)
         if (changes.isEmpty()) throw KdrException.mkInput("A definition edit changes at least one field; this one names none.")
         sandboxParentOf(client)?.let { parent ->
@@ -64,7 +64,7 @@ object ClientDefinitionEdit {
                     "stored definition cannot override it.",
             )
         }
-        val target = ClientStoredEdit.target(cxt, client, "definitionEdit")
+        val target = ClientStoredEdit.target(cxt, client, "definitionEdit", expected)
         val bound = target.bound
         val holder = ClientStoredEdit.definitionHolder(bound)
             ?: throw KdrException.mkInput("Client '$client' has no stored definition to edit.")

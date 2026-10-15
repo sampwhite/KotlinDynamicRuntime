@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.PlanUsage
@@ -577,6 +578,55 @@ fun parseCopyEditResult(results: Map<String, Any?>): CopyEditResult = CopyEditRe
 )
 
 /**
+ * Whether a save made on this client's page is a **draft** (issues #1176, #1191): the client has a sandbox
+ * ([hasSandbox]), or is one ([sandboxOf] is its parent). The one test every editor on the page words its save by
+ * ([saveEffectText]) and says it expects by ([expectedMode]), from the overview row it last read, so the two cannot
+ * come to differ. Pure, and covered under `jsNodeTest`.
+ */
+fun savesAsDraft(sandboxOf: String?, hasSandbox: Boolean): Boolean = sandboxOf != null || hasSandbox
+
+/**
+ * How the page expects a save to take effect, which it sends with each one (`mode`). The backend decides at the
+ * request, by whether the client has a sandbox *then*; the page said which before the person acted, from what it last
+ * read. A save the page called a draft that would be live is refused, and not made ([saveConflict]): a change the
+ * person meant to look at first must not reach the client's people because the sandbox went in between. One called
+ * live that is a draft goes ahead, and its note says so ([savedNote]).
+ */
+fun expectedMode(draft: Boolean): String = if (draft) EDM.draft else EDM.live
+
+/** What an editor says beside its save, before the person acts: how the save will take effect. Pure, and covered under `jsNodeTest`. */
+fun saveEffectText(draft: Boolean): String =
+    if (draft) "Saving keeps it a draft: the client's sandbox shows it, and it goes live once published."
+    else "Saving makes it live for the client's people at once."
+
+/**
+ * Whether a save made on [clientId]'s page is a draft, as the page last read it: the listing's [row] when it holds
+ * one, else what is known without it -- whether the client is a sandbox, and whether its definition ([defSandbox])
+ * asks for one. The one answer every editor on the page says beside its save and sends with it (issue #1191). Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun pageSavesDraft(clientId: String, row: ClientOverview?, defSandbox: Boolean): Boolean =
+    row?.let { savesAsDraft(it.sandboxOf, it.hasSandbox) } ?: savesAsDraft(sandboxParentOf(clientId), defSandbox)
+
+/**
+ * What an editor shows for a save the backend refused because it would not take effect as the page said (issue
+ * #1191) -- a 409 carrying [EDM.notAsExpected]: the backend's account of what changed, and that the page has been read
+ * again, which the caller does ([saveFailure]). Null for any other failure, a 409 for another reason included. Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun saveConflict(e: Throwable): DisplayError? =
+    (e as? ApiError)?.takeIf { it.status == EXC.conflict && it.errorCode == EDM.notAsExpected }?.let {
+        DisplayError("${it.message} The page has been read again, and now says how a save takes effect.", DisplayError.Kind.message)
+    }
+
+/**
+ * What an editor shows for a save that failed with [e]: [saveConflict]'s account, having called [reread] so the page
+ * reads the client again, or the failure as any other is shown ([userFacingError]). The one catch every editor that
+ * sends [expectedMode] answers its save's failure with.
+ */
+fun saveFailure(e: Throwable, reread: () -> Unit): DisplayError = saveConflict(e)?.also { reread() } ?: userFacingError(e)
+
+/**
  * The note an editor shows after a save (issue #930): [done]'s account of what changed, and -- for a draft, which a
  * client with a Shadow Sandbox saves -- where it can be seen and how it goes live. Pure, and covered under `jsNodeTest`.
  */
@@ -691,13 +741,15 @@ fun menuGroups(items: List<MenuItemView>): Set<String> = items.mapNotNull { it.p
 
 /**
  * The request that changes one item (issue #919): its address and the client, a new [label] when renaming, and the
- * [visibility] with its [condition] when hiding or showing. Pure, and covered under `jsNodeTest`.
+ * [visibility] with its [condition] when hiding or showing -- and how the page said it would take effect
+ * ([expected], from [expectedMode]). Pure, and covered under `jsNodeTest`.
  */
-fun menuEditRequest(clientId: String, itemId: String, label: String?, visibility: String?, condition: String?): Map<String, Any?> =
+fun menuEditRequest(clientId: String, itemId: String, label: String?, visibility: String?, condition: String?, expected: String): Map<String, Any?> =
     linkedMapOf<String, Any?>(COV.client to clientId, COV.itemId to itemId).also {
         if (label != null) it[MNU.label] = label
         if (visibility != null) it[MNU.visibility] = visibility
         if (condition != null) it[MNU.condition] = condition
+        it[CPY.mode] = expected
     }
 
 /** What a menu edit did (issue #919), and how it took effect -- live, or a draft its sandbox runs (issue #930). */
@@ -880,11 +932,12 @@ fun labelsOfText(text: String): List<String> = normalizeUserLabels(text.split(',
 /**
  * The request that saves [draft] for [clientId]: the client, and **only the fields that differ** from [baseline],
  * the stored definition the draft was seeded from -- a text field trimmed, a cleared one sent blank (the backend
- * clears it), the labels as a list. Empty beyond the client when nothing changed, which is when Save has nothing
- * to do. Pure, and covered under `jsNodeTest`.
+ * clears it), the labels as a list -- and how the page said the save would take effect ([expected], from
+ * [expectedMode]). Naming no field when nothing changed, which is when Save has nothing to do
+ * ([definitionEditChanges]). Pure, and covered under `jsNodeTest`.
  */
-fun definitionEditRequest(clientId: String, baseline: Map<String, Any?>, draft: Map<String, String>): Map<String, Any?> {
-    val out = linkedMapOf<String, Any?>(CLD.client to clientId)
+fun definitionEditRequest(clientId: String, baseline: Map<String, Any?>, draft: Map<String, String>, expected: String): Map<String, Any?> {
+    val out = linkedMapOf<String, Any?>(CLD.client to clientId, CPY.mode to expected)
     for (name in ClientPresentationFields.names) {
         if (ClientPresentationFields.isList(name)) {
             val labels = labelsOfText(draft[name].orEmpty())
@@ -897,8 +950,8 @@ fun definitionEditRequest(clientId: String, baseline: Map<String, Any?>, draft: 
     return out
 }
 
-/** Whether a [definitionEditRequest] asks for anything. */
-fun definitionEditChanges(request: Map<String, Any?>): Boolean = request.size > 1
+/** Whether a [definitionEditRequest] asks for anything: whether it names any field. */
+fun definitionEditChanges(request: Map<String, Any?>): Boolean = ClientPresentationFields.names.any { it in request }
 
 /**
  * Whether the detail offers the definition editor for the client [row] describes (issue #1026): one this node
@@ -1000,8 +1053,8 @@ object ClientsApi {
      * [description] null keeps the ref's description. Live, or a draft for a client with a sandbox, which the
      * answer says; the backend refuses a file that is not the image it says it is, in its own words.
      *
-     * [expected] is how the page told its user the change would take effect (`fileRefExpectedMode`), sent with
-     * every change: one that would take effect the other way is refused, and not made.
+     * [expected] is how the page told its user the change would take effect ([expectedMode]), sent with every
+     * change: one the page called a draft that would be live is refused, and not made.
      */
     suspend fun uploadFileRef(clientId: String, refId: String, file: Any, description: String?, expected: String): FileRefChange =
         fileRefChangeOf(
@@ -1078,20 +1131,20 @@ object ClientsApi {
      * as the view lists them -- and makes them live, or a draft for a client with a sandbox; the backend refuses a
      * batch any of whose values its trial faults, and then nothing changes.
      */
-    suspend fun applyCopy(clientId: String, pending: Map<CopyAddress, PendingCopy>, order: List<CopyAddress>): CopyApplyResult =
-        parseCopyApplyResult(Http.sendApi("POST", CPY.applyPath, copyApplyRequest(clientId, pending, order))[EP.results].toJsonMapOrEmpty())
+    suspend fun applyCopy(clientId: String, pending: Map<CopyAddress, PendingCopy>, order: List<CopyAddress>, expected: String): CopyApplyResult =
+        parseCopyApplyResult(Http.sendApi("POST", CPY.applyPath, copyApplyRequest(clientId, pending, order, expected))[EP.results].toJsonMapOrEmpty())
 
     /** The home menu's items for a client (issue #919): shipped and effective label and condition. */
     suspend fun menuItems(clientId: String): List<MenuItemView> =
         parseMenuItems(Http.getApi(MNU.itemsPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())
 
     /** Renames, hides or shows one item for a client and makes it live (issue #919). */
-    suspend fun setMenuItem(clientId: String, itemId: String, label: String?, visibility: String?, condition: String?): MenuEditResult =
-        parseMenuEditResult(Http.sendApi("POST", MNU.setPath, menuEditRequest(clientId, itemId, label, visibility, condition))[EP.results].toJsonMapOrEmpty())
+    suspend fun setMenuItem(clientId: String, itemId: String, label: String?, visibility: String?, condition: String?, expected: String): MenuEditResult =
+        parseMenuEditResult(Http.sendApi("POST", MNU.setPath, menuEditRequest(clientId, itemId, label, visibility, condition, expected))[EP.results].toJsonMapOrEmpty())
 
     /** Removes a client's stored changes to one item and makes that live (issue #919). */
-    suspend fun resetMenuItem(clientId: String, itemId: String): MenuEditResult =
-        parseMenuEditResult(Http.sendApi("POST", MNU.resetPath, menuEditRequest(clientId, itemId, null, null, null))[EP.results].toJsonMapOrEmpty())
+    suspend fun resetMenuItem(clientId: String, itemId: String, expected: String): MenuEditResult =
+        parseMenuEditResult(Http.sendApi("POST", MNU.resetPath, menuEditRequest(clientId, itemId, null, null, null, expected))[EP.results].toJsonMapOrEmpty())
 
     /** What one client's own configuration changes (issue #917), through the scoped retrieve. */
     suspend fun overrides(clientId: String): ClientOverridesView =

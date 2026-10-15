@@ -67,4 +67,11 @@ object EDM {
 
     /** Written to the client's editable revision, which its sandbox runs; live in the client once published. */
     const val draft = "draft"
+
+    /**
+     * The error code of a save refused for not taking effect as its caller said it would (issue #1191): one sent as a
+     * draft that would be live, or one naming a sandbox that has been removed. A 409, and nothing was changed; a page
+     * answers it by reading the client again.
+     */
+    const val notAsExpected = "saveNotAsExpected"
 }

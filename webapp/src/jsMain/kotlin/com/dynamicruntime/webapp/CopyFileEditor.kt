@@ -30,6 +30,8 @@ external interface CopyFileEditorProps : Props {
     var inPlace: Boolean
     /** The copy the client's configuration sets, from the overrides report: who set each key, and the orphans. */
     var overrides: List<CopyOverrideView>
+    /** Whether a save is a draft, as the page last read the client (`savesAsDraft`): said under the bar, and sent with it. */
+    var savesDraft: Boolean
     /** What a save calls once it has taken effect: the page re-reads, and so does the shell. */
     var onChanged: () -> Unit
 }
@@ -47,6 +49,8 @@ external interface CopyFileEditorProps : Props {
  * the file together (`/clientAdmin/client/copy/apply`) -- one trial, one publish, so they take effect together -- or
  * discards them. A save is of one file, so while one file has pending changes another's keys are not editable. A
  * refusal is shown under the bar in the backend's words, the keys it names marked, and the changes kept to correct.
+ * The bar says how the save will take effect ([saveEffectText]) and the save sends that ([expectedMode]); one
+ * refused for no longer taking effect so ([saveConflict]) re-reads the page, the changes kept to save again.
  * While anything is pending, leaving the client's page asks first ([LeaveGuard]).
  */
 val CopyFileEditor = FC<CopyFileEditorProps> { props ->
@@ -175,14 +179,14 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
         saveError = null
         copyFileScope.launch {
             try {
-                val result = ClientsApi.applyCopy(props.clientId, pending, rows.map { it.address })
+                val result = ClientsApi.applyCopy(props.clientId, pending, rows.map { it.address }, expectedMode(props.savesDraft))
                 note = copyAppliedNote(file, result)
                 pending = emptyMap()
                 editing = emptySet()
                 previewing = emptySet()
                 props.onChanged()
             } catch (e: Throwable) {
-                saveError = userFacingError(e)
+                saveError = saveFailure(e, props.onChanged)
             } finally {
                 saving = false
             }
@@ -335,7 +339,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
             }
             p {
                 className = ClassName("type-hint")
-                +"Saving makes every change live for this client at once -- or, for a client with a sandbox, saves a draft the sandbox shows. If the checks fault any of them, none is saved."
+                +"${saveEffectText(props.savesDraft)} The changes are saved together: if the checks fault any of them, none is saved."
             }
             saveError?.let { errorText("Couldn't save the copy.", it) }
         }
