@@ -272,8 +272,9 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
-        if (isHtmlCommentLine(line)) {
-            i++
+        val commentEnd = htmlCommentEnd(lines, i)
+        if (commentEnd != null) {
+            i = commentEnd
             continue
         }
         if (!isBlankLine(line)) sink.block(i)
@@ -298,18 +299,38 @@ fun renderBlocks(text: String, sink: MarkdownSink): String {
 @KdrPrivate
 fun startsBlock(line: String): Boolean =
     isBlankLine(line) || fenceMarker(line) != null || headingLevel(line) > 0 || isHorizontalRule(line) ||
-        bulletContent(line) != null || orderedContent(line) != null || isQuoteLine(line) || isHtmlCommentLine(line)
+        bulletContent(line) != null || orderedContent(line) != null || isQuoteLine(line) || opensHtmlComment(line)
 
 /**
  * Whether [line] is wholly an HTML comment, `<!-- ... -->` (issue #1137), which the renderers drop as GitHub does: how a
  * document carries a note for its tools -- the demo documentation marks which bundle each JSON block shows -- that no
- * reader sees, in the app or on GitHub. Only a comment on one line of its own; one spanning lines, or one inside a
- * paragraph, is text like any other (raw HTML is never passed through).
+ * reader sees, in the app or on GitHub. A comment may also span lines ([htmlCommentEnd], issue #1238); one inside a
+ * paragraph is text like any other (raw HTML is never passed through).
  */
 @KdrPrivate
 fun isHtmlCommentLine(line: String): Boolean {
     val t = line.trim()
     return t.length >= 7 && t.startsWith("<!--") && t.endsWith("-->")
+}
+
+/** Whether [line] opens an HTML comment: `<!--` first on the line. It starts a block, so a paragraph ends before it. */
+@KdrPrivate
+fun opensHtmlComment(line: String): Boolean = line.trimStart().startsWith("<!--")
+
+/**
+ * The index after the HTML comment that opens at [lines]`[start]`, or null when no comment opens there (issue #1238).
+ * The comment is the lines from the one opening with `<!--` through the one ending with `-->`, one line or several,
+ * and the renderers drop them all, as GitHub does. A comment that never closes is not a comment: null, so its lines
+ * render as text and the author sees what is wrong, rather than the rest of the document vanishing.
+ */
+@KdrPrivate
+fun htmlCommentEnd(lines: List<String>, start: Int): Int? {
+    if (!opensHtmlComment(lines[start])) return null
+    if (isHtmlCommentLine(lines[start])) return start + 1
+    for (i in start until lines.size) {
+        if (lines[i].trimEnd().endsWith("-->")) return i + 1
+    }
+    return null
 }
 
 /** The backtick/tilde run opening a fenced code block, or null when [line] is not a fence. */

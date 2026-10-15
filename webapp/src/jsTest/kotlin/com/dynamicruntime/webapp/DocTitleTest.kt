@@ -10,6 +10,9 @@ class DocTitleTest {
     fun aLeadingLevelOneHeadingIsTheTitle() {
         assertTrue(docHasOwnTitle("# Reporting\n\nText."))
         assertTrue(docHasOwnTitle("\n<!-- a note -->\n# Reporting\n"))
+        assertTrue(docHasOwnTitle("<!-- a note\n     over lines -->\n\n# Reporting\n"))
+        // A navigation line before the heading, as the demo's pages have.
+        assertTrue(docHasOwnTitle("[← Back](a.md) · [Contents](b.md)\n\n# Reports\n"))
     }
 
     @Test
@@ -18,5 +21,8 @@ class DocTitleTest {
         assertFalse(docHasOwnTitle("## Overview\n"))
         assertFalse(docHasOwnTitle("#Heading without a space"))
         assertFalse(docHasOwnTitle(""))
+        assertFalse(docHasOwnTitle("<!-- never closed\n# Reporting\n"))
+        // A heading inside a code fence is not a heading.
+        assertFalse(docHasOwnTitle("```\n# not a heading\n```\n## Overview\n"))
     }
 }
