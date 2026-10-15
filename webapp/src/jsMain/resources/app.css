@@ -601,6 +601,12 @@ body {
     overflow-x: auto;
 }
 .markdown pre code { background: none; border: none; padding: 0; }
+/* A JSON block's runs, classified by the renderer itself (issue #1227), so the colour travels with the HTML. */
+.md-tok-key { color: #7dd3fc; }
+.md-tok-string { color: #86efac; }
+.md-tok-number { color: #fcd34d; }
+.md-tok-literal { color: #c4b5fd; }
+.md-tok-punct { color: var(--text-muted); }
 .markdown a, .markdown-inline a { color: var(--accent-bright); }
 .markdown blockquote {
     margin: 12px 0;
