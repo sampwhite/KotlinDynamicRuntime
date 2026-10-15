@@ -1,6 +1,5 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.parseDateOrNull
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -26,17 +25,18 @@ private const val dayOnlyMs = 48 * 60 * 60_000L
 /**
  * A wire timestamp as a table column shows it (issue #1141), measured from [now]: `just now` within a minute either
  * way, then the largest unit and the one below it -- `12m ago`, `1h 23m ago`, `1d 2h ago` -- with a zero lower unit
- * left out (`3h ago`), and from 48 hours on the UTC day alone, `2026-10-10`. A future time reads `in 12m`, `in 1d 2h`.
+ * left out (`3h ago`), and from 48 hours on the day alone, in [zone] (the client's, issue #1115), `2026-10-10`. A
+ * future time reads `in 12m`, `in 1d 2h`.
  * At most eleven characters (`23h 59m ago`), where [formatTimestamp] takes twenty; the exact time is the cell's
  * tooltip ([RelativeTime]). A value that is not a timestamp is returned unchanged, as [formatTimestamp] does. Pure,
  * covered under `jsNodeTest`.
  */
-fun formatRelativeTime(iso: String, now: Instant): String {
+fun formatRelativeTime(iso: String, now: Instant, zone: String = DisplayZone.current): String {
     val at = iso.parseDateOrNull() ?: return iso
     val deltaMs = (at - now).inWholeMilliseconds
     val ms = abs(deltaMs)
     if (ms < justNowMs) return "just now"
-    if (ms >= dayOnlyMs) return at.formatDate().substring(0, 10)
+    if (ms >= dayOnlyMs) return zonedDay(at, zone)
     val minutes = ms / 60_000
     val span = when {
         minutes < 60 -> "${minutes}m"

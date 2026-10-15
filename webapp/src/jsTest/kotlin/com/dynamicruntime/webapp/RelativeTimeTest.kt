@@ -43,10 +43,11 @@ class RelativeTimeTest {
         assertEquals("1d 2h ago", ago(26.hours))
         assertEquals("in 1d 2h", ahead(26.hours))
         assertEquals("1d 23h ago", ago(48.hours - 1.seconds))
-        // Elapsed hours, not calendar days, and the UTC day of the time itself.
+        // Elapsed hours, not calendar days, and the day of the time itself, where the client is (issue #1115).
         assertEquals("2026-10-10", ago(48.hours))
         assertEquals("2026-10-14", ahead(48.hours))
-        assertEquals("2025-01-02", formatRelativeTime("2025-01-02T23:59:00.000Z", now))
+        assertEquals("2025-01-02", formatRelativeTime("2025-01-02T23:59:00.000Z", now, "UTC"))
+        assertEquals("2025-01-03", formatRelativeTime("2025-01-02T23:59:00.000Z", now, "Asia/Tokyo"))
     }
 
     @Test

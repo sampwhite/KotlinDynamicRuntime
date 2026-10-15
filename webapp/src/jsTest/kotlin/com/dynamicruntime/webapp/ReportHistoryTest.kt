@@ -37,7 +37,7 @@ class ReportHistoryTest {
     @Test
     fun aSnapshotParsesWithItsRowsAndAPageWithItsCursor() {
         val raw = mapOf(
-            RHIS.snapshotId to 7, RHIS.takenAt to "2026-10-05T03:30:00.000Z", RHIS.trigger to ReportSnapshotTrigger.simulated.name,
+            RHIS.snapshotId to 7, RHIS.takenAt to "2026-10-05T12:30:00.000Z", RHIS.trigger to ReportSnapshotTrigger.simulated.name,
             RRUN.groupBy to listOf("year"), RRUN.columns to listOf(mapOf(RRUN.columnId to "year", RRUN.kind to "number")),
             RHIS.rows to listOf(mapOf(RRUN.group to mapOf("year" to 2024), RRUN.count to 3, RRUN.values to mapOf("total" to 12.5))),
             RRUN.scanned to 9, RHIS.truncated to true, RHIS.sameDefinition to false,
@@ -46,6 +46,8 @@ class ReportHistoryTest {
         val s = page.snapshots.single()
         assertEquals(7L, s.snapshotId)
         assertEquals("2026-10-05", s.day)
+        // A day is the official one (UTC-8, issue #1115), not UTC's: 03:30 UTC is the evening before.
+        assertEquals("2026-10-04", snapshot(8, "2026-10-05T03:30:00.000Z").day)
         assertEquals("simulated", snapshotTriggerText(s.trigger))
         assertEquals(3, s.rows.single().count)
         assertEquals(true, s.truncated)
@@ -73,12 +75,12 @@ class ReportHistoryTest {
     @Test
     fun aDayIsItsLatestSnapshotAndASeriesKeepsGroupsInTheOrderFirstSeen() {
         val snapshots = listOf(
-            snapshot(4, "2026-10-03T09:00:00Z", row(2023, 5), row(2024, 2), row(null, 1)),
+            snapshot(4, "2026-10-03T20:00:00Z", row(2023, 5), row(2024, 2), row(null, 1)),
             // The same day's earlier one: superseded.
-            snapshot(3, "2026-10-03T03:30:00Z", row(2023, 4)),
-            snapshot(2, "2026-10-02T03:30:00Z", row(2024, 9), row(2023, 1)),
+            snapshot(3, "2026-10-03T12:30:00Z", row(2023, 4)),
+            snapshot(2, "2026-10-02T12:30:00Z", row(2024, 9), row(2023, 1)),
             // Taken under another definition of the report: not charted, and counted.
-            snapshot(1, "2026-10-01T03:30:00Z", row(2020, 7), same = false),
+            snapshot(1, "2026-10-01T12:30:00Z", row(2020, 7), same = false),
         )
         assertEquals(listOf(2L, 4L), latestPerDay(snapshots.filter { it.sameDefinition }).map { it.snapshotId })
         val series = historySeries(snapshots, count)
@@ -95,7 +97,7 @@ class ReportHistoryTest {
     @Test
     fun groupsPastTheLimitFoldIntoOtherOnlyWhenTheMetricAddsUp() {
         val rows = (1..5).map { row(2020 + it, count = it, total = it * 10.0) }
-        val one = listOf(snapshot(1, "2026-10-02T03:30:00Z", *rows.toTypedArray()))
+        val one = listOf(snapshot(1, "2026-10-02T12:30:00Z", *rows.toTypedArray()))
         val folded = historySeries(one, count, maxGroups = 3)
         // The three with the most forms on the latest day, in the order first seen; the other two summed.
         assertEquals(listOf("2023", "2024", "2025"), folded.groups.map { it.label })
@@ -107,15 +109,15 @@ class ReportHistoryTest {
         assertEquals(2, average.otherCount)
         assertNull(average.otherValues)
         // A report grouping by nothing has the one group, named for what it is.
-        val total = ReportSnapshot(9, "2026-10-02T03:30:00Z", "manual", null, emptyList(), columns, listOf(ReportRunRow(null, emptyMap(), 12, emptyMap())), 12, 0, false, true)
+        val total = ReportSnapshot(9, "2026-10-02T12:30:00Z", "manual", null, emptyList(), columns, listOf(ReportRunRow(null, emptyMap(), 12, emptyMap())), 12, 0, false, true)
         assertEquals(listOf(historyAllFormsLabel), historySeries(listOf(total), count).groups.map { it.label })
     }
 
     @Test
     fun theChartLaysOutABarAGroupADayOnCleanTicks() {
         val snapshots = listOf(
-            snapshot(1, "2026-10-02T03:30:00Z", row(2023, 26), row(2024, 13)),
-            snapshot(2, "2026-10-03T03:30:00Z", row(2023, 124), row(2024, 62)),
+            snapshot(1, "2026-10-02T12:30:00Z", row(2023, 26), row(2024, 13)),
+            snapshot(2, "2026-10-03T12:30:00Z", row(2023, 124), row(2024, 62)),
         )
         val layout = historyChartLayout(historySeries(snapshots, count), width = 760.0, plotHeight = 240.0)
         assertEquals(0, layout.firstDay)
@@ -138,7 +140,7 @@ class ReportHistoryTest {
 
     @Test
     fun onlyTheLatestDaysThatFitAreDrawnAndAMissingValueDrawsNothing() {
-        val many = (1..60).map { d -> snapshot(d.toLong(), "2026-${if (d <= 30) "09" else "10"}-${((d - 1) % 30 + 1).toString().padStart(2, '0')}T03:30:00Z", row(2023, d), row(2024, d)) }
+        val many = (1..60).map { d -> snapshot(d.toLong(), "2026-${if (d <= 30) "09" else "10"}-${((d - 1) % 30 + 1).toString().padStart(2, '0')}T12:30:00Z", row(2023, d), row(2024, d)) }
         val layout = historyChartLayout(historySeries(many, count), width = 760.0)
         assertTrue(layout.firstDay > 0)
         assertEquals(60 - layout.firstDay, layout.slots.size)
@@ -148,7 +150,7 @@ class ReportHistoryTest {
         assertTrue(layout.slots.count { it.label != null } < layout.slots.size)
         assertEquals("Oct 30", layout.slots.last().label)
         // A group with no value on a day has no bar there, and a negative value hangs below the baseline.
-        val gappy = listOf(snapshot(1, "2026-10-02T03:30:00Z", row(2023, 1, -40.0), row(2024, 1)))
+        val gappy = listOf(snapshot(1, "2026-10-02T12:30:00Z", row(2023, 1, -40.0), row(2024, 1)))
         val sums = historyChartLayout(historySeries(gappy, HistoryMetric("total", "Total (sum)", true)))
         assertEquals(1, sums.bars.size)
         assertEquals(sums.baselineY, sums.bars.single().y)
@@ -158,8 +160,8 @@ class ReportHistoryTest {
     @Test
     fun theKeyboardEntersAtTheLatestDayAndTheArrowsStepBarByBar() {
         val snapshots = listOf(
-            snapshot(1, "2026-10-02T03:30:00Z", row(2023, 26), row(2024, 13)),
-            snapshot(2, "2026-10-03T03:30:00Z", row(2023, 124), row(2024, 62)),
+            snapshot(1, "2026-10-02T12:30:00Z", row(2023, 26), row(2024, 13)),
+            snapshot(2, "2026-10-03T12:30:00Z", row(2023, 124), row(2024, 62)),
         )
         val bars = historyChartLayout(historySeries(snapshots, count)).bars
         // One Tab stop: the latest day's first bar.
@@ -202,6 +204,6 @@ class ReportHistoryTest {
         assertEquals(null, reportModeOf(HMENU.reportViewHistory))
         assertTrue(reportsHref(null, "expensesByYear", history = true).endsWith("${HP.report}=expensesByYear&${HP.reportView}=${HMENU.reportViewHistory}"))
         assertEquals("No snapshots yet.", historySummaryText(emptyList()))
-        assertTrue(historySummaryText(listOf(snapshot(1, "2026-10-02T03:30:00Z"), snapshot(2, "2026-10-03T03:30:00Z", trigger = "manual"))).startsWith("2 snapshots over 2 days; the latest "))
+        assertTrue(historySummaryText(listOf(snapshot(1, "2026-10-02T12:30:00Z"), snapshot(2, "2026-10-03T12:30:00Z", trigger = "manual"))).startsWith("2 snapshots over 2 days; the latest "))
     }
 }

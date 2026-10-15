@@ -1310,7 +1310,7 @@ private fun searchFilter(
         val byTrait = computeDisplayValues(c, withDerivedEntries(c, row), usages, c.client).associate { display ->
             (display[UF.traitId].toOptStr() ?: "") to (display[UF.value].toOptStr() ?: "")
         }
-        matchesSearch(byTrait, active) && (term == null || matchesAnyText(byTrait, textTraits, term))
+        matchesSearch(byTrait, active, c.clientTimeZone) && (term == null || matchesAnyText(byTrait, textTraits, term))
     }
 }
 

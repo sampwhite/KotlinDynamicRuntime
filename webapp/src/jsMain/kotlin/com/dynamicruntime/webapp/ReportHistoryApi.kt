@@ -7,6 +7,9 @@ import com.dynamicruntime.common.gedra.report.ReportCombine
 import com.dynamicruntime.common.gedra.report.ReportKind
 import com.dynamicruntime.common.gedra.report.ReportSnapshotTrigger
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.formatDay
+import com.dynamicruntime.common.util.parseDateOrNull
+import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
@@ -43,8 +46,12 @@ class ReportSnapshot(
     /** Whether it was taken under the report's definition as bound now: the same grouping and columns. */
     val sameDefinition: Boolean,
 ) {
-    /** The UTC day it was taken on, `yyyy-MM-dd`: how snapshots are told to be of one day, as the backend's pruning tells them. */
-    val day: String get() = takenAt.take(10)
+    /**
+     * The official day it was taken on (the deployment's day start, issue #1115), `yyyy-MM-dd`: how snapshots are told
+     * to be of one day, by the kernel rule the backend's pruning uses -- never the viewer's zone, so every client's
+     * history buckets a day alike.
+     */
+    val day: String get() = takenAt.parseDateOrNull()?.toDay()?.formatDay() ?: takenAt.take(10)
 }
 
 /** One page of a report's history, newest first. [next] is the cursor of the page after it, null on the last. */

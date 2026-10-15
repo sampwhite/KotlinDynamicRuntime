@@ -30,6 +30,8 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
+import com.dynamicruntime.common.util.serverTimeZone
+import kotlinx.datetime.TimeZone
 
 /**
  * How the several values of one column are made into one, **within a single form** (issue #978): a keyed trait read
@@ -129,21 +131,22 @@ fun BoundPath.valueOf(
     subject: ReportSubject,
     combine: ReportCombine = ReportCombine.defaultFor(multiValued),
     exactDates: Boolean = false,
+    zone: TimeZone = serverTimeZone,
 ): Any? {
     var values = rawValues(subject).mapNotNull { coerceReportValue(it, kind) }.filterNot { isEmptyReportValue(it) }
-    if (exactDates && kind == ReportKind.date) values = values.map { reportDateAs(it, dayOnly) }
+    if (exactDates && kind == ReportKind.date) values = values.map { reportDateAs(it, dayOnly, zone) }
     return combineReportValues(values, kind, combine)
 }
 
 /**
  * A date [value] -- a day or an instant, as [coerceReportValue] gives one -- in the form a column declares (issue
  * #1086): a day for a [dayOnly] column, an instant otherwise. An instant becomes the day it falls on and a day its
- * first instant, both in the server's zone, which is how the schema validator reads one as the other. Anything
- * already of the form, or not a date at all, is returned as it is.
+ * first instant, both in [zone] -- the client's (issue #1115) -- which is how the schema validator reads one as the
+ * other. Anything already of the form, or not a date at all, is returned as it is.
  */
-fun reportDateAs(value: Any, dayOnly: Boolean): Any = when {
-    dayOnly && value is Instant -> value.toDay()
-    !dayOnly && value is LocalDate -> value.toStartOfDay()
+fun reportDateAs(value: Any, dayOnly: Boolean, zone: TimeZone = serverTimeZone): Any = when {
+    dayOnly && value is Instant -> value.toDay(zone)
+    !dayOnly && value is LocalDate -> value.toStartOfDay(zone)
     else -> value
 }
 

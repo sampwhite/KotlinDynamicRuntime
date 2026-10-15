@@ -13,6 +13,7 @@ import com.dynamicruntime.common.util.Parsed
 import com.dynamicruntime.common.util.parseDateResult
 import com.dynamicruntime.common.util.parseDayLenientResult
 import com.dynamicruntime.common.util.parseDayResult
+import com.dynamicruntime.common.util.serverTimeZone
 import com.dynamicruntime.common.util.splitComma
 import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toJsonMap
@@ -20,6 +21,7 @@ import com.dynamicruntime.common.util.toOptBool
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.util.toStartOfDay
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.time.Instant
@@ -428,6 +430,12 @@ data class SchOpts(
      */
     val skipCompleteness: Boolean = false,
     /**
+     * The zone a day crosses to a moment in, and a moment to its day (issue #1115): the client's, where the data is
+     * a client's -- a day entered into a timestamp field begins at midnight where the client's people are. The
+     * server's when not given, as before.
+     */
+    val zone: TimeZone = serverTimeZone,
+    /**
      * The types a `g-schemaDocument` value may `$ref` (issue #316) -- the compiled store's, supplied by a
      * caller that has one. Empty by default, so a document referring to anything outside itself fails to
      * parse: honest for a standalone check, and a caller with a live store passes that store's types.
@@ -503,7 +511,7 @@ fun validateValue(
 
     // A string field carrying a date format is validated by parsing (and optionally becomes a Date).
     if (jsonType == SCT.string && isDateFormat(type.format)) {
-        return validateDate(type, value, path, coerce, failures)
+        return validateDate(type, value, path, coerce, failures, opts.zone)
     }
 
     // File content passes through untouched. It is spelled `type: string` because that is how OpenAPI spells a
@@ -1207,7 +1215,9 @@ private const val schemaDocumentCandidate = "schemaDocumentCandidate"
  * `allowCoerce` are both set.
  */
 @KdrPrivate
-fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>): Any? {
+fun validateDate(
+    type: SchType, value: Any?, path: String, coerce: Boolean, failures: MutableList<SchFailure>, zone: TimeZone = serverTimeZone,
+): Any? {
     val dayOnly = type.format == SFMT.date
     val lenient = type.allowCoerce
 
@@ -1218,8 +1228,8 @@ fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, fail
 
     val parsed: Any = when (value) {
         is String -> {
-            val result = if (!dayOnly) value.parseDateResult()
-                else if (lenient) value.parseDayLenientResult()
+            val result = if (!dayOnly) value.parseDateResult(zone)
+                else if (lenient) value.parseDayLenientResult(zone)
                 else value.parseDayResult()
             when (result) {
                 is Parsed.Ok -> result.value
@@ -1231,11 +1241,11 @@ fun validateDate(type: SchType, value: Any?, path: String, coerce: Boolean, fail
                 }
             }
         }
-        is LocalDate -> if (lenient) value.toStartOfDay() else {
+        is LocalDate -> if (lenient) value.toStartOfDay(zone) else {
             failures.add(type.failure(path, SchFailCode.wrongType, "This must be a timestamp, not a day.", value = value))
             return value
         }
-        is Instant -> if (lenient) value.toDay() else {
+        is Instant -> if (lenient) value.toDay(zone) else {
             failures.add(type.failure(path, SchFailCode.wrongType, "This must be a day, not a timestamp.", value = value))
             return value
         }

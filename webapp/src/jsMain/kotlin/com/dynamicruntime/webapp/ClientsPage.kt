@@ -563,7 +563,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
         }
         p {
             className = ClassName("subtitle")
-            +"Labels are comma-separated; each is matched exactly as written. ${saveEffectText(props.savesDraft)}"
+            +"Labels are comma-separated; each is matched exactly as written. $timeZoneEditNote ${saveEffectText(props.savesDraft)}"
         }
         p {
             Button {

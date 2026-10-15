@@ -39,6 +39,9 @@ import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.util.serverTimeZone
+import kotlinx.datetime.TimeZone
 
 /** The report endpoints' schema names (issue #981). */
 @Suppress("ConstPropertyName")
@@ -421,7 +424,7 @@ fun excludeEmptyNamed(bound: BoundReport, request: Map<String, Any?>): List<Boun
  * paged; [request] carries the page asked for. The caller has settled who may run it.
  *
  * With [exactDates], every date is in the form its column declares (issue #1086), which is what a run answering in
- * the report's generated types must give.
+ * the report's generated types must give -- a day and a moment crossing in [client]'s time zone (issue #1115).
  */
 fun runBoundReport(
     c: KdrCxt,
@@ -436,7 +439,8 @@ fun runBoundReport(
     val reportId = bound.reportId
     val aggregate = mode == ReportMode.aggregate
     val scope = reportScope(c, client)
-    val queryId = reportQueryId(client, bound, mode, groupBy, exactDates)
+    val zone = ClientService.get(c).timeZoneOf(client)
+    val queryId = reportQueryId(client, bound, mode, groupBy, exactDates, zone)
     fun summary(scanned: Int, excluded: Int) = mapOf(
         RRUN.reportId to reportId,
         RRUN.label to bound.report.label,
@@ -450,7 +454,7 @@ fun runBoundReport(
     )
 
     if (aggregate) {
-        val run = aggregateReportRun(c, client, bound, groupBy, excludeEmpty, scope, exactDates)
+        val run = aggregateReportRun(c, client, bound, groupBy, excludeEmpty, scope, exactDates, zone)
         return cursorPageOf(
             request, queryId, run.groups, { it.key }, ::compareReportKeys, reportGroupKeyCodec(groupBy), summary(run.scanned, run.excluded),
         ) { page -> page.map { aggregateRowMap(groupBy, it) } }
@@ -471,7 +475,7 @@ fun runBoundReport(
         reader.read(page, bound.columns).map { subject ->
             mapOf(
                 RRUN.gedraId to subject.meta[RMETA.gedraId],
-                RRUN.values to detailValues(subject, bound.columns, exactDates).mapValues { reportWireValue(it.value) },
+                RRUN.values to detailValues(subject, bound.columns, exactDates, zone).mapValues { reportWireValue(it.value) },
             )
         }
     }
@@ -529,7 +533,7 @@ class AggregateRun(val groups: List<ReportGroup>, val scanned: Int, val excluded
 /**
  * An aggregate run of [bound] over [scope]'s forms of [client] (issues #981, #1034): every form read for the
  * [groupBy], rolled-up and [excludeEmpty] columns, the forms missing an excluding value left out, the rest grouped.
- * The run endpoint pages the groups; a snapshot stores them. [exactDates] is [runBoundReport]'s.
+ * The run endpoint pages the groups; a snapshot stores them. [exactDates] and [zone] are [runBoundReport]'s.
  */
 fun aggregateReportRun(
     c: KdrCxt,
@@ -539,12 +543,13 @@ fun aggregateReportRun(
     excludeEmpty: List<BoundColumn>,
     scope: ReadScope,
     exactDates: Boolean = false,
+    zone: TimeZone = serverTimeZone,
 ): AggregateRun {
     val ids = scannableIds(c, client, scope)
     val rolled = bound.columns.filter { it.column.rollup != null }
     val read = SubjectReader(c, client, scope).read(ids, groupBy + rolled + excludeEmpty)
     val kept = read.filterNot { bound.excludes(it, excludeEmpty) }
-    return AggregateRun(aggregateReport(kept, groupBy, rolled, exactDates), ids.size, read.size - kept.size)
+    return AggregateRun(aggregateReport(kept, groupBy, rolled, exactDates, zone), ids.size, read.size - kept.size)
 }
 
 /** One group as the run endpoint's row and a snapshot's: its key by column id, its count, and its rollups. */
@@ -561,13 +566,17 @@ fun aggregateRowMap(groupBy: List<BoundColumn>, group: ReportGroup): Map<String,
  * of the new and resumed at a place that means nothing there.
  *
  * A run with [exactDates] is a query of its own: its group keys hold each date in the column's form, where the same
- * report run without holds what each form stored, so a cursor of one names a place the other may not have.
+ * report run without holds what each form stored, so a cursor of one names a place the other may not have -- and in
+ * the [zone] its days are read in, so a cursor taken before the client's zone changed is another query's.
  */
-fun reportQueryId(client: String, bound: BoundReport, mode: ReportMode, groupBy: List<BoundColumn>, exactDates: Boolean = false): String =
+fun reportQueryId(
+    client: String, bound: BoundReport, mode: ReportMode, groupBy: List<BoundColumn>, exactDates: Boolean = false,
+    zone: TimeZone = serverTimeZone,
+): String =
     listOfNotNull(
         "report", client, bound.reportId, mode.name, groupBy.joinToString(",") { it.columnId },
         bound.columns.map { it.describe() }.toJsonStr(compact = true),
-        "exactDates".takeIf { exactDates },
+        "exactDates@${zone.id}".takeIf { exactDates },
     ).joinToString("|")
 
 /** The column ids a list-valued input names, blanks dropped; null when the input is absent. */

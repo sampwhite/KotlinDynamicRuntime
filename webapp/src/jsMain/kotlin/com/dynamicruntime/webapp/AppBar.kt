@@ -221,6 +221,8 @@ val AppBar = FC<AppBarProps> { props ->
                 return@launch
             }
             config = cfg
+            // Moments are shown in the client's zone (issue #1115), set before the facts that redraw the page.
+            DisplayZone.set(cfg.timeZone)
             props.onShellFacts(shellFactsOf(cfg))
             // The tab icon follows the client (issue #1130) -- from a loaded config only, as the tint below, so a
             // failed refresh leaves the icon as it was.

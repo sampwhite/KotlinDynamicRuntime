@@ -31,8 +31,9 @@ import kotlin.time.Instant
 // code guarded by leaving such values as raw strings before `LocalDate` was available.
 //
 // Crossing between them is an explicit act, never a silent one: [Instant.toDay] picks a day out of a moment,
-// and [LocalDate.toStartOfDay] gives a day a moment. Both need the [serverTimeZone], and requiring the caller
-// to ask makes that dependence visible at the point where it matters.
+// and [LocalDate.toStartOfDay] gives a day a moment. Both need a zone, and requiring the caller to ask makes that
+// dependence visible at the point where it matters. The zone defaults to the [serverTimeZone]; where the day means
+// something to a client, the caller passes the client's (issue #1115).
 
 /** Day-only formatter (`yyyy-MM-dd`). */
 private val dayOnlyFormat = LocalDate.Format {
@@ -79,7 +80,8 @@ private val cookieDateFormat = DateTimeComponents.Format {
 
 /**
  * The server's shared timezone, used to define a common notion of day start and day end aligned with the
- * people maintaining the server. A non-DST US West-coast offset (`UTC-08:00`): midnight in any US timezone
+ * people maintaining the server -- for operational work, and for a client that names no zone of its own (a client's
+ * zone, issue #1115, decides its days otherwise). A non-DST US West-coast offset (`UTC-08:00`): midnight in any US timezone
  * is at or before the start of a day in this zone, so a job launched at the start of the server day runs
  * somewhere between midnight and ~4am across US timezones, reducing the chance it competes with live
  * traffic. If a deployment ever needs this configurable, inject the zone at the backend boundary.
@@ -88,21 +90,21 @@ val serverTimeZone: TimeZone = UtcOffset(hours = -8).asTimeZone()
 
 /**
  * Parses a date string in the system formats: a full timestamp `yyyy-MM-dd'T'HH:mm:ss[.SSS]'Z'` (the
- * trailing `Z` is optional) or a date-only `yyyy-MM-dd` (interpreted as the start of that day in the
- * [serverTimeZone]). Throws [KdrException] if the string does not match a recognized format; see
+ * trailing `Z` is optional) or a date-only `yyyy-MM-dd` (interpreted as the start of that day in [zone]).
+ * Throws [KdrException] if the string does not match a recognized format; see
  * [parseDateOrNull] and [parseDateResult] for the forms that do not throw.
  */
-fun String.parseDate(): Instant = parseDateResult().orThrow()
+fun String.parseDate(zone: TimeZone = serverTimeZone): Instant = parseDateResult(zone).orThrow()
 
 /** [parseDate], or null for a string that is not a date in a recognized format (issue #909). */
-fun String.parseDateOrNull(): Instant? = parseDateResult().valueOrNull()
+fun String.parseDateOrNull(zone: TimeZone = serverTimeZone): Instant? = parseDateResult(zone).valueOrNull()
 
 /**
  * [parseDate]'s outcome as a value (issue #909): the instant, or the problem with the string. Never throws for
  * a malformed date -- the parse beneath is `parseOrNull`, not a caught exception -- so a caller expecting bad
  * input pays for no exception and cannot mistake a bug for one.
  */
-fun String.parseDateResult(): Parsed<Instant> {
+fun String.parseDateResult(zone: TimeZone = serverTimeZone): Parsed<Instant> {
     var str = this.trim()
     if (str.isEmpty()) {
         return Parsed.failed(ConvProblem.blank, "Date string to be parsed was null or empty.")
@@ -115,7 +117,7 @@ fun String.parseDateResult(): Parsed<Instant> {
         return Parsed.failed(ConvProblem.badFormat, "Date string '$this' does not follow a recognizable date format.")
     }
     if (str.length == 10) {
-        return LocalDate.Formats.ISO.parseOrNull(str)?.let { Parsed.Ok(it.atStartOfDayIn(serverTimeZone)) }
+        return LocalDate.Formats.ISO.parseOrNull(str)?.let { Parsed.Ok(it.atStartOfDayIn(zone)) }
             ?: Parsed.failed(ConvProblem.badFormat, "Date string '$this' failed to parse.")
     }
     val dotIndex = str.indexOf('.', 10)
@@ -151,22 +153,22 @@ fun String.parseDayResult(): Parsed<LocalDate> =
 
 /**
  * Parses a day-only string like [parseDay], but additionally accepts a full timestamp and narrows it to its
- * day in the [serverTimeZone] — so a client that sends more precision than a day-only field asked for is
+ * day in [zone] — so a client that sends more precision than a day-only field asked for is
  * normalized rather than refused.
  *
  * That forgiveness is a coercion, which is why the schema layer only uses this when the field's `allowCoerce`
  * is on; a strict day-only field takes only a day.
  */
-fun String.parseDayLenient(): LocalDate = parseDayLenientResult().orThrow()
+fun String.parseDayLenient(zone: TimeZone = serverTimeZone): LocalDate = parseDayLenientResult(zone).orThrow()
 
 /** [parseDayLenient]'s outcome as a value (issue #909); never throws for a malformed date. */
-fun String.parseDayLenientResult(): Parsed<LocalDate> {
+fun String.parseDayLenientResult(zone: TimeZone = serverTimeZone): Parsed<LocalDate> {
     val str = this.trim()
     return if (str.length == 10) {
         str.parseDayResult()
     } else {
         when (val instant = str.parseDateResult()) {
-            is Parsed.Ok -> Parsed.Ok(instant.value.toDay())
+            is Parsed.Ok -> Parsed.Ok(instant.value.toDay(zone))
             is Parsed.Failed -> instant
         }
     }
@@ -179,23 +181,23 @@ fun Instant.formatDate(): String = this.toLocalDateTime(TimeZone.UTC).format(sys
 /** Formats this day as `yyyy-MM-dd`. The exact inverse of [String.parseDay] for a day-only string. */
 fun LocalDate.formatDay(): String = this.format(dayOnlyFormat)
 
-/** The day this instant falls on, in the [serverTimeZone] — narrowing a moment to a calendar day. */
-fun Instant.toDay(): LocalDate = this.toLocalDateTime(serverTimeZone).date
+/** The day this instant falls on, in [zone] — narrowing a moment to a calendar day. */
+fun Instant.toDay(zone: TimeZone = serverTimeZone): LocalDate = this.toLocalDateTime(zone).date
 
-/** The moment this day begins, in the [serverTimeZone] — giving a calendar day an instant. */
-fun LocalDate.toStartOfDay(): Instant = this.atStartOfDayIn(serverTimeZone)
+/** The moment this day begins, in [zone] — giving a calendar day an instant. */
+fun LocalDate.toStartOfDay(zone: TimeZone = serverTimeZone): Instant = this.atStartOfDayIn(zone)
 
 /** Formats this instant as a compact, separator-free UTC timestamp (`yyyyMMddHHmmssSSS`); see [compactIdFormat]. */
 fun Instant.formatCompactId(): String = this.toLocalDateTime(TimeZone.UTC).format(compactIdFormat)
 
-/** Formats only this instant's day part (`yyyy-MM-dd`) in the [serverTimeZone]. */
-fun Instant.formatDayPart(): String = this.toDay().formatDay()
+/** Formats only this instant's day part (`yyyy-MM-dd`) in [zone]. */
+fun Instant.formatDayPart(zone: TimeZone = serverTimeZone): String = this.toDay(zone).formatDay()
 
 /** Formats this instant as an RFC 1123 / HTTP date string, suitable for cookies. */
 fun Instant.formatCookieDate(): String = this.format(cookieDateFormat, UtcOffset.ZERO)
 
-/** Returns the start of this instant's day in the [serverTimeZone]. */
-fun Instant.toStartOfDay(): Instant = this.toLocalDateTime(serverTimeZone).date.atStartOfDayIn(serverTimeZone)
+/** Returns the start of this instant's day in [zone]. */
+fun Instant.toStartOfDay(zone: TimeZone = serverTimeZone): Instant = this.toLocalDateTime(zone).date.atStartOfDayIn(zone)
 
 /** Moves forward (or back, for a negative count) by whole days. Simple arithmetic; ignores daylight savings. */
 fun Instant.addDays(numDays: Int): Instant = this + numDays.days

@@ -163,6 +163,8 @@ object ClientFieldPolicies {
         CLD.domainPrefix to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
         CLD.customDomain to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
         CLD.webResourcesId to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
+        // Where the client's people are: a client made by another starts where its maker is (issue #1115).
+        CLD.timeZone to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
         CLD.userLabels to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
         CLD.sandbox to p(ClientFieldAtCreate.creator, ClientFieldEdit.ownSurface),
         CLD.includedTraits to p(ClientFieldAtCreate.cleared, ClientFieldEdit.ownSurface),
@@ -251,6 +253,8 @@ object ClientPresentationFields {
         CLD.domainPrefix to "A prefix on a core domain that routes to this client; blank clears it. No other client may use it.",
         CLD.customDomain to "A whole hostname the client configured for itself; blank clears it. No other client may use it.",
         CLD.webResourcesId to "The package of web resources the client presents; blank clears it.",
+        CLD.timeZone to "The client's IANA time zone (America/Chicago), which its dates are read and shown in; " +
+            "blank clears it. Changing it moves no stored moment.",
         CLD.userLabels to "The user labels the client suggests, each once and trimmed; empty clears them.",
     )
 
@@ -305,6 +309,9 @@ object CLD {
     const val usageType = "usageType"
     const val audience = "audience"
     const val webResourcesId = "webResourcesId"
+
+    /** The client's IANA time zone (issue #1115); see [ClientDef.timeZone]. */
+    const val timeZone = "timeZone"
     const val enabledEnvironments = "enabledEnvironments"
     const val preload = "preload"
     const val staticConfig = "staticConfig"
@@ -609,6 +616,14 @@ data class ClientDef(
      */
     val webResourcesId: String? = null,
     /**
+     * The client's time zone (issue #1115): an IANA id (`America/Chicago`), never an offset. Where the client's
+     * people are, so the zone a day means something in -- a date entered as a day, a day a filter or a window names,
+     * the day a moment falls on -- and the zone its moments are shown in. Null for the deployment's
+     * (`serverTimeZone`), which operational work keeps whatever a client says. Changing it moves no stored moment:
+     * what was stored as an instant stays that instant, and is shown in the new zone.
+     */
+    val timeZone: String? = null,
+    /**
      * Where this client is enabled. Elsewhere, it may still be *referred to* and is otherwise not present.
      *
      * The **only** axis deciding which clients a deployment carries -- there is no separate node-level
@@ -759,6 +774,7 @@ data class ClientDef(
         put(CLD.usageType, usageType.name)
         put(CLD.audience, audience.name)
         if (webResourcesId != null) put(CLD.webResourcesId, webResourcesId)
+        if (timeZone != null) put(CLD.timeZone, timeZone)
         put(CLD.enabledEnvironments, enabledEnvironments.toList())
         put(CLD.preload, preload)
         put(CLD.staticConfig, staticConfig)
@@ -807,6 +823,7 @@ data class ClientDef(
             usageType = enumOf(ClientUsageType.entries, m[CLD.usageType].toOptStr(), CLD.usageType),
             audience = enumOf(ClientAudience.entries, m[CLD.audience].toOptStr(), CLD.audience),
             webResourcesId = m[CLD.webResourcesId].toOptStr(),
+            timeZone = m[CLD.timeZone].toOptStr(),
             enabledEnvironments = m[CLD.enabledEnvironments].toJsonListOfStrings().toSet(),
             preload = m[CLD.preload] as? Boolean ?: false,
             staticConfig = m[CLD.staticConfig] as? Boolean ?: false,
@@ -914,6 +931,7 @@ data class ClientDef(
                 options(ClientAudience.entries)
             }
             prop(CLD.webResourcesId, "Identifies the package of web resources the client presents.")
+            prop(CLD.timeZone, "The client's IANA time zone (America/Chicago), which its dates are read and shown in.")
             // The environments there are ([ENV.names]), as choices (issue #1051): a form drawn from this type
             // offers the real ones, and a written definition is held to them.
             prop(CLD.enabledEnvironments, "The environments the client is enabled in.", required = true) {

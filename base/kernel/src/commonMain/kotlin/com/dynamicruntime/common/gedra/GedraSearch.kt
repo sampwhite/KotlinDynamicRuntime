@@ -9,7 +9,9 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
 import com.dynamicruntime.common.schema.qualifyTypeName
 import com.dynamicruntime.common.util.parseDateOrNull
+import com.dynamicruntime.common.util.serverTimeZone
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import kotlinx.datetime.TimeZone
 
 /**
  * Turns a client's trait-usage rules into forms-list **search** (issue #538): the parameters the listing
@@ -238,10 +240,14 @@ fun withSearchProperties(baseDef: Any?, usages: List<ClientTraitUsage>): Map<Str
  * Whether a row satisfies every active search parameter (AND across them), given the row's display values keyed
  * by trait id ([displayByTrait]) and the [active] parameters paired with the value the caller supplied. A row
  * that carries no value for a parameter's trait -- an empty display string -- matches none of that trait's
- * parameters, which drops it from a search rather than faulting the page.
+ * parameters, which drops it from a search rather than faulting the page. A date bound given as a day is the
+ * start of that day in [zone], the client's (issue #1115).
  */
-fun matchesSearch(displayByTrait: Map<String, String>, active: List<Pair<GedraSearchParam, String>>): Boolean =
-    active.all { (param, query) -> matchesOne(displayByTrait[param.traitId].orEmpty(), param, query) }
+fun matchesSearch(
+    displayByTrait: Map<String, String>,
+    active: List<Pair<GedraSearchParam, String>>,
+    zone: TimeZone = serverTimeZone,
+): Boolean = active.all { (param, query) -> matchesOne(displayByTrait[param.traitId].orEmpty(), param, query, zone) }
 
 /** The trait ids of the `string` usages -- the fields the free-text term ([EI.q]) searches across. */
 fun textSearchTraitIds(usages: List<ClientTraitUsage>): List<String> =
@@ -259,25 +265,25 @@ fun matchesAnyText(displayByTrait: Map<String, String>, textTraitIds: List<Strin
     return textTraitIds.any { displayByTrait[it].orEmpty().contains(term, ignoreCase = true) }
 }
 
-private fun matchesOne(value: String, param: GedraSearchParam, query: String): Boolean = when (param.role) {
+private fun matchesOne(value: String, param: GedraSearchParam, query: String, zone: TimeZone): Boolean = when (param.role) {
     SearchRole.exact -> value.trim().equals(query.trim(), ignoreCase = true)
     SearchRole.contains -> value.contains(query.trim(), ignoreCase = true)
     // A bound over a value that is not a number/date at all -- an empty or malformed display -- is a non-match,
     // not a fault: a range asks "is this within the bounds", and a value that is not on the line is not.
-    SearchRole.min -> compareBound(value, param.kind, query)?.let { it >= 0 } ?: false
-    SearchRole.max -> compareBound(value, param.kind, query)?.let { it <= 0 } ?: false
+    SearchRole.min -> compareBound(value, param.kind, query, zone)?.let { it >= 0 } ?: false
+    SearchRole.max -> compareBound(value, param.kind, query, zone)?.let { it <= 0 } ?: false
 }
 
 /** Compares a row's [value] to the [query] bound as [kind]; null when either side does not read as that kind. */
-private fun compareBound(value: String, kind: UsageKind, query: String): Int? = when (kind) {
+private fun compareBound(value: String, kind: UsageKind, query: String, zone: TimeZone): Int? = when (kind) {
     UsageKind.number -> {
         val v = value.trim().toDoubleOrNull()
         val q = query.trim().toDoubleOrNull()
         if (v == null || q == null) null else v.compareTo(q)
     }
     UsageKind.date -> {
-        val v = value.parseDateOrNull()
-        val q = query.parseDateOrNull()
+        val v = value.parseDateOrNull(zone)
+        val q = query.parseDateOrNull(zone)
         if (v == null || q == null) null else v.compareTo(q)
     }
     // A string is never a bound; guarded by construction (a string usage makes no min/max param), null here.

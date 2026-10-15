@@ -251,7 +251,7 @@ read from it.
 | `customerId`, `usageType`, `audience`, `enabledEnvironments` | copied from the maker | the platform |
 | `extendsFromClientId` | the creator | the platform |
 | `domainPrefix`, `customDomain` | cleared (a domain routes to one client) | the definition editor |
-| `webResourcesId` | copied from the maker | the definition editor |
+| `webResourcesId`, `timeZone` | copied from the maker | the definition editor |
 | `userLabels` | cleared | the definition editor |
 | `sandbox` | the creator | its own surface (the sandbox's management) |
 | `includedTraits` | cleared | its own surface (the client's configuration) |
@@ -259,6 +259,33 @@ read from it.
 
 The platform's create takes every field but those a create clears and that are then changed only through their own
 surface or by the platform: the traits a client includes, its preload, its static lock, and its test features.
+
+**A client has a time zone** (issue #1115): `timeZone`, an IANA zone of a place (`America/Chicago`), or `UTC`. It
+says where the client's people are, and so the zone its days mean something in. Absent, the client is in the
+deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
+
+- **Never an offset.** An offset (`-05:00`, `Etc/GMT+5`) or an abbreviation (`EST`) says where the clock is today,
+  not where the people are, and is wrong half the year wherever clocks change. A write naming one is refused; a
+  stored one the load finds is dropped with an issue, and the client stands in the deployment's zone.
+- **Where a day crosses to a moment, it does so in the client's zone.** A day given for a timestamp field of a
+  request (the endpoint's input is validated with the zone), a day bound of a forms search, and a report run bringing
+  a date column to its declared form all read the day in the client's zone. Day-only values never shift: a day stays
+  the day it was written. Operational work -- jobs, logs, a client with no zone -- keeps the deployment's zone.
+- **Moments are shown in it.** The shell config carries the zone (`state.timeZone`), and the webapp shows every
+  timestamp in it, labeled (`Oct 17, 2026, 5:00 PM CT`).
+- **The deployment's day start and its display default are two things.** The day start (`serverTimeZone`) is the
+  official day boundary: a fixed offset that never moves for daylight saving, so a day is always 24 hours and a
+  contract written against it is unambiguous. A client naming no zone reads its days there. `KDR_DISPLAY_TIME_ZONE`
+  (an IANA zone) is only where such a client's moments are **shown**; unset, they are shown at the day start too.
+  When the two differ, a moment shown near midnight can fall on the neighboring official day -- the least bad of
+  the choices, and gone for a client that names its own zone, which reads and shows its days in that one zone.
+- **Changing it moves no stored moment.** What was stored as an instant stays that instant and is shown in the new
+  zone; the definition editor says so.
+- **Chosen when the client is made.** The platform's create and a person's own self-serve create take it (the
+  webapp sends the creator's browser's zone); a client a customer's root makes starts in the root's.
+- **Not yet in its zone:** a workflow's time window written as a day is read when the definition is, in the
+  deployment's zone (the window editor, #1121, writes moments); the template function `formatDay` formats in the
+  deployment's zone; and a date-time picker enters a moment in the browser's zone.
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.

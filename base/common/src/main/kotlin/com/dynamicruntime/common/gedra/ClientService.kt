@@ -1,11 +1,15 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.context.ENVGRP
+import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.serverTimeZone
+import kotlinx.datetime.TimeZone
 
 /**
  * Which clients this deployment knows, which of them are present here, and what each one declared (issue
@@ -62,6 +66,15 @@ class ClientService : ServiceInitializer {
     private var env: String = ""
 
     /**
+     * The zone a client naming none is **shown** in (issue #1115): [displayTimeZoneEnvVar], an IANA zone, or null for
+     * the deployment's day start ([serverTimeZone]). Display only -- such a client's days are still the official day,
+     * so a moment shown near midnight here may fall on the neighboring official day. A client naming a zone of its
+     * own reads and shows its days in that one zone.
+     */
+    var displayTimeZone: String? = null
+        private set
+
+    /**
      * Whether [clientId] is a client this node carries.
      *
      * The cheapest gate there is -- a map lookup, answerable before any database access -- which is what makes
@@ -75,6 +88,20 @@ class ClientService : ServiceInitializer {
 
     /** [clientId]'s definition whether or not this node carries it; null when nothing declares it. */
     fun known(clientId: String): ClientDef? = clients[clientId]
+
+    /**
+     * [clientId]'s time zone (issue #1115): the IANA zone its definition names -- a sandbox's being its parent's,
+     * copied with the rest of the definition -- or the [serverTimeZone] for a client that names none, or that this
+     * node does not know.
+     */
+    fun timeZoneOf(clientId: String): TimeZone =
+        clients[clientId]?.timeZone?.let { runCatching { TimeZone.of(it) }.getOrNull() } ?: serverTimeZone
+
+    /**
+     * The IANA zone [clientId]'s moments are **shown** in (issue #1115): its own, else the deployment's display default
+     * ([displayTimeZone]); null when neither is set, for the deployment's day start.
+     */
+    fun displayZoneOf(clientId: String): String? = clients[clientId]?.timeZone ?: displayTimeZone
 
     /** The customer [customerId] names, or null when none is declared that held up (issue #1107). */
     fun customer(customerId: String): CustomerDef? = customers[customerId]?.def
@@ -146,6 +173,10 @@ class ClientService : ServiceInitializer {
         }
         val collected = collector ?: throw KdrException("$serviceName.checkInit ran before onCreate.")
         env = cxt.instanceConfig.env
+        displayTimeZone = cxt.getEnvVar(displayTimeZoneEnvVar)?.trim()?.ifEmpty { null }?.also { zone ->
+            // A deployment's own setting, so a wrong one stops the boot rather than showing every time somewhere else.
+            timeZoneFault(zone)?.let { throw KdrException("${displayTimeZoneEnvVar.name} is '$zone', which $it.") }
+        }
         val result = checkClientDefs(cxt, collected.gedraConfigs)
         clients = result.clients
         customers = result.customers
@@ -200,6 +231,16 @@ class ClientService : ServiceInitializer {
     companion object {
         const val serviceName = "ClientService"
 
+        /** The zone a client naming none is shown in (issue #1115); see [displayTimeZone]. */
+        val displayTimeZoneEnvVar = EnvVarDef(
+            "KDR_DISPLAY_TIME_ZONE", group = ENVGRP.application, defaultDoc = "unset: the deployment's day start (UTC-8)",
+            description = "The IANA time zone (America/Chicago) the webapp shows moments in for a client that names no " +
+                "zone of its own (issue #1115). Display only: the day such a client's dates fall on is still the " +
+                "deployment's official day start, a fixed UTC-8, which never moves for daylight saving -- so a moment " +
+                "near midnight may be shown on the day before or after the official one. A client naming its own zone " +
+                "reads and shows its days in that zone. An offset or an abbreviation (EST) stops the boot.",
+        )
+
         /** The service; throws naming it on a node that does not run it. */
         fun get(cxt: KdrCxt): ClientService = cxt.instanceConfig.get(serviceName) as? ClientService
             ?: throw KdrException("The $serviceName is not available on this node.")
@@ -208,3 +249,9 @@ class ClientService : ServiceInitializer {
         fun getOrNull(cxt: KdrCxt): ClientService? = cxt.instanceConfig.get(serviceName) as? ClientService
     }
 }
+
+/**
+ * The time zone a day means something in for [KdrCxt]'s client (issue #1115): its own ([ClientService.timeZoneOf]),
+ * or the [serverTimeZone] on a node without the client service.
+ */
+val KdrCxt.clientTimeZone: TimeZone get() = ClientService.getOrNull(this)?.timeZoneOf(client) ?: serverTimeZone

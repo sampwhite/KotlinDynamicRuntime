@@ -77,9 +77,9 @@ class WebAssetsTest {
 
         val held = slot(pngFile, by = "Chief One")
         assertEquals("image/png · 13 KB · our icon.png", webAssetHoldsText(held))
-        assertEquals("Uploaded 2026-10-12 19:49 UTC by Chief One", webAssetUploadedText(held))
+        assertEquals("Uploaded Oct 12, 2026, 11:49 AM GMT-8 by Chief One", webAssetUploadedText(held))
         // Who is said only when it was recorded, and a file that came with no name is described without one.
-        assertEquals("Uploaded 2026-10-12 19:49 UTC", webAssetUploadedText(slot(pngFile)))
+        assertEquals("Uploaded Oct 12, 2026, 11:49 AM GMT-8", webAssetUploadedText(slot(pngFile)))
         assertEquals("image/png · 13 KB", webAssetHoldsText(slot(WebAssetFile("image/png", 12_345, "h", "", null))))
         assertEquals("Uploaded", webAssetUploadedText(slot(WebAssetFile("image/png", 1, "h", "", null))))
         // A file whose type the listing did not say is described by what it did say, with no separator left over.

@@ -222,7 +222,7 @@ class ReportsPageTest {
         assertEquals("Yes", reportCellText(true, ReportKind.boolean.name))
         assertEquals("No", reportCellText(false, ReportKind.boolean.name))
         // A timestamp as the app shows them; a day as it is written; text that merely looks like a date left alone.
-        assertEquals("2026-10-05 18:47 UTC", reportCellText("2026-10-05T18:47:50.836Z", ReportKind.date.name))
+        assertEquals("Oct 5, 2026, 10:47 AM GMT-8", reportCellText("2026-10-05T18:47:50.836Z", ReportKind.date.name))
         assertEquals("2024-03-05", reportCellText("2024-03-05", ReportKind.date.name))
         assertEquals("2026-10-05T18:47:50.836Z", reportCellText("2026-10-05T18:47:50.836Z", ReportKind.string.name))
         assertEquals("2022, 2023", reportCellText(listOf(2022, 2023), ReportKind.number.name))

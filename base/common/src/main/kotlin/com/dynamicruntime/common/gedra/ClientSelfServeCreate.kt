@@ -47,8 +47,11 @@ object ClientSelfServeCreate {
         val userFailure: String? = null,
     )
 
-    /** Creates the self-serve client named [name] for the person signed in as [cxt]'s user. */
-    fun create(cxt: KdrCxt, name: String, description: String?): Result {
+    /**
+     * Creates the self-serve client named [name] for the person signed in as [cxt]'s user, in [timeZone] -- the
+     * creator's browser's, as the page sends it (issue #1115) -- or the deployment's when none is given.
+     */
+    fun create(cxt: KdrCxt, name: String, description: String?, timeZone: String? = null): Result {
         val profile = cxt.userProfile
         if (profile.client != CL.public) {
             throw KdrException.mkInput(
@@ -74,7 +77,7 @@ object ClientSelfServeCreate {
             throw KdrException("Another create of your client is under way.", e, EXC.conflict)
         }
         val created = try {
-            ClientCreate.create(cxt, definition(cxt, client, name, description))
+            ClientCreate.create(cxt, definition(cxt, client, name, description, timeZone))
         } catch (e: Exception) {
             // Nothing of the client was stored, so the one is not used.
             try {
@@ -102,12 +105,13 @@ object ClientSelfServeCreate {
     fun usageTypeIn(env: String): ClientUsageType = if (env == ENV.prod) ClientUsageType.production else ClientUsageType.dev
 
     /** The definition of the self-serve client [client], as the platform's create takes one. */
-    private fun definition(cxt: KdrCxt, client: String, name: String, description: String?): Map<String, Any?> {
+    private fun definition(cxt: KdrCxt, client: String, name: String, description: String?, timeZone: String?): Map<String, Any?> {
         val env = cxt.instanceConfig.env
         return buildMap {
             put(CLD.clientId, client)
             put(CLD.name, name)
             description?.let { put(CLD.description, it) }
+            timeZone?.let { put(CLD.timeZone, it) }
             put(CLD.usageType, usageTypeIn(env).name)
             put(CLD.audience, ClientAudience.customer.name)
             // Where the deployment runs, and the developer's two, which a client running anywhere else must name.

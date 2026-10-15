@@ -174,7 +174,8 @@ combine or rollup yields one. No column is required: one with nothing to show is
 column's path can end, and a timestamp otherwise: a form's or an entry's own dates, a text field read as dates, a
 union whose branches disagree. On the typed endpoints every value is brought to that form before it is combined or
 grouped — a timestamp in a day column becomes the day it falls on, a day in a timestamp column its first instant, in
-the server's zone — so a day and a moment within it are one group. The shared endpoint is unchanged: there a value is
+the client's time zone (issue #1115; the deployment's day start for a client naming none) — so a day and a moment
+within it are one group. The shared endpoint is unchanged: there a value is
 a day or a timestamp as each form stored it.
 
 **Always checked.** The types are strict — nothing is coerced — and a typed endpoint validates every response
@@ -246,7 +247,9 @@ Two things take one:
 **`GET /clientAdmin/report/history`** lists a report's snapshots for a client, newest first and paged by cursor as
 every reporting endpoint is, with a summary saying whether the job snapshots the report and how many snapshots it
 has, and each snapshot says whether it was taken under the report's definition as bound now. Per report and client,
-of each past day only the latest snapshot is kept, and `KDR_REPORT_HISTORY_KEEP` days (default 400) in all, the
+of each past day only the latest snapshot is kept -- a day being the deployment's official one, its day start (a
+fixed UTC-8, issue #1115), whatever the client's zone, so every history buckets a day alike -- and
+`KDR_REPORT_HISTORY_KEEP` days (default 400) in all, the
 oldest days deleted as a new snapshot is written; today's are all kept until the day is over, so pressing the
 button cannot push the nightly series out. The snapshots of a report since removed from the configuration stay
 listable under its id.
