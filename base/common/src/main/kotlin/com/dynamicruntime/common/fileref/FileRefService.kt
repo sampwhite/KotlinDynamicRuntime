@@ -275,6 +275,9 @@ class FileRefService : ServiceInitializer, ContentServer {
             .sortedWith(compareBy({ config -> if (config.fileRefs.any { it.stored }) 0 else 1 }, { it.gedraId.fullId }))
         var beyond = 0
         var beyondStored = 0
+        // The ids counted past the limit: a second declaration of one -- what is shipped beneath a stored override,
+        // or a template's ref beneath the client's -- is the same ref, past the limit too, and counted once.
+        val beyondIds = HashSet<String>()
         for (config in holding) {
             // Asking after a ref's file is the configuration's own check's to switch off, with its other checks.
             val checksFile = config.checkMode(cxt) != BootCheckMode.off
@@ -289,8 +292,10 @@ class FileRefService : ServiceInitializer, ContentServer {
                 }
                 // Past what a client is served: counted, and its file not asked after -- the limit is what bounds that.
                 if (kept.size >= FREF.maxRefs) {
-                    beyond++
-                    if (def.stored) beyondStored++
+                    if (beyondIds.add(def.refId)) {
+                        beyond++
+                        if (def.stored) beyondStored++
+                    }
                     continue
                 }
                 val ref = FileRef(def, owner, config.inheritedFrom)

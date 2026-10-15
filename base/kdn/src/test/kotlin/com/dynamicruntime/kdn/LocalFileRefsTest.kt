@@ -1054,4 +1054,23 @@ class LocalFileRefsTest : StringSpec({
         crest[CCT.source] shouldBe FREF.sourceLocal
         static(memberOf(client), nameOf("crest", svg)).rptResponseBytes!!.toList() shouldBe svg.toList()
     }
+
+    "a sandbox of a client built on a template is served what its parent is: the template's file, then the parent's own" {
+        val client = "lfrtplsbx"
+        createOnTemplate(client).let { withClue(it) { it[EP.status].shouldBeNull() } }
+        adminOf(client).postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandboxOf(client))
+
+        // The sandbox's ref is its parent's: the parent has no file of its own, so the template's, by the same name.
+        listed(inSandbox).getValue("own")[FREF.fromTemplate] shouldBe template
+        static(inSandbox, nameOf("own", svg)).rptResponseBytes!!.toList() shouldBe svg.toList()
+
+        // Given the parent a file of its own, the sandbox reads it -- the parent's directory, not one of the sandbox's.
+        approve(client, "own.png", png)
+        listed(inSandbox).getValue("own").let {
+            it.containsKey(FREF.fromTemplate) shouldBe false
+            it[FREF.name] shouldBe nameOf("own", png)
+        }
+        static(inSandbox, nameOf("own", png)).rptResponseBytes!!.toList() shouldBe png.toList()
+    }
 })

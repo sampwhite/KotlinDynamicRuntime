@@ -44,6 +44,7 @@ class RefLimitComponent : ComponentDefinition {
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
         shippedWith(cxt, over, FREF.maxRefs + 5),
         shippedWith(cxt, full, FREF.maxRefs),
+        shippedWith(cxt, double, 3),
     )
 
     private fun shippedWith(cxt: KdrCxt, client: String, count: Int): GedraConfig =
@@ -61,6 +62,7 @@ class RefLimitComponent : ComponentDefinition {
         const val root = "art"
         const val over = "reflimitover"
         const val full = "reflimitfull"
+        const val double = "reflimitdouble"
     }
 }
 
@@ -161,6 +163,27 @@ class FileRefLimitTest : StringSpec({
         refused shouldContain "holds ${FREF.maxRefs + 5} file refs, more than the ${FREF.maxRefs} a client is served"
         refused shouldContain "only 1 of them are held in stored configuration -- fewer than the 6 that would have to go"
         refused shouldContain "Upload over one of them to replace its file"
+    }
+
+    "an id past the limit is one ref, however many declarations hold it" {
+        val client = RefLimitComponent.double
+        val hash = png.sha256Hex()
+        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(png, "image/png"))
+        // Its own refs fill the limit, read first as stored ones are; then a stored override of a shipped ref, past it.
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "amany", clientNamespace(client), client) { for (n in 1..FREF.maxRefs) fileRef("r$n", hash) })
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "bover", clientNamespace(client), client) { fileRef("s2", hash) })
+        publish(client, "amany")
+        publish(client, "bover")
+        GedraConfigReload.reloadClient(cxt, client)
+        refs.forClient(client).refs.size shouldBe FREF.maxRefs
+
+        val registry = refs.forClient(client)
+        // The 200 stored, and s1, s2, s3 -- s2 once, though both its override and what it overrides are past the limit.
+        registry.held shouldBe FREF.maxRefs + 3
+        registry.heldStored shouldBe FREF.maxRefs + 1
+        val refused = upload(adminOf(client), "extra", otherPng)[EP.errorMessage].toOptStr().orEmpty()
+        refused shouldContain "holds ${FREF.maxRefs + 3} file refs"
+        refused shouldContain "Remove 4 of the ${FREF.maxRefs + 1} it holds in stored configuration first (2 were shipped"
     }
 
     "a client shipped with more refs than it is served refuses a strict boot, where a mistake in source is caught" {

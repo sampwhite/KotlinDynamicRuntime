@@ -78,8 +78,9 @@ object ClientExtension {
         val ownUsages = own.any { it.usages.isNotEmpty() }
         val ownReports = own.flatMap { it.reports.keys }.toSet()
         // By what the child declares in **source** only (issue #1170): a stored ref of the same id meets the template's
-        // in the registry, where what is stored overrides what is shipped -- so a stored override that is left out
-        // (malformed, past the limit) reveals the template's ref, as it reveals a client's own shipped one. Two source
+        // in the registry, where what is stored overrides what is shipped -- so a stored override the load cannot serve
+        // (malformed, naming a source this node does not read) reveals the template's ref, as it reveals a client's own
+        // shipped one. One past the limit does not: the id is past it, whichever declaration holds it. Two source
         // declarations of one id are a duplicate, so the child's source refs still replace the template's here.
         val ownFileRefs = own.filter { !it.isStored }.flatMap { c -> c.fileRefs.map { it.refId } }.toSet()
         return templateConfigs.map { config ->

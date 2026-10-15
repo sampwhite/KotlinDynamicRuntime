@@ -203,8 +203,10 @@ class LocalFileRoots(
      * The file at [path] under the root [root] -- in [clientDir]'s directory there, for a client's own ref -- held
      * to every rule of the class note.
      */
-    fun read(root: String, path: String, clientDir: String? = null): LocalRead {
-        val at = locate(root, path, clientDir)
+    fun read(root: String, path: String, clientDir: String? = null): LocalRead = readAt(locate(root, path, clientDir))
+
+    /** The file [at] says is there, read and held to every rule of the class note: [read], for a caller that has located it. */
+    fun readAt(at: LocalAt): LocalRead {
         val real = at.real ?: return LocalRead(null, at.reason)
         return try {
             // Opened without following a link, and read no further than a file may be long: the path was proven a

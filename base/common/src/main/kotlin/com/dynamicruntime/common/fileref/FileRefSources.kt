@@ -198,20 +198,28 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
     private val ownDirectory = source == FREF.sourceClientLocal
 
     /**
-     * The client directory of the root [ref]'s file is read from, where that is a client's own; else null, an ordinary
-     * local ref naming the root whole. It is the ref's client's -- or, for a ref the client **inherits** from a
-     * template and has no such file of its own, the template's (issue #1180): the template's file is the default,
-     * which a client replaces by having its own put there, as a template's copy is the default its words replace.
+     * Where [ref]'s file is, located once: the client directory of the root it is read from, where that is a
+     * client's own (else null, an ordinary local ref naming the root whole), and what is there. It is the ref's
+     * client's -- or, for a ref the client **inherits** from a template and has no such file of its own, the
+     * template's (issue #1180): the template's file is the default, which a client replaces by having its own put
+     * there, as a template's copy is the default its words replace.
      *
      * Only a file that is **absent** falls back. One the client has and that cannot be served -- no image, too large,
      * reached through a link -- is the client's mistake, said as one, and not hidden behind the template's picture.
      */
-    private fun clientDir(ref: FileRef): String? {
-        if (!ownDirectory) return null
-        val template = ref.inheritedFrom ?: return ref.owner
-        val own = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), ref.owner)
-        return if (own.absent) template else ref.owner
+    private fun located(ref: FileRef): Located {
+        fun at(dir: String?) = Located(dir, roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), dir))
+        if (!ownDirectory) return at(null)
+        val own = at(ref.owner)
+        val template = ref.inheritedFrom ?: return own
+        return if (own.at.absent) at(template) else own
     }
+
+    /**
+     * Where a ref's file was looked for -- the client directory of the root it is read from ([dir], null for an
+     * ordinary local ref) -- and what was found there ([at]): the one answer a lookup, a read and a log line go by.
+     */
+    private class Located(val dir: String?, val at: LocalAt)
 
     /** Where [ref]'s file is looked for in [dir], from the root down: what an operator needs to find it by. */
     private fun sought(ref: FileRef, dir: String?): String = listOfNotNull(ref.def.root, dir, ref.def.path).joinToString("/")
@@ -268,17 +276,17 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
      * ref a root that is not open.
      */
     private fun lookedAt(cxt: KdrCxt, ref: FileRef): FileMeta? {
-        val dir = clientDir(ref)
-        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), dir)
+        val found = located(ref)
+        val at = found.at
         if (at.real == null) {
-            sayWhy(cxt, ref, dir, at.reason)
+            sayWhy(cxt, ref, found.dir, at.reason)
             return null
         }
         // The real path is in the stamp, so one key cannot answer for two files; the key is only what is replaced.
         val stamp = "${at.real}|${at.size}|${at.modifiedMs}"
-        val key = sought(ref, dir)
+        val key = sought(ref, found.dir)
         looked[key]?.takeIf { it.stamp == stamp }?.let { return it.meta }
-        return readFrom(cxt, ref, dir)?.meta.also {
+        return readFrom(cxt, ref, found)?.meta.also {
             if (looked.size >= maxRemembered) looked.clear()
             looked[key] = Looked(stamp, it)
         }
@@ -307,10 +315,12 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
      * hash, the file's own name, and -- as when it was "uploaded" -- when the file last changed. Its `client` is the
      * client whose directory it was read from: a template's, for an inherited ref served its default (issue #1180).
      */
-    override fun read(cxt: KdrCxt, ref: FileRef): StoredFile? = readFrom(cxt, ref, clientDir(ref))
+    override fun read(cxt: KdrCxt, ref: FileRef): StoredFile? = readFrom(cxt, ref, located(ref))
 
-    private fun readFrom(cxt: KdrCxt, ref: FileRef, dir: String?): StoredFile? {
-        val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty(), dir)
+    /** The file [found] says is there, read from where it was found -- not looked for again. */
+    private fun readFrom(cxt: KdrCxt, ref: FileRef, found: Located): StoredFile? {
+        val dir = found.dir
+        val read = roots.readAt(found.at)
         val file = read.file
         if (file == null) {
             sayWhy(cxt, ref, dir, read.reason)
