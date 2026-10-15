@@ -32,7 +32,8 @@ class MarkdownRenderUtilTest : StringSpec({
     }
 
     "drops a line that is wholly an HTML comment, as GitHub does (issue #1137)" {
-        "<!-- kdr-doc: bundle=base -->\n```json\n{}\n```".renderMarkdown() shouldBe "<pre><code class=\"language-json\">{}</code></pre>\n"
+        "<!-- kdr-doc: bundle=base -->\n```json\n[]\n```".renderMarkdown() shouldBe
+            "<pre><code class=\"language-json\"><span class=\"md-tok-punct\">[</span><span class=\"md-tok-punct\">]</span></code></pre>\n"
         // It ends a running paragraph rather than joining it, and leaves no trace in the text rendering either.
         "one\n<!-- note -->\ntwo".renderMarkdown() shouldBe "<p>one</p>\n<p>two</p>\n"
         "one\n<!-- note -->\ntwo".renderMarkdownText() shouldNotContain "note"

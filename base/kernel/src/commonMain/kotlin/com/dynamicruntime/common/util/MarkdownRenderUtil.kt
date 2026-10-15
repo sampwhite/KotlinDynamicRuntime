@@ -70,6 +70,9 @@ interface MarkdownSink {
     fun note(code: MarkdownIssue, message: String, line: Int) {}
 }
 
+/** The fence language the HTML sink highlights (issue #1227). */
+const val jsonLanguage = "json"
+
 /** The HTML rendering; see [renderMarkdown] for what it guarantees. */
 class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
     override fun text(raw: String): String = escapeHtml(raw)
@@ -115,7 +118,9 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
     override fun quote(inner: String): String = "<blockquote>$inner</blockquote>\n"
     override fun code(language: String, body: String): String {
         val cls = if (language.isEmpty()) "" else " class=\"language-" + escapeHtml(language) + "\""
-        return "<pre><code$cls>" + escapeHtml(body) + "</code></pre>\n"
+        // A JSON block is highlighted in the HTML itself (issue #1227); one the lexer cannot read is left plain.
+        val inner = (if (language == jsonLanguage) highlightJson(body) else null) ?: escapeHtml(body)
+        return "<pre><code$cls>" + inner + "</code></pre>\n"
     }
     override fun rule(): String = "<hr/>\n"
     override fun table(header: List<String>, aligns: List<String?>, rows: List<List<String>>): String {
