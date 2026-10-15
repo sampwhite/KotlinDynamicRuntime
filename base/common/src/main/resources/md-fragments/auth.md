@@ -11,6 +11,10 @@
 
 # @login
 # +title Log in
+/- Above the sign-in form, and empty as shipped, so nothing shows (issue #1221): why sign-in is limited, on a
+   deployment that limits it. Markdown. -/
+# +intro
+
 # +emailLabel Email address
 # +passwordLabel Password
 # +codeLabel Verification code

@@ -908,6 +908,10 @@ button.op-status:focus-visible { outline: 2px solid var(--accent-bright); outlin
 button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 .wf-cell-all { max-width: 320px; }
 .wf-reasons { margin: 0; padding-left: 18px; }
+/* A workflow's help under its title, and the home page's note under its intro (issue #1221): copy, read as such. */
+.wf-help { color: var(--text-muted); margin: 4px 0 8px; }
+.wf-help p, .home-note p { margin: 4px 0; }
+.home-note { margin-top: 12px; }
 .wf-reasons li { margin: 4px 0; }
 
 /* presentation:table -- an array rendered as rows/columns. */

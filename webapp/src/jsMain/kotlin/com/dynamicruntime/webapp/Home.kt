@@ -115,6 +115,14 @@ val Home = FC<Props> {
                         }
                         copy.opt("home", "title")?.let { h1 { +it } }
                         copy.opt("home", "intro")?.let { Markdown { source = it } }
+                        // A note beneath the intro (issue #1221), empty as shipped: room for a component's own word on
+                        // a deployment -- a flavor's, say -- without its competing with whoever rewords the intro.
+                        copy.opt("home", "note")?.takeIf { it.isNotBlank() }?.let {
+                            div {
+                                className = ClassName("home-note")
+                                Markdown { source = it }
+                            }
+                        }
                         if (layout?.inlineLinks == true) {
                             renderInlineLinks(links, copy)
                         }

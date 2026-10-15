@@ -15,6 +15,7 @@ import com.dynamicruntime.common.content.backendFragmentFiles
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.content.fragmentOverlayFile
+import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.context.KdrCxt
@@ -77,6 +78,11 @@ class SampleComponent : ComponentDefinition {
         flavor(samplesFlavor) {
             default(loadSampleEnvVar, "true")
             omnibusOverlay("sampleSamples")
+        },
+        // A reference deployment (issue #1221) carries the sample clients, and says what they demonstrate.
+        flavor(FLV.reference) {
+            default(loadSampleEnvVar, "true")
+            omnibusOverlay("sampleReference")
         },
     )
 

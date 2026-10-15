@@ -218,6 +218,16 @@ val AuthFlow = FC<AuthFlowProps> { props ->
 
         val codeSent = token != null
 
+        // A word above the sign-in form (issue #1221), empty as shipped: why sign-in is limited on a deployment that
+        // limits it, say. Markdown, so it can link to what explains more.
+        if (!register && !claim) {
+            copy.opt("login", "intro")?.takeIf { it.isNotBlank() }?.let { intro ->
+                div {
+                    className = ClassName("subtitle")
+                    Markdown { source = intro }
+                }
+            }
+        }
         if (claim) {
             p {
                 className = ClassName("subtitle")

@@ -13,6 +13,11 @@ serves: the layout below comes from a UI-config endpoint, and this copy comes fr
 
 Open **Documents** from the menu to read more.
 
+/- Beneath the intro, and empty as shipped, so nothing shows (issue #1221): room for a component's own word on a
+   deployment -- a deployment flavor's, say -- without its competing with whoever rewords the intro. -/
+# +note
+
+
 # @forms
 /- What a forms-listing row with no workflows shows in the workflow column (issue #791). A client overlays it:
    "Coming Soon...", a link to the workflow pages, "No workflows available." -/
