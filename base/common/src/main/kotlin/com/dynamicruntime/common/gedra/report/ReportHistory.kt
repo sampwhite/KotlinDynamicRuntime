@@ -14,6 +14,7 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toDay
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
@@ -189,10 +190,12 @@ object ReportSnapshotRows {
         }
     }
 
-    /** The UTC day [at] falls in, as a day count: how snapshots are told to be of one day, the way a job's slots are. */
-    fun dayOf(at: Instant): Long = Math.floorDiv(at.toEpochMilliseconds(), dayMs)
-
-    private const val dayMs = 24L * 60 * 60 * 1000
+    /**
+     * The official day [at] falls on (the `serverTimeZone`, issue #1115), as a day count: how snapshots are told to be
+     * of one day. The deployment's day start, not a client's zone and not UTC -- a day every client's history agrees
+     * on, which is what a day's collation is for.
+     */
+    fun dayOf(at: Instant): Long = at.toDay().toEpochDays()
 
     private fun table(cxt: KdrCxt) = cxt.getGlobalSchema().tables[RHT.reportSnapshot]
         ?: throw KdrException("${RHT.reportSnapshot} table is not registered in the schema store.")

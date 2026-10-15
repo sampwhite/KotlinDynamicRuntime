@@ -832,7 +832,8 @@ library), and these are the rules it was built to:
 
 - **What can be charted** (`historyMetrics`): the count of forms, then each rolled-up column whose result is a
   number and that the report does not group by. A rolled-up date is a moment, not a height, so it is not offered.
-- **One snapshot a day** (`latestPerDay`), and **only the current definition's**: each snapshot says whether it was
+- **One snapshot a day** (`latestPerDay`) -- the deployment's official day (UTC-8, `ReportSnapshot.day`, issue #1115),
+  as the backend's pruning counts it, never the viewer's zone -- and **only the current definition's**: each snapshot says whether it was
   taken under the report as bound now (`sameDefinition`), and one that was not is counted in a note, not charted.
 - **A group's colour is its place, never its rank.** `historySeries` orders groups as first seen, oldest day first,
   so switching metric or one group overtaking another repaints nothing. Past eight groups, the eight with the most
