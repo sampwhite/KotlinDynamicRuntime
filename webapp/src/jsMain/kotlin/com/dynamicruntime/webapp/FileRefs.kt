@@ -51,6 +51,11 @@ class FileRefView(
      * Null when the file is the client's own.
      */
     val fromTemplate: String? = null,
+    /**
+     * Whether it is one the client's own people are served that a draft removed (issue #1188): listed until a publish
+     * takes it away, previewed from what they are served, and offered only to be put back.
+     */
+    val removedInDraft: Boolean = false,
 )
 
 /** The listing's items as refs; one without an id is not one. */
@@ -74,6 +79,7 @@ fun parseFileRef(item: Map<String, Any?>): FileRefView? {
         // was shipped with, which is the one the backend would refuse to remove.
         stored = (item[FREF.stored] as? Boolean) ?: (item[CCT.source].toOptStr() != FREF.sourceLocal),
         missing = item[FREF.missing] == true,
+        removedInDraft = item[FREF.removedInDraft] == true,
         file = storedFileFrom(item[FREF.file]),
         uploadedByName = item[FREF.uploadedByName].toOptStr(),
         fromTemplate = item[FREF.fromTemplate].toOptStr(),
@@ -130,7 +136,8 @@ fun fileRefsIntro(sandboxOf: String?, hasSandbox: Boolean, staticHere: Boolean):
     val what = "Named images this client's configuration holds, each served at an address of its own."
     val owner = sandboxOf ?: "the client"
     val listed = "What is listed is what the sandbox shows: ${if (sandboxOf != null) "$sandboxOf's" else "the client's"} latest " +
-        "configuration, drafts included. A file removed as a draft is not listed, though $owner's people are served it until that is published."
+        "configuration, drafts included -- and a file removed as a draft, which $owner's people are served until that is " +
+        "published, marked so and offered to be put back."
     return when {
         staticHere -> "$what This client's configuration comes from source code on this node, so its files are listed here and not changed."
         sandboxOf != null -> "The files of $sandboxOf's sandbox. $listed A change made here is a draft of $sandboxOf's, and goes live for its people once that is published."
@@ -222,6 +229,7 @@ fun fileRefCountText(refs: List<FileRefView>, takes: FileRefTakes?): String? {
 
 /** The short marks beside a ref's id: what is unusual about it. */
 fun fileRefTags(ref: FileRefView): List<String> = listOfNotNull(
+    "Removed in draft".takeIf { ref.removedInDraft },
     "Draft".takeIf { !ref.live },
     "Missing".takeIf { ref.missing },
     "Shipped".takeIf { !ref.stored },
@@ -270,8 +278,23 @@ fun fileRefWhereText(ref: FileRefView): String {
 fun fileRefShippedHint(ref: FileRefView): String? =
     if (ref.stored) null else "Shipped with the client, so it is not removed or reworded here: uploading a file over it replaces it, and removing that upload shows this one again."
 
-/** Whether a ref can be removed, or its description reworded: only one a stored configuration holds. */
-fun fileRefRemovable(ref: FileRefView): Boolean = ref.stored
+/**
+ * Whether a ref can be removed, or its description reworded: only one a stored configuration holds, and not one a
+ * draft has already removed -- there is no entry in the draft to change, only one to put back ([fileRefRestorable]).
+ */
+fun fileRefRemovable(ref: FileRefView): Boolean = ref.stored && !ref.removedInDraft
+
+/** Whether a ref is offered only to be put back: one a draft removed, which is all that can be done with it (issue #1188). */
+fun fileRefRestorable(ref: FileRefView): Boolean = ref.removedInDraft
+
+/**
+ * What a row removed in a draft says of itself, under its facts: that its people are served it until a publish, and
+ * what putting it back does. Null for any other row.
+ */
+fun fileRefRemovedInDraftText(ref: FileRefView): String? =
+    if (!ref.removedInDraft) null
+    else "A draft removed this file: the sandbox no longer shows it, and the client's people are served it until the " +
+        "configuration is published. Putting it back restores it in the draft as it is published."
 
 /**
  * The address a ref is served at, given how a versioned name becomes one ([addressOf]) -- or null for a ref with
@@ -349,7 +372,12 @@ fun fileRefInsertChoices(refs: List<FileRefView>): List<Pair<String, String>> = 
  */
 fun fileRefPreviewArgs(clientId: String, ref: FileRefView): Map<String, Any?>? {
     val hash = ref.hash?.takeIf { !ref.missing } ?: return null
-    return mapOf(FREF.client to clientId, CCT.refId to ref.refId, CCT.hash to hash)
+    // A ref a draft removed is not in what the sandbox shows: its file is the one the client's people are served.
+    return if (ref.removedInDraft) {
+        mapOf(FREF.client to clientId, CCT.refId to ref.refId, CCT.hash to hash, FREF.served to true)
+    } else {
+        mapOf(FREF.client to clientId, CCT.refId to ref.refId, CCT.hash to hash)
+    }
 }
 
 /**
@@ -403,6 +431,10 @@ fun fileRefDescribedNote(change: FileRefChange): String =
  */
 fun fileRefRemovedNote(change: FileRefChange): String {
     val left = change.ref
+    // From a draft, a ref the client's people are served stays listed, marked, until the configuration is published.
+    if (left?.removedInDraft == true) {
+        return "Removed '${change.refId}' from the draft. The client's people are served it until the configuration is published; until then it can be put back."
+    }
     val done = when {
         left == null -> "Removed '${change.refId}'."
         left.stored -> "Removed one entry of '${change.refId}'; another configuration, ${left.configName ?: "stored"}, still holds one."
@@ -410,6 +442,10 @@ fun fileRefRemovedNote(change: FileRefChange): String {
     }
     return if (change.mode == EDM.draft) "$done A draft: the sandbox shows the change, and the client's people keep what they have until it is published." else done
 }
+
+/** What a section says once a ref is put back (issue #1188): in the draft, as it is published. */
+fun fileRefRestoredNote(change: FileRefChange): String =
+    savedNote("Put '${change.refId}' back, in ${change.configName}, as the client's people are served it.", change.mode)
 
 /**
  * [refs] as a change left them: the changed ref in its place, a new one at the end, a removed one gone -- drawn
@@ -428,6 +464,7 @@ object FACT {
     const val local = "local"
     const val describe = "describe"
     const val remove = "remove"
+    const val restore = "restore"
 
     /**
      * What stands in for a ref's id while one is being added. No ref can have it for an id -- an id holds no

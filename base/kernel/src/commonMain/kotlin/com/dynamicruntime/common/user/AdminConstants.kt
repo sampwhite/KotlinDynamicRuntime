@@ -203,6 +203,12 @@ object UADEP {
     /** Rewords, or clears, the description of one of a client's file refs (issue #1176), leaving its file as it is. */
     const val clientFilesDescribe = "$clientFiles/describe"
 
+    /**
+     * Puts back, in a client's draft, a file ref a draft removed (issue #1188): the entry its people are served,
+     * exactly as it is published.
+     */
+    const val clientFilesRestore = "$clientFiles/restore"
+
     /** The file of one of a **named** client's file refs, as the listing shows it -- a draft included. */
     const val clientFilesDownload = "$clientFiles/download"
 

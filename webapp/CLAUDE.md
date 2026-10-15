@@ -133,6 +133,12 @@ the same way, under their own marker:
     save on the page does (see "How a save takes effect" under "The Clients page"). A change the page called a
     draft that would be live is a 409, and not made -- so a removal confirmed as "from the draft" cannot take a
     file from the client's people because the sandbox went in between. Send it with any new change you add here.
+  - **A ref a draft removed is still listed** (issue #1188): the listing appends, after the sandbox's refs, those
+    the client's own people are served that the latest configuration no longer holds, each `removedInDraft`, and a
+    removal made as a draft answers that row rather than none. The section marks it "Removed in draft", previews it
+    from what is served (the download's and meta read's `served: true`, since the sandbox has no such ref), and
+    offers only **Put back**: `POST …/files/restore`, which copies the published entry back into the draft as it is
+    -- nothing uploaded or named again. Published, the row goes.
   - **Only a `stored` ref has Remove and Reword.** One the client was shipped with can be uploaded over and
     cannot be removed or reworded (`…/files/remove` and `…/files/describe` answer 400: nothing stored holds it).
   - **A file is picked with `FilePickButton`** (`FilePickButton.kt`), which the web assets' upload uses too:

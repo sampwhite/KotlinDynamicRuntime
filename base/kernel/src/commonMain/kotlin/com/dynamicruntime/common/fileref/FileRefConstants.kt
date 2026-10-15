@@ -96,6 +96,20 @@ object FREF {
     /** Whether the client's own people are served this ref as it is listed -- false for a draft only its sandbox shows. */
     const val live = "live"
 
+    /**
+     * In the listing of a client with a sandbox (issue #1188): a ref the client's own people are served that the
+     * latest configuration -- what the sandbox shows -- no longer holds. A draft removed it, and a publish will take
+     * it away; until then it is served, so it is listed, marked so. Absent on every other row.
+     */
+    const val removedInDraft = "removedInDraft"
+
+    /**
+     * An input of the download and its meta read (issue #1188): the file the client's own people are served under
+     * the ref's id, rather than the one the listing shows -- how a ref removed in a draft is previewed, since what
+     * the sandbox shows has none.
+     */
+    const val served = "served"
+
     /** Whether a ref's file is not there to be served: not in the file store, or for a local file not on the disk as an image. */
     const val missing = "missing"
 

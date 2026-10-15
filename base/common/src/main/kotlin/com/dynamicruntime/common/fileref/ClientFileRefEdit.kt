@@ -8,6 +8,8 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientStoredEdit
 import com.dynamicruntime.common.gedra.GedraConfigRow
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.storedConfigCheckMode
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.startup.BootCheckMode
@@ -306,6 +308,52 @@ object ClientFileRefEdit {
         if (entry == before) return Result(target.client, refId, holder.configId.baseId, target.mode, target.readsAs)
         val written = patchEntry(svc, bound, holder, refId, entry)
         return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, before, restoring = true) })
+    }
+
+    /**
+     * Puts back, in [client]'s draft, the ref [refId] a draft removed (issue #1188): the entry the client's own people
+     * are served, exactly as it is published -- what it names, its description, the fields this release does not
+     * read -- patched into the latest revision of the configuration that holds it. A draft, always: a client with no
+     * sandbox runs the configuration it is shown, so there is nothing of its to put back.
+     *
+     * Refused, before anything is written, for a client with no sandbox, a ref its people are not served, one the
+     * draft still holds (an upload over it is a change of its own, made the ordinary way), one the client was shipped
+     * with or inherits from a template, and one whose configuration the latest revision no longer has. The entry is
+     * written as the server's own ([patchEntry]'s `restoring`): it names nothing the client is not already served, so
+     * a client's own administrator puts back an operator's local ref as the undo of a removal would.
+     */
+    fun restore(cxt: KdrCxt, client: String, refId: String, expected: String? = null): Result {
+        FREF.refIdProblem(refId)?.let { throw KdrException.mkInput(it) }
+        val target = ClientStoredEdit.target(cxt, client, editName, expected)
+        val owner = target.client
+        if (!target.draft) {
+            throw KdrException.mkInput(
+                "Client '$owner' has no sandbox, so what it is shown is what it runs: there is no removed file ref to put back.",
+            )
+        }
+        val refs = FileRefService.get(cxt)
+        val served = refs.forClient(owner).refs[refId]
+            ?: throw KdrException.mkInput("Client '$owner''s people are served no file ref '$refId', so there is none to put back.")
+        if (refId in refs.forClient(target.readsAs).refs) {
+            throw KdrException.mkInput("The draft of client '$owner' still holds the file ref '$refId'; there is nothing to put back.")
+        }
+        val configName = served.def.configName
+        if (!served.def.stored || served.inheritedFrom != null || configName == null) {
+            throw KdrException.mkInput(
+                "The file ref '$refId' of client '$owner' is not held in its stored configuration, so a draft could not have removed it.",
+            )
+        }
+        val bound = target.bound
+        val svc = GedraConfigService.get(bound)
+        val holder = svc.readLatest(bound, GedraId.of(GedraConfigType.configDoc, owner, configName))
+            ?: throw KdrException.mkInput(
+                "The configuration '$configName' that holds the file ref '$refId' is gone from the draft of client '$owner'; " +
+                    "putting the ref back would need it made again.",
+            )
+        // The refusals every change has: a static client, and a client served as many refs as it may have.
+        landing(cxt, target, refId, "restoring a file ref")
+        val written = patchEntry(svc, bound, holder, refId, served.def.toEntry(), restoring = true)
+        return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, null) })
     }
 
     /** The stored config of [client]'s that holds the ref [refId], or null when none does. */

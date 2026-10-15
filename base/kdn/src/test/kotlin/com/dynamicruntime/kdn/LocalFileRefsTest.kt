@@ -671,6 +671,27 @@ class LocalFileRefsTest : StringSpec({
         artRefs() shouldBe listOf(before)
     }
 
+    // Issue #1188: the client's own administrator may take an operator's local ref out of a draft, and may put it back
+    // -- the entry as it is served, which names nothing new, written as the server's own.
+    "an operator's local ref removed in a draft is put back by the client's own administrator" {
+        val client = "lfrrestore"
+        defineClient(client)
+        val local = localEntry("pic", "logo.png")
+        val art = svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(local) })
+        svc.publish(writerOf(client), art.configId)
+        GedraConfigReload.reloadClient(cxt, client)
+        val admin = adminOf(client)
+        posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+
+        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "pic"))[FREF.ref].toJsonMapOrEmpty()[FREF.removedInDraft] shouldBe true
+        storedRefs(client, "art").shouldBeEmpty()
+        listed(admin).getValue("pic")[CCT.root] shouldBe LocalFileRefComponent.root
+
+        posted(admin, UADEP.clientFilesRestore, mapOf(CCT.refId to "pic"))[FREF.mode] shouldBe EDM.draft
+        storedRefs(client, "art") shouldBe listOf(local)
+        listed(admin).getValue("pic").containsKey(FREF.removedInDraft) shouldBe false
+    }
+
     // --- Issue #1164: a root the deployment opens to clients -----------------------------------------------------------
 
     /** Names a local file as [user]'s ref; the whole envelope, so a refusal can be read from it as a success can. */
