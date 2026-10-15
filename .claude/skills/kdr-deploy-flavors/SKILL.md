@@ -27,6 +27,7 @@ class ReferenceComponent : ComponentDefinition {
         flavor("reference") {
             set("confDemoDocLinks", true)        // an instance-config key
             default(sampleLoadEnvVar, "true")    // an EXISTING environment variable
+            omnibusOverlay("kdrReference")       // md-fragments/kdrReference_omnibus.md
         },
     )
 }
@@ -38,6 +39,20 @@ class ReferenceComponent : ComponentDefinition {
   through one today. Name it by its `EnvVarDef`, as every read does.
 - Set an existing setting through its environment variable, never through a config key that falls back to it:
   the key would beat a variable the deployment set on purpose.
+- **`omnibusOverlay(id)`** overlays the fragment files an omnibus file names (issue #1219), and
+  **`fragments { ... }`** any other overlay layers (a `fragmentInline`, say). Copy is what a flavor changes most.
+  The layers are made only for an **active** flavor, so an inactive flavor's files are never read, and only for a
+  component that loaded. Each must be an overlay for every client.
+
+## Where a flavor's copy ranks
+
+A flavor's fragment overlays rank **above the components' own overlays and below every client layer** (inherited,
+source, and stored): a deployment varies what components ship, and a client that reworded its copy keeps its
+wording. Among flavors, the later in `KDR_DEPLOY_FLAVORS` wins; within one, component order. The rule is
+`overlayPrecedence` plus each layer's `flavorRank`, not the order layers happened to register in.
+
+`EachFlavorBootsTest` (sample module) boots once with each declared flavor on its own, so a flavor overlay naming
+a key its base dropped fails the build. It enumerates the declarations: a new flavor is covered with no change.
 
 ## When and in what order
 

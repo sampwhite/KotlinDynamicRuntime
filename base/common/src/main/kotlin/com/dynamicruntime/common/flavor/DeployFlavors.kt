@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.flavor
 
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EVSRC
 import com.dynamicruntime.common.context.EnvVarDef
@@ -71,8 +72,9 @@ object FLV {
 class FlavorDef(val name: String, val description: String)
 
 /**
- * What one component contributes to one flavor (issue #1218): instance-config keys to set, and existing environment
- * variables to default. Built with [flavor], returned from `ComponentDefinition.flavors`.
+ * What one component contributes to one flavor (issue #1218): instance-config keys to set, existing environment
+ * variables to default, and fragment overlays (issue #1219). Built with [flavor], returned from
+ * `ComponentDefinition.flavors`.
  */
 class FlavorContribution(
     val flavor: String,
@@ -80,12 +82,18 @@ class FlavorContribution(
     val configValues: Map<String, Any>,
     /** Defaults for declared environment variables, each applying only where nothing else sets the variable. */
     val envVarDefaults: Map<EnvVarDef, String>,
+    /**
+     * Each yields fragment overlays (issue #1219). Functions, so a flavor that is not active never reads its files:
+     * an omnibus file is read when its layers are made.
+     */
+    val fragmentLayers: List<() -> List<FragmentSource>> = emptyList(),
 )
 
 /** The DSL behind [flavor]. */
 class FlavorContributionBuilder(private val flavor: String) {
     private val configValues = LinkedHashMap<String, Any>()
     private val envVarDefaults = LinkedHashMap<EnvVarDef, String>()
+    private val fragmentLayers = mutableListOf<() -> List<FragmentSource>>()
 
     /**
      * Sets the instance-config [key] to [value] while the flavor is active, unless the deployment's own
@@ -107,7 +115,25 @@ class FlavorContributionBuilder(private val flavor: String) {
         envVarDefaults[def] = value
     }
 
-    fun build(): FlavorContribution = FlavorContribution(flavor, configValues.toMap(), envVarDefaults.toMap())
+    /**
+     * Overlays the fragment files the omnibus file `md-fragments/<id>_omnibus.md` names, while the flavor is active
+     * (issue #1219) -- see `omnibusOverlay`. Read only when the flavor is active.
+     */
+    fun omnibusOverlay(id: String) {
+        fragmentLayers.add { com.dynamicruntime.common.content.omnibusOverlay(id) }
+    }
+
+    /**
+     * Fragment overlays [layers] makes, while the flavor is active (issue #1219) -- for a layer an omnibus file does
+     * not suit, such as `fragmentInline`. Each must be an overlay for every client; called only when the flavor is
+     * active.
+     */
+    fun fragments(layers: () -> List<FragmentSource>) {
+        fragmentLayers.add(layers)
+    }
+
+    fun build(): FlavorContribution =
+        FlavorContribution(flavor, configValues.toMap(), envVarDefaults.toMap(), fragmentLayers.toList())
 }
 
 /** A component's contribution to the flavor [name] (issue #1218). */
@@ -140,7 +166,32 @@ class DeployFlavors(
     val active: List<String>,
     /** Every value the active flavors set, in the order they were considered. */
     val values: List<FlavorValue>,
+    /** The active flavors' contributions, by contributing component, in flavor order and then component order. */
+    private val activeContributions: List<Pair<String, FlavorContribution>> = emptyList(),
 ) {
+    /**
+     * The fragment overlays of the active flavors (issue #1219), from the components in [loaded] alone: a component
+     * that did not load ships none of the files a layer of its would overlay. Each carries its flavor's rank, so the
+     * merge orders them -- above the components' own layers, below every client's, and a later flavor over an
+     * earlier one. Made here, after the load decisions, so a flavor that is not active reads nothing.
+     *
+     * A flavor's layer must be an overlay for every client: a base would add a file only that flavor declares, and
+     * a client's layer is the client's configuration to make.
+     */
+    fun fragmentLayers(loaded: Set<String>): List<FragmentSource> =
+        activeContributions.filter { it.first in loaded }.flatMap { (component, c) ->
+            val rank = active.indexOf(c.flavor)
+            c.fragmentLayers.flatMap { it() }.map { layer ->
+                if (!layer.isOverlay || layer.client != null) {
+                    throw KdrException(
+                        "Refusing to start: the deployment flavor '${c.flavor}' (from '$component') contributes " +
+                            "'${layer.origin}' for '${layer.fileId}', which is not an overlay for every client.",
+                    )
+                }
+                layer.refiled(flavorRank = rank)
+            }
+        }
+
     /** The operator view's result ([defineOperatorEndpoint]). */
     fun toReport(): Map<String, Any?> = mapOf(
         FLV.active to active,
@@ -245,7 +296,8 @@ class DeployFlavors(
 
             val active = parseActive(config.getEnvVar(FLV.deployFlavorsEnvVar), declared.keys)
             val values = applyValues(config, active, contributions)
-            val result = DeployFlavors(declared.values.toList(), active, values)
+            val activeContributions = active.flatMap { name -> contributions.filter { it.second.flavor == name } }
+            val result = DeployFlavors(declared.values.toList(), active, values, activeContributions)
             config.put(FLV.registryKey, result)
             LogStartup.info(
                 cxt,

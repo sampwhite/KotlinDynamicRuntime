@@ -23,6 +23,8 @@ private class ReferenceComponent : ComponentDefinition {
         flavor("reference") {
             set("confDemoDocLinks", true)
             default(sampleLoadEnvVar, "true")
+            // The skill names `kdrReference`; this reads the omnibus file #1217's tests ship instead.
+            omnibusOverlay("omnibusTest1217")
         },
     )
 }
@@ -33,8 +35,10 @@ class FlavorSkillExamplesTest : StringSpec({
     "the skill's component declares a flavor and sets its values when it is active" {
         val config = KdrInstanceConfig("flavorSkill", ENV.unit, ENV.liveSource)
         config.put(FLV.deployFlavorsEnvVar.name, "reference")
-        DeployFlavors.resolve(KdrCxt.mkSimpleCxt("flavorSkill", config), listOf(ReferenceComponent()))
+        val result = DeployFlavors.resolve(KdrCxt.mkSimpleCxt("flavorSkill", config), listOf(ReferenceComponent()))
         config.get("confDemoDocLinks") shouldBe true
         config.getEnvVar(sampleLoadEnvVar) shouldBe "true"
+        result.fragmentLayers(setOf("ReferenceComponent")).map { it.fileId to it.flavorRank } shouldBe
+            listOf("home" to 0, "profile" to 0, "nobody" to 0)
     }
 })

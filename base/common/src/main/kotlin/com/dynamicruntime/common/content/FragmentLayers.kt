@@ -61,8 +61,11 @@ class EffectiveFragments(
  *
  * 1. **Base** layers, in declaration order.
  * 2. **Component** overlays (`client == null`), in declaration order.
- * 3. **This client's** overlays from **source** configuration, in declaration order.
- * 4. **This client's** overlays from **stored** configuration, in declaration order (issue #916).
+ * 3. **Deployment flavor** overlays (issue #1219), by the flavor's position in `KDR_DEPLOY_FLAVORS` -- a later
+ *    flavor wins -- and within one flavor in component order.
+ * 4. What **this client inherited** from the template it extends (issue #945).
+ * 5. **This client's** overlays from **source** configuration, in declaration order.
+ * 6. **This client's** overlays from **stored** configuration, in declaration order (issue #916).
  *
  * Later wins, so a client's overlay is consulted before a component's and both before the base -- "consulted
  * first" and "applied last" being the same statement. The client-after-component half is the one that had to
@@ -84,10 +87,15 @@ class EffectiveFragments(
 fun mergeFragmentLayers(fileId: String, sources: List<FragmentSource>, client: String?): EffectiveFragments {
     val applicable = sources.filter { it.fileId == fileId && (it.client == null || it.client == client) }
     val bases = applicable.filter { !it.isOverlay }
-    // A component's overlays before this client's, what the client inherited from its template (issue #945) before
-    // its own, and its own source ones before its stored ones, which is the whole of the precedence decision above.
-    // A stable sort, so declaration order settles the rest.
-    val overlays = applicable.filter { it.isOverlay }.sortedBy { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null) }
+    // A component's overlays before a flavor's, those before this client's, what the client inherited from its
+    // template (issue #945) before its own, and its own source ones before its stored ones, which is the whole of the
+    // precedence decision above. Flavors among themselves by rank. A stable sort, so declaration order settles the rest.
+    val overlays = applicable.filter { it.isOverlay }.sortedWith(
+        compareBy(
+            { overlayPrecedence(it.client, it.stored, it.inheritedFrom != null, flavor = it.flavorRank != null) },
+            { it.flavorRank ?: 0 },
+        ),
+    )
 
     val merged = LinkedHashMap<String, LinkedHashMap<String, String>>()
     var found = false

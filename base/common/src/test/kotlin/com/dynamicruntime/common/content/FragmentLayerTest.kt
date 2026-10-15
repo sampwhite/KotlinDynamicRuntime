@@ -284,4 +284,35 @@ class FragmentLayerTest : StringSpec({
         merged.audience shouldBe FragmentAudience.frontend
         merged.audienceConflict shouldBe false
     }
+
+    // --- deployment flavors (issue #1219) ------------------------------------------------------------------
+
+    fun flavorLayer(rank: Int, title: String) =
+        layer(isOverlay = true, origin = "flavor$rank", content = mapOf("welcome" to mapOf("title" to title)))
+            .refiled(flavorRank = rank)
+
+    "a later flavor's overlay wins over an earlier one's, whatever order they were declared in" {
+        mergeFragmentLayers("home", listOf(base, flavorLayer(1, "Second"), flavorLayer(0, "First")), client = null)
+            .content.getValue("welcome")["title"] shouldBe "Second"
+        mergeFragmentLayers("home", listOf(base, flavorLayer(0, "First"), flavorLayer(1, "Second")), client = null)
+            .content.getValue("welcome")["title"] shouldBe "Second"
+    }
+
+    "a flavor's overlay ranks above a component's and below every client's" {
+        val component = layer(isOverlay = true, content = mapOf("welcome" to mapOf("title" to "Component", "intro" to "Component intro")))
+        val stored = layer(isOverlay = true, client = "acme", content = mapOf("welcome" to mapOf("title" to "Acme")))
+            .refiled(stored = true)
+        // Declared flavor-first, so declaration order alone would let the component's overlay win.
+        val merged = mergeFragmentLayers("home", listOf(base, flavorLayer(0, "Flavor"), component, stored), client = "acme")
+        merged.content.getValue("welcome")["title"] shouldBe "Acme"
+        merged.content.getValue("welcome")["intro"] shouldBe "Component intro"
+        mergeFragmentLayers("home", listOf(base, flavorLayer(0, "Flavor"), component), client = null)
+            .content.getValue("welcome")["title"] shouldBe "Flavor"
+        overlayPrecedence(null, stored = false, flavor = true) shouldBe 1
+        listOf(
+            overlayPrecedence(null, stored = false),
+            overlayPrecedence(null, stored = false, flavor = true),
+            overlayPrecedence("acme", stored = false, inherited = true),
+        ) shouldBe listOf(0, 1, 2)
+    }
 })

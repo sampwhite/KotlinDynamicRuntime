@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.flavor
 
+import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EVSRC
@@ -21,7 +22,7 @@ private val flavorTestVar = EnvVarDef(
     description = "A variable DeployFlavorsTest defaults through a flavor (issue #1218).",
 )
 
-/** A component declaring [defs] and contributing [contributions], under [name]. */
+/** A component declaring [defs] and contributing [contributions], under [providerName]. */
 private class FlavorComponent(
     override val providerName: String,
     private val defs: List<FlavorDef> = emptyList(),
@@ -136,5 +137,43 @@ class DeployFlavorsTest : StringSpec({
         val report = resolve(mapOf(flavors to "alpha,beta")).second.toReport()
         report[FLV.active] shouldBe listOf("alpha", "beta")
         (report[FLV.values] as List<*>).size shouldBe 4
+    }
+
+    // --- fragment layers (issue #1219) ---------------------------------------------------------------------
+
+    var gammaReads = 0
+    fun overlay(fileId: String, title: String) =
+        FragmentSource(fileId, isOverlay = true, client = null, origin = "test") { mapOf("w" to mapOf("t" to title)) }
+    val layered = FlavorComponent(
+        "layered",
+        defs = listOf(FlavorDef("gamma", "Layers only."), FlavorDef("delta", "Layers only.")),
+        contributions = listOf(
+            flavor("gamma") { fragments { gammaReads++; listOf(overlay("home", "gamma")) } },
+            flavor("delta") { fragments { listOf(overlay("home", "delta")) } },
+        ),
+    )
+
+    "an active flavor's layers carry its rank, and an inactive one's are never made" {
+        gammaReads = 0
+        val (_, result) = resolve(mapOf(flavors to "delta"), listOf(owner, layered))
+        result.fragmentLayers(setOf("layered")).map { it.origin to it.flavorRank } shouldBe listOf("test" to 0)
+        gammaReads shouldBe 0
+        val (_, both) = resolve(mapOf(flavors to "delta,gamma"), listOf(owner, layered))
+        both.fragmentLayers(setOf("layered")).map { it.flavorRank } shouldBe listOf(0, 1)
+    }
+
+    "a component that did not load contributes no layers" {
+        val (_, result) = resolve(mapOf(flavors to "delta"), listOf(owner, layered))
+        result.fragmentLayers(setOf("owner")).shouldBeEmpty()
+    }
+
+    "a flavor's layer must be an overlay for every client" {
+        val base = FlavorComponent(
+            "base", contributions = listOf(flavor("alpha") {
+                fragments { listOf(FragmentSource("home", isOverlay = false, client = null, origin = "aBase") { emptyMap() }) }
+            }),
+        )
+        val (_, result) = resolve(mapOf(flavors to "alpha"), listOf(owner, base))
+        shouldThrow<KdrException> { result.fragmentLayers(setOf("base")) }.message shouldContain "not an overlay for every client"
     }
 })
