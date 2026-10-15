@@ -25,6 +25,7 @@ import com.dynamicruntime.common.user.PublicSignIn
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.node.NodeUtil
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -82,6 +83,18 @@ class PublicTestDeploymentTest : StringSpec({
         refusal("ptdAssumes", mapOf(ACFG.assumeEnvAuth to true)) shouldContain ENVA.assumeEnvAuthEnvVar.name
         refusal("ptdBadSignIn", mapOf(PTD.publicSignInEnvVar.name to "everyone")) shouldContain "everyone"
         refusal("ptdNotTest", mapOf(ACFG.isTestInstance to false)) shouldContain "not a test instance"
+    }
+
+    "it may assume env auth only when it listens on loopback alone, and then only for a request no proxy forwarded" {
+        val assume = mapOf(ACFG.assumeEnvAuth to true)
+        refusal("ptdAssumesEverywhere", assume + (NodeUtil.bindAddress.name to "0.0.0.0")) shouldContain NodeUtil.bindAddress.name
+        refusal("ptdAssumesByName", assume + (NodeUtil.bindAddress.name to "example.org")) shouldContain NodeUtil.bindAddress.name
+        val cxt = boot("ptdAssumesLoopback", assume + (NodeUtil.bindAddress.name to "127.0.0.1"))
+        // A request from the node itself carries no forwarded-for address, and is env-authed (issue #1245)...
+        features(TestHttpClient(cxt.instanceConfig))[APP.hasTestAccess] shouldBe true
+        // ...while one that came through the proxy, which always says whom it came from, is not.
+        val proxied = TestHttpClient(cxt.instanceConfig).also { it.setHeader("X-Forwarded-For", "203.0.113.7") }
+        features(proxied)[APP.hasTestAccess] shouldBe false
     }
 
     "env auth from an administrator's login needs a public deployment, no edge, and an admin domain of its own" {

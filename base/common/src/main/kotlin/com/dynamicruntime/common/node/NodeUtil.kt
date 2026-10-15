@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
+import java.net.InetAddress
 
 /**
  * Node identity helpers. Ported from dn's `DnNodeUtil`. The environment variables below use the project's
@@ -26,6 +27,14 @@ object NodeUtil {
             "collide, quietly.",
     )
 
+    val bindAddress = EnvVarDef(
+        "KDR_BIND_ADDRESS", group = ENVGRP.node, defaultDoc = "every interface",
+        description = "The address the HTTP server listens on (issue #1245). Unset, it listens on every interface. " +
+            "`127.0.0.1` makes it reachable from this machine alone, whatever a firewall says -- what a node behind " +
+            "a proxy on the same machine (Caddy, on a lightweight node) wants, and what lets a public test " +
+            "deployment assume env auth for a request that did not come through the proxy.",
+    )
+
     val nodeIpAddress = EnvVarDef(
         "KDR_NODE_IP_ADDRESS", group = ENVGRP.node, defaultDoc = "`127.0.0.1`",
         description = "Overrides the node's IP identity, used in the node label.",
@@ -35,6 +44,23 @@ object NodeUtil {
         "KDR_HOSTNAME", group = ENVGRP.node, defaultDoc = "the OS `HOSTNAME`, else `localhost`",
         description = "Overrides the node's host name, used in the node label; falls back to the OS `HOSTNAME`.",
     )
+
+    /** The address the HTTP server listens on ([bindAddress]), or null for every interface. */
+    fun bindAddressOf(config: KdrInstanceConfig): String? = config.getEnvVar(bindAddress)?.trim()?.ifEmpty { null }
+
+    /**
+     * Whether the HTTP server listens on a loopback address alone (issue #1245), so that only this machine can reach
+     * it directly. Judged on the configured address without a name lookup: an IP literal is read as written, and
+     * `localhost` counts. Any other name is not trusted to be loopback, since what it resolves to can change.
+     */
+    fun bindsLoopbackOnly(config: KdrInstanceConfig): Boolean {
+        val address = bindAddressOf(config) ?: return false
+        if (address.equals("localhost", ignoreCase = true)) return true
+        val literal = address.removePrefix("[").removeSuffix("]")
+        val looksLiteral = literal.all { it.isDigit() || it == '.' } || literal.contains(':')
+        if (!looksLiteral) return false
+        return runCatching { InetAddress.getByName(literal).isLoopbackAddress }.getOrDefault(false)
+    }
 
     /**
      * Determines this node's identity from the environment, falling back to a localhost identity. The HTTP
