@@ -30,6 +30,14 @@ class MarkdownHooks(
      * [safeUrl], and [resolveUrl] is never asked about a ref: it rewrites paths, and a ref is no path.
      */
     val refAddress: ((refId: String) -> String?)? = null,
+    /**
+     * Decorates a fenced code block for this surface (issue #1233): given the fence's language and the rendered
+     * `<pre><code>…</code></pre>`, returns the HTML to emit in its place, or null to emit the block as it is. The
+     * webapp wraps a JSON block with a copy button; a mail or a page on GitHub passes nothing, since a control
+     * without a script to serve it is dead weight. As with [decorateSpan], the hook receives rendered, escaped HTML
+     * and must return HTML, so the escaping rule holds through it.
+     */
+    val decorateCodeBlock: ((language: String, preHtml: String) -> String?)? = null,
 )
 
 /** The file ref an image's [src] names -- `ref:logo` names `logo` -- or null when it names none ([MDR.refScheme]). */
@@ -120,7 +128,8 @@ class HtmlSink(val hooks: MarkdownHooks) : MarkdownSink {
         val cls = if (language.isEmpty()) "" else " class=\"language-" + escapeHtml(language) + "\""
         // A JSON block is highlighted in the HTML itself (issue #1227); one the lexer cannot read is left plain.
         val inner = (if (language == jsonLanguage) highlightJson(body) else null) ?: escapeHtml(body)
-        return "<pre><code$cls>" + inner + "</code></pre>\n"
+        val pre = "<pre><code$cls>" + inner + "</code></pre>"
+        return (hooks.decorateCodeBlock?.invoke(language, pre) ?: pre) + "\n"
     }
     override fun rule(): String = "<hr/>\n"
     override fun table(header: List<String>, aligns: List<String?>, rows: List<List<String>>): String {

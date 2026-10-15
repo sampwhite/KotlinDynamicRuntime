@@ -607,6 +607,31 @@ body {
 .md-tok-number { color: #fcd34d; }
 .md-tok-literal { color: #c4b5fd; }
 .md-tok-punct { color: var(--text-muted); }
+/* A copyable block (issue #1233): the button sits in the block's corner, shown on hover or focus, and reads
+   "Copied" for a moment after a click. */
+.md-codeblock { position: relative; }
+.md-codeblock .md-copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    font-size: .75rem;
+    line-height: 1;
+    color: var(--text-muted);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s;
+}
+.md-codeblock:hover .md-copy, .md-codeblock .md-copy:focus-visible, .md-codeblock .md-copy.md-copied { opacity: 1; }
+.md-codeblock .md-copy:hover { color: var(--text); border-color: var(--accent-bright); }
+.md-codeblock .md-copy.md-copied { color: var(--success); }
+.md-codeblock .md-copy svg { width: 14px; height: 14px; }
 .markdown a, .markdown-inline a { color: var(--accent-bright); }
 .markdown blockquote {
     margin: 12px 0;
