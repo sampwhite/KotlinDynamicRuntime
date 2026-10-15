@@ -6,6 +6,7 @@ import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.content.lastDocOrder
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.content.fragmentRefs
@@ -458,7 +459,8 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
- * component. Other components declare their own (`docs`, issue #1136).
+ * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the code guide,
+ * and the license; the design documents are served but unlisted, reached from the README's links (issue #1238).
  */
 fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.readme, "Read me", "README.md",
@@ -466,21 +468,21 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.codeGuide, "Code guide", "code-guide.md",
         "How code here is written, including where it deliberately departs from Kotlin norms."),
     MarkdownDocDef(HDOC.clientDefinition, "Client definition", "client-definition.md",
-        "How a client is described, what it owns, and what a deployment does with one."),
+        "How a client is described, what it owns, and what a deployment does with one.", listed = false),
     MarkdownDocDef(HDOC.deferredWork, "Deferred work", "deferred-work.md",
-        "What has deliberately not been done yet, each item under the condition that should reopen it."),
+        "What has deliberately not been done yet, each item under the condition that should reopen it.", listed = false),
     MarkdownDocDef(HDOC.gedraConfigAndData, "Gedra config and data", "gedra-config-and-data.md",
-        "How gedra definitions and stored data are separated, identified, and kept apart."),
+        "How gedra definitions and stored data are separated, identified, and kept apart.", listed = false),
     MarkdownDocDef(HDOC.gedraEntry, "Gedra entry", "gedra-entry.md",
-        "The design of the universal stored entity and the schema constructs it needs."),
+        "The design of the universal stored entity and the schema constructs it needs.", listed = false),
     MarkdownDocDef(HDOC.gedraPatch, "Gedra patch", "gedra-patch.md",
-        "How a stored gedra is changed: why a patch, what the input looks like, and the endpoints around it."),
+        "How a stored gedra is changed: why a patch, what the input looks like, and the endpoints around it.", listed = false),
     MarkdownDocDef(HDOC.uiBlock, "UI block", "ui-block.md",
-        "The UiBlock: declared presentation structure, contributed by components and varied per client."),
+        "The UiBlock: declared presentation structure, contributed by components and varied per client.", listed = false),
     MarkdownDocDef(HDOC.reporting, "Reporting", "reporting.md",
-        "Named reports over a client's forms: paths, combines, the load-time checks, and the cursor-paged run."),
+        "Named reports over a client's forms: paths, combines, the load-time checks, and the cursor-paged run.", listed = false),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
-        "The MIT license the runtime is released under."),
+        "The MIT license the runtime is released under.", order = lastDocOrder),
 )
 
 /**

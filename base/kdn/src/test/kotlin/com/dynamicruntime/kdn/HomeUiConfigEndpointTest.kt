@@ -3,6 +3,8 @@ package com.dynamicruntime.kdn
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.content.checkedMarkdownDocs
+import io.kotest.matchers.collections.shouldContainExactly
+import com.dynamicruntime.common.content.lastDocOrder
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.startup.ComponentDefinition
@@ -21,6 +23,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotBeIn
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -94,8 +97,13 @@ class HomeUiConfigEndpointTest : StringSpec({
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // Every core document is listed; a suite's inner pages -- the conference demo's, say -- are not (issue #1136).
-        links.filter { it[HFLD.id] in core }.forEach { it[HFLD.listed] shouldBe true }
+        // The listing offers the README, the code guide, and the license (issue #1238); the design documents are served
+        // but unlisted, as a suite's inner pages -- the conference demo's, say -- are (issue #1136).
+        val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
+        listed shouldContainAll listOf(HDOC.readme, HDOC.codeGuide, HDOC.license)
+        // The license reads last, after the documents components loaded after `common` contribute (issue #1238).
+        listed.last() shouldBe HDOC.license
+        core.filterNot { it in listOf(HDOC.readme, HDOC.codeGuide, HDOC.license) }.forEach { it shouldNotBeIn listed }
     }
 
     // Issue #1136: a component declares its own documents, and one it marks unlisted is still sent -- so a link to it
@@ -122,6 +130,9 @@ class HomeUiConfigEndpointTest : StringSpec({
         fun doc(id: String, path: String) = MarkdownDocDef(id, id, path, "d")
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("a", "a.md"), doc("a", "b.md"))) }.message shouldContain "'a'"
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("a", "x.md"), doc("b", "x.md"))) }.message shouldContain "'x.md'"
+        // Listing order (issue #1238): by order, and within one order as declared.
+        val last = MarkdownDocDef("z", "z", "z.md", "d", order = lastDocOrder)
+        checkedMarkdownDocs(listOf(last, doc("a", "a.md"), doc("b", "b.md"))).map { it.docId } shouldContainExactly listOf("a", "b", "z")
         shouldThrow<KdrException> { checkedMarkdownDocs(listOf(doc("demo/x", "x.md"))) }.message shouldContain "'demo/x'"
     }
 

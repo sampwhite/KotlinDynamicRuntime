@@ -1,4 +1,4 @@
-# The Gedra Patch
+# Gedra patch
 
 How a stored gedra is **changed** — why it has to be a patch rather than an update, what the input looks like,
 and the family of endpoints around it. Written before any of it existed, as something to design against and

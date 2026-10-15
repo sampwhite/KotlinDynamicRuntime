@@ -1,4 +1,4 @@
-# Gedra Config and Data
+# Gedra config and data
 
 How definitions and stored data are separated, identified, and kept from seeing each other. Written for
 whoever has to work inside these rules — developers now, client administrators later — and for the reader who

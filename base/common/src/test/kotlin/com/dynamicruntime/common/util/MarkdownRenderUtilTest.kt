@@ -36,10 +36,13 @@ class MarkdownRenderUtilTest : StringSpec({
             "<pre><code class=\"language-json\"><span class=\"md-tok-punct\">[</span><span class=\"md-tok-punct\">]</span></code></pre>\n"
         // It ends a running paragraph rather than joining it, and leaves no trace in the text rendering either.
         "one\n<!-- note -->\ntwo".renderMarkdown() shouldBe "<p>one</p>\n<p>two</p>\n"
+        // A comment spanning lines is dropped whole (issue #1238); one that never closes renders as text.
+        "<!-- a note\n     over lines -->\n\n# Title\n".renderMarkdown() shouldBe "<h1 id=\"title\">Title</h1>\n"
+        "one\n<!-- a note\n     over lines -->\ntwo".renderMarkdown() shouldBe "<p>one</p>\n<p>two</p>\n"
+        "<!-- never closed\ntext".renderMarkdown() shouldBe "<p>&lt;!-- never closed text</p>\n"
         "one\n<!-- note -->\ntwo".renderMarkdownText() shouldNotContain "note"
-        // Inside a paragraph, or spanning lines, it is text like any other: raw HTML is never passed through.
+        // Inside a paragraph it is text like any other: raw HTML is never passed through.
         "a <!-- b --> c".renderMarkdown() shouldContain "&lt;!--"
-        "<!-- open\nclose -->".renderMarkdown() shouldContain "&lt;!--"
     }
 
     "joins wrapped lines into one paragraph and separates on a blank line" {

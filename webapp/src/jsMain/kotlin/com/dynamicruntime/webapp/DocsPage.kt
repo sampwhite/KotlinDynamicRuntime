@@ -102,7 +102,8 @@ val DocsPage = FC<Props> {
             current == null -> p { className = ClassName("subtitle"); +"Loading…" }
             doc != null -> {
                 backToListing(HMENU.pageDocs)
-                h1 { +doc.label }
+                // A document's own first heading is its title; the label stands in only where it has none (issue #1238).
+                if (docText?.let { docHasOwnTitle(it) } != true) h1 { +doc.label }
                 docError?.let { errorText("Couldn't load this document.", it) }
                 docText?.let { text ->
                     Markdown {
@@ -153,3 +154,32 @@ fun ChildrenBuilder.docLinks(links: List<HomeLink>) {
  */
 fun docHref(id: String, section: String? = null): String =
     hashHref(listOfNotNull(HP.page to HMENU.pageDocs, HP.doc to id, section?.let { HP.section to it }))
+
+/**
+ * Whether [text]'s first heading is a level-1 heading, which the page then shows as the document's title rather than
+ * the listing's label (issue #1238): true for the Markdown documents, whose first heading matches their label, even
+ * where a navigation line or an HTML comment comes before it, as the demo's pages have; false for the plain-text
+ * license, which has no heading, and for a document that opens at a deeper level. Pure, covered under `jsNodeTest`.
+ */
+fun docHasOwnTitle(text: String): Boolean {
+    var inComment = false
+    var inFence = false
+    for (raw in text.lineSequence()) {
+        val line = raw.trim()
+        if (inComment) {
+            if (line.endsWith("-->")) inComment = false
+            continue
+        }
+        if (line.startsWith("```")) {
+            inFence = !inFence
+            continue
+        }
+        if (inFence) continue
+        if (line.startsWith("<!--")) {
+            inComment = !line.endsWith("-->")
+            continue
+        }
+        if (line.startsWith("#")) return line.startsWith("# ")
+    }
+    return false
+}
