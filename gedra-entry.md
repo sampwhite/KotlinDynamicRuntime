@@ -1,4 +1,4 @@
-# The Gedra Entry
+# Gedra entry
 
 The design of the universal stored entity and the schema constructs it needs. This is a **declaration of
 intent**, written before the code, when none of it was implemented; issue #240 tracked both this document and

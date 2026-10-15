@@ -1,4 +1,4 @@
-# The UiBlock
+# UI block
 
 **Status: written as intent, now largely built.** Written before the code, as `gedra-entry.md` was, so that the
 term and the decisions already settled are recorded somewhere more durable than an issue thread. The registry, its

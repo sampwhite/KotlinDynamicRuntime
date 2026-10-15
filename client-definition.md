@@ -1,4 +1,4 @@
-# Client definitions
+# Client definition
 
 How a client is described, what it owns, and what a deployment does with one. Written before any of it existed,
 as something to design against and argue with.

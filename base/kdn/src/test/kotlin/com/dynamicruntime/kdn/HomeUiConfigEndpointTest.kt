@@ -21,6 +21,7 @@ import com.dynamicruntime.common.util.toJsonMap
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotBeIn
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -94,8 +95,11 @@ class HomeUiConfigEndpointTest : StringSpec({
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // Every core document is listed; a suite's inner pages -- the conference demo's, say -- are not (issue #1136).
-        links.filter { it[HFLD.id] in core }.forEach { it[HFLD.listed] shouldBe true }
+        // The listing offers the README, the code guide, and the license (issue #1238); the design documents are served
+        // but unlisted, as a suite's inner pages -- the conference demo's, say -- are (issue #1136).
+        val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
+        listed shouldContainAll listOf(HDOC.readme, HDOC.codeGuide, HDOC.license)
+        core.filterNot { it in listOf(HDOC.readme, HDOC.codeGuide, HDOC.license) }.forEach { it shouldNotBeIn listed }
     }
 
     // Issue #1136: a component declares its own documents, and one it marks unlisted is still sent -- so a link to it
