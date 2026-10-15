@@ -5,6 +5,9 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.fileref.ClientFileRefEdit
+import com.dynamicruntime.common.fileref.FileRefService
+import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
@@ -17,10 +20,13 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.startup.SchemaService
+import com.dynamicruntime.common.util.sha256Hex
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -98,6 +104,16 @@ class StaticConfigTest : StringSpec({
         refused { svc.revertToEditable(bound(prod), main) }
         refused { svc.setPublishedOnly(bound(prod), client, true) }
         svc.isStaticHere(bound(prod), client) shouldBe true
+
+        // A file ref upload is refused by the file-ref editor itself (issue #1179), before its bytes are stored: the
+        // write that follows would be refused too, but only after the store held an object nothing names.
+        val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
+        val upload = shouldThrow<KdrException> {
+            ClientFileRefEdit.upload(bound(prod), client, "logo", ContentData(png, "image/png", saveAsFilename = "logo.png"), null)
+        }
+        upload.code shouldBe EXC.badInput
+        upload.message.shouldNotBeNull() shouldContain "so it takes no file ref here"
+        FileStoreService.get(prod).get(bound(prod), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldBeNull()
     }
 
     // Only a source definition may set it: a stored one claiming it would describe a client with no definition at
