@@ -26,8 +26,9 @@ import com.dynamicruntime.common.webasset.WebAssetCheck
  * the client's configuration, under the client's lock and through a trial. A patch that is refused leaves an
  * object no entry names, which is debris and not a fault; the other order would leave an entry naming bytes that
  * are not there. Nothing here removes an object, and nothing yet bounds how many a client leaves behind: a
- * replaced or removed ref's file stays for the revisions that still name it, until a sweep of what no revision
- * names exists (issue #1147).
+ * replaced or removed ref's file stays for the revisions that still name it, and nothing yet sweeps away what no
+ * revision names. (What a write that stopped part-way leaves is another matter, which `FileStoreCheck` finds,
+ * issue #1147.)
  *
  * **Live, or a draft, by whether the client has a sandbox**, as a copy edit is: without one the entry is published
  * and the client's people are served the file at once; with one it is the parent's draft, which its sandbox shows

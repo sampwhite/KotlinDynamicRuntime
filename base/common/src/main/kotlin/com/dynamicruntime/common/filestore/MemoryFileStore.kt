@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentSkipListMap
+import kotlin.time.Instant
 
 /**
  * A file store held in the JVM and gone with it (issue #1129): what the unit tests run on, and a node running
@@ -62,6 +63,18 @@ class MemoryFileStore : FileStore {
     override fun meta(cxt: KdrCxt, bucket: String, key: String): FileMeta? = files(bucket)[key]?.meta
 
     override fun delete(cxt: KdrCxt, bucket: String, key: String): Boolean = files(bucket).remove(key) != null
+
+    /** Each file as its two objects, though here they are one entry: so a check walks this store as any other. */
+    override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> =
+        files(bucket).entries.flatMap { (key, file) ->
+            listOf(StoredObject(key, file.meta.uploadedAt), StoredObject(FileMeta.metaKey(key), file.meta.uploadedAt))
+        }.sortedBy { it.name }
+
+    /** A file's two halves are one entry here, so a write leaves nothing part-way to clear. */
+    override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean = false
+
+    /** Nothing here can come to not match its metadata, so there is never metadata to rewrite. */
+    override fun rewriteMeta(cxt: KdrCxt, bucket: String, key: String, meta: FileMeta, cutoff: Instant): Boolean = false
 
     override fun list(cxt: KdrCxt, bucket: String, keyPrefix: String, max: Int): List<FileEntry> =
         files(bucket).tailMap(keyPrefix, true).entries.asSequence()

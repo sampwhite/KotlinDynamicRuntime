@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
+import com.dynamicruntime.common.util.sha256Hex
 import java.io.File
 import java.io.IOException
 import java.nio.channels.FileChannel
@@ -13,6 +14,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Instant
 
 /**
  * A file store in a directory on this machine (issue #1129): each bucket a directory under [root], each key a
@@ -202,6 +204,63 @@ class LocalFileStore(val root: File) : FileStore {
             .take(max)
             .toList()
     }
+
+    override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> {
+        val dir = bucketDir(bucket)
+        if (!dir.isDirectory) return emptyList()
+        return dir.walkTopDown().maxDepth(FNAME.maxKeyDepth).filter { it.isFile }
+            .map { StoredObject(it.relativeTo(dir).invariantSeparatorsPath, modifiedAt(it)) }
+            .sortedBy { it.name }
+            .toList()
+    }
+
+    /**
+     * Under the key's lock, which every write of it holds throughout: so what is found there is no write's under
+     * way, and a temporary file in particular is nobody's. [cutoff] is held to all the same.
+     */
+    override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean {
+        val key = FNAME.checkKey(leftover.key)
+        val file = contentFile(bucket, key)
+        val metaFile = metaFile(bucket, key)
+        return exclusively(bucket, key, "clear what a write left of '$key' in the bucket '$bucket'") {
+            if (leftover.kind == FLEFT.tmp) {
+                // Only a name a write of this key leaves, so a leftover handed in cannot reach anything else.
+                val tmp = when (leftover.name) {
+                    key + tmpSuffix -> tmpOf(file)
+                    FileMeta.metaKey(key) + tmpSuffix -> tmpOf(metaFile)
+                    else -> return@exclusively false
+                }
+                return@exclusively tmp.isFile && modifiedAt(tmp) <= cutoff && tmp.delete()
+            }
+            val metaText = if (metaFile.isFile) Files.readString(metaFile.toPath()) else null
+            if (FileStoreCheck.kindNow(file.isFile, metaText) != leftover.kind) return@exclusively false
+            if (listOf(file, metaFile).any { it.isFile && modifiedAt(it) > cutoff }) return@exclusively false
+            Files.deleteIfExists(metaFile.toPath())
+            if (file.isFile) Files.deleteIfExists(file.toPath())
+            true
+        }
+    }
+
+    override fun rewriteMeta(cxt: KdrCxt, bucket: String, key: String, meta: FileMeta, cutoff: Instant): Boolean {
+        val file = contentFile(bucket, key)
+        val metaFile = metaFile(bucket, key)
+        return exclusively(bucket, key, "rewrite the metadata of '$key' in the bucket '$bucket'") {
+            if (!file.isFile || modifiedAt(file) > cutoff) return@exclusively false
+            val current = readMeta(metaFile) ?: return@exclusively false
+            val hash = Files.readAllBytes(file.toPath()).sha256Hex()
+            if (hash != meta.hash || hash == current.hash) return@exclusively false
+            val tmp = tmpOf(metaFile)
+            try {
+                Files.write(tmp.toPath(), meta.toFileText().toByteArray(Charsets.UTF_8))
+                moveInto(tmp, metaFile)
+            } finally {
+                tmp.delete()
+            }
+            true
+        }
+    }
+
+    private fun modifiedAt(file: File): Instant = Instant.fromEpochMilliseconds(file.lastModified())
 
     private fun <T> io(what: String, block: () -> T): T = try {
         block()

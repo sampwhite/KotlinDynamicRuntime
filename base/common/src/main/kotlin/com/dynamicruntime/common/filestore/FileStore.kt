@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.http.request.ContentData
+import kotlin.time.Instant
 
 /** The kinds of file store a deployment can run on; a `KDR_FILE_STORE_TYPE` value. */
 @Suppress("ConstPropertyName")
@@ -141,6 +142,12 @@ object FNAME {
     }
 }
 
+/**
+ * One object a store holds in a bucket, whatever it is -- a file's content, its metadata, or what a write that
+ * stopped part-way left behind (issue #1147) -- by its [name] in the bucket, and when it last changed.
+ */
+class StoredObject(val name: String, val modifiedAt: Instant)
+
 /** One file of a listing: where it is, and what is known about it. A listing never reads a file's content. */
 class FileEntry(val key: String, val meta: FileMeta)
 
@@ -178,6 +185,11 @@ class StoredFile(val bytes: ByteArray, val meta: FileMeta) {
  * until the file is stored again. (Removing the old metadata first would trade that for a file that reads as
  * absent throughout every replace, and is lost by one that fails.)
  *
+ * **What a stop part-way leaves is found by [FileStoreCheck]** (issue #1147), run by an operator
+ * (`com.dynamicruntime.script.CheckFileStore`): content with no metadata, metadata with no content or that cannot
+ * be read, content its metadata does not match, and a directory store's temporary files. It reports, and repairs
+ * only when asked, never touching what changed too recently to tell from a write still under way.
+ *
  * **A key that names a file is not also a folder of others**: with `a/b` stored, `a` cannot be, nor the other
  * way round. A filesystem cannot hold both, so the two providers a developer meets first ([FST.memory],
  * [FST.local]) refuse it, and a key scheme that works on one provider works on all three.
@@ -212,4 +224,24 @@ interface FileStore {
      * than [max] of them, so that what a listing costs is bounded by what was asked for.
      */
     fun list(cxt: KdrCxt, bucket: String, keyPrefix: String, max: Int = FNAME.defaultListLimit): List<FileEntry>
+
+    /**
+     * Every object in [bucket], in name order: each file's content and metadata, and whatever is neither. For
+     * [FileStoreCheck], which walks a whole bucket, and not for serving: [list] is what answers for files.
+     */
+    fun objects(cxt: KdrCxt, bucket: String): List<StoredObject>
+
+    /**
+     * Removes what [leftover] found, when it is still that and none of it changed after [cutoff], and answers
+     * whether it did. Asked again as it is removed -- under the key's lock where this store has one -- since a write
+     * may have come to the key since it was found, and what it left then is a file.
+     */
+    fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean
+
+    /**
+     * Puts [meta] beside the content at [key] in place of the metadata there, when that content still hashes to
+     * [meta]'s hash, did not change after [cutoff], and is not what the metadata there already describes; whether
+     * it did. The repair of content its metadata does not match ([FLEFT.mismatch]).
+     */
+    fun rewriteMeta(cxt: KdrCxt, bucket: String, key: String, meta: FileMeta, cutoff: Instant): Boolean
 }

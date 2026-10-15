@@ -5,6 +5,8 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import java.util.TreeMap
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * S3 as a map, for running [S3FileStore] without a network: the buckets that exist, the objects in each, and a
@@ -21,6 +23,12 @@ class FakeS3Api(vararg existingBuckets: String) : S3Api {
 
     /** The content type each object was stored with, by `bucket/key`. */
     val contentTypes = HashMap<String, String>()
+
+    /** When each object was last written, by `bucket/key`: [clock] at the put, or what a test sets. */
+    val modified = HashMap<String, Instant>()
+
+    /** What a put records as the moment it wrote. */
+    var clock: () -> Instant = { Clock.System.now() }
 
     /** Every call, in order: `get bucket/key`, `put bucket/key`, `head …`, `delete …`, `list bucket/prefix`. */
     val calls = mutableListOf<String>()
@@ -51,6 +59,7 @@ class FakeS3Api(vararg existingBuckets: String) : S3Api {
         reached("put $bucket/$key", bucket)
         objects["$bucket/$key"] = bytes.copyOf()
         contentTypes["$bucket/$key"] = contentType
+        modified["$bucket/$key"] = clock()
     }
 
     override fun get(bucket: String, key: String): ByteArray? {
@@ -72,6 +81,12 @@ class FakeS3Api(vararg existingBuckets: String) : S3Api {
 
     /** How many keys each listing was asked for, in order. */
     val listSizes = mutableListOf<Int>()
+
+    override fun listObjects(bucket: String, prefix: String): List<StoredObject> {
+        reached("listObjects $bucket/$prefix", bucket)
+        return objects.keys.filter { it.startsWith("$bucket/$prefix") }
+            .map { StoredObject(it.removePrefix("$bucket/"), modified[it] ?: Instant.fromEpochMilliseconds(0)) }
+    }
 
     override fun list(bucket: String, prefix: String, maxKeys: Int): List<String> {
         reached("list $bucket/$prefix", bucket)

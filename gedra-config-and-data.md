@@ -398,7 +398,8 @@ instead name a **local file**, which the section after covers.
   trial -- whichever configuration, and whether it is an upload, a typed entry or an import -- and an upload says
   so before it stores the file. A client already over can still take refs away.
 - **Nothing removes a file.** A replaced or removed ref's object stays for the revisions that still name it, and
-  nothing yet bounds how many a client leaves behind; the sweep of what no revision names is #1147.
+  nothing yet bounds how many a client leaves behind: nothing sweeps away what no revision names. (What a write
+  that stopped part-way leaves is another matter, which the operator's `CheckFileStore` script finds, #1147.)
 - **An export or import does not carry files.** A configuration imported where the bytes are not -- another
   deployment's store, or **another client of this one**, since a file is kept under the client whose configuration
   names it -- is refused, naming each ref whose file is not there.

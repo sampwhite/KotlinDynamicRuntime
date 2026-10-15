@@ -2,6 +2,8 @@ package com.dynamicruntime.common.filestore
 
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.util.sha256Hex
+import kotlin.time.Instant
 
 /**
  * A file store in S3 (issue #1129), or in anything that speaks its API. Each declared bucket is an S3 bucket
@@ -114,6 +116,40 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
             asked *= 2
         }
     }
+
+    override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> = api.listObjects(physicalBucket(bucket), "")
+
+    /**
+     * S3 has no lock to hold, so what is asked again is asked a moment before the removal: the object's state, and
+     * when it was last written, read afresh -- a write that came to the key since it was found has rewritten it.
+     * What is left is a write that lands between that and the removal, which [cutoff] makes a write of a key
+     * nothing has touched for that long.
+     */
+    override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean {
+        // An S3 store writes no temporary objects; a name like one is somebody else's.
+        if (leftover.kind == FLEFT.tmp) return false
+        val key = FNAME.checkKey(leftover.key)
+        val physical = physicalBucket(bucket)
+        val metaText = api.get(physical, FileMeta.metaKey(key))?.toString(Charsets.UTF_8)
+        if (FileStoreCheck.kindNow(api.head(physical, key), metaText) != leftover.kind) return false
+        if (!unchangedSince(physical, key, cutoff)) return false
+        api.delete(physical, FileMeta.metaKey(key))
+        api.delete(physical, key)
+        return true
+    }
+
+    override fun rewriteMeta(cxt: KdrCxt, bucket: String, key: String, meta: FileMeta, cutoff: Instant): Boolean {
+        val physical = physicalBucket(bucket)
+        val current = meta(cxt, bucket, FNAME.checkKey(key)) ?: return false
+        val hash = api.get(physical, key)?.sha256Hex() ?: return false
+        if (hash != meta.hash || hash == current.hash || !unchangedSince(physical, key, cutoff)) return false
+        api.put(physical, FileMeta.metaKey(key), meta.toFileText().toByteArray(Charsets.UTF_8), FileMeta.metaMimeType)
+        return true
+    }
+
+    /** Whether neither of [key]'s objects in [physical] was written after [cutoff], as S3 says now. */
+    private fun unchangedSince(physical: String, key: String, cutoff: Instant): Boolean =
+        api.listObjects(physical, key).filter { it.name == key || it.name == FileMeta.metaKey(key) }.all { it.modifiedAt <= cutoff }
 
     @Suppress("ConstPropertyName")
     companion object {

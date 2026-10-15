@@ -11,6 +11,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.net.URI
+import kotlin.time.Instant
 
 /**
  * The few S3 calls the file store makes (issue #1129), as an interface of our own. It is the whole of what
@@ -42,6 +43,9 @@ interface S3Api {
 
     /** The object keys beginning with [prefix], in key order: the first [maxKeys] of them. */
     fun list(bucket: String, prefix: String, maxKeys: Int = Int.MAX_VALUE): List<String>
+
+    /** Every object beginning with [prefix], in key order, with when it was last written (issue #1147). */
+    fun listObjects(bucket: String, prefix: String): List<StoredObject>
 }
 
 /**
@@ -100,6 +104,12 @@ class SdkS3Api(val region: String, val endpoint: String? = null) : S3Api, AutoCl
             // The paginator fetches a page when it is walked into, so taking the first few asks for no more.
             client.listObjectsV2Paginator { it.bucket(bucket).prefix(prefix) }.contents().asSequence()
                 .take(maxKeys).map { it.key() }.toList()
+        }
+
+    override fun listObjects(bucket: String, prefix: String): List<StoredObject> =
+        call("list the bucket '$bucket'") {
+            client.listObjectsV2Paginator { it.bucket(bucket).prefix(prefix) }.contents()
+                .map { StoredObject(it.key(), Instant.fromEpochMilliseconds(it.lastModified().toEpochMilli())) }
         }
 
     override fun close() = client.close()
