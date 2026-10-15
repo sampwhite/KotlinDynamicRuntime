@@ -13,6 +13,7 @@ import com.dynamicruntime.common.gedra.CustomerStore
 import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADEP
+import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
@@ -79,6 +80,11 @@ class ClientDelegatedCreateTest : StringSpec({
         val westAdmin = TestUser.create(cxt, "admin@$west.test", level = ROLE.admin, userClient = west)
         westAdmin.expectError(EXC.notAuthorized, UADEP.clientCreate, createBody("${root}_south"))
             .toString() shouldContain "'$west' is no customer's root"
+        // An administrator confined to an organization of the root does not act for the customer.
+        val confined = TestUser.create(cxt, "north@dlg1112.test", level = ROLE.admin, userClient = root)
+        operator.postData(ADEP.userSetOrg, mapOf(ADF.userId to confined.userId, ADF.org to "north"))
+        confined.expectError(EXC.notAuthorized, UADEP.clientCreate, createBody("${root}_north"))
+            .toString() shouldContain "confined to the organization 'north'"
         // A member of the root is no administrator at all.
         val member = TestUser.create(cxt, "member@dlg1112.test", userClient = root)
         member.expectError(EXC.notAuthorized, UADEP.clientCreate, createBody("${root}_north"))

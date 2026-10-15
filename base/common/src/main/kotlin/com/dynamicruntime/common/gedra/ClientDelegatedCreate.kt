@@ -25,7 +25,17 @@ import com.dynamicruntime.common.user.UserService
  */
 object ClientDelegatedCreate {
     /** What the create did: the client's create, and the creator's own user in it. */
-    class Result(val created: ClientCreate.Result, val userId: Long)
+    class Result(
+        val created: ClientCreate.Result,
+        /** The creator's own admin user in the new client; null when making it failed ([userFailure]). */
+        val userId: Long?,
+        /**
+         * Why the creator's user could not be made, when it could not -- after the client was, so the create is not to
+         * be repeated (it would be refused for a taken id): the user is made by the console once the cause is mended.
+         * Said in the result rather than thrown, as the platform create says a load that failed.
+         */
+        val userFailure: String? = null,
+    )
 
     /**
      * Creates the client [request] -- its creator's choices -- describes, under the customer whose root is [cxt]'s
@@ -34,13 +44,21 @@ object ClientDelegatedCreate {
     fun create(cxt: KdrCxt, request: Map<String, Any?>): Result {
         val clients = ClientService.get(cxt)
         val root = cxt.client
+        // Making a customer's clients is customer-wide authority, so an administrator confined to an organization of
+        // the root -- who sees only that organization -- does not have it.
+        cxt.userProfile.org?.let { org ->
+            throw KdrException(
+                "An administrator confined to the organization '$org' does not create the customer's clients.",
+                code = EXC.notAuthorized,
+            )
+        }
         val customer = clients.customerOf(root)?.takeIf { it.rootClientId == root }
             ?: throw KdrException(
                 "Only an administrator of a customer's root client creates its clients; '$root' is no customer's root.",
                 code = EXC.notAuthorized,
             )
-        val plan = customer.plan ?: PLAN.unlimited
-        if (plan == PLAN.free) {
+        // Read as every plan decision reads it: a plan name that is no plan is the free plan, which makes no clients.
+        if (PLAN.named(customer.plan) == PLAN.free) {
             throw KdrException.mkInput(
                 "The customer '${customer.customerId}' is on the ${PLAN.free} plan, which makes no clients.",
             )
@@ -53,8 +71,13 @@ object ClientDelegatedCreate {
         val parent = clients.known(root)
             ?: throw KdrException("Client '$root' has no definition on this node.", code = EXC.notFound)
         val created = ClientCreate.create(cxt, ClientFieldPolicies.delegatedDefinition(parent.toInfo(), request))
-        val admin = PERSONA.def(PERSONA.admin) ?: throw KdrException("The admin persona is not declared.")
-        val user = UserService.get(cxt).claimUser(cxt, identity, created.client, admin.name, "", admin.defaultRoles)
-        return Result(created, user.userId)
+        // From here the client exists, whatever becomes of its creator's user: a failure is the result's to say.
+        return try {
+            val admin = PERSONA.def(PERSONA.admin) ?: throw KdrException("The admin persona is not declared.")
+            Result(created, UserService.get(cxt).claimUser(cxt, identity, created.client, admin.name, "", admin.defaultRoles).userId)
+        } catch (e: Exception) {
+            LogGedra.error(cxt, "Client '${created.client}' was created, but making its creator's admin user failed.", e)
+            Result(created, null, e.message ?: "Making the creator's user failed.")
+        }
     }
 }

@@ -334,6 +334,9 @@ object CLD {
     /** On a root administrator's create: the creator's own admin user in the new client (issue #1112). */
     const val userId = "userId"
 
+    /** On a root administrator's create: why the creator's user could not be made, when it could not (issue #1112). */
+    const val userFailure = "userFailure"
+
     /** Schema type name for what retiring or bringing back a client did (issue #1111). */
     const val retirementResultTypeName = "ClientRetirementResult"
 

@@ -249,9 +249,14 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         clientCreateResultFields()
         property(
             CLD.userId,
-            "The creator's own admin user in the new client; the session moves there with /user/self/switchClient.",
-            required = true,
+            "The creator's own admin user in the new client; the session moves there with /user/self/switchClient. " +
+                "Absent when making it failed.",
         ) { type = SCT.integer }
+        property(
+            CLD.userFailure,
+            "Present when the client was created but its creator's user could not be made: why. The create is not to " +
+                "be repeated; the user is made from the console once the cause is mended.",
+        )
     }
 
     generalEndpoint(
@@ -269,7 +274,10 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     ) { c, request ->
         AdminRules.requireClientAdministrator(c)
         val result = ClientDelegatedCreate.create(c, request)
-        result.created.wireFields() + (CLD.userId to result.userId)
+        result.created.wireFields() + buildMap {
+            result.userId?.let { put(CLD.userId, it) }
+            result.userFailure?.let { put(CLD.userFailure, it) }
+        }
     }
 
     type(CLD.definitionEditResultTypeName) {

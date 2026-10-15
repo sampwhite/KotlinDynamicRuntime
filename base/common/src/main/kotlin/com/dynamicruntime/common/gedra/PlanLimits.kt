@@ -25,7 +25,7 @@ object PlanLimits {
      */
     fun planOf(cxt: KdrCxt, client: String, def: ClientDef? = ClientService.get(cxt).known(client)): String? {
         sandboxParentOf(client)?.let { return planOf(cxt, it) }
-        def?.customerId?.let { id -> ClientService.get(cxt).customers[id]?.let { return it.def.plan ?: PLAN.unlimited } }
+        def?.customerId?.let { id -> ClientService.get(cxt).customers[id]?.let { return PLAN.named(it.def.plan) } }
         return if (isSelfServeClient(client)) PLAN.free else null
     }
 

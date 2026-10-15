@@ -22,6 +22,17 @@ object PLAN {
     /** What the free plan holds: what keeps an advertisement's infrastructure cost bounded. */
     val freeQuotas = PlanQuotas(forms = 100, users = 20, workflows = 4, tasksPerWorkflow = 2, schemas = 10, attributesPerSchema = 10)
 
+    /**
+     * The plan a customer's [plan] field puts its clients on: [unlimited] when it names none, [free] -- the least --
+     * when it names one that is not a plan, else the one named. Every decision a plan makes reads it through here, so
+     * a misspelled plan is held to the least everywhere at once.
+     */
+    fun named(plan: String?): String = when {
+        plan == null -> unlimited
+        plan in names -> plan
+        else -> free
+    }
+
     /** [plan]'s quotas: [freeQuotas] for [free] -- and for a name that is no plan, the least -- none for [unlimited]. */
     fun quotasOf(plan: String): PlanQuotas = when (plan) {
         unlimited -> PlanQuotas.none
