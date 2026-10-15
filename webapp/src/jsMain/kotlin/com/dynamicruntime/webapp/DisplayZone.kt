@@ -18,11 +18,11 @@ val deploymentZone: String = run {
 }
 
 /**
- * The zone the webapp shows moments in (issue #1115): the caller's client's IANA time zone, as the shell config says
- * it ([HomeConfig.timeZone]), or the [deploymentZone] for a client that names none. The app bar sets it on every
- * config it reads. A module value rather than a context, because what reads it -- [formatTimestamp] and
- * [formatRelativeTime] -- are pure functions called from parsers and table cells, far from any component; each takes
- * the zone as an argument too, which is how the tests pass one.
+ * The zone the webapp shows moments in (issue #1115): the IANA zone the shell config says ([HomeConfig.timeZone]) --
+ * the caller's client's, else the deployment's display default -- or the [deploymentZone] when it says none. The app
+ * bar sets it on every config it reads. A module value rather than a context, because what reads it --
+ * [formatTimestamp] and [formatRelativeTime] -- are pure functions called from parsers and table cells, far from any
+ * component; each takes the zone as an argument too, which is how the tests pass one.
  */
 object DisplayZone {
     /** The IANA zone moments are shown in now. */

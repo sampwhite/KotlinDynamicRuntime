@@ -136,8 +136,8 @@ object HFLD {
     const val sandboxOfName = "sandboxOfName"
 
     /**
-     * `state.timeZone`: the caller's client's IANA time zone (issue #1115), which the webapp shows moments in;
-     * absent for a client that names none, whose moments are shown in the deployment's zone.
+     * `state.timeZone`: the IANA time zone the webapp shows the caller's moments in (issue #1115) -- their client's,
+     * else the deployment's display default; absent when neither is set, for the deployment's day start.
      */
     const val timeZone = "timeZone"
 

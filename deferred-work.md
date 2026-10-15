@@ -562,3 +562,17 @@ Deployment flavors (#1218) are active only when `KDR_DEPLOY_FLAVORS` names them.
   `KDR_DEPLOY_FLAVORS` is unset, with each flavor it turns on logged with its reason. The rule belongs on the
   declaration rather than in each contributing component, so every component agrees on whether the flavor is on.
   Design: `kdr-design/thoughts-on-flavors.md` (private `sampwhite/Actions`), "Default Variations of Config".
+
+## When the product is internationalized
+
+The deployment's official day start, `serverTimeZone` (the kernel's `DateUtil.kt`), is a hardwired UTC-8. It is a
+fixed offset on purpose: it never moves for daylight saving, so a day is always 24 hours and a contract written
+against it is unambiguous. Since #1115 a client may name its own IANA zone, and `KDR_DISPLAY_TIME_ZONE` sets where a
+client naming none is shown; neither moves the day start.
+
+- **Make the day start configurable** *(from #1115).* An environment variable naming the offset (still a fixed
+  offset, never an IANA zone), defaulting to `-08:00`. The kernel's date helpers read it as a top-level value with
+  no context, so it would be set once at boot. The webapp works out its fallback zone from the same kernel value
+  (`deploymentZone`), and would be told it by the shell config instead.
+- **Key the report history's days by it** *(noticed in #1115).* `ReportHistory.dayOf` buckets snapshots by UTC day
+  (epoch milliseconds divided by a day), so the history's days follow neither the day start nor the client's zone.

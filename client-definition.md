@@ -273,6 +273,12 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   the day it was written. Operational work -- jobs, logs, a client with no zone -- keeps the deployment's zone.
 - **Moments are shown in it.** The shell config carries the zone (`state.timeZone`), and the webapp shows every
   timestamp in it, labeled (`Oct 17, 2026, 5:00 PM CT`).
+- **The deployment's day start and its display default are two things.** The day start (`serverTimeZone`) is the
+  official day boundary: a fixed offset that never moves for daylight saving, so a day is always 24 hours and a
+  contract written against it is unambiguous. A client naming no zone reads its days there. `KDR_DISPLAY_TIME_ZONE`
+  (an IANA zone) is only where such a client's moments are **shown**; unset, they are shown at the day start too.
+  When the two differ, a moment shown near midnight can fall on the neighboring official day -- the least bad of
+  the choices, and gone for a client that names its own zone, which reads and shows its days in that one zone.
 - **Changing it moves no stored moment.** What was stored as an instant stays that instant and is shown in the new
   zone; the definition editor says so.
 - **Chosen when the client is made.** The platform's create and a person's own self-serve create take it (the

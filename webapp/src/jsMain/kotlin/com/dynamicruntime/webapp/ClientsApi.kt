@@ -878,7 +878,7 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
             add("Extends" to marked(CLD.extendsFromClientId, text(CLD.extendsFromClientId)))
             add("Domain" to (info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "\u2014"))
             add("Web resources" to text(CLD.webResourcesId))
-            add("Time zone" to (info[CLD.timeZone].toOptStr() ?: "The deployment's ($deploymentZone)"))
+            add("Time zone" to (info[CLD.timeZone].toOptStr() ?: "None: the deployment's"))
             add("Static config" to marked(CLD.staticConfig, if (info[CLD.staticConfig] == true) "Yes" else "No"))
             add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
             add("Traits" to list(def.traitIds))

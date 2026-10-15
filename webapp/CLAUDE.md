@@ -913,8 +913,9 @@ dates there are data compared across rows and snapshots, and the history's day c
 
 **Every moment is shown in the client's time zone** (issue #1115, `DisplayZone.kt`): `formatTimestamp` gives
 `Oct 17, 2026, 5:00 PM CT` through the browser's `Intl`, labeled with the zone, and the relative time's day is the
-day there. The zone is the shell config's `state.timeZone`, which the app bar sets into `DisplayZone` on every read;
-a client naming none is shown in the deployment's (`deploymentZone`, labeled `GMT-8`). A day-only value is never
+day there. The zone is the shell config's `state.timeZone` -- the client's, else the deployment's display default
+(`KDR_DISPLAY_TIME_ZONE`) -- which the app bar sets into `DisplayZone` on every read; with neither, moments are shown
+in the deployment's day start (`deploymentZone`, labeled `GMT-8`). A day-only value is never
 shifted. Each function takes the zone as an argument too, which is how its tests pass one. The CSV download keeps
 UTC (`csvTimestamp`): a file cannot say a zone per cell.
 

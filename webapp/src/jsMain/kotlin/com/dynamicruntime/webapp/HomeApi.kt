@@ -89,8 +89,8 @@ class HomeConfig(
      */
     val fileRefs: Map<String, String> = emptyMap(),
     /**
-     * The caller's client's IANA time zone (issue #1115), which moments are shown in ([DisplayZone]); null for a
-     * client that names none, shown in the deployment's.
+     * The IANA time zone the caller's moments are shown in (issue #1115, [DisplayZone]): their client's, else the
+     * deployment's display default; null when neither is set, for the deployment's day start.
      */
     val timeZone: String? = null,
 )

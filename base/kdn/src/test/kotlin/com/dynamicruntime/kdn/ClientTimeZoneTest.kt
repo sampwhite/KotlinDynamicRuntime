@@ -90,4 +90,18 @@ class ClientTimeZoneTest : StringSpec({
         rootAdmin.postData(UADEP.clientDefinitionSet, mapOf(CLD.timeZone to ""))
         ClientService.get(cxt).timeZoneOf(root) shouldBe serverTimeZone
     }
+
+    "a client naming no zone is shown in the deployment's display default, and its days stay the official day" {
+        // An instance of its own: the display default is instance configuration.
+        val own = Startup.mkTestBootCxt("tzDisplay1115", "tzDisplay1115Test", mapOf(ClientService.displayTimeZoneEnvVar.name to "America/Denver"))
+        val ownOperator = TestUser.createFullAdmin(own, "operator@tzd1115.test")
+        ownOperator.postData(ADEP.clientCreate, createBody("plaind1115"))
+        ownOperator.postData(ADEP.clientCreate, createBody("tokyod1115", CLD.timeZone to "Asia/Tokyo"))
+        fun shown(client: String) = TestUser.create(own, "u@$client.test", userClient = client)
+            .getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.timeZone]
+        shown("plaind1115") shouldBe "America/Denver"
+        ClientService.get(own).timeZoneOf("plaind1115") shouldBe serverTimeZone
+        // A client naming its own zone reads and shows its days in it, whatever the default.
+        shown("tokyod1115") shouldBe "Asia/Tokyo"
+    }
 })
