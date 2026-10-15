@@ -1,5 +1,6 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.context.KdrCxt
@@ -8,6 +9,8 @@ import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.flavor.flavor
+import com.dynamicruntime.common.startup.BCHK
+import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -15,6 +18,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import java.io.File
+import java.nio.file.Files
 
 private const val gateFlavor = "gate1218"
 private const val gateKey = "gate1218Loads"
@@ -79,14 +84,61 @@ class DeployFlavorsBootTest : StringSpec({
         }
         failure.fullMessage() shouldContain "noSuchKey1219"
     }
+
+    // --- the flavor directory (issue #1220) ---------------------------------------------------------------
+
+    /** A flavor directory holding `copy1219.md` with [content], or an empty one when [content] is null. */
+    fun flavorDir(content: String?): File = Files.createTempDirectory("flavorDir1220").toFile().also { dir ->
+        content?.let { File(dir, "copy1219.md").writeText(it) }
+    }
+
+    /** Boots with the `copy1219` flavor, whose component sets home's title and brand, and [overlay] besides. */
+    fun bootWithCopy(name: String, overlay: Map<String, Any?>): KdrCxt = Startup.mkTestBootCxt(
+        name, name, mapOf(FLV.deployFlavorsEnvVar.name to "copy1219") + overlay,
+        additionalComponents = listOf(CopyFlavorComponent("title", "brand")),
+    )
+
+    fun homeCopy(cxt: KdrCxt): Map<String, String> =
+        MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, null)!!.content.getValue("home")
+
+    "the deployment's copy stacks over the flavor's, key by key" {
+        val dir = flavorDir("# !home\n# @home\n# +brand Deployment brand\n")
+        val home = homeCopy(bootWithCopy("flavorDirStack1220", mapOf(FLV.flavorDirEnvVar.name to dir.path)))
+        home["brand"] shouldBe "Deployment brand"
+        // A key the file does not name keeps the flavor's value, and one neither names keeps the base's.
+        home["title"] shouldBe "Flavored welcome"
+        home["intro"].orEmpty() shouldContain "KotlinDynamicRuntime"
+    }
+
+    "a missing directory or file is normal" {
+        homeCopy(bootWithCopy("flavorDirNone1220", mapOf(FLV.flavorDirEnvVar.name to "/no/such/flavor/dir1220")))["brand"] shouldBe
+            "Flavored welcome"
+        homeCopy(bootWithCopy("flavorDirEmpty1220", mapOf(FLV.flavorDirEnvVar.name to flavorDir(null).path)))["brand"] shouldBe
+            "Flavored welcome"
+    }
+
+    "a file that will not parse refuses the boot outside production, and is left out and reported in it" {
+        // Content before the first file heading belongs to no file.
+        val dir = flavorDir("# @home\n# +brand Lost\n").path
+        shouldThrow<KdrException> { bootWithCopy("flavorDirBad1220", mapOf(FLV.flavorDirEnvVar.name to dir)) }
+            .fullMessage() shouldContain "does not parse"
+        // As a production node judges a fragment fault.
+        val cxt = bootWithCopy("flavorDirBadWarn1220", mapOf(FLV.flavorDirEnvVar.name to dir, FRAG.checkEnvVar.name to "warn"))
+        homeCopy(cxt)["brand"] shouldBe "Flavored welcome"
+        // Once: the check runs once however often its service is asked to initialize.
+        BootCheckRegistry.get(cxt).results().single { it.name == BCHK.fragments }.findings.single() shouldContain
+            "copy1219.md"
+    }
 })
 
-/** Owns the `copy1219` flavor, whose inline overlay sets `home.<key>` of the home page's copy. */
-private class CopyFlavorComponent(private val key: String) : ComponentDefinition {
+/** Owns the `copy1219` flavor, whose inline overlay sets each of [keys] in `home` of the home page's copy. */
+private class CopyFlavorComponent(private vararg val keys: String) : ComponentDefinition {
     override fun flavorDefs(cxt: KdrCxt) = listOf(FlavorDef("copy1219", "Rewords the home page (issue #1219)."))
     override fun flavors(cxt: KdrCxt) = listOf(
         flavor("copy1219") {
-            fragments { listOf(fragmentInline(HFRAG.home, "copy1219") { namespace("home") { key(key, "Flavored welcome") } }) }
+            fragments {
+                listOf(fragmentInline(HFRAG.home, "copy1219") { namespace("home") { keys.forEach { key(it, "Flavored welcome") } } })
+            }
         },
     )
 }

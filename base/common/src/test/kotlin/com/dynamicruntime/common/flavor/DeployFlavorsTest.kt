@@ -159,7 +159,7 @@ class DeployFlavorsTest : StringSpec({
         result.fragmentLayers(setOf("layered")).map { it.origin to it.flavorRank } shouldBe listOf("test" to 0)
         gammaReads shouldBe 0
         val (_, both) = resolve(mapOf(flavors to "delta,gamma"), listOf(owner, layered))
-        both.fragmentLayers(setOf("layered")).map { it.flavorRank } shouldBe listOf(0, 1)
+        both.fragmentLayers(setOf("layered")).map { it.flavorRank } shouldBe listOf(0, 2)
     }
 
     "a component that did not load contributes no layers" {

@@ -2,6 +2,7 @@ package com.dynamicruntime.common.content
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.flavor.DeployFlavors
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.issue
@@ -75,8 +76,16 @@ import java.util.concurrent.ConcurrentHashMap
 class MarkdownFragmentService : ServiceInitializer, ContentServer {
     override val serviceName: String = MarkdownFragmentService.serviceName
 
-    /** Registers this content server with the dispatcher (idempotent), then checks the fragment files. */
+    // Whether checkInit has run. It is called twice at boot -- by the boot, and ahead of its own by
+    // `LayoutCheckService`, which needs the fragments -- and the check records its findings, which the boot-check
+    // registry appends: run twice, every finding was reported twice (found with issue #1220).
+    @Volatile
+    private var checked = false
+
+    /** Registers this content server with the dispatcher, then checks the fragment files -- once, however often called. */
     override fun checkInit(cxt: KdrCxt) {
+        if (checked) return
+        checked = true
         val requestService = RequestService.get(cxt)
         requestService.addContentServer(this)
         checkFragmentsAtStartup(cxt)
@@ -112,7 +121,10 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         if (mode == BootCheckMode.off) return
         val results = all.filter { it.client == null }
 
-        val findings = results.flatMap { findingsOf(it) } + duplicateOmnibusDeclarations(registeredFragmentSources(cxt))
+        val findings = results.flatMap { findingsOf(it) } + duplicateOmnibusDeclarations(registeredFragmentSources(cxt)) +
+            // A flavor-directory file that would not parse (issue #1220): already left out, and judged here like any
+            // fragment fault -- refused outside production, reported in it.
+            DeployFlavors.deploymentCopyFaults(cxt)
         // Notes are surfaced but never refuse a boot (issue #514): a backend file carrying a frontend pull is
         // not wrong, only resting on a human assertion. Logged so the fact is visible, and carried on the
         // operator report for a running node.
