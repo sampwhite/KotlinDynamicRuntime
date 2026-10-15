@@ -139,3 +139,27 @@ this form, which the schema may leave optional.
 A label or description can pull its words from a fragment file instead of holding them: `%{@t("logistics.heading")}`
 takes the `heading` key of the `logistics` namespace in the file the layout's `fragmentFileId` names. The words then
 live in one place, and a client's copy overlay can change them without touching the definition.
+
+## Report paths
+
+A report column's `path` says where its value comes from. The first part is the **source**, and what follows
+depends on it.
+
+| Source | What follows | Example |
+| --- | --- | --- |
+| `form` | A trait's id, then a field of its data. A trait the platform ships keeps its full id. | `form.session.track`, `form.kdr:name.name` |
+| `workflow` | A workflow's id, then one of `category`, `engaged`, `eligible`, `finished`, `tasksDone`, `ctaTask`, or `lastEngagedAt`. | `workflow.review.category` |
+| `user` | One of `userId`, `name`, `publicName`, `email`, `persona`, `org`, `labels`, `isEntity`, or `enabled`, about the person who owns the form. | `user.name` |
+| `meta` | One of `gedraId`, `client`, `org`, `ownerId`, `createdAt`, `updatedAt`, `formStatus`, `surveyStatus`, or `cfacts`, about the form itself. | `meta.formStatus` |
+
+A `form` path can go deeper than one field, `form.abstract.coSpeakers.name` for instance, and reaches into a list
+as well as an object. A path into a list has several values, and the column's `combine` says how they are made one
+for the form: the first, all of them as a list, the distinct ones, a count, or a sum, minimum, maximum, or
+average for numbers. Left out, a path with one value takes the first and a path with several lists them.
+
+A column's `rollup` is the same list of choices, applied across the forms of a group when the report is run
+grouped. A column with no rollup is left out of a grouped run, and one the run groups by is shown once, as the
+group's value. The demo's [Reports](reports.md) page shows `sum`, `list`, and `count`.
+
+Paths are checked when the configuration loads. A path that names a trait, a field, or a workflow the client does
+not have costs the report that holds it, not the bundle.

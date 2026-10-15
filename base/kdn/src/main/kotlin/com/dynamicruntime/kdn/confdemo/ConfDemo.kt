@@ -11,6 +11,11 @@ import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.report.RMETA
+import com.dynamicruntime.common.gedra.report.RUSR
+import com.dynamicruntime.common.gedra.report.RWF
+import com.dynamicruntime.common.gedra.report.ReportCombine
+import com.dynamicruntime.common.gedra.report.ReportSource
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.traitDataTypeName
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -74,6 +79,7 @@ object ConfDemo {
     const val abstractConfig = "abstract"
     const val reviewConfig = "review"
     const val logisticsConfig = "logistics"
+    const val reportsConfig = "reports"
 
     /** The fragment file `kdn` ships for the demo's copy (issue #1139). */
     const val fragmentFile = "confDemo"
@@ -98,6 +104,14 @@ object ConfDemo {
     const val logisticsWorkflow = "logistics"
     const val planTask = "plan"
     const val savePlan = "savePlan"
+
+    // The reports (issue #1140), and the column ids the pages refer to.
+    const val submissionsByTrack = "submissionsByTrack"
+    const val questionnaireSummary = "questionnaireSummary"
+    const val trackColumn = "track"
+    const val minutesColumn = "minutes"
+    const val audienceColumn = "audience"
+    const val recordingColumn = "recording"
 
     /** The client's own cfacts: a talk's track is the workshop track; the committee accepted the talk. */
     const val isWorkshop = "isWorkshop"
@@ -159,7 +173,9 @@ fun confDemoDocs(): List<MarkdownDocDef> = listOf(
     confDemoDoc("abstract", "Conference demo: the abstract", "The demo's first normal workflow: a trait with a list, a multi-select, trimming, and custom errors."),
     confDemoDoc("committee-review", "Conference demo: committee review", "A workflow gated on the survey, with a field only administrators see and a review task."),
     confDemoDoc("workshop-logistics", "Conference demo: workshop logistics", "A workflow gated on a computed fact, with a layout that narrows and relabels, and copy from a file."),
-    confDemoDoc("reference", "Conference demo: reference", "What the demo's pages have in common: comments, choices, field layouts."),
+    confDemoDoc("reports", "Conference demo: reports", "The demo's two reports: a roster of the talks by track, and a summary of the questionnaire."),
+    confDemoDoc("bundles", "Conference demo: every bundle", "The full JSON of every bundle the demo writes, in one place."),
+    confDemoDoc("reference", "Conference demo: reference", "What the demo's pages have in common: comments, choices, field layouts, report paths."),
 )
 
 private fun confDemoDoc(name: String, label: String, description: String, listed: Boolean = false) =
@@ -451,10 +467,43 @@ fun confDemoLogistics(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.cli
     }
 
 /** Every bundle of the demo, in the order they are written: the client first, since the others need it to exist. */
+/**
+ * The `reports` bundle (issue #1140): the two reports an organizer runs over the talks. Both in one bundle, since a
+ * report is not a workflow and the two change together; the page says so.
+ */
+fun confDemoReports(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): GedraConfig =
+    gedraConfig(cxt, ConfDemo.reportsConfig, clientNamespace(client), client) {
+        val form = ReportSource.form.name
+        report(ConfDemo.submissionsByTrack, "Submissions by track") {
+            comment = "Per form, a roster of the talks. Grouped, how many talks each track has and the minutes they add up to."
+            description = "Every talk with its track, its speaker, and where it stands. Grouped by track, how many talks there are and how long they run in all."
+            column(ConfDemo.trackColumn, "Track", "$form.${ConfDemo.session}.${ConfDemo.track}")
+            column("talk", "Talk", "$form.${GT.name}.${GT.nameField}")
+            column("speaker", "Speaker", "${ReportSource.user.name}.${RUSR.name}")
+            column("status", "Status", "${ReportSource.meta.name}.${RMETA.formStatus}")
+            column("review", "Review", "${ReportSource.workflow.name}.${ConfDemo.reviewWorkflow}.${RWF.category}")
+            column(ConfDemo.minutesColumn, "Minutes", "$form.${ConfDemo.abstract}.${ConfDemo.durationMinutes}", rollup = ReportCombine.sum)
+            groupBy = listOf(ConfDemo.trackColumn)
+        }
+        report(ConfDemo.questionnaireSummary, "Questionnaire summary") {
+            comment = "Grouped by who the talk is for and whether it may be recorded: how many talks, what they promise, and how many have needs for the day."
+            description = "The questionnaire across every talk: who each talk is for, whether it may be recorded, what the audience takes away, and what the organizers should know."
+            val questionnaire = "$form.${ConfDemo.questionnaire}"
+            column(ConfDemo.audienceColumn, "Audience", "$questionnaire.${ConfDemo.audienceLevel}")
+            column(ConfDemo.recordingColumn, "May be recorded", "$questionnaire.${ConfDemo.recordingOk}")
+            column("firstTalk", "First talk", "$questionnaire.${ConfDemo.firstTalk}")
+            column("takeaway", "Takeaway", "$questionnaire.${ConfDemo.takeaway}", rollup = ReportCombine.list)
+            column("needs", "Needs for the day", "$questionnaire.${ConfDemo.needs}", rollup = ReportCombine.count)
+            groupBy = listOf(ConfDemo.audienceColumn, ConfDemo.recordingColumn)
+            excludeEmpty = listOf(ConfDemo.audienceColumn)
+        }
+    }
+
 fun confDemoConfigs(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client): List<GedraConfig> =
     listOf(
         confDemoBase(cxt, client), confDemoCreateTalk(cxt, client), confDemoTalkSurvey(cxt, client),
         confDemoAbstract(cxt, client), confDemoReview(cxt, client), confDemoLogistics(cxt, client),
+        confDemoReports(cxt, client),
     )
 
 /**

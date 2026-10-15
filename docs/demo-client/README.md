@@ -18,6 +18,8 @@ These pages walk through that configuration, one piece of JSON at a time, starti
 5. [Abstract](abstract.md): the first normal workflow, and a trait with a long text, a list, and a multi-select.
 6. [Committee review](committee-review.md): a workflow only some talks may enter, and only some people may work on.
 7. [Workshop logistics](workshop-logistics.md): a workflow gated on a computed fact, and a layout that takes over.
+8. [Reports](reports.md): two reports over the talks, one a roster and one a summary.
+9. [Every bundle](bundles.md): the full JSON of every bundle, in one place.
 
 The [reference](reference.md) explains the things the pages have in common, such as choices and field layouts. The
 pages link to it as they go.
@@ -73,6 +75,7 @@ move one out later.
 | `abstract` | The workflow that collects the abstract |
 | `review` | The committee's review |
 | `logistics` | Planning a workshop |
+| `reports` | The two reports an organizer runs |
 
 The JSON on these pages is what a running instance returns for each bundle. The reference says
 [how to read it](reference.md#reading-the-json-on-these-pages).

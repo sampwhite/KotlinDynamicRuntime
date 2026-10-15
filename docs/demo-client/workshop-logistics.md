@@ -205,4 +205,4 @@ fields, from the fragment file. The fields are **Lab**, a choice between *Lab A 
 with the file's line under it, and **Laptops**. **Setup instructions** appears only once Laptops is answered yes. The
 button is **Save the plan**.
 
-Next: more pages are on the way. Back to [Contents](README.md#the-pages).
+Next: [Reports](reports.md).
