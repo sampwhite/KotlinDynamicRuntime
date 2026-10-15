@@ -232,6 +232,14 @@ interface FileStore {
     fun objects(cxt: KdrCxt, bucket: String): List<StoredObject>
 
     /**
+     * When [name], one of [objects], is a temporary object this store writes on its way to a file, the key whose
+     * write left it; null for anything else. So a check knows a store's own leftovers without knowing how it names
+     * them -- a store that writes none answers null for every name, and an object merely named like one is left
+     * alone.
+     */
+    fun tmpKeyOf(name: String): String? = null
+
+    /**
      * Removes what [leftover] found, when it is still that and none of it changed after [cutoff], and answers
      * whether it did. Asked again as it is removed -- under the key's lock where this store has one -- since a write
      * may have come to the key since it was found, and what it left then is a file.

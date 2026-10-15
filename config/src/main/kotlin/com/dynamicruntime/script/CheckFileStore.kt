@@ -1,15 +1,13 @@
 package com.dynamicruntime.script
 
-import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.filestore.FST
 import com.dynamicruntime.common.filestore.FileStoreCheck
 import com.dynamicruntime.common.filestore.FileStoreService
-import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.kdn.Startup
 import kotlin.system.exitProcess
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 
 /**
@@ -75,7 +73,7 @@ object CheckFileStore {
 
     fun run(args: List<String>): Int {
         val options = parseArgs(args) ?: return usage()
-        return runOn(bootCxt(), options) { println(it) }
+        return runOn(bootScriptCxt("checkFileStore"), options) { println(it) }
     }
 
     /** The run itself, on a booted [cxt]: each line of what it says goes to [out]. */
@@ -112,20 +110,12 @@ object CheckFileStore {
             )
             return foundExit
         }
-        val repairs = FileStoreCheck.repair(cxt, service.store, found, cxt.now(), options.minAgeMinutes.minutes)
+        // The wall clock's now, as every object's time is: not the instance's, which a test may have moved.
+        val repairs = FileStoreCheck.repair(cxt, service.store, found, Clock.System.now(), options.minAgeMinutes.minutes)
         for (r in repairs) out("${r.leftover.bucket}: '${r.leftover.name}' ${r.note}.")
         val left = repairs.count { !it.done }
         out("${repairs.size - left} repaired, $left left alone.")
         return if (left == 0) 0 else foundExit
-    }
-
-    /** Boots the runtime without a server, under an instance named for this script. */
-    private fun bootCxt(): KdrCxt {
-        val preBoot = KdrInstanceConfig.preBootLoadConfig()
-        val cxt = KdrCxt.mkSimpleCxt("preBoot", preBoot)
-        val env = cxt.getEnvVar(KdrInstanceConfig.envName) ?: ENV.local
-        LogSetup.ensureInit(env, cxt::getEnvVar)
-        return Startup.mkBootCxt("checkFileStore", env, preBoot.entries().toMap())
     }
 
     private fun fail(message: String): Int {

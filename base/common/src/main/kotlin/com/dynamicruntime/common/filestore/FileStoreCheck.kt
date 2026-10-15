@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.filestore
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.sha256Hex
 import kotlin.time.Duration
@@ -100,15 +101,9 @@ object FileStoreCheck {
         val out = mutableListOf<FileLeftover>()
         val keys = sortedSetOf<String>()
         for (obj in objects.values) {
+            val tmpOf = store.tmpKeyOf(obj.name)
             when {
-                obj.name.endsWith(LocalFileStore.tmpSuffix) -> {
-                    val key = obj.name.removeSuffix(LocalFileStore.tmpSuffix).removeSuffix(FileMeta.metaSuffix)
-                    // Only a directory store writes temporary files, and only under a key's name: anything else so
-                    // named is not this store's, and is left alone.
-                    if (store.providerType == FST.local && FNAME.keyProblem(key) == null) {
-                        out.add(FileLeftover(bucket, key, obj.name, FLEFT.tmp, obj.modifiedAt))
-                    }
-                }
+                tmpOf != null -> out.add(FileLeftover(bucket, tmpOf, obj.name, FLEFT.tmp, obj.modifiedAt))
                 obj.name.endsWith(FileMeta.metaSuffix) -> obj.name.removeSuffix(FileMeta.metaSuffix).takeIf { FNAME.keyProblem(it) == null }?.let { keys.add(it) }
                 FNAME.keyProblem(obj.name) == null -> keys.add(obj.name)
             }
@@ -171,11 +166,16 @@ object FileStoreCheck {
      * in [FileMeta.extra], since the type in particular is carried over and not known.
      */
     fun rebuiltMeta(leftover: FileLeftover, now: Instant): FileMeta {
-        val old = leftover.meta ?: error("A mismatch is found with the metadata it does not match.")
+        val old = leftover.meta
+        val size = leftover.contentSize
+        val hash = leftover.contentHash
+        if (leftover.kind != FLEFT.mismatch || old == null || size == null || hash == null) {
+            throw KdrException("'${leftover.key}' is not a mismatch found with its metadata and its content's size and hash; there is no metadata to rebuild.")
+        }
         return FileMeta(
             mimeType = old.mimeType,
-            size = leftover.contentSize ?: error("A mismatch is found with its content's size."),
-            hash = leftover.contentHash ?: error("A mismatch is found with its content's hash."),
+            size = size,
+            hash = hash,
             uploadedAt = old.uploadedAt,
             fileName = old.fileName,
             uploadedBy = old.uploadedBy,

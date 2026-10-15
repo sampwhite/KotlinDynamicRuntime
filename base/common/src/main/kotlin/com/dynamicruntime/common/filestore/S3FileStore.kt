@@ -120,19 +120,20 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
     override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> = api.listObjects(physicalBucket(bucket), "")
 
     /**
-     * S3 has no lock to hold, so what is asked again is asked a moment before the removal: the object's state, and
-     * when it was last written, read afresh -- a write that came to the key since it was found has rewritten it.
-     * What is left is a write that lands between that and the removal, which [cutoff] makes a write of a key
-     * nothing has touched for that long.
+     * S3 has no lock to hold, so what is asked again is asked a moment before the removal: which of the key's two
+     * objects are there and when each was last written, in one listing, and the metadata's text when it is there --
+     * a write that came to the key since it was found has rewritten it. What is left is a write that lands between
+     * that and the removal, which [cutoff] makes a write of a key nothing has touched for that long.
      */
     override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean {
-        // An S3 store writes no temporary objects; a name like one is somebody else's.
+        // An S3 store writes no temporary objects ([tmpKeyOf]), so nothing is ever found as one.
         if (leftover.kind == FLEFT.tmp) return false
         val key = FNAME.checkKey(leftover.key)
         val physical = physicalBucket(bucket)
-        val metaText = api.get(physical, FileMeta.metaKey(key))?.toString(Charsets.UTF_8)
-        if (FileStoreCheck.kindNow(api.head(physical, key), metaText) != leftover.kind) return false
-        if (!unchangedSince(physical, key, cutoff)) return false
+        val there = objectsOf(physical, key)
+        val metaText = if (FileMeta.metaKey(key) in there) api.get(physical, FileMeta.metaKey(key))?.toString(Charsets.UTF_8) else null
+        if (FileStoreCheck.kindNow(key in there, metaText) != leftover.kind) return false
+        if (there.values.any { it > cutoff }) return false
         api.delete(physical, FileMeta.metaKey(key))
         api.delete(physical, key)
         return true
@@ -142,14 +143,14 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         val physical = physicalBucket(bucket)
         val current = meta(cxt, bucket, FNAME.checkKey(key)) ?: return false
         val hash = api.get(physical, key)?.sha256Hex() ?: return false
-        if (hash != meta.hash || hash == current.hash || !unchangedSince(physical, key, cutoff)) return false
+        if (hash != meta.hash || hash == current.hash || objectsOf(physical, key).values.any { it > cutoff }) return false
         api.put(physical, FileMeta.metaKey(key), meta.toFileText().toByteArray(Charsets.UTF_8), FileMeta.metaMimeType)
         return true
     }
 
-    /** Whether neither of [key]'s objects in [physical] was written after [cutoff], as S3 says now. */
-    private fun unchangedSince(physical: String, key: String, cutoff: Instant): Boolean =
-        api.listObjects(physical, key).filter { it.name == key || it.name == FileMeta.metaKey(key) }.all { it.modifiedAt <= cutoff }
+    /** [key]'s own objects in [physical] -- its content and its metadata, those there -- with when each was written. */
+    private fun objectsOf(physical: String, key: String): Map<String, Instant> =
+        api.listObjects(physical, key).filter { it.name == key || it.name == FileMeta.metaKey(key) }.associate { it.name to it.modifiedAt }
 
     @Suppress("ConstPropertyName")
     companion object {

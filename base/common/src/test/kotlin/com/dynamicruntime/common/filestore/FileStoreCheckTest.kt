@@ -43,7 +43,9 @@ class FileStoreCheckTest : StringSpec({
         val store = LocalFileStore(root)
         store.ensureBucket(cxt, bucket)
         val dir = File(root, bucket)
-        for (key in listOf("ok", "content", "meta", "unread", "mixed", "fresh")) store.put(cxt, bucket, key, first, meta(first))
+        for (key in listOf("ok", "binary", "content", "meta", "unread", "mixed", "fresh")) store.put(cxt, bucket, key, first, meta(first))
+        // Metadata whose bytes are not even text: as unreadable as metadata that is not whole.
+        File(dir, "binary.meta.json").writeBytes(byteArrayOf(0xff.toByte(), 0xfe.toByte(), 0, 1))
         File(dir, "content.meta.json").delete() shouldBe true
         File(dir, "meta").delete() shouldBe true
         File(dir, "unread.meta.json").writeText("{\"mimeType\": ")
@@ -57,6 +59,7 @@ class FileStoreCheckTest : StringSpec({
 
         val found = FileStoreCheck.find(cxt, store, listOf(bucket))
         kinds(found) shouldContainExactly listOf(
+            "binary" to FLEFT.unreadableMeta,
             "content" to FLEFT.contentOnly,
             "fresh" to FLEFT.contentOnly,
             "half~tmp" to FLEFT.tmp,
@@ -70,12 +73,12 @@ class FileStoreCheckTest : StringSpec({
         mixed.describe() shouldContain "Every read of it is refused"
 
         val repairs = FileStoreCheck.repair(cxt, store, found, now, minAge)
-        repairs.filter { it.done }.map { it.leftover.name } shouldContainExactly listOf("content", "half~tmp", "meta.meta.json", "mixed", "unread")
+        repairs.filter { it.done }.map { it.leftover.name } shouldContainExactly listOf("binary", "content", "half~tmp", "meta.meta.json", "mixed", "unread")
         repairs.single { !it.done }.note shouldContain "too recently to tell from a write under way"
 
         // What is left is the recent one; the rest is gone, or -- the mismatch -- a file again.
         kinds(FileStoreCheck.find(cxt, store, listOf(bucket))) shouldContainExactly listOf("fresh" to FLEFT.contentOnly)
-        listOf("content", "half~tmp", "meta.meta.json", "unread", "unread.meta.json").forEach { File(dir, it).exists() shouldBe false }
+        listOf("binary", "binary.meta.json", "content", "half~tmp", "meta.meta.json", "unread", "unread.meta.json").forEach { File(dir, it).exists() shouldBe false }
         val repaired = store.get(cxt, bucket, "mixed").shouldNotBeNull()
         repaired.bytes.toList() shouldBe second.toList()
         repaired.meta.hash shouldBe second.sha256Hex()
@@ -201,6 +204,17 @@ class FileStoreCheckTest : StringSpec({
         store.put(cxt, bucket, "c", second, meta(second))
         store.objects(cxt, bucket).map { it.name } shouldContainExactly listOf("a/b", "a/b.meta.json", "c", "c.meta.json")
         FileStoreCheck.find(cxt, store, listOf(bucket)).shouldBeEmpty()
+    }
+
+    // A check knows a store's own temporary objects by asking the store, which is the one that names them.
+    "only a directory store has temporary objects, and only under a key's name" {
+        val local = LocalFileStore(Files.createTempDirectory("kdrStoreCheck").toFile().also { tempDirs.add(it) })
+        local.tmpKeyOf("a/b~tmp") shouldBe "a/b"
+        local.tmpKeyOf("a/b.meta.json~tmp") shouldBe "a/b"
+        local.tmpKeyOf("a/b").shouldBeNull()
+        local.tmpKeyOf("../x~tmp").shouldBeNull()
+        S3FileStore(FakeS3Api()).tmpKeyOf("a/b~tmp").shouldBeNull()
+        MemoryFileStore().tmpKeyOf("a/b~tmp").shouldBeNull()
     }
 
     "what a key is now, as a repair asks again" {

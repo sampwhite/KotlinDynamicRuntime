@@ -214,6 +214,9 @@ class LocalFileStore(val root: File) : FileStore {
             .toList()
     }
 
+    override fun tmpKeyOf(name: String): String? =
+        name.takeIf { it.endsWith(tmpSuffix) }?.removeSuffix(tmpSuffix)?.removeSuffix(FileMeta.metaSuffix)?.takeIf { FNAME.keyProblem(it) == null }
+
     /**
      * Under the key's lock, which every write of it holds throughout: so what is found there is no write's under
      * way, and a temporary file in particular is nobody's. [cutoff] is held to all the same.
@@ -232,8 +235,7 @@ class LocalFileStore(val root: File) : FileStore {
                 }
                 return@exclusively tmp.isFile && modifiedAt(tmp) <= cutoff && tmp.delete()
             }
-            val metaText = if (metaFile.isFile) Files.readString(metaFile.toPath()) else null
-            if (FileStoreCheck.kindNow(file.isFile, metaText) != leftover.kind) return@exclusively false
+            if (FileStoreCheck.kindNow(file.isFile, metaTextOf(metaFile)) != leftover.kind) return@exclusively false
             if (listOf(file, metaFile).any { it.isFile && modifiedAt(it) > cutoff }) return@exclusively false
             Files.deleteIfExists(metaFile.toPath())
             if (file.isFile) Files.deleteIfExists(file.toPath())
@@ -261,6 +263,19 @@ class LocalFileStore(val root: File) : FileStore {
     }
 
     private fun modifiedAt(file: File): Instant = Instant.fromEpochMilliseconds(file.lastModified())
+
+    /**
+     * The text of [metaFile], or null when there is none -- and, when its bytes are not text, an empty string: metadata
+     * that cannot be read, as [readMeta] takes it, rather than a failure of whatever asked.
+     */
+    private fun metaTextOf(metaFile: File): String? {
+        if (!metaFile.isFile) return null
+        return try {
+            Files.readString(metaFile.toPath())
+        } catch (_: java.nio.charset.CharacterCodingException) {
+            ""
+        }
+    }
 
     private fun <T> io(what: String, block: () -> T): T = try {
         block()
