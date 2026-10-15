@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.parseMarkdownFragments
+import com.dynamicruntime.common.util.parseOmnibusFragments
 
 /**
  * The base layers of [fileIds], each read from `md-fragments/<fileId>.md` -- the ordinary case, and what
@@ -64,6 +66,56 @@ fun fragmentOverlayFile(fileId: String): FragmentSource {
         load = { readFragmentResource(resourceId) },
     )
 }
+
+/** The suffix marking a classpath fragment file as an omnibus overlay: `<id>_omnibus.md` (issue #1217). */
+const val fragmentOmnibusSuffix = "_omnibus"
+
+/**
+ * The overlay layers of the **omnibus** file `md-fragments/<id>`[fragmentOmnibusSuffix]`.md` (issue #1217): one file
+ * overlaying several fragment files, one layer per `# !<fileId>` section ([parseOmnibusFragments]).
+ *
+ * Each section is an ordinary overlay of its file, so everything that guards an overlay guards it too: a key its
+ * base does not declare is an orphan, and a section naming a file no component declares is a file declared but
+ * absent. Its origin is the omnibus file, so a report says which file a section came from.
+ *
+ * **[id] is the component's own name for the file**, and not, say, a flavor's: the resource directory is one
+ * namespace across every jar, so two components shipping one name would collide, and one file would silently shadow
+ * the other. The convention is `<owner><Purpose>` -- `kdrReference`. The boot refuses one id declared twice, which
+ * is what such a collision looks like from here.
+ *
+ * Read **when declared**, unlike the other layers: the sections cannot be known without reading the file. So a
+ * missing or malformed file fails the boot as it is collected, wherever it runs -- a declared resource that is
+ * absent or does not parse is a packaging defect, not a piece of copy to degrade around.
+ */
+fun omnibusOverlay(id: String): List<FragmentSource> {
+    val resourceId = "$id$fragmentOmnibusSuffix"
+    val origin = omnibusOrigin(id)
+    val text = ContentResources.readText(MarkdownFragmentService.resourceDir, resourceId)
+        ?: throw KdrException("The omnibus fragment file '$origin' is declared but absent.")
+    val sections = try {
+        text.parseOmnibusFragments()
+    } catch (e: KdrException) {
+        throw KdrException("The omnibus fragment file '$origin' does not parse: ${e.message}", e)
+    }
+    return sections.map { (fileId, content) ->
+        FragmentSource(fileId, isOverlay = true, client = null, origin = origin, load = { content })
+    }
+}
+
+/** Where the layers of the omnibus file [id] say they came from -- also how a duplicate declaration is recognized. */
+fun omnibusOrigin(id: String): String = "${MarkdownFragmentService.resourceDir}/$id$fragmentOmnibusSuffix.md"
+
+/**
+ * Omnibus files declared more than once among [sources], each as a finding (issue #1217). One file's layers repeat
+ * (same origin, same file) only when its id was declared twice, which is how two components shipping the same
+ * resource name look from here: both declarations read whichever copy the classpath finds first.
+ */
+fun duplicateOmnibusDeclarations(sources: List<FragmentSource>): List<String> =
+    sources.filter { it.client == null && it.origin.endsWith("$fragmentOmnibusSuffix.md") }
+        .groupBy { it.origin to it.fileId }
+        .filterValues { it.size > 1 }
+        .keys.map { it.first }.distinct()
+        .map { "the omnibus fragment file '$it' is declared more than once" }
 
 /** Reads and parses `md-fragments/<resourceId>.md`, or null when the resource is absent. */
 private fun readFragmentResource(resourceId: String): Map<String, Map<String, String>>? =
