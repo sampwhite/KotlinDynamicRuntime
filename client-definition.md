@@ -182,6 +182,11 @@ the missing link, so a demonstration or test client is never held to them.
 - **A source customer is never redefined by stored configuration**: a stored customer of the same id, case aside,
   is the second definition -- strict outside production, and in production dropped, the source one standing.
 
+- **A customer's root administrators make its other clients** (issue #1112), at `POST /clientAdmin/client/create`:
+  an id `<customer>_<name>`, holding the creator's choices (its id, name, note, template, and sandbox) and what the
+  root passes on (its customer, environments, usage type, audience, and web resources), with no configuration. The
+  creator gets their own admin user there, returned rather than switched to -- `/user/self/switchClient` moves the
+  session. Only the root's administrators make clients, and not on the free plan, which makes none.
 - **A customer's first client can make the customer.** The operator's create takes `newCustomer` (a name, and
   optionally a description) instead of naming a customer: the customer's id is the client's, and the client is its
   root. It is three writes, each judged as any is -- the customer into `hub`'s `customers` configuration

@@ -1095,24 +1095,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
     type(CLD.createResultTypeName) {
         type = SCT.kObject
         description = "What creating a client did (issue #1054): where its definition was written, the definition as stored, and whether this node carries the client."
-        property(CLD.client, "The client created.", required = true)
-        property(COV.configName, "The stored configuration its definition was written to.", required = true)
-        property(CLD.definition, "The client's stored definition.", required = true) { ref(CLD.infoTypeQualified) }
-        property(
-            CLD.present,
-            "Whether this node carries the client now. False for one not enabled in this node's environment: it is " +
-                "stored, and present wherever it is enabled.",
-            required = true,
-        ) { type = SCT.boolean }
-        property(CLD.issues, "What the load found in the client's configuration and forgave.", required = true) {
-            type = SCT.array
-            items { ref(CLD.configIssueTypeQualified) }
-        }
-        property(
-            CLD.loadFailure,
-            "Present when the client was created -- stored and published -- but loading it on this node failed: " +
-                "why. The create is not to be repeated; the client is reloaded once the cause is mended.",
-        )
+        clientCreateResultFields()
         property(CLD.customer, "The customer made with the client, as stored, when one was asked for.") {
             type = SCT.kObject
             CustomerDef.declareFields(this)
@@ -1140,18 +1123,7 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
         inputRef = CLD.createTypeName,
     ) { c, request ->
         val result = ClientCreate.create(c, request)
-        dropNulls(
-            linkedMapOf(
-                CLD.client to result.client,
-                COV.configName to result.configName,
-                CLD.definition to result.info,
-                CLD.present to result.present,
-                CLD.issues to result.issues.map { it.toWireMap() },
-                CLD.loadFailure to result.loadFailure,
-                CLD.customer to result.customer,
-                CLD.customerFailure to result.customerFailure,
-            ),
-        )
+        dropNulls(result.wireFields() + mapOf(CLD.customer to result.customer, CLD.customerFailure to result.customerFailure))
     }
 
     // --- retiring a client (issue #1111) ----------------------------------------------------------------------------
@@ -1215,3 +1187,41 @@ private fun adminConfigCxt(c: KdrCxt, request: Map<String, Any?>, requireExistin
     }
     return ac
 }
+
+/**
+ * What every client create answers with (issues #1054, #1112): the client, where its definition was written, the
+ * definition as stored, whether this node carries it, what its load forgave, and why loading it failed when it did.
+ * The operator's create and a root administrator's both lead with these.
+ */
+internal fun SchTypeBuilder.clientCreateResultFields() {
+    property(CLD.client, "The client created.", required = true)
+    property(COV.configName, "The stored configuration its definition was written to.", required = true)
+    property(CLD.definition, "The client's stored definition.", required = true) { ref(CLD.infoTypeQualified) }
+    property(
+        CLD.present,
+        "Whether this node carries the client now. False for one not enabled in this node's environment: it is " +
+            "stored, and present wherever it is enabled.",
+        required = true,
+    ) { type = SCT.boolean }
+    property(CLD.issues, "What the load found in the client's configuration and forgave.", required = true) {
+        type = SCT.array
+        items { ref(CLD.configIssueTypeQualified) }
+    }
+    property(
+        CLD.loadFailure,
+        "Present when the client was created -- stored and published -- but loading it on this node failed: " +
+            "why. The create is not to be repeated; the client is reloaded once the cause is mended.",
+    )
+}
+
+/** [clientCreateResultFields]' values for this create, the load failure absent when there was none. */
+internal fun ClientCreate.Result.wireFields(): Map<String, Any?> = dropNulls(
+    linkedMapOf(
+        CLD.client to client,
+        COV.configName to configName,
+        CLD.definition to info,
+        CLD.present to present,
+        CLD.issues to issues.map { it.toWireMap() },
+        CLD.loadFailure to loadFailure,
+    ),
+)

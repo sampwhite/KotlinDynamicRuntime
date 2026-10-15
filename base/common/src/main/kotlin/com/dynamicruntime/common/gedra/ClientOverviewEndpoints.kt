@@ -240,6 +240,38 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         mapOf(CLD.client to result.client, CLD.sandbox to result.sandbox, CLD.publishedOnly to result.publishedOnly)
     }
 
+    // --- a client created by a customer's root administrator (issue #1112) -----------------------------------------
+    ClientDef.defineDelegatedCreateType(this)
+
+    type(CLD.delegatedCreateResultTypeName) {
+        type = SCT.kObject
+        description = "What creating a client under the caller's customer did (issue #1112)."
+        clientCreateResultFields()
+        property(
+            CLD.userId,
+            "The creator's own admin user in the new client; the session moves there with /user/self/switchClient.",
+            required = true,
+        ) { type = SCT.integer }
+    }
+
+    generalEndpoint(
+        UADEP.clientCreate,
+        "Creates a client under the caller's customer (issue #1112), for an administrator of the customer's root " +
+            "client. Its id is '<customer>_<name>'; it holds the creator's choices and what the root passes on -- its " +
+            "customer, the environments it runs in, its usage type, audience, and web resources -- and starts with " +
+            "no configuration. The creator gets their own admin user there, returned rather than switched to. " +
+            "Refused for a customer on the free plan, which makes no clients, and otherwise for what the platform's " +
+            "create refuses, in the same words.",
+        HttpMethod.POST,
+        outputRef = CLD.delegatedCreateResultTypeName,
+        inputRef = CLD.delegatedCreateTypeName,
+        needsClientConfig = true,
+    ) { c, request ->
+        AdminRules.requireClientAdministrator(c)
+        val result = ClientDelegatedCreate.create(c, request)
+        result.created.wireFields() + (CLD.userId to result.userId)
+    }
+
     type(CLD.definitionEditResultTypeName) {
         type = SCT.kObject
         description = "What a definition edit did (issue #1026): where it landed, the definition as stored now, and how it took effect."

@@ -135,6 +135,12 @@ object UADEP {
      */
     const val clientsOverview = "/${SECT.clientAdmin}/clients/overview"
 
+    /**
+     * Creates a client under the caller's customer (issue #1112): for an administrator of the customer's root client,
+     * an id `<customer>_<name>`, with the creator's own admin user in it.
+     */
+    const val clientCreate = "/${SECT.clientAdmin}/client/create"
+
     /** The scoped counterpart to [ADEP.clientDefinition]: the caller's own client unless they may name another. */
     const val clientDefinition = "/${SECT.clientAdmin}/client/definition"
 

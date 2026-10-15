@@ -36,6 +36,21 @@ class ClientFieldPoliciesTest : StringSpec({
         )
     }
 
+    // Issue #1112: a client made by another takes the creator's choices and what its maker passes on, nothing else.
+    "a delegated definition is the creator's choices, the parent's passed-on fields, and nothing a create clears" {
+        val parent = mapOf(
+            CLD.clientId to "acme", CLD.name to "Acme", CLD.customerId to "acme", CLD.usageType to "production",
+            CLD.audience to "customer", CLD.enabledEnvironments to listOf("unit", "local"), CLD.webResourcesId to "acmeWeb",
+            CLD.domainPrefix to "acme", CLD.userLabels to listOf("reviewer"),
+        )
+        val given = mapOf(CLD.clientId to "acme_east", CLD.name to "East", CLD.audience to "internal", CLD.sandbox to true)
+        ClientFieldPolicies.delegatedDefinition(parent, given) shouldBe mapOf(
+            CLD.clientId to "acme_east", CLD.name to "East", CLD.customerId to "acme", CLD.usageType to "production",
+            CLD.audience to "customer", CLD.enabledEnvironments to listOf("unit", "local"), CLD.webResourcesId to "acmeWeb",
+            CLD.sandbox to true,
+        )
+    }
+
     "a platform field is changed by a different value, not by another order or an absent default" {
         val stored = mapOf(
             CLD.clientId to "x", CLD.audience to "internal", CLD.usageType to "dev", CLD.enabledEnvironments to listOf("unit", "local"),

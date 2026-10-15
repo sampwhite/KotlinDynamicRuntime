@@ -177,6 +177,26 @@ object ClientFieldPolicies {
     fun of(field: String): ClientFieldPolicy =
         byField[field] ?: throw KdrException.mkConv("Client field '$field' has no policy (issue #1108); declare one.")
 
+    /** The fields a client made by another client takes from whoever makes it (issue #1112): its creator's choice. */
+    val creatorFields: List<String> = byField.filter { it.value.atCreate == ClientFieldAtCreate.creator }.keys.toList()
+
+    /**
+     * The definition a client made **by another client** starts from (issue #1112), as a `ClientInfo` map: [given]'s
+     * [creatorFields], [parent]'s fields whose policy is [ClientFieldAtCreate.parent] -- its customer, where it runs,
+     * what it is for and whose it is, its web resources -- and none of those a create clears. [parent] is the making
+     * client's definition ([ClientDef.toInfo]).
+     */
+    fun delegatedDefinition(parent: Map<String, Any?>, given: Map<String, Any?>): Map<String, Any?> = buildMap {
+        for ((field, policy) in byField) {
+            val value = when (policy.atCreate) {
+                ClientFieldAtCreate.creator -> given[field]
+                ClientFieldAtCreate.parent -> parent[field]
+                ClientFieldAtCreate.cleared -> null
+            }
+            if (value != null) put(field, value)
+        }
+    }
+
     /** The fields only the platform changes. */
     val platformFields: List<String> = byField.filter { it.value.edit == ClientFieldEdit.platform }.keys.toList()
 
@@ -304,6 +324,15 @@ object CLD {
 
     /** Whether the platform retired the client (issue #1111); see [ClientDef.retired]. */
     const val retired = "retired"
+
+    /** Schema type name for the input of a client's creation by a customer's root administrator (issue #1112). */
+    const val delegatedCreateTypeName = "ClientDelegatedCreate"
+
+    /** Schema type name for what a root administrator's create did (issue #1112). */
+    const val delegatedCreateResultTypeName = "ClientDelegatedCreateResult"
+
+    /** On a root administrator's create: the creator's own admin user in the new client (issue #1112). */
+    const val userId = "userId"
 
     /** Schema type name for what retiring or bringing back a client did (issue #1111). */
     const val retirementResultTypeName = "ClientRetirementResult"
@@ -831,6 +860,19 @@ data class ClientDef(
                     property(CUST.name, "The name presented for the customer.", required = true)
                     property(CUST.description, "An internal note about who, what or why.")
                 }
+            }
+        }
+
+        /**
+         * The input of a client's creation by a customer's root administrator (issue #1112): the written form's
+         * properties for the fields a creator chooses ([ClientFieldPolicies.creatorFields]). The rest is the root's to
+         * pass on or the create's to clear.
+         */
+        fun defineDelegatedCreateType(builder: SchTypesBuilder) {
+            builder.type(CLD.delegatedCreateTypeName) {
+                type = SCT.kObject
+                description = "A client to create under the caller's customer: what its creator chooses."
+                infoProperties(written = true, only = ClientFieldPolicies.creatorFields.toSet(), offerChoices = true)
             }
         }
 
