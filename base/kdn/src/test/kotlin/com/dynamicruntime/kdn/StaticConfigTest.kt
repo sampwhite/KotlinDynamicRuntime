@@ -104,18 +104,15 @@ class StaticConfigTest : StringSpec({
         refused { svc.revertToEditable(bound(prod), main) }
         refused { svc.setPublishedOnly(bound(prod), client, true) }
         svc.isStaticHere(bound(prod), client) shouldBe true
-    }
 
-    // Refused by the file-ref editor itself (issue #1179), before the upload's bytes are stored: the write that follows
-    // would be refused too, but only after the store held an object nothing names.
-    "in production a file ref upload is refused before its bytes are stored" {
-        val prod = bootProd("staticProdFileRef")
+        // A file ref upload is refused by the file-ref editor itself (issue #1179), before its bytes are stored: the
+        // write that follows would be refused too, but only after the store held an object nothing names.
         val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
-        val ex = shouldThrow<KdrException> {
+        val upload = shouldThrow<KdrException> {
             ClientFileRefEdit.upload(bound(prod), client, "logo", ContentData(png, "image/png", saveAsFilename = "logo.png"), null)
         }
-        ex.code shouldBe EXC.badInput
-        ex.message.shouldNotBeNull() shouldContain "so it takes no file ref here"
+        upload.code shouldBe EXC.badInput
+        upload.message.shouldNotBeNull() shouldContain "so it takes no file ref here"
         FileStoreService.get(prod).get(bound(prod), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldBeNull()
     }
 

@@ -40,6 +40,7 @@ import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.util.toOptStr
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
@@ -118,8 +119,10 @@ class PublishRefusalUndoTest : StringSpec({
     /** Sends [data] to [path] as [user], expecting a refusal with [status]; its message. */
     fun refused(user: TestUser, path: String, data: Map<String, Any?>, status: Int = EXC.badInput): String {
         val env = user.client.sendJsonPostRequest(path, data)
-        withClue(env) { (env[EP.status] as? Number)?.toInt() shouldBe status }
-        return env[EP.errorMessage] as String
+        return withClue(env) {
+            (env[EP.status] as? Number)?.toInt() shouldBe status
+            env[EP.errorMessage].toOptStr().shouldNotBeNull()
+        }
     }
 
     fun ok(user: TestUser, path: String, data: Map<String, Any?>): Map<String, Any?> =
@@ -220,7 +223,10 @@ class PublishRefusalUndoTest : StringSpec({
 
         refusing += client
         val env = upload(admin, "logo", otherPng)
-        withClue(env) { env[EP.errorMessage] shouldBe refusal }
+        withClue(env) {
+            (env[EP.status] as? Number)?.toInt() shouldBe EXC.badInput
+            env[EP.errorMessage] shouldBe refusal
+        }
         storedRefs(client, "art") shouldBe listOf(local)
         GedraConfigReload.reloadClient(cxt, client)
         refs.forClient(client).refs.getValue("logo").def.source shouldBe FREF.sourceLocal
