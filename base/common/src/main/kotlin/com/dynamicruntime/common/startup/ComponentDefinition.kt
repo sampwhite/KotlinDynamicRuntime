@@ -97,7 +97,8 @@ interface ComponentDefinition : KdrProvider {
      * Nothing enumerates the classpath, so a file no component declares is a file nothing validates;
      * declaring it is what puts it under the startup and `/operator/fragments/check` checks. Use
      * `fragmentFiles(...)` for the ordinary case of shipping files, `fragmentOverlayFile(...)` for a
-     * `_overlay.md` beside one, and `fragmentInline(...)` for a layer written in code. A shipped file says
+     * `_overlay.md` beside one, `omnibusOverlay(...)` for one `_omnibus.md` overlaying several files, and
+     * `fragmentInline(...)` for a layer written in code. A shipped file says
      * **where the application shows it** (`shownOn`, issue #933), so the copy editor can tell a key somebody
      * reads from one nothing displays; leave it out only for a file the application does not show.
      *

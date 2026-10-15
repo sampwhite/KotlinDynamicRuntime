@@ -103,6 +103,58 @@ fun String.parseMarkdownFragments(): Map<String, Map<String, String>> {
     return result
 }
 
+/**
+ * Extracts an **omnibus** fragment file (issue #1217): one file overlaying several fragment files, as a
+ * `fileId -> namespace -> (key -> value)` map. It is the ordinary format ([parseMarkdownFragments]) with one more
+ * heading level above the namespace:
+ *
+ * - A **file** heading `# !<fileId>` opens a section, and everything up to the next one is that file's content, in
+ *   the ordinary format. A section's namespaces are its own: a key under the next file heading needs a namespace
+ *   of its own, as one at the top of an ordinary file would.
+ * - Nothing but comments and empty lines may come before the first file heading. Ordinary content there would
+ *   belong to no file, and an ordinary fragment file passed here by mistake is the likeliest way to get some.
+ * - A file may have one section. Two would split one file's overlay across the file, where an ordinary file
+ *   refuses the same thing for a key declared twice.
+ * - A section may be empty. It overlays nothing.
+ *
+ * Comments are stripped from the whole text first, so one may span a file heading.
+ */
+fun String.parseOmnibusFragments(): Map<String, Map<String, Map<String, String>>> {
+    val normalized = this.replace("\r\n", "\n").replace('\r', '\n')
+    val lines = stripFragmentComments(normalized).split('\n')
+    val sections = LinkedHashMap<String, MutableList<String>>()
+    var current: MutableList<String>? = null
+    for (line in lines) {
+        if (isFileLine(line)) {
+            val fileId = line.substring(3).trim()
+            if (fileId.isEmpty()) {
+                throw mkMarkdownException(MarkdownError.emptyFileId, "A '# !' file heading has no file id.")
+            }
+            if (fileId.contains('.')) {
+                throw mkMarkdownException(
+                    MarkdownError.dottedName,
+                    "File id '$fileId' contains a '.', which a backend pull cannot address: " +
+                        "'fileId.namespace.key' splits the file id off at the first dot.",
+                )
+            }
+            if (fileId in sections) {
+                throw mkMarkdownException(
+                    MarkdownError.duplicateFile, "File '$fileId' has more than one '# !' section.",
+                )
+            }
+            current = mutableListOf<String>().also { sections[fileId] = it }
+        } else if (current != null) {
+            current.add(line)
+        } else if (!isBlankLine(line)) {
+            throw mkMarkdownException(
+                MarkdownError.contentBeforeFile,
+                "An omnibus fragment file has content before its first '# !' file heading, which belongs to no file.",
+            )
+        }
+    }
+    return sections.mapValues { (_, body) -> body.joinToString("\n").parseMarkdownFragments() }
+}
+
 /** Error codes reported by [parseMarkdownFragments], carried under [KdrException.errorCodeKey]. */
 @Suppress("EnumEntryName")
 enum class MarkdownError : ProblemCode {
@@ -129,6 +181,15 @@ enum class MarkdownError : ProblemCode {
      * left to fail as a puzzling `notAnObject` at render or a dangling reference at boot.
      */
     dottedName,
+
+    /** A `# !` file heading in an omnibus file (issue #1217) had no file id. */
+    emptyFileId,
+
+    /** An omnibus file had two `# !` sections for one file. */
+    duplicateFile,
+
+    /** An omnibus file had content before its first `# !` file heading, so it belongs to no file. */
+    contentBeforeFile,
 }
 
 /**
@@ -173,6 +234,10 @@ fun isHashLine(line: String): Boolean = line.length >= 2 && line[0] == '#' && li
 
 @KdrPrivate
 fun isNamespaceLine(line: String): Boolean = line.length >= 3 && line[0] == '#' && line[1] == ' ' && line[2] == '@'
+
+/** Whether [line] is an omnibus file heading, `# !<fileId>` (issue #1217). */
+@KdrPrivate
+fun isFileLine(line: String): Boolean = line.length >= 3 && line[0] == '#' && line[1] == ' ' && line[2] == '!'
 
 @KdrPrivate
 fun isKeyLine(line: String): Boolean = line.length >= 3 && line[0] == '#' && line[1] == ' ' && line[2] == '+'

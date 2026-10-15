@@ -112,7 +112,7 @@ class MarkdownFragmentService : ServiceInitializer, ContentServer {
         if (mode == BootCheckMode.off) return
         val results = all.filter { it.client == null }
 
-        val findings = results.flatMap { findingsOf(it) }
+        val findings = results.flatMap { findingsOf(it) } + duplicateOmnibusDeclarations(registeredFragmentSources(cxt))
         // Notes are surfaced but never refuse a boot (issue #514): a backend file carrying a frontend pull is
         // not wrong, only resting on a human assertion. Logged so the fact is visible, and carried on the
         // operator report for a running node.
