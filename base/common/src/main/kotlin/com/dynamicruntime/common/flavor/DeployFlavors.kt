@@ -106,7 +106,7 @@ class FlavorContributionBuilder(private val flavor: String) {
 
     /**
      * Defaults the existing environment variable [def] to [value] while the flavor is active. It applies only where
-     * nothing else sets the variable -- the instance config, the workspace defaults file and the process
+     * nothing else sets the variable -- the instance config, the workspace defaults file, and the process
      * environment all win. A flavor never declares a variable of its own: keeping new environment variables from
      * being invented is what flavors are for, so a new switch is a config key ([set]).
      */
