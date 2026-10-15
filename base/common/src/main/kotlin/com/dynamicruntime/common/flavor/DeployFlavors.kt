@@ -31,7 +31,10 @@ import com.dynamicruntime.common.startup.ComponentDefinition
  * what keeps flavors from interacting -- a flavor is a list of changes with no logic in it.
  */
 
-/** The flavor engine's names. A flavor's own name is a constant here too, beside the engine's. */
+/**
+ * The flavor engine's names. A flavor core owns has its name here too, beside the engine's; one another component
+ * owns keeps its name beside that component (`SampleComponent.samplesFlavor`).
+ */
 @Suppress("ConstPropertyName")
 object FLV {
     /** The value of [deployFlavorsEnvVar] that says, explicitly, no flavors. */

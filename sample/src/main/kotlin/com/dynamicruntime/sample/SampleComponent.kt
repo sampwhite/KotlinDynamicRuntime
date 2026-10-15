@@ -15,6 +15,8 @@ import com.dynamicruntime.common.content.backendFragmentFiles
 import com.dynamicruntime.common.content.fragmentFiles
 import com.dynamicruntime.common.content.fragmentInline
 import com.dynamicruntime.common.content.fragmentOverlayFile
+import com.dynamicruntime.common.flavor.FlavorDef
+import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.sample.file.SampleFileService
@@ -62,7 +64,26 @@ class SampleComponent : ComponentDefinition {
         return env == ENV.local || env == ENV.dev
     }
 
+    /**
+     * The `samples` deployment flavor (issue #1220): a deployment that names it gets the sample clients wherever it
+     * runs -- it defaults [loadSampleEnvVar], which only matters outside `local`/`dev` -- and a home page pointing at
+     * them. Mostly a working example of a flavor, and of a deployment rewording a flavor's copy from its flavor
+     * directory (`samples.md` there, in the omnibus format).
+     */
+    override fun flavorDefs(cxt: KdrCxt) =
+        listOf(FlavorDef(samplesFlavor, "The sample clients, loaded wherever the deployment runs, and a home page pointing at them."))
+
+    override fun flavors(cxt: KdrCxt) = listOf(
+        flavor(samplesFlavor) {
+            default(loadSampleEnvVar, "true")
+            omnibusOverlay("sampleSamples")
+        },
+    )
+
     companion object {
+        /** The deployment flavor this component owns (issue #1220). */
+        const val samplesFlavor = "samples"
+
         val loadSampleEnvVar = EnvVarDef(
             "KDR_LOAD_SAMPLE", group = ENVGRP.application, defaultDoc = "on for `local`/`dev`, off otherwise",
             description = "Force-loads (`true`) or skips (`false`) the `sample` module's demo file " +

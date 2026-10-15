@@ -17,6 +17,11 @@ came from. It is also what keeps flavors from interacting: a flavor is a list of
 
 ## Declaring and contributing
 
+The first real flavor is the sample component's **`samples`** (`SampleComponent.samplesFlavor`): it defaults
+`KDR_LOAD_SAMPLE` and points the home page at the sample clients through `sampleSamples_omnibus.md`. To try a
+deployment's own copy, boot with `KDR_DEPLOY_FLAVORS=samples` and a `flavor-overlays/samples.md` in the
+workspace (`# !home`, `# @home`, `# +intro ...`).
+
 One component **owns** a flavor and declares it; any component may **contribute** values to it:
 
 ```kotlin
