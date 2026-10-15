@@ -149,6 +149,11 @@ object ClientFileRefEdit {
         )
     }
 
+    /**
+     * Refuses a [description] longer than [FREF.maxDescriptionLength]. Not reached from the endpoints, whose
+     * description field carries the same `maxLength` and refuses first; it is this object's own bound, for a caller
+     * in process (a script, a simulation), and is said before an upload stores any bytes.
+     */
     private fun checkDescription(description: String?) {
         if (description != null && description.length > FREF.maxDescriptionLength) {
             throw KdrException.mkInput("A file ref's description may be at most ${FREF.maxDescriptionLength} characters; this one is ${description.length}.")

@@ -12,6 +12,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * publish-reload-undo that makes an edit live. The copy editor ([ClientCopyEdit]) and the menu editor
  * ([ClientMenuEdit]) each decide *which* config holds their key or item and how to patch it; this is the rest.
  */
+@Suppress("ConstPropertyName")
 object ClientStoredEdit {
     /**
      * Where an editor's save of [client]'s presentation lands, and how it takes effect (issue #930).
@@ -153,6 +154,8 @@ object ClientStoredEdit {
      * With [impact] at [ImpactGate.refuse], a save that would affect the data the client already stores is refused
      * with the impact report, and undone the same way (issue #1040). It is judged before the publish whatever the
      * client's tier, since the save is what makes the change live ([ConfigImpact.requireNone]'s `asSave`).
+     *
+     * A [PublishCheck] the instance carries runs where the publish does, so a test can refuse one (issue #1179).
      */
     fun publishAndReload(
         cxt: KdrCxt,
@@ -165,6 +168,7 @@ object ClientStoredEdit {
     ): ConfigReloadResult {
         try {
             if (impact == ImpactGate.refuse) ConfigImpact.requireNone(bound, client, written, asSave = true)
+            (bound.instanceConfig.get(publishCheckConfigKey) as? PublishCheck)?.check(bound, client, written)
             GedraConfigService.get(bound).publish(bound, written.configId, trial = true)
         } catch (e: KdrException) {
             undo()
@@ -187,4 +191,18 @@ object ClientStoredEdit {
         ClientSyncService.get(cxt).announceReload(cxt, reload)
         return reload
     }
+
+    /**
+     * A refusal a test puts where [publishAndReload] publishes (issue #1179), handed what is about to be published.
+     * For a client that runs its latest configuration a publish is not trialled, so a change that passed the write's
+     * trial is otherwise never refused there -- and an editor's undo, which only a refused publish runs, is never
+     * run. Thrown, it is the publish's refusal: the undo runs and the caller is told it. Nothing but a test sets one,
+     * in the instance config under [publishCheckConfigKey]; the publish itself is unchanged.
+     */
+    fun interface PublishCheck {
+        fun check(bound: KdrCxt, client: String, written: GedraConfigRow)
+    }
+
+    /** The instance-config key a test hands in a [PublishCheck] under. */
+    const val publishCheckConfigKey = "clientEditPublishCheck"
 }
