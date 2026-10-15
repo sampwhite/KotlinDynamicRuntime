@@ -72,7 +72,14 @@ class LocalRead(val file: LocalFile?, val reason: String?)
  * [reason], which says why it may not be read. Every rule about *which* file has been kept by the time there is one
  * of these; what the file holds has not been looked at.
  */
-class LocalAt(val real: Path?, val size: Long, val modifiedMs: Long, val reason: String?)
+class LocalAt(
+    val real: Path?,
+    val size: Long,
+    val modifiedMs: Long,
+    val reason: String?,
+    /** Whether there is simply no file there -- no such file, or no such directory -- rather than one that may not be read. */
+    val absent: Boolean = false,
+)
 
 /**
  * The directories a file ref may read a local file from, and the reading (issue #1154).
@@ -186,7 +193,7 @@ class LocalFileRoots(
                 else -> LocalAt(real, Files.size(real), Files.getLastModifiedTime(real).toMillis(), null)
             }
         } catch (_: NoSuchFileException) {
-            none("there is no such file")
+            LocalAt(null, 0, 0, "there is no such file", absent = true)
         } catch (_: IOException) {
             none(unreadable)
         }
@@ -196,8 +203,10 @@ class LocalFileRoots(
      * The file at [path] under the root [root] -- in [clientDir]'s directory there, for a client's own ref -- held
      * to every rule of the class note.
      */
-    fun read(root: String, path: String, clientDir: String? = null): LocalRead {
-        val at = locate(root, path, clientDir)
+    fun read(root: String, path: String, clientDir: String? = null): LocalRead = readAt(locate(root, path, clientDir))
+
+    /** The file [at] says is there, read and held to every rule of the class note: [read], for a caller that has located it. */
+    fun readAt(at: LocalAt): LocalRead {
         val real = at.real ?: return LocalRead(null, at.reason)
         return try {
             // Opened without following a link, and read no further than a file may be long: the path was proven a

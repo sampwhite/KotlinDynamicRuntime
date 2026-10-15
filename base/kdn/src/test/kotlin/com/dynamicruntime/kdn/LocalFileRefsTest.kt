@@ -12,6 +12,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.fileref.LFENV
+import com.dynamicruntime.common.fileref.LocalFileSource
 import com.dynamicruntime.common.filestore.FMETA
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.ACEP
@@ -28,6 +29,7 @@ import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GED
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.gedra.GedraConfigOrigin
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
@@ -47,6 +49,7 @@ import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.util.parseDate
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -942,5 +945,132 @@ class LocalFileRefsTest : StringSpec({
         shouldThrow<KdrException> {
             Startup.mkTestBootCxt("localMalformed", "localFileRefsMalformed1154", mapOf(LFENV.dir.name to dir.absolutePath, LFENV.roots.name to "brand"))
         }.message.orEmpty() shouldContain "Refusing to start: ${LFENV.roots.name} holds 'brand', which is not `name=location`."
+    }
+
+    // --- A template's file as a client's default (issue #1180), and a stored override that is left out (#1170) ---
+
+    val template = LocalFileRefComponent.template
+
+    /** Creates [client] on the template through the API, as an operator does, and answers the envelope. */
+    fun createOnTemplate(client: String): Map<String, Any?> = full.client.sendJsonPostRequest(
+        ADEP.clientCreate,
+        mapOf(
+            CLD.clientId to client, CLD.name to "Client $client", CLD.usageType to ClientUsageType.dev.name,
+            CLD.audience to ClientAudience.internal.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+            CLD.extendsFromClientId to template,
+        ),
+    )
+
+    "a client created on a template is served the template's file where it has none of its own, and its own once it has" {
+        val client = "lfrfresh"
+        // Nothing of the client's is on the server: its creation is not refused for a file only the template has.
+        createOnTemplate(client).let { withClue(it) { it[EP.status].shouldBeNull() } }
+        val member = memberOf(client)
+        val own = listed(adminOf(client)).getValue("own")
+        own[FREF.fromTemplate] shouldBe template
+        own[FREF.missing] shouldBe false
+        own[FREF.name] shouldBe nameOf("own", svg)
+        static(member, nameOf("own", svg)).let {
+            it.rptStatusCode shouldBe EXC.ok
+            it.rptResponseBytes!!.toList() shouldBe svg.toList()
+        }
+        ClientConfigIssues.get(cxt).issuesFor(client).filter { it.message.contains("'own'") }.shouldBeEmpty()
+        // The record is the template's file's, whoever reads it first: what a node remembers of a file is shared by the
+        // template and every client served it, so it names the client whose directory it is in. Asked of a reader that
+        // has seen nothing yet, so the client's ref is the first to read it.
+        val fresh = LocalFileSource(refs.localRoots.shouldNotBeNull(), FREF.sourceClientLocal)
+        fresh.meta(cxt, refs.forClient(client).refs.getValue("own")).shouldNotBeNull().client shouldBe template
+
+        // Given a file of its own, it is that, at a new address; the template's address is now another file's.
+        approve(client, "own.png", png)
+        val mine = listed(adminOf(client)).getValue("own")
+        mine.containsKey(FREF.fromTemplate) shouldBe false
+        mine[FREF.name] shouldBe nameOf("own", png)
+        static(member, nameOf("own", png)).rptResponseBytes!!.toList() shouldBe png.toList()
+        static(member, nameOf("own", svg)).header(ContentResources.cacheControlHeader) shouldBe ContentResources.noStore
+    }
+
+    "a client's own file that cannot be served is its own problem, not covered by the template's" {
+        val client = "lfrbroken"
+        createOnTemplate(client)[EP.status].shouldBeNull()
+        approve(client, "own.png", "not an image".toByteArray())
+
+        val own = listed(adminOf(client)).getValue("own")
+        own[FREF.missing] shouldBe true
+        own.containsKey(FREF.fromTemplate) shouldBe false
+        static(memberOf(client), "own").rptStatusCode shouldBe EXC.notFound
+
+        // Nor is one too large to read: it is there, and the client's.
+        approve(client, "own.png", png + ByteArray(FREF.maxSize.toInt()))
+        listed(adminOf(client)).getValue("own").let {
+            it[FREF.missing] shouldBe true
+            it.containsKey(FREF.fromTemplate) shouldBe false
+        }
+        static(memberOf(client), "own").rptStatusCode shouldBe EXC.notFound
+    }
+
+    "a template whose own file is missing leaves a client with none of its own nothing to serve, and says where it looked" {
+        val client = "lfrnone"
+        createOnTemplate(client)[EP.status].shouldBeNull()
+        val templateFile = File(files, "$openRoot/$template/own.png")
+        val kept = templateFile.readBytes()
+        try {
+            templateFile.delete() shouldBe true
+            GedraConfigReload.reloadClient(cxt, client)
+            ClientConfigIssues.get(cxt).issuesFor(client).single { it.message.contains("'own'") }.message shouldContain
+                "in the client's own directory of that root, or the template '$template''s, which is not there to be served as an image."
+            static(memberOf(client), "own").rptStatusCode shouldBe EXC.notFound
+        } finally {
+            templateFile.writeBytes(kept)
+        }
+    }
+
+    "a ref the client holds itself never reads the template's directory" {
+        val client = "lfrownref"
+        createOnTemplate(client)[EP.status].shouldBeNull()
+        // The template has own.png, the client does not: naming it as the client's own finds nothing there.
+        notNamed(adminOf(client), EXC.badInput, "mine", "own.png") shouldContain "in the client's own directory of that root"
+        approve(client, "own.png", png)
+        named(adminOf(client), "mine", "own.png")[FREF.ref].toJsonMapOrEmpty()[FREF.name] shouldBe nameOf("mine", png)
+    }
+
+    "a stored override of an inherited ref that is left out reveals the template's, as an own shipped ref's does" {
+        val client = "lfroverride"
+        createOnTemplate(client)[EP.status].shouldBeNull()
+        static(memberOf(client), nameOf("crest", svg)).rptStatusCode shouldBe EXC.ok
+        // Stored in-process, past the write's own checks: an entry the load cannot serve (a hash that is none), as a
+        // restore or an older release could leave it.
+        svc.writeConfig(
+            writerOf(client),
+            gedraConfig(cxt, "over", clientNamespace(client), client, GedraConfigOrigin.stored) { fileRef("crest", "abc") },
+            trial = false,
+        )
+        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "over"))
+        GedraConfigReload.reloadClient(cxt, client)
+
+        ClientConfigIssues.get(cxt).issuesFor(client).single { it.message.contains("'crest'") }.message shouldContain "the hash 'abc', which is not one"
+        val crest = listed(adminOf(client)).getValue("crest")
+        crest[FREF.stored] shouldBe false
+        crest[CCT.source] shouldBe FREF.sourceLocal
+        static(memberOf(client), nameOf("crest", svg)).rptResponseBytes!!.toList() shouldBe svg.toList()
+    }
+
+    "a sandbox of a client built on a template is served what its parent is: the template's file, then the parent's own" {
+        val client = "lfrtplsbx"
+        createOnTemplate(client).let { withClue(it) { it[EP.status].shouldBeNull() } }
+        adminOf(client).postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandboxOf(client))
+
+        // The sandbox's ref is its parent's: the parent has no file of its own, so the template's, by the same name.
+        listed(inSandbox).getValue("own")[FREF.fromTemplate] shouldBe template
+        static(inSandbox, nameOf("own", svg)).rptResponseBytes!!.toList() shouldBe svg.toList()
+
+        // Given the parent a file of its own, the sandbox reads it -- the parent's directory, not one of the sandbox's.
+        approve(client, "own.png", png)
+        listed(inSandbox).getValue("own").let {
+            it.containsKey(FREF.fromTemplate) shouldBe false
+            it[FREF.name] shouldBe nameOf("own", png)
+        }
+        static(inSandbox, nameOf("own", png)).rptResponseBytes!!.toList() shouldBe png.toList()
     }
 })

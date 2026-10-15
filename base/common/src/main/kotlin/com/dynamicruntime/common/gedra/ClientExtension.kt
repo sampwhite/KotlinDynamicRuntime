@@ -77,7 +77,12 @@ object ClientExtension {
         val ownSingletonKinds = ownWorkflows.map { it.entry }.filter { it in WfEntry.singletons }.toSet()
         val ownUsages = own.any { it.usages.isNotEmpty() }
         val ownReports = own.flatMap { it.reports.keys }.toSet()
-        val ownFileRefs = own.flatMap { c -> c.fileRefs.map { it.refId } }.toSet()
+        // By what the child declares in **source** only (issue #1170): a stored ref of the same id meets the template's
+        // in the registry, where what is stored overrides what is shipped -- so a stored override the load cannot serve
+        // (malformed, naming a source this node does not read) reveals the template's ref, as it reveals a client's own
+        // shipped one. One past the limit does not: the id is past it, whichever declaration holds it. Two source
+        // declarations of one id are a duplicate, so the child's source refs still replace the template's here.
+        val ownFileRefs = own.filter { !it.isStored }.flatMap { c -> c.fileRefs.map { it.refId } }.toSet()
         return templateConfigs.map { config ->
             GedraConfig(
                 gedraId = GedraId.of(config.gedraId.kind, client, cloneName(template, config.name)),
@@ -90,8 +95,7 @@ object ClientExtension {
                 workflows = config.workflows.filterValues { it.workflowId !in ownWorkflowIds && it.entry !in ownSingletonKinds },
                 usages = if (ownUsages) emptyList() else config.usages,
                 reports = config.reports.filterKeys { it !in ownReports },
-                // The template's refs are the child's, less the ones it names itself (issue #1153) -- whole
-                // replacement by id, as a report is.
+                // The template's refs are the child's, less the ones its source names itself (issues #1153, #1170).
                 fileRefs = config.fileRefs.filter { it.refId !in ownFileRefs },
                 origin = origin,
                 inheritedFrom = template,

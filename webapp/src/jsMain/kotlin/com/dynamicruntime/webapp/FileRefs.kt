@@ -46,6 +46,11 @@ class FileRefView(
     val missing: Boolean,
     val file: WebAssetFile?,
     val uploadedByName: String?,
+    /**
+     * The template whose file it is served (issue #1180): a ref the client inherits and has no file of its own for.
+     * Null when the file is the client's own.
+     */
+    val fromTemplate: String? = null,
 )
 
 /** The listing's items as refs; one without an id is not one. */
@@ -71,6 +76,7 @@ fun parseFileRef(item: Map<String, Any?>): FileRefView? {
         missing = item[FREF.missing] == true,
         file = storedFileFrom(item[FREF.file]),
         uploadedByName = item[FREF.uploadedByName].toOptStr(),
+        fromTemplate = item[FREF.fromTemplate].toOptStr(),
     )
 }
 
@@ -262,7 +268,11 @@ fun fileRefWhereText(ref: FileRefView): String {
         FREF.sourceStore -> "Uploaded" + at?.let { " $it" }.orEmpty() + ref.uploadedByName?.let { " by $it" }.orEmpty() + "."
         FREF.sourceLocal ->
             if (ref.stored) "A file on the server: $place$changed." else "Shipped with the client, as a file on the server: $place$changed."
-        FREF.sourceClientLocal -> "A file the deployment keeps for this client: ${ref.path.orEmpty()} in ${ref.root.orEmpty()}$changed."
+        FREF.sourceClientLocal -> ref.fromTemplate?.let { template ->
+            // The template's default (issue #1180), until the deployment keeps one for this client.
+            "The template $template's file, which this client is served until the deployment keeps one of its own: " +
+                "${ref.path.orEmpty()} in ${ref.root.orEmpty()}$changed."
+        } ?: "A file the deployment keeps for this client: ${ref.path.orEmpty()} in ${ref.root.orEmpty()}$changed."
         else -> "Kept as '${ref.source}', which this page does not know."
     }
     return where + ref.configName?.let { " In the configuration '$it'." }.orEmpty()

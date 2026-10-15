@@ -147,4 +147,23 @@ class ClientExtensionTest : StringSpec({
         merged.domainPrefix shouldBe null
         ClientExtension.mergeDef(def(kid, tpl).copy(webResourcesId = "own"), base).webResourcesId shouldBe "own"
     }
+    // A file ref is the one kind with an override rule of its own in the registry (issue #1170): what is stored
+    // overrides what is shipped, there. So only the client's source declarations take the template's ref out of the
+    // copy; a stored one of the same id meets it in the registry, which decides it -- and, should the stored one be
+    // left out, still has the template's to serve.
+    "a template's file ref is taken out of the copy by the client's source declaration only" {
+        val withRefs = gedraConfig(cxt, "art", "client.tpl", tpl) {
+            fileRef("crest") { local("brand", "crest.svg") }
+            fileRef("hero") { clientLocal("approved", "hero.png") }
+        }
+        fun refsOf(own: List<GedraConfig>) =
+            ClientExtension.clones(kid, tpl, listOf(withRefs), own, GedraConfigOrigin.stored).single().fileRefs.map { it.refId }
+
+        val stored = gedraConfig(cxt, "copy", "client.kid", kid, GedraConfigOrigin.stored) { fileRef("crest", "a".repeat(64)) }
+        refsOf(listOf(stored)) shouldContainExactly listOf("crest", "hero")
+
+        val shipped = gedraConfig(cxt, "own", "client.kid", kid) { fileRef("crest") { local("brand", "kid.svg") } }
+        refsOf(listOf(shipped)) shouldContainExactly listOf("hero")
+        refsOf(listOf(shipped, stored)) shouldContainExactly listOf("hero")
+    }
 })

@@ -158,6 +158,11 @@ the same way, under their own marker:
   image, too large) -- do not try to tell them apart. Such a ref is listed with `source` `FREF.sourceClientLocal`,
   beside `sourceStore` and `sourceLocal`. Wire names are `CCT.root`/`CCT.path` and
   `UADEP.clientFilesLocal`/`clientFilesRoots`.
+- **A `clientLocal` ref a client inherits from a template falls back to the template's file** (issue #1180) where
+  the client has none of its own -- the template's is its default, as a template's copy is -- and the listing says
+  so with `FREF.fromTemplate` (the template's id), which `fileRefWhereText` words. Only an absent file falls back: a
+  file the client has that cannot be served is its own problem, and the ref is `missing`. A ref the client holds
+  itself (one named through `…/files/local`) reads the client's directory and nothing else.
 
 ## UI-config endpoints: how a widget-group learns what to build (issue #70)
 
