@@ -4,6 +4,7 @@ import com.dynamicruntime.common.util.MarkdownHooks
 import com.dynamicruntime.common.util.renderMarkdown
 import com.dynamicruntime.common.util.renderMarkdownInline
 import kotlinx.browser.document
+import kotlinx.browser.window
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
@@ -54,7 +55,8 @@ val Markdown = FC<MarkdownProps> { props ->
         // A same-document `#anchor` (a table-of-contents link) scrolls in-page rather than letting the app's
         // hash router consume it (issue #492); everything else, including an in-app `#doc=` route link, is
         // left to the browser.
-        onClick = { e -> scrollSameDocAnchorIntoView(e) }
+        // A click on a block's copy button copies the block (issue #1233); any other click may be an anchor's.
+        onClick = { e -> if (!copyCodeBlock(e)) scrollSameDocAnchorIntoView(e) }
         dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdown(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
     }
 }
@@ -69,7 +71,65 @@ fun markdownHooksFor(
     refAddress: ((String) -> String?)?,
     facts: ShellFacts,
     addressOf: (String) -> String = Http::fileRefUrl,
-): MarkdownHooks = MarkdownHooks(resolveUrl = linkResolver, refAddress = refAddress ?: facts.copyRefAddress(addressOf))
+): MarkdownHooks = MarkdownHooks(
+    resolveUrl = linkResolver,
+    refAddress = refAddress ?: facts.copyRefAddress(addressOf),
+    decorateCodeBlock = ::copyButtonWrap,
+)
+
+/** The class of the container a copyable code block is wrapped in, and of its button (issue #1233). */
+const val codeBlockClass = "md-codeblock"
+const val copyButtonClass = "md-copy"
+const val copiedClass = "md-copied"
+
+/** The fence languages that get a copy button: what a reader pastes elsewhere, not prose-like text. */
+val copyableLanguages: Set<String> = setOf("json")
+
+/** The button's content: a clipboard glyph; the label for a screen reader is on the button itself. */
+const val copyButtonIcon = "<svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\">" +
+    "<rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\"/>" +
+    "<path d=\"M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2\"/></svg>"
+
+/**
+ * The renderer's code-block hook for the app (issue #1233): a block in one of the [copyableLanguages] is wrapped
+ * in a container with a copy button before it, so the button can sit in the block's corner; any other block is
+ * left as the renderer made it. Pure, covered under `jsNodeTest`.
+ */
+fun copyButtonWrap(language: String, preHtml: String): String? {
+    if (language !in copyableLanguages) return null
+    return "<div class=\"$codeBlockClass\"><button type=\"button\" class=\"$copyButtonClass\" title=\"Copy\" " +
+        "aria-label=\"Copy to clipboard\">$copyButtonIcon</button>$preHtml</div>"
+}
+
+/** How long the button reads "Copied" after a click, in milliseconds. */
+const val copiedShownMs = 1500
+
+/**
+ * If a click landed on a block's copy button, puts the block's text on the clipboard and says so on the button
+ * for a moment (issue #1233); returns whether the click was the button's. The text is the `pre`'s text content,
+ * which is the block exactly: the highlighter's spans add no characters. The HTML is set with
+ * `dangerouslySetInnerHTML`, so nothing can sit on the button itself and the container's click handler does it.
+ */
+private fun copyCodeBlock(e: dynamic): Boolean {
+    val button = e.target.closest(".$copyButtonClass") ?: return false
+    e.preventDefault()
+    val pre = button.closest(".$codeBlockClass")?.querySelector("pre") ?: return true
+    val text = pre.textContent as? String ?: return true
+    val clipboard = window.navigator.asDynamic().clipboard ?: return true
+    val original = button.innerHTML
+    clipboard.writeText(text).then({ _: dynamic ->
+        button.textContent = "Copied"
+        button.classList.add(copiedClass)
+        window.setTimeout({
+            button.innerHTML = original
+            button.classList.remove(copiedClass)
+        }, copiedShownMs)
+    }, { _: dynamic ->
+        // Refused -- the document not focused, or the permission denied: the button stays as it was, and the
+        // reader can still select the text.
+    })
+    return true
+}
 
 /**
  * If a click landed on a same-document anchor link, scroll its target heading into view and stop the browser
