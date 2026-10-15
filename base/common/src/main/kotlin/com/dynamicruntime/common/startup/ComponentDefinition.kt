@@ -3,6 +3,8 @@ package com.dynamicruntime.common.startup
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.flavor.FlavorContribution
+import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.uiblock.UiBlockSource
 
@@ -86,6 +88,26 @@ interface ComponentDefinition : KdrProvider {
      * deployment, not from what its peers happened to set.
      */
     fun applyInstanceConfig(cxt: KdrCxt) {}
+
+    /**
+     * The deployment flavors this component **owns** (issue #1218): each flavor's name and what it is for. One
+     * component declares a flavor; any may contribute to it ([flavors]).
+     *
+     * Asked of every component, loaded or not, while the instance is built and before any load decision -- a
+     * flavor's values may decide what loads -- so the answer must not depend on anything that is not yet in place.
+     */
+    fun flavorDefs(cxt: KdrCxt): List<FlavorDef> = emptyList()
+
+    /**
+     * What this component contributes to deployment flavors (issue #1218), built with `flavor(name) { ... }`:
+     * instance-config keys to set and existing environment variables to default while a flavor is active. Asked
+     * when [flavorDefs] is, for the same reason.
+     *
+     * Code never tests a flavor. Where this component behaves differently under one, it reads the key or variable
+     * the flavor sets, as it reads any other -- in [presence]/[isLoaded] to decide whether it loads, in
+     * [addSchema] for its endpoints, and in [services] for its services.
+     */
+    fun flavors(cxt: KdrCxt): List<FlavorContribution> = emptyList()
 
     /** Contributes schema modules (types + endpoints) into the collector. */
     fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {}

@@ -25,6 +25,7 @@ subtly wrong.
 | `kdr-table-cache` | in-memory table caches (`common/sql/cache`) — and which tables must *not* be cached |
 | `kdr-testing` | verifying anything here: booting a server, `mkTestBootCxt`, `TestHttpClient`, `kdr-probe` |
 | `kdr-test-clients` | a new client per test scenario on a shared instance: the `gedraConfig` DSL, stored config, reload |
+| `kdr-deploy-flavors` | deployment flavors (`KDR_DEPLOY_FLAVORS`): declaring and contributing, precedence, the refusals |
 | `kdr-demo-docs` | writing `docs/demo-client/`: the page shape, the voice and word rules, the `kdr-doc` markers and their test |
 
 **A skill's code examples are compiled as tests** (`*SkillExamplesTest`), so a signature change breaks the

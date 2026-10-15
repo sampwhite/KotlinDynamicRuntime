@@ -26,6 +26,7 @@ object LNCH {
         description = "The `providerName` of the deployment configuration object (an `AppConfigApplier`) to " +
             "discover and apply at startup. Full profiles are selected, not composed, so this names the one to " +
             "apply -- defaulting to `KdrConfig`.",
+        bootstrap = true,
     )
 }
 

@@ -208,6 +208,11 @@ class KdrInstanceConfig(
      * Instance-config entries win over the real process environment, so configuration (and tests) can inject
      * or override an "environment variable" without touching the process environment.
      *
+     * Below both, the **flavor layer** (issue #1218): a default an active deployment flavor gave the variable,
+     * consulted only when no name -- role-prefixed or plain, config entry or process variable -- supplied one. It is
+     * a layer of its own rather than a config entry because an entry would *beat* the process environment, and a
+     * flavor's value is a default that an explicit setting anywhere must override.
+     *
      * Under a boot role, the role-prefixed name is tried first and the plain one is the fallback, so an edge
      * and an application can run side by side on one machine wanting different values for the same variable.
      * The MORE SPECIFIC name wins outright -- both its config entry and its process variable -- before the
@@ -219,7 +224,21 @@ class KdrInstanceConfig(
             (get(k) as? String)?.let { return EnvVarResolution(it, k, EVSRC.config) }
             System.getenv(k)?.let { return EnvVarResolution(it, k, EVSRC.processEnv) }
         }
+        flavorEnvDefaults[name]?.let { return EnvVarResolution(it, name, EVSRC.flavor) }
         return EnvVarResolution(null, null, EVSRC.unset)
+    }
+
+    // The flavor layer (issue #1218), set once while the instance is built; see [resolveByName].
+    @Volatile
+    private var flavorEnvDefaults: Map<String, String> = emptyMap()
+
+    /**
+     * Installs the defaults the active deployment flavors give environment variables, keyed by variable name
+     * (issue #1218). Called once, by the flavor resolution, while the instance is still being built; each value
+     * applies only where nothing else sets the variable ([resolveByName]).
+     */
+    fun setFlavorEnvDefaults(defaults: Map<String, String>) {
+        flavorEnvDefaults = defaults.toMap()
     }
 
     /**
@@ -309,6 +328,7 @@ class KdrInstanceConfig(
                 "another developer's workspace choices -- an agent's server in a human-owned workspace, which " +
                 "otherwise picks up every value in that file, including ones added after it last looked. Read " +
                 "from the real environment only; setting it inside a defaults file has no effect.",
+            bootstrap = true,
         )
 
         /** The [defaultsFileEnvVar] value that reads no defaults file at all. */
@@ -372,6 +392,7 @@ class KdrInstanceConfig(
             description = "The environment name -- `local`, `unit`, `prod`. Drives environment-specific " +
                 "behavior (whether the sample app loads, whether a database host is defaulted, and much more). " +
                 "Read before the instance exists, so it is resolved at pre-boot rather than through an instance.",
+            bootstrap = true,
         )
 
         /** The prefix every application environment variable carries. */

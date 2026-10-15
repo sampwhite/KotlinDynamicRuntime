@@ -12,6 +12,7 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.flavor.DeployFlavors
 import com.dynamicruntime.common.gedra.isSandboxClient
 import com.dynamicruntime.common.logging.LogStartup
 
@@ -89,12 +90,15 @@ object InstanceRegistry {
             // reach the instance config every request later reads its environment through.
             val config = KdrInstanceConfig(instanceName, env, ENV.liveSource, overlay[ACFG.bootRole] as? String)
             config.putAll(overlay)
+            val cxt = KdrCxt("startup", config)
+            LogStartup.info(cxt, "Initializing instance '$instanceName'.")
+            // The deployment flavors (issue #1218), resolved once and applied as soon as the deployment's own config
+            // is in place -- before anything reads a value a flavor may set: the derived config just below, the
+            // node's profile, and every component's load decision.
+            DeployFlavors.resolve(cxt, components.sortedBy { it.loadPriority() })
             // Materialize lazily derived config (isTestInstance) now that env/overlay are settled and boot is
             // still single-threaded -- so it is computed before any request and visible when debugging.
             config.warmDerived()
-
-            val cxt = KdrCxt("startup", config)
-            LogStartup.info(cxt, "Initializing instance '$instanceName'.")
 
             // What this node is, read once and threaded through every presence decision below (issue #433) --
             // the component gate, the service entries, and the schema the collector accepts.

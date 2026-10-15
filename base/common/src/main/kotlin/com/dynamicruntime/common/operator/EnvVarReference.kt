@@ -78,14 +78,14 @@ private fun appendVar(sb: StringBuilder, config: KdrInstanceConfig, def: EnvVarD
     sb.append(prose(def.description)).append("\n\n")
 }
 
-/** Matches a KDoc `[Symbol]` reference -- a bare `[Identifier]` (dotted members allowed), not a `[text](url)` link. */
+/** Matches a KDoc symbol reference -- a bare name between `[` and `]` (dotted members allowed), not a `[text](url)` link. */
 private val kdocReference = Regex("""\[([A-Za-z][\w.]*)](?!\()""")
 
 /**
- * A def's KDoc prose rendered for the operator document: a `[Symbol]` reference -- clickable in the source for
- * a developer, but a dangling `[Symbol]` if dropped into CommonMark verbatim -- becomes an inline-code span,
- * which reads as "a name" rather than a broken link. A real `[text](url)` link is left alone (the negative
- * lookahead); the descriptions carry none today, but the guard keeps this honest if one is ever added.
+ * A def's KDoc prose rendered for the operator document: a symbol reference, a name between `[` and `]` --
+ * clickable in the source for a developer, but a dangling link if dropped into CommonMark verbatim -- becomes an
+ * inline-code span, which reads as "a name" rather than a broken link. A real `[text](url)` link is left alone (the
+ * negative lookahead); the descriptions carry none today, but the guard keeps this honest if one is ever added.
  */
 private fun prose(text: String): String = kdocReference.replace(text) { "`${it.groupValues[1]}`" }
 
@@ -93,6 +93,7 @@ private fun prose(text: String): String = kdocReference.replace(text) { "`${it.g
 private fun sourceText(source: String): String = when (source) {
     EVSRC.config -> "instance config"
     EVSRC.processEnv -> "the environment"
+    EVSRC.flavor -> "a deployment flavor's default -- see /operator/flavors"
     else -> source
 }
 

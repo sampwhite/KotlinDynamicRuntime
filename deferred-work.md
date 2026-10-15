@@ -552,3 +552,13 @@ read-back, so an administrator's invitation to an outside address is never deliv
   be made quickly at a test domain. The domains would be the reserved names only -- `example.com`, `example.org`,
   `example.net`, and anything under `.test` or `.invalid` (RFC 2606) -- never `test.com`, which Cedar used and
   is a real, registered domain. The decision is `MailService.deliveryFor`, which is where it would change.
+
+## When a deployment wants a flavor on because of its environment rather than by name
+
+Deployment flavors (#1218) are active only when `KDR_DEPLOY_FLAVORS` names them.
+
+- **Default rules on a flavor's declaration** *(from #1218).* `FlavorDef` gains a rule over the instance config
+  (environment, instance name, another setting), asked once while flavors resolve and only when
+  `KDR_DEPLOY_FLAVORS` is unset, with each flavor it turns on logged with its reason. The rule belongs on the
+  declaration rather than in each contributing component, so every component agrees on whether the flavor is on.
+  Design: `kdr-design/thoughts-on-flavors.md` (private `sampwhite/Actions`), "Default Variations of Config".

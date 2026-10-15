@@ -29,6 +29,7 @@ object AppPaths {
         description = "The workspace directory (the Gradle build root that contains this repo). Read before " +
             "the instance exists, via `System.getenv`. Normally left unset -- the directory is found by " +
             "walking up to the nearest `settings.gradle.kts`.",
+        bootstrap = true,
     )
 
     /** The per-deployment Gradle settings file that marks the workspace directory. */

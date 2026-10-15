@@ -41,6 +41,12 @@ class EnvVarDef(
     val defaultDoc: String,
     /** The documentation: what the variable does and why, in prose. */
     val description: String,
+    /**
+     * Whether the variable is read **before deployment flavors are resolved** (issue #1218) -- at pre-boot, or by
+     * the resolution itself. A flavor may not default one: its value would be reported as set and change nothing,
+     * because the read it was meant for has already happened. The boot refuses a flavor that tries.
+     */
+    val bootstrap: Boolean = false,
 ) {
     init {
         EnvVarRegistry.register(this)
@@ -58,6 +64,12 @@ object EVSRC {
 
     /** The real process environment (`System.getenv`). */
     const val processEnv = "processEnv"
+
+    /**
+     * A deployment flavor defaulted it (issue #1218): nothing above set it, and an active flavor names a value. Below
+     * both the instance config and the process environment, so an explicit setting always wins.
+     */
+    const val flavor = "flavor"
 
     /** Neither supplied it, so the documented default applies -- see [EnvVarDef.defaultDoc]. */
     const val unset = "unset"
