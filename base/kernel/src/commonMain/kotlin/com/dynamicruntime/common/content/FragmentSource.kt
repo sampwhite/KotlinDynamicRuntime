@@ -117,6 +117,12 @@ class FragmentSource(
      */
     val inheritedFrom: String? = null,
     /**
+     * The position of the deployment flavor this layer came from in the active list (issue #1219), or null when it
+     * came from no flavor. A flavor's layers rank above the components' own and below every client layer, and among
+     * themselves by this -- the later flavor wins ([overlayPrecedence], `mergeFragmentLayers`).
+     */
+    val flavorRank: Int? = null,
+    /**
      * Reads this layer's content, or null when its resource is absent.
      *
      * A function rather than a map so a classpath read stays lazy and an inline map needs no wrapper: both
@@ -136,20 +142,25 @@ class FragmentSource(
         configName: String? = this.configName,
         stored: Boolean = this.stored,
         inheritedFrom: String? = this.inheritedFrom,
+        flavorRank: Int? = this.flavorRank,
     ): FragmentSource = FragmentSource(
         fileId = fileId, isOverlay = isOverlay, client = client, origin = origin, audience = audience,
         shownOn = shownOn, shownFor = shownFor, configName = configName, stored = stored,
-        inheritedFrom = inheritedFrom, load = load,
+        inheritedFrom = inheritedFrom, flavorRank = flavorRank, load = load,
     )
 
     override fun toString(): String = "$fileId <- $origin" + (client?.let { " ($it)" } ?: "")
 }
 
 /**
- * Where an overlay is applied among the overlays of one merge (issue #916): a component's first, then what the
- * client **inherited** from the template it extends (issue #945), then the client's from **source**, then the
- * client's from **stored** configuration -- later wins, so a stored overlay has the last word. Shared by the
- * fragment and the UiBlock merges, which order their layers alike.
+ * Where an overlay is applied among the overlays of one merge (issue #916): a component's first, then a deployment
+ * **flavor**'s (issue #1219), then what the client **inherited** from the template it extends (issue #945), then the
+ * client's from **source**, then the client's from **stored** configuration -- later wins, so a stored overlay has
+ * the last word. Shared by the fragment and the UiBlock merges, which order their layers alike (a UiBlock layer
+ * comes from no flavor yet).
+ *
+ * A flavor's layers rank above the components' own because a flavor is a deployment's choice to vary what the
+ * components ship, and below every client layer because a client that reworded its copy keeps its wording.
  *
  * The stored-after-source half is a rule rather than an accident of load order (stored configs happen to load
  * after source ones) because editing a client's copy writes to stored configuration: an administrator's change
@@ -158,11 +169,11 @@ class FragmentSource(
  * kind of rule: a template's copy is what the client starts from, so anything the client says itself wins, and
  * since the template's copies are added after the client's own configs, load order would say the opposite.
  */
-fun overlayPrecedence(client: String?, stored: Boolean, inherited: Boolean = false): Int = when {
-    client == null -> 0
-    inherited -> 1
-    !stored -> 2
-    else -> 3
+fun overlayPrecedence(client: String?, stored: Boolean, inherited: Boolean = false, flavor: Boolean = false): Int = when {
+    client == null -> if (flavor) 1 else 0
+    inherited -> 2
+    !stored -> 3
+    else -> 4
 }
 
 /** The suffix marking a classpath fragment file as an overlay: `<fileId>_overlay.md`. */

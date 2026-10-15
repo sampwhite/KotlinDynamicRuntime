@@ -155,6 +155,9 @@ object InstanceRegistry {
                     }
                 }
             }
+            // The active deployment flavors' fragment overlays (issue #1219), from the components that loaded. Their
+            // rank, not their place in this list, orders them in a merge.
+            fragmentSources.addAll(DeployFlavors.get(cxt).fragmentLayers(loaded.map { it.providerName }.toSet()))
             // Kept as declared, duplicates and all. Two components declaring the same file would once have
             // been collapsed by `.distinct()` on a list of file-id strings, and the equivalent for layers is a
             // trap: a layer's *content* is part of what it is, and no key over its other fields can see that
