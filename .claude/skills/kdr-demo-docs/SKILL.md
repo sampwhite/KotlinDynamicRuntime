@@ -68,6 +68,13 @@ Every workflow page follows one shape, so the reader learns it once:
    happens in the forms list. This is the one place the docs connect JSON to a screen; every workflow page has it.
 6. `Next: [Page](page.md).` as the last line. The last page says more are coming and links to Contents.
 
+Two pages break the workflow shape, deliberately. `reports.md` follows it with "What the organizer sees" in place
+of the speaker, since a report is for administrators. `bundles.md` is the last page and is only JSON: every bundle
+whole, marked `bundle=<name>` with no pointer, one `## <bundle>` section each, in the order the demo writes them.
+A change to any bundle changes that page too, so the test's mismatch output is worth reading in full there: kotest
+prints only the first mismatch, so a dump of every bundle (temporarily, from the test's `slotsOf`) is faster than
+fixing them one run at a time.
+
 The README is orientation only: the reading-order list ("The pages"), "Try it", how a client is stored, the bundles
 table, and its own Next. The client's definition has its own page. `reference.md` holds anything two pages would
 otherwise repeat (reading the JSON, comments, choices, field layouts, ...); a page links there the first time it
@@ -113,7 +120,8 @@ Run it alone with `cd <workspace> && ./gradlew :base:kdn:test --tests '*ConfDemo
   reader; then `ConfDemo.kt` is written to produce it. Built the other way, the JSON comes out shaped for the code.
 - **Append, never insert.** Pointers are positional (`/kdr:traitDef/1`). A new trait goes at the end of `base`'s
   trait list; a new column at the end of the usages. Inserting renumbers every page after it.
-- **One bundle per workflow**, `base` for the client, its traits and its columns. Declare a new page in
+- **One bundle per workflow**, `base` for the client, its traits and its columns, `reports` for the reports (not
+  workflows, and they change together). Declare a new page in
   `confDemoDocs()` (`ConfDemo.kt`), unlisted; only the README is listed. The build copies
   `docs/demo-client/<name>.md` to doc id `demo-client-<name>` (`base/kdn/build.gradle.kts`), so the README's id is
   `demo-client-README`.

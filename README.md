@@ -212,6 +212,14 @@ area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors). A running node also
 variable and the value it actually resolved to *on that node* — at the operator endpoint
 `/operator/env/reference`, shown as the **Environment** view in the app.
 
+## A worked example
+
+[`docs/demo-client/`](docs/demo-client/README.md) walks through the **conference demo**, a client built from
+configuration alone: a conference's call for talks, with a creation workflow, a survey, three normal workflows, and
+two reports. Each page shows one bundle's stored JSON and explains it piece by piece, and the pages are served in
+the application as well as here. Start with [the opening page](docs/demo-client/README.md). The demo is provisioned
+by the `conf-demo` simulation on any test instance.
+
 ## Design documents
 
 [`gedra-entry.md`](gedra-entry.md) describes the **Gedra entry** — the universal stored entity the next phase
