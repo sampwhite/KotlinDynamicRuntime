@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.ACEP
 import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.gedra.PlanUsage
@@ -25,6 +26,7 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.user.USF
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /** The Clients page's pure half (issue #905): reading the overview's rows, and how each fact reads in the table. */
 class ClientsPageTest {
@@ -520,6 +522,31 @@ class ClientsPageTest {
         )
     }
 
+    // What an editor says beside its save comes from the same test as what it sends (issue #1191).
+    @Test
+    fun anEditorSaysBeforeASaveHowItTakesEffect() {
+        assertEquals("Saving makes it live for the client's people at once.", saveEffectText(savesAsDraft(null, hasSandbox = false)))
+        assertEquals(
+            "Saving keeps it a draft: the client's sandbox shows it, and it goes live once published.",
+            saveEffectText(savesAsDraft(null, hasSandbox = true)),
+        )
+        assertEquals(saveEffectText(true), saveEffectText(savesAsDraft("acme", hasSandbox = false)))
+    }
+
+    // A save refused for no longer taking effect as the page said is answered with the backend's account and that the
+    // page has been read again; any other failure is the caller's to show as it would (issue #1191).
+    @Test
+    fun aSaveRefusedForHowItWouldTakeEffectSaysThePageWasReadAgain() {
+        val conflict = ApiError("This would take effect at once for client 'acme', not as a draft: it has no sandbox now. Nothing was changed.", false, EXC.conflict, null, null)
+        assertEquals(
+            "This would take effect at once for client 'acme', not as a draft: it has no sandbox now. Nothing was changed. " +
+                "The page has been read again, and now says how a save takes effect.",
+            saveConflict(conflict)?.text,
+        )
+        assertNull(saveConflict(ApiError("No.", false, EXC.badInput, null, null)))
+        assertNull(saveConflict(IllegalStateException("network")))
+    }
+
     // --- editing the definition (issue #1026) ----------------------------------------------------------------
 
     private val storedInfo = mapOf(
@@ -534,22 +561,25 @@ class ClientsPageTest {
         assertEquals("Globex", draft[CLD.name])
         assertEquals("", draft[CLD.customDomain])
         assertEquals("reviewer, auditor", draft[CLD.userLabels])
-        // Untouched: nothing but the client.
-        val same = definitionEditRequest("globex", storedInfo, draft)
-        assertEquals(mapOf(CLD.client to "globex"), same)
+        // Untouched: nothing but the client, and how the page said a save would take effect.
+        val same = definitionEditRequest("globex", storedInfo, draft, EDM.live)
+        assertEquals(mapOf(CLD.client to "globex", CPY.mode to EDM.live), same)
         assertEquals(false, definitionEditChanges(same))
         // A rename trimmed, the note cleared (sent blank, so the backend clears it), the labels re-read as a list --
         // each once and trimmed -- and the fields left alone not sent.
         val edited = draft + mapOf(CLD.name to " Globex Corp ", CLD.description to "  ", CLD.userLabels to "auditor, reviewer ,auditor,,")
-        val request = definitionEditRequest("globex", storedInfo, edited)
+        val request = definitionEditRequest("globex", storedInfo, edited, EDM.draft)
         assertEquals(true, definitionEditChanges(request))
         assertEquals(
-            mapOf(CLD.client to "globex", CLD.name to "Globex Corp", CLD.description to "", CLD.userLabels to listOf("auditor", "reviewer")),
+            mapOf(
+                CLD.client to "globex", CPY.mode to EDM.draft, CLD.name to "Globex Corp", CLD.description to "",
+                CLD.userLabels to listOf("auditor", "reviewer"),
+            ),
             request,
         )
         // A label line that only re-spells the same list is not a change.
         assertEquals(listOf("reviewer", "auditor"), labelsOfText(" reviewer,auditor , reviewer"))
-        assertEquals(false, definitionEditChanges(definitionEditRequest("globex", storedInfo, draft + (CLD.userLabels to " reviewer,auditor "))))
+        assertEquals(false, definitionEditChanges(definitionEditRequest("globex", storedInfo, draft + (CLD.userLabels to " reviewer,auditor "), EDM.live)))
     }
 
     /** The retrieve's stored definition (issue #1026) is the editor's baseline; a source-defined client has none. */
@@ -728,11 +758,17 @@ class ClientsPageTest {
 
     @Test
     fun aMenuEditRequestCarriesOnlyWhatIsAsked() {
-        assertEquals(mapOf(COV.client to "acme", COV.itemId to "profile", MNU.label to "Me"), menuEditRequest("acme", "profile", "Me", null, null))
-        assertEquals(mapOf(COV.client to "acme", COV.itemId to "docs", MNU.visibility to MNU.hide), menuEditRequest("acme", "docs", null, MNU.hide, null))
         assertEquals(
-            mapOf(COV.client to "acme", COV.itemId to "workflows", MNU.visibility to MNU.show, MNU.condition to "kdr:loggedIn,kdr:app"),
-            menuEditRequest("acme", "workflows", null, MNU.show, "kdr:loggedIn,kdr:app"),
+            mapOf(COV.client to "acme", COV.itemId to "profile", MNU.label to "Me", CPY.mode to EDM.live),
+            menuEditRequest("acme", "profile", "Me", null, null, EDM.live),
+        )
+        assertEquals(
+            mapOf(COV.client to "acme", COV.itemId to "docs", MNU.visibility to MNU.hide, CPY.mode to EDM.draft),
+            menuEditRequest("acme", "docs", null, MNU.hide, null, EDM.draft),
+        )
+        assertEquals(
+            mapOf(COV.client to "acme", COV.itemId to "workflows", MNU.visibility to MNU.show, MNU.condition to "kdr:loggedIn,kdr:app", CPY.mode to EDM.live),
+            menuEditRequest("acme", "workflows", null, MNU.show, "kdr:loggedIn,kdr:app", EDM.live),
         )
         val result = parseMenuEditResult(mapOf(COV.configName to "copy", MNU.label to "Me", MNU.condition to "#never", CPY.stored to true))
         assertEquals("copy" to "Me", result.configName to result.label)

@@ -120,21 +120,6 @@ fun parseFileRefTakes(item: Map<String, Any?>): FileRefTakes = FileRefTakes(
 )
 
 /**
- * Whether a change made on this client's page is a **draft**: the client has a sandbox ([hasSandbox]), or is one
- * ([sandboxOf] is its parent). The one test the section's wording and what it tells the backend it expects
- * ([fileRefExpectedMode]) both go by, so the two cannot come to differ.
- */
-fun fileRefIsDraft(sandboxOf: String?, hasSandbox: Boolean): Boolean = sandboxOf != null || hasSandbox
-
-/**
- * How the page expects a change to take effect, which it sends with each one. The backend decides at the request,
- * by whether the client has a sandbox *then*; the page said which before the person acted, from what it last
- * read. Told what the page said, the backend refuses a change that would do otherwise -- a removal confirmed as
- * "from the draft" must not take a file from the client's people because the sandbox went in between.
- */
-fun fileRefExpectedMode(draft: Boolean): String = if (draft) EDM.draft else EDM.live
-
-/**
  * What the section says above its list: what a file ref is, how a change to one takes effect, and -- where it is a
  * draft -- that the list is the sandbox's view. Live at once for a client that runs its latest configuration; a
  * draft for one with a sandbox ([hasSandbox]), unlike a web asset, which is never one; and for a sandbox's own

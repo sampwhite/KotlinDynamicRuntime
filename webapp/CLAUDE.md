@@ -129,11 +129,10 @@ the same way, under their own marker:
   - **A change answers its `mode`** (`EDM.live` / `EDM.draft`), as a copy edit does, and the ref as it now is --
     which the section draws at once. After a *removal* a ref still being there, and not `stored`, is the one the
     client was shipped with under that id, which the removed upload stood in front of.
-  - **Every change says how the page expects it to take effect** (`mode`, from `fileRefExpectedMode`). Whether a
-    change is a draft is decided at the request, by whether the client has a sandbox *then*; the page told its
-    user which from what it last read. A change that would take effect the other way is a 409, and not made --
-    so a removal confirmed as "from the draft" cannot take a file from the client's people because the sandbox
-    went in between. Send it with any new change you add here.
+  - **Every change says how the page expects it to take effect** (`mode`, from `expectedMode`), as every editor's
+    save on the page does (see "How a save takes effect" under "The Clients page"). A change the page called a
+    draft that would be live is a 409, and not made -- so a removal confirmed as "from the draft" cannot take a
+    file from the client's people because the sandbox went in between. Send it with any new change you add here.
   - **Only a `stored` ref has Remove and Reword.** One the client was shipped with can be uploaded over and
     cannot be removed or reworded (`…/files/remove` and `…/files/describe` answer 400: nothing stored holds it).
   - **A file is picked with `FilePickButton`** (`FilePickButton.kt`), which the web assets' upload uses too:
@@ -667,6 +666,17 @@ link would show its syntax. The listing's **Customized** column says how much (`
 administrator also gets **Copy & menu across clients** (`ov=1` on the same route, `overridesAcrossHref`): one
 retrieve per listed client, grouped by the pure `overridesAcrossClients` into file-or-block → key → the clients
 overriding it. A scoped administrator has one client and is never shown that view, whatever the hash says.
+
+**How a save takes effect, said before and sent with it** (issues #930, #1176, #1191). Every editor on a client's
+page that saves its configuration -- the copy, the menu, the definition, the files -- is live at once for a client
+that runs its latest configuration, and a draft its sandbox shows for one with a sandbox (or on a sandbox's own
+page). The page decides which **once**, from the overview row it last read (`savesAsDraft`, in `clientDetail`), says
+it beside the save (`saveEffectText`) and sends it as `mode` (`expectedMode`), so the wording and what is sent cannot
+differ. The backend decides at the request (`ClientStoredEdit.target`): a save sent as a draft that would be live is
+a 409 and not made, and the editor answers it by re-reading the page, which then says how a save takes effect
+(`saveConflict`); one sent as live that is a draft goes ahead, and its note says so (`savedNote`). A save naming a
+sandbox the node no longer carries is a 409 too. Send `mode` with any new save you add. Design View sends none: on a
+client with a sandbox it refuses to save, so its only drafts are a sandbox's, which that last refusal covers.
 
 **Editing the copy** (issues #918, #1062; `CopyFileEditor`, its pure half `CopyFileView.kt`, covered by
 `CopyFileViewTest`): the client's copy **file by file**. It reads `/clientAdmin/client/copy/keys`

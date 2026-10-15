@@ -319,12 +319,13 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                     }
                 }
             }
+            expectedModeField()
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
         // Only the fields the caller sent: an absent one is left as it is.
         val fields = ClientPresentationFields.names.filter { request.containsKey(it) }.associateWith { request[it] }
-        val result = ClientDefinitionEdit.set(c, client, fields)
+        val result = ClientDefinitionEdit.set(c, client, fields, expectedModeOf(request))
         mapOf(
             CLD.client to client,
             COV.configName to result.configName,
@@ -387,6 +388,27 @@ fun InputFieldsBuilder.overseenClientField(name: String, description: String = "
         visibleWhen = CFACTS.isDeploymentAdmin
     }
 }
+
+/**
+ * The input by which an editor's caller says how it told its user a save would take effect (issues #1176, #1191):
+ * live, or a draft. Declared once here, so every editor that saves a client's configuration takes it alike, and read
+ * by [expectedModeOf]; `ClientStoredEdit.target` holds the save to it. Absent, nothing is asked.
+ */
+fun InputFieldsBuilder.expectedModeField() {
+    field(
+        CPY.mode,
+        "How the caller told its user the save would take effect: live, or a draft. Whether it is a draft is decided " +
+            "at the request, by whether the client has a sandbox then; a save expected to be a draft that would be " +
+            "live is refused with a 409 and nothing is changed. One expected live that is a draft goes ahead, and the " +
+            "answer's mode says so. Absent, it is not asked.",
+    ) {
+        option(EDM.live, "Live")
+        option(EDM.draft, "Draft")
+    }
+}
+
+/** What [expectedModeField] carried in [request], or null when the caller did not say. */
+fun expectedModeOf(request: Map<String, Any?>): String? = request[CPY.mode].toOptStr()
 
 /**
  * The client a scoped retrieve is about: [named], or the caller's own when absent. Only an administrator who may see

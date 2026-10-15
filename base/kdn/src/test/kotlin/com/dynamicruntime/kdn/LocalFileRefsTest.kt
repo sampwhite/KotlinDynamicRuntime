@@ -851,11 +851,12 @@ class LocalFileRefsTest : StringSpec({
         // directory is the client's whose configuration it is, and a sandbox has none of its own.
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
         approve(client, "draft.png", otherPng)
-        // Naming one is held to what the page told its user, as every change is.
-        admin.expectError(
-            EXC.conflict, UADEP.clientFilesLocal,
+        // Naming one is held to what the page told its user, as every change is: one it called live that is a draft
+        // goes ahead, and says it is a draft (issue #1191).
+        posted(
+            admin, UADEP.clientFilesLocal,
             mapOf(CCT.refId to "draft", CCT.root to openRoot, CCT.path to "draft.png", FREF.mode to EDM.live),
-        )[EP.errorMessage] as String shouldContain "This would be a draft"
+        )[FREF.mode] shouldBe EDM.draft
         named(admin, "draft", "draft.png")[FREF.mode] shouldBe EDM.draft
         refs.forClient(sandboxOf(client)).refs.keys shouldBe setOf("pic", "top", "named", "draft")
         refs.forClient(client).refs.keys shouldBe setOf("pic", "top", "named")

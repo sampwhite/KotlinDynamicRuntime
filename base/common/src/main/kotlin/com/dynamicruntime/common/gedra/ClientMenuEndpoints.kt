@@ -110,7 +110,7 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         val client = overseenClient(c, request[COV.client].toOptStr())
         ClientMenuEdit.set(
             c, client, request.getReqNonBlankStr(COV.itemId), request[MNU.label].toOptStr(),
-            request[MNU.visibility].toOptStr(), request[MNU.condition].toOptStr(),
+            request[MNU.visibility].toOptStr(), request[MNU.condition].toOptStr(), expectedModeOf(request),
         ).toWireMap(client, request)
     }
 
@@ -126,13 +126,14 @@ fun clientMenuSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, MNU.namespace) 
         inputFields = { menuItemInput() },
     ) { c, request ->
         val client = overseenClient(c, request[COV.client].toOptStr())
-        ClientMenuEdit.reset(c, client, request.getReqNonBlankStr(COV.itemId)).toWireMap(client, request)
+        ClientMenuEdit.reset(c, client, request.getReqNonBlankStr(COV.itemId), expectedModeOf(request)).toWireMap(client, request)
     }
 }
 
 private fun InputFieldsBuilder.menuItemInput() {
     overseenClientField(COV.client)
     field(COV.itemId, "The home-menu item's id.", required = true)
+    expectedModeField()
 }
 
 private fun ClientMenuEdit.Result.toWireMap(client: String, request: Map<String, Any?>): Map<String, Any?> {

@@ -154,13 +154,13 @@ class FileRefsTest {
 
     @Test
     fun aChangeIsADraftForAClientWithASandboxAndOnASandboxsOwnPage() {
-        assertFalse(fileRefIsDraft(null, hasSandbox = false))
-        assertTrue(fileRefIsDraft(null, hasSandbox = true))
-        assertTrue(fileRefIsDraft("acme", hasSandbox = false))
+        assertFalse(savesAsDraft(null, hasSandbox = false))
+        assertTrue(savesAsDraft(null, hasSandbox = true))
+        assertTrue(savesAsDraft("acme", hasSandbox = false))
         // What the page tells the backend it expects is what it told its user: the two come from the one test.
-        assertEquals(EDM.live, fileRefExpectedMode(fileRefIsDraft(null, hasSandbox = false)))
-        assertEquals(EDM.draft, fileRefExpectedMode(fileRefIsDraft(null, hasSandbox = true)))
-        assertEquals(EDM.draft, fileRefExpectedMode(fileRefIsDraft("acme", hasSandbox = false)))
+        assertEquals(EDM.live, expectedMode(savesAsDraft(null, hasSandbox = false)))
+        assertEquals(EDM.draft, expectedMode(savesAsDraft(null, hasSandbox = true)))
+        assertEquals(EDM.draft, expectedMode(savesAsDraft("acme", hasSandbox = false)))
     }
 
     @Test

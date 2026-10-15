@@ -115,9 +115,11 @@ object ClientMenuEdit {
     /**
      * Changes [itemId] for [client] -- [label] renames it, [visibility] hides or shows it (with [condition], for a
      * show, one of the audiences the item may be shown to) -- and makes that take effect, live or as a draft. At least
-     * one of the two must be asked for.
+     * one of the two must be asked for. [expected] is how the caller told its user the save would take effect, held to by [ClientStoredEdit.target].
      */
-    fun set(cxt: KdrCxt, client: String, itemId: String, label: String?, visibility: String?, condition: String?): Result {
+    fun set(
+        cxt: KdrCxt, client: String, itemId: String, label: String?, visibility: String?, condition: String?, expected: String? = null,
+    ): Result {
         val shipped = requireShippedItem(cxt, itemId)
         val fields = LinkedHashMap<String, Any?>()
         if (label != null) {
@@ -146,7 +148,7 @@ object ClientMenuEdit {
         if (visibility == MNU.hide) requireNoChildren(cxt, itemId)
 
         // A sandbox's edit lands in its parent's configuration, and a client with a sandbox saves drafts (issue #930).
-        val target = ClientStoredEdit.target(cxt, client, "menuEdit")
+        val target = ClientStoredEdit.target(cxt, client, "menuEdit", expected)
         val bound = target.bound
         val owner = target.client
         val svc = GedraConfigService.get(bound)
@@ -166,10 +168,10 @@ object ClientMenuEdit {
     /**
      * Removes [client]'s stored changes to [itemId] and makes that take effect, live or as a draft. A 400 when no
      * stored config touches the item: what the client's source config or the shipped menu says is not something data
-     * can take away.
+     * can take away. [expected] as for [set].
      */
-    fun reset(cxt: KdrCxt, client: String, itemId: String): Result {
-        val target = ClientStoredEdit.target(cxt, client, "menuEdit")
+    fun reset(cxt: KdrCxt, client: String, itemId: String, expected: String? = null): Result {
+        val target = ClientStoredEdit.target(cxt, client, "menuEdit", expected)
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
         val holder = holderOf(bound, target.client, itemId)?.takeIf { storedItem(it, itemId) != null }

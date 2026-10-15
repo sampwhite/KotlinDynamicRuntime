@@ -410,13 +410,12 @@ class ClientFileRefsTest : StringSpec({
         val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandbox)
         inSandbox.selfClient() shouldBe sandbox
 
-        // A page says how it told its user a change would take effect (issue #1176). One that would do otherwise is
-        // refused and not made: here a caller who believes the client has no sandbox, when it has.
+        // A page says how it told its user a change would take effect (issues #1176, #1191). One it called live that
+        // is a draft goes ahead -- nothing reaches the client's people -- and the answer says it is a draft.
         admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.live)).let {
-            (it[EP.status] as? Number)?.toInt() shouldBe EXC.conflict
-            it[EP.errorMessage] as String shouldContain "This would be a draft, not a change that takes effect at once"
+            it[EP.status].shouldBeNull()
+            it[EP.results].toJsonMapOrEmpty()[FREF.mode] shouldBe EDM.draft
         }
-        storedRefs(client).shouldBeEmpty()
         // A draft: the sandbox, which runs the latest revision, shows it; the client runs what it published.
         admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to image(png), FREF.mode to EDM.draft)).let {
             it[EP.status].shouldBeNull()

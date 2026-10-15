@@ -3,7 +3,6 @@ package com.dynamicruntime.common.fileref
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
-import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -14,6 +13,8 @@ import com.dynamicruntime.common.filestore.fileMetaEndpoint
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.configOwnerOf
+import com.dynamicruntime.common.gedra.expectedModeField
+import com.dynamicruntime.common.gedra.expectedModeOf
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.overseenClient
 import com.dynamicruntime.common.gedra.overseenClientField
@@ -161,7 +162,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         // A `file` part sent as a plain field is a value, so it passes for "present": it is here that it is no file.
         val content = request[FREF.file] as? ContentData ?: throw KdrException.mkInput("No file was sent.")
         val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
-        changeItem(c, refs, ClientFileRefEdit.upload(c, client, request[CCT.refId].toOptStr().orEmpty(), content, description, request[FREF.mode].toOptStr()))
+        changeItem(c, refs, ClientFileRefEdit.upload(c, client, request[CCT.refId].toOptStr().orEmpty(), content, description, expectedModeOf(request)))
     }
 
     generalEndpoint(
@@ -179,7 +180,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
     ) { c, request ->
         val refs = FileRefService.get(c)
         val client = knownClient(c, request)
-        changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty(), request[FREF.mode].toOptStr()))
+        changeItem(c, refs, ClientFileRefEdit.remove(c, client, request[CCT.refId].toOptStr().orEmpty(), expectedModeOf(request)))
     }
 
     generalEndpoint(
@@ -203,7 +204,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         val refs = FileRefService.get(c)
         val client = knownClient(c, request)
         val described = ClientFileRefEdit.describe(
-            c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.description].toOptStr().orEmpty(), request[FREF.mode].toOptStr(),
+            c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.description].toOptStr().orEmpty(), expectedModeOf(request),
         )
         changeItem(c, refs, described)
     }
@@ -240,7 +241,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         val description = if (request.containsKey(CCT.description)) request[CCT.description].toOptStr().orEmpty() else null
         val change = ClientFileRefEdit.nameLocal(
             c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.root].toOptStr().orEmpty(), request[CCT.path].toOptStr().orEmpty(), description,
-            request[FREF.mode].toOptStr(),
+            expectedModeOf(request),
         )
         changeItem(c, refs, change)
     }
@@ -336,22 +337,6 @@ private fun shownRef(cxt: KdrCxt, refs: FileRefService, request: Map<String, Any
     val client = knownClient(cxt, request)
     val refId = request[CCT.refId].toOptStr().orEmpty()
     return ShownRef(client, refId, refs.forClient(refs.shownAs(cxt, client)).refs[refId])
-}
-
-/**
- * The input by which a caller says how it expects a change to take effect (issue #1176): what the page told its
- * user before they acted. A change that would do otherwise is refused with a 409; absent, nothing is asked.
- */
-private fun InputFieldsBuilder.expectedModeField() {
-    field(
-        FREF.mode,
-        "How the caller expects the change to take effect, as it told its user: live, or a draft. Whether it is a " +
-            "draft is decided at the request, by whether the client has a sandbox then; a change that would take " +
-            "effect the other way is refused with a 409 and nothing is changed. Absent, it is not asked.",
-    ) {
-        option(EDM.live, "Live")
-        option(EDM.draft, "Draft")
-    }
 }
 
 /** The client a call acts on: the one it may ([overseenClient]), and one this node knows. */

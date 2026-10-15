@@ -42,8 +42,9 @@ external interface FileRefsSectionProps : Props {
  * latest: for one with a sandbox it is a draft the sandbox shows, and the section says which above the list
  * ([fileRefsIntro]) and again after each change. What is listed is then the sandbox's, each ref marked when the
  * client's own people are not served it yet. Every change is sent with how the page said it would take effect
- * ([fileRefExpectedMode]), and the backend refuses one that would do otherwise: the page words a removal from what
- * it last read of the client, and a sandbox can go in between.
+ * ([expectedMode]), and the backend refuses one the page called a draft that would be live: the page words a removal
+ * from what it last read of the client, and a sandbox can go in between. Refused so ([saveConflict]), the page is
+ * read again, and says how a change now takes effect.
  *
  * Picking a file *is* the upload, as for a web asset; a removal is asked about first. Each answers the ref as it
  * now is, which is drawn at once, and bumps the refresh generation through [FileRefsSectionProps.onChanged].
@@ -127,8 +128,8 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
         }
     }
 
-    val draft = fileRefIsDraft(props.sandboxOf, props.hasSandbox)
-    val expected = fileRefExpectedMode(draft)
+    val draft = savesAsDraft(props.sandboxOf, props.hasSandbox)
+    val expected = expectedMode(draft)
 
     /** Runs [change] for the ref or form [at]; [done] words what it did, and [added] says the form's work is done. */
     fun run(at: String, action: String, added: Boolean, done: (FileRefChange) -> String, change: suspend () -> FileRefChange) {
@@ -155,10 +156,12 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 }
                 props.onChanged()
             } catch (e: Throwable) {
+                val conflict = saveConflict(e)
                 if (lastClient.current == forClient) {
                     failedAt = at
-                    failure = userFacingError(e)
+                    failure = conflict ?: userFacingError(e)
                 }
+                if (conflict != null) props.onChanged()
             } finally {
                 busy = null
             }

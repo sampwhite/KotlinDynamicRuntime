@@ -31,7 +31,9 @@ import com.dynamicruntime.common.webasset.WebAssetCheck
  *
  * **Live, or a draft, by whether the client has a sandbox**, as a copy edit is: without one the entry is published
  * and the client's people are served the file at once; with one it is the parent's draft, which its sandbox shows
- * and a publish makes live. So unlike a web asset, an upload made in a sandbox is not refused.
+ * and a publish makes live. So unlike a web asset, an upload made in a sandbox is not refused. Each change takes
+ * the mode its caller told its user (`expected`), and one expected to be a draft that would be live is refused before
+ * anything is stored or written ([ClientStoredEdit.target]).
  *
  * **The entry lands with the copy.** In the configuration already holding that ref, else the editors' own
  * ([ClientStoredEdit.editConfig], created on first use) -- so a copy edit that names a new image and the upload of
@@ -64,7 +66,7 @@ object ClientFileRefEdit {
         }
         val kind = WebAssetCheck.check("file ref", content.mimeType, bytes)
 
-        val at = landing(cxt, asExpected(ClientStoredEdit.target(cxt, client, editName), expected), refId, "a file upload")
+        val at = landing(cxt, ClientStoredEdit.target(cxt, client, editName, expected), refId, "a file upload")
         val hash = bytes.sha256Hex()
         storeBytes(cxt, at.bound, at.refs, at.owner, refId, hash, ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename))
         return land(cxt, at, refId, description) { kept, extra -> FileRefDef(refId, FREF.sourceStore, hash, kept, extra = extra) }
@@ -93,7 +95,7 @@ object ClientFileRefEdit {
         checkDescription(description)
         FREF.rootProblem(root)?.let { throw KdrException.mkInput(it) }
         LocalFileRoots.pathProblem(path)?.let { throw KdrException.mkInput("'$path' is not a path a local file may have: $it.") }
-        val target = asExpected(ClientStoredEdit.target(cxt, client, editName), expected)
+        val target = ClientStoredEdit.target(cxt, client, editName, expected)
         // On the context the write is made on, which inside a sandbox is the parent's actor and not the caller's
         // own row: asked of any other, this and the write could disagree.
         val bound = target.bound
@@ -124,29 +126,6 @@ object ClientFileRefEdit {
         return land(cxt, at, refId, description) { kept, extra ->
             FileRefDef(refId, FREF.sourceClientLocal, hash = null, kept, extra = extra, root = root, path = path)
         }
-    }
-
-    /**
-     * [target], having refused it when the change would not take effect the way its caller [expected] -- live, or
-     * as a draft (`EDM`) -- and null asks nothing.
-     *
-     * Whether a change is a draft is decided here, at the request, by whether the client has a sandbox now. A page
-     * tells its user which before they act, from what it last read; and a sandbox can be removed in between. A
-     * removal confirmed as "from the draft" would then take a file from the client's people at once. So a page says
-     * what it told its user, and a change that would do otherwise is a 409 and not done.
-     */
-    private fun asExpected(target: ClientStoredEdit.EditTarget, expected: String?): ClientStoredEdit.EditTarget {
-        if (expected == null || expected == target.mode) return target
-        throw KdrException(
-            if (target.draft) {
-                "This would be a draft, not a change that takes effect at once: client '${target.client}' has a sandbox now. " +
-                    "Nothing was changed; reload to see how it stands."
-            } else {
-                "This would take effect at once for client '${target.client}', not as a draft: it has no sandbox now. " +
-                    "Nothing was changed; reload to see how it stands."
-            },
-            code = EXC.conflict,
-        )
     }
 
     /**
@@ -289,7 +268,7 @@ object ClientFileRefEdit {
      * file it named is left where it is: an older revision of the configuration still names it.
      */
     fun remove(cxt: KdrCxt, client: String, refId: String, expected: String? = null): Result {
-        val target = asExpected(ClientStoredEdit.target(cxt, client, editName), expected)
+        val target = ClientStoredEdit.target(cxt, client, editName, expected)
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
         val holder = holderOf(bound, target.client, refId)
@@ -311,7 +290,7 @@ object ClientFileRefEdit {
      */
     fun describe(cxt: KdrCxt, client: String, refId: String, description: String, expected: String? = null): Result {
         checkDescription(description)
-        val target = asExpected(ClientStoredEdit.target(cxt, client, editName), expected)
+        val target = ClientStoredEdit.target(cxt, client, editName, expected)
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
         val holder = holderOf(bound, target.client, refId)

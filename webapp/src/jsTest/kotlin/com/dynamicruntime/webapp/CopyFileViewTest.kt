@@ -166,8 +166,9 @@ class CopyFileViewTest {
                     mapOf(COV.namespaceField to "home", COV.key to "brand", CPY.reset to true),
                     mapOf(COV.namespaceField to "nav", COV.key to "title", COV.value to "Docs"),
                 ),
+                CPY.mode to EDM.draft,
             ),
-            copyApplyRequest("acme", pending, rows.map { it.address }),
+            copyApplyRequest("acme", pending, rows.map { it.address }, EDM.draft),
         )
     }
 
