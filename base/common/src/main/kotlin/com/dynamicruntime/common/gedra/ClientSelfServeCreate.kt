@@ -28,6 +28,7 @@ import com.dynamicruntime.common.util.toOptStr
  *   session there. Moving the client to a customer later is the platform's to do: it keeps its id, and the
  *   customer link is what makes it the customer's.
  */
+@Suppress("ConstPropertyName")
 object ClientSelfServeCreate {
     /** The longest part of the id taken from the client's name. */
     private const val maxSlug = 16
