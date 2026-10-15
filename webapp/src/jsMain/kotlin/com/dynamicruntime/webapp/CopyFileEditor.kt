@@ -186,9 +186,7 @@ val CopyFileEditor = FC<CopyFileEditorProps> { props ->
                 previewing = emptySet()
                 props.onChanged()
             } catch (e: Throwable) {
-                val conflict = saveConflict(e)
-                saveError = conflict ?: userFacingError(e)
-                if (conflict != null) props.onChanged()
+                saveError = saveFailure(e, props.onChanged)
             } finally {
                 saving = false
             }

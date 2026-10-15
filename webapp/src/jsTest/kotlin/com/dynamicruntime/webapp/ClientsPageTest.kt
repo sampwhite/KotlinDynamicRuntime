@@ -14,6 +14,7 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.EDM
 import com.dynamicruntime.common.gedra.MNU
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.gedra.GCI
 import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.ClientPresentationFields
@@ -26,6 +27,8 @@ import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.user.USF
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 /** The Clients page's pure half (issue #905): reading the overview's rows, and how each fact reads in the table. */
@@ -537,14 +540,31 @@ class ClientsPageTest {
     // page has been read again; any other failure is the caller's to show as it would (issue #1191).
     @Test
     fun aSaveRefusedForHowItWouldTakeEffectSaysThePageWasReadAgain() {
-        val conflict = ApiError("This would take effect at once for client 'acme', not as a draft: it has no sandbox now. Nothing was changed.", false, EXC.conflict, null, null)
-        assertEquals(
-            "This would take effect at once for client 'acme', not as a draft: it has no sandbox now. Nothing was changed. " +
-                "The page has been read again, and now says how a save takes effect.",
-            saveConflict(conflict)?.text,
-        )
-        assertNull(saveConflict(ApiError("No.", false, EXC.badInput, null, null)))
+        val said = "This would take effect at once for client 'acme', not as a draft: it has no sandbox now. Nothing was changed."
+        val conflict = ApiError(said, false, EXC.conflict, EDM.notAsExpected, null)
+        assertEquals("$said The page has been read again, and now says how a save takes effect.", saveConflict(conflict)?.text)
+        // Only that refusal: a 409 for another reason, and any other failure, are shown as they would be.
+        assertNull(saveConflict(ApiError("Changed since this page was drawn.", false, EXC.conflict, null, null)))
+        assertNull(saveConflict(ApiError("No.", false, EXC.badInput, EDM.notAsExpected, null)))
         assertNull(saveConflict(IllegalStateException("network")))
+        // Answered so, the page reads the client again; nothing else does that.
+        var reread = 0
+        assertEquals(saveConflict(conflict)?.text, saveFailure(conflict) { reread++ }.text)
+        assertEquals(1, reread)
+    }
+
+    // The page's one answer to "is a save here a draft?": the listing's row when it has one, else what it knows
+    // without it (issue #1191).
+    @Test
+    fun aPageSavesADraftByItsRowOrWithoutOneByWhatItKnows() {
+        fun row(hasSandbox: Boolean) = parseClientOverview(listOf(mapOf(CLD.clientId to "acme", CLD.hasSandbox to hasSandbox))).single()
+        assertTrue(pageSavesDraft("acme", row(hasSandbox = true), defSandbox = false))
+        // The row wins over the definition: it is what the page last read of the client.
+        assertFalse(pageSavesDraft("acme", row(hasSandbox = false), defSandbox = true))
+        // No row: a sandbox by its name, else the definition's flag.
+        assertTrue(pageSavesDraft(sandboxOf("acme"), null, defSandbox = false))
+        assertTrue(pageSavesDraft("acme", null, defSandbox = true))
+        assertFalse(pageSavesDraft("acme", null, defSandbox = false))
     }
 
     // --- editing the definition (issue #1026) ----------------------------------------------------------------

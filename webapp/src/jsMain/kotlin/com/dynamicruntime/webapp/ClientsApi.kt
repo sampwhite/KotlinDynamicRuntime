@@ -600,14 +600,31 @@ fun saveEffectText(draft: Boolean): String =
     else "Saving makes it live for the client's people at once."
 
 /**
+ * Whether a save made on [clientId]'s page is a draft, as the page last read it: the listing's [row] when it holds
+ * one, else what is known without it -- whether the client is a sandbox, and whether its definition ([defSandbox])
+ * asks for one. The one answer every editor on the page says beside its save and sends with it (issue #1191). Pure,
+ * and covered under `jsNodeTest`.
+ */
+fun pageSavesDraft(clientId: String, row: ClientOverview?, defSandbox: Boolean): Boolean =
+    row?.let { savesAsDraft(it.sandboxOf, it.hasSandbox) } ?: savesAsDraft(sandboxParentOf(clientId), defSandbox)
+
+/**
  * What an editor shows for a save the backend refused because it would not take effect as the page said (issue
- * #1191) -- a 409: the backend's account of what changed, and that the page has been read again, which the caller
- * does ([expectedMode]). Null for any other failure. Pure, and covered under `jsNodeTest`.
+ * #1191) -- a 409 carrying [EDM.notAsExpected]: the backend's account of what changed, and that the page has been read
+ * again, which the caller does ([saveFailure]). Null for any other failure, a 409 for another reason included. Pure,
+ * and covered under `jsNodeTest`.
  */
 fun saveConflict(e: Throwable): DisplayError? =
-    (e as? ApiError)?.takeIf { it.status == EXC.conflict }?.let {
+    (e as? ApiError)?.takeIf { it.status == EXC.conflict && it.errorCode == EDM.notAsExpected }?.let {
         DisplayError("${it.message} The page has been read again, and now says how a save takes effect.", DisplayError.Kind.message)
     }
+
+/**
+ * What an editor shows for a save that failed with [e]: [saveConflict]'s account, having called [reread] so the page
+ * reads the client again, or the failure as any other is shown ([userFacingError]). The one catch every editor that
+ * sends [expectedMode] answers its save's failure with.
+ */
+fun saveFailure(e: Throwable, reread: () -> Unit): DisplayError = saveConflict(e)?.also { reread() } ?: userFacingError(e)
 
 /**
  * The note an editor shows after a save (issue #930): [done]'s account of what changed, and -- for a draft, which a

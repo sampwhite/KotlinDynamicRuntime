@@ -53,23 +53,26 @@ object ClientStoredEdit {
      * parent's sandbox was removed, so a "draft" of the parent's configuration could be live at the parent's next load.
      */
     fun target(cxt: KdrCxt, client: String, what: String, expected: String? = null): EditTarget {
+        if (expected != null && expected != EDM.live && expected != EDM.draft) {
+            throw KdrException.mkInput("'$expected' is not how a save takes effect: it is '${EDM.live}' or '${EDM.draft}'.")
+        }
         if (isSandboxClient(client) && !ClientService.get(cxt).isPresent(client)) {
-            throw KdrException(
-                "'$client' is a sandbox this node no longer carries: its parent's sandbox has been removed. Nothing was changed.",
-                code = EXC.conflict,
-            )
+            throw notAsExpected("'$client' is a sandbox this node no longer carries: its parent's sandbox has been removed. Nothing was changed.")
         }
         val target = SandboxEdits.parentCxt(cxt, client)?.let { EditTarget(it, it.client, draft = true) }
             ?: EditTarget(cxt.mkSubContext(what, client), client, ClientService.get(cxt).known(client)?.sandbox == true)
         if (expected == EDM.draft && !target.draft) {
-            throw KdrException(
+            throw notAsExpected(
                 "This would take effect at once for client '${target.client}', not as a draft: it has no sandbox now. " +
                     "Nothing was changed.",
-                code = EXC.conflict,
             )
         }
         return target
     }
+
+    /** [target]'s refusal of a save that would not take effect as its caller said: a 409 carrying [EDM.notAsExpected]. */
+    private fun notAsExpected(message: String): KdrException =
+        KdrException(message, code = EXC.conflict).also { it.extraData[KdrException.errorCodeKey] = EDM.notAsExpected }
 
     /**
      * Makes a save take effect: published and live ([publishAndReload]), or -- a draft -- the owner reloaded, which

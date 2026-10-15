@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
@@ -27,6 +28,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -69,8 +71,12 @@ class ExpectedModeTest : StringSpec({
 
     fun brandKey() = mapOf(COV.fileId to HFRAG.home, COV.namespaceField to "home", COV.key to "brand")
 
-    fun refused(user: TestUser, path: String, data: Map<String, Any?>): String =
-        user.expectError(EXC.conflict, path, data)[EP.errorMessage].toString()
+    /** The refusal's message, having checked it is the 409 a page answers by reading the client again. */
+    fun refused(user: TestUser, path: String, data: Map<String, Any?>): String {
+        val env = user.expectError(EXC.conflict, path, data)
+        env[EP.errorCode] shouldBe EDM.notAsExpected
+        return env[EP.errorMessage].toString()
+    }
 
     fun saved(user: TestUser, path: String, data: Map<String, Any?>): Map<String, Any?> {
         val env = user.client.sendJsonPostRequest(path, data)
@@ -104,6 +110,9 @@ class ExpectedModeTest : StringSpec({
         brand(client) shouldBe "Live Co"
         // Absent, nothing is asked: a script, or an older page.
         saved(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed"))[CPY.mode] shouldBe EDM.live
+        // A mode that is neither is a caller's mistake, not a save that asks nothing: the endpoints' options refuse
+        // it, and so does the check itself, for a caller in process.
+        shouldThrow<KdrException> { ClientStoredEdit.target(cxt, client, "check", expected = "Draft") }.code shouldBe EXC.badInput
     }
 
     "a save sent as live for a client with a sandbox goes ahead as a draft, and says so" {

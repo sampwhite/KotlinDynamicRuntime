@@ -156,12 +156,11 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 }
                 props.onChanged()
             } catch (e: Throwable) {
-                val conflict = saveConflict(e)
+                val shown = saveFailure(e, props.onChanged)
                 if (lastClient.current == forClient) {
                     failedAt = at
-                    failure = conflict ?: userFacingError(e)
+                    failure = shown
                 }
-                if (conflict != null) props.onChanged()
             } finally {
                 busy = null
             }

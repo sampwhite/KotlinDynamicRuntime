@@ -5,7 +5,6 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientPresentationFields
 import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.MNU
-import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.util.humanizeFieldName
@@ -278,8 +277,7 @@ private fun ChildrenBuilder.clientDetail(
 ) {
     // Whether a save made here is a draft, as the page last read the client: the one answer every editor below says
     // beside its save and sends with it (issue #1191). The listing's row when it holds one, else the definition read.
-    val savesDraft = row?.let { savesAsDraft(it.sandboxOf, it.hasSandbox) }
-        ?: savesAsDraft(sandboxParentOf(clientId), def?.info?.get(CLD.sandbox) == true)
+    val savesDraft = pageSavesDraft(clientId, row, defSandbox = def?.info?.get(CLD.sandbox) == true)
     div {
         className = ClassName("card wide")
         // No way back to a listing that would only open this page again; a listing the page was opened *from*
@@ -541,9 +539,8 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
                 }
                 props.onChanged()
             } catch (e: Throwable) {
-                val conflict = saveConflict(e)
-                if (latest.current == token) editError = conflict ?: userFacingError(e)
-                if (conflict != null) props.onChanged()
+                val shown = saveFailure(e, props.onChanged)
+                if (latest.current == token) editError = shown
             } finally {
                 if (latest.current == token) busy = false
             }
@@ -994,9 +991,7 @@ private val MenuEditor = FC<MenuEditorProps> { props ->
                 showing = null
                 props.onChanged()
             } catch (e: Throwable) {
-                val conflict = saveConflict(e)
-                editError = conflict ?: userFacingError(e)
-                if (conflict != null) props.onChanged()
+                editError = saveFailure(e, props.onChanged)
             } finally {
                 busy = false
             }
