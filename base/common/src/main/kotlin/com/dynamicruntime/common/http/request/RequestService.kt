@@ -25,6 +25,7 @@ import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientSyncService
+import com.dynamicruntime.common.gedra.clientTimeZone
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import org.eclipse.jetty.server.Handler
@@ -633,7 +634,8 @@ class RequestService : ServiceInitializer {
         // forInput: this is a request, so a `g-derived` property is neither demanded of the caller nor taken
         // from them (issue #254). The same types validate a response elsewhere, where those fields are
         // ordinary values -- which is why the direction is a parameter rather than a property of the type.
-        val result = coerceAndValidate(inputType, data, SchOpts(forInput = true))
+        // A day entered into a timestamp field begins at midnight where the caller's client is (issue #1115).
+        val result = coerceAndValidate(inputType, data, SchOpts(forInput = true, zone = cxt.clientTimeZone))
         if (result.failures.isNotEmpty()) {
             // The failures travel STRUCTURED, under extraData, rather than interpolated into the sentence
             // (issue #198). They are already structured -- path, code, message, the schema's own wording, the

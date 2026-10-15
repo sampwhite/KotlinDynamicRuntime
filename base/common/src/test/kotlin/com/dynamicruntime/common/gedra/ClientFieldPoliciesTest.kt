@@ -25,10 +25,11 @@ class ClientFieldPoliciesTest : StringSpec({
     "the platform's create, the editor and the platform's own fields are read from the policies" {
         ClientFieldPolicies.createFields shouldContainExactly listOf(
             CLD.clientId, CLD.name, CLD.description, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
-            CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.userLabels, CLD.sandbox,
+            CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.timeZone, CLD.userLabels,
+            CLD.sandbox,
         )
         ClientPresentationFields.names shouldContainExactly listOf(
-            CLD.name, CLD.description, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.userLabels,
+            CLD.name, CLD.description, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.timeZone, CLD.userLabels,
         )
         ClientFieldPolicies.platformFields shouldContainExactly listOf(
             CLD.clientId, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.extendsFromClientId,
@@ -41,13 +42,13 @@ class ClientFieldPoliciesTest : StringSpec({
         val parent = mapOf(
             CLD.clientId to "acme", CLD.name to "Acme", CLD.customerId to "acme", CLD.usageType to "production",
             CLD.audience to "customer", CLD.enabledEnvironments to listOf("unit", "local"), CLD.webResourcesId to "acmeWeb",
-            CLD.domainPrefix to "acme", CLD.userLabels to listOf("reviewer"),
+            CLD.timeZone to "America/Chicago", CLD.domainPrefix to "acme", CLD.userLabels to listOf("reviewer"),
         )
         val given = mapOf(CLD.clientId to "acme_east", CLD.name to "East", CLD.audience to "internal", CLD.sandbox to true)
         ClientFieldPolicies.delegatedDefinition(parent, given) shouldBe mapOf(
             CLD.clientId to "acme_east", CLD.name to "East", CLD.customerId to "acme", CLD.usageType to "production",
             CLD.audience to "customer", CLD.enabledEnvironments to listOf("unit", "local"), CLD.webResourcesId to "acmeWeb",
-            CLD.sandbox to true,
+            CLD.timeZone to "America/Chicago", CLD.sandbox to true,
         )
     }
 

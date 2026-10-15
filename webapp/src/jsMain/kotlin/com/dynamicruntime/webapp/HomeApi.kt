@@ -88,6 +88,11 @@ class HomeConfig(
      * naming the image `ref:logo` is drawn from ([ShellFacts.copyRefAddress]). A ref not in it draws its alt text.
      */
     val fileRefs: Map<String, String> = emptyMap(),
+    /**
+     * The caller's client's IANA time zone (issue #1115), which moments are shown in ([DisplayZone]); null for a
+     * client that names none, shown in the deployment's.
+     */
+    val timeZone: String? = null,
 )
 
 /**
@@ -146,6 +151,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         },
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
+        timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },
     )
 }
 

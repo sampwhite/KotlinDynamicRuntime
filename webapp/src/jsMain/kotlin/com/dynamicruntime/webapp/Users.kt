@@ -1195,14 +1195,14 @@ private const val usersFiltersWellId = "users-filters"
 
 /**
  * The filters in force said in words, one chip each, for the summary the closed well shows (issue #683):
- * `Email contains "ada"`, `Client is "acme"`, `Last login 2026-08-01 10:00 UTC – 2026-09-01 10:00 UTC`,
+ * `Email contains "ada"`, `Client is "acme"`, `Last login Aug 1, 2026, 5:00 AM CT – Sep 1, 2026, 5:00 AM CT`,
  * `Edited ≥ …`. Built from the shared spec in its own order, so a field added there gets a chip with no further
  * change, in the words the forms list's chips use ([textChip], [rangeChip]) so the two pages say the same thing
  * -- and a blank value is no chip, matching `anyFilter` and what the query sends.
  *
- * A date bound reads as the column it filters says its exact times on hover -- [formatTimestamp], UTC to the
- * minute -- so the chip and the rows it admitted are on one clock; a chip in local time beside a column in UTC
- * would show one instant two ways. It stays absolute while the cells are relative (issue #1141): a bound is a
+ * A date bound reads as the column it filters says its exact times on hover -- [formatTimestamp], in the client's
+ * zone to the minute (issue #1115) -- so the chip and the rows it admitted are on one clock; a chip in another zone
+ * beside the column would show one instant two ways. It stays absolute while the cells are relative (issue #1141): a bound is a
  * fixed instant, and `12m ago` would move under the filter it names.
  *
  * Every term in force is a chip, including one the caller's own well does not offer (the

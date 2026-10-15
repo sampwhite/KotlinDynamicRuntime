@@ -1047,12 +1047,4 @@ fun workflowCellCounts(items: List<WorkflowCellItem>): String =
         .sortedBy { it.key.ordinal }
         .joinToString(" \u00b7 ") { "${it.value.size} ${workflowCategoryText(it.key)}" }
 
-/**
- * A wire timestamp shown to a person: `2026-08-21T19:49:51.568Z` -> `2026-08-21 19:49 UTC`. Minute precision,
- * and the wire is UTC so it is labeled as such rather than pretending to be local. A value not shaped like an
- * ISO timestamp is returned unchanged rather than sliced into nonsense. Pure, and covered under `jsNodeTest`.
- */
-fun formatTimestamp(iso: String): String {
-    if (iso.length < 16 || iso[10] != 'T') return iso
-    return iso.substring(0, 10) + " " + iso.substring(11, 16) + " UTC"
-}
+// `formatTimestamp`, which shows a wire timestamp in the client's zone, is in `DisplayZone.kt` (issue #1115).

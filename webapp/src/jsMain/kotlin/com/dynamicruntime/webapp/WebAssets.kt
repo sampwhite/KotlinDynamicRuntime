@@ -121,7 +121,7 @@ fun webAssetHoldsText(slot: WebAssetSlot): String {
     return listOfNotNull(file.mimeType.ifEmpty { null }, byteSizeText(file.size), file.fileName).joinToString(" · ")
 }
 
-/** Who uploaded a slot's image and when, or null for an empty slot: `Uploaded 2026-10-12 19:49 UTC by Chief One`. */
+/** Who uploaded a slot's image and when, or null for an empty slot: `Uploaded Oct 12, 2026, 2:49 PM CT by Chief One`. */
 fun webAssetUploadedText(slot: WebAssetSlot): String? {
     val file = slot.file ?: return null
     val at = file.uploadedAt.takeIf { it.isNotEmpty() }?.let { " ${formatTimestamp(it)}" }.orEmpty()

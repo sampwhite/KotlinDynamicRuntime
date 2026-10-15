@@ -315,9 +315,12 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         inputFields = {
             field(CLD.name, ClientPresentationFields.descriptions.getValue(CLD.name), required = true)
             field(CLD.description, "An internal note about who, what, or why.")
+            field(CLD.timeZone, "The client's IANA time zone (America/Chicago): the creator's browser's; absent, the deployment's.")
         },
     ) { c, request ->
-        val result = ClientSelfServeCreate.create(c, request.getValue(CLD.name).toOptStr().orEmpty(), request[CLD.description].toOptStr())
+        val result = ClientSelfServeCreate.create(
+            c, request.getValue(CLD.name).toOptStr().orEmpty(), request[CLD.description].toOptStr(), request[CLD.timeZone].toOptStr(),
+        )
         val switched = result.userId != null && result.created.present
         if (switched) authHandler(c).switchClient(c, result.created.client)
         result.created.wireFields() + buildMap {

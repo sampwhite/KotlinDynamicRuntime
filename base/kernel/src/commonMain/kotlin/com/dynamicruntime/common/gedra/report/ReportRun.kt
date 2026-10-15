@@ -2,6 +2,8 @@ package com.dynamicruntime.common.gedra.report
 
 import com.dynamicruntime.common.util.formatDay
 import kotlinx.datetime.LocalDate
+import com.dynamicruntime.common.util.serverTimeZone
+import kotlinx.datetime.TimeZone
 
 /** The field names of a report run's and a report listing's wire forms (issue #981). */
 @Suppress("ConstPropertyName")
@@ -94,16 +96,18 @@ fun BoundReport.excludes(subject: ReportSubject, excludeEmpty: List<BoundColumn>
 
 /**
  * This column's value for [subject], by its own combine -- each date in the form the column declares when
- * [exactDates] is asked (issue #1086; see [BoundPath.valueOf]).
+ * [exactDates] is asked (issue #1086; see [BoundPath.valueOf]), crossing between a day and a moment in [zone].
  */
-fun BoundColumn.valueOf(subject: ReportSubject, exactDates: Boolean = false): Any? = path.valueOf(subject, combine, exactDates)
+fun BoundColumn.valueOf(subject: ReportSubject, exactDates: Boolean = false, zone: TimeZone = serverTimeZone): Any? =
+    path.valueOf(subject, combine, exactDates, zone)
 
 /**
  * Each of [columns]' value for [subject], by column id, in column order: a detail row's `values`. With [exactDates],
  * what a row of the report's generated type holds ([reportRowDefs]).
  */
-fun detailValues(subject: ReportSubject, columns: List<BoundColumn>, exactDates: Boolean = false): Map<String, Any?> =
-    columns.associate { it.columnId to it.valueOf(subject, exactDates) }
+fun detailValues(
+    subject: ReportSubject, columns: List<BoundColumn>, exactDates: Boolean = false, zone: TimeZone = serverTimeZone,
+): Map<String, Any?> = columns.associate { it.columnId to it.valueOf(subject, exactDates, zone) }
 
 /**
  * One group of an aggregate run (issue #981): the [key] -- the grouped-by columns' values, in [groupBy] order, null
@@ -127,6 +131,7 @@ fun aggregateReport(
     groupBy: List<BoundColumn>,
     rolled: List<BoundColumn>,
     exactDates: Boolean = false,
+    zone: TimeZone = serverTimeZone,
 ): List<ReportGroup> {
     class Acc(val key: List<Any?>) {
         var count = 0
@@ -135,11 +140,11 @@ fun aggregateReport(
     // Keyed by each value's identity as a report value, then ordered once at the end.
     val groups = LinkedHashMap<List<String>, Acc>()
     for (subject in subjects) {
-        val key = groupBy.map { it.valueOf(subject, exactDates) }
+        val key = groupBy.map { it.valueOf(subject, exactDates, zone) }
         val acc = groups.getOrPut(key.map(::reportValueKey)) { Acc(key) }
         acc.count++
         for (column in rolled) {
-            column.valueOf(subject, exactDates)?.takeUnless { isEmptyReportValue(it) }?.let { acc.values.getValue(column.columnId).add(it) }
+            column.valueOf(subject, exactDates, zone)?.takeUnless { isEmptyReportValue(it) }?.let { acc.values.getValue(column.columnId).add(it) }
         }
     }
     return groups.values.sortedWith { a, b -> compareReportKeys(a.key, b.key) }.map { acc ->

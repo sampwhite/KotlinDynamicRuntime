@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.BootCheckMode
+import kotlinx.datetime.TimeZone
 
 /** What checking the declared clients produced (issue #343). */
 class ClientCheckResult(
@@ -132,6 +133,17 @@ fun checkClientDefs(
             }
             kept[def.clientId] = def.copy(includedTraits = def.includedTraits - bad.keys)
         }
+        // A time zone that is no place's zone costs only itself (issue #1115): the client stands, in the server's.
+        def.timeZone?.let { zone ->
+            timeZoneFault(zone)?.let { fault ->
+                val issue = GedraConfigIssue(
+                    "Client '${def.clientId}' names the time zone '$zone', which $fault.",
+                    "Dropping the zone; the client's days are the server's until it names one.",
+                )
+                reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
+                kept[def.clientId] = kept.getValue(def.clientId).copy(timeZone = null)
+            }
+        }
         // Its customer (issue #1107): reported, and the client stands -- the link is read through
         // `ClientService.customerOf`, which answers only for a customer that is there.
         for (message in customerLinkFaults(def, !holder.isStored, customers)) {
@@ -218,6 +230,20 @@ private fun ownProblem(
     }
     return null
 }
+
+/**
+ * Why [zone] is not a time zone a client may name (issue #1115), or null: an IANA zone of a place
+ * (`America/Chicago`), or `UTC`. An offset (`-05:00`, `Etc/GMT+5`) or an abbreviation (`EST`) is refused -- it says
+ * where the clock is today, not where the client's people are, and is wrong half the year wherever clocks change.
+ */
+internal fun timeZoneFault(zone: String): String? = when {
+    zone == utcZoneId -> null
+    zone !in TimeZone.availableZoneIds -> "is not an IANA time zone (America/Chicago, say)"
+    zone.startsWith("Etc/") || '/' !in zone -> "is an offset or an abbreviation; name the place's zone (America/Chicago, say)"
+    else -> null
+}
+
+private const val utcZoneId = "UTC"
 
 /** What is wrong with [ClientDef.enabledEnvironments], or null. */
 private fun envProblem(config: GedraConfig, def: ClientDef): GedraConfigIssue? {

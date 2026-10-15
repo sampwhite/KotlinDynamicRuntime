@@ -6,6 +6,8 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.serverTimeZone
+import kotlinx.datetime.TimeZone
 
 /**
  * Which clients this deployment knows, which of them are present here, and what each one declared (issue
@@ -75,6 +77,14 @@ class ClientService : ServiceInitializer {
 
     /** [clientId]'s definition whether or not this node carries it; null when nothing declares it. */
     fun known(clientId: String): ClientDef? = clients[clientId]
+
+    /**
+     * [clientId]'s time zone (issue #1115): the IANA zone its definition names -- a sandbox's being its parent's,
+     * copied with the rest of the definition -- or the [serverTimeZone] for a client that names none, or that this
+     * node does not know.
+     */
+    fun timeZoneOf(clientId: String): TimeZone =
+        clients[clientId]?.timeZone?.let { runCatching { TimeZone.of(it) }.getOrNull() } ?: serverTimeZone
 
     /** The customer [customerId] names, or null when none is declared that held up (issue #1107). */
     fun customer(customerId: String): CustomerDef? = customers[customerId]?.def
@@ -208,3 +218,9 @@ class ClientService : ServiceInitializer {
         fun getOrNull(cxt: KdrCxt): ClientService? = cxt.instanceConfig.get(serviceName) as? ClientService
     }
 }
+
+/**
+ * The time zone a day means something in for [KdrCxt]'s client (issue #1115): its own ([ClientService.timeZoneOf]),
+ * or the [serverTimeZone] on a node without the client service.
+ */
+val KdrCxt.clientTimeZone: TimeZone get() = ClientService.getOrNull(this)?.timeZoneOf(client) ?: serverTimeZone

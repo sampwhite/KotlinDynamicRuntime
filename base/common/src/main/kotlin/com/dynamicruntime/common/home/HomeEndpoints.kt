@@ -149,6 +149,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 "The source repository's blob base (.../blob/<branch>) for rewriting a document's interior " +
                     "links; absent when the deployment configured no source repo.",
             )
+            property(
+                HFLD.timeZone,
+                "The caller's client's IANA time zone (issue #1115), which moments are shown in; absent for a client " +
+                    "that names none, shown in the deployment's zone.",
+            )
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
             property(
@@ -211,6 +216,9 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // Only when configured -- an absent field says "no source repo", which is how the frontend
                 // leaves a non-document interior link as written (issue #492).
                 sourceRepoBase(c)?.let { put(HFLD.sourceRepoBase, it) }
+                // Where the client's people are (issue #1115): the zone the webapp shows moments in. Only one the
+                // client names and that held up at load; absent, the webapp shows the deployment's.
+                ClientService.getOrNull(c)?.known(c.client)?.timeZone?.let { put(HFLD.timeZone, it) }
                 // In a sandbox (issue #931): whose it is, so the shell marks it and offers the way back.
                 sandboxParentOf(c.client)?.let { parent ->
                     put(HFLD.sandboxOf, parent)

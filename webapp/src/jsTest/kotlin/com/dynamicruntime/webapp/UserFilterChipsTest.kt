@@ -32,15 +32,16 @@ class UserFilterChipsTest {
                 USF.activated.at to DateRange(null, "2025-12-31T00:00:00.000Z"),
             ),
         )
-        // A date bound reads exactly as the table renders the column it filters: UTC, to the minute.
+        // A date bound reads exactly as the table renders the column it filters: in the client's zone (here the
+        // deployment's, UTC-8, issue #1115), to the minute.
         assertEquals(
             listOf(
                 "Email contains \"ada\"",
                 "Name contains \"Lovelace\"",
                 "Client is \"acme\"",
-                "Edited 2026-01-01 00:00 UTC – 2026-06-01 00:00 UTC",
-                "Last login ≥ 2026-08-01 10:00 UTC",
-                "Activated ≤ 2025-12-31 00:00 UTC",
+                "Edited Dec 31, 2025, 4:00 PM GMT-8 – May 31, 2026, 4:00 PM GMT-8",
+                "Last login ≥ Aug 1, 2026, 2:00 AM GMT-8",
+                "Activated ≤ Dec 30, 2025, 4:00 PM GMT-8",
             ),
             chips,
         )

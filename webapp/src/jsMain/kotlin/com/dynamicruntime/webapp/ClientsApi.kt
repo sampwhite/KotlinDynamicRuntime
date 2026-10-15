@@ -878,6 +878,7 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
             add("Extends" to marked(CLD.extendsFromClientId, text(CLD.extendsFromClientId)))
             add("Domain" to (info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "\u2014"))
             add("Web resources" to text(CLD.webResourcesId))
+            add("Time zone" to (info[CLD.timeZone].toOptStr() ?: "The deployment's ($deploymentZone)"))
             add("Static config" to marked(CLD.staticConfig, if (info[CLD.staticConfig] == true) "Yes" else "No"))
             add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
             add("Traits" to list(def.traitIds))
@@ -913,6 +914,13 @@ fun clientSummaryHref(label: String, row: ClientOverview?, acrossClients: Boolea
 }
 
 // --- editing the definition (issue #1026) ---------------------------------------------------------------------
+
+/**
+ * What the definition editor says of the time zone (issue #1115): what to write, and that changing it moves nothing
+ * already stored.
+ */
+const val timeZoneEditNote = "The time zone is an IANA name, such as America/Chicago; blank is the deployment's. " +
+    "Changing it moves no stored moment: a time already saved stays that time, shown in the new zone."
 
 /**
  * The draft the editor opens on (issue #1026): each of `ClientPresentationFields` as text -- the labels as one

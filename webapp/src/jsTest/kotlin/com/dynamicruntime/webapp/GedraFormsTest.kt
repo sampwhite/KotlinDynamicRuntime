@@ -503,12 +503,6 @@ class GedraFormsTest {
         assertEquals("", bare.ownerPersonaSuffix)
     }
 
-    /** The timestamp formatter trims to minute precision and labels the zone; a non-ISO value is left alone. */
-    @Test
-    fun formatsTimestamps() {
-        assertEquals("2026-08-21 19:49 UTC", formatTimestamp("2026-08-21T19:49:51.568Z"))
-        assertEquals("whenever", formatTimestamp("whenever"))
-    }
 
     // --- edit / patch (issue #417) ----------------------------------------------------------------------
 

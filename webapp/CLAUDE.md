@@ -751,7 +751,8 @@ changes". Wire names: `MNU` in the kernel.
 defined in **stored** configuration (`definitionEditable`: present, origin stored, not a sandbox, not static here --
 the backend refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the presentation fields -- name, description, domain prefix, custom domain, web resources,
-user labels as one comma line (`labelsOfText`) -- seeded from the client's **stored** definition, the retrieve's
+time zone (issue #1115; the editor says a change moves no stored moment), user labels as one comma line
+(`labelsOfText`) -- seeded from the client's **stored** definition, the retrieve's
 `storedDefinition` (`definitionDraftOf`; what the client runs differs from it by an unpublished draft, which the
 editor must show and be able to take back, and by what a template fills in, which written back would become the
 client's own). Save posts
@@ -902,13 +903,20 @@ measure that way against its surface before touching the palette, and keep hover
 ## Times in tables (issue #1141)
 
 A table column shows a time **relative to now** (`RelativeTime.kt`): `just now` within a minute either way, then two
-units -- `12m ago`, `1h 23m ago`, `1d 2h ago`, `in 3h` for a future one -- and from 48 hours on the UTC day alone,
+units -- `12m ago`, `1h 23m ago`, `1d 2h ago`, `in 3h` for a future one -- and from 48 hours on the day alone,
 `2026-10-10` (`formatRelativeTime`). The exact `formatTimestamp` value is the cell's tooltip. A table reads its rows
 against one `useRelativeClock()`, which re-renders it every 30 seconds -- so minutes are the finest unit -- and an
 antd table files each row's tooltip under `timeTipKey(dataIndex)` for `timeColumnRender`; a plain table draws
 `RelativeTime`. What stays **absolute**: a form's or user's own page (it has the room), a filter chip's date bound (a
 fixed instant; a relative one would move under the filter), a report's cells and the report history's rows (the
 dates there are data compared across rows and snapshots, and the history's day column already names the day).
+
+**Every moment is shown in the client's time zone** (issue #1115, `DisplayZone.kt`): `formatTimestamp` gives
+`Oct 17, 2026, 5:00 PM CT` through the browser's `Intl`, labeled with the zone, and the relative time's day is the
+day there. The zone is the shell config's `state.timeZone`, which the app bar sets into `DisplayZone` on every read;
+a client naming none is shown in the deployment's (`deploymentZone`, labeled `GMT-8`). A day-only value is never
+shifted. Each function takes the zone as an argument too, which is how its tests pass one. The CSV download keeps
+UTC (`csvTimestamp`): a file cannot say a zone per cell.
 
 ## Choice widgets, and the free-entry one (issues #261, #418)
 

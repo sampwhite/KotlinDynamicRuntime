@@ -136,6 +136,12 @@ object HFLD {
     const val sandboxOfName = "sandboxOfName"
 
     /**
+     * `state.timeZone`: the caller's client's IANA time zone (issue #1115), which the webapp shows moments in;
+     * absent for a client that names none, whose moments are shown in the deployment's zone.
+     */
+    const val timeZone = "timeZone"
+
+    /**
      * `state.sandboxStranded`: beside [sandboxOf], true when the caller's sandbox user acts with no roles (issue
      * #1197), so the shell says access has ended instead of offering doors that will not open; absent otherwise.
      * Whatever the reason: the user it was opened from is disabled or no longer stands for the parent (lost the
