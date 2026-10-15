@@ -70,6 +70,11 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             type = SCT.boolean
         }
         property(
+            FREF.fromTemplate,
+            "For a ref the client inherits from a template and has no file of its own for, the template whose file it " +
+                "is served (issue #1180); absent when the file is the client's own.",
+        )
+        property(
             FREF.file,
             "The record of the file -- the file store's, or for a local file what the disk says of it, its " +
                 "`uploadedAt` being when the file last changed; absent when it is missing.",
@@ -386,6 +391,8 @@ fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean): Map
         put(FREF.live, live)
         put(FREF.stored, ref.def.stored)
         put(FREF.missing, meta == null)
+        // Read from the template's directory, its default (issue #1180): the record says whose file it is.
+        ref.inheritedFrom?.takeIf { meta?.client == it }?.let { put(FREF.fromTemplate, it) }
         if (meta != null) {
             put(FREF.file, meta.toJsonMap())
             meta.extra[FREF.uploadedByName].toOptStr()?.let { put(FREF.uploadedByName, it) }

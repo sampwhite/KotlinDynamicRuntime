@@ -30,7 +30,8 @@ object FREF {
     /**
      * A ref whose bytes are a file on the machine **in the client's own directory** of a root the deployment has
      * opened to clients (issue #1164): `<root>/<clientId>/<path>`. The one kind of local ref a client's own
-     * administrator may write.
+     * administrator may write. One a client **inherits** from a template reads the template's directory where the
+     * client has no such file (issue #1180); one the client holds itself reads its own directory and nothing else.
      *
      * **A source of its own, and not a way of reading [sourceLocal]**, so that what a ref reaches is said by the
      * ref and not by how a node happens to be configured. A `local` ref names `<root>/<path>` whatever is opened;
@@ -96,6 +97,12 @@ object FREF {
 
     /** Whether a ref's file is not there to be served: not in the file store, or for a local file not on the disk as an image. */
     const val missing = "missing"
+
+    /**
+     * The template whose file a ref is served from (issue #1180): an inherited `clientLocal` ref of a client that has
+     * no such file of its own is served the template's, its default. Absent when the file is the client's own.
+     */
+    const val fromTemplate = "fromTemplate"
 
     /**
      * Whether a **stored** configuration holds a ref's entry -- false for one the client was shipped with, in

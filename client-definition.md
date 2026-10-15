@@ -85,7 +85,9 @@ For the client configuration itself, the client has the following attributes.
   named images of its own, kept in the file store by the hash of their bytes, and -- unlike the two above --
   drafted, previewed in the sandbox and published with the rest of its configuration. A ref may also name an
   image already on the machine, under a root the deployment declares (issue #1154) -- how a client is shipped
-  with artwork that an upload then overrides. The client's copy shows one as an image by naming it,
+  with artwork that an upload then overrides. A template's ref to a file in each client's own directory of an open
+  root falls back to the template's own file for a client that has none (issue #1180), and a client's stored
+  override of a template's ref that cannot be served leaves the template's in place (issue #1170). The client's copy shows one as an image by naming it,
   `![Our logo](ref:logo)` (issue #1186), so a replaced image needs no edit to the copy, and copy naming a ref the
   client lacks is refused where it is written. A package two clients share is still this field's to become.
 * `enabledEnvironments` - A list of environments where the client is enabled. Even if not enabled, it

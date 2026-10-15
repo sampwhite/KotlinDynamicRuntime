@@ -272,6 +272,17 @@ class FileRefsTest {
             "A file the deployment keeps for this client: marks/hero.png in approved, last changed $at. In the configuration 'copy'.",
             fileRefWhereText(ref(source = FREF.sourceClientLocal, root = "approved", path = "marks/hero.png", by = null)),
         )
+        // An inherited ref served its template's file, the client having none of its own (issue #1180).
+        val inherited = parseFileRef(
+            mapOf(CCT.refId to "hero", CCT.source to FREF.sourceClientLocal, CCT.root to "approved", CCT.path to "hero.png",
+                FREF.live to true, FREF.stored to false, FREF.configName to "from_tpl_base", FREF.fromTemplate to "tpl"),
+        )!!
+        assertEquals("tpl", inherited.fromTemplate)
+        assertEquals(
+            "The template tpl's file, which this client is served until the deployment keeps one of its own: hero.png in approved. " +
+                "In the configuration 'from_tpl_base'.",
+            fileRefWhereText(inherited),
+        )
         // With no file there is no date to give.
         assertEquals(
             "A file the deployment keeps for this client: hero.png in approved. In the configuration 'copy'.",

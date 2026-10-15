@@ -811,7 +811,9 @@ class FileRefBuilder {
 
     /**
      * The file at [path] in **the client's own directory** of the root [root], which the deployment has opened to
-     * clients (issue #1164): `<root>/<clientId>/<path>`. For a template, each client built on it reads its own.
+     * clients (issue #1164): `<root>/<clientId>/<path>`. For a template, each client built on it reads its own --
+     * and, where it has no such file, the template's (issue #1180): the template's is the default, which a client
+     * replaces by having its own put there. Only an absent file falls back; one that cannot be served is the client's.
      */
     fun clientLocal(root: String, path: String) {
         local = root to path

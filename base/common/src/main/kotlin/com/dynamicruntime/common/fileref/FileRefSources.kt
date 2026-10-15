@@ -197,11 +197,24 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
     /** Whether this reads the client's own directory of a root: the `clientLocal` kind. */
     private val ownDirectory = source == FREF.sourceClientLocal
 
-    /** The directory of the root [ref]'s file is looked for in, where that is its client's own; else null. */
-    private fun clientDir(ref: FileRef): String? = ref.owner.takeIf { ownDirectory }
+    /**
+     * The client directory of the root [ref]'s file is read from, where that is a client's own; else null, an ordinary
+     * local ref naming the root whole. It is the ref's client's -- or, for a ref the client **inherits** from a
+     * template and has no such file of its own, the template's (issue #1180): the template's file is the default,
+     * which a client replaces by having its own put there, as a template's copy is the default its words replace.
+     *
+     * Only a file that is **absent** falls back. One the client has and that cannot be served -- no image, too large,
+     * reached through a link -- is the client's mistake, said as one, and not hidden behind the template's picture.
+     */
+    private fun clientDir(ref: FileRef): String? {
+        if (!ownDirectory) return null
+        val template = ref.inheritedFrom ?: return ref.owner
+        val own = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), ref.owner)
+        return if (own.absent) template else ref.owner
+    }
 
-    /** Where [ref]'s file is looked for, from the root down: what an operator needs to find it by. */
-    private fun sought(ref: FileRef): String = listOfNotNull(ref.def.root, clientDir(ref), ref.def.path).joinToString("/")
+    /** Where [ref]'s file is looked for in [dir], from the root down: what an operator needs to find it by. */
+    private fun sought(ref: FileRef, dir: String?): String = listOfNotNull(ref.def.root, dir, ref.def.path).joinToString("/")
 
     /** What was last said of a ref whose file could not be served, and when. */
     private class Said(val reason: String, val atNanos: Long)
@@ -231,10 +244,11 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
         return true
     }
 
-    private fun sayWhy(cxt: KdrCxt, ref: FileRef, reason: String?) {
+    private fun sayWhy(cxt: KdrCxt, ref: FileRef, dir: String?, reason: String?) {
         if (!shouldSay(ref, reason.orEmpty(), System.nanoTime())) return
-        // By where it was looked for, which for a client's own ref is not the root and path its entry holds.
-        LogFileRef.warn(cxt) { "The local file '${sought(ref)}' of ref '${ref.refId}' (client '${ref.owner}') cannot be served: $reason." }
+        // By where it was looked for, which for a client's own ref is not the root and path its entry holds -- and
+        // for an inherited one with no file of the client's, the template's directory, looked in last.
+        LogFileRef.warn(cxt) { "The local file '${sought(ref, dir)}' of ref '${ref.refId}' (client '${ref.owner}') cannot be served: $reason." }
     }
 
     override fun defProblem(def: FileRefDef, ref: String): String? {
@@ -254,16 +268,17 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
      * ref a root that is not open.
      */
     private fun lookedAt(cxt: KdrCxt, ref: FileRef): FileMeta? {
-        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), clientDir(ref))
+        val dir = clientDir(ref)
+        val at = roots.locate(ref.def.root.orEmpty(), ref.def.path.orEmpty(), dir)
         if (at.real == null) {
-            sayWhy(cxt, ref, at.reason)
+            sayWhy(cxt, ref, dir, at.reason)
             return null
         }
         // The real path is in the stamp, so one key cannot answer for two files; the key is only what is replaced.
         val stamp = "${at.real}|${at.size}|${at.modifiedMs}"
-        val key = sought(ref)
+        val key = sought(ref, dir)
         looked[key]?.takeIf { it.stamp == stamp }?.let { return it.meta }
-        return read(cxt, ref)?.meta.also {
+        return readFrom(cxt, ref, dir)?.meta.also {
             if (looked.size >= maxRemembered) looked.clear()
             looked[key] = Looked(stamp, it)
         }
@@ -276,7 +291,11 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
      */
     override fun fileProblem(cxt: KdrCxt, ref: FileRef): String? {
         if (lookedAt(cxt, ref) != null) return null
-        val where = if (ownDirectory) " in the client's own directory of that root" else ""
+        val where = when {
+            !ownDirectory -> ""
+            ref.inheritedFrom != null -> " in the client's own directory of that root, or the template '${ref.inheritedFrom}''s"
+            else -> " in the client's own directory of that root"
+        }
         return "names the local file '${ref.def.root}/${ref.def.path}'$where, which is not there to be served as an image."
     }
 
@@ -285,20 +304,23 @@ class LocalFileSource(val roots: LocalFileRoots, override val source: String = F
 
     /**
      * The file as it is now, described as the store describes one: the type the bytes were found to be, their
-     * hash, the file's own name, and -- as when it was "uploaded" -- when the file last changed.
+     * hash, the file's own name, and -- as when it was "uploaded" -- when the file last changed. Its `client` is the
+     * client whose directory it was read from: a template's, for an inherited ref served its default (issue #1180).
      */
-    override fun read(cxt: KdrCxt, ref: FileRef): StoredFile? {
-        val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty(), clientDir(ref))
+    override fun read(cxt: KdrCxt, ref: FileRef): StoredFile? = readFrom(cxt, ref, clientDir(ref))
+
+    private fun readFrom(cxt: KdrCxt, ref: FileRef, dir: String?): StoredFile? {
+        val read = roots.read(ref.def.root.orEmpty(), ref.def.path.orEmpty(), dir)
         val file = read.file
         if (file == null) {
-            sayWhy(cxt, ref, read.reason)
+            sayWhy(cxt, ref, dir, read.reason)
             return null
         }
         // Mended: were it to break again, that is news.
         if (said.isNotEmpty()) said.remove("${ref.owner}/${ref.refId}/${ref.def.pointer}")
         val meta = FileMeta(
             mimeType = file.kind.mimeType, size = file.bytes.size.toLong(), hash = file.bytes.sha256Hex(),
-            uploadedAt = file.modifiedAt, fileName = file.name, client = ref.owner,
+            uploadedAt = file.modifiedAt, fileName = file.name, client = dir ?: ref.owner,
         )
         return StoredFile(file.bytes, meta)
     }

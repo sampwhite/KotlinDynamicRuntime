@@ -40,6 +40,11 @@ class FileRef(
     val def: FileRefDef,
     /** The client the bytes are kept under: the one whose stored configuration holds the entry -- a sandbox's parent. */
     val owner: String,
+    /**
+     * The template the ref came from, when the client inherits it rather than declares it (issue #1180): a client's
+     * own local file is then looked for first, and the template's is its default ([LocalFileSource]).
+     */
+    val inheritedFrom: String? = null,
 ) {
     val refId: String get() = def.refId
 }
@@ -288,7 +293,7 @@ class FileRefService : ServiceInitializer, ContentServer {
                     if (def.stored) beyondStored++
                     continue
                 }
-                val ref = FileRef(def, owner)
+                val ref = FileRef(def, owner, config.inheritedFrom)
                 val fileProblem = if (checksFile) sources.getValue(def.source).fileProblem(cxt, ref) else null
                 if (fileProblem != null) {
                     reportConfigProblem(
