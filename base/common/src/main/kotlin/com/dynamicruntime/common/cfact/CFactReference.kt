@@ -50,14 +50,14 @@ private fun appendCFact(sb: StringBuilder, def: CFactDef, isPresent: Boolean) {
     sb.append(prose(def.description)).append("\n\n")
 }
 
-/** Matches a KDoc `[Symbol]` reference -- a bare `[Identifier]` (dotted members allowed), not a `[text](url)` link. */
+/** Matches a KDoc symbol reference -- a bare name between `[` and `]` (dotted members allowed), not a `[text](url)` link. */
 private val kdocReference = Regex("""\[([A-Za-z][\w.]*)](?!\()""")
 
 /**
- * A def's description rendered for the document: a `[Symbol]` reference -- clickable in the source, a dangling
- * link in CommonMark -- becomes an inline-code span, so it reads as "a name" rather than a broken link. A real
- * `[text](url)` link is left alone (the negative lookahead). The same treatment `renderEnvVarReference` gives
- * its prose, and kept a copy rather than shared because the two references may want to diverge and neither is
- * the other's utility.
+ * A def's description rendered for the document: a symbol reference, a name between `[` and `]` -- clickable in
+ * the source, a dangling link in CommonMark -- becomes an inline-code span, so it reads as "a name" rather than a
+ * broken link. A real `[text](url)` link is left alone (the negative lookahead). The same treatment
+ * `renderEnvVarReference` gives its prose, and kept a copy rather than shared because the two references may want
+ * to diverge and neither is the other's utility.
  */
 private fun prose(text: String): String = kdocReference.replace(text) { "`${it.groupValues[1]}`" }

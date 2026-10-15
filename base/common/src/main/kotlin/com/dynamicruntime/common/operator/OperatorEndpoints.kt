@@ -8,6 +8,7 @@ import com.dynamicruntime.common.startup.BCHK
 import com.dynamicruntime.common.startup.BootCheckRegistry
 import com.dynamicruntime.common.startup.BootCheckResult
 import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.flavor.DeployFlavors
 import com.dynamicruntime.common.http.request.SECT
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.schema.SCT
@@ -170,6 +171,9 @@ fun operatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.${SECT.opera
         outputRef = OENV.referenceType,
         tags = setOf(ETAG.internal),
     ) { c, _ -> mapOf(OENV.markdown to renderEnvVarReference(c)) }
+
+    // The deployment flavors (issue #1218), beside the env reference: a flavor's config keys show only here.
+    DeployFlavors.defineOperatorEndpoint(this)
 }
 
 /** One gibibyte in bytes (1024^3): memory is reported base-2, the convention for RAM and JVM heap sizes. */

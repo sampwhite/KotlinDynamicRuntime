@@ -24,16 +24,19 @@ object LogSetup {
     val appLogLevelEnvVar = EnvVarDef(
         "KDR_LOG_LEVEL", group = ENVGRP.logging, defaultDoc = "`debug`",
         description = "The log level for our application topics (`trace`/`debug`/`info`/`warn`/`error`).",
+        bootstrap = true,
     )
 
     val rootLogLevelEnvVar = EnvVarDef(
         "KDR_ROOT_LOG_LEVEL", group = ENVGRP.logging, defaultDoc = "`info`",
         description = "The root log level for everything else (third-party log4j2 loggers).",
+        bootstrap = true,
     )
 
     val asyncEnvVar = EnvVarDef(
         "KDR_LOG_ASYNC", group = ENVGRP.logging, defaultDoc = "false (sync)",
         description = "Toggles async delivery of our logs; default sync, for immediate, ordered output.",
+        bootstrap = true,
     )
 
     /** The log4j2 console pattern for third-party loggers -- shaped to match [LogFormat]'s line. */
