@@ -299,7 +299,7 @@ class CommonComponent : ComponentDefinition {
         FlavorDef(FLV.reference, "A reference deployment: a public instance to look around, saying so on its pages."),
     )
 
-    /** What core changes under a reference deployment (issue #1221): its home page, and why sign-in is limited. */
+    /** What core changes under a reference deployment (issue #1221): its home page, and a word on its sign-in page. */
     override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
         flavor(FLV.reference) { omnibusOverlay("kdrReference") },
     )
