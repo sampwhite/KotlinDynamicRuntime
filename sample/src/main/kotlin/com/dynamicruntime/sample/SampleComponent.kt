@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample
 
+import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
@@ -20,6 +21,7 @@ import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.sample.file.SFK
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
 import com.dynamicruntime.sample.gedra.ExpenseReportPrepForSaveFn
@@ -30,13 +32,12 @@ import com.dynamicruntime.sample.gedra.sampleTraits
 import com.dynamicruntime.sample.simulation.SampleSimulations
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.gedra.GedraConfig
+import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.SchemaCollector
-import com.dynamicruntime.common.startup.ServiceEntry
-import com.dynamicruntime.common.startup.service
 
 /**
- * The `sample` module's component. It contributes the file upload/download endpoints (owned by
- * [SampleFileService]) and registers the service that backs them.
+ * The `sample` module's component. It contributes the file upload/download endpoints ([SampleFileService]) and the
+ * file-store bucket they keep uploads in ([SFK]).
  * Mirrors how each base module has one component (`CommonComponent`, `KdnComponent`).
  *
  * It once also carried a Todo CRUD demo. That went when the runtime stopped needing a toy to point at; the
@@ -98,7 +99,10 @@ class SampleComponent : ComponentDefinition {
     }
 
     override fun addSchema(cxt: KdrCxt, collector: SchemaCollector) {
-        collector.addModule(SampleFileService.schema(cxt))
+        // The demo file endpoints and their bucket (issue #1144), where a file store runs: an edge has none.
+        val appOnly = Presence(roles = setOf(BOOT.app))
+        collector.addModule(SampleFileService.schema(cxt), appOnly)
+        collector.addFileBucket(SFK.bucketDef(), appOnly)
         collector.addModule(GedraFixtureEndpoints.schema(cxt))
         // The sample's simulations (issue #997): test-only, and offered only where the sample's clients exist.
         collector.addModule(SampleSimulations.schema(cxt))
@@ -164,7 +168,4 @@ class SampleComponent : ComponentDefinition {
      * the runtime's own, which is what gives the fixture a union with more than one branch to select between.
      */
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(sampleTraits(cxt)) + sampleClients(cxt)
-
-    override fun services(cxt: KdrCxt): List<ServiceEntry> =
-        listOf(service(::SampleFileService))
 }
