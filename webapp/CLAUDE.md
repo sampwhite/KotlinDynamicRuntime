@@ -622,8 +622,8 @@ Web assets and drawn as they are, a client's **file refs** -- the named images i
 are listed under "A client's file refs" above). A row a ref: a preview, its id with a mark for what is unusual
 (`fileRefTags`: a draft, a missing file, one the client was shipped with), its description, what the file is
 (`fileRefHoldsText`), where it is by its source and which configuration holds it (`fileRefWhereText`), and the
-address it is served at; then **Replace…**, and for a ref a stored configuration holds, **Reword…** and
-**Remove**. Under the list, the way to add one: an id and a description, then **Upload…** -- or, where
+address it is served at; then **Replace…** (and **Use a kept file…** where a root is open to clients), and for a
+ref a stored configuration holds, **Reword…** and **Remove**. Under the list, the way to add one: an id and a description, then **Upload…** -- or, where
 `…/files/takes` lists a root open to clients, a root and a typed path. What is decided here, and why:
 
 - **A section, not a page of its own**, because it mirrors Web assets. A client may hold 200 refs; previews load
@@ -637,8 +637,13 @@ address it is served at; then **Replace…**, and for a ref a stored configurati
 - **A client that takes nothing stored on this node** (`staticHere`, which for a sandbox is its parent's answer)
   is listed with no actions, and told so and nothing of drafts.
 - **An id the client already has is refused by the add form**: that ref is replaced, reworded or removed from its
-  own row, where it can be seen. So an existing ref is re-pointed by an upload only; naming a kept file over an
-  existing ref is not offered, though the backend's `…/files/local` would take it.
+  own row, where it can be seen. Where a root is open to clients, the row offers **Use a kept file…** beside
+  Replace… (issue #1189, `fileRefRepointable`): a root and a typed path in place under the row -- the add form's
+  own fields (`keptFileFields`) -- sent as `…/files/local` with the ref's own id and no description, so the
+  description stays. A shipped ref becomes a stored override, which Remove takes back off; an upload is replaced;
+  for a client with a sandbox it is a draft, as every change is. `fileRefRepointProblem` refuses the file the ref
+  already names, before anything is sent; where the editor starts is `fileRefRepointStart`. The section has one
+  row editor open at a time (`editing`: which ref, and Reword… or Use a kept file…), so opening one closes any other.
 - **What a ref takes is asked for separately**, so the list is drawn even when `…/files/takes` cannot be had;
   nothing is added from the page then, and it says so. At the limit of refs the form gives way to a sentence,
   since an upload would be sent whole and then refused -- one that says what can be done (`fileRefAtLimitText`,
