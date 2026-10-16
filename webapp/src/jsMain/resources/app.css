@@ -541,7 +541,13 @@ body {
 .file-ref-describe { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* Adding one, under the list: an id and what it is for, then how -- an upload, or a file the deployment keeps. */
 .file-ref-add { display: flex; flex-direction: column; gap: 8px; margin-top: 22px; }
-.file-ref-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.file-ref-add-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+/* Finding one among many (issue #1190): words in an id or what it is for, and a toggle per mark the list carries. */
+.file-ref-find { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; margin: 4px 0 12px; }
+/* A field with its name above it: what a screen reader still says once something is typed. */
+.file-ref-field { display: inline-flex; flex-direction: column; gap: 2px; font-size: 0.85rem; color: var(--text-muted); }
+/* What a copy button says it did, beside it: in words, not by a mark alone. */
+.copy-outcome { margin-left: 6px; font-size: 0.85rem; color: var(--text-muted); }
 .home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text); }
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }

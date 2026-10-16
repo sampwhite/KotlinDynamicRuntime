@@ -10,6 +10,7 @@ import react.Props
 import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.img
+import react.dom.html.ReactHTML.label
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.useEffect
@@ -47,6 +48,11 @@ external interface FileRefsSectionProps : Props {
  * from what it last read of the client, and a sandbox can go in between. Refused so ([saveConflict]), the page is
  * read again, and says how a change now takes effect.
  *
+ * **Finding one among many** (issue #1190): a Find box over id and description and a toggle per mark the list
+ * carries ([fileRefMatches]), the rows in a stated order -- what needs attention first, then by id
+ * ([fileRefOrdered]) -- and no more than [fileRefFirstShown] until "Show all", so the rest of the client's page stays
+ * in reach ([fileRefPage]). An address has a [CopyButton] beside it, and the add form's fields their names.
+ *
  * Picking a file *is* the upload, as for a web asset; a removal is asked about first. Each answers the ref as it
  * now is, which is drawn at once, and bumps the refresh generation through [FileRefsSectionProps.onChanged].
  *
@@ -74,6 +80,10 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
     var newDescription by useState("")
     var newRoot by useState<String?>(null)
     var newPath by useState("")
+    // What the list is narrowed to, and whether all of it is drawn (issue #1190).
+    var findText by useState("")
+    var marks by useState<Set<String>>(emptySet())
+    var showAll by useState(false)
     val latest = useRef(0)
     val lastClient = useRef<String>(null)
     val generation = useRefreshGeneration()
@@ -99,6 +109,9 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             newDescription = ""
             newRoot = null
             newPath = ""
+            findText = ""
+            marks = emptySet()
+            showAll = false
         }
         fileRefsScope.launch {
             try {
@@ -203,7 +216,41 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             +fileRefsEmptyText(draft)
         }
     }
-    listed?.forEach { ref ->
+    val filter = FileRefFilter(findText, marks)
+    val page = listed?.let { fileRefPage(it, filter, showAll) }
+    // Finding one among many (issue #1190): only once there are enough to look through.
+    if (listed != null && listed.size > 1) {
+        div {
+            key = "find".unsafeCast<Key>()
+            className = ClassName("file-ref-find")
+            label {
+                className = ClassName("file-ref-field")
+                span { +"Find" }
+                Input {
+                    value = findText
+                    placeholder = "Words in an id or what it is for"
+                    allowClear = true
+                    style = js("({ width: 260 })")
+                    onChange = { e -> findText = (e.target.value as? String).orEmpty() }
+                }
+            }
+            fileRefMarkCounts(listed).forEach { (mark, count) ->
+                Checkbox {
+                    key = mark.unsafeCast<Key>()
+                    checked = mark in marks
+                    onChange = { e -> marks = if (e.target.checked == true) marks + mark else marks - mark }
+                    +"$mark ($count)"
+                }
+            }
+        }
+    }
+    page?.let { fileRefPageText(it, filter) }?.let { said ->
+        p {
+            className = ClassName("subtitle")
+            +said
+        }
+    }
+    page?.shown?.forEach { ref ->
         div {
             key = ref.refId.unsafeCast<Key>()
             className = ClassName("web-asset")
@@ -285,6 +332,11 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         className = ClassName("subtitle file-ref-address")
                         +fileRefAddressLead(ref)
                         code { +address }
+                        +" "
+                        CopyButton {
+                            text = address
+                            label = "Copy the address of '${ref.refId}'"
+                        }
                     }
                 }
                 fileRefShippedHint(ref)?.let { hint ->
@@ -397,6 +449,16 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             +"What a file may be could not be read just now, so none is added from here. Reload to try again."
         }
     }
+    page?.takeIf { it.hidden > 0 }?.let { more ->
+        p {
+            key = "more".unsafeCast<Key>()
+            Button {
+                size = "small"
+                onClick = { showAll = true }
+                +"Show all ${more.matched}"
+            }
+        }
+    }
     // Only once the backend has said what a file may be: the form offers what will be accepted, in its words.
     if (editable && listed != null && taking != null && atLimit == null) {
         div {
@@ -410,23 +472,31 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             }
             div {
                 className = ClassName("file-ref-add-row")
-                Input {
-                    value = newId
-                    placeholder = "Its id, such as heroImage"
-                    maxLength = FREF.maxRefIdLength
-                    disabled = busy != null
-                    // antd gives an Input `flex: 1` in a flex row, where a width alone is ignored: an id is
-                    // short and says it does not grow, and what it is for takes the room that leaves.
-                    style = js("({ width: 220, flex: 'none' })")
-                    onChange = { e -> newId = (e.target.value as String).trim() }
+                label {
+                    className = ClassName("file-ref-field")
+                    span { +"Id" }
+                    Input {
+                        value = newId
+                        placeholder = "Its id, such as heroImage"
+                        maxLength = FREF.maxRefIdLength
+                        disabled = busy != null
+                        // antd gives an Input `flex: 1` in a flex row, where a width alone is ignored: an id is
+                        // short and says it does not grow, and what it is for takes the room that leaves.
+                        style = js("({ width: 220, flex: 'none' })")
+                        onChange = { e -> newId = (e.target.value as String).trim() }
+                    }
                 }
-                Input {
-                    value = newDescription
-                    placeholder = "What it is for (optional)"
-                    maxLength = FREF.maxDescriptionLength
-                    disabled = busy != null
-                    style = js("({ minWidth: 240 })")
-                    onChange = { e -> newDescription = e.target.value as String }
+                label {
+                    className = ClassName("file-ref-field")
+                    span { +"What it is for" }
+                    Input {
+                        value = newDescription
+                        placeholder = "Optional"
+                        maxLength = FREF.maxDescriptionLength
+                        disabled = busy != null
+                        style = js("({ minWidth: 240 })")
+                        onChange = { e -> newDescription = e.target.value as String }
+                    }
                 }
             }
             div {
@@ -475,13 +545,17 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }.toTypedArray()
                         onChange = { chosen -> newRoot = chosen as? String }
                     }
-                    Input {
-                        value = newPath
-                        placeholder = "Its path, such as marks/hero.png"
-                        maxLength = FREF.maxPathLength
-                        disabled = busy != null
-                        style = js("({ minWidth: 240 })")
-                        onChange = { e -> newPath = (e.target.value as String).trim() }
+                    label {
+                        className = ClassName("file-ref-field")
+                        span { +"Path" }
+                        Input {
+                            value = newPath
+                            placeholder = "Such as marks/hero.png"
+                            maxLength = FREF.maxPathLength
+                            disabled = busy != null
+                            style = js("({ minWidth: 240 })")
+                            onChange = { e -> newPath = (e.target.value as String).trim() }
+                        }
                     }
                     Button {
                         loading = busy == webAssetBusyKey(FACT.adding, FACT.local)
