@@ -264,12 +264,6 @@ class LocalFileRoots(
         /** Where a node's logs are written, by its logging configuration's default. */
         const val logsDirName = "logs"
 
-        /**
-         * Where the sample component keeps its files -- `SampleFileStore.storeDirName`, which this module cannot see; a
-         * test of the sample's holds the two to one value.
-         */
-        const val sampleFilesDirName = "sampleFiles"
-
         private const val unreadable = "it could not be read"
 
         private val tooLarge = "it is larger than ${byteSizeText(FREF.maxSize.toLong())}"
@@ -279,7 +273,7 @@ class LocalFileRoots(
          * sample's files -- each where it is by default. A deployment that keeps one somewhere else (an H2 file its
          * database configuration places, a log directory its logging does) keeps its roots clear of it itself.
          */
-        val reservedWorkspaceDirs = listOf(File(SecretsUtil.secretsPath).parent ?: privateDirName, SqlDbBuilder.h2DirName, logsDirName, sampleFilesDirName)
+        val reservedWorkspaceDirs = listOf(File(SecretsUtil.secretsPath).parent ?: privateDirName, SqlDbBuilder.h2DirName, logsDirName)
 
         /**
          * The roots this node reads local files from, as its environment declares them. **Refuses to start** over a

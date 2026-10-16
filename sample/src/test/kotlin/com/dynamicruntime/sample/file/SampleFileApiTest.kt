@@ -1,10 +1,12 @@
 package com.dynamicruntime.sample.file
 
 import com.dynamicruntime.common.endpoint.EP
-import com.dynamicruntime.common.fileref.LocalFileRoots
+import com.dynamicruntime.common.filestore.FST
+import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.util.jsonMap
+import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
@@ -12,44 +14,33 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 
 /**
  * End-to-end coverage of the sample file endpoints (issue #96): upload, list, download — the round trip the
  * file interface exists for, driven through the in-process [TestHttpClient].
  *
- * The store writes to `<workspace>/sampleFiles`, so these use a temporary workspace via the `kdr.workspaceDir`
- * system property ([com.dynamicruntime.common.context.AppPaths]) rather than scribbling in the real one.
+ * The uploads are kept in the runtime's file store (issue #1144), which a test instance runs in memory: nothing is
+ * written to the workspace.
  */
 class SampleFileApiTest : StringSpec({
-
-
-    val tempWorkspace = createTempDir()
-
-    beforeSpec { System.setProperty("kdr.workspaceDir", tempWorkspace.absolutePath) }
-    afterSpec {
-        System.clearProperty("kdr.workspaceDir")
-        tempWorkspace.deleteRecursively()
-    }
-
-    fun client(cxtName: String): TestHttpClient =
-        // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
-        TestHttpClient(Startup.mkTestBootCxt(cxtName, "sampleFileTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent())).instanceConfig)
+    // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
+    val cxt = Startup.mkTestBootCxt("sampleFiles", "sampleFileTest", mapOf("KDR_LOAD_SAMPLE" to "true"), additionalComponents = listOf(SampleComponent()))
+    val c = TestHttpClient(cxt.instanceConfig)
+    val files = FileStoreService.get(cxt)
 
     // A PNG header: the bytes are deliberately not valid UTF-8, so a round trip that survives them proves the
     // content never went through the text path.
     val pngBytes = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A, 0x42)
 
-    "a file survives an upload and download round trip byte-for-byte" {
-        val c = client("roundTrip")
-
-        val uploaded = c.sendUploadRequest(
-            "/demo/file/upload",
-            mapOf(SF.file to ContentData(pngBytes, "image/png", saveAsFilename = "chart.png")),
-        )
+    fun upload(content: ContentData): Map<String, Any?> {
+        val uploaded = c.sendUploadRequest("/demo/file/upload", mapOf(SF.file to content))
         uploaded.rptStatusCode shouldBe 200
-        val results = uploaded.rptResponseData.shouldNotBeNull().jsonMap()?.get(EP.results).toJsonMapOrEmpty()
+        return uploaded.rptResponseData.shouldNotBeNull().jsonMap()?.get(EP.results).toJsonMapOrEmpty()
+    }
+
+    "a file survives an upload and download round trip byte-for-byte" {
+        val results = upload(ContentData(pngBytes, "image/png", saveAsFilename = "chart.png"))
         val id = results[SF.id] as? String
         id.shouldNotBeNull()
         results[SF.fileName] shouldBe "chart.png"
@@ -68,59 +59,56 @@ class SampleFileApiTest : StringSpec({
             .shouldContain("filename=\"chart.png\"")
     }
 
-    "an uploaded file appears in the list" {
-        val c = client("listing")
-        c.sendUploadRequest("/demo/file/upload", mapOf(SF.file to ContentData("hello".toByteArray(), "text/plain", saveAsFilename = "notes.txt")))
-        val items = c.sendJsonGetRequest("/demo/file/list")[EP.items] as? List<*>
-        items.shouldNotBeNull()
-        items.map { it.toJsonMapOrEmpty()[SF.fileName] } shouldContain "notes.txt"
+    "an upload is a file in the store: in the sample's own bucket, under its id, with its metadata beside it" {
+        files.providerType shouldBe FST.memory
+        val id = upload(ContentData(pngBytes, "image/png", saveAsFilename = "kept.png"))[SF.id] as String
+        val meta = files.meta(cxt, SampleFileKeys.bucket, "${SampleFileKeys.uploadsPrefix}$id").shouldNotBeNull()
+        meta.hash shouldBe pngBytes.sha256Hex()
+        meta.fileName shouldBe "kept.png"
+        meta.mimeType shouldBe "image/png"
+    }
+
+    "the list holds what was uploaded, newest first" {
+        // Several, a moment apart: the store answers in key order, and keys are random ids, so two files would be in
+        // the right order by chance half the time -- six, one time in 720.
+        val uploaded = (1..6).map { n ->
+            if (n > 1) Thread.sleep(5)
+            upload(ContentData("file $n".toByteArray(), "text/plain", saveAsFilename = "file$n.txt"))[SF.id] as String
+        }
+        val items = (c.sendJsonGetRequest("/demo/file/list")[EP.items] as? List<*>).shouldNotBeNull().map { it.toJsonMapOrEmpty() }
+        items.map { it[SF.id] }.filter { it in uploaded } shouldBe uploaded.reversed()
+        items.first { it[SF.id] == uploaded[0] }[SF.fileName] shouldBe "file1.txt"
+        // Each listed file downloads by the id the list gave.
+        c.sendGetRequest("/demo/file/download", mapOf(SF.id to uploaded[1])).rptResponseBytes.shouldNotBeNull().decodeToString() shouldBe "file 2"
+    }
+
+    "a part with no filename is listed under one made from its id" {
+        val results = upload(ContentData("x".toByteArray(), "text/plain"))
+        results[SF.fileName] shouldBe "upload-${results[SF.id]}"
     }
 
     "downloading an unknown id is a 404, not a server error" {
-        val resp = client("missing").sendGetRequest("/demo/file/download", mapOf(SF.id to "0123456789abcdef0123456789abcdef"))
+        val resp = c.sendGetRequest("/demo/file/download", mapOf(SF.id to "0123456789abcdef0123456789abcdef"))
         resp.rptStatusCode shouldBe 404
     }
 
-    // The store never derives a path from a client-supplied name, but the id does reach the filesystem, so it
-    // is checked rather than sanitized: anything that is not one of our hex ids is refused outright.
-    "a file id that is not ours cannot walk out of the store" {
-        for (bad in listOf("../../etc/passwd", "..", "a/b", "abc .bin", "abc\u0000.bin", "ABCDEF", "zz")) {
-            val resp = client("traversal").sendGetRequest("/demo/file/download", mapOf(SF.id to bad))
-            // 400 (not a valid id) -- never a 200, and never a 500 from the filesystem.
-            resp.rptStatusCode shouldNotBe 200
-            resp.rptStatusCode shouldNotBe 500
+    // The id becomes a key, so it is checked rather than sanitized: anything that is not one of our hex ids is
+    // refused as that, before the store is asked.
+    "a file id that is not ours is refused before it becomes a key" {
+        for (bad in listOf("../../etc/passwd", "..", "a/b", "abc .bin", "abc\u0000.bin", "ABCDEF", "zz", "0123456789abcdef", "0123456789ABCDEF0123456789abcdef")) {
+            c.sendGetRequest("/demo/file/download", mapOf(SF.id to bad)).rptStatusCode shouldBe 400
         }
     }
 
-    // The client's filename is metadata, never a path: the file on disk is named for its id.
-    "an upload's filename never becomes the path on disk" {
-        val c = client("naming")
-        val uploaded = c.sendUploadRequest(
-            "/demo/file/upload",
-            mapOf(SF.file to ContentData("x".toByteArray(), "text/plain", saveAsFilename = "../../evil.txt")),
-        )
-        val results = uploaded.rptResponseData.shouldNotBeNull().jsonMap()?.get(EP.results).toJsonMapOrEmpty()
+    // The client's filename is metadata, never a key: the file is kept under its id.
+    "an upload's filename never becomes its key" {
+        val results = upload(ContentData("x".toByteArray(), "text/plain", saveAsFilename = "../../evil.txt"))
         val id = results[SF.id] as String
-        // The name is preserved as metadata...
-        results[SF.fileName] shouldBe "../../evil.txt"
-
-        // ... while on disk the file is named for its id, and nothing anywhere is named after what the client
-        // asked for. (The store is shared across this spec's tests, so this checks what is present and absent
-        // rather than the exact directory contents.)
-        val store = java.io.File(tempWorkspace, SampleFileStore.storeDirName)
-        // Where the sample keeps its files is one of the places no root of local files may be (issue #1154); the
-        // fence names it by a constant of its own, since `common` cannot see this module's.
-        LocalFileRoots.reservedWorkspaceDirs shouldContain SampleFileStore.storeDirName
-        LocalFileRoots.sampleFilesDirName shouldBe SampleFileStore.storeDirName
-        val names = store.listFiles()?.map { it.name }.orEmpty()
-        names shouldContain "$id.bin"
-        names shouldContain "$id.json"
-        names.none { it.contains("evil") } shouldBe true
-        // Above all, the `../../` in the name walked nowhere: no file escaped the store.
-        java.io.File(tempWorkspace, "evil.txt").exists() shouldBe false
-        java.io.File(tempWorkspace.parentFile, "evil.txt").exists() shouldBe false
+        // The name is kept as metadata -- its last segment, which is all of it the store records...
+        results[SF.fileName] shouldBe "evil.txt"
+        // ... while the file is kept under its id, and nothing in the bucket is named after what the client asked for.
+        val keys = files.list(cxt, SampleFileKeys.bucket).map { it.key }
+        keys shouldContain "${SampleFileKeys.uploadsPrefix}$id"
+        keys.none { it.contains("evil") } shouldBe true
     }
 })
-
-private fun createTempDir(): java.io.File =
-    java.nio.file.Files.createTempDirectory("kdrSampleFileTest").toFile()

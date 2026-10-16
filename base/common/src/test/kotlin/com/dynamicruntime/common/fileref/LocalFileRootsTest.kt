@@ -137,7 +137,7 @@ class LocalFileRootsTest : StringSpec({
 
     "a location or a root inside a place that holds the deployment's data, or containing one, refuses the start" {
         // Inside one of the workspace's own.
-        for (reserved in listOf("private", "private/images", "h2Database", "logs/pictures", "sampleFiles/x", "fileStore/web-assets")) {
+        for (reserved in listOf("private", "private/images", "h2Database", "logs/pictures", "fileStore/web-assets")) {
             refusal(ENV.local, LFENV.dir.name to reserved) shouldContain "which holds the deployment's own data"
             refusal(ENV.local, LFENV.roots.name to "brand=$reserved") shouldContain "is inside"
         }
