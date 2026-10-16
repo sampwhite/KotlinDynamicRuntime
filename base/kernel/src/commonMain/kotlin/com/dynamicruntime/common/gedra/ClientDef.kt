@@ -332,9 +332,6 @@ object ClientPresentationFields {
         CLD.enabledEnvironments -> ENV.names
         else -> emptyList()
     }
-
-    /** Whether [name] holds a list of strings rather than one string -- the labels. */
-    fun isList(name: String): Boolean = kind(name) == Kind.labels
 }
 
 /**
