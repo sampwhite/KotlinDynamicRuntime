@@ -5,7 +5,6 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
-import com.dynamicruntime.common.filestore.FileEntry
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.SCT
@@ -14,12 +13,12 @@ import com.dynamicruntime.common.schema.SCT
  * The sample app's file endpoints: demonstrate the runtime's file endpoints (issue #96) end to end — upload a
  * file, list what has been uploaded, download one back — kept in the runtime's file store (issue #1144), which
  * is how an application keeps an upload: `FileStoreService.put` under a key it composes, in a bucket its component
- * declared ([SampleFileKeys]).
+ * declared ([SFK]).
  *
  * The endpoints are all [com.dynamicruntime.common.endpoint.EndpointKind.file] — the kind that says "this one
  * trades in file content, not JSON" — except `list`, which is an ordinary list of metadata.
  *
- * Being a sample, it has no auth, no quota and no cleanup; see [SampleFileKeys] for why the ids are nonetheless
+ * Being a sample, it has no auth, no quota and no cleanup; see [SFK] for why the ids are nonetheless
  * unguessable.
  */
 object SampleFileService {
@@ -53,10 +52,9 @@ object SampleFileService {
             // coercing it to a string (see SFMT.binary).
             val content = request[SF.file] as? ContentData
                 ?: throw KdrException.mkInput("No file was supplied in the '${SF.file}' field.")
-            val id = SampleFileKeys.newId()
-            val key = SampleFileKeys.keyOf(id)
-            val meta = FileStoreService.get(c).put(c, SampleFileKeys.bucket, key, content)
-            SampleFileInfo.of(id, FileEntry(key, meta)).toJsonMap()
+            val id = SFK.newId()
+            val meta = FileStoreService.get(c).put(c, SFK.bucket, SFK.keyOf(id), content)
+            SampleFileInfo.of(id, meta).toJsonMap()
         }
 
         listEndpoint(
@@ -65,8 +63,8 @@ object SampleFileService {
             outputRef = "FileInfo",
         ) { c, _ ->
             // The store answers in key order, which for random ids is no order at all; newest first is the sample's.
-            FileStoreService.get(c).list(c, SampleFileKeys.bucket, SampleFileKeys.uploadsPrefix)
-                .mapNotNull { entry -> SampleFileKeys.idOf(entry.key)?.let { SampleFileInfo.of(it, entry) } }
+            FileStoreService.get(c).list(c, SFK.bucket, SFK.uploadsPrefix)
+                .mapNotNull { entry -> SFK.idOf(entry.key)?.let { SampleFileInfo.of(it, entry.meta) } }
                 .sortedByDescending { it.uploaded }
                 .map { it.toJsonMap() }
         }
@@ -79,7 +77,7 @@ object SampleFileService {
             },
         ) { c, request ->
             val id = request[SF.id] as? String ?: throw KdrException.mkInput("No file id was supplied.")
-            FileStoreService.get(c).get(c, SampleFileKeys.bucket, SampleFileKeys.keyOf(id))?.toContentData(inLine = false)
+            FileStoreService.get(c).get(c, SFK.bucket, SFK.keyOf(id))?.toContentData(inLine = false)
                 ?: throw KdrException("No file with id '$id'.", null, EXC.notFound)
         }
     }

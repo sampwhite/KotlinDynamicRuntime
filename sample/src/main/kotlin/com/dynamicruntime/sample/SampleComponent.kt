@@ -21,7 +21,7 @@ import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.uiblock.UIB
-import com.dynamicruntime.sample.file.SampleFileKeys
+import com.dynamicruntime.sample.file.SFK
 import com.dynamicruntime.sample.file.SampleFileService
 import com.dynamicruntime.sample.gedra.GedraFixtureEndpoints
 import com.dynamicruntime.sample.gedra.ExpenseReportPrepForSaveFn
@@ -37,7 +37,7 @@ import com.dynamicruntime.common.startup.SchemaCollector
 
 /**
  * The `sample` module's component. It contributes the file upload/download endpoints ([SampleFileService]) and the
- * file-store bucket they keep uploads in ([SampleFileKeys]).
+ * file-store bucket they keep uploads in ([SFK]).
  * Mirrors how each base module has one component (`CommonComponent`, `KdnComponent`).
  *
  * It once also carried a Todo CRUD demo. That went when the runtime stopped needing a toy to point at; the
@@ -102,7 +102,7 @@ class SampleComponent : ComponentDefinition {
         // The demo file endpoints and their bucket (issue #1144), where a file store runs: an edge has none.
         val appOnly = Presence(roles = setOf(BOOT.app))
         collector.addModule(SampleFileService.schema(cxt), appOnly)
-        collector.addFileBucket(SampleFileKeys.bucketDef(), appOnly)
+        collector.addFileBucket(SFK.bucketDef(), appOnly)
         collector.addModule(GedraFixtureEndpoints.schema(cxt))
         // The sample's simulations (issue #997): test-only, and offered only where the sample's clients exist.
         collector.addModule(SampleSimulations.schema(cxt))

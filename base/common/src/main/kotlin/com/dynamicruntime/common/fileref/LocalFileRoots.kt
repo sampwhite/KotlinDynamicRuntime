@@ -269,8 +269,8 @@ class LocalFileRoots(
         private val tooLarge = "it is larger than ${byteSizeText(FREF.maxSize.toLong())}"
 
         /**
-         * The workspace's own directories no root may be in, or contain: its secrets, its database, its logs, the
-         * sample's files -- each where it is by default. A deployment that keeps one somewhere else (an H2 file its
+         * The workspace's own directories no root may be in, or contain: its secrets, its database, its logs -- each
+         * where it is by default. A deployment that keeps one somewhere else (an H2 file its
          * database configuration places, a log directory its logging does) keeps its roots clear of it itself.
          */
         val reservedWorkspaceDirs = listOf(File(SecretsUtil.secretsPath).parent ?: privateDirName, SqlDbBuilder.h2DirName, logsDirName)

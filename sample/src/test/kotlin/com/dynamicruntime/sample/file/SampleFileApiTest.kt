@@ -62,7 +62,7 @@ class SampleFileApiTest : StringSpec({
     "an upload is a file in the store: in the sample's own bucket, under its id, with its metadata beside it" {
         files.providerType shouldBe FST.memory
         val id = upload(ContentData(pngBytes, "image/png", saveAsFilename = "kept.png"))[SF.id] as String
-        val meta = files.meta(cxt, SampleFileKeys.bucket, "${SampleFileKeys.uploadsPrefix}$id").shouldNotBeNull()
+        val meta = files.meta(cxt, SFK.bucket, "${SFK.uploadsPrefix}$id").shouldNotBeNull()
         meta.hash shouldBe pngBytes.sha256Hex()
         meta.fileName shouldBe "kept.png"
         meta.mimeType shouldBe "image/png"
@@ -107,8 +107,8 @@ class SampleFileApiTest : StringSpec({
         // The name is kept as metadata -- its last segment, which is all of it the store records...
         results[SF.fileName] shouldBe "evil.txt"
         // ... while the file is kept under its id, and nothing in the bucket is named after what the client asked for.
-        val keys = files.list(cxt, SampleFileKeys.bucket).map { it.key }
-        keys shouldContain "${SampleFileKeys.uploadsPrefix}$id"
+        val keys = files.list(cxt, SFK.bucket).map { it.key }
+        keys shouldContain "${SFK.uploadsPrefix}$id"
         keys.none { it.contains("evil") } shouldBe true
     }
 })

@@ -3,7 +3,7 @@ package com.dynamicruntime.sample.file
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileBucketDef
-import com.dynamicruntime.common.filestore.FileEntry
+import com.dynamicruntime.common.filestore.FileMeta
 import com.dynamicruntime.common.schema.JsonMappable
 import com.dynamicruntime.common.util.RandomUtil
 import com.dynamicruntime.common.util.formatDate
@@ -27,13 +27,13 @@ object SF {
 
 /**
  * What is known about one uploaded file: the sample's own response shape, read from the metadata the file store
- * keeps beside the file ([com.dynamicruntime.common.filestore.FileMeta]). Kept as the sample's rather than
+ * keeps beside the file ([FileMeta]). Kept as the sample's rather than
  * answering `FileMeta` itself so the endpoints answer exactly what they did before they moved onto the store.
  */
 class SampleFileInfo(
     val id: String,
     /** The name the *client* gave the file, as the store records it (its last segment). Metadata only -- see
-     *  [SampleFileKeys] on why it never becomes a key. Handed back on download as the name to save it under. */
+     *  [SFK] on why it never becomes a key. Handed back on download as the name to save it under. */
     val fileName: String,
     val mimeType: String,
     val size: Long,
@@ -48,21 +48,22 @@ class SampleFileInfo(
     )
 
     companion object {
-        /** The file the store listed at [entry], with the [id] its key was composed from. */
-        fun of(id: String, entry: FileEntry): SampleFileInfo = SampleFileInfo(
+        /** The file [id], as the store's [meta] describes it. */
+        fun of(id: String, meta: FileMeta): SampleFileInfo = SampleFileInfo(
             id = id,
             // A part with no filename is possible; name it for the id rather than inventing one.
-            fileName = entry.meta.fileName ?: "upload-$id",
-            mimeType = entry.meta.mimeType,
-            size = entry.meta.size,
-            uploaded = entry.meta.uploadedAt,
+            fileName = meta.fileName ?: "upload-$id",
+            mimeType = meta.mimeType,
+            size = meta.size,
+            uploaded = meta.uploadedAt,
         )
     }
 }
 
 /**
- * Where the sample keeps its uploads in the file store (issue #1144): a bucket of its own, and in it a key per file
- * composed from an id this code generates.
+ * Sample File Keys: where the sample keeps its uploads in the file store (issue #1144) -- a bucket of its own, and in
+ * it a key per file composed from an id this code generates. An acronym object, as the file store's own `FNAME` is,
+ * since it holds constants beside the rules over them.
  *
  * **The client's filename never becomes a key.** A file is stored under a generated [newId], and the name it arrived
  * with is metadata the store keeps beside it. This is not tidiness: a name is attacker-supplied, and letting it
@@ -78,7 +79,7 @@ class SampleFileInfo(
  * memory, and they go when it stops.
  */
 @Suppress("ConstPropertyName")
-object SampleFileKeys {
+object SFK {
     /** The bucket the sample's uploads are kept in. */
     const val bucket = "sample-files"
 
