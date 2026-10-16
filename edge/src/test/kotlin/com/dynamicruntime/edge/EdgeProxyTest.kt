@@ -62,6 +62,16 @@ class EdgeProxyTest : StringSpec({
     }
 
     /**
+     * Jetty's proxy writes only `Forwarded`, and the application reads `X-Forwarded-For` (issue #1255): without it, a
+     * request through the edge looks to the application as if it came straight at it -- to its per-address sign-in
+     * limits, its assumed env auth, and its direct reads of the operator surface.
+     */
+    "the client's address travels as X-Forwarded-For" {
+        EnvAuthForwarding.forwarded(emptyList(), null, "203.0.113.7").forwardedFor shouldBe "203.0.113.7"
+        EnvAuthForwarding.forwarded(emptyList(), null, null).forwardedFor shouldBe null
+    }
+
+    /**
      * The two root sets must stay disjoint. If they ever overlap, the front handler declines a root it also
      * forwards -- or forwards one the edge serves itself -- and the symptom is the wrong server answering
      * rather than an error, which is the failure mode the whole roots design exists to avoid.

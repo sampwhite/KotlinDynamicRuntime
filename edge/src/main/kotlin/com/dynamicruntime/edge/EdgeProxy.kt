@@ -248,6 +248,9 @@ class UpstreamProxy(private val upstream: String) : ProxyHandler.Reverse({ reque
      * 2. **Remove the env-auth cookie.** It is `Path=/` on a shared host, so a browser attaches it to every
      *    proxied path automatically. Forwarding it hands the upstream a replayable perimeter credential.
      *
+     * Then it sets `X-Forwarded-For` to the client's address, replacing any the client sent (issue #1255), so the
+     * upstream knows the request was proxied, and from where.
+     *
      * Setting the header is worth exactly as much as the network guarantee that it came from an edge: the
      * upstream must be unreachable except through this node.
      */
@@ -256,6 +259,7 @@ class UpstreamProxy(private val upstream: String) : ProxyHandler.Reverse({ reque
         val forwarded = EnvAuthForwarding.forwarded(
             Request.getCookies(clientToProxy).map { it.name to it.value },
             clientToProxy.getAttribute(EDGEUP.emailAttribute) as? String,
+            Request.getRemoteAddr(clientToProxy),
         )
         proxyToServer.headers { headers ->
             // Removed unconditionally, and before anything decides whether to set it. The order is the
@@ -265,6 +269,9 @@ class UpstreamProxy(private val upstream: String) : ProxyHandler.Reverse({ reque
             if (forwarded.cookie == null) headers.remove(HttpHeader.COOKIE)
             else headers.put(HttpHeader.COOKIE, forwarded.cookie)
             if (forwarded.envEmail != null) headers.put(ENVA.header, forwarded.envEmail)
+            // The same remove-then-set, so a client's own value never survives (issue #1255).
+            headers.remove(HttpHeader.X_FORWARDED_FOR)
+            if (forwarded.forwardedFor != null) headers.put(HttpHeader.X_FORWARDED_FOR, forwarded.forwardedFor)
         }
         proxyToServer.timeout(EDGEUP.requestTimeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
@@ -294,8 +301,11 @@ fun upstreamFor(cxt: KdrCxt): String =
  * person. Nothing observes them failing except a test that looks.
  */
 object EnvAuthForwarding {
-    /** The `Cookie` header to forward (null to send none) and the identity header to set (null to send none). */
-    class Forwarded(val cookie: String?, val envEmail: String?)
+    /**
+     * The `Cookie` header to forward (null to send none), the identity header to set (null to send none), and the
+     * `X-Forwarded-For` to set (null to send none).
+     */
+    class Forwarded(val cookie: String?, val envEmail: String?, val forwardedFor: String? = null)
 
     /**
      * [cookies] as the client sent them, and the address this edge resolved -- null when it resolved nobody.
@@ -307,12 +317,20 @@ object EnvAuthForwarding {
      * The identity is whatever this edge decided and nothing else. The caller's own value is not consulted
      * here at all -- that is [UpstreamProxy.copyRequestHeaders]'s unconditional remove -- so a null address
      * means the header is absent rather than merely unset.
+     *
+     * `X-Forwarded-For` is [clientAddress], the connection's source as this edge saw it (issue #1255). Jetty's
+     * proxy writes only RFC 7239's `Forwarded`, and the application reads `X-Forwarded-For`: without it, a
+     * request through this edge looks to the application as if it came straight at it -- to its sign-in limits,
+     * which count per source address, to its assumed env auth, and to its direct reads. **Replaced, not
+     * appended**: this edge is the perimeter, so a value the client sent is the client's invention, and keeping
+     * it would let a caller choose the address its limits are counted under.
      */
-    fun forwarded(cookies: List<Pair<String, String>>, email: String?): Forwarded {
+    fun forwarded(cookies: List<Pair<String, String>>, email: String?, clientAddress: String? = null): Forwarded {
         val kept = cookies.filter { (name, _) -> name != ENVAUTH.cookie }
         return Forwarded(
             cookie = if (kept.isEmpty()) null else kept.joinToString("; ") { (n, v) -> "$n=$v" },
             envEmail = email,
+            forwardedFor = clientAddress?.trim()?.ifEmpty { null },
         )
     }
 }
