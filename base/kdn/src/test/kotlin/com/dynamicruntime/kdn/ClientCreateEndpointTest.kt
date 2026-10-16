@@ -227,7 +227,7 @@ class ClientCreateEndpointTest : StringSpec({
         // A development node, where a client enabled only for local work and the unit tests is not carried.
         val dev = Startup.mkBootCxt(
             "clientCreateDev", "clientCreateDevTest",
-            mapOf(ACFG.env to ENV.dev, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true, "KDR_DB_NAME" to "clientCreateDev1054"),
+            Startup.realNodeOverlay(ENV.dev) + ("KDR_DB_NAME" to "clientCreateDev1054"),
         )
         val actor = dev.mkSubContext("createActor", CL.hub).also { it.userId = 10542L }
         val result = ClientCreate.create(actor, body("elsewhere1054"))

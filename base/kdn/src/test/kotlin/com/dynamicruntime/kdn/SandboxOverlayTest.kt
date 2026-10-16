@@ -123,7 +123,7 @@ class SandboxOverlayTest : StringSpec({
         // sandbox is under test.
         val prod = Startup.mkBootCxt(
             "sandboxOverlayProd940", "sandboxOverlayProd940",
-            flags + mapOf(ACFG.env to ENV.prod, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true),
+            flags + Startup.realNodeOverlay(ENV.prod),
             listOf(OverlayFixture()),
         )
         val parent = OverlayFixture.staticParent

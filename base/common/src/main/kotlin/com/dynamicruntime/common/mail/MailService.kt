@@ -27,11 +27,17 @@ object LogMail : KdrLogger("mail")
 /** Mail configuration keys (instance config). Each names the value it holds. */
 @Suppress("ConstPropertyName")
 object MAIL {
-    /** Mailgun messages endpoint URI. */
+    /** Mailgun messages endpoint URI. Overrides the one derived from `KDR_MAIL_DOMAIN` (issue #1250). */
     const val mailgunUri = "mailgunUri"
 
-    /** From-address for application-generated mail. */
+    /** From-address for application-generated mail. Overrides the one derived from `KDR_MAIL_DOMAIN` (issue #1250). */
     const val appFromAddress = "appFromAddress"
+
+    /**
+     * The from-address of mail no domain was configured for -- only ever simulated, since mail that can be sent
+     * needs a domain (issue #1250). Under `.invalid` (RFC 2606), so it can never be a real address.
+     */
+    const val unsentFromAddress = "kdr-automail@mail.invalid"
 
     /**
      * The **indirection** key for the Mailgun API key: its value is the name of the property in
@@ -67,6 +73,16 @@ object MAIL {
 
 /** Environment variables of the mail service. */
 object MAILENV {
+    /** Env var naming the domain mail is sent from (issue #1250); see [MailSending]. */
+    val mailDomain = EnvVarDef(
+        "KDR_MAIL_DOMAIN", group = ENVGRP.application, defaultDoc = "unset (required when mail can be sent)",
+        description = "The domain mail is sent from, through Mailgun -- e.g. `mg.dynamicruntime.org` (issue #1250). The " +
+            "endpoint (`https://api.mailgun.net/v3/<domain>/messages`) and the from-address (`kdr-automail@<domain>`) " +
+            "are derived from it; the config keys `mailgunUri` and `appFromAddress` override either. Required when " +
+            "the node loads a Mailgun key -- whenever something may be sent for real -- and the boot is refused " +
+            "without it. With no key loaded, as on every test and local run, nothing is sent and it is not needed.",
+    )
+
     /** Env var that defaults [MAIL.transmitToAdminDomain] when the config option is unset. */
     val transmitToAdminDomain = EnvVarDef(
         "KDR_MAIL_TRANSMIT_ADMIN_DOMAIN", group = ENVGRP.application, defaultDoc = "false",
@@ -102,6 +118,33 @@ class SentEmail(
 )
 
 /**
+ * Where mail is sent through and whom it is from (issue #1250): [mailgunUri] is null when nothing can be sent.
+ */
+class MailSending(val mailgunUri: String?, val fromAddress: String)
+
+/**
+ * Where mail goes, for a node whose Mailgun key is loaded or not ([keyLoaded]) -- the one decision behind
+ * [MAILENV.mailDomain]. The config keys [MAIL.mailgunUri] and [MAIL.appFromAddress] win; otherwise both derive from
+ * the mail domain. There is no built-in domain: a deployment sending as one it does not own would be refused by the
+ * provider at the first sign-in, so a node that **can** send -- one whose key is loaded -- without a way to name its
+ * endpoint and from-address is refused at the boot instead. One that cannot send needs nothing, and its simulated
+ * mail is from [MAIL.unsentFromAddress].
+ */
+fun mailSendingFor(config: KdrInstanceConfig, keyLoaded: Boolean): MailSending {
+    val domain = config.getEnvVar(MAILENV.mailDomain)?.trim()?.ifEmpty { null }
+    val uri = (config.get(MAIL.mailgunUri) as? String) ?: domain?.let { "https://api.mailgun.net/v3/$it/messages" }
+    val from = (config.get(MAIL.appFromAddress) as? String) ?: domain?.let { "kdr-automail@$it" }
+    if (keyLoaded && (uri == null || from == null)) {
+        throw KdrException(
+            "Refusing to start: this node can send mail (its Mailgun key is loaded) but does not say from where. Set " +
+                "${MAILENV.mailDomain} to the sending domain -- the one the key is for -- or set both " +
+                "'${MAIL.mailgunUri}' and '${MAIL.appFromAddress}' in configuration.",
+        )
+    }
+    return MailSending(uri, from ?: MAIL.unsentFromAddress)
+}
+
+/**
  * Sends application email through Mailgun. Ported from dn's `DnMailService`, trimmed to what auth needs.
  *
  * When no API key is configured (the usual case in tests and local dev), sending is **simulated**: the mail
@@ -125,7 +168,9 @@ class SentEmail(
 class MailService : ServiceInitializer {
     override val serviceName: String = MailService.serviceName
 
-    lateinit var mailgunUri: String
+    /** Where mail is sent through; null when nothing can be sent ([mailSendingFor]). */
+    var mailgunUri: String? = null
+        private set
     lateinit var fromAddressForApp: String
     private var apiKey: String? = null
 
@@ -150,10 +195,6 @@ class MailService : ServiceInitializer {
     private val recent = ArrayDeque<SentEmail>()
 
     override fun onCreate(cxt: KdrCxt) {
-        mailgunUri = (cxt.instanceConfig.get(MAIL.mailgunUri) as? String)
-            ?: "https://api.mailgun.net/v3/mg.dynamicruntime.org/messages"
-        fromAddressForApp = (cxt.instanceConfig.get(MAIL.appFromAddress) as? String)
-            ?: "kdr-automail@mg.dynamicruntime.org"
         // Two independent axes: `isTestInstance` says the test surface exists; `useSimulatedEmail` says capture
         // instead of transmit. Default the latter to the former -- simulate exactly when the read-back endpoint
         // is present -- but keep it independently settable, so a developer can send *real* mail on a test
@@ -185,6 +226,11 @@ class MailService : ServiceInitializer {
                 ?: MAIL.defaultMailgunApiKeySecret
             SecretsUtil.getSecret(secretName)
         }
+        // Where mail goes and whom it is from (issue #1250): decided once the key is known, since a loaded key is
+        // what makes a missing domain a refusal rather than nothing.
+        val sending = mailSendingFor(cxt.instanceConfig, keyLoaded = apiKey != null)
+        mailgunUri = sending.mailgunUri
+        fromAddressForApp = sending.fromAddress
     }
 
     /**
@@ -269,9 +315,11 @@ class MailService : ServiceInitializer {
         // The one outbound client (issue #420). The content type rides on the body, so only the auth header is
         // passed here. The client's own connect/timeout error names the endpoint, not the recipient, so keep
         // "$to" by re-wrapping -- the context an operator wants when a send fails.
+        // Set whenever a key is: the boot refuses a key without a way to send (mailSendingFor).
+        val uri = mailgunUri ?: throw KdrException("No mail endpoint is configured, so the email to $to cannot be sent.")
         val response = try {
             OutboundHttpService.get(cxt).fast(cxt).send(
-                "POST", mailgunUri,
+                "POST", uri,
                 headers = mapOf("Authorization" to "Basic $basic"),
                 contentType = "application/x-www-form-urlencoded",
                 body = body,

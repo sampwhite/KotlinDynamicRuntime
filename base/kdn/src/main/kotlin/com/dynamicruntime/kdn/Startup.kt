@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.CommonComponent
 import com.dynamicruntime.common.logging.LogSetup
+import com.dynamicruntime.common.mail.MAIL
 import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.InstanceRegistry
 
@@ -44,6 +45,20 @@ object Startup {
         return InstanceRegistry.createCxt(cxtName, config)
     }
 
+    /** The secret a test node's Mailgun key is looked up under: one no secrets file holds (issue #1250). */
+    const val noTestMailKeySecret = "noMailgunKeyInUnitTests"
+
+    /**
+     * The overlay for a test's node that is **not** a test instance -- a boot in [env] (production, development) as a
+     * real deployment makes it, for a test of what such a deployment does, booted with [mkBootCxt]. Kept in memory,
+     * and given no Mailgun key (issue #1250): a real deployment loads its key, and the developer's secrets file may
+     * hold a real one.
+     */
+    fun realNodeOverlay(env: String): Map<String, Any?> = mapOf(
+        ACFG.env to env, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true,
+        MAIL.mailgunApiKeySecretKey to noTestMailKeySecret,
+    )
+
     /**
      * Boots an instance for unit tests: forces the [ENV.unit] environment and defaults
      * [ACFG.inMemoryOnly] to true unless [overlay] already sets it, so a test runs
@@ -61,6 +76,10 @@ object Startup {
         testOverlay.putIfAbsent(ACFG.inMemoryOnly, true)
         // Validate endpoint responses against their output schema in tests, so a non-conforming response fails fast.
         testOverlay.putIfAbsent(ACFG.validateResponseSchema, true)
+        // No test finds a real Mailgun key (issue #1250). A developer's secrets file may hold one, and a node that
+        // is not a test instance loads it -- so a test of such a node could otherwise send real mail. A test that
+        // needs a key names its own secret.
+        testOverlay.putIfAbsent(MAIL.mailgunApiKeySecretKey, noTestMailKeySecret)
         return mkBootCxt(cxtName, instanceName, testOverlay, additionalComponents)
     }
 }
