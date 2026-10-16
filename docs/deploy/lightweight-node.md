@@ -20,6 +20,10 @@ The examples use `example.org` for the domain and `kdr` for the user that runs t
 - **A domain** whose DNS records for the bare name and for `www` point at the server. Caddy needs them before it can
   get a certificate.
 - **A workspace that builds KotlinDynamicRuntime** on your own machine (see "Getting started" in the README).
+- **A Mailgun account**, if the public is to create accounts and sign in. Sign-in is by a code mailed to the
+  person's address, and KotlinDynamicRuntime sends mail through Mailgun only. Without one the instance still runs,
+  but visitors can only read what is public. If you want another mail provider supported, open an issue asking for
+  it in the [KotlinDynamicRuntime repository](https://github.com/sampwhite/KotlinDynamicRuntime/issues).
 
 ## One-time setup
 
@@ -85,7 +89,28 @@ sudo systemctl reload caddy
 
 Until the application is running, the site answers with an error from Caddy. That is expected.
 
-### 5. Let the user run a service of its own
+### 5. Keep the logs small
+
+The application writes its log to standard output, and systemd keeps it in the **journal**, as it does Caddy's.
+journald rotates and deletes old entries itself, so there are no log files to clean up. Out of the box it keeps up to a
+tenth of the disk, which is more than a small node wants. Cap it, by creating
+`/etc/systemd/journald.conf.d/size.conf` (and the directory, if it is not there yet):
+
+```
+[Journal]
+SystemMaxUse=500M
+MaxRetentionSec=1month
+```
+
+Then restart the journal so it takes effect:
+
+```bash
+sudo systemctl restart systemd-journald
+```
+
+That keeps a month of history, or 500 MB if that comes first, which is plenty to look back on what happened.
+
+### 6. Let the user run a service of its own
 
 The application runs as a **systemd user service**: a service belonging to the `kdr` user rather than to the
 system. Restarting it then needs no `sudo`, which is what lets a deploy run without it. For a user's services to
@@ -97,7 +122,7 @@ sudo loginctl enable-linger kdr
 
 That is the last step that needs `sudo`. The rest is done as the `kdr` user.
 
-### 6. Make the directories
+### 7. Make the directories
 
 Everything the application uses lives under one directory, `~/kdr`, which is the application's **workspace
 directory**:
@@ -106,7 +131,7 @@ directory**:
 | --- | --- |
 | `releases/` | One directory per deployed build, named for when it was built and from which commit |
 | `current` | A link to the release that runs |
-| `kdr.env` | The node's settings (step 7) |
+| `kdr.env` | The node's settings (step 8) |
 | `h2Database/` | The database file, created on the first start. A deploy never touches it. |
 | `fileStore/` | Files the application stores, created on the first start |
 | `flavor-overlays/` | The deployment's own wording for its deployment flavors, if any |
@@ -118,13 +143,13 @@ Create the ones that are not created for you:
 mkdir -p ~/kdr/releases ~/kdr/flavor-overlays ~/kdr/private ~/.config/systemd/user
 ```
 
-### 7. Write the settings
+### 8. Write the settings
 
 The application reads its settings from environment variables, and the service sets them from `~/kdr/kdr.env`. The
 settings for a reference deployment, a public instance for people to look around:
 
 ```
-JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64
+JAVA_HOME=/usr/lib/jvm/java-1.25.0-openjdk-amd64
 KDR_DEFAULTS_FILE=none
 KDR_WORKSPACE_DIR=/home/kdr/kdr
 KDR_ENV=dev
@@ -139,7 +164,9 @@ KDR_ASSUME_ENV_AUTH=true
 KDR_ENV_AUTH_FROM_ADMIN_LOGIN=true
 KDR_ADMIN_EMAIL_DOMAIN=example.org
 KDR_PUBLIC_SIGN_IN=realMail
+KDR_MAIL_DOMAIN=mg.example.org
 KDR_PUBLIC_URL=https://example.org
+KDR_LOG_LEVEL=info
 KDR_DEPLOY_FLAVORS=reference
 ```
 
@@ -147,7 +174,7 @@ What each one does:
 
 | Setting | Why |
 | --- | --- |
-| `JAVA_HOME` | Which Java to run. Ubuntu may keep an older Java as its default; this names Java 25. |
+| `JAVA_HOME` | Which Java to run. Ubuntu may keep an older Java as its default; this names Java 25. The directory's name varies with the package, so after installing Java (step 2), list `/usr/lib/jvm` with `ls /usr/lib/jvm` and use the Java 25 directory you find there. |
 | `KDR_DEFAULTS_FILE` | `none`: there is no defaults file on a node, and nothing should be read from one. |
 | `KDR_WORKSPACE_DIR` | The workspace directory, `~/kdr`, as an absolute path. The database, the file store, the flavor directory and the secrets are found under it. |
 | `KDR_ENV` | `dev`, which a public test deployment runs in. |
@@ -162,8 +189,21 @@ What each one does:
 | `KDR_ENV_AUTH_FROM_ADMIN_LOGIN` | `true`: an administrator on your own mail domain carries env auth when signed in. See "Mail and sign-in" below. |
 | `KDR_ADMIN_EMAIL_DOMAIN` | Your own mail domain, whose addresses are made administrators. Never a public mail domain such as `gmail.com`; the node refuses to start with one. |
 | `KDR_PUBLIC_SIGN_IN` | `realMail`: visitors sign in and register as on a real deployment, with their codes mailed for real. This needs the mail provider's key. See "Mail and sign-in" below. |
+| `KDR_MAIL_DOMAIN` | The domain your mail is sent from: the sending domain set up in your Mailgun account, which its key is for. Mail goes out as `kdr-automail@` that domain. Required whenever the node can send mail, which with the key in place it can; without it the node refuses to start, saying so. |
 | `KDR_PUBLIC_URL` | The address people use, for links the application writes into mail. |
+| `KDR_LOG_LEVEL` | `info`. Outside the unit tests the application logs at `debug` by default, which helps on a developer's machine and is mostly noise on a public node. It is what decides how fast the log grows. |
 | `KDR_DEPLOY_FLAVORS` | `reference`, the deployment flavor that makes the instance say what it is, load the sample clients, and set up the conference demo as it starts. Leave it out for a node that is not a reference deployment. |
+
+**Optional: Google sign-in.** Set `KDR_GOOGLE_CLIENT_ID` to your Google OAuth client id to offer signing in with
+Google beside the emailed code. The id is public by design, not a secret. In Google Cloud Console, register your site
+(`https://example.org`) as an **Authorized JavaScript origin** for that client id. Without it, the button can appear
+and then never finish, and the application cannot tell why.
+
+On a Google account's first sign-in, if Google has verified its address, the sign-in uses the existing account at
+that address, or makes one, and links the Google account to it. After that it is the link that counts, so the person
+reaches the same account even if their Google address later changes. An address Google has not verified is refused.
+Google sign-in follows `KDR_PUBLIC_SIGN_IN` as the emailed code does. It does not replace the mail provider: the
+sign-in page still offers the emailed code.
 
 A test instance refuses to start in `dev` unless it is a public test deployment. A public test deployment refuses to
 start unless `KDR_TRUST_ENV_AUTH_HEADER` is set, and refuses `KDR_ASSUME_ENV_AUTH` unless `KDR_BIND_ADDRESS` is a
@@ -172,7 +212,7 @@ test instance open to the public.
 
 Every setting is described by the running node at `/operator/env/reference`, with the value it took.
 
-### 8. Install the service
+### 9. Install the service
 
 Write `~/.config/systemd/user/kdr.service`:
 
@@ -254,12 +294,21 @@ are sure you will not need them. The database is not in a release, so going back
 | To see | Run on the node |
 | --- | --- |
 | Whether it is running | `systemctl --user status kdr` |
-| What it has logged | `journalctl --user -u kdr -n 100` |
+| What it has logged | `journalctl --user -u kdr -n 100` (add `-f` to follow it) |
 | Which build runs | `readlink ~/kdr/current` |
 | Memory and disk | `free -m` and `df -h ~` |
 
 The log's first lines after a start name the deployment flavors and, for a reference deployment, the conference
 demo being set up.
+
+**Logs.** The log is the service's entries in the journal, kept as step 5 set: a month, or 500 MB. To see how much
+the journal holds, or to look further back:
+
+| To see | Run on the node |
+| --- | --- |
+| How much the journal holds | `journalctl --disk-usage` |
+| Everything since a time | `journalctl --user -u kdr --since "2 hours ago"` |
+| Caddy's log | `journalctl -u caddy -n 100` (with `sudo`, or as a member of the `adm` group) |
 
 ## Clearing the data
 
@@ -272,8 +321,9 @@ rm -rf ~/kdr/h2Database ~/kdr/fileStore
 systemctl --user start kdr
 ```
 
-The application creates an empty database as it starts, and the `reference` flavor sets up the conference demo
-again. `kdr-node` (issue #1244) will offer this as `reset-data`, asking before it removes anything.
+This also removes H2's trace file (`kdr.dat.trace.db`), which H2 writes beside the database when it runs into errors
+and which grows only then. The application creates an empty database as it starts, and the `reference` flavor sets up
+the conference demo again. `kdr-node` (issue #1244) will offer this as `reset-data`, asking before it removes anything.
 
 ## Env auth on the node itself
 
@@ -341,6 +391,8 @@ mailgunApiKey=<your Mailgun API key>
 chmod 600 ~/kdr/private/secrets.properties
 ```
 
-Without the key nothing is sent, so nobody can be mailed a code. Mail is sent from the `mg.dynamicruntime.org`
-domain unless a deployment's own configuration code (its `customConfig`) sets another; a deployment on another
-domain sets its Mailgun address and from-address there, and its own domain's DNS records for the provider.
+Without the key nothing is sent, so nobody can be mailed a code. With it, the node also needs `KDR_MAIL_DOMAIN`
+(above), the domain the mail is sent from. For mail to reach inboxes rather than spam folders, that domain's DNS needs
+the records Mailgun asks for (SPF and DKIM); Mailgun's dashboard shows which are missing. To send from a different
+address, or through Mailgun's EU endpoint, a deployment's own configuration code (its `customConfig`) sets
+`appFromAddress` or `mailgunUri`, which take the place of what the domain gives.
