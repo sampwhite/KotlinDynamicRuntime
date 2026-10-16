@@ -1114,15 +1114,15 @@ object ClientsApi {
     suspend fun definition(clientId: String): ClientDefinitionView =
         parseClientDefinition(Http.getApi(UADEP.clientDefinition + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
 
-    /**
-     * Adds or removes [clientId]'s sandbox (issue #932): the flag published and the client reloaded, so the sandbox is
-     * there -- or gone -- when this returns. Returns whether it now has one.
-     */
     /** Retires [clientId], or brings it back (issue #1182); the platform's switch (#1111), live at once. */
     suspend fun setRetired(clientId: String, retired: Boolean) {
         Http.sendApi("POST", ADEP.clientRetirementSet, mapOf(CLD.client to clientId, CLD.retired to retired))
     }
 
+    /**
+     * Adds or removes [clientId]'s sandbox (issue #932): the flag published and the client reloaded, so the sandbox is
+     * there -- or gone -- when this returns. Returns whether it now has one.
+     */
     suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
         Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
             .toJsonMapOrEmpty()[CLD.sandbox] == true
