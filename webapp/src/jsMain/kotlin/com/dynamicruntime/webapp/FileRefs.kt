@@ -56,6 +56,14 @@ class FileRefView(
      * takes it away, previewed from what they are served, and offered only to be put back.
      */
     val removedInDraft: Boolean = false,
+    /**
+     * Whether it can be removed and reworded, as the backend says (issue #1192): asked as the write asks it, so a row
+     * offers what the backend will do. Null from a backend that does not say, when [stored] stands in.
+     */
+    val removable: Boolean? = null,
+    /** When the stored entry naming it was last changed, and by whom: who set this ref, not who first stored its file. */
+    val setAt: String? = null,
+    val setBy: String? = null,
 )
 
 /** The listing's items as refs; one without an id is not one. */
@@ -80,6 +88,9 @@ fun parseFileRef(item: Map<String, Any?>): FileRefView? {
         stored = (item[FREF.stored] as? Boolean) ?: (item[CCT.source].toOptStr() != FREF.sourceLocal),
         missing = item[FREF.missing] == true,
         removedInDraft = item[FREF.removedInDraft] == true,
+        removable = item[FREF.removable] as? Boolean,
+        setAt = item[FREF.setAt].toOptStr(),
+        setBy = item[FREF.setBy].toOptStr(),
         file = storedFileFrom(item[FREF.file]),
         uploadedByName = item[FREF.uploadedByName].toOptStr(),
         fromTemplate = item[FREF.fromTemplate].toOptStr(),
@@ -250,15 +261,17 @@ fun fileRefHoldsText(ref: FileRefView): String {
 
 /**
  * Where a ref's file is, how it came to be there, and the configuration holding the ref -- by its source. An
- * upload has a who and a when; a file on the server has a root and a path, and a when that is the file's own last
- * change. A source this build does not know is said as it is called, not passed off as an upload.
+ * upload has a who and a when, which are of the **file**: of whoever first stored those bytes, under whatever id. A
+ * file on the server has a root and a path, and a when that is the file's own last change. Who set **this ref**, and
+ * when, is its entry's own stamp, said with the configuration (issue #1192). A source this build does not know is
+ * said as it is called, not passed off as an upload.
  */
 fun fileRefWhereText(ref: FileRefView): String {
     val at = ref.file?.uploadedAt?.takeIf { it.isNotEmpty() }?.let(::formatTimestamp)
     val place = "${ref.root.orEmpty()}/${ref.path.orEmpty()}"
     val changed = at?.let { ", last changed $it" }.orEmpty()
     val where = when (ref.source) {
-        FREF.sourceStore -> "Uploaded" + at?.let { " $it" }.orEmpty() + ref.uploadedByName?.let { " by $it" }.orEmpty() + "."
+        FREF.sourceStore -> "Its file was first uploaded" + at?.let { " $it" }.orEmpty() + ref.uploadedByName?.let { " by $it" }.orEmpty() + "."
         FREF.sourceLocal ->
             if (ref.stored) "A file on the server: $place$changed." else "Shipped with the client, as a file on the server: $place$changed."
         FREF.sourceClientLocal -> ref.fromTemplate?.let { template ->
@@ -268,7 +281,8 @@ fun fileRefWhereText(ref: FileRefView): String {
         } ?: "A file the deployment keeps for this client: ${ref.path.orEmpty()} in ${ref.root.orEmpty()}$changed."
         else -> "Kept as '${ref.source}', which this page does not know."
     }
-    return where + ref.configName?.let { " In the configuration '$it'." }.orEmpty()
+    val set = ref.setAt?.let { ", set ${formatTimestamp(it)}" + ref.setBy?.let { by -> " by $by" }.orEmpty() }.orEmpty()
+    return where + ref.configName?.let { " In the configuration '$it'$set." }.orEmpty()
 }
 
 /**
@@ -276,13 +290,15 @@ fun fileRefWhereText(ref: FileRefView): String {
  * Remove and no rewording, and what can be done instead. Null for a stored ref, which has both.
  */
 fun fileRefShippedHint(ref: FileRefView): String? =
-    if (ref.stored) null else "Shipped with the client, so it is not removed or reworded here: uploading a file over it replaces it, and removing that upload shows this one again."
+    if (ref.stored || fileRefRemovable(ref)) null else "Shipped with the client, so it is not removed or reworded here: uploading a file over it replaces it, and removing that upload shows this one again."
 
 /**
- * Whether a ref can be removed, or its description reworded: only one a stored configuration holds, and not one a
- * draft has already removed -- there is no entry in the draft to change, only one to put back ([fileRefRestorable]).
+ * Whether a ref can be removed, or its description reworded: what the backend says ([FileRefView.removable], asked as
+ * a removal asks it, issue #1192) -- or, from one that does not say, whether a stored configuration holds it -- and
+ * never one a draft has already removed, which has no entry in the draft to change, only one to put back
+ * ([fileRefRestorable]).
  */
-fun fileRefRemovable(ref: FileRefView): Boolean = ref.stored && !ref.removedInDraft
+fun fileRefRemovable(ref: FileRefView): Boolean = (ref.removable ?: ref.stored) && !ref.removedInDraft
 
 /** Whether a ref is offered only to be put back: one a draft removed, which is all that can be done with it (issue #1188). */
 fun fileRefRestorable(ref: FileRefView): Boolean = ref.removedInDraft

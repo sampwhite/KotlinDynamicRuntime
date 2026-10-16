@@ -486,8 +486,10 @@ internal fun overseenClient(cxt: KdrCxt, named: String?): String {
  * One overview row. A client no kept config declares -- which a present client never is -- is known from stored
  * configuration alone, so that is its origin. Workflows and the survey are read only for a present client: an
  * absent one has no registry to ask.
+  *
+ * Not private, so a test of a node no caller can sign in to (a production boot) can read a row as the listing does.
  */
-private fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatus): Map<String, Any?> {
+fun overviewRow(cxt: KdrCxt, clientId: String, name: String, status: ClientStatus): Map<String, Any?> {
     val isPresent = status == ClientStatus.present
     val users = UserService.get(cxt).countActiveUsers(cxt, clientId)
     val forms = GedraDataService.get(cxt).countLiveGedras(cxt, GedraDataType.formDoc, clientId)

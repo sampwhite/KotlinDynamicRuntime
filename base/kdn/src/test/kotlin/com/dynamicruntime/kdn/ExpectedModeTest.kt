@@ -128,6 +128,48 @@ class ExpectedModeTest : StringSpec({
         brand(client) shouldBe shipped
     }
 
+    // Issue #1192: a client whose definition asks for a sandbox this node does not carry -- here, one whose latest
+    // definition, which its sandbox is built from, is not enabled in this environment -- would have a save made a
+    // draft that no sandbox shows. Refused, whatever was expected.
+    "a save for a client whose sandbox this node does not carry is refused" {
+        val client = "modeabsent"
+        val admin = defineClient(client, sandbox = true)
+        ClientService.get(cxt).isPresent(sandboxOf(client)) shouldBe true
+        val setup = cxt.mkSubContext("setup", client).also { it.userId = 11911L }
+        svc.writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = "Client $client", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.local), sandbox = true,
+                    ),
+                )
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, client)
+        ClientService.get(cxt).isPresent(client) shouldBe true
+        ClientService.get(cxt).isPresent(sandboxOf(client)) shouldBe false
+        refused(admin, CPY.setPath, brandKey() + (COV.value to "Nowhere")) shouldContain "asks for a sandbox, which this node does not carry"
+        // The way out is said, and works: here, mending what keeps the sandbox from loading -- the draft that is not
+        // enabled in this environment -- brings it back, and saves are drafts again.
+        refused(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed")) shouldContain "Mend what its sandbox's issues name, or remove the sandbox"
+        svc.writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = "Client $client", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                    ),
+                )
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, client)
+        ClientService.get(cxt).isPresent(sandboxOf(client)) shouldBe true
+        saved(admin, CPY.setPath, brandKey() + (COV.value to "Somewhere"))[CPY.mode] shouldBe EDM.draft
+    }
+
     // An administrator who sees every client can name a sandbox, and their save of it is a draft of its parent's
     // configuration. Once the sandbox is removed, the parent may run its latest configuration again, so such a "draft"
     // would be live at the parent's next load.

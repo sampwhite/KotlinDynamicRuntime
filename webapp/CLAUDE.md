@@ -139,6 +139,12 @@ the same way, under their own marker:
     from what is served (the download's and meta read's `served: true`, since the sandbox has no such ref), and
     offers only **Put back**: `POST …/files/restore`, which copies the published entry back into the draft as it is
     -- nothing uploaded or named again. Published, the row goes.
+  - **What a row offers is the backend's answer** (issue #1192): each row's `removable` is asked as a removal asks
+    it -- whether a stored configuration of the client holds an entry for the id, taken as the load takes it (by
+    configuration id) -- so a row offers Remove and Reword exactly when they would succeed, whatever state the
+    configuration is in. `fileRefRemovable` falls back to `stored` only for a backend that does not say. Each row
+    also carries `setAt` / `setBy`, its stored entry's own stamp -- who set this ref -- where the file's record says
+    who first stored its bytes, under whatever id; the page says both.
   - **Only a `stored` ref has Remove and Reword.** One the client was shipped with can be uploaded over and
     cannot be removed or reworded (`…/files/remove` and `…/files/describe` answer 400: nothing stored holds it).
   - **A file is picked with `FilePickButton`** (`FilePickButton.kt`), which the web assets' upload uses too:

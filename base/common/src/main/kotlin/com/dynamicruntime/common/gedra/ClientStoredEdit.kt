@@ -51,6 +51,9 @@ object ClientStoredEdit {
      *
      * A save naming a sandbox this node no longer carries is refused the same way, whatever was expected: its
      * parent's sandbox was removed, so a "draft" of the parent's configuration could be live at the parent's next load.
+     * So is a save for a client whose definition asks for a sandbox this node does not carry -- one whose own load
+     * failed (issue #1192): it would be a draft no sandbox shows, and the page, which lists what the client runs,
+     * would lose sight of it.
      */
     fun target(cxt: KdrCxt, client: String, what: String, expected: String? = null): EditTarget {
         if (expected != null && expected != EDM.live && expected != EDM.draft) {
@@ -61,6 +64,13 @@ object ClientStoredEdit {
         }
         val target = SandboxEdits.parentCxt(cxt, client)?.let { EditTarget(it, it.client, draft = true) }
             ?: EditTarget(cxt.mkSubContext(what, client), client, ClientService.get(cxt).known(client)?.sandbox == true)
+        if (target.draft && !ClientService.get(cxt).isPresent(sandboxOf(target.client))) {
+            throw notAsExpected(
+                "Client '${target.client}' asks for a sandbox, which this node does not carry -- its issues say why -- so " +
+                    "a save would be a draft no sandbox shows. Nothing was changed. Mend what its sandbox's issues name, " +
+                    "or remove the sandbox (its Sandbox section, which publishes at once), and saves work again.",
+            )
+        }
         if (expected == EDM.draft && !target.draft) {
             throw notAsExpected(
                 "This would take effect at once for client '${target.client}', not as a draft: it has no sandbox now. " +

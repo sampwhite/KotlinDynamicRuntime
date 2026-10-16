@@ -95,6 +95,11 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
         gedraConfig(cxt, "main", clientNamespace(built), built) {
             defineClient(def(built, "Built on the template", extends = template))
         },
+        // Shipped with one picture, for a stored entry of the same id that its load leaves out (issue #1192).
+        gedraConfig(cxt, "art", clientNamespace(shadowed), shadowed) {
+            defineClient(def(shadowed, "Shadowed"))
+            fileRef("logo") { local(root, "logo.png") }
+        },
     )
 
     private fun def(client: String, name: String, usage: ClientUsageType = ClientUsageType.dev, extends: String? = null) = ClientDef(
@@ -111,6 +116,7 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
         const val shipped = "lfrshipped"
         const val template = "lfrtemplate"
         const val built = "lfrbuilt"
+        const val shadowed = "lfrshadowed"
     }
 }
 
@@ -711,6 +717,48 @@ class LocalFileRefsTest : StringSpec({
         admin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "pic"))[EP.errorMessage].toString() shouldContain
             "still holds the file ref 'pic', in 'art', though its sandbox is not served it"
         storedRefs(client, "art") shouldBe listOf(odd)
+    }
+
+    // Issue #1192: what a row offers is the backend's answer, asked as the write asks it -- not inferred from whether
+    // the ref listed is a stored one. Here the ref served is the one shipped, and a stored entry of the same id, which
+    // its load left out, is what a removal would take.
+    "a shipped ref over a stored entry its load left out offers Remove, which takes that entry" {
+        val client = LocalFileRefComponent.shadowed
+        val odd = localEntry("logo", "logo.png", root = "../brand")
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, CPY.copyConfigName, clientNamespace(client), client) { fileRefFromMap(odd) })
+        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        GedraConfigReload.reloadClient(cxt, client)
+        val admin = adminOf(client)
+        listed(admin).getValue("logo").let {
+            it[FREF.stored] shouldBe false
+            it[FREF.removable] shouldBe true
+        }
+        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
+        storedRefs(client, CPY.copyConfigName).shouldBeEmpty()
+        listed(admin).getValue("logo")[FREF.removable] shouldBe false
+    }
+
+    // Two stored configurations holding one id: the load serves the one whose id sorts first, and a change is made to
+    // that one -- not to whichever was written last.
+    "of two stored configurations holding one id, a removal takes the one served" {
+        val client = "lfrtwice"
+        defineClient(client)
+        File(brand, "twice-a.png").writeBytes(png)
+        File(brand, "twice-z.png").writeBytes(otherPng)
+        for ((name, path) in listOf("aaa" to "twice-a.png", "zzz" to "twice-z.png")) {
+            val row = svc.writeConfig(writerOf(client), gedraConfig(cxt, name, clientNamespace(client), client) { fileRefFromMap(localEntry("pic", path)) })
+            svc.publish(writerOf(client), row.configId)
+        }
+        GedraConfigReload.reloadClient(cxt, client)
+        val admin = adminOf(client)
+        listed(admin).getValue("pic").let {
+            it[FREF.configName] shouldBe "aaa"
+            it[CCT.path] shouldBe "twice-a.png"
+        }
+        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "pic"))
+        storedRefs(client, "aaa").shouldBeEmpty()
+        storedRefs(client, "zzz") shouldBe listOf(localEntry("pic", "twice-z.png"))
+        listed(admin).getValue("pic")[FREF.configName] shouldBe "zzz"
     }
 
     // --- Issue #1164: a root the deployment opens to clients -----------------------------------------------------------

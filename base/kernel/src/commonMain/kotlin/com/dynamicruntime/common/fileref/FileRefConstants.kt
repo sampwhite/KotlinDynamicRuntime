@@ -97,6 +97,20 @@ object FREF {
     const val live = "live"
 
     /**
+     * In the listing (issue #1192): whether a ref can be removed and its description reworded -- whether a stored
+     * configuration holds an entry for it, asked as a removal asks it. The backend's answer, so a row offers exactly
+     * what the backend will do whatever state the configuration is in.
+     */
+    const val removable = "removable"
+
+    /**
+     * In the listing (issue #1192): when the stored entry of a ref was last changed, and by whom by name -- who set
+     * this ref, where the file's own record says who first stored its bytes, under whatever id.
+     */
+    const val setAt = "setAt"
+    const val setBy = "setBy"
+
+    /**
      * In the listing of a client with a sandbox (issue #1188): a ref the client's own people are served that the
      * latest configuration -- what the sandbox shows -- no longer holds. A draft removed it, and a publish will take
      * it away; until then it is served, so it is listed, marked so. Absent on every other row.
