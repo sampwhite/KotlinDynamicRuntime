@@ -28,9 +28,9 @@ fun sectionOf(appPath: String): String = appPath.removePrefix("/").substringBefo
 class SectionRules(
     val section: String,
     /**
-     * Whether a login is always required. When false, a request from a trusted IP that
-     * does not go through the load balancer may be allowed even without a login. (Not yet
-     * enforced -- [admits] is what the dispatcher acts on today.)
+     * Whether the section is for signed-in callers. Descriptive only: [admits] is what the dispatcher acts on, and
+     * the one way into a gated section without a login is a direct read, where the section allows it
+     * ([directReads]).
      */
     val needsLogin: Boolean,
     /** Level required to access this section, or null when the section demands no level. */
@@ -45,22 +45,31 @@ class SectionRules(
      * `admin` surface while losing the lesser scoped one, since nothing about their level was being asked.
      */
     val requiredCapability: String? = null,
+    /**
+     * Whether a **direct read** -- a GET that reached the node without a proxy (`KdrCxt.isDirect`, issue #1255) -- is
+     * admitted without any of the above. For the operator surface, so a command run on the node over SSH can read
+     * it with no session. Only GETs: a section's other verbs change something, and still need the roles.
+     */
+    val directReads: Boolean = false,
 ) {
     /** Whether this section constrains anything at all; false for an anonymous section. */
     val isGated: Boolean get() = requiredRole != null || requiredCapability != null
 
     /**
      * Whether [heldRoles] may reach this section: the level satisfied through `RoleLadder` (so an admin
-     * passes an operator section) **and** the capability held outright.
+     * passes an operator section) **and** the capability held outright -- or, where the section allows it,
+     * [directRead] (a GET that reached the node without a proxy).
      */
-    fun admits(heldRoles: Set<String>): Boolean = unmetRequirement(heldRoles) == null
+    fun admits(heldRoles: Set<String>, directRead: Boolean = false): Boolean =
+        unmetRequirement(heldRoles, directRead) == null
 
     /**
      * The name of the first requirement [heldRoles] does not meet, or null when the section admits them. Used
      * to say which of the two is missing, since "requires the 'admin' role" is a misleading thing to tell
      * somebody who has it and is short the capability.
      */
-    fun unmetRequirement(heldRoles: Set<String>): String? {
+    fun unmetRequirement(heldRoles: Set<String>, directRead: Boolean = false): String? {
+        if (directRead && directReads) return null
         val role = requiredRole
         if (role != null && !RoleLadder.satisfies(heldRoles, role)) return role
         val capability = requiredCapability

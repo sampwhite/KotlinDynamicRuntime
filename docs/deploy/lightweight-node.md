@@ -301,6 +301,26 @@ are sure you will not need them. The database is not in a release, so going back
 The log's first lines after a start name the deployment flavors and, for a reference deployment, the conference
 demo being set up.
 
+**What the application reports about itself.** A request made on the node itself can read the operator pages without
+signing in (issue #1255). It counts as a direct request: it carries no `X-Forwarded-For` or `Forwarded` header, and
+it comes from the node's own address. For example, the node's identity, uptime and memory:
+
+```bash
+ssh kdr@example.org "curl -s http://127.0.0.1:7070/kda/operator/system/info"
+```
+
+| To see | Path |
+| --- | --- |
+| The node, its uptime, and the JVM's memory | `/kda/operator/system/info` |
+| Every setting, with the value it took | `/kda/operator/env/reference` |
+| What the checks found as it started | `/kda/operator/boot/checks` |
+| The database's tables | `/kda/operator/db/tables` |
+
+Only reads: what the operator pages change, such as reloading a cache, still takes an operator who has signed in.
+`KDR_DIRECT_ACCESS` decides where a direct request may come from: `loopback` (the default) for the node itself,
+`network` for any address, on a node that only its own private network can reach, or `off`. Use `off` on a machine
+shared with other users or services.
+
 **Logs.** The log is the service's entries in the journal, kept as step 5 set: a month, or 500 MB. To see how much
 the journal holds, or to look further back:
 
@@ -336,8 +356,8 @@ as becoming any user, and what an operator can look at. That is safe here for tw
   it. A visitor who sends one of their own only makes it present.
 
 If you put something else in front of the application, it too must always set `X-Forwarded-For`, or every visitor
-would carry env auth. And anything that runs on the node itself can reach the application, and carries env auth
-too, which is fine on a node that does nothing else.
+would carry env auth and could read the operator pages. And anything that runs on the node itself can reach the
+application, and carries env auth too, which is fine on a node that does nothing else.
 
 ## Mail and sign-in
 

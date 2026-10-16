@@ -80,6 +80,14 @@ class RequestHandler : WebRequest {
 
     override var userAgent: String? = null
     override var forwardedFor: String? = null
+
+    /**
+     * The address the connection came from, as Jetty reports it (an IP literal): the proxy's when there is one,
+     * so it is never who the caller is. Read only to ask whether the request reached this node directly (issue
+     * #1255, `DirectAccess`). Null for a test-mode request unless the test sets it, so an in-process suite is never
+     * direct by accident.
+     */
+    var peerAddress: String? = null
     var isFromLoadBalancer: Boolean = false
 
     var queryParams: MutableMap<String, Any?> = LinkedHashMap()
@@ -154,6 +162,7 @@ class RequestHandler : WebRequest {
         val ct = request.headers.get("Content-Type")
         this.contentType = if (ct.isNullOrEmpty()) "application/none" else ct
         this.forwardedFor = getRequestHeader("X-Forwarded-For").takeUnless { it.isNullOrEmpty() }
+        this.peerAddress = Request.getRemoteAddr(request)
         computeLogRequestUri()
     }
 

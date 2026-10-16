@@ -187,6 +187,14 @@ class KdrCxt(
     val isEnvDebug: Boolean get() = isEnvAuthEffective && envAuthDebug
 
     /**
+     * Whether the request reached this node **directly** (issue #1255): through no proxy, from where
+     * `KDR_DIRECT_ACCESS` allows -- this machine, by default. Set by the dispatcher from `DirectAccess.isDirect`.
+     * A fact about the channel, independent of env auth, which is about a person; and never a role: what it admits
+     * is declared per section (`SectionRules.directReads`).
+     */
+    var isDirect: Boolean = false
+
+    /**
      * Whether this request may use the **test surface** (issue #1149): the node is a test instance *and* env auth is
      * effective. `isTestInstance` is a fact about the node and env auth one about the request, and a caller reaching a
      * test instance without env auth -- anonymous or signed in -- may not take advantage of the node being one: to
@@ -269,6 +277,7 @@ class KdrCxt(
         sub.envAuthEmail = envAuthEmail
         sub.envAuthSuppressed = envAuthSuppressed
         sub.envAuthDebug = envAuthDebug
+        sub.isDirect = isDirect
         sub.debug = debug // debug tags travel with the request
         sub.view = view // so does the requested view
         sub.appId = appId // request identity travels with the request...

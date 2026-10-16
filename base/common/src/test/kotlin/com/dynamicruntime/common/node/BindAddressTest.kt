@@ -28,6 +28,16 @@ class BindAddressTest : StringSpec({
         }
     }
 
+    "a request's source is loopback only when its address is a loopback literal (issue #1255)" {
+        for (address in listOf("127.0.0.1", "127.0.0.2", "::1", "[::1]", "0:0:0:0:0:0:0:1")) {
+            NodeUtil.isLoopbackLiteral(address) shouldBe true
+        }
+        // Jetty reports a literal, so a name -- even `localhost` -- is not one to believe.
+        for (address in listOf("", "0.0.0.0", "10.0.0.5", "203.0.113.7", "::ffff:10.0.0.5", "localhost", "example.org")) {
+            NodeUtil.isLoopbackLiteral(address) shouldBe false
+        }
+    }
+
     "the server listens where it is told, and everywhere when told nothing" {
         val server = Server()
         HttpServer.connector(server, 7123, "127.0.0.1").let { it.host to it.port } shouldBe ("127.0.0.1" to 7123)

@@ -20,6 +20,7 @@ import com.dynamicruntime.common.util.mkUniqueId
 import kotlin.time.Instant
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
+import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.KdrEndpoint
 import com.dynamicruntime.common.endpoint.ListPage
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
@@ -57,6 +58,9 @@ class RequestService : ServiceInitializer {
 
     /** The context root under which API endpoints are served; from [ACFG.apiContextRoot]. Bound in [checkInit]. */
     var apiContextRoot: String = ContextRoot.kda
+
+    /** Where a direct request may come from (issue #1255); from [DirectAccess.directAccessEnvVar]. Bound in [onCreate]. */
+    var directAccess: DirectAccessMode = DirectAccessMode.loopback
 
     /** The context root under which content is served; from [ACFG.contentContextRoot]. Bound in [checkInit]. */
     var contentContextRoot: String = ContextRoot.cp
@@ -249,8 +253,10 @@ class RequestService : ServiceInitializer {
     }
 
     /**
-     * Whether [profile] may call [appPath] -- the single answer the dispatcher enforces and the endpoint
-     * catalog filters on (issue #211), so what is advertised and what is served cannot drift apart.
+     * Whether the caller on [cxt] may call [appPath] with [method] -- the single answer the dispatcher enforces and
+     * the endpoint catalog filters on (issue #211), so what is advertised and what is served cannot drift apart.
+     * The caller's acting roles, or a direct read the section admits (issue #1255), so a command run on the node is
+     * shown the operator reads it may make and nothing it would then be refused.
      *
      * The comparison goes through [RoleLadder], exactly as the gate's does -- an admin is shown an operator
      * section without holding `operator`, because that is who the dispatcher would let in. Testing plain set
@@ -262,20 +268,29 @@ class RequestService : ServiceInitializer {
      * people a role grant just admitted -- and keep hiding them for the cookie's whole life, since the grant
      * deliberately does not require a re-login.
      */
-    fun canAccess(profile: UserProfile, appPath: String): Boolean = sectionAdmits(profile, sectionOf(appPath))
+    fun canAccess(cxt: KdrCxt, appPath: String, method: HttpMethod): Boolean =
+        sectionAdmits(cxt.userProfile, sectionOf(appPath), isDirectRead(cxt, method.name))
+
+    /**
+     * Whether a request made with [method] is a **direct read** (issue #1255): a GET that reached this node without a
+     * proxy ([KdrCxt.isDirect]). The one statement of it, for the gate and the catalog alike; a section says whether
+     * it admits one ([SectionRules.directReads]).
+     */
+    fun isDirectRead(cxt: KdrCxt, method: String): Boolean = cxt.isDirect && method == HttpMethod.GET.name
 
     /**
      * Whether [profile] may reach [section] -- the same answer [canAccess] gives, asked of the section
-     * directly.
+     * directly. By default of roles alone, since a direct read ([directRead]) is about how a request arrived, not
+     * who the caller is: what a caller *is* (a deployment operator, say) asks without one.
      *
      * Exists because some questions are about a section rather than about a path: "may this caller reach the
      * deployment-operator surface?" is a fact about who they are (issue #458), and answering it by naming one
      * endpoint would tie the fact to whichever endpoint happened to be picked. A section with no rules is
      * served permissively, as it is for [canAccess].
      */
-    fun sectionAdmits(profile: UserProfile, section: String): Boolean {
+    fun sectionAdmits(profile: UserProfile, section: String, directRead: Boolean = false): Boolean {
         val rules = sectionRulesMap[section] ?: return true
-        return rules.admits(profile.roles)
+        return rules.admits(profile.roles, directRead)
     }
 
     /**
@@ -311,8 +326,11 @@ class RequestService : ServiceInitializer {
         }
         for (s in anonSections) sectionRulesMap[s] = SectionRules(s, needsLogin = false, requiredRole = null)
         for (s in userSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.user)
+        // Reads, but only reads, that reached the node without a proxy need no login (issue #1255): whoever can make
+        // one is already on the node or inside its network. The section's POSTs still take the roles.
         for (s in operatorSections) sectionRulesMap[s] = SectionRules(
             s, needsLogin = true, requiredRole = ROLE.operator, requiredCapability = ROLE.allClients,
+            directReads = true,
         )
         for (s in scopedAdminSections) sectionRulesMap[s] = SectionRules(s, needsLogin = true, requiredRole = ROLE.admin)
         // Operator level, no capability: an operator or admin confined to their own scope (issue #488).
@@ -323,6 +341,8 @@ class RequestService : ServiceInitializer {
             )
         }
 
+        // Read once, so a value naming no mode refuses the start rather than the first request.
+        directAccess = DirectAccess.mode(cxt.instanceConfig)
         apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
         appContextRoot = (cxt.instanceConfig.get(ACFG.appContextRoot) as? String) ?: ContextRoot.wa
@@ -500,6 +520,11 @@ class RequestService : ServiceInitializer {
         // the same request, compared against `hub`. Binding it here means every reader agrees rather than each
         // deciding (issue #413).
         cxt.bindToUserProfile(UserProfile.anonymous())
+        // Whether the request reached this node without a proxy (issue #1255): a fact about the channel, beside env
+        // auth rather than part of it, read by the gate below and by the catalog.
+        cxt.isDirect = DirectAccess.isDirect(
+            directAccess, handler.forwardedFor, handler.getRequestHeader(DirectAccess.forwardedHeader), handler.peerAddress,
+        )
         extractAuth(cxt, handler)
         // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
         // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
@@ -521,7 +546,7 @@ class RequestService : ServiceInitializer {
             // then refuse them. It reports *which* requirement is unmet, because a section can demand a level
             // and a capability, and telling an administrator they "require the 'admin' role" when what they
             // lack is `allClients` sends them looking for the wrong thing.
-            val unmet = rules.unmetRequirement(cxt.userProfile.roles)
+            val unmet = rules.unmetRequirement(cxt.userProfile.roles, isDirectRead(cxt, method))
             if (unmet != null) {
                 val loggedIn = cxt.userProfile.isLoggedIn
                 throw KdrException(

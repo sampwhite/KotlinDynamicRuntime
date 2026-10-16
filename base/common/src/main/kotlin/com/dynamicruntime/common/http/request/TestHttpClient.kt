@@ -23,6 +23,12 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
     val curHeaders: MutableMap<String, MutableList<String>> = LinkedHashMap()
     val cookies: MutableMap<String, String> = LinkedHashMap()
 
+    /**
+     * The address every request appears to come from (`RequestHandler.peerAddress`), or null -- the default -- for
+     * none, so a request is never direct (issue #1255) unless a test says where it came from.
+     */
+    var peerAddress: String? = null
+
     /** The context root prepended to endpoint paths: the configured API root, or [ContextRoot.kda]. */
     val contextRoot: String =
         (instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
@@ -147,6 +153,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
         sendDeleteRequest(endpoint, args).rptResponseData?.jsonMap() ?: emptyMap()
 
     private fun execute(handler: RequestHandler) {
+        handler.peerAddress = peerAddress
         handler.handleRequest()
         extractCookies(handler)
     }

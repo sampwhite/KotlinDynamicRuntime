@@ -1825,7 +1825,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // not withheld but absent (issue #1149), as the dispatcher treats it, so it is not explained either.
             val (visible, withheld) = surface.schema.endpoints.values
                 .filter { surfaceOf(it, surface.client, surface.named, surface.schema.endpoints.values) && it.existsFor(cxt) }
-                .partition { ep -> isVisibleTo(cxt, ep.path) }
+                .partition { ep -> isVisibleTo(cxt, ep) }
             explainAccess(cxt, withheld)
             val renderings = visible
                 .asSequence()
@@ -1883,7 +1883,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // otherwise the single-lookup would be a one-call way past the restriction.
             val found = surface.schema.endpoints["$path:$method"]
                 ?.takeIf { it.existsFor(cxt) && (cxt.isEnvAuthEffective || shownWithoutEnvAuth(cxt, it)) }
-            val endpoint = found?.takeIf { isVisibleTo(cxt, it.path) }
+            val endpoint = found?.takeIf { isVisibleTo(cxt, it) }
             explainAccess(cxt, if (found != null && endpoint == null) listOf(found) else emptyList())
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, surface.schema.defs) }
             return catalogResult(cxt, renderings, surface)
@@ -2022,19 +2022,20 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
         fun refreshCallerRoles(cxt: KdrCxt) = refreshActingRoles(cxt)
 
         /**
-         * Whether the acting caller may be *shown* the endpoint at [appPath] -- the catalog's filter (issue
-         * #211), answered by the same [RequestService.canAccess] the dispatcher enforces with, so the catalog
-         * cannot advertise a door that will not open.
+         * Whether the acting caller may be *shown* [endpoint] -- the catalog's filter (issue #211), answered by the
+         * same section rules the dispatcher enforces with ([RequestService.canAccess]), so the catalog cannot
+         * advertise a door that will not open. Asked with the endpoint's verb, since a direct caller may make a
+         * section's reads and not its writes (issue #1255).
          *
          * Visible when the request service is absent, which happens only outside a running dispatcher (a unit
          * test building a store by hand). Nothing is being served there, so there is nothing to protect.
          */
         @KdrPrivate
-        fun isVisibleTo(cxt: KdrCxt, appPath: String): Boolean =
+        fun isVisibleTo(cxt: KdrCxt, endpoint: KdrEndpoint): Boolean =
             // Read optionally, not through the throwing get(): absent only outside a running dispatcher (a unit
             // test building a store by hand), where nothing is served and so nothing needs protecting.
             (cxt.instanceConfig.get(RequestService.serviceName) as? RequestService)
-                ?.canAccess(cxt.userProfile, appPath) ?: true
+                ?.canAccess(cxt, endpoint.path, endpoint.method) ?: true
 
         /** Handler for `/schema/sample`: generate an interesting, schema-conforming set of items. */
         @KdrPrivate

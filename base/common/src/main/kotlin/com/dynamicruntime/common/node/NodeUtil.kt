@@ -56,8 +56,17 @@ object NodeUtil {
     fun bindsLoopbackOnly(config: KdrInstanceConfig): Boolean {
         val address = bindAddressOf(config) ?: return false
         if (address.equals("localhost", ignoreCase = true)) return true
-        val literal = address.removePrefix("[").removeSuffix("]")
-        val looksLiteral = literal.all { it.isDigit() || it == '.' } || literal.contains(':')
+        return isLoopbackLiteral(address)
+    }
+
+    /**
+     * Whether [address] is an IP literal (bracketed or not, for IPv6) naming a loopback address. Never a name
+     * lookup: anything that is not a literal is false, since what a name resolves to can change. Also how a
+     * request's source address is judged (issue #1255), which Jetty reports as a literal.
+     */
+    fun isLoopbackLiteral(address: String): Boolean {
+        val literal = address.trim().removePrefix("[").removeSuffix("]")
+        val looksLiteral = literal.isNotEmpty() && (literal.all { it.isDigit() || it == '.' } || literal.contains(':'))
         if (!looksLiteral) return false
         return runCatching { InetAddress.getByName(literal).isLoopbackAddress }.getOrDefault(false)
     }
