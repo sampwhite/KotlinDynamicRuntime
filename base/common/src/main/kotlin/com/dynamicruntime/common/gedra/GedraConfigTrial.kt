@@ -61,7 +61,8 @@ object GedraConfigTrial {
      * have, and a problem one of them has -- a draft ref whose file went missing -- would be found as new by every
      * later draft write. For such a client a draft write passes [before], the written configs' revisions as they
      * stood (null for one new), and what the stored set had then is part of the baseline: the same trial, of the
-     * stored set as it was ([unrunBaseline]).
+     * stored set as it was ([unrunBaseline]). Run only when the write's own trial finds something the other
+     * baselines do not account for, so a clean write pays one trial, as ever.
      */
     fun requireClean(
         cxt: KdrCxt,
@@ -72,10 +73,13 @@ object GedraConfigTrial {
         before: Map<String, GedraConfigRow?>? = null,
     ) {
         val drafts = if (published) emptyList() else draftBaseline(cxt, client)
-        val unrun = if (published || before == null) emptyList() else unrunBaseline(cxt, client, before)
-        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + drafts + unrun + fileRefBaseline(cxt, client, withSandbox = !published)
+        val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + drafts + fileRefBaseline(cxt, client, withSandbox = !published)
         val candidate = candidate(cxt, client, replacing, published) ?: return
-        val found = candidate.issues.filterNot { issue -> baseline.any { it.sameAs(issue) } }
+        var found = candidate.issues.filterNot { issue -> baseline.any { it.sameAs(issue) } }
+        if (found.isNotEmpty() && !published && before != null) {
+            val unrun = unrunBaseline(cxt, client, before)
+            found = found.filterNot { issue -> unrun.any { it.sameAs(issue) } }
+        }
         // What the client's plan allows (issue #1109), judged on the candidate as a whole once it is otherwise sound.
         if (found.isEmpty()) {
             PlanLimits.requireConfigWithin(cxt, client, candidate.def, candidate.usage)

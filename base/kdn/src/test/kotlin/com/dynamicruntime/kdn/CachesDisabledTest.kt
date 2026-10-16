@@ -1,6 +1,8 @@
 package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.ReadScope
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.filestore.FileStoreService
@@ -8,16 +10,18 @@ import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientUsageType
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataService
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
-import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.sql.cache.SqlTableCacheService
 import com.dynamicruntime.common.sql.cache.TCH
 import com.dynamicruntime.common.user.TestUser
@@ -77,6 +81,13 @@ class CachesDisabledTest : StringSpec({
         val users = UserService.get(cxt)
         val row = users.queryByUserId(cxt, admin.userId).shouldNotBeNull()
         users.enabledUsersOf(cxt, row.identityId).map { it.userId } shouldContain admin.userId
+        // A gedra and its state, read back -- the by-id reads that trust a loaded cache as the whole table.
+        val data = GedraDataService.get(cxt)
+        val owner = cxt.mkSubContext("owner", client).also { it.userId = admin.userId }
+        val form = data.createGedra(owner, GedraDataType.formDoc, listOf(mapOf(GE.traitId to GT.name, GE.data to mapOf(GT.nameField to "A form"))))
+        data.queryGedra(cxt, form.gedraId.fullId, GedraDataType.formDoc, ReadScope.unrestricted).shouldNotBeNull()
+        data.writeState(owner, form.gedraId, listOf(mapOf(GE.traitId to GT.cfacts, GE.data to mapOf(GT.facts to emptyList<String>()))))
+        data.readState(cxt, form.gedraId, ReadScope.unrestricted).map { it[GE.traitId] } shouldContain GT.cfacts
     }
 
     // Issue #1171 on the SQL path, where a write's own transaction reads its revisions back: the stored set as it was
