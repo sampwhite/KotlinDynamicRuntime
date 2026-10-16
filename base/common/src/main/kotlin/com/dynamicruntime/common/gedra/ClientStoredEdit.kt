@@ -67,7 +67,8 @@ object ClientStoredEdit {
         if (target.draft && !ClientService.get(cxt).isPresent(sandboxOf(target.client))) {
             throw notAsExpected(
                 "Client '${target.client}' asks for a sandbox, which this node does not carry -- its issues say why -- so " +
-                    "a save would be a draft no sandbox shows. Nothing was changed.",
+                    "a save would be a draft no sandbox shows. Nothing was changed. Mend what its sandbox's issues name, " +
+                    "or remove the sandbox (its Sandbox section, which publishes at once), and saves work again.",
             )
         }
         if (expected == EDM.draft && !target.draft) {

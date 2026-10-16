@@ -151,6 +151,23 @@ class ExpectedModeTest : StringSpec({
         ClientService.get(cxt).isPresent(client) shouldBe true
         ClientService.get(cxt).isPresent(sandboxOf(client)) shouldBe false
         refused(admin, CPY.setPath, brandKey() + (COV.value to "Nowhere")) shouldContain "asks for a sandbox, which this node does not carry"
+        // The way out is said, and works: here, mending what keeps the sandbox from loading -- the draft that is not
+        // enabled in this environment -- brings it back, and saves are drafts again.
+        refused(admin, UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed")) shouldContain "Mend what its sandbox's issues name, or remove the sandbox"
+        svc.writeConfig(
+            setup,
+            gedraConfig(cxt, "main", clientNamespace(client), client) {
+                defineClient(
+                    ClientDef(
+                        clientId = client, name = "Client $client", usageType = ClientUsageType.dev,
+                        audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local), sandbox = true,
+                    ),
+                )
+            },
+        )
+        GedraConfigReload.reloadClient(cxt, client)
+        ClientService.get(cxt).isPresent(sandboxOf(client)) shouldBe true
+        saved(admin, CPY.setPath, brandKey() + (COV.value to "Somewhere"))[CPY.mode] shouldBe EDM.draft
     }
 
     // An administrator who sees every client can name a sandbox, and their save of it is a draft of its parent's
