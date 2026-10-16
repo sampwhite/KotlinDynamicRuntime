@@ -261,6 +261,7 @@ object ClientFieldPolicies {
  * ([ClientFieldPolicies.platformEditorFields]) too ([namesFor]). Each with what the endpoint says of it, so the editor
  * and the endpoint's input are the same set.
  */
+@Suppress("EnumEntryName")
 object ClientPresentationFields {
     /** How the editor takes a field's value. */
     enum class Kind {
