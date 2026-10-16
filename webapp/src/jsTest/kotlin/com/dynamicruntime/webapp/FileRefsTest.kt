@@ -469,8 +469,21 @@ class FileRefsTest {
         assertEquals("10 of 25 files match.", fileRefPageText(fileRefPage(many, narrowed, showAll = false), narrowed))
         val none = FileRefFilter("zzz")
         assertEquals("No file matches.", fileRefPageText(fileRefPage(many, none, showAll = false), none))
+        // A filter every file matches says the count once.
         val wide = FileRefFilter("ref")
-        assertEquals("Showing 20 of the 25 matching, of 25 files.", fileRefPageText(fileRefPage(many, wide, showAll = false), wide))
+        assertEquals("Showing 20 of 25 files.", fileRefPageText(fileRefPage(many, wide, showAll = false), wide))
+        val most = FileRefFilter("ref") to (many + ref("other"))
+        assertEquals("Showing 20 of the 25 matching, of 26 files.", fileRefPageText(fileRefPage(most.second, most.first, showAll = false), most.first))
+
+        // What this page just added or changed is drawn where it was made: past the cap, and outside the filter.
+        val added = many + ref("zebra")
+        val kept = fileRefPage(added, FileRefFilter(), showAll = false, kept = setOf("zebra"))
+        assertEquals(21, kept.shown.size)
+        assertEquals("zebra", kept.shown.last().refId)
+        assertEquals(5, kept.hidden)
+        val filtered = fileRefPage(added, FileRefFilter("ref1"), showAll = false, kept = setOf("zebra"))
+        assertEquals(listOf("ref10", "ref11", "ref12"), filtered.shown.take(3).map { it.refId })
+        assertTrue(filtered.shown.any { it.refId == "zebra" })
     }
 
     @Test

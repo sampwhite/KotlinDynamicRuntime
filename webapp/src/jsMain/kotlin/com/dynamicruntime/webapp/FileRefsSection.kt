@@ -84,6 +84,8 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
     var findText by useState("")
     var marks by useState<Set<String>>(emptySet())
     var showAll by useState(false)
+    // The refs this page added or changed: drawn whatever the filter and the cap, so a result is seen where it was made.
+    var kept by useState<Set<String>>(emptySet())
     val latest = useRef(0)
     val lastClient = useRef<String>(null)
     val generation = useRefreshGeneration()
@@ -112,6 +114,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             findText = ""
             marks = emptySet()
             showAll = false
+            kept = emptySet()
         }
         fileRefsScope.launch {
             try {
@@ -160,6 +163,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 if (lastClient.current == forClient) {
                     // Drawn from the answer, before the re-read the bump below starts.
                     refs = withFileRefChange(refs, changed)
+                    kept = kept + changed.refId
                     note = done(changed)
                     describing = null
                     if (added) {
@@ -217,7 +221,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
         }
     }
     val filter = FileRefFilter(findText, marks)
-    val page = listed?.let { fileRefPage(it, filter, showAll) }
+    val page = listed?.let { fileRefPage(it, filter, showAll, kept) }
     // Finding one among many (issue #1190): only once there are enough to look through.
     if (listed != null && listed.size > 1) {
         div {
@@ -532,18 +536,22 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 }
                 div {
                     className = ClassName("file-ref-add-row")
-                    Select {
-                        value = fileRefChosenRoot(newRoot, taking.roots)
-                        placeholder = "Where"
-                        disabled = busy != null
-                        style = js("({ minWidth: 160 })")
-                        options = taking.roots.map { root ->
-                            val option: dynamic = js("({})")
-                            option.label = root
-                            option.value = root
-                            option
-                        }.toTypedArray()
-                        onChange = { chosen -> newRoot = chosen as? String }
+                    label {
+                        className = ClassName("file-ref-field")
+                        span { +"Root" }
+                        Select {
+                            value = fileRefChosenRoot(newRoot, taking.roots)
+                            placeholder = "Where"
+                            disabled = busy != null
+                            style = js("({ minWidth: 160 })")
+                            options = taking.roots.map { root ->
+                                val option: dynamic = js("({})")
+                                option.label = root
+                                option.value = root
+                                option
+                            }.toTypedArray()
+                            onChange = { chosen -> newRoot = chosen as? String }
+                        }
                     }
                     label {
                         className = ClassName("file-ref-field")

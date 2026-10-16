@@ -59,12 +59,11 @@ val CopyButton = FC<CopyButtonProps> { props ->
         onClick = { writeToClipboard(props.text, done = { copied = true }, refused = { copied = false }) }
         +"Copy"
     }
-    copyOutcomeText(copied)?.let { said ->
-        span {
-            className = ClassName(if (copied == true) "copy-outcome" else "copy-outcome error-text")
-            // Said where a screen reader is told of changes, as well as shown.
-            asDynamic()["aria-live"] = "polite"
-            +said
-        }
+    // Always in the page, empty until there is something to say: a live region is announced when what it holds
+    // changes, and one that arrives already holding its words is not.
+    span {
+        className = ClassName(if (copied == false) "copy-outcome error-text" else "copy-outcome")
+        asDynamic()["aria-live"] = "polite"
+        copyOutcomeText(copied)?.let { +it }
     }
 }

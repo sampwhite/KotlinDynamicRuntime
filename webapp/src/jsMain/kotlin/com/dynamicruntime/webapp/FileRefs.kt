@@ -302,11 +302,14 @@ class FileRefPage(val shown: List<FileRefView>, val matched: Int, val total: Int
 
 /**
  * [refs] as the section draws them: those [filter] keeps, in order ([fileRefOrdered]), the first [fileRefFirstShown]
- * unless [showAll]. Pure, and covered under `jsNodeTest`.
+ * unless [showAll] -- and, whatever the filter and the cap, those in [kept]: the refs this page has just added or
+ * changed, which a person must see the result of where they acted, not have land past the cap or out of the filter.
+ * Pure, and covered under `jsNodeTest`.
  */
-fun fileRefPage(refs: List<FileRefView>, filter: FileRefFilter, showAll: Boolean): FileRefPage {
-    val matched = fileRefOrdered(refs.filter { fileRefMatches(it, filter) })
-    return FileRefPage(if (showAll) matched else matched.take(fileRefFirstShown), matched.size, refs.size)
+fun fileRefPage(refs: List<FileRefView>, filter: FileRefFilter, showAll: Boolean, kept: Set<String> = emptySet()): FileRefPage {
+    val matched = fileRefOrdered(refs.filter { fileRefMatches(it, filter) || it.refId in kept })
+    val shown = if (showAll) matched else matched.filterIndexed { i, ref -> i < fileRefFirstShown || ref.refId in kept }
+    return FileRefPage(shown, matched.size, refs.size)
 }
 
 /** What is said of how much of the list is drawn, or null when it is all of it. Pure, and covered under `jsNodeTest`. */
@@ -314,7 +317,8 @@ fun fileRefPageText(page: FileRefPage, filter: FileRefFilter): String? {
     val files = if (page.total == 1) "file" else "files"
     return when {
         filter.isActive && page.matched == 0 -> "No file matches."
-        page.hidden > 0 && filter.isActive -> "Showing ${page.shown.size} of the ${page.matched} matching, of ${page.total} $files."
+        page.hidden > 0 && filter.isActive && page.matched < page.total ->
+            "Showing ${page.shown.size} of the ${page.matched} matching, of ${page.total} $files."
         page.hidden > 0 -> "Showing ${page.shown.size} of ${page.total} $files."
         filter.isActive -> "${page.matched} of ${page.total} $files match."
         else -> null

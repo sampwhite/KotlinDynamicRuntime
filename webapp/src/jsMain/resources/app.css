@@ -547,7 +547,8 @@ body {
 /* A field with its name above it: what a screen reader still says once something is typed. */
 .file-ref-field { display: inline-flex; flex-direction: column; gap: 2px; font-size: 0.85rem; color: var(--text-muted); }
 /* What a copy button says it did, beside it: in words, not by a mark alone. */
-.copy-outcome { margin-left: 6px; font-size: 0.85rem; color: var(--text-muted); }
+.copy-outcome { font-size: 0.85rem; color: var(--text-muted); }
+.copy-outcome:not(:empty) { margin-left: 6px; }
 .home-hero-name { font-size: 2rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text); }
 
 .home-inline-links { display: flex; flex-wrap: wrap; gap: 8px; }
