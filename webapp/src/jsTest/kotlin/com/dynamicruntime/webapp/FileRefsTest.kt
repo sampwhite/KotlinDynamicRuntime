@@ -430,6 +430,69 @@ class FileRefsTest {
         assertNull(fileRefRemovedInDraftText(ref()))
     }
 
+    // Issue #1190: finding one among many -- words in an id or description, the marks as toggles -- in a stated order,
+    // and no more than a screenful until all are asked for.
+    @Test
+    fun aClientsFilesAreFoundByWordsAndMarksInAStatedOrder() {
+        val logo = ref("logo", description = "The company logo")
+        val hero = ref("Hero", live = false)
+        val gone = ref("banner", missing = true)
+        val shipped = ref("crest", source = FREF.sourceLocal, stored = false, by = null)
+        val removed = ref("badge", removedInDraft = true)
+        val all = listOf(logo, hero, gone, shipped, removed)
+
+        // Words in the id or the description, ignoring case.
+        assertEquals(listOf("logo"), all.filter { fileRefMatches(it, FileRefFilter("COMPANY")) }.map { it.refId })
+        assertEquals(listOf("Hero"), all.filter { fileRefMatches(it, FileRefFilter("her")) }.map { it.refId })
+        // Marks: any of those chosen; with words too, both.
+        assertEquals(listOf("Hero", "banner"), all.filter { fileRefMatches(it, FileRefFilter(marks = setOf("Draft", "Missing"))) }.map { it.refId })
+        assertEquals(emptyList(), all.filter { fileRefMatches(it, FileRefFilter("logo", setOf("Missing"))) }.map { it.refId })
+        assertEquals(
+            listOf("Removed in draft" to 1, "Draft" to 1, "Missing" to 1, "Shipped" to 1),
+            fileRefMarkCounts(all),
+        )
+
+        // What needs attention first -- missing, removed in a draft, a draft -- then by id, ignoring case.
+        assertEquals(listOf("banner", "badge", "Hero", "crest", "logo"), fileRefOrdered(all).map { it.refId })
+        // The same however the list arrived: drawn from a change's answer, a new ref at the end, or read again.
+        assertEquals(fileRefOrdered(all).map { it.refId }, fileRefOrdered(all.reversed()).map { it.refId })
+
+        // A screenful, then the rest on asking.
+        val many = (1..25).map { ref("ref" + it.toString().padStart(2, '0')) }
+        val first = fileRefPage(many, FileRefFilter(), showAll = false)
+        assertEquals(fileRefFirstShown, first.shown.size)
+        assertEquals(5, first.hidden)
+        assertEquals("Showing 20 of 25 files.", fileRefPageText(first, FileRefFilter()))
+        assertEquals(25, fileRefPage(many, FileRefFilter(), showAll = true).shown.size)
+        assertNull(fileRefPageText(fileRefPage(many, FileRefFilter(), showAll = true), FileRefFilter()))
+        val narrowed = FileRefFilter("ref1")
+        assertEquals("10 of 25 files match.", fileRefPageText(fileRefPage(many, narrowed, showAll = false), narrowed))
+        val none = FileRefFilter("zzz")
+        assertEquals("No file matches.", fileRefPageText(fileRefPage(many, none, showAll = false), none))
+        // A filter every file matches says the count once.
+        val wide = FileRefFilter("ref")
+        assertEquals("Showing 20 of 25 files.", fileRefPageText(fileRefPage(many, wide, showAll = false), wide))
+        val most = FileRefFilter("ref") to (many + ref("other"))
+        assertEquals("Showing 20 of the 25 matching, of 26 files.", fileRefPageText(fileRefPage(most.second, most.first, showAll = false), most.first))
+
+        // What this page just added or changed is drawn where it was made: past the cap, and outside the filter.
+        val added = many + ref("zebra")
+        val kept = fileRefPage(added, FileRefFilter(), showAll = false, kept = setOf("zebra"))
+        assertEquals(21, kept.shown.size)
+        assertEquals("zebra", kept.shown.last().refId)
+        assertEquals(5, kept.hidden)
+        val filtered = fileRefPage(added, FileRefFilter("ref1"), showAll = false, kept = setOf("zebra"))
+        assertEquals(listOf("ref10", "ref11", "ref12"), filtered.shown.take(3).map { it.refId })
+        assertTrue(filtered.shown.any { it.refId == "zebra" })
+    }
+
+    @Test
+    fun aCopySaysWhatItDidInWords() {
+        assertEquals("Copied.", copyOutcomeText(true))
+        assertEquals("Couldn't copy it: select it and copy instead.", copyOutcomeText(false))
+        assertNull(copyOutcomeText(null))
+    }
+
     @Test
     fun theListIsRedrawnFromWhatAChangeAnswered() {
         val refs = listOf(ref("logo"), ref("banner"))

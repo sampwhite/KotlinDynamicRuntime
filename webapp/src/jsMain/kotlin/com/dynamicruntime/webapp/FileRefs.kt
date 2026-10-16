@@ -246,6 +246,85 @@ fun fileRefTags(ref: FileRefView): List<String> = listOfNotNull(
     "Shipped".takeIf { !ref.stored },
 )
 
+/** Every mark [fileRefTags] gives, in the order it gives them: what the section's toggles are drawn in. */
+val fileRefMarks: List<String> = listOf("Removed in draft", "Draft", "Missing", "Shipped")
+
+/**
+ * What a person narrows a client's files to (issue #1190): words in a ref's id or description, and marks. A ref is
+ * kept when the words are in either, ignoring case, and -- with marks chosen -- it carries any of them.
+ */
+class FileRefFilter(val text: String = "", val marks: Set<String> = emptySet()) {
+    /** Whether it keeps anything less than every ref. */
+    val isActive: Boolean get() = text.isNotBlank() || marks.isNotEmpty()
+}
+
+/** Whether [filter] keeps [ref] ([FileRefFilter]). Pure, and covered under `jsNodeTest`. */
+fun fileRefMatches(ref: FileRefView, filter: FileRefFilter): Boolean {
+    val words = filter.text.trim().lowercase()
+    val inWords = words.isEmpty() || ref.refId.lowercase().contains(words) || ref.description?.lowercase()?.contains(words) == true
+    return inWords && (filter.marks.isEmpty() || fileRefTags(ref).any { it in filter.marks })
+}
+
+/** The marks [refs] carry, each with how many carry it, in [fileRefMarks]' order: what is offered to filter by. */
+fun fileRefMarkCounts(refs: List<FileRefView>): List<Pair<String, Int>> {
+    val counts = refs.flatMap { fileRefTags(it) }.groupingBy { it }.eachCount()
+    return fileRefMarks.mapNotNull { mark -> counts[mark]?.let { mark to it } }
+}
+
+/**
+ * How soon a ref is listed: what needs attention first -- a file that is missing, then one a draft removed, then a
+ * draft -- and the rest after. The first key of [fileRefOrdered].
+ */
+fun fileRefAttention(ref: FileRefView): Int = when {
+    ref.missing -> 0
+    ref.removedInDraft -> 1
+    !ref.live -> 2
+    else -> 3
+}
+
+/**
+ * [refs] in the section's stated order (issue #1190): what needs attention first ([fileRefAttention]), then by id,
+ * ignoring case. The listing's own order is the registry's, which means nothing to a person; this one is the same
+ * however the list was arrived at -- read, or drawn from a change's answer -- so a row does not move on a re-read.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun fileRefOrdered(refs: List<FileRefView>): List<FileRefView> =
+    refs.sortedWith(compareBy<FileRefView>({ fileRefAttention(it) }, { it.refId.lowercase() }, { it.refId }))
+
+/** How many refs the section draws before it offers the rest, so the page below it stays in reach. */
+const val fileRefFirstShown = 20
+
+/** What the section draws: the [shown] refs, of the [matched] its filter keeps, of [total]. */
+class FileRefPage(val shown: List<FileRefView>, val matched: Int, val total: Int) {
+    /** How many the filter keeps that are not drawn: what "Show all" would add. */
+    val hidden: Int get() = matched - shown.size
+}
+
+/**
+ * [refs] as the section draws them: those [filter] keeps, in order ([fileRefOrdered]), the first [fileRefFirstShown]
+ * unless [showAll] -- and, whatever the filter and the cap, those in [kept]: the refs this page has just added or
+ * changed, which a person must see the result of where they acted, not have land past the cap or out of the filter.
+ * Pure, and covered under `jsNodeTest`.
+ */
+fun fileRefPage(refs: List<FileRefView>, filter: FileRefFilter, showAll: Boolean, kept: Set<String> = emptySet()): FileRefPage {
+    val matched = fileRefOrdered(refs.filter { fileRefMatches(it, filter) || it.refId in kept })
+    val shown = if (showAll) matched else matched.filterIndexed { i, ref -> i < fileRefFirstShown || ref.refId in kept }
+    return FileRefPage(shown, matched.size, refs.size)
+}
+
+/** What is said of how much of the list is drawn, or null when it is all of it. Pure, and covered under `jsNodeTest`. */
+fun fileRefPageText(page: FileRefPage, filter: FileRefFilter): String? {
+    val files = if (page.total == 1) "file" else "files"
+    return when {
+        filter.isActive && page.matched == 0 -> "No file matches."
+        page.hidden > 0 && filter.isActive && page.matched < page.total ->
+            "Showing ${page.shown.size} of the ${page.matched} matching, of ${page.total} $files."
+        page.hidden > 0 -> "Showing ${page.shown.size} of ${page.total} $files."
+        filter.isActive -> "${page.matched} of ${page.total} $files match."
+        else -> null
+    }
+}
+
 /** What a preview's image is called, for whoever does not see it. */
 fun fileRefAltText(ref: FileRefView): String = ref.description ?: "The file ${ref.refId}"
 

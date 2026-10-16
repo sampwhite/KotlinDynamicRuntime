@@ -115,19 +115,21 @@ private fun copyCodeBlock(e: dynamic): Boolean {
     e.preventDefault()
     val pre = button.closest(".$codeBlockClass")?.querySelector("pre") ?: return true
     val text = pre.textContent as? String ?: return true
-    val clipboard = window.navigator.asDynamic().clipboard ?: return true
     val original = button.innerHTML
-    clipboard.writeText(text).then({ _: dynamic ->
-        button.textContent = "Copied"
-        button.classList.add(copiedClass)
-        window.setTimeout({
-            button.innerHTML = original
-            button.classList.remove(copiedClass)
-        }, copiedShownMs)
-    }, { _: dynamic ->
+    writeToClipboard(
+        text,
+        done = {
+            button.textContent = "Copied"
+            button.classList.add(copiedClass)
+            window.setTimeout({
+                button.innerHTML = original
+                button.classList.remove(copiedClass)
+            }, copiedShownMs)
+        },
         // Refused -- the document not focused, or the permission denied: the button stays as it was, and the
         // reader can still select the text.
-    })
+        refused = {},
+    )
     return true
 }
 

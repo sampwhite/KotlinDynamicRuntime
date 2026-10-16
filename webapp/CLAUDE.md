@@ -139,6 +139,11 @@ the same way, under their own marker:
     from what is served (the download's and meta read's `served: true`, since the sandbox has no such ref), and
     offers only **Put back**: `POST …/files/restore`, which copies the published entry back into the draft as it is
     -- nothing uploaded or named again. Published, the row goes.
+  - **Finding one among many** (issue #1190): a Find box over id and description, a toggle per mark the list
+    carries, a stated order -- what needs attention (missing, removed in a draft, a draft) first, then by id -- and
+    the first 20 with "Show all", all pure in `FileRefs.kt` (`fileRefPage`) over the listing already loaded. The
+    order is the page's, not the registry's, so a row does not move on a re-read. An address has a `CopyButton`
+    (`Clipboard.kt`, the app's one clipboard write, shared with the code blocks' copy) that says what it did in words.
   - **What a row offers is the backend's answer** (issue #1192): each row's `removable` is asked as a removal asks
     it -- whether a stored configuration of the client holds an entry for the id, taken as the load takes it (by
     configuration id) -- so a row offers Remove and Reword exactly when they would succeed, whatever state the
