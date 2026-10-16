@@ -42,11 +42,11 @@ class DeployTest : StringSpec({
     "a target file says what is wrong with it" {
         fun problem(text: String) = shouldThrow<IllegalArgumentException> { DeployTarget.parse("bad", text) }.message.orEmpty()
         problem("host=a") shouldContain "missing user, baseDir, service, publicUrl"
-        problem(targetText + "\nhosst=b") shouldContain "unknown key 'hosst'"
-        problem(targetText + "\nenv.KDR_ENV=prod") shouldContain "KDR_ENV is set twice"
+        problem("$targetText\nhosst=b") shouldContain "unknown key 'hosst'"
+        problem("$targetText\nenv.KDR_ENV=prod") shouldContain "KDR_ENV is set twice"
         problem(targetText.replace("baseDir=/home/kdr/kdr/", "baseDir=kdr")) shouldContain "absolute path"
         problem(targetText.replace("keepReleases=3", "keepReleases=1")) shouldContain "at least 2"
-        problem(targetText + "\njust words") shouldContain "expected key=value"
+        problem("$targetText\njust words") shouldContain "expected key=value"
     }
 
     "the repository's own target is a valid one" {

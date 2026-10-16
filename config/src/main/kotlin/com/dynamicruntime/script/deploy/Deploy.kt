@@ -35,10 +35,11 @@ import kotlin.system.exitProcess
  * should see why it failed first.
  *
  * **Clever Kotlin, dumb shell** (the code guide): `bin/kdr-deploy` only hands off. The node is reached with the
- * system `ssh` and `rsync`, so your own SSH configuration, agent and known hosts are used, and no key passes
+ * system `ssh` and `rsync`, so your own SSH configuration, agent, and known hosts are used, and no key passes
  * through this code. The commands run on the node are short POSIX ones built here, and nothing is installed there
  * but the release and `kdr.env`. Nothing here needs the runtime, so it boots none of it.
  */
+@Suppress("ConstPropertyName")
 object Deploy {
     /** Flags the command accepts. */
     @Suppress("ConstPropertyName")
