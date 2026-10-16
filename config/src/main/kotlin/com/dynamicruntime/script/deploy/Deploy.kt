@@ -1,5 +1,8 @@
 package com.dynamicruntime.script.deploy
 
+import com.dynamicruntime.script.CmdResult
+import com.dynamicruntime.script.Subprocess.capture
+import com.dynamicruntime.script.Subprocess.inherit
 import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
@@ -317,47 +320,9 @@ object Deploy {
 
     // --- subprocesses -------------------------------------------------------------------------------------------
 
-    /** A finished subprocess: its exit code and its output. */
-    data class CmdResult(val code: Int, val out: String) {
-        val failed: Boolean get() = code != 0
-    }
-
     /** Runs [command] on the node over SSH, with [stdin] as its input when given, and captures its output. */
-    private fun ssh(target: DeployTarget, command: String, stdin: String? = null): CmdResult {
-        val cmd = arrayOf("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", target.sshDestination, command)
-        return try {
-            val builder = ProcessBuilder(*cmd).redirectErrorStream(true)
-            if (stdin == null) builder.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
-            val process = builder.start()
-            if (stdin != null) process.outputStream.bufferedWriter().use { it.write(stdin) }
-            val out = process.inputStream.bufferedReader().use { it.readText() }
-            CmdResult(process.waitFor(), out.trim())
-        } catch (e: Exception) {
-            CmdResult(failureExit, "could not run ssh: ${e.message}")
-        }
-    }
-
-    /** Runs [cmd] in [dir] and captures its output. */
-    private fun capture(dir: File, vararg cmd: String): CmdResult =
-        try {
-            val process = ProcessBuilder(*cmd).directory(dir).redirectErrorStream(true)
-                .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null"))).start()
-            val out = process.inputStream.bufferedReader().use { it.readText() }
-            CmdResult(process.waitFor(), out.trim())
-        } catch (e: Exception) {
-            CmdResult(failureExit, "could not run ${cmd.firstOrNull()}: ${e.message}")
-        }
-
-    /** Runs [cmd] in [dir] with its output going straight to the terminal. True on a zero exit. */
-    private fun inherit(dir: File, vararg cmd: String): Boolean =
-        try {
-            ProcessBuilder(*cmd).directory(dir)
-                .redirectOutput(ProcessBuilder.Redirect.INHERIT).redirectError(ProcessBuilder.Redirect.INHERIT)
-                .start().waitFor() == 0
-        } catch (e: Exception) {
-            System.err.println("could not run ${cmd.firstOrNull()}: ${e.message}")
-            false
-        }
+    private fun ssh(target: DeployTarget, command: String, stdin: String? = null): CmdResult =
+        capture(null, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", target.sshDestination, command, stdin = stdin)
 }
 
 fun main(args: Array<String>) {
