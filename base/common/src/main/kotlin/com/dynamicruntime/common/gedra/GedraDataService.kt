@@ -100,7 +100,8 @@ class GedraDataService : ServiceInitializer {
     private lateinit var gedraService: GedraService
 
     /**
-     * The in-memory `GedraData` cache, or null when the table-cache service is absent (see [GedraDataCache]).
+     * The in-memory `GedraData` cache, or null when the table-cache service is absent or caching is switched off
+     * (see [GedraDataCache]).
      * Outside a transaction it is trusted completely -- a by-id [queryGedra] treats a miss as a definitive
      * absence rather than querying (issue #640); SQL is reached only when it is absent, when a listing scope has
      * no client key to look a row up by, or when `_debug=dataFromSql` forces it. Its absence costs queries and
@@ -109,7 +110,7 @@ class GedraDataService : ServiceInitializer {
     var dataCache: SqlTableCache<Map<String, Any?>>? = null
 
     /**
-     * The in-memory `GedraDataStates` cache (issue #598), or null when the table-cache service is absent (see
+     * The in-memory `GedraDataStates` cache (issue #598), or null when the table-cache service is absent or caching is off (see
      * [GedraStatesCache]). Consulted first by [readState] and, like [dataCache], only ever saves a round trip.
      */
     var statesCache: SqlTableCache<Map<String, Any?>>? = null

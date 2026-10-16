@@ -183,9 +183,11 @@ class GedraConfigService : ServiceInitializer {
         }
         val wcxt = boundToClient(cxt, client)
         return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
+            val before = LinkedHashMap<String, GedraConfigRow?>()
             val written = writes.map { write ->
                 val configId = write.config.gedraId.revisionClass()
                 val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                before[configId.fullId] = latest
                 if (write.mustBeNew && latest != null) {
                     throw KdrException(
                         "Configuration '${configId.baseId}' of client '$client' already exists; it was to be created, " +
@@ -197,7 +199,7 @@ class GedraConfigService : ServiceInitializer {
                 val vouched = if (write.authoredInCode) gedraConfigToEntries(write.config)[CCT.fileRefDef].orEmpty() else emptyList()
                 writeRevisionUnderLock(wcxt, sqlCxt, table, configId, write.config, latest, write.impliedDelete, vouched)
             }
-            if (trial) trialWritten(wcxt, written)
+            if (trial) trialWritten(wcxt, written, before)
             written
         }
     }
@@ -209,12 +211,13 @@ class GedraConfigService : ServiceInitializer {
      * A write is judged with the client's other **latest** revisions, whatever its tier: for a published-only client
      * the latest revisions are its drafts, and judging a draft against the published set would stop an author
      * staging a change that spans two configs. What such a client runs is judged when it changes -- at [publish] and
-     * at [setPublishedOnly].
+     * at [setPublishedOnly]. [before] is each written config's revision as it stood, for a client whose drafts
+     * nothing runs (`GedraConfigTrial.requireClean`, issue #1171).
      */
-    private fun trialWritten(wcxt: KdrCxt, written: List<GedraConfigRow>) {
+    private fun trialWritten(wcxt: KdrCxt, written: List<GedraConfigRow>, before: Map<String, GedraConfigRow?>) {
         val names = written.joinToString(", ") { "'${it.configId.baseId}'" }
         GedraConfigTrial.requireClean(
-            wcxt, wcxt.client, written, published = false, "Configuration $names was not stored",
+            wcxt, wcxt.client, written, published = false, "Configuration $names was not stored", before,
         )
     }
 
@@ -274,7 +277,7 @@ class GedraConfigService : ServiceInitializer {
             val config = reassembleForWrite(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited, stored)
             checkWritableConfig(wcxt, config)
             val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true, restoring)
-            if (trial) trialWritten(wcxt, listOf(written))
+            if (trial) trialWritten(wcxt, listOf(written), mapOf(configId.fullId to latest))
             written
         }
     }

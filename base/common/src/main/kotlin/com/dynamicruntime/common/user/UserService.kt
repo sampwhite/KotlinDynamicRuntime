@@ -266,8 +266,8 @@ class UserService : ServiceInitializer {
     /**
      * The [userCache], refreshed, when it can answer a **listing** -- or null, for the caller to read SQL. Unlike a
      * single-row lookup ([cachedUser]), a listing cannot tell a row the cache lacks from one it never loaded, so
-     * an unloaded cache is no answer: with caching switched off (`KDR_TABLE_CACHE_DISABLED`) the cache is still
-     * registered but never loads, and reading its empty index would say the person has no users at all.
+     * an unloaded cache is no answer: one registered and not yet loaded would say the person has no users at all.
+     * (With caching switched off, `KDR_TABLE_CACHE_DISABLED`, no cache is registered and SQL answers.)
      */
     private fun listingCache(cxt: KdrCxt): SqlTableCache<Map<String, Any?>>? {
         val cache = userCache ?: return null

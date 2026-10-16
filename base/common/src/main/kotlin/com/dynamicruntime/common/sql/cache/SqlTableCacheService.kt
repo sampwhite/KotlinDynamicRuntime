@@ -447,14 +447,21 @@ class SqlTableCacheService : ServiceInitializer {
             ?: throw KdrException("The $serviceName is not available on this node.")
 
         /**
-         * Registers a cache with the running service, or returns null when there is none (caching is simply
-         * absent then, and every consumer's SQL fallback carries the load).
+         * Registers a cache with the running service, or returns null when there is none -- or when caching is
+         * switched off ([TCH.disabledEnv]) -- and caching is simply absent then: every consumer's SQL fallback
+         * carries the load.
+         *
+         * **Off means no cache, not a cache that never loads.** A disabled service refreshes nothing, so a cache it
+         * handed out would stay empty for good -- and its consumers trust a loaded cache as the whole table: a miss
+         * is "no such row", an empty index "no rows". Every stored configuration, every gedra, every state and
+         * every user would read as absent. Handed none, each takes the SQL path it already has for a node with no
+         * cache service. The setting is read in [onCreate], before any consumer's `checkInit` registers.
          */
         fun <T : Any> registerCache(cxt: KdrCxt, params: SqlCacheParams<T>): SqlTableCache<T>? =
             // Read optionally, not through the throwing get(): the nullable result is this function's
             // contract. Caching is optional by design, so a node running no cache service registers nothing
             // and every consumer falls back to SQL -- it must not fail to boot.
-            (cxt.instanceConfig.get(serviceName) as? SqlTableCacheService)?.register(params)
+            (cxt.instanceConfig.get(serviceName) as? SqlTableCacheService)?.takeIf { !it.isDisabled }?.register(params)
 
         /**
          * Refreshes every cache at most **once per context per state of the world**, memoized in

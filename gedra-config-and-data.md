@@ -379,9 +379,12 @@ instead name a **local file**, which the section after covers.
   load recorded stays true. A file does not: one that went missing since the load would be a problem "the write
   introduces" to every later write of the client, including the one that takes the ref away. So the refs the node
   runs for the client, and for its sandbox, are judged again as the trial is, and a write is refused only for a
-  file its own ref names. One gap remains: a client that runs only published configuration *without* a sandbox
-  has nobody running its drafts, and a draft ref whose file has gone is then a problem to each later draft write
-  until the ref is removed or its file is there again.
+  file its own ref names.
+- **Drafts nothing runs are judged as they were** (issue #1171). A client that runs only published configuration
+  *without* a sandbox has latest revisions no node loads, so no load records what they already have. For such a
+  client a draft write's baseline also holds a trial of the stored set as it stood before the write -- each written
+  config back at its prior revision, a new one left out -- so a draft ref whose file has gone, or any other problem
+  a draft already had, does not refuse a later draft write that does not bring it; one that does is refused as ever.
 - **A sandbox's problems forgive a write, not a publish.** A write is judged with the latest revisions, which the
   sandbox runs, so what the sandbox already has the drafts already have. A publish changes what the client's own
   people are served, and is judged against the client alone: a draft ref whose file has gone is refused there,
