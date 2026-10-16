@@ -10,6 +10,7 @@ import org.eclipse.jetty.server.Handler
 import org.eclipse.jetty.server.Request
 import org.eclipse.jetty.server.Response
 import org.eclipse.jetty.server.Server
+import org.eclipse.jetty.server.ServerConnector
 import org.eclipse.jetty.util.Callback
 
 /**
@@ -26,7 +27,9 @@ object HttpServer {
     fun launch(cxt: KdrCxt) {
         val nodeId = NodeUtil.extractNodeId(cxt)
         val instanceConfig = cxt.instanceConfig
-        val server = Server(nodeId.port)
+        val server = Server()
+        val bindAddress = NodeUtil.bindAddressOf(instanceConfig)
+        server.addConnector(connector(server, nodeId.port, bindAddress))
         // The dispatcher, and always last: it answers every request that reaches it, including the terse 404
         // for an unrecognized context root, so nothing can usefully sit behind it.
         val dispatcher = object : Handler.Abstract() {
@@ -49,11 +52,22 @@ object HttpServer {
 
         try {
             server.start()
-            LogRequest.info(cxt, "Started server at ${nodeId.nodeIpAddress}:${nodeId.port} on ${nodeId.hostname}.")
+            val listening = bindAddress?.let { "listening on $it" } ?: "listening on every interface"
+            LogRequest.info(cxt, "Started server at ${nodeId.nodeIpAddress}:${nodeId.port} on ${nodeId.hostname}, $listening.")
             server.join()
         } catch (e: Exception) {
             runCatching { server.stop() }
             throw KdrException("Could not start the HTTP server.", e)
         }
     }
+
+    /**
+     * The connector [launch] listens through: on [port], and on [bindAddress] alone when it is given (issue #1245) --
+     * every interface otherwise, as Jetty's own default.
+     */
+    fun connector(server: Server, port: Int, bindAddress: String?): ServerConnector =
+        ServerConnector(server).apply {
+            this.port = port
+            bindAddress?.let { host = it }
+        }
 }

@@ -9,6 +9,7 @@ import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
+import com.dynamicruntime.common.node.NodeUtil
 
 /**
  * What a public test deployment does for a caller **without** env auth when they try to sign in or register
@@ -33,7 +34,7 @@ object PTD {
             "`dev` -- otherwise one refuses to start outside `local`/`unit`. The test surface is already only for " +
             "an env-authed caller (#1149); under this, env auth is hardened: `KDR_TRUST_ENV_AUTH_HEADER` must be " +
             "set explicitly (true only behind an edge that strips the header from outside traffic), and env auth " +
-            "is never assumed. A caller without env auth gets what `KDR_PUBLIC_SIGN_IN` says, and every page and " +
+            "is assumed only on a node listening on loopback alone (`KDR_BIND_ADDRESS`). A caller without env auth gets what `KDR_PUBLIC_SIGN_IN` says, and every page and " +
             "mail says the deployment is for testing.",
     )
 
@@ -139,8 +140,15 @@ object PublicTestDeployment {
                         "traffic, or anyone could send it and be env-authed.",
                 )
             }
-            if (EnvAuthRules.assumesEnvAuth(config)) {
-                refuse("a public test deployment must not assume env auth (${ENVA.assumeEnvAuthEnvVar}): every direct request would be env-authed.")
+            // Assuming env auth grants it to every request with no forwarded-for address -- every request that did not
+            // come through the proxy (issue #1245). Safe only when nothing but this machine can send one: the server
+            // listening on loopback alone, so the guarantee is the node's own rather than a firewall's.
+            if (EnvAuthRules.assumesEnvAuth(config) && !NodeUtil.bindsLoopbackOnly(config)) {
+                refuse(
+                    "a public test deployment may assume env auth (${ENVA.assumeEnvAuthEnvVar}) only when it listens on " +
+                        "loopback alone (${NodeUtil.bindAddress}=127.0.0.1); otherwise every request that reaches it " +
+                        "directly, from anywhere, would be env-authed.",
+                )
             }
             if (namedSignIn != null && PublicSignIn.entries.none { it.name == namedSignIn }) {
                 refuse("${PTD.publicSignInEnvVar} is '$namedSignIn'; it takes one of ${PublicSignIn.entries.joinToString()}.")

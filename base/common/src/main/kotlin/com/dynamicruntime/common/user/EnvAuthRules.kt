@@ -41,7 +41,8 @@ object ENVA {
             "-- the convenience that makes a developer's box behave like one behind an edge. The identity is " +
             "synthetic (`assumed@local.invalid`). Independent of `KDR_TRUST_ENV_AUTH_HEADER`. The missing " +
             "forwarded-for is not what makes it safe; the test-instance fence is. The `assumeEnvAuth` config " +
-            "option wins over this.",
+            "option wins over this. A public test deployment may set it only when it listens on loopback alone " +
+            "(`KDR_BIND_ADDRESS`, issue #1245), behind a proxy that always sets `X-Forwarded-For`.",
     )
 
     /**
