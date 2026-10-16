@@ -391,10 +391,29 @@ fun listedRefs(cxt: KdrCxt, refs: FileRefService, client: String): List<Map<Stri
     val running = refs.forClient(owner).refs
     val shownAs = refs.shownAs(cxt, client)
     val shown = refs.forClient(shownAs).refs
-    val listed = shown.values.map { refItem(cxt, refs, it, running[it.refId]?.def?.pointer == it.def.pointer) }
-    // What a draft removed is still served, until a publish: listed after the rest, from the client's own registry.
-    if (shownAs == owner) return listed
-    return listed + running.values.filter { it.refId !in shown }.map { refItem(cxt, refs, it, live = true, removedInDraft = true) }
+    val listed = shown.values.map { it.refId to refItem(cxt, refs, it, running[it.refId]?.def?.pointer == it.def.pointer) }
+    if (shownAs == owner) return listed.map { it.second }
+    // What a draft removed is still served, until a publish: listed from the client's own registry. Not one the draft
+    // still stores and its load left out, which no restore may write over (the client's issues say why it is left out).
+    val stored = ClientFileRefEdit.storedRefIds(cxt.mkSubContext("listRefs", owner), owner)
+    val removed = running.values.filter { it.refId !in shown && it.refId !in stored }
+        .map { it.refId to refItem(cxt, refs, it, live = true, removedInDraft = true) }
+    return inServedOrder(listed, removed, running.keys.toList()).map { it.second }
+}
+
+/**
+ * [listed] with each of [removed] placed after the row it follows among the refs the client is served ([servedOrder]),
+ * or first when none listed does -- so a ref removed in a draft keeps the place it had, and a page that draws it there
+ * at once does not see it move when the listing is read again.
+ */
+private fun <T> inServedOrder(listed: List<Pair<String, T>>, removed: List<Pair<String, T>>, servedOrder: List<String>): List<Pair<String, T>> {
+    val out = listed.toMutableList()
+    for (row in removed) {
+        val before = servedOrder.subList(0, servedOrder.indexOf(row.first).coerceAtLeast(0)).toSet()
+        val at = out.indexOfLast { it.first in before }
+        out.add(at + 1, row)
+    }
+    return out
 }
 
 /**

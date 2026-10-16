@@ -692,6 +692,27 @@ class LocalFileRefsTest : StringSpec({
         listed(admin).getValue("pic").containsKey(FREF.removedInDraft) shouldBe false
     }
 
+    // A served ref is removed in a draft only when no stored configuration of the draft holds it: one its load left out
+    // is the draft's own, which a restore must not write the published entry over (issue #1188).
+    "a draft's own entry that its load left out is not called removed, nor written over by a restore" {
+        val client = "lfrheld"
+        defineClient(client)
+        val art = svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(localEntry("pic", "logo.png")) })
+        svc.publish(writerOf(client), art.configId)
+        GedraConfigReload.reloadClient(cxt, client)
+        val admin = adminOf(client)
+        posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        // The draft's pic names a root that is no name: stored, and left out of the sandbox's load.
+        val odd = localEntry("pic", "logo.png", root = "../brand")
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(odd) })
+        GedraConfigReload.reloadClient(cxt, client)
+
+        listed(admin).keys.contains("pic") shouldBe false
+        admin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "pic"))[EP.errorMessage].toString() shouldContain
+            "still holds the file ref 'pic', in 'art', though its sandbox is not served it"
+        storedRefs(client, "art") shouldBe listOf(odd)
+    }
+
     // --- Issue #1164: a root the deployment opens to clients -----------------------------------------------------------
 
     /** Names a local file as [user]'s ref; the whole envelope, so a refusal can be read from it as a success can. */

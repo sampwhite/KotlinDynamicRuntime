@@ -200,18 +200,27 @@ object ClientFileRefEdit {
         val owner = target.client
         val svc = GedraConfigService.get(bound)
         val refs = FileRefService.get(cxt)
+        requireNotStatic(svc, bound, owner)
+        val holder = holderOf(bound, owner, refId)
+        holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, what) }
+        val registry = refs.forClient(target.readsAs)
+        requireRoomFor(registry, owner, refId)
+        return Landing(target, svc, refs, holder, registry.refs)
+    }
+
+    /** Refuses a client that takes no stored configuration here: one statically configured, in production. */
+    private fun requireNotStatic(svc: GedraConfigService, bound: KdrCxt, owner: String) {
         if (svc.isStaticHere(bound, owner)) {
             throw KdrException.mkInput(
                 "Client '$owner' is statically configured: in production its configuration comes from source code, " +
                     "so it takes no file ref here.",
             )
         }
-        val holder = holderOf(bound, owner, refId)
-        holder?.let { ClientStoredEdit.requireNoForeignDraft(target, it, what) }
-        val registry = refs.forClient(target.readsAs)
-        val shown = registry.refs
-        if (refId !in shown && shown.size >= FREF.maxRefs) throw KdrException.mkInput(fullMessage(owner, registry))
-        return Landing(target, svc, refs, holder, shown)
+    }
+
+    /** Refuses [refId] as a new ref of a client [registry] already serves as many as it may have ([fullMessage]). */
+    private fun requireRoomFor(registry: FileRefRegistry, owner: String, refId: String) {
+        if (refId !in registry.refs && registry.refs.size >= FREF.maxRefs) throw KdrException.mkInput(fullMessage(owner, registry))
     }
 
     /**
@@ -317,8 +326,9 @@ object ClientFileRefEdit {
      * sandbox runs the configuration it is shown, so there is nothing of its to put back.
      *
      * Refused, before anything is written, for a client with no sandbox, a ref its people are not served, one the
-     * draft still holds (an upload over it is a change of its own, made the ordinary way), one the client was shipped
-     * with or inherits from a template, and one whose configuration the latest revision no longer has. The entry is
+     * draft still holds -- in what the sandbox shows, or as a stored entry its load left out (an upload over it is a
+     * change of its own, made the ordinary way) -- and one the client was shipped with or inherits from a template;
+     * and held to what every change is, a static client and a client served as many refs as it may have. The entry is
      * written as the server's own ([patchEntry]'s `restoring`): it names nothing the client is not already served, so
      * a client's own administrator puts back an operator's local ref as the undo of a removal would.
      */
@@ -334,8 +344,18 @@ object ClientFileRefEdit {
         val refs = FileRefService.get(cxt)
         val served = refs.forClient(owner).refs[refId]
             ?: throw KdrException.mkInput("Client '$owner''s people are served no file ref '$refId', so there is none to put back.")
-        if (refId in refs.forClient(target.readsAs).refs) {
+        val bound = target.bound
+        val svc = GedraConfigService.get(bound)
+        val draft = refs.forClient(target.readsAs)
+        if (refId in draft.refs) {
             throw KdrException.mkInput("The draft of client '$owner' still holds the file ref '$refId'; there is nothing to put back.")
+        }
+        // Held by the draft but left out of its load: put back, the published entry would write over the draft's own.
+        holderOf(bound, owner, refId)?.let {
+            throw KdrException.mkInput(
+                "The draft of client '$owner' still holds the file ref '$refId', in '${it.configId.baseId}', though its " +
+                    "sandbox is not served it (the client's issues say why); there is nothing to put back.",
+            )
         }
         val configName = served.def.configName
         if (!served.def.stored || served.inheritedFrom != null || configName == null) {
@@ -343,18 +363,23 @@ object ClientFileRefEdit {
                 "The file ref '$refId' of client '$owner' is not held in its stored configuration, so a draft could not have removed it.",
             )
         }
-        val bound = target.bound
-        val svc = GedraConfigService.get(bound)
+        // There is always one: the revision the client is served from is a revision of it, and no configuration is
+        // ever deleted.
         val holder = svc.readLatest(bound, GedraId.of(GedraConfigType.configDoc, owner, configName))
-            ?: throw KdrException.mkInput(
-                "The configuration '$configName' that holds the file ref '$refId' is gone from the draft of client '$owner'; " +
-                    "putting the ref back would need it made again.",
-            )
-        // The refusals every change has: a static client, and a client served as many refs as it may have.
-        landing(cxt, target, refId, "restoring a file ref")
+            ?: throw KdrException("Client '$owner' is served the file ref '$refId' from a configuration '$configName' with no revision.")
+        requireNotStatic(svc, bound, owner)
+        requireRoomFor(draft, owner, refId)
         val written = patchEntry(svc, bound, holder, refId, served.def.toEntry(), restoring = true)
         return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, null) })
     }
+
+    /**
+     * The ids of the refs [client]'s stored configurations hold, as their latest revisions stand -- every entry,
+     * including one a load left out. What a listing asks before it calls a served ref removed in a draft (issue #1188).
+     */
+    fun storedRefIds(bound: KdrCxt, client: String): Set<String> =
+        GedraConfigService.get(bound).listConfigs(bound).filter { it.client == client }
+            .flatMap { row -> row.entriesBySlot()[CCT.fileRefDef].orEmpty().mapNotNull { it[CCT.refId].toOptStr() } }.toSet()
 
     /** The stored config of [client]'s that holds the ref [refId], or null when none does. */
     private fun holderOf(bound: KdrCxt, client: String, refId: String): GedraConfigRow? =
