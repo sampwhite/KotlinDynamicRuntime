@@ -186,20 +186,23 @@ class SqlDatabase(
             session.inTran = true
             block()
             conn.commit()
-            conn.autoCommit = true
+            // Committed from here on, whatever restoring auto-commit does next: the writes must be announced.
             committedIt = true
+            conn.autoCommit = true
         } catch (e: SQLException) {
             throw SqlStmtUtil.mkException("Could not execute transaction.", e)
         } finally {
             session.inTran = false
             // The transaction's writes are announced now that they are committed (issue #1256), and forgotten when
             // they were not: a write rolled back changed nothing anyone needs to hear about.
-            val pending = session.pendingWrites.toList()
+            val pending = session.pendingWrites.values.toList()
             session.pendingWrites.clear()
             if (committedIt) {
-                for (write in pending) announceWrite(write.cxt, write.tableNames, write.changedSince)
+                for (write in pending) announceWrite(write.cxt, listOf(write.tableName), write.changedSince)
             }
             if (!committedIt) {
+                // Auto-commit may be off still if the commit itself was what failed; turning it on below is safe
+                // either way, and a rollback after a commit that succeeded is a no-op.
                 // Roll back **before** restoring auto-commit: under JDBC, switching auto-commit on while a
                 // transaction is open commits it -- so the old order (auto-commit first) committed the partial work
                 // of every transaction that threw, and nothing was ever rolled back (found by issue #843, whose
@@ -305,7 +308,7 @@ class SqlDatabase(
         val changedSince = data[PF.updatedAt].toOptInstant()?.let { if (it < now) it else now } ?: now
         val session = SqlSession.get(cxt)
         if (session != null && session.inTran) {
-            session.pendingWrites.add(PendingWrite(cxt, stmt.tableNames, changedSince))
+            session.notePendingWrite(cxt, stmt.tableNames, changedSince)
         } else {
             announceWrite(cxt, stmt.tableNames, changedSince)
         }

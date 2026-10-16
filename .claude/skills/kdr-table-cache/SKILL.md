@@ -159,7 +159,9 @@ Mostly you do not have to think about this. It matters when diagnosing a stale r
    transaction ran. **Automatic: a new write path announces itself by existing.**
 2. **Another node wrote it** — its request end wrote the date into the shared `KdrCacheState` row; this node
    reads that row on a node-global throttle (`TCH.stateReadThrottleMs`, 250ms). *This* is what sets cross-node
-   promptness.
+   promptness. Beside each date the row keeps `<table>@since` (`CST.sinceMark`), the earliest row stamp that
+   node's writes carried within the last two minutes, and a reload here reaches back to it -- so a row another
+   node committed long after stamping is not stepped over (issue #1256). `readState` leaves those entries out.
 3. **Nobody announced it** — a migration or a DBA. The `minRecheckMs` floor (30s, `KDR_TABLE_CACHE_MIN_RECHECK_MS`)
    is the backstop, not the promise.
 
@@ -168,8 +170,8 @@ snapshot every thread shares. The transaction's own writes are announced when it
 that reloads.
 
 **A write stays pending until a reload that began after it has completed** (`forceReload`, counted rather than
-flagged since #1256). A reader that finds its write still pending takes the cache's lock, which waits out a reload
-already in progress, rather than reading the snapshot from before it. Both halves of #1256 are pinned in
+flagged since #1256). A reader that finds a write still pending first waits out a reload already in progress
+-- without holding a pooled connection -- and asks again, rather than reading the snapshot from before it. Both halves of #1256 are pinned in
 `SqlTableCacheTest` on one thread with two contexts; a regression shows up there, not only under load.
 
 Outside a request (a script, a background job), wrap work in `SqlTableCacheService.withMonitoring(cxt) { ... }`

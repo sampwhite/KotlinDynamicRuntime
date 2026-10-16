@@ -29,10 +29,25 @@ class SqlSession(val sqlDb: SqlDatabase) {
     var inTran: Boolean = false
 
     /**
-     * The writes made inside the open transaction, waiting to be announced to the [SqlWriteListener]s when it
+     * The tables written inside the open transaction, waiting to be announced to the [SqlWriteListener]s when it
      * commits (issue #1256), and dropped when it rolls back. Empty outside a transaction.
+     *
+     * One entry per table, however many statements wrote it, holding the **earliest** stamp among them: a
+     * transaction writing ten thousand rows announces each table it touched once, not each row. The entry keeps
+     * the context of the first write to the table, whose request monitor carries the announcement to other nodes --
+     * a transaction is one request's work, so its writes share that monitor.
      */
-    val pendingWrites: MutableList<PendingWrite> = mutableListOf()
+    val pendingWrites: MutableMap<String, PendingWrite> = LinkedHashMap()
+
+    /** Adds a write to [pendingWrites]: a table first written here, or an earlier stamp for one already pending. */
+    fun notePendingWrite(cxt: KdrCxt, tableNames: List<String>, changedSince: Instant) {
+        for (tableName in tableNames) {
+            val held = pendingWrites[tableName]
+            if (held == null || changedSince < held.changedSince) {
+                pendingWrites[tableName] = PendingWrite(held?.cxt ?: cxt, tableName, changedSince)
+            }
+        }
+    }
 
     val preparedStatements: MutableMap<String, SqlBoundStatement> = HashMap()
 
@@ -115,5 +130,5 @@ class SqlSession(val sqlDb: SqlDatabase) {
     }
 }
 
-/** A committed-to-be write held by [SqlSession.pendingWrites]: who wrote it, to which tables, stamped from when. */
-class PendingWrite(val cxt: KdrCxt, val tableNames: List<String>, val changedSince: Instant)
+/** A table written in an open transaction, held by [SqlSession.pendingWrites]: who wrote it first, and the earliest stamp. */
+class PendingWrite(val cxt: KdrCxt, val tableName: String, val changedSince: Instant)

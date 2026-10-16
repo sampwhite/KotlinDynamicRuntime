@@ -17,6 +17,13 @@ object CST {
 
     /** The single collection every cache registers into. */
     const val defaultCacheId = "StdTableCaches"
+
+    /**
+     * Marks a [cacheState] entry holding, for the table before it, the earliest row stamp a recent announcement
+     * carried (issue #1256): `GedraData@since`. A peer reloading because of the table's date reaches back to it,
+     * so a row committed long after it was stamped is not stepped over. Kept within [TCH.potentialLagMs].
+     */
+    const val sinceMark = "@since"
 }
 
 /**

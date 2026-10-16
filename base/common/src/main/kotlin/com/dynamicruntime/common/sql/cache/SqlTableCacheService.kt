@@ -182,17 +182,20 @@ class SqlTableCacheService : ServiceInitializer {
         val cacheList = getSortedCaches()
         if (cacheList.isEmpty()) return // nothing registered: do not even read the state row
         val nowMs = cxt.instanceNow().toEpochMilliseconds()
-        val reported = if (nowMs - lastStateReadMs >= TCH.stateReadThrottleMs) {
+        val row = if (nowMs - lastStateReadMs >= TCH.stateReadThrottleMs) {
             lastStateReadMs = nowMs
-            dbQueryState(cxt)
+            dbQueryStateRow(cxt)
         } else {
-            emptyMap()
+            null
         }
+        val reported = readState(row)
+        // How far back another node's writes ask a reload to look (issue #1256); see [CST.sinceMark].
+        val since = readSince(row)
         val floor = cxt.instanceNow() - minRecheckMs.milliseconds
         for (cache in cacheList) {
             val date = reported[cache.params.tableName]
             val compareDate = if (date != null && date > floor) date else floor
-            cache.checkLoadCache(cxt, compareDate)
+            cache.checkLoadCache(cxt, compareDate, since[cache.params.tableName])
         }
     }
 
@@ -228,9 +231,13 @@ class SqlTableCacheService : ServiceInitializer {
     class ChangeMonitor {
         val changedTables: MutableList<String> = CopyOnWriteArrayList()
 
-        /** Adds [tableName] if not already recorded (atomic, so two threads cannot double-add). */
-        fun checkAdd(tableName: String) {
+        /** Per changed table, the earliest row stamp its writes carried (issue #1256), for [CST.sinceMark]. */
+        val earliestStamps: MutableMap<String, Instant> = ConcurrentHashMap()
+
+        /** Adds [tableName] if not already recorded (atomic, so two threads cannot double-add), and its stamp. */
+        fun checkAdd(tableName: String, changedSince: Instant? = null) {
             (changedTables as CopyOnWriteArrayList<String>).addIfAbsent(tableName)
+            changedSince?.let { stamp -> earliestStamps.merge(tableName, stamp) { held, given -> minOf(held, given) } }
         }
     }
 
@@ -285,7 +292,7 @@ class SqlTableCacheService : ServiceInitializer {
         // Advance the node-wide change generation, which is what invalidates every context's refresh memo --
         // including a parent context whose sub-context did the writing (see [changeGeneration]).
         changeGeneration.incrementAndGet()
-        (cxt.locals[TCH.monitorKey] as? ChangeMonitor)?.checkAdd(tableName)
+        (cxt.locals[TCH.monitorKey] as? ChangeMonitor)?.checkAdd(tableName, changedSince)
     }
 
     /**
@@ -317,22 +324,25 @@ class SqlTableCacheService : ServiceInitializer {
     fun publishChanges(cxt: KdrCxt, monitor: ChangeMonitor) {
         if (isDisabled || monitor.changedTables.isEmpty()) return
         val now = cxt.instanceNow()
-        dbMergeState(cxt, monitor.changedTables.associateWith { now })
+        dbMergeState(cxt, monitor.changedTables.associateWith { now }, monitor.earliestStamps)
     }
 
     // --- the shared state row -----------------------------------------------
 
     /** Reads the cache-state row: cached table name -> when it was last changed. Empty when there is no row. */
-    fun dbQueryState(cxt: KdrCxt): Map<String, Instant> {
+    fun dbQueryState(cxt: KdrCxt): Map<String, Instant> = readState(dbQueryStateRow(cxt))
+
+    /** The cache-state row as stored, or null when there is none: what [readState] and [readSince] decode. */
+    fun dbQueryStateRow(cxt: KdrCxt): Map<String, Any?>? {
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, TOPIC.instance)
         // tranOrNull, not tranFor: a topic that has not been initialized yet is an ordinary "nothing to read"
         // here, and was before this table shared a topic with another transactional one.
-        val query = sqlCxt.sqlTopic?.tranOrNull(CST.kdrCacheState)?.queryLock ?: return emptyMap()
+        val query = sqlCxt.sqlTopic?.tranOrNull(CST.kdrCacheState)?.queryLock ?: return null
         var row: Map<String, Any?>? = null
         sqlCxt.sqlDb.withSession(cxt) {
             row = sqlCxt.sqlDb.queryOneStatement(cxt, query, mapOf(CST.cacheId to CST.defaultCacheId))
         }
-        return readState(row)
+        return row
     }
 
     /**
@@ -346,7 +356,10 @@ class SqlTableCacheService : ServiceInitializer {
      * other nodes nothing -- the lagging node's change would wait for their [minRecheckMs] floor. An
      * announcement means "the table changed *again*", which is an ordering fact, not a clock reading.
      */
-    fun dbMergeState(cxt: KdrCxt, state: Map<String, Instant>): Map<String, Instant> {
+    fun dbMergeState(cxt: KdrCxt, state: Map<String, Instant>, since: Map<String, Instant> = emptyMap()): Map<String, Instant> {
+        // A stamp older than this is dropped: past it a peer would not reach back anyway ([TCH.potentialLagMs]),
+        // and keeping it would grow the row by one entry per table ever written.
+        val window = cxt.instanceNow() - TCH.potentialLagMs.milliseconds
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, TOPIC.instance)
         sqlCxt.sqlDb.withSession(cxt) {
             // Names its lock table: TOPIC.instance also holds the instance-config table, and locking that one
@@ -361,17 +374,26 @@ class SqlTableCacheService : ServiceInitializer {
                     val existing = merged[table]
                     merged[table] = if (existing != null && existing >= date) existing + 1.milliseconds else date
                 }
-                sqlCxt.tranData[CST.cacheState] = merged.mapValues { it.value.formatDate() }
+                // The earliest stamp within the window wins: a later announcement must not hide an earlier one a
+                // peer has not reloaded for yet (issue #1256).
+                val mergedSince = readSince(sqlCxt.tranData).filterValues { it > window }.toMutableMap()
+                for ((table, stamp) in since) {
+                    val existing = mergedSince[table]
+                    mergedSince[table] = if (existing != null && existing < stamp) existing else stamp
+                }
+                sqlCxt.tranData[CST.cacheState] = merged.mapValues { it.value.formatDate() } +
+                    mergedSince.map { (table, stamp) -> "$table${CST.sinceMark}" to stamp.formatDate() }
             }
         }
         return readState(sqlCxt.tranData)
     }
 
-    /** Decodes the stored state map, skipping any entry that is not a readable date. */
+    /** Decodes the stored state map, skipping any entry that is not a readable date, and the [CST.sinceMark] ones. */
     fun readState(row: Map<String, Any?>?): Map<String, Instant> {
         val stored = row?.get(CST.cacheState).toJsonMapOrEmpty()
         val result = LinkedHashMap<String, Instant>(stored.size)
         for ((key, value) in stored) {
+            if (key.endsWith(CST.sinceMark)) continue
             // The column is a free-form map, so an entry that is not a date is skipped rather than fatal: a
             // future use of this row for something else must not be able to stop the caches refreshing.
             val date = value.toOptInstantOrNull() ?: continue
@@ -379,6 +401,13 @@ class SqlTableCacheService : ServiceInitializer {
         }
         return result
     }
+
+    /** The [CST.sinceMark] entries of the stored state map: per table, the earliest recent row stamp (issue #1256). */
+    fun readSince(row: Map<String, Any?>?): Map<String, Instant> =
+        row?.get(CST.cacheState).toJsonMapOrEmpty().entries
+            .filter { it.key.endsWith(CST.sinceMark) }
+            .mapNotNull { (key, value) -> value.toOptInstantOrNull()?.let { key.removeSuffix(CST.sinceMark) to it } }
+            .toMap()
 
     // --- what state the caches are in ---------------------------------------
 

@@ -182,23 +182,17 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     /**
      * Reloads if there is reason to. [compareDate] is the caller's evidence about when the table last
      * changed -- from the shared state row for an attached cache, or simply *now* for a detached one. A
-     * reload is skipped when the cache has already queried past that point.
+     * reload is skipped when the cache has already queried past that point. [peerSince] is the earliest row
+     * stamp other nodes' recent writes carried ([CST.sinceMark]); a reload that runs reaches back to it.
      */
-    fun checkLoadCache(cxt: KdrCxt, compareDate: Instant) {
+    fun checkLoadCache(cxt: KdrCxt, compareDate: Instant, peerSince: Instant? = null) {
         // The cheap answer first, on volatile fields alone. The common case by far is "nothing to do", and
         // deciding that must not cost a pooled connection: taking the session first (required below, for lock
         // ordering) meant every no-op check consumed a checkout, so under pool pressure a pure cache hit could
         // block or fail on a connection it was never going to use. `shouldLoad` re-checks under the lock; the
         // clock-jump case (a gap past the tolerance) deliberately falls through to the locked path, which
         // owns the reset.
-        if (!forceReload) {
-            val checkFrom = checkQueryFromDate
-            if (checkFrom != null && checkFrom > compareDate &&
-                checkFrom.toEpochMilliseconds() - compareDate.toEpochMilliseconds() <= TCH.timeJumpToleranceMs
-            ) {
-                return
-            }
-        }
+        if (isCurrentFor(compareDate)) return
         // Never reload from inside an open transaction: the query would run on the caller's own connection
         // and read its uncommitted rows into a snapshot every thread sees -- and a rollback would strand them
         // there, since the committed row's older updatedAt is never re-read. The transaction's own writes are
@@ -206,17 +200,36 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         if (SqlSession.get(cxt)?.inTran == true) {
             return
         }
+        // A write is pending and a reload is running, which may well be the one that covers it (issue #1256). Wait
+        // it out *without* a pooled connection -- a reader holding one while it waits starves the pool for the
+        // writers -- and ask again: usually the reload that finished has covered the write, and no query is needed.
+        // Waiting holds nothing, so it cannot deadlock against the reload, which took its connection first.
+        if (refreshLock.isLocked) {
+            refreshLock.withLock { }
+            if (isCurrentFor(compareDate)) return
+        }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, params.topic)
         val tranStartTime = cxt.instanceNow()
         // Take the database session *before* the refresh lock, never the other way round: the reverse order
         // deadlocks a busy pool, with the lock holder waiting for a connection that a thread waiting for the
         // lock is holding.
         sqlCxt.sqlDb.withSession(cxt) {
-            refreshLock.withLock { loadUnderLock(cxt, sqlCxt, tranStartTime, compareDate) }
+            refreshLock.withLock { loadUnderLock(cxt, sqlCxt, tranStartTime, compareDate, peerSince) }
         }
     }
 
-    private fun loadUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, tranStartTime: Instant, compareDate: Instant) {
+    /**
+     * Whether a reload can be skipped on volatile fields alone: no local write is pending, and this cache has
+     * already queried past [compareDate] (within the clock-jump tolerance, past which the locked path resets).
+     */
+    private fun isCurrentFor(compareDate: Instant): Boolean {
+        if (forceReload) return false
+        val checkFrom = checkQueryFromDate ?: return false
+        return checkFrom > compareDate &&
+            checkFrom.toEpochMilliseconds() - compareDate.toEpochMilliseconds() <= TCH.timeJumpToleranceMs
+    }
+
+    private fun loadUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, tranStartTime: Instant, compareDate: Instant, peerSince: Instant?) {
         // The writes this pass will cover: those announced before it queries, so committed before it reads.
         val requested = requestedLoads.get()
         val wasForced = completedLoads < requested
@@ -230,6 +243,9 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         // Taken after [requested], never before: a write announced in between is a number this pass does not
         // cover, so another pass runs for it, and the stamp it leaves is either taken here (this query, which
         // starts after it committed, reads its row) or left for that pass.
+        // Another node's write, committed late, reaches back the same way (issue #1256): its stamp comes through
+        // the shared state row. Only within [TCH.potentialLagMs], as the drift fallback is bounded.
+        peerSince?.takeIf { it > now - TCH.potentialLagMs.milliseconds }?.let { reachBackAtLeastTo(it) }
         val reachBack = reachBackTo.getAndSet(null)
         if (reachBack != null) {
             val start = reachBack - TCH.expectedMaxDriftMs.milliseconds
