@@ -453,6 +453,75 @@ class ClientFileRefsTest : StringSpec({
         static(admin, name).rptStatusCode shouldBe EXC.ok
     }
 
+    // Issue #1188: what a draft removed is still served, so it is listed, previewed from what is served, and can be
+    // put back -- as it is published, with nothing uploaded again.
+    "a ref a draft removed is listed as such, previewed from what is served, and a restore puts it back" {
+        val client = "refrestore"
+        defineClient(client)
+        val admin = adminOf(client)
+        uploaded(admin, "logo", image(png), description = "The logo.")
+        uploaded(admin, "kept", image(otherPng))
+        val published = storedRefs(client).single { it[CCT.refId] == "logo" }
+        // A client with no sandbox runs what it is shown: there is nothing of its to put back.
+        admin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "logo"))[EP.errorMessage].toString() shouldContain "has no sandbox"
+
+        admin.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        val sandbox = sandboxOf(client)
+        val inSandbox = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = sandbox)
+        val removed = admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo", FREF.mode to EDM.draft))
+        removed[FREF.mode] shouldBe EDM.draft
+        // The answer is the row as the listing now draws it, not a row gone.
+        removed[FREF.ref].toJsonMapOrEmpty().let {
+            it[FREF.removedInDraft] shouldBe true
+            it[FREF.live] shouldBe true
+            it[CCT.description] shouldBe "The logo."
+        }
+        for (user in listOf(admin, inSandbox)) {
+            listed(user).getValue("logo")[FREF.removedInDraft] shouldBe true
+            listed(user).getValue("kept").containsKey(FREF.removedInDraft) shouldBe false
+            // In the place it had, so a page that drew it there at once does not see it move on the next read.
+            user.getItems(UADEP.clientFiles).map { it[CCT.refId] } shouldBe listOf("logo", "kept")
+        }
+        // What the sandbox shows has no such ref; what the client's people are served does.
+        admin.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(CCT.refId to "logo")).rptStatusCode shouldBe EXC.notFound
+        admin.client.sendGetRequest(UADEP.clientFilesDownload, mapOf(CCT.refId to "logo", FREF.served to true)).rptResponseBytes!!.toList() shouldBe png.toList()
+        admin.getItem(UADEP.clientFilesDownloadMeta, mapOf(CCT.refId to "logo", FREF.served to true))[FMETA.hash] shouldBe png.sha256Hex()
+
+        // Only a removed one is put back: not one the draft still holds, nor one nobody is served.
+        admin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "kept"))[EP.errorMessage].toString() shouldContain "still holds"
+        admin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "ghost"))[EP.errorMessage].toString() shouldContain "served no file ref 'ghost'"
+
+        // Put back from the sandbox's own page: the entry as it is published, a draft, an ordinary row again.
+        val restored = inSandbox.postData(UADEP.clientFilesRestore, mapOf(CCT.refId to "logo", FREF.mode to EDM.draft))
+        restored[FREF.mode] shouldBe EDM.draft
+        restored[FREF.ref].toJsonMapOrEmpty().containsKey(FREF.removedInDraft) shouldBe false
+        restored[FREF.ref].toJsonMapOrEmpty()[FREF.live] shouldBe true
+        storedRefs(client).single { it[CCT.refId] == "logo" } shouldBe published
+        listed(admin).getValue("logo").containsKey(FREF.removedInDraft) shouldBe false
+        static(inSandbox, "logo").rptResponseBytes!!.toList() shouldBe png.toList()
+
+        // Removed again and published, it is gone: nobody is served it.
+        admin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
+        svc.publish(cxt.mkSubContext("publish", client).also { it.userId = 11531L }, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        GedraConfigReload.reloadClient(cxt, client)
+        listed(admin).keys shouldBe setOf("kept")
+    }
+
+    "a restore is a ref more in the draft, refused for one already holding as many as a client is served" {
+        val full = "refrestorefull"
+        defineClient(full)
+        val fullAdmin = adminOf(full)
+        uploaded(fullAdmin, "logo", image(png))
+        fullAdmin.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        fullAdmin.postData(UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
+        val hash = plant(full, otherPng)
+        svc.writeConfig(writerOf(full), gedraConfig(cxt, "many", clientNamespace(full), full) { for (n in 1..FREF.maxRefs) fileRef("r$n", hash) })
+        GedraConfigReload.reloadClient(cxt, full)
+        // Said before anything is tried, in the words every change at the limit is told.
+        fullAdmin.expectError(EXC.badInput, UADEP.clientFilesRestore, mapOf(CCT.refId to "logo"))[EP.errorMessage].toString() shouldBe
+            "Client '$full' has ${FREF.maxRefs} file refs, which is as many as a client is served. Remove one first."
+    }
+
     "an entry typed into the configuration is held to what an upload writes" {
         val client = "reftyped"
         defineClient(client)

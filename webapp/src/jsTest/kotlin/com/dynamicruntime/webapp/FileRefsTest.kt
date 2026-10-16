@@ -31,9 +31,10 @@ class FileRefsTest {
         refId: String = "logo", source: String = FREF.sourceStore, root: String? = null, path: String? = null,
         live: Boolean = true, stored: Boolean = true, missing: Boolean = false, nameless: Boolean = false,
         file: WebAssetFile? = pngFile, by: String? = "Chief One", description: String? = null, configName: String? = "copy",
+        removedInDraft: Boolean = false,
     ) = FileRefView(
         refId, source, root, path, hash.takeIf { !nameless }, "$refId:$hash".takeIf { !nameless }, description, configName,
-        live, stored, missing, file.takeIf { !missing }, by,
+        live, stored, missing, file.takeIf { !missing }, by, removedInDraft = removedInDraft,
     )
 
     private val takes = FileRefTakes(2 * 1024 * 1024, listOf("image/png", "image/svg+xml"), listOf("PNG", "SVG", "ICO", "JPEG", "WebP"), 200, emptyList())
@@ -171,15 +172,15 @@ class FileRefsTest {
         )
         val drafts = fileRefsIntro(null, hasSandbox = true, staticHere = false)
         assertTrue(drafts.contains("a change here is a draft"))
-        // The list is the sandbox's view, and a file removed as a draft is not in it: said, since the list cannot.
-        assertTrue(drafts.contains("What is listed is what the sandbox shows: the client's latest configuration, drafts included."))
-        assertTrue(drafts.contains("A file removed as a draft is not listed, though the client's people are served it until that is published."))
+        // The list is the sandbox's view, and a file removed as a draft is in it too, marked (issue #1188).
+        assertTrue(drafts.contains("What is listed is what the sandbox shows: the client's latest configuration, drafts included"))
+        assertTrue(drafts.contains("a file removed as a draft, which the client's people are served until that is published, marked so and offered to be put back."))
         assertTrue(drafts.contains("from the stored configuration below"))
 
         val inSandbox = fileRefsIntro("acme", hasSandbox = false, staticHere = false)
         assertTrue(inSandbox.startsWith("The files of acme's sandbox."))
         assertTrue(inSandbox.contains("acme's latest configuration, drafts included"))
-        assertTrue(inSandbox.contains("though acme's people are served it"))
+        assertTrue(inSandbox.contains("which acme's people are served until that is published"))
         assertTrue(inSandbox.endsWith("A change made here is a draft of acme's, and goes live for its people once that is published."))
         // A sandbox's page is a sandbox's page whatever else its row says.
         assertEquals(inSandbox, fileRefsIntro("acme", hasSandbox = true, staticHere = false))
@@ -375,6 +376,15 @@ class FileRefsTest {
             "Removed 'logo'. A draft: the sandbox shows the change, and the client's people keep what they have until it is published.",
             fileRefRemovedNote(FileRefChange("logo", "copy", EDM.draft, null)),
         )
+        // From a draft, a ref the client's people are served stays, marked: the note says so, not "removed" outright.
+        assertEquals(
+            "Removed 'logo' from the draft. The client's people are served it until the configuration is published; until then it can be put back.",
+            fileRefRemovedNote(FileRefChange("logo", "copy", EDM.draft, ref(removedInDraft = true))),
+        )
+        assertEquals(
+            "Put 'logo' back, in copy, as the client's people are served it. Saved as a draft: the client's sandbox shows it, and it goes live once published.",
+            fileRefRestoredNote(FileRefChange("logo", "copy", EDM.draft, ref())),
+        )
         // Still there after a removal and held by no stored configuration: the image the client was shipped with.
         val revealed = FileRefChange("logo", "copy", EDM.live, ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", stored = false))
         assertEquals("Removed the upload of 'logo': the image the client was shipped with is shown again.", fileRefRemovedNote(revealed))
@@ -383,6 +393,28 @@ class FileRefsTest {
             "Removed one entry of 'logo'; another configuration, art, still holds one.",
             fileRefRemovedNote(FileRefChange("logo", "copy", EDM.live, ref(configName = "art"))),
         )
+    }
+
+    // Issue #1188: a ref a draft removed is a row of its own kind -- marked, previewed from what its people are
+    // served, and offered only to be put back.
+    @Test
+    fun aRefRemovedInADraftIsMarkedPreviewedFromWhatIsServedAndOnlyPutBack() {
+        val items = listOf(mapOf(CCT.refId to "logo", CCT.hash to hash, FREF.live to true, FREF.stored to true, FREF.removedInDraft to true))
+        val removed = parseFileRefs(items).single()
+        assertTrue(removed.removedInDraft)
+        assertFalse(parseFileRefs(listOf(mapOf(CCT.refId to "logo"))).single().removedInDraft)
+
+        assertEquals(listOf("Removed in draft"), fileRefTags(ref(removedInDraft = true)))
+        assertFalse(fileRefRemovable(ref(removedInDraft = true)))
+        assertTrue(fileRefRestorable(ref(removedInDraft = true)))
+        assertTrue(fileRefRemovable(ref()))
+        assertFalse(fileRefRestorable(ref()))
+        assertEquals(
+            mapOf(FREF.client to "acme", CCT.refId to "logo", CCT.hash to hash, FREF.served to true),
+            fileRefPreviewArgs("acme", ref(removedInDraft = true)),
+        )
+        assertTrue(fileRefRemovedInDraftText(ref(removedInDraft = true))!!.contains("served it until the configuration is published"))
+        assertNull(fileRefRemovedInDraftText(ref()))
     }
 
     @Test
@@ -395,6 +427,11 @@ class FileRefsTest {
         // A removal that reveals a shipped ref keeps the row, as the shipped one.
         val shipped = ref("logo", source = FREF.sourceLocal, stored = false)
         assertEquals(listOf(false, true), withFileRefChange(refs, FileRefChange("logo", "copy", EDM.live, shipped))!!.map { it.stored })
+        // A removal from a draft answers the row as it now is -- marked, not gone -- so it stays where it was.
+        assertEquals(
+            listOf(true, false),
+            withFileRefChange(refs, FileRefChange("logo", "copy", EDM.draft, ref("logo", removedInDraft = true)))!!.map { it.removedInDraft },
+        )
         // Nothing listed yet: nothing to redraw.
         assertNull(withFileRefChange(null, FileRefChange("logo", "copy", EDM.live, replaced)))
     }

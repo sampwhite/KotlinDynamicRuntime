@@ -41,7 +41,8 @@ external interface FileRefsSectionProps : Props {
  * **Unlike a web asset, a file ref is configuration**, so a change is live at once only for a client that runs its
  * latest: for one with a sandbox it is a draft the sandbox shows, and the section says which above the list
  * ([fileRefsIntro]) and again after each change. What is listed is then the sandbox's, each ref marked when the
- * client's own people are not served it yet. Every change is sent with how the page said it would take effect
+ * client's own people are not served it yet -- and after it the refs they are served that a draft removed (issue
+ * #1188), each marked so, previewed from what is served, and offered only **Put back**. Every change is sent with how the page said it would take effect
  * ([expectedMode]), and the backend refuses one the page called a draft that would be live: the page words a removal
  * from what it last read of the client, and a sandbox can go in between. Refused so ([saveConflict]), the page is
  * read again, and says how a change now takes effect.
@@ -292,7 +293,28 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         +hint
                     }
                 }
-                if (editable) {
+                fileRefRemovedInDraftText(ref)?.let { said ->
+                    div {
+                        className = ClassName("subtitle")
+                        +said
+                    }
+                }
+                if (editable && fileRefRestorable(ref)) {
+                    // A draft removed it: there is no entry in the draft to replace or reword, only one to put back.
+                    div {
+                        className = ClassName("web-asset-actions")
+                        Button {
+                            loading = busy == webAssetBusyKey(ref.refId, FACT.restore)
+                            disabled = busy != null && busy != webAssetBusyKey(ref.refId, FACT.restore)
+                            onClick = {
+                                run(ref.refId, FACT.restore, added = false, ::fileRefRestoredNote) {
+                                    ClientsApi.restoreFileRef(props.clientId, ref.refId, expected)
+                                }
+                            }
+                            +"Put back"
+                        }
+                    }
+                } else if (editable) {
                     div {
                         className = ClassName("web-asset-actions")
                         FilePickButton {

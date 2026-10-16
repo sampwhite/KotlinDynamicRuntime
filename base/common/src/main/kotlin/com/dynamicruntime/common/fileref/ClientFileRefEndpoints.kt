@@ -3,6 +3,7 @@ package com.dynamicruntime.common.fileref
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.InputFieldsBuilder
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.exception.EXC
@@ -35,7 +36,8 @@ import com.dynamicruntime.common.webasset.WebAssetCheck
  *
  * **What is listed is what the client's administrator is working on**: for a client with a sandbox, the sandbox's
  * refs -- the latest revision, drafts included -- each saying whether the client's own people are served it yet
- * ([FREF.live]); for any other client, simply its refs, all of them live. The listing answers the file store's
+ * ([FREF.live]), and after them the refs its people are served that a draft removed ([FREF.removedInDraft], issue
+ * #1188), which a restore puts back; for any other client, simply its refs, all of them live. The listing answers the file store's
  * record of each file and never the file. The download beside it is the file, for the page of a client that is not
  * the caller's own and for looking at a draft from outside the sandbox: the static address serves only the
  * caller's own client's, and only what that client runs.
@@ -66,6 +68,11 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             "Whether a stored configuration holds the ref's entry. False for a ref the client was shipped with, in " +
                 "source code: an upload overrides one, and it cannot be removed.",
             required = true,
+        ) { type = SCT.boolean }
+        property(
+            FREF.removedInDraft,
+            "True for a ref the client's own people are served that its latest configuration -- what its sandbox " +
+                "shows -- no longer holds: a draft removed it, and publishing will take it away. Absent otherwise.",
         ) { type = SCT.boolean }
         property(FREF.missing, "Whether there is no such file to serve, so the ref is answered as not found.", required = true) {
             type = SCT.boolean
@@ -126,7 +133,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         "A client's file refs (issues #1153, #1154): the named files its configuration holds, each with the record " +
             "of the file -- the file store's, or for a local file what the disk says of it -- and none of its content. For a client with a sandbox these are the " +
             "sandbox's -- the latest revision, drafts included -- each saying whether the client's own people are " +
-            "served it yet.",
+            "served it yet, and after them those its people are served that a draft removed (`${FREF.removedInDraft}`).",
         outputRef = FREF.refTypeName,
         // Bounded by the cap a write holds a client to.
         noLimit = true,
@@ -207,6 +214,26 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             c, client, request[CCT.refId].toOptStr().orEmpty(), request[CCT.description].toOptStr().orEmpty(), expectedModeOf(request),
         )
         changeItem(c, refs, described)
+    }
+
+    generalEndpoint(
+        UADEP.clientFilesRestore,
+        "Puts back, in a client's draft, a file ref a draft removed (issue #1188): the entry the client's own people " +
+            "are served, exactly as it is published -- the file it names, its description, and any fields this release " +
+            "does not read -- into the configuration that holds it. Only for a client with a sandbox, and a ref the " +
+            "listing marks `${FREF.removedInDraft}`; nothing is uploaded or named again.",
+        HttpMethod.POST,
+        outputRef = FREF.changeTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(FREF.client)
+            field(CCT.refId, "The ref to put back.", required = true)
+            expectedModeField()
+        },
+    ) { c, request ->
+        val refs = FileRefService.get(c)
+        val client = knownClient(c, request)
+        changeItem(c, refs, ClientFileRefEdit.restore(c, client, request[CCT.refId].toOptStr().orEmpty(), expectedModeOf(request)))
     }
 
     generalEndpoint(
@@ -297,6 +324,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
             overseenClientField(FREF.client)
             field(CCT.refId, "The ref whose file to fetch.", required = true)
             field(CCT.hash, "The hash of the file expected, from the listing; with it the address names the file and the answer may be kept.")
+            servedField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
@@ -319,6 +347,7 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
         inputFields = {
             overseenClientField(FREF.client)
             field(CCT.refId, "The ref whose file to describe.", required = true)
+            servedField()
         },
     ) { c, request ->
         val refs = FileRefService.get(c)
@@ -336,7 +365,17 @@ private class ShownRef(val client: String, val refId: String, val ref: FileRef?)
 private fun shownRef(cxt: KdrCxt, refs: FileRefService, request: Map<String, Any?>): ShownRef {
     val client = knownClient(cxt, request)
     val refId = request[CCT.refId].toOptStr().orEmpty()
-    return ShownRef(client, refId, refs.forClient(refs.shownAs(cxt, client)).refs[refId])
+    val registry = if (request[FREF.served] == true) configOwnerOf(client) else refs.shownAs(cxt, client)
+    return ShownRef(client, refId, refs.forClient(registry).refs[refId])
+}
+
+/** The download's and the meta read's [FREF.served]: what a ref removed in a draft is previewed by (issue #1188). */
+private fun InputFieldsBuilder.servedField() {
+    field(
+        FREF.served,
+        "True for the file the client's own people are served under the ref's id, rather than the one the listing " +
+            "shows: how a ref a draft removed is previewed, since the sandbox's latest configuration has none.",
+    ) { type = SCT.boolean }
 }
 
 /** The client a call acts on: the one it may ([overseenClient]), and one this node knows. */
@@ -348,15 +387,41 @@ private fun knownClient(cxt: KdrCxt, request: Map<String, Any?>): String =
  * each marked by whether the client's own registry serves the same file under that id.
  */
 fun listedRefs(cxt: KdrCxt, refs: FileRefService, client: String): List<Map<String, Any?>> {
-    val running = refs.forClient(configOwnerOf(client)).refs
-    return refs.forClient(refs.shownAs(cxt, client)).refs.values.map { refItem(cxt, refs, it, running[it.refId]?.def?.pointer == it.def.pointer) }
+    val owner = configOwnerOf(client)
+    val running = refs.forClient(owner).refs
+    val shownAs = refs.shownAs(cxt, client)
+    val shown = refs.forClient(shownAs).refs
+    val listed = shown.values.map { it.refId to refItem(cxt, refs, it, running[it.refId]?.def?.pointer == it.def.pointer) }
+    if (shownAs == owner) return listed.map { it.second }
+    // What a draft removed is still served, until a publish: listed from the client's own registry. Not one the draft
+    // still stores and its load left out, which no restore may write over (the client's issues say why it is left out).
+    val stored = ClientFileRefEdit.storedRefIds(cxt.mkSubContext("listRefs", owner), owner)
+    val removed = running.values.filter { it.refId !in shown && it.refId !in stored }
+        .map { it.refId to refItem(cxt, refs, it, live = true, removedInDraft = true) }
+    return inServedOrder(listed, removed, running.keys.toList()).map { it.second }
+}
+
+/**
+ * [listed] with each of [removed] placed after the row it follows among the refs the client is served ([servedOrder]),
+ * or first when none listed does -- so a ref removed in a draft keeps the place it had, and a page that draws it there
+ * at once does not see it move when the listing is read again.
+ */
+private fun <T> inServedOrder(listed: List<Pair<String, T>>, removed: List<Pair<String, T>>, servedOrder: List<String>): List<Pair<String, T>> {
+    val out = listed.toMutableList()
+    for (row in removed) {
+        val before = servedOrder.subList(0, servedOrder.indexOf(row.first).coerceAtLeast(0)).toSet()
+        val at = out.indexOfLast { it.first in before }
+        out.add(at + 1, row)
+    }
+    return out
 }
 
 /**
  * One ref as the listing answers it; [live] is whether the client's own people are served the same file under its
- * id -- the same pointer, which for a local file is the same root and path, whatever the file now holds.
+ * id -- the same pointer, which for a local file is the same root and path, whatever the file now holds -- and
+ * [removedInDraft] that it is one of theirs a draft removed ([FREF.removedInDraft]).
  */
-fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean): Map<String, Any?> {
+fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean, removedInDraft: Boolean = false): Map<String, Any?> {
     // Asked even for a ref the load found missing: the file may have arrived since. A store that cannot be asked
     // fails the listing, rather than have it say of every file that it is missing.
     val meta = refs.metaOf(cxt, ref)
@@ -374,6 +439,7 @@ fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean): Map
         ref.def.description?.let { put(CCT.description, it) }
         ref.def.configName?.let { put(FREF.configName, it) }
         put(FREF.live, live)
+        if (removedInDraft) put(FREF.removedInDraft, true)
         put(FREF.stored, ref.def.stored)
         put(FREF.missing, meta == null)
         // Read from the template's directory, its default (issue #1180): the record says whose file it is.
@@ -385,12 +451,20 @@ fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean): Map
     }
 }
 
-/** What a change answers: where it landed, and the ref as its administrator is now shown it (none, once removed). */
+/**
+ * What a change answers: where it landed, and the ref as its administrator is now shown it -- as the listing would
+ * show it: none once removed, or, removed in a draft while its people are still served it, that row
+ * ([FREF.removedInDraft], issue #1188).
+ */
 private fun changeItem(cxt: KdrCxt, refs: FileRefService, result: ClientFileRefEdit.Result): Map<String, Any?> = buildMap {
     put(FREF.client, result.client)
     put(CCT.refId, result.refId)
     put(FREF.configName, result.configName)
     put(FREF.mode, result.mode)
     val running = refs.forClient(result.client).refs[result.refId]
-    refs.forClient(result.shownAs).refs[result.refId]?.let { put(FREF.ref, refItem(cxt, refs, it, running?.def?.pointer == it.def.pointer)) }
+    val shown = refs.forClient(result.shownAs).refs[result.refId]
+    when {
+        shown != null -> put(FREF.ref, refItem(cxt, refs, shown, running?.def?.pointer == shown.def.pointer))
+        running != null && result.shownAs != result.client -> put(FREF.ref, refItem(cxt, refs, running, live = true, removedInDraft = true))
+    }
 }

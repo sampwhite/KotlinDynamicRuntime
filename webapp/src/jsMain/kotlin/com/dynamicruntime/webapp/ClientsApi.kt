@@ -1159,6 +1159,15 @@ object ClientsApi {
         )
 
     /**
+     * Puts back, in [clientId]'s draft, the ref [refId] a draft removed (issue #1188): the entry its people are served,
+     * as it is published. Only for a ref the listing marks removed in a draft.
+     */
+    suspend fun restoreFileRef(clientId: String, refId: String, expected: String): FileRefChange =
+        fileRefChangeOf(
+            Http.sendApi("POST", UADEP.clientFilesRestore, mapOf(FREF.client to clientId, CCT.refId to refId, FREF.mode to expected)),
+        )
+
+    /**
      * Makes [description] what [clientId]'s ref [refId] says it is for, a blank one clearing it; the file is as it
      * was. Only for a ref a stored configuration holds.
      */
