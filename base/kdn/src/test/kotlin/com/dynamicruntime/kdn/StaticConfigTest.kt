@@ -8,9 +8,12 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.ClientFileRefEdit
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.ClientAudience
 import com.dynamicruntime.common.gedra.ClientConfigIssues
 import com.dynamicruntime.common.gedra.ClientDef
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.ClientStatus
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GCEL
 import com.dynamicruntime.common.gedra.GedraConfig
@@ -20,8 +23,11 @@ import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
+import com.dynamicruntime.common.gedra.overviewRow
+import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.startup.ComponentDefinition
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.sha256Hex
 import io.kotest.assertions.throwables.shouldThrow
@@ -30,6 +36,27 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+
+/** A static client with a sandbox (issue #1192): what a sandbox of a client static in production is told. */
+class StaticSandboxClientComponent : ComponentDefinition {
+    override val providerName: String = "staticSandboxClientFixture"
+    override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> = listOf(
+        gedraConfig(cxt, "staticSandbox", clientNamespace(clientId), clientId) {
+            defineClient(
+                ClientDef(
+                    clientId = clientId, name = "Static with a sandbox", usageType = ClientUsageType.production,
+                    audience = ClientAudience.internal, enabledEnvironments = setOf(ENV.unit, ENV.local, ENV.prod),
+                    staticConfig = true, sandbox = true,
+                ),
+            )
+        },
+    )
+
+    @Suppress("ConstPropertyName")
+    companion object {
+        const val clientId = "staticsbx"
+    }
+}
 
 /**
  * A `staticConfig` client takes nothing from the database **in production** (issue #824): a write of its stored
@@ -114,6 +141,19 @@ class StaticConfigTest : StringSpec({
         upload.code shouldBe EXC.badInput
         upload.message.shouldNotBeNull() shouldContain "so it takes no file ref here"
         FileStoreService.get(prod).get(bound(prod), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldBeNull()
+    }
+
+    // A sandbox's configuration is its parent's, so a sandbox of a client static in production is static there too:
+    // its page offers no changes (#1176's review, issue #1192). Outside production neither is.
+    "a sandbox of a client static in production is static there, as its parent is" {
+        val sandbox = sandboxOf(StaticSandboxClientComponent.clientId)
+        fun staticHere(cxt: KdrCxt, client: String) = overviewRow(cxt, client, client, ClientStatus.present)[CLD.staticHere]
+        val prod = Startup.mkBootCxt("staticSandboxProd", "staticSandboxProdTest", overlay(ENV.prod), listOf(StaticSandboxClientComponent()))
+        ClientService.get(prod).isPresent(sandbox) shouldBe true
+        staticHere(prod, StaticSandboxClientComponent.clientId) shouldBe true
+        staticHere(prod, sandbox) shouldBe true
+        val unit = Startup.mkTestBootCxt("staticSandboxUnit", "staticSandboxUnitTest", overlay(ENV.unit), listOf(StaticSandboxClientComponent()))
+        staticHere(unit, sandbox) shouldBe false
     }
 
     // Only a source definition may set it: a stored one claiming it would describe a client with no definition at

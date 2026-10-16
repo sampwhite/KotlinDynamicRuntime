@@ -6,17 +6,22 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.gedra.CCT
 import com.dynamicruntime.common.gedra.ClientStoredEdit
+import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraConfigRow
 import com.dynamicruntime.common.gedra.GedraConfigService
-import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.storedConfigCheckMode
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.util.byteSizeText
 import com.dynamicruntime.common.util.sha256Hex
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WebAssetCheck
+import kotlin.time.Instant
 
 /**
  * Changing a client's file refs from the API (issues #1153, #1164, #1176): uploading a file as a named ref, naming a
@@ -373,17 +378,37 @@ object ClientFileRefEdit {
         return goLive(cxt, target, written, refId, undo = { patchEntry(svc, bound, written, refId, null) })
     }
 
-    /**
-     * The ids of the refs [client]'s stored configurations hold, as their latest revisions stand -- every entry,
-     * including one a load left out. What a listing asks before it calls a served ref removed in a draft (issue #1188).
-     */
-    fun storedRefIds(bound: KdrCxt, client: String): Set<String> =
-        GedraConfigService.get(bound).listConfigs(bound).filter { it.client == client }
-            .flatMap { row -> row.entriesBySlot()[CCT.fileRefDef].orEmpty().mapNotNull { it[CCT.refId].toOptStr() } }.toSet()
+    /** A ref's entry as a client's stored configuration holds it: where, and the stamp of its last change. */
+    class HeldRef(val configName: String, val updatedAt: Instant?, val updatedBy: Long?)
 
-    /** The stored config of [client]'s that holds the ref [refId], or null when none does. */
+    /**
+     * The ref entries [client]'s stored configurations hold, as their latest revisions stand, by id (issues #1188,
+     * #1192): every entry, including one a load left out, and for an id held twice, the one a load keeps -- of the
+     * configuration whose id sorts first, as a load orders them. So "may this row be removed" and "which entry a removal
+     * changes" are asked of one answer: what a listing says a row may do is what the write would do.
+     */
+    fun heldRefs(bound: KdrCxt, client: String): Map<String, HeldRef> {
+        val out = LinkedHashMap<String, HeldRef>()
+        for (row in holdingOrder(bound, client)) {
+            for (entry in row.entries) {
+                if (entry[GE.traitId].toOptStr() != CCT.fileRefDef) continue
+                val refId = entry[GE.data].toJsonMapOrEmpty()[CCT.refId].toOptStr() ?: continue
+                out.putIfAbsent(refId, HeldRef(row.configId.baseId, entry[GE.updatedAt].toOptInstant(), entry[GE.updatedBy].toOptLong()))
+            }
+        }
+        return out
+    }
+
+    /**
+     * [client]'s stored configurations in the order a load reads their refs (`FileRefService`): by configuration
+     * id. So of two holding one id, the one changed is the one served.
+     */
+    private fun holdingOrder(bound: KdrCxt, client: String): List<GedraConfigRow> =
+        GedraConfigService.get(bound).listConfigs(bound).filter { it.client == client }.sortedBy { it.configId.fullId }
+
+    /** The stored config of [client]'s that holds the ref [refId] -- the one a load keeps it from -- or null when none does. */
     private fun holderOf(bound: KdrCxt, client: String, refId: String): GedraConfigRow? =
-        GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.client == client && storedEntry(it, refId) != null }
+        holdingOrder(bound, client).firstOrNull { storedEntry(it, refId) != null }
 
     /** [row]'s stored entry for the ref [refId], or null when it holds none. */
     private fun storedEntry(row: GedraConfigRow, refId: String): Map<String, Any?>? =

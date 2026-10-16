@@ -522,6 +522,38 @@ class ClientFileRefsTest : StringSpec({
             "Client '$full' has ${FREF.maxRefs} file refs, which is as many as a client is served. Remove one first."
     }
 
+    // Issue #1192: a client that runs only its published configuration, with no sandbox, is served what it published;
+    // a draft that dropped the entry leaves nothing a removal could take, and the row says so rather than offering one.
+    // Who set a ref is the entry's own stamp, not the file's record of whoever first stored its bytes.
+    "a row offers what the write would do, and says who set the ref" {
+        val client = "refrowacts"
+        defineClient(client)
+        val admin = adminOf(client)
+        uploaded(admin, "logo", image(png))
+        listed(admin).getValue("logo").let {
+            it[FREF.removable] shouldBe true
+            it[FREF.setBy] shouldBe "Chief $client"
+            it[FREF.setAt].shouldNotBeNull()
+        }
+        // The same bytes, set as another ref by somebody else: its file's record is the first upload's.
+        val other = TestUser.create(cxt, "second@$client.test", level = ROLE.admin, userClient = client, name = "Second $client")
+        uploaded(other, "again", image(png))
+        listed(admin).getValue("again").let {
+            it[FREF.setBy] shouldBe "Second $client"
+            it[FREF.uploadedByName] shouldBe "Chief $client"
+        }
+
+        svc.setPublishedOnly(writerOf(client), client, true)
+        svc.writeConfig(writerOf(client), gedraConfig(cxt, CPY.copyConfigName, clientNamespace(client), client) { fileRef("again", png.sha256Hex()) })
+        GedraConfigReload.reloadClient(cxt, client)
+        listed(admin).getValue("logo").let {
+            it[FREF.live] shouldBe true
+            it[FREF.removable] shouldBe false
+            it.containsKey(FREF.setBy) shouldBe false
+        }
+        admin.expectError(EXC.badInput, UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
+    }
+
     "an entry typed into the configuration is held to what an upload writes" {
         val client = "reftyped"
         defineClient(client)

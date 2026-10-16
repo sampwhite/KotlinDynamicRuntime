@@ -257,10 +257,14 @@ class FileRefsTest {
         assertEquals(notThere, fileRefHoldsText(ref(file = null)))
 
         val at = formatTimestamp(pngFile.uploadedAt)
-        assertEquals("Uploaded $at by Chief One. In the configuration 'copy'.", fileRefWhereText(ref()))
-        assertEquals("Uploaded $at.", fileRefWhereText(ref(by = null, configName = null)))
+        // The upload's who and when are the file's -- whoever first stored those bytes (issue #1192).
+        assertEquals("Its file was first uploaded $at by Chief One. In the configuration 'copy'.", fileRefWhereText(ref()))
+        assertEquals("Its file was first uploaded $at.", fileRefWhereText(ref(by = null, configName = null)))
         // An upload whose file has gone has no date to give; who is not known either.
-        assertEquals("Uploaded. In the configuration 'copy'.", fileRefWhereText(ref(missing = true, by = null)))
+        assertEquals("Its file was first uploaded. In the configuration 'copy'.", fileRefWhereText(ref(missing = true, by = null)))
+        // Who set this ref is its entry's stamp, said with the configuration.
+        val set = ref().let { FileRefView(it.refId, it.source, it.root, it.path, it.hash, it.name, it.description, it.configName, it.live, it.stored, it.missing, it.file, "Chief One", setAt = "2026-10-12T19:49:00Z", setBy = "Chief Two") }
+        assertEquals("Its file was first uploaded $at by Chief One. In the configuration 'copy', set $at by Chief Two.", fileRefWhereText(set))
         assertEquals(
             "Shipped with the client, as a file on the server: brand/logo.png, last changed $at. In the configuration 'art'.",
             fileRefWhereText(ref(source = FREF.sourceLocal, root = "brand", path = "logo.png", stored = false, by = null, configName = "art")),
@@ -324,6 +328,14 @@ class FileRefsTest {
         assertNull(fileRefShippedHint(ref()))
         val shipped = ref(source = FREF.sourceLocal, stored = false)
         assertFalse(fileRefRemovable(shipped))
+        // What the backend says wins: a shipped ref over a stored entry its load left out can be removed, and is not
+        // told it cannot be; a stored one the draft no longer holds cannot (issue #1192).
+        val overridden = FileRefView("logo", FREF.sourceLocal, "brand", "logo.png", hash, "logo:$hash", null, "art", true, false, false, pngFile, null, removable = true)
+        assertTrue(fileRefRemovable(overridden))
+        assertNull(fileRefShippedHint(overridden))
+        assertFalse(fileRefRemovable(FileRefView("logo", FREF.sourceStore, null, null, hash, "logo:$hash", null, "copy", true, true, false, pngFile, null, removable = false)))
+        assertEquals(true, parseFileRef(mapOf(CCT.refId to "logo", FREF.removable to true, FREF.stored to false))?.removable)
+        assertNull(parseFileRef(mapOf(CCT.refId to "logo"))?.removable)
         assertEquals(
             "Shipped with the client, so it is not removed or reworded here: uploading a file over it replaces it, and removing that upload shows this one again.",
             fileRefShippedHint(shipped),

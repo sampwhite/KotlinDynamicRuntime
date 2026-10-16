@@ -22,6 +22,8 @@ import com.dynamicruntime.common.gedra.overseenClientField
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WAS
 import com.dynamicruntime.common.webasset.WebAssetCheck
@@ -69,6 +71,21 @@ fun clientFileRefSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, FREF.namespa
                 "source code: an upload overrides one, and it cannot be removed.",
             required = true,
         ) { type = SCT.boolean }
+        property(
+            FREF.removable,
+            "Whether the ref can be removed and its description reworded: whether a stored configuration holds an " +
+                "entry for it, asked as a removal asks it. False for a ref the client was shipped with and nothing " +
+                "stored overrides, and for one a draft removed.",
+            required = true,
+        ) { type = SCT.boolean }
+        property(
+            FREF.setAt,
+            "When the ref's stored entry was last changed -- who set this ref, unlike the file's record, which is " +
+                "of whoever first stored its bytes. Of the latest revision, which for a client that runs only " +
+                "published configuration and has no sandbox can be newer than what is served. Absent for a ref no " +
+                "stored configuration holds.",
+        ) { dateTime() }
+        property(FREF.setBy, "Who last changed the ref's stored entry, by name; absent when that was no signed-in user, or is not known.")
         property(
             FREF.removedInDraft,
             "True for a ref the client's own people are served that its latest configuration -- what its sandbox " +
@@ -391,13 +408,14 @@ fun listedRefs(cxt: KdrCxt, refs: FileRefService, client: String): List<Map<Stri
     val running = refs.forClient(owner).refs
     val shownAs = refs.shownAs(cxt, client)
     val shown = refs.forClient(shownAs).refs
-    val listed = shown.values.map { it.refId to refItem(cxt, refs, it, running[it.refId]?.def?.pointer == it.def.pointer) }
+    // What the client's stored configuration holds, as a write reads it: what each row may do, and who set it.
+    val held = ClientFileRefEdit.heldRefs(cxt.mkSubContext("listRefs", owner), owner)
+    val listed = shown.values.map { it.refId to refItem(cxt, refs, it, running[it.refId]?.def?.pointer == it.def.pointer, held[it.refId]) }
     if (shownAs == owner) return listed.map { it.second }
     // What a draft removed is still served, until a publish: listed from the client's own registry. Not one the draft
     // still stores and its load left out, which no restore may write over (the client's issues say why it is left out).
-    val stored = ClientFileRefEdit.storedRefIds(cxt.mkSubContext("listRefs", owner), owner)
-    val removed = running.values.filter { it.refId !in shown && it.refId !in stored }
-        .map { it.refId to refItem(cxt, refs, it, live = true, removedInDraft = true) }
+    val removed = running.values.filter { it.refId !in shown && it.refId !in held }
+        .map { it.refId to refItem(cxt, refs, it, live = true, held = null, removedInDraft = true) }
     return inServedOrder(listed, removed, running.keys.toList()).map { it.second }
 }
 
@@ -419,9 +437,17 @@ private fun <T> inServedOrder(listed: List<Pair<String, T>>, removed: List<Pair<
 /**
  * One ref as the listing answers it; [live] is whether the client's own people are served the same file under its
  * id -- the same pointer, which for a local file is the same root and path, whatever the file now holds -- and
- * [removedInDraft] that it is one of theirs a draft removed ([FREF.removedInDraft]).
+ * [removedInDraft] that it is one of theirs a draft removed ([FREF.removedInDraft]). [held] is the stored entry a write
+ * would change ([ClientFileRefEdit.heldRefs]): whether the row may be removed and reworded, and who set it.
  */
-fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean, removedInDraft: Boolean = false): Map<String, Any?> {
+fun refItem(
+    cxt: KdrCxt,
+    refs: FileRefService,
+    ref: FileRef,
+    live: Boolean,
+    held: ClientFileRefEdit.HeldRef?,
+    removedInDraft: Boolean = false,
+): Map<String, Any?> {
     // Asked even for a ref the load found missing: the file may have arrived since. A store that cannot be asked
     // fails the listing, rather than have it say of every file that it is missing.
     val meta = refs.metaOf(cxt, ref)
@@ -440,6 +466,11 @@ fun refItem(cxt: KdrCxt, refs: FileRefService, ref: FileRef, live: Boolean, remo
         ref.def.configName?.let { put(FREF.configName, it) }
         put(FREF.live, live)
         if (removedInDraft) put(FREF.removedInDraft, true)
+        put(FREF.removable, held != null && !removedInDraft)
+        if (held != null) {
+            held.updatedAt?.let { put(FREF.setAt, it.formatDate()) }
+            held.updatedBy?.let { userNameOf(cxt, it) }?.let { put(FREF.setBy, it) }
+        }
         put(FREF.stored, ref.def.stored)
         put(FREF.missing, meta == null)
         // Read from the template's directory, its default (issue #1180): the record says whose file it is.
@@ -464,7 +495,17 @@ private fun changeItem(cxt: KdrCxt, refs: FileRefService, result: ClientFileRefE
     val running = refs.forClient(result.client).refs[result.refId]
     val shown = refs.forClient(result.shownAs).refs[result.refId]
     when {
-        shown != null -> put(FREF.ref, refItem(cxt, refs, shown, running?.def?.pointer == shown.def.pointer))
-        running != null && result.shownAs != result.client -> put(FREF.ref, refItem(cxt, refs, running, live = true, removedInDraft = true))
+        shown != null -> {
+            val held = ClientFileRefEdit.heldRefs(cxt.mkSubContext("changeRefs", result.client), result.client)[result.refId]
+            put(FREF.ref, refItem(cxt, refs, shown, running?.def?.pointer == shown.def.pointer, held))
+        }
+        running != null && result.shownAs != result.client -> put(FREF.ref, refItem(cxt, refs, running, live = true, held = null, removedInDraft = true))
     }
 }
+
+/**
+ * What [userId] is called, for "set by" -- or null when there is no such user here, or no name: the user's own row,
+ * through the user cache, and never a failure of the listing that asks.
+ */
+private fun userNameOf(cxt: KdrCxt, userId: Long): String? =
+    UserService.getOrNull(cxt)?.queryByUserId(cxt, userId)?.toUserProfile()?.displayName
