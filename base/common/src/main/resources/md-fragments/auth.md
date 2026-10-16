@@ -11,8 +11,8 @@
 
 # @login
 # +title Log in
-/- Above the sign-in form, and empty as shipped, so nothing shows (issue #1221): why sign-in is limited, on a
-   deployment that limits it. Markdown. -/
+/- Above the sign-in form, and empty as shipped, so nothing shows (issue #1221): a word about this deployment's
+   accounts -- that they are temporary, on a reference deployment. Markdown. -/
 # +intro
 
 # +emailLabel Email address

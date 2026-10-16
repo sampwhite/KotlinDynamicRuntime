@@ -575,3 +575,14 @@ client naming none is shown; neither moves the day start.
   no context, so it would be set once at boot. The webapp works out its fallback zone from the same kernel value
   (`deploymentZone`), and would be told it by the shell config instead -- as would the report history, whose days
   are the day start's (`ReportHistory.dayOf`, `ReportSnapshot.day` in the webapp).
+
+## When mail volume from a public sign-in becomes a cost or a reputation problem
+
+A public test deployment with `KDR_PUBLIC_SIGN_IN=realMail` (#1150), such as the reference instance (#1242), mails a
+code to any address typed into its sign-in form. `AuthRateLimiter` bounds it per source address (20 per 15 minutes)
+and per mail address (5 per hour), but nothing bounds the total.
+
+- **A ceiling on sends across all callers** *(from #1242).* A per-node cap on codes mailed per hour or day, refusing
+  further sign-ins with a plain "try again later" once reached, so a distributed flood costs a bounded amount and
+  cannot damage the sending domain's reputation. In memory like the existing limiter, since a lightweight node is
+  one node.

@@ -212,6 +212,13 @@ area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors). A running node also
 variable and the value it actually resolved to *on that node* — at the operator endpoint
 `/operator/env/reference`, shown as the **Environment** view in the app.
 
+## Deploying
+
+[`docs/deploy/lightweight-node.md`](docs/deploy/lightweight-node.md) puts KotlinDynamicRuntime on a **lightweight
+node**: one small Linux server with an H2 file database and Caddy in front for HTTPS, run as a systemd service of its
+own user. It covers the one-time setup, deploying a build, looking at a node, and clearing its data. The reference
+instance at `dynamicruntime.org` runs this way.
+
 ## A worked example
 
 [`docs/demo-client/`](docs/demo-client/README.md) walks through the **conference demo**, a client built from

@@ -43,9 +43,9 @@ class ReferenceFlavorTest : StringSpec({
     val reference = boot("referenceOn1221", mapOf(FLV.deployFlavorsEnvVar.name to FLV.reference))
     val plain = boot("referenceOff1221", mapOf("KDR_LOAD_SAMPLE" to "true"))
 
-    "core says on the home page and the sign-in page what a reference deployment is" {
+    "core says on the home page what a reference deployment is, and on the sign-in page that an account is temporary" {
         copy(reference, HFRAG.home, "home")["title"] shouldBe "A reference deployment"
-        copy(reference, AFRAG.auth, "login")["intro"].orEmpty() shouldContain "Sign-in is limited here"
+        copy(reference, AFRAG.auth, "login")["intro"].orEmpty() shouldContain "your account included"
         copy(plain, HFRAG.home, "home")["title"] shouldBe "Welcome"
         copy(plain, AFRAG.auth, "login")["intro"] shouldBe ""
     }
