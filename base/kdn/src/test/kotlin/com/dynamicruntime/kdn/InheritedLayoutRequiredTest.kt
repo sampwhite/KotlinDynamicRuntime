@@ -52,7 +52,7 @@ class InheritedLayoutRequiredTest : StringSpec({
         // under test.
         val prod: KdrCxt = Startup.mkBootCxt(
             "inheritedLayoutProd", "inheritedLayoutProdTest",
-            overlay + mapOf(ACFG.env to ENV.prod, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true),
+            overlay + Startup.realNodeOverlay(ENV.prod),
             listOf(InheritedLayoutFixture()),
         )
         val schema = SchemaService.get(prod)

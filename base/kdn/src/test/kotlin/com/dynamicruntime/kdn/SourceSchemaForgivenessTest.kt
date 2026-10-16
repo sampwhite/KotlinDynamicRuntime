@@ -47,13 +47,9 @@ class SourceSchemaForgivenessTest : StringSpec({
         // is under test.
         val cxt: KdrCxt = Startup.mkBootCxt(
             "srcFaultProd", "sourceFaultProdTest",
-            mapOf(
-                ACFG.env to ENV.prod,
-                // Not a test instance (so SchemaService's test-instance refusal is not what fires), yet in-memory, so
-                // no real database is needed.
-                ACFG.isTestInstance to false,
-                ACFG.inMemoryOnly to true,
-            ),
+            // Not a test instance (so SchemaService's test-instance refusal is not what fires), yet in-memory, so no real
+            // database is needed.
+            Startup.realNodeOverlay(ENV.prod),
             additionalComponents = listOf(SourceFaultComponent()),
         )
         val def = SchemaService.get(cxt).storeFor(null).defs[typeName].toJsonMapOrEmpty()

@@ -45,7 +45,7 @@ class StaticConfigTest : StringSpec({
     fun overlay(env: String): Map<String, Any?> = mapOf(
         StaticClientComponent.loadFlag.name to "true", "KDR_DB_NAME" to db, "KDR_LOAD_STORED_CONFIG" to "true",
     ) + if (env == ENV.prod) {
-        mapOf(ACFG.env to ENV.prod, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true)
+        Startup.realNodeOverlay(ENV.prod)
     } else {
         emptyMap()
     }

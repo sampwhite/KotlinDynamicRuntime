@@ -73,7 +73,7 @@ class ClientConfigIsolationTest : StringSpec({
         // is under test.
         val cxt: KdrCxt = Startup.mkBootCxt(
             "isoStateProd", "isoStateProdTest",
-            mapOf(ACFG.env to ENV.prod, ACFG.isTestInstance to false, ACFG.inMemoryOnly to true),
+            Startup.realNodeOverlay(ENV.prod),
             additionalComponents = listOf(ClientStateComponent()),
         )
         val schema = SchemaService.get(cxt)

@@ -131,12 +131,9 @@ class VariantBehaviorTest : StringSpec({
             // expected to refuse it.
             Startup.mkBootCxt(
                 "variantProd", "variantProdRefusalTest",
-                mapOf(
-                    ACFG.env to ENV.prod,
-                    // Not a test instance (so SchemaService's own test-instance refusal is not what fires), yet
-                    // in-memory so no real database is needed -- the ordinary-local-run-against-real-DB shape.
-                    ACFG.isTestInstance to false,
-                    ACFG.inMemoryOnly to true,
+                // Not a test instance (so SchemaService's own test-instance refusal is not what fires), yet in-memory so
+                // no real database is needed -- the ordinary-local-run-against-real-DB shape.
+                Startup.realNodeOverlay(ENV.prod) + mapOf(
                     ACFG.testVariantScenarios to listOf(
                         VariantScenario("x", listOf(VariantRule(pathContains = "/health", delayMs = 1))),
                     ),
