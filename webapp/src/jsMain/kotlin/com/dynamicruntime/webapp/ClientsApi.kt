@@ -894,22 +894,44 @@ fun parseConfigSummaries(items: List<Map<String, Any?>>): List<ConfigSummaryView
 /** The note beside an operator-only attribute (issue #820) for an administrator who may not change it. */
 const val platformSetNote = "(set by the platform)"
 
+/** The note beside a platform attribute the definition editor does not offer, for an administrator who sees every client. */
+const val configurationSetNote = "(set in its configuration)"
+
+/**
+ * Who sets [field], said beside its read-only value (issue #1116), or null when the caller edits it here: the
+ * platform's, for a client's own administrator ([platformSetNote]); and for an administrator who sees every client,
+ * a platform field the editor does not offer -- the customer, the template -- which a configuration write sets
+ * ([configurationSetNote]), and the static lock, which only source code sets ([sourceSetNote]). Read from the field's
+ * policy, so the editor and the notes cannot disagree. Pure, and covered under `jsNodeTest`.
+ */
+fun whoSetsNote(field: String, canSeeAllClients: Boolean): String? {
+    if (ClientFieldPolicies.of(field).edit != ClientFieldEdit.platform) return null
+    return when {
+        !canSeeAllClients -> platformSetNote
+        field in ClientFieldPolicies.platformEditorFields -> null
+        field == CLD.staticConfig -> sourceSetNote
+        else -> configurationSetNote
+    }
+}
+
+/** The note beside the static lock for an administrator who sees every client: only source code sets it. */
+const val sourceSetNote = "(set in source code)"
+
 /**
  * The read-only summary of a client (issue #906): its attributes in the order an administrator reads them, then
  * what it defines. From the overview [row] when the listing has one (status, origin, counts) and the definition
  * [def] when it could be read; either may be missing -- a client this node does not carry has no definition to
  * retrieve, and a deep link arrives before the listing -- so [clientId] is the hash's, which is always there. The
- * attributes only the platform sets (their policy, `ClientFieldPolicies`, issue #1108) are noted as the platform's
- * when the caller may not change them. A list that is empty reads as a dash. Pure, and covered under `jsNodeTest`.
+ * attributes the caller does not edit here say who sets them ([whoSetsNote], issue #1116). A list that is empty reads
+ * as a dash. Pure, and covered under `jsNodeTest`.
  */
 fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinitionView?, canSeeAllClients: Boolean): List<Pair<String, String>> {
     val info = def?.info.orEmpty()
     fun text(key: String): String = info[key].toOptStr()?.ifBlank { null } ?: "\u2014"
     fun list(items: List<String>): String = if (items.isEmpty()) "\u2014" else items.joinToString(", ")
-    // Marked as the platform's when only the platform may change it and this caller may not.
+    // Said whose it is when this caller does not edit it here.
     fun marked(key: String, value: String): String =
-        if (canSeeAllClients || value == "\u2014" || ClientFieldPolicies.of(key).edit != ClientFieldEdit.platform) value
-        else "$value $platformSetNote"
+        whoSetsNote(key, canSeeAllClients)?.takeIf { value != "\u2014" }?.let { "$value $it" } ?: value
     val name = row?.name?.ifBlank { null } ?: info[CLD.name].toOptStr().orEmpty()
     return buildList {
         add("Client id" to clientId)
@@ -924,8 +946,9 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
             for (key in listOf(CLD.audience, CLD.usageType, CLD.customerId)) add(humanizeFieldName(key) to marked(key, text(key)))
             add("Enabled in" to marked(CLD.enabledEnvironments, list(info[CLD.enabledEnvironments].toJsonListOfStrings())))
             add("Extends" to marked(CLD.extendsFromClientId, text(CLD.extendsFromClientId)))
-            add("Domain" to (info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "\u2014"))
-            add("Web resources" to text(CLD.webResourcesId))
+            add("Domain" to marked(CLD.domainPrefix, info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "\u2014"))
+            add("Web resources" to marked(CLD.webResourcesId, text(CLD.webResourcesId)))
+            add("Preload" to marked(CLD.preload, if (info[CLD.preload] == true) "Yes" else "No"))
             add("Time zone" to (info[CLD.timeZone].toOptStr() ?: "None: the deployment's"))
             add("Static config" to marked(CLD.staticConfig, if (info[CLD.staticConfig] == true) "Yes" else "No"))
             add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
@@ -971,15 +994,26 @@ const val timeZoneEditNote = "The time zone is an IANA name, such as America/Chi
     "Changing it moves no stored moment: a time already saved stays that time, shown in the new zone."
 
 /**
- * The draft the editor opens on (issue #1026): each of `ClientPresentationFields` as text -- the labels as one
- * comma-separated line -- seeded from [baseline], the client's **stored** definition (`storedDefinition`), an absent
- * field blank. The stored one, not what the client runs: those differ by an unpublished draft, which the editor must
+ * The draft the editor opens on (issues #1026, #1116): each of `ClientPresentationFields`, the platform's included, as
+ * text -- the labels and the environments as one comma-separated line, the preload as `true` or `false` -- seeded from
+ * [baseline], the client's **stored** definition (`storedDefinition`), an absent field blank. The stored one, not what the client runs: those differ by an unpublished draft, which the editor must
  * show and be able to take back, and by what a template fills in, which written back would become the client's own.
  * Pure, and covered under `jsNodeTest`.
  */
-fun definitionDraftOf(baseline: Map<String, Any?>): Map<String, String> = ClientPresentationFields.names.associateWith { name ->
-    if (ClientPresentationFields.isList(name)) baseline[name].toJsonListOfStrings().joinToString(", ")
-    else baseline[name].toOptStr().orEmpty()
+fun definitionDraftOf(baseline: Map<String, Any?>): Map<String, String> =
+    ClientPresentationFields.namesFor(platform = true).associateWith { name ->
+        when (ClientPresentationFields.kind(name)) {
+            ClientPresentationFields.Kind.labels, ClientPresentationFields.Kind.choices ->
+                baseline[name].toJsonListOfStrings().joinToString(", ")
+            ClientPresentationFields.Kind.flag -> (baseline[name] == true).toString()
+            else -> baseline[name].toOptStr().orEmpty()
+        }
+    }
+
+/** The values a draft's comma-separated [text] names for the [Kind.choices][ClientPresentationFields.Kind.choices] field [name], in the choices' order. */
+fun choicesOfText(name: String, text: String): List<String> {
+    val named = text.split(',').map { it.trim() }.toSet()
+    return ClientPresentationFields.choicesOf(name).filter { it in named }
 }
 
 /** The labels a comma-separated line names, each once and trimmed -- the rule a client's list is held to. */
@@ -988,26 +1022,40 @@ fun labelsOfText(text: String): List<String> = normalizeUserLabels(text.split(',
 /**
  * The request that saves [draft] for [clientId]: the client, and **only the fields that differ** from [baseline],
  * the stored definition the draft was seeded from -- a text field trimmed, a cleared one sent blank (the backend
- * clears it), the labels as a list -- and how the page said the save would take effect ([expected], from
- * [expectedMode]). Naming no field when nothing changed, which is when Save has nothing to do
+ * clears it), the labels and the environments as lists, the preload as a flag -- of the fields the editor offers its
+ * caller ([platform]: an administrator who sees every client, issue #1116) -- and how the page said the save would
+ * take effect ([expected], from [expectedMode]). Naming no field when nothing changed, which is when Save has nothing to do
  * ([definitionEditChanges]). Pure, and covered under `jsNodeTest`.
  */
-fun definitionEditRequest(clientId: String, baseline: Map<String, Any?>, draft: Map<String, String>, expected: String): Map<String, Any?> {
+fun definitionEditRequest(
+    clientId: String, baseline: Map<String, Any?>, draft: Map<String, String>, expected: String, platform: Boolean = false,
+): Map<String, Any?> {
     val out = linkedMapOf<String, Any?>(CLD.client to clientId, CPY.mode to expected)
-    for (name in ClientPresentationFields.names) {
-        if (ClientPresentationFields.isList(name)) {
-            val labels = labelsOfText(draft[name].orEmpty())
-            if (labels != baseline[name].toJsonListOfStrings()) out[name] = labels
-        } else {
-            val now = draft[name].orEmpty().trim()
-            if (now != baseline[name].toOptStr().orEmpty()) out[name] = now
+    for (name in ClientPresentationFields.namesFor(platform)) {
+        when (ClientPresentationFields.kind(name)) {
+            ClientPresentationFields.Kind.labels -> {
+                val labels = labelsOfText(draft[name].orEmpty())
+                if (labels != baseline[name].toJsonListOfStrings()) out[name] = labels
+            }
+            ClientPresentationFields.Kind.choices -> {
+                val chosen = choicesOfText(name, draft[name].orEmpty())
+                if (chosen.toSet() != baseline[name].toJsonListOfStrings().toSet()) out[name] = chosen
+            }
+            ClientPresentationFields.Kind.flag -> {
+                val on = draft[name] == "true"
+                if (on != (baseline[name] == true)) out[name] = on
+            }
+            else -> {
+                val now = draft[name].orEmpty().trim()
+                if (now != baseline[name].toOptStr().orEmpty()) out[name] = now
+            }
         }
     }
     return out
 }
 
 /** Whether a [definitionEditRequest] asks for anything: whether it names any field. */
-fun definitionEditChanges(request: Map<String, Any?>): Boolean = ClientPresentationFields.names.any { it in request }
+fun definitionEditChanges(request: Map<String, Any?>): Boolean = ClientPresentationFields.namesFor(platform = true).any { it in request }
 
 /**
  * Whether the detail offers the definition editor for the client [row] describes (issue #1026): one this node
@@ -1066,15 +1114,15 @@ object ClientsApi {
     suspend fun definition(clientId: String): ClientDefinitionView =
         parseClientDefinition(Http.getApi(UADEP.clientDefinition + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
 
-    /**
-     * Adds or removes [clientId]'s sandbox (issue #932): the flag published and the client reloaded, so the sandbox is
-     * there -- or gone -- when this returns. Returns whether it now has one.
-     */
     /** Retires [clientId], or brings it back (issue #1182); the platform's switch (#1111), live at once. */
     suspend fun setRetired(clientId: String, retired: Boolean) {
         Http.sendApi("POST", ADEP.clientRetirementSet, mapOf(CLD.client to clientId, CLD.retired to retired))
     }
 
+    /**
+     * Adds or removes [clientId]'s sandbox (issue #932): the flag published and the client reloaded, so the sandbox is
+     * there -- or gone -- when this returns. Returns whether it now has one.
+     */
     suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
         Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
             .toJsonMapOrEmpty()[CLD.sandbox] == true

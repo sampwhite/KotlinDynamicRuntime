@@ -299,6 +299,7 @@ private fun ChildrenBuilder.clientDetail(
                         this.clientId = clientId
                         baseline = stored
                         this.savesDraft = savesDraft
+                        platform = acrossClients
                         this.onChanged = onChanged
                     }
                 }
@@ -492,15 +493,19 @@ external interface DefinitionEditorProps : Props {
     var baseline: Map<String, Any?>
     /** Whether a save is a draft, as the page last read the client ([savesAsDraft]): said beside Save, and sent with it. */
     var savesDraft: Boolean
+    /** Whether the caller sees every client, and so is offered the platform's fields too (issue #1116). */
+    var platform: Boolean
     var onChanged: () -> Unit
 }
 
 /**
- * The definition editor (issue #1026): **Edit definition** opens the presentation fields -- name, note, domain
- * prefix, custom domain, web resources, suggested user labels -- seeded from the client's **stored** definition
- * ([definitionDraftOf]; a draft already saved shows, and can be taken back); Save sends only what changed ([definitionEditRequest]) and is offered only when something
- * did; Cancel drops the draft. The fields the platform sets (#820) and the structural ones are not here: they stay
- * in the read-only rows above. A save takes effect as the copy and menu editors' do -- live, or a draft for a
+ * The definition editor (issues #1026, #1116): **Edit definition** opens the fields the caller's policy lets them
+ * edit (`ClientPresentationFields.namesFor`) -- for a client's administrator its name, note, time zone, and suggested
+ * user labels; for an administrator who sees every client also what it is for, whose it is, where it runs, its
+ * preload, its domains, and its web resources -- seeded from the client's **stored** definition ([definitionDraftOf];
+ * a draft already saved shows, and can be taken back); Save sends only what changed ([definitionEditRequest]) and is
+ * offered only when something did; Cancel drops the draft. Everything else stays in the read-only rows above, each
+ * saying who sets it ([whoSetsNote]). A save takes effect as the copy and menu editors' do -- live, or a draft for a
  * client with a sandbox, which the note says ([savedNote]) -- and [DefinitionEditorProps.onChanged] re-reads the
  * page and the shell, so the heading and the listing row follow the new name. A refusal is shown in the backend's
  * words under the fields, the draft kept, so it can be corrected rather than retyped. Beside Save it says how the
@@ -538,7 +543,7 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
     }
 
     fun save() {
-        val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft))
+        val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft), props.platform)
         if (!definitionEditChanges(request)) return
         val token = latest.current
         busy = true
@@ -570,10 +575,42 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
             }
         }
     } else {
-        val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft))
+        val request = definitionEditRequest(props.clientId, baseline, draft, expectedMode(props.savesDraft), props.platform)
         // The one list the endpoint's input is built from, so a field joining it is drawn here without a change.
-        for (name in ClientPresentationFields.names) {
-            textField(humanizeFieldName(name), draft[name].orEmpty(), disabled = busy) { v -> draft = draft + (name to v) }
+        for (name in ClientPresentationFields.namesFor(props.platform)) {
+            val label = humanizeFieldName(name)
+            fun set(value: String) {
+                draft = draft + (name to value)
+            }
+            when (ClientPresentationFields.kind(name)) {
+                ClientPresentationFields.Kind.choice -> choiceRow(label) {
+                    Select {
+                        value = draft[name].orEmpty()
+                        options = choiceOptions(ClientPresentationFields.choicesOf(name).map { it to it })
+                        disabled = busy
+                        style = js("({ minWidth: 200 })")
+                        onChange = { v -> set((v as? String).orEmpty()) }
+                    }
+                }
+                ClientPresentationFields.Kind.choices -> choiceRow(label) {
+                    Select {
+                        mode = "multiple"
+                        value = choicesOfText(name, draft[name].orEmpty()).toTypedArray()
+                        options = choiceOptions(ClientPresentationFields.choicesOf(name).map { it to it })
+                        disabled = busy
+                        style = js("({ minWidth: 280 })")
+                        onChange = { v -> set((v as Array<*>).joinToString(", ")) }
+                    }
+                }
+                ClientPresentationFields.Kind.flag -> choiceRow(label) {
+                    Checkbox {
+                        checked = draft[name] == "true"
+                        disabled = busy
+                        onChange = { e -> set((e.target.checked == true).toString()) }
+                    }
+                }
+                else -> textField(label, draft[name].orEmpty(), disabled = busy) { v -> set(v) }
+            }
         }
         p {
             className = ClassName("subtitle")
@@ -601,6 +638,18 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
             className = ClassName("subtitle")
             +it
         }
+    }
+}
+
+/** A labeled row holding a control other than a text input, laid out as [textField]'s row is. */
+private fun ChildrenBuilder.choiceRow(label: String, control: ChildrenBuilder.() -> Unit) {
+    div {
+        className = ClassName("row")
+        span {
+            className = ClassName("field-label")
+            +label
+        }
+        control()
     }
 }
 

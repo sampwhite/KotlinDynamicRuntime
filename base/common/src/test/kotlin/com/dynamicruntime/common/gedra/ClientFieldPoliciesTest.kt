@@ -26,14 +26,16 @@ class ClientFieldPoliciesTest : StringSpec({
         ClientFieldPolicies.createFields shouldContainExactly listOf(
             CLD.clientId, CLD.name, CLD.description, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments,
             CLD.extendsFromClientId, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.timeZone, CLD.userLabels,
-            CLD.sandbox,
+            CLD.sandbox, CLD.preload,
         )
-        ClientPresentationFields.names shouldContainExactly listOf(
-            CLD.name, CLD.description, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.timeZone, CLD.userLabels,
+        // The client's own administrator edits these (issue #1116); an administrator who sees every client these too.
+        ClientPresentationFields.names shouldContainExactly listOf(CLD.name, CLD.description, CLD.timeZone, CLD.userLabels)
+        ClientPresentationFields.platformNames shouldContainExactly listOf(
+            CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId,
         )
         ClientFieldPolicies.platformFields shouldContainExactly listOf(
             CLD.clientId, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.extendsFromClientId,
-            CLD.preload, CLD.staticConfig, CLD.retired, CLD.testFeatures,
+            CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.preload, CLD.staticConfig, CLD.retired, CLD.testFeatures,
         )
     }
 

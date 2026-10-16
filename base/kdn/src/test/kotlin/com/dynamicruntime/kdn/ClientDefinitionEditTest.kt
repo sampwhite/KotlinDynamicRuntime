@@ -33,8 +33,9 @@ import io.kotest.matchers.string.shouldContain
 /**
  * Editing a client's definition from the Clients page (issue #1026): the presentation fields of its stored
  * definition, written under the config lock and made to take effect as the copy and menu editors' saves are -- live
- * at once, or a draft for a client with a sandbox (issue #930). The operator-only fields (#820) are not inputs at
- * all, so naming one is refused by the input's shape. One booted instance; a client per case.
+ * at once, or a draft for a client with a sandbox (issue #930). The platform's fields the editor offers are for an
+ * administrator who sees every client (issue #1116); a field it offers nobody is not an input at all. One booted
+ * instance; a client per case.
  */
 class ClientDefinitionEditTest : StringSpec({
     // With the extension fixture, for a stored client built on a source template (issue #945).
@@ -86,10 +87,10 @@ class ClientDefinitionEditTest : StringSpec({
         admin.getItem(UADEP.clientDefinition)[CLD.client].toJsonMapOrEmpty()[CLD.name] shouldBe "Renamed"
 
         // A blank clears an optional field; an empty list clears the labels; the name may not be blank.
-        val cleared = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.description to "", CLD.domainPrefix to " ", CLD.userLabels to emptyList<String>()))
+        val cleared = admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.description to "", CLD.timeZone to " ", CLD.userLabels to emptyList<String>()))
         val after = cleared[CLD.definition].toJsonMapOrEmpty()
         after.containsKey(CLD.description) shouldBe false
-        after.containsKey(CLD.domainPrefix) shouldBe false
+        after.containsKey(CLD.timeZone) shouldBe false
         after.containsKey(CLD.userLabels) shouldBe false
         present(client).description shouldBe null
         admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to " "))
@@ -136,12 +137,13 @@ class ClientDefinitionEditTest : StringSpec({
         val other = "defeditdomother"
         defineClient(client)
         defineClient(other)
-        val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
+        // Where a client is reached is the platform's (issue #1116): an administrator who sees every client sets it.
+        val full = TestUser.createFullAdmin(cxt, "full@$client.test")
+        fun set(target: String, vararg fields: Pair<String, Any?>) = mapOf(CLD.client to target) + fields
         // `other`'s definition carries `domainPrefix = other`; a hostname's case does not make it another's.
-        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to other)).toString() shouldContain other
-        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to other.uppercase())).toString() shouldContain other
-        val chief = TestUser.create(cxt, "chief@$other.test", level = ROLE.admin, userClient = other)
-        chief.postData(UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "other.example.test"))
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, set(client, CLD.domainPrefix to other)).toString() shouldContain other
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, set(client, CLD.domainPrefix to other.uppercase())).toString() shouldContain other
+        full.postData(UADEP.clientDefinitionSet, set(other, CLD.customDomain to "other.example.test"))
         // The rule is the stored write's, so a whole-definition write is held to it too.
         shouldThrow<KdrException> {
             svc.writeConfig(
@@ -156,20 +158,45 @@ class ClientDefinitionEditTest : StringSpec({
                 },
             )
         }.message.shouldNotBeNull() shouldContain other
-        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "forms.example.test"))
-        chief.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.customDomain to "forms.example.test")).toString() shouldContain client
+        full.postData(UADEP.clientDefinitionSet, set(client, CLD.customDomain to "forms.example.test"))
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, set(other, CLD.customDomain to "forms.example.test")).toString() shouldContain client
         // Its own prefix again is not a collision.
-        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.domainPrefix to client, CLD.description to "kept"))
+        full.postData(UADEP.clientDefinitionSet, set(client, CLD.domainPrefix to client, CLD.description to "kept"))
         present(client).domainPrefix shouldBe client
     }
 
-    "a field only the platform sets is not an input: naming it is refused, not dropped (issue #820)" {
+    "the platform's fields are set by an administrator who sees every client, and refused from the client's own (issue #1116)" {
         val client = "defeditoper"
         defineClient(client)
         val admin = TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
-        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to "X", CLD.audience to ClientAudience.internal.name))
-        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to "X", CLD.enabledEnvironments to listOf(ENV.unit)))
+        for (field in listOf(CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit), CLD.webResourcesId to "pack2")) {
+            admin.expectError(EXC.notAuthorized, UADEP.clientDefinitionSet, mapOf(CLD.name to "X", field))
+                .toString() shouldContain "is set by the platform"
+        }
         present(client).name shouldBe "Client $client"
+        // A field the editor does not offer anybody is not an input at all.
+        admin.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.name to "X", CLD.customerId to "acme"))
+
+        val full = TestUser.createFullAdmin(cxt, "full@$client.test")
+        val saved = full.postData(
+            UADEP.clientDefinitionSet,
+            mapOf(
+                CLD.client to client, CLD.usageType to ClientUsageType.production.name, CLD.audience to ClientAudience.customer.name,
+                CLD.enabledEnvironments to listOf(ENV.local, ENV.unit, ENV.dev), CLD.preload to true, CLD.webResourcesId to "pack2",
+            ),
+        )[CLD.definition].toJsonMapOrEmpty()
+        saved[CLD.usageType] shouldBe ClientUsageType.production.name
+        saved[CLD.enabledEnvironments].toJsonListOfStrings().toSet() shouldBe setOf(ENV.unit, ENV.local, ENV.dev)
+        with(present(client)) {
+            usageType shouldBe ClientUsageType.production
+            audience shouldBe ClientAudience.customer
+            preload shouldBe true
+            webResourcesId shouldBe "pack2"
+        }
+        // A choice is required, and an environment set the load would drop is refused by the write's trial.
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.usageType to ""))
+        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to client, CLD.enabledEnvironments to listOf(ENV.dev)))
+            .toString() shouldContain "must never be one that local development and the unit tests are locked out of"
     }
 
     "a source-defined client, a sandbox, a foreign draft, and another administrator's client are refused" {

@@ -346,10 +346,11 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
 
     generalEndpoint(
         UADEP.clientDefinitionSet,
-        "Edits a client's definition (issue #1026): its name, note, domain prefix, custom domain, web resources and " +
-            "suggested user labels -- the fields a client presents with, and only those; the environments it is " +
-            "enabled in, the template it extends and the traits it includes are not edited here, and the fields only " +
-            "a platform operator sets (#820) are not among the inputs. An absent field is left as it is; a blank one " +
+        "Edits a client's definition (issues #1026, #1116): its name, note, time zone, and suggested user labels -- " +
+            "and, for an administrator who sees every client, the platform's fields the editor offers: what it is for, " +
+            "whose it is, the environments it is enabled in, its preload, its domain prefix and custom domain, and its " +
+            "web resources (a client's own administrator naming one is refused, 403). Its customer, the template it " +
+            "extends, and the traits it includes are not edited here. An absent field is left as it is; a blank one " +
             "clears it (the name may not be blank). Written to the client's stored definition under the config lock, " +
             "refused when a trial reload finds a new problem, then published and reloaded; for a client with a Shadow " +
             "Sandbox (issue #930) saved as a draft instead -- written and reloaded, not published -- so its sandbox " +
@@ -366,11 +367,21 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             // -- where the default would drop it and leave the field as it was.
             for ((name, description) in ClientPresentationFields.descriptions) {
                 field(name, description) {
-                    if (ClientPresentationFields.isList(name)) {
-                        type = SCT.array
-                        items { type = SCT.string }
-                    } else {
-                        emptyIsAbsent = false
+                    when (ClientPresentationFields.kind(name)) {
+                        ClientPresentationFields.Kind.labels -> {
+                            type = SCT.array
+                            items { type = SCT.string }
+                        }
+                        ClientPresentationFields.Kind.choice -> ClientPresentationFields.choicesOf(name).forEach { option(it) }
+                        ClientPresentationFields.Kind.choices -> {
+                            type = SCT.array
+                            items { ClientPresentationFields.choicesOf(name).forEach { option(it) } }
+                        }
+                        ClientPresentationFields.Kind.flag -> {
+                            type = SCT.boolean
+                            allowCoerce = false
+                        }
+                        ClientPresentationFields.Kind.text -> emptyIsAbsent = false
                     }
                 }
             }
@@ -378,8 +389,17 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         },
     ) { c, request ->
         val client = overseenClient(c, request[CLD.client].toOptStr())
-        // Only the fields the caller sent: an absent one is left as it is.
-        val fields = ClientPresentationFields.names.filter { request.containsKey(it) }.associateWith { request[it] }
+        // Only the fields the caller sent: an absent one is left as it is. The platform's are for an administrator who
+        // sees every client (issue #1116), as a bundle write's are (#820).
+        val fields = ClientPresentationFields.namesFor(platform = true).filter { request.containsKey(it) }.associateWith { request[it] }
+        val platformSent = fields.keys.filter { it in ClientPresentationFields.platformNames }
+        if (platformSent.isNotEmpty() && !AdminRules.canSeeAllClients(c)) {
+            throw KdrException(
+                "The client's ${platformSent.joinToString(", ")} ${if (platformSent.size == 1) "is" else "are"} set by " +
+                    "the platform; only an administrator who sees every client changes ${if (platformSent.size == 1) "it" else "them"}.",
+                code = EXC.notAuthorized,
+            )
+        }
         val result = ClientDefinitionEdit.set(c, client, fields, expectedModeOf(request))
         mapOf(
             CLD.client to client,
