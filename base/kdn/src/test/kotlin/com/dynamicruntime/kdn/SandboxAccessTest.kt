@@ -561,7 +561,8 @@ class SandboxAccessTest : StringSpec({
         admin.postData(AEP.openSandbox, emptyMap())
         actsAsAdmin(admin) shouldBe true
 
-        // As a node started with `KDR_TABLE_CACHE_DISABLED` holds it: a user cache that is there, and never loads.
+        // A user cache that is there and has not loaded -- as one is before its first load. (A node started with
+        // `KDR_TABLE_CACHE_DISABLED` registers none at all: `CachesDisabledTest`.)
         val service = SqlTableCacheService.get(cxt)
         val users = UserService.get(cxt)
         val cache = users.userCache.shouldNotBeNull()

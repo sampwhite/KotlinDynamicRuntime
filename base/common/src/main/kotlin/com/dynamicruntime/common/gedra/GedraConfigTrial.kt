@@ -55,6 +55,14 @@ object GedraConfigTrial {
      * revisions, which its sandbox runs, so what the sandbox already has is what the client's drafts already have.
      * A change to what the client itself runs -- [published] -- is judged against the client alone: a draft's
      * problem is new to the people about to be served it, and publishing it is the change that introduces it.
+     *
+     * **Drafts nothing runs are judged as they were** (issue #1171). A client set to run only its published
+     * configuration that has no sandbox has latest revisions no node loads, so no load records what they already
+     * have, and a problem one of them has -- a draft ref whose file went missing -- would be found as new by every
+     * later draft write. For such a client a draft write passes [before], the written configs' revisions as they
+     * stood (null for one new), and what the stored set had then is part of the baseline: the same trial, of the
+     * stored set as it was ([unrunBaseline]). Run only when the write's own trial finds something the other
+     * baselines do not account for, so a clean write pays one trial, as ever.
      */
     fun requireClean(
         cxt: KdrCxt,
@@ -62,11 +70,16 @@ object GedraConfigTrial {
         replacing: List<GedraConfigRow>,
         published: Boolean,
         refusal: String,
+        before: Map<String, GedraConfigRow?>? = null,
     ) {
         val drafts = if (published) emptyList() else draftBaseline(cxt, client)
         val baseline = ClientConfigIssues.get(cxt).issuesFor(client) + drafts + fileRefBaseline(cxt, client, withSandbox = !published)
         val candidate = candidate(cxt, client, replacing, published) ?: return
-        val found = candidate.issues.filterNot { issue -> baseline.any { it.sameAs(issue) } }
+        var found = candidate.issues.filterNot { issue -> baseline.any { it.sameAs(issue) } }
+        if (found.isNotEmpty() && !published && before != null) {
+            val unrun = unrunBaseline(cxt, client, before)
+            found = found.filterNot { issue -> unrun.any { it.sameAs(issue) } }
+        }
         // What the client's plan allows (issue #1109), judged on the candidate as a whole once it is otherwise sound.
         if (found.isEmpty()) {
             PlanLimits.requireConfigWithin(cxt, client, candidate.def, candidate.usage)
@@ -90,6 +103,21 @@ object GedraConfigTrial {
         if (client == GID.globalClient || isSandboxClient(client)) return emptyList()
         val sandbox = sandboxOf(client)
         return ClientConfigIssues.get(cxt).issuesFor(sandbox).map { it.asOwners(client, sandbox) }
+    }
+
+    /**
+     * The problems [client]'s drafts had before a write, when nothing runs them (issue #1171): a trial of the stored
+     * set with each config [before] names back as it stood -- its prior revision, or left out when it is new. Empty
+     * for a client whose drafts something runs: its own load, when it runs its latest revisions, or its sandbox's.
+     *
+     * Named explicitly, rather than taken to be what the stored set already reads: through the config cache, which
+     * does not refresh inside a transaction, it does read as before the write, but on the SQL path it reads the
+     * write's own revisions.
+     */
+    private fun unrunBaseline(cxt: KdrCxt, client: String, before: Map<String, GedraConfigRow?>): List<GedraConfigIssue> {
+        if (client == GID.globalClient || isSandboxClient(client)) return emptyList()
+        if (!GedraConfigService.get(cxt).publishedOnly(cxt, client) || ClientService.get(cxt).isPresent(sandboxOf(client))) return emptyList()
+        return candidate(cxt, client, before.values.filterNotNull(), published = false, excluding = before.keys)?.issues.orEmpty()
     }
 
     /** This issue of [sandbox]'s load as a trial of [client], its parent, names it: by the parent's own config id. */
@@ -150,8 +178,10 @@ object GedraConfigTrial {
         client: String,
         replacing: List<GedraConfigRow> = emptyList(),
         published: Boolean = false,
+        /** Configs left out of the stored set, by config id, beside those [replacing] stands in for: one a write created. */
+        excluding: Set<String> = emptySet(),
     ): TrialCandidate? {
-        val replaced = replacing.map { it.configId.fullId }.toSet()
+        val replaced = replacing.map { it.configId.fullId }.toSet() + excluding
         val stored = GedraConfigService.get(cxt).configsAt(cxt, client, published)
         val rows = stored.filter { it.configId.fullId !in replaced } + replacing
         return GedraConfigReload.underReloadLock { trialLocked(cxt, client, rows) }

@@ -554,6 +554,37 @@ class ClientFileRefsTest : StringSpec({
         admin.expectError(EXC.badInput, UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
     }
 
+    // Issue #1171: a client set to run only its published configuration, with no sandbox, has drafts no node runs, so
+    // no load records what they already have. A draft ref whose file went missing is the draft's own problem, not one
+    // every later draft write brings; a draft write that adds one is still refused.
+    "a published-only client with no sandbox: a draft's missing file does not refuse unrelated draft writes" {
+        val client = "refunjudged"
+        defineClient(client)
+        val writer = writerOf(client)
+        svc.setPublishedOnly(writer, client, true)
+        val hash = plant(client, png)
+        svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic", hash) }, trial = true)
+        // The draft's file goes: deleted from the store, no configuration changing.
+        files.delete(writer, FileRefService.bucket, FileRefService.keyOf(client, hash)) shouldBe true
+        refs.forget(client, hash)
+
+        // An unrelated draft write goes through: the missing file is the draft's already. A whole write, and a patch.
+        svc.writeConfig(writer, gedraConfig(cxt, "words", clientNamespace(client), client) { cfact("unrelated", "carry", "Unrelated.") }, trial = true)
+        svc.patchConfig(writer, GedraId.of(GedraConfigType.configDoc, client, "words"), trial = true) { it }
+        // So does one of the same configuration that leaves the ref naming what it named: rewording it.
+        svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic", hash, "Reworded.") }, trial = true)
+            .shouldNotBeNull()
+        // A second ref to the same missing file is a problem the write brings.
+        shouldThrow<KdrException> {
+            svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic", hash); fileRef("also", hash) }, trial = true)
+        }.message.orEmpty() shouldContain "'also'"
+        // One that adds a ref of its own to a file that is not there is refused, as ever.
+        val missing = otherPng.sha256Hex()
+        shouldThrow<KdrException> {
+            svc.writeConfig(writer, gedraConfig(cxt, "more", clientNamespace(client), client) { fileRef("ghost", missing) }, trial = true)
+        }.message.orEmpty() shouldContain "'ghost'"
+    }
+
     "an entry typed into the configuration is held to what an upload writes" {
         val client = "reftyped"
         defineClient(client)
