@@ -30,6 +30,7 @@ import com.dynamicruntime.common.cfact.CFACT
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.user.USF
@@ -71,6 +72,8 @@ class ClientOverview(
     val staticHere: Boolean = false,
     /** The client's plan and its usage against it (issue #1109); null for a client on none. */
     val planUsage: PlanUsage? = null,
+    /** The customer whose root the client is (issue #1182), which may not be retired; null for any other client. */
+    val rootOf: String? = null,
 )
 
 /** The overview endpoint's items as rows; one without a client id is not a client. Pure, and covered under `jsNodeTest`. */
@@ -96,6 +99,7 @@ fun parseClientOverview(items: List<Map<String, Any?>>): List<ClientOverview> = 
         publishedOnly = row[CLD.publishedOnly] == true,
         staticHere = row[CLD.staticHere] == true,
         planUsage = PlanUsage.fromInfo(row[CLD.planUsage].toJsonMapOrEmpty().ifEmpty { null }),
+        rootOf = row[CLD.rootOf].toOptStr(),
     )
 }
 
@@ -161,6 +165,50 @@ fun sandboxControl(row: ClientOverview): SandboxControl {
 }
 
 private fun issues(n: Int): String = if (n == 1) "1 issue" else "$n issues"
+
+/**
+ * What the detail's Retirement section says, and the one action it offers (issue #1182): [retire] true to retire the
+ * client, false to bring it back, null for none.
+ */
+class RetirementControl(val text: String, val retire: Boolean?)
+
+/**
+ * The detail's Retirement section for [row], for an administrator who sees every client (issue #1182). The action is
+ * offered only where the backend's switch (`/admin/client/retirement/set`, #1111) can take it, and each place it
+ * cannot says why in the backend's terms: a sandbox goes with its parent, a client defined in source code is retired
+ * there, a customer's root waits for another root, and a definition whose configuration [storedConfig] has unpublished
+ * changes ([configs] say so) would publish them. Pure, and covered under `jsNodeTest`.
+ */
+fun retirementControl(row: ClientOverview, storedConfig: String?, configs: List<ConfigSummaryView>?): RetirementControl {
+    row.sandboxOf?.let { return RetirementControl("A sandbox is retired with its parent, $it.", null) }
+    if (row.origin == GedraConfigOrigin.source.name) {
+        return RetirementControl("Defined in source code, so it is retired there.", null)
+    }
+    if (row.status == ClientStatus.retired.name) {
+        return RetirementControl(
+            "Retired: everything it stored is kept, and nobody can sign in to it. Bringing it back restores it as it was.",
+            false,
+        )
+    }
+    row.rootOf?.let {
+        return RetirementControl("The root of the customer '$it', so it is retired only once the customer names another root.", null)
+    }
+    if (row.status != ClientStatus.present.name) return RetirementControl("Not loaded on this node, so it cannot be retired here.", null)
+    val holder = storedConfig?.let { name -> configs?.firstOrNull { it.name == name } }
+    if (holder != null && !holder.published) {
+        return RetirementControl(
+            "Its definition is in configuration '$storedConfig', which has unpublished changes that retiring it would " +
+                "publish with it. Publish or revert it first.",
+            null,
+        )
+    }
+    return RetirementControl("In use. Retiring it keeps everything it stored, and it can be brought back as it was.", true)
+}
+
+/** What a retirement does, said in its confirmation (issue #1182). */
+const val retireConsequence =
+    "Its data is kept, its users can no longer sign in, their open sessions end, and its sandbox goes with it. " +
+        "It can be brought back as it was."
 
 /**
  * How a client's load reads (issue #905): loaded, with any issues the checks forgave; or why it is not carried here.
@@ -1022,6 +1070,11 @@ object ClientsApi {
      * Adds or removes [clientId]'s sandbox (issue #932): the flag published and the client reloaded, so the sandbox is
      * there -- or gone -- when this returns. Returns whether it now has one.
      */
+    /** Retires [clientId], or brings it back (issue #1182); the platform's switch (#1111), live at once. */
+    suspend fun setRetired(clientId: String, retired: Boolean) {
+        Http.sendApi("POST", ADEP.clientRetirementSet, mapOf(CLD.client to clientId, CLD.retired to retired))
+    }
+
     suspend fun setSandbox(clientId: String, on: Boolean): Boolean =
         Http.sendApi("POST", UADEP.clientSandbox, mapOf(CLD.client to clientId, CLD.sandbox to on))[EP.results]
             .toJsonMapOrEmpty()[CLD.sandbox] == true

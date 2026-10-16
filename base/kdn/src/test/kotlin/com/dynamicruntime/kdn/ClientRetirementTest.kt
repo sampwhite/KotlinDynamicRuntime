@@ -19,6 +19,7 @@ import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.TestUser
+import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
@@ -104,6 +105,9 @@ class ClientRetirementTest : StringSpec({
         operator.postData(ADEP.clientCreate, createBody(root) + (CLD.newCustomer to mapOf(CUST.name to "Rootco")))
         refusal(root) shouldContain "is the root of the customer '$root'; name another root before retiring it"
         ClientService.get(cxt).isPresent(root) shouldBe true
+        // The Clients overview says it is a root (issue #1182), so the page offers no retirement that could only fail.
+        val rows = operator.getItems(UADEP.clientsOverview).associateBy { it[CLD.clientId] }
+        rows.getValue(root)[CLD.rootOf] shouldBe root
     }
 
     "retiring a client is the platform's" {

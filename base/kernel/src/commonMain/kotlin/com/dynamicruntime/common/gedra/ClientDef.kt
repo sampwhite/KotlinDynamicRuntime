@@ -369,6 +369,12 @@ object CLD {
     const val hasSandbox = "hasSandbox"
 
     /**
+     * On a client overview row: the customer whose root the client is (issue #1182), which may not be retired until
+     * another root is named; absent for any other client.
+     */
+    const val rootOf = "rootOf"
+
+    /**
      * Whether the client runs only published configuration: in the sandbox edit's result (issue #932), and on an
      * overview row (issue #1001), where it decides whether an unpublished revision is live.
      */
