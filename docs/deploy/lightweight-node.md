@@ -226,6 +226,7 @@ Environment="JAVA_OPTS=-Xmx384m -XX:MaxMetaspaceSize=160m"
 ExecStart=%h/kdr/current/bin/launch
 Restart=on-failure
 RestartSec=5
+SuccessExitStatus=143
 
 [Install]
 WantedBy=default.target
@@ -233,8 +234,8 @@ WantedBy=default.target
 
 `%h` is the user's home directory. The memory limits leave room on a node of about 1 GB: the heap is capped at
 384 MB, and Java's other memory (its classes, its threads) comes on top of that, beside Caddy and the system. A
-freshly started reference deployment uses about 300 MB in all. Then
-enable it, so it starts with the node:
+freshly started reference deployment uses about 300 MB in all. `SuccessExitStatus=143` is how Java exits when it is
+stopped (128 plus SIGTERM's 15), so a restart is not logged as a failure. Then enable it, so it starts with the node:
 
 ```bash
 systemctl --user daemon-reload
