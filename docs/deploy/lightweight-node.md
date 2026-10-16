@@ -6,9 +6,8 @@ the application as a systemd service of its own user. The reference instance at 
 with the `reference` deployment flavor.
 
 The guide has two parts. **One-time setup** is done once per node, partly with `sudo`. **Deploying a build** is
-done every time, from your own machine, and needs no `sudo`. The commands `kdr-deploy` (issue #1243) and `kdr-node`
-(issue #1244) are being written to do the repeatable part for you. Until they exist, this guide gives the steps they
-will automate.
+done every time, from your own machine, and needs no `sudo`: `kdr-deploy` does it in one command. Looking at a
+node and clearing its data are steps by hand for now, which `kdr-node` (issue #1244) is being written to do.
 
 The examples use `example.org` for the domain and `kdr` for the user that runs the application. Put in your own.
 
@@ -249,43 +248,62 @@ It has nothing to run yet. The first deploy starts it.
 
 ## Deploying a build
 
-`kdr-deploy` (issue #1243) will do this in one command, with a dry run and a rollback. The steps it will take,
-which work by hand until then:
+**Describe the node once, in a target file.** `kdr-deploy` reads where the node is and the settings it runs with from
+`deploy/targets/<name>.properties` in the repository: `host`, `user`, `baseDir` (the node's `~/kdr`, as an absolute
+path), `service`, `publicUrl`, and how many releases to keep, then each setting of step 8 as `env.<VARIABLE>=<value>`.
+`deploy/targets/dynamicruntime.org.properties` is a complete example. A target file holds no secrets: the node keeps
+those in `private/`, which the command never touches.
 
-**Build the distribution.** On your machine, from the workspace directory:
+A node of your own does not need to be in the repository. Keep its target file anywhere, for example
+`~/nodes/mynode.properties`, and pass its path instead of a name: `kdr-deploy ~/nodes/mynode.properties`. A relative
+path is read from the directory you run the command in. Keep that file outside the checkout rather than uncommitted in
+`deploy/targets/`. An untracked file there counts as a change, so every release would be named `-dirty`.
+
+**Then deploy with one command,** from your machine:
+
+```bash
+kdr-deploy dynamicruntime.org --dry-run
+```
+
+```bash
+kdr-deploy dynamicruntime.org
+```
+
+The dry run shows what a deploy would do and changes nothing: the release it would make, which release runs now, how
+`kdr.env` would change, and which old releases it would remove. A deploy then, after asking:
+
+1. builds the distribution (`./gradlew :launch:installDist`), which is the release;
+2. copies it to a new `releases/<date>-<time>-<commit>/`, with `-dirty` on the end when your checkout had uncommitted
+   changes;
+3. writes `kdr.env` from the target when it differs, keeping the old one as `kdr.env.prev`;
+4. points `current` at the new release and restarts the service;
+5. waits for the application to answer on the node, then through the public address;
+6. removes releases beyond the target's `keepReleases`, never the running one or the one before it.
+
+It never touches the database (`h2Database/`), the stored files (`fileStore/`), or the secrets (`private/`). It
+reaches the node with your own `ssh` and `rsync`, and needs no `sudo` there. If the new release does not answer as
+healthy, it is left running and the command says how to go back, so you can look at why first.
+
+**To go back** to the release before the running one, and restart:
+
+```bash
+kdr-deploy dynamicruntime.org --rollback
+```
+
+The database is not in a release, so going back does not lose data.
+
+**What it does, by hand.** The distribution is `KotlinDynamicRuntime/launch/build/install/launch/`: a `bin/launch`
+script and a `lib/` of every jar the application needs, the web application among them. It is self-contained, unlike
+the jar `kdr-run` uses, which names jars by where they sit on your machine, and it carries your workspace's own
+configuration code (`customConfig`), which the application applies as it starts. Without the command:
 
 ```bash
 ./gradlew :launch:installDist
-```
-
-This writes `KotlinDynamicRuntime/launch/build/install/launch/`, which holds a `bin/launch` script and a `lib/` of
-every jar the application needs, the web application among them. It is self-contained, unlike the jar `kdr-run`
-uses, which names jars by where they sit on your machine. It also carries your workspace's own configuration code
-(`customConfig`), which the application applies as it starts.
-
-**Copy it to a new release.** Name the release for the time and the commit, so the node can say which build runs:
-
-```bash
 release=$(date +%Y%m%d-%H%M)-$(git -C KotlinDynamicRuntime rev-parse --short HEAD)
 rsync -a KotlinDynamicRuntime/launch/build/install/launch/ kdr@example.org:kdr/releases/$release/
-```
-
-**Switch to it, and restart:**
-
-```bash
 ssh kdr@example.org "ln -sfn ~/kdr/releases/$release ~/kdr/current && systemctl --user restart kdr"
-```
-
-**Check that it came up.** The application answers on the node first, then through Caddy:
-
-```bash
 ssh kdr@example.org "curl -s http://127.0.0.1:7070/kda/health"
 ```
-
-Then open `https://example.org`. A reference deployment shows "A reference deployment" on its home page.
-
-To go back to the previous build, point `current` at its release and restart. Old releases can be deleted once you
-are sure you will not need them. The database is not in a release, so going back does not lose data.
 
 ## Looking at a node
 

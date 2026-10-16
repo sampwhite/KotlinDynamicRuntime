@@ -586,3 +586,13 @@ and per mail address (5 per hour), but nothing bounds the total.
   further sign-ins with a plain "try again later" once reached, so a distributed flood costs a bounded amount and
   cannot damage the sending domain's reputation. In memory like the existing limiter, since a lightweight node is
   one node.
+
+## When the deploy commands need a dependency the server should not carry
+
+`kdr-deploy` (#1243), and `kdr-node` beside it (#1244), live in the `config` module's `com.dynamicruntime.script.deploy`
+package, beside the other workspace commands, because they shell out to the system `ssh` and `rsync` and so add
+nothing to the server's classpath.
+
+- **A module of their own** *(from #1243).* Split them out the day they need a library the application has no use for
+  (an SSH client, a cloud provider's SDK), so it stays out of every release. That module also needs its own way onto
+  `kdr-run`'s classpath, since `kdr-run` launches from the `launch` project's pathing jar.
