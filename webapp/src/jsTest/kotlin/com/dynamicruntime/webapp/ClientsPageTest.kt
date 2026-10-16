@@ -266,6 +266,8 @@ class ClientsPageTest {
         // As are where it runs and what it is built on, which only the platform changes (issue #1108).
         assertEquals("local, unit $platformSetNote", scoped["Enabled in"])
         assertEquals("\u2014", scoped["Extends"])
+        // And where it is reached (issue #1116).
+        assertEquals("acme (prefix) $platformSetNote", scoped["Domain"])
         // Without a definition (a client this node does not carry), the listing's facts still show.
         val listingOnly = clientSummaryRows("acme", row, null, canSeeAllClients = true).toMap()
         assertEquals("Loaded", listingOnly["Load"])
@@ -577,7 +579,7 @@ class ClientsPageTest {
     @Test
     fun theDraftOpensOnTheStoredDefinitionAndTheRequestCarriesOnlyWhatChanged() {
         val draft = definitionDraftOf(storedInfo)
-        assertEquals(ClientPresentationFields.names, draft.keys.toList())
+        assertEquals(ClientPresentationFields.namesFor(platform = true), draft.keys.toList())
         assertEquals("Globex", draft[CLD.name])
         assertEquals("", draft[CLD.customDomain])
         assertEquals("reviewer, auditor", draft[CLD.userLabels])
@@ -600,6 +602,37 @@ class ClientsPageTest {
         // A label line that only re-spells the same list is not a change.
         assertEquals(listOf("reviewer", "auditor"), labelsOfText(" reviewer,auditor , reviewer"))
         assertEquals(false, definitionEditChanges(definitionEditRequest("globex", storedInfo, draft + (CLD.userLabels to " reviewer,auditor "), EDM.live)))
+    }
+
+    /** The platform's fields (issue #1116): sent only for an administrator who sees every client, each by its kind. */
+    @Test
+    fun thePlatformsFieldsAreSentForAPlatformAdministratorOnly() {
+        val stored = storedInfo + mapOf(
+            CLD.usageType to "dev", CLD.audience to "customer", CLD.enabledEnvironments to listOf("unit", "local"),
+        )
+        val draft = definitionDraftOf(stored)
+        assertEquals("unit, local", draft[CLD.enabledEnvironments])
+        assertEquals("false", draft[CLD.preload])
+        val edited = draft + mapOf(
+            CLD.usageType to "production", CLD.enabledEnvironments to "local, dev, unit", CLD.preload to "true", CLD.domainPrefix to "gx",
+        )
+        // A client's own administrator is not offered them, so nothing of theirs is sent.
+        assertEquals(mapOf(CLD.client to "globex", CPY.mode to EDM.live), definitionEditRequest("globex", stored, edited, EDM.live))
+        assertEquals(
+            mapOf(
+                CLD.client to "globex", CPY.mode to EDM.live, CLD.usageType to "production",
+                CLD.enabledEnvironments to listOf("unit", "local", "dev"), CLD.preload to true, CLD.domainPrefix to "gx",
+            ),
+            definitionEditRequest("globex", stored, edited, EDM.live, platform = true),
+        )
+        // The same environments in another order are no change.
+        assertEquals(false, definitionEditChanges(definitionEditRequest("globex", stored, draft + (CLD.enabledEnvironments to "local, unit"), EDM.live, platform = true)))
+        // Who sets what is read-only for the caller.
+        assertEquals(platformSetNote, whoSetsNote(CLD.domainPrefix, canSeeAllClients = false))
+        assertEquals(null, whoSetsNote(CLD.domainPrefix, canSeeAllClients = true))
+        assertEquals(configurationSetNote, whoSetsNote(CLD.customerId, canSeeAllClients = true))
+        assertEquals(sourceSetNote, whoSetsNote(CLD.staticConfig, canSeeAllClients = true))
+        assertEquals(null, whoSetsNote(CLD.timeZone, canSeeAllClients = false))
     }
 
     /** The retrieve's stored definition (issue #1026) is the editor's baseline; a source-defined client has none. */

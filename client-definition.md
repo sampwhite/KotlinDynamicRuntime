@@ -248,17 +248,29 @@ read from it.
 | --- | --- | --- |
 | `clientId` | the creator | nobody (it is the client) |
 | `name`, `description` | the creator | the definition editor |
-| `customerId`, `usageType`, `audience`, `enabledEnvironments` | copied from the maker | the platform |
-| `extendsFromClientId` | the creator | the platform |
-| `domainPrefix`, `customDomain` | cleared (a domain routes to one client) | the definition editor |
-| `webResourcesId`, `timeZone` | copied from the maker | the definition editor |
+| `timeZone` | copied from the maker | the definition editor |
 | `userLabels` | cleared | the definition editor |
+| `usageType`, `audience`, `enabledEnvironments` | copied from the maker | the platform, in the definition editor |
+| `webResourcesId` | copied from the maker | the platform, in the definition editor |
+| `domainPrefix`, `customDomain` | cleared (a domain routes to one client) | the platform, in the definition editor |
+| `preload` | cleared | the platform, in the definition editor |
+| `customerId` | copied from the maker | the platform, by a configuration write |
+| `extendsFromClientId` | the creator | the platform, by a configuration write |
 | `sandbox` | the creator | its own surface (the sandbox's management) |
 | `includedTraits` | cleared | its own surface (the client's configuration) |
-| `preload`, `staticConfig`, `retired`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
+| `retired` | cleared | the platform, in its own surface (#1182) |
+| `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
+
+**The definition editor offers each caller what its policy lets them edit** (issue #1116). A client's own
+administrator edits its name, note, time zone, and suggested labels. An administrator who sees every client edits
+those and the platform's fields marked "in the definition editor" above (`ClientFieldPolicies.platformEditorFields`);
+the endpoint refuses one of those from a client's own administrator (403). The customer and the template stay a
+deliberate configuration write: changing either moves what the client is under or holds. Every field the caller
+does not edit there is shown read-only, saying who sets it.
 
 The platform's create takes every field but those a create clears and that are then changed only through their own
-surface or by the platform: the traits a client includes, its preload, its static lock, and its test features.
+surface or by a configuration write: the traits a client includes, its static lock, its retirement, and its test
+features.
 
 **A client has a time zone** (issue #1115): `timeZone`, an IANA zone of a place (`America/Chicago`), or `UTC`. It
 says where the client's people are, and so the zone its days mean something in. Absent, the client is in the

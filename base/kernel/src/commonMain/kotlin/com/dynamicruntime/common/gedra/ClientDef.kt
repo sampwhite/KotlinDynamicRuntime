@@ -159,10 +159,11 @@ object ClientFieldPolicies {
         CLD.enabledEnvironments to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
         // The template a client is built on is chosen when it is made; changing it after moves everything it holds.
         CLD.extendsFromClientId to p(ClientFieldAtCreate.creator, ClientFieldEdit.platform),
-        // A domain routes to one client, so a copy would refuse every create.
-        CLD.domainPrefix to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
-        CLD.customDomain to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
-        CLD.webResourcesId to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
+        // A domain routes to one client, so a copy would refuse every create; where a client is reached, and what it
+        // presents itself with, are the platform's (issue #1116).
+        CLD.domainPrefix to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        CLD.customDomain to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        CLD.webResourcesId to p(ClientFieldAtCreate.parent, ClientFieldEdit.platform),
         // Where the client's people are: a client made by another starts where its maker is (issue #1115).
         CLD.timeZone to p(ClientFieldAtCreate.parent, ClientFieldEdit.definitionEditor),
         CLD.userLabels to p(ClientFieldAtCreate.cleared, ClientFieldEdit.definitionEditor),
@@ -202,17 +203,30 @@ object ClientFieldPolicies {
     /** The fields only the platform changes. */
     val platformFields: List<String> = byField.filter { it.value.edit == ClientFieldEdit.platform }.keys.toList()
 
+    /**
+     * The [platformFields] the definition editor offers an administrator who sees every client (issue #1116), beside
+     * the client administrator's [editorFields]: where the client is reached and what it presents with, what it is
+     * for and whose it is, where it runs, and its preload. Not its customer or the template it extends, which move
+     * what the client is under or holds and stay a deliberate configuration write; not its static lock (source only),
+     * its retirement (its own section, #1182), or its test features (a test instance's).
+     */
+    val platformEditorFields: List<String> = listOf(
+        CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain,
+        CLD.webResourcesId,
+    )
+
     /** The fields the definition editor offers a client's own administrator, in the order it draws them. */
     val editorFields: List<String> = byField.filter { it.value.edit == ClientFieldEdit.definitionEditor }.keys.toList()
 
     /**
      * The fields the **platform's** create takes (issue #1054): every field but those a create clears and that are
-     * then changed only through a surface of their own or by the platform -- the traits a client includes, its
-     * preload, its static lock, and its test features, which belong to its configuration once it exists. A field a
-     * create clears but the definition editor offers (a domain, the suggested labels) the operator may fill in at once.
+     * then changed only through a surface of their own or by a configuration write -- the traits a client includes,
+     * its static lock, its retirement, and its test features. A field a create clears but the definition editor
+     * offers (a domain, the suggested labels, the preload) the operator may fill in at once.
      */
-    val createFields: List<String> = byField.filter { (_, policy) ->
-        policy.atCreate != ClientFieldAtCreate.cleared || policy.edit == ClientFieldEdit.definitionEditor
+    val createFields: List<String> = byField.filter { (field, policy) ->
+        policy.atCreate != ClientFieldAtCreate.cleared || policy.edit == ClientFieldEdit.definitionEditor ||
+            field in platformEditorFields
     }.keys.toList()
 
     /**
@@ -241,35 +255,86 @@ object ClientFieldPolicies {
 }
 
 /**
- * The [ClientDef] fields a client's administrator edits from the Clients page (issue #1026): those whose policy is
- * [ClientFieldEdit.definitionEditor] (issue #1108) -- what the client presents and where it is reached. Each with
- * what the endpoint says of it, so the editor and the endpoint's input are the same set.
+ * The [ClientDef] fields the definition editor on the Clients page edits (issues #1026, #1116), read from the
+ * policies (issue #1108): a client's administrator edits those whose policy is [ClientFieldEdit.definitionEditor]
+ * ([names]); an administrator who sees every client edits those and the platform's fields the editor offers
+ * ([ClientFieldPolicies.platformEditorFields]) too ([namesFor]). Each with what the endpoint says of it, so the editor
+ * and the endpoint's input are the same set.
  */
 object ClientPresentationFields {
+    /** How the editor takes a field's value. */
+    enum class Kind {
+        /** One line of text; blank clears an optional one. */
+        text,
+
+        /** The suggested user labels: several strings, written as one comma-separated line. */
+        labels,
+
+        /** One of [choicesOf]. */
+        choice,
+
+        /** Any of [choicesOf]. */
+        choices,
+
+        /** On or off. */
+        flag,
+    }
+
     /** Each editable field, a [CLD] key, in the order an editor draws them, with what the endpoint says of it. */
     val descriptions: Map<String, String> = linkedMapOf(
         CLD.name to "The name presented to users as the name of the client.",
-        CLD.description to "An internal note about who, what or why; blank clears it.",
-        CLD.domainPrefix to "A prefix on a core domain that routes to this client; blank clears it. No other client may use it.",
-        CLD.customDomain to "A whole hostname the client configured for itself; blank clears it. No other client may use it.",
-        CLD.webResourcesId to "The package of web resources the client presents; blank clears it.",
+        CLD.description to "An internal note about who, what, or why; blank clears it.",
         CLD.timeZone to "The client's IANA time zone (America/Chicago), which its dates are read and shown in; " +
             "blank clears it. Changing it moves no stored moment.",
         CLD.userLabels to "The user labels the client suggests, each once and trimmed; empty clears them.",
+        CLD.usageType to "What the client is for. Set by the platform.",
+        CLD.audience to "Whose client this is: ours, or somebody else's. Set by the platform.",
+        CLD.enabledEnvironments to "The environments the client is enabled in; naming any past unit and local needs " +
+            "both of those. Set by the platform.",
+        CLD.preload to "Whether the client's caches are computed before the node reports ready. Set by the platform.",
+        CLD.domainPrefix to "A prefix on a core domain that routes to this client; blank clears it. No other client " +
+            "may use it. Set by the platform.",
+        CLD.customDomain to "A whole hostname that routes to this client; blank clears it. No other client may use it. " +
+            "Set by the platform.",
+        CLD.webResourcesId to "The package of web resources the client presents; blank clears it. Set by the platform.",
     )
 
-    /** The editable fields, in the order an editor draws them. */
-    val names: List<String> get() = ClientFieldPolicies.editorFields
+    /** The fields a client's own administrator edits, in the order an editor draws them. */
+    val names: List<String> = descriptions.keys.filter { it in ClientFieldPolicies.editorFields }
+
+    /** The fields the editor offers only an administrator who sees every client, in the order it draws them. */
+    val platformNames: List<String> = descriptions.keys.filter { it in ClientFieldPolicies.platformEditorFields }
+
+    /** The fields the editor offers: [names], and [platformNames] too for the [platform]. */
+    fun namesFor(platform: Boolean): List<String> = if (platform) names + platformNames else names
 
     init {
         // The policy decides what is editable; this says it in the endpoint's words, so each has its sentence.
-        check(descriptions.keys.toList() == ClientFieldPolicies.editorFields) {
-            "The definition editor's descriptions ${descriptions.keys} are not its fields ${ClientFieldPolicies.editorFields}."
+        val fields = ClientFieldPolicies.editorFields + ClientFieldPolicies.platformEditorFields
+        check(descriptions.keys == fields.toSet()) {
+            "The definition editor's descriptions ${descriptions.keys} are not its fields $fields."
         }
     }
 
+    /** How the editor takes [name]'s value. */
+    fun kind(name: String): Kind = when (name) {
+        CLD.userLabels -> Kind.labels
+        CLD.usageType, CLD.audience -> Kind.choice
+        CLD.enabledEnvironments -> Kind.choices
+        CLD.preload -> Kind.flag
+        else -> Kind.text
+    }
+
+    /** The values a [Kind.choice] or [Kind.choices] field takes; empty for any other. */
+    fun choicesOf(name: String): List<String> = when (name) {
+        CLD.usageType -> ClientUsageType.entries.map { it.name }
+        CLD.audience -> ClientAudience.entries.map { it.name }
+        CLD.enabledEnvironments -> ENV.names
+        else -> emptyList()
+    }
+
     /** Whether [name] holds a list of strings rather than one string -- the labels. */
-    fun isList(name: String): Boolean = name == CLD.userLabels
+    fun isList(name: String): Boolean = kind(name) == Kind.labels
 }
 
 /**

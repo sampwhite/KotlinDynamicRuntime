@@ -9,10 +9,10 @@ import com.dynamicruntime.common.util.toOptStr
 
 /**
  * Editing a client's definition from the Clients page (issue #1026): the write behind
- * `POST /clientAdmin/client/definition/set`. The fields are [ClientPresentationFields] -- what the client presents
- * and where it is reached -- and only those: the endpoint's input declares no other, so a write naming `audience`
- * (say) is refused by the input's shape rather than dropped, which is the rule #820 set for the operator-only
- * fields, and the structural ones stay read-only on the page.
+ * `POST /clientAdmin/client/definition/set`. The fields are [ClientPresentationFields] -- a client administrator's,
+ * and for an administrator who sees every client the platform's the editor offers (issue #1116), which the endpoint
+ * holds to that caller -- and only those: the endpoint's input declares no other, so a write naming the customer
+ * (say) is refused by the input's shape rather than dropped, and the structural ones stay read-only on the page.
  *
  * ### Where an edit lands
  *
@@ -91,19 +91,29 @@ object ClientDefinitionEdit {
 
     /**
      * [fields] as the definition will hold them: text trimmed, the name refused blank, the labels held to the one
-     * label rule ([normalizeUserLabels]) rather than refused later by `ClientDef`'s own check -- and an optional field
-     * cleared ("" or an empty list) kept as a null, which the patch removes, as `toInfo` leaves an absent one out.
-     * A key outside [ClientPresentationFields] is a fault: the endpoint's input admits no other.
+     * label rule ([normalizeUserLabels]) rather than refused later by `ClientDef`'s own check, a choice required, the
+     * environments as a list, the preload as a flag -- and an optional field cleared ("" or an empty list) kept as a
+     * null, which the patch removes, as `toInfo` leaves an absent one out. A key outside [ClientPresentationFields] is
+     * a fault: the endpoint's input admits no other.
      */
     private fun cleaned(client: String, fields: Map<String, Any?>): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
         for ((key, value) in fields) {
-            if (key !in ClientPresentationFields.names) throw KdrException.mkInput("'$key' is not a field a client's definition edit may set.")
-            out[key] = when (key) {
-                CLD.name -> value.toOptStr()?.trim()?.ifEmpty { null }
-                    ?: throw KdrException.mkInput("Client '$client' needs a name; a blank one is refused.")
-                CLD.userLabels -> normalizeUserLabels(value.toJsonListOfStrings()).ifEmpty { null }
-                else -> value.toOptStr()?.trim()?.ifEmpty { null }
+            if (key !in ClientPresentationFields.namesFor(platform = true)) {
+                throw KdrException.mkInput("'$key' is not a field a client's definition edit may set.")
+            }
+            out[key] = when (ClientPresentationFields.kind(key)) {
+                ClientPresentationFields.Kind.labels -> normalizeUserLabels(value.toJsonListOfStrings()).ifEmpty { null }
+                ClientPresentationFields.Kind.choices -> value.toJsonListOfStrings().distinct()
+                ClientPresentationFields.Kind.flag -> value == true
+                ClientPresentationFields.Kind.choice -> value.toOptStr()?.trim()?.ifEmpty { null }
+                    ?: throw KdrException.mkInput("Client '$client' needs a '$key'; a blank one is refused.")
+                ClientPresentationFields.Kind.text -> if (key == CLD.name) {
+                    value.toOptStr()?.trim()?.ifEmpty { null }
+                        ?: throw KdrException.mkInput("Client '$client' needs a name; a blank one is refused.")
+                } else {
+                    value.toOptStr()?.trim()?.ifEmpty { null }
+                }
             }
         }
         return out

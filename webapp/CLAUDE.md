@@ -781,18 +781,21 @@ changes". Wire names: `MNU` in the kernel.
 **Editing the definition** (issue #1026, `DefinitionEditor` in `ClientsPage.kt`): under the summary rows of a client
 defined in **stored** configuration (`definitionEditable`: present, origin stored, not a sandbox, not static here --
 the backend refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
-definition** opens the presentation fields -- name, description, domain prefix, custom domain, web resources,
-time zone (issue #1115; the editor says a change moves no stored moment), user labels as one comma line
-(`labelsOfText`) -- seeded from the client's **stored** definition, the retrieve's
+definition** opens the fields the caller's policy lets them edit (issue #1116, `ClientPresentationFields.namesFor`):
+for a client's administrator its name, description, time zone (issue #1115; the editor says a change moves no stored
+moment), and user labels as one comma line (`labelsOfText`); for an administrator who sees every client also its
+usage type and audience (selects), environments (a multi-select), preload (a checkbox), domain prefix, custom domain,
+and web resources -- seeded from the client's **stored** definition, the retrieve's
 `storedDefinition` (`definitionDraftOf`; what the client runs differs from it by an unpublished draft, which the
 editor must show and be able to take back, and by what a template fills in, which written back would become the
 client's own). Save posts
 `/clientAdmin/client/definition/set` (`ClientsApi.setDefinition`) with **only the fields that changed**
 (`definitionEditRequest`; a cleared field goes as blank, which the backend clears, and Save is disabled while
 nothing differs), the same write-trial-publish-reload path as a copy edit, a draft likewise for a client with a
-sandbox (`savedNote` says which). The structural fields (environments, template, included traits, preload) and the
-platform's (#820) are not inputs of the endpoint at all, so the editor never offers them: they stay in the read-only
-rows, the platform's marked "(set by the platform)". A domain prefix or custom domain another client declares is
+sandbox (`savedNote` says which). Every field the caller does not edit there stays in the read-only rows, saying who
+sets it (`whoSetsNote`): "(set by the platform)" to a client's administrator, and to an administrator who sees every
+client "(set in its configuration)" for the customer and the template, or "(set in source code)" for the static lock.
+The endpoint refuses a platform field from a client's administrator (403). A domain prefix or custom domain another client declares is
 refused by the stored write itself (`GedraConfigService`), whatever write carries it. When the configuration
 holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished changes and the definition does not
 ask for a sandbox (its saves would be drafts), the backend's draft rule would refuse every save, so the page says so
