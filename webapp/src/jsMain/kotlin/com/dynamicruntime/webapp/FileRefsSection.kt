@@ -73,12 +73,13 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
     var failure by useState<DisplayError?>(null)
     var problem by useState<String?>(null)
     var note by useState<String?>(null)
-    // The ref whose description is being reworded, and what has been typed for it.
-    var describing by useState<String?>(null)
+    // The one row editor open, if any: which ref, and which editor -- rewording it (`FACT.describe`) or pointing it
+    // at a file the deployment keeps (`FACT.local`, issue #1189). One at a time in the whole section, as rewording
+    // always was, so opening one closes any other.
+    var editing by useState<Pair<String, String>?>(null)
+    // What has been typed into the rewording.
     var describeText by useState("")
-    // The ref being pointed at a file the deployment keeps (issue #1189), and where and what. One editor of a row at
-    // a time: opening this closes the rewording, and the other way round.
-    var repointing by useState<String?>(null)
+    // Where and what, for the file the ref is being pointed at.
     var repointRoot by useState<String?>(null)
     var repointPath by useState("")
     // The form that adds one.
@@ -111,9 +112,9 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             problem = null
             note = null
             confirming = null
-            describing = null
+            editing = null
             describeText = ""
-            repointing = null
+            repointRoot = null
             repointPath = ""
             newId = ""
             newDescription = ""
@@ -173,8 +174,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     refs = withFileRefChange(refs, changed)
                     kept = kept + changed.refId
                     note = done(changed)
-                    describing = null
-                    repointing = null
+                    editing = null
                     if (added) {
                         newId = ""
                         newDescription = ""
@@ -297,7 +297,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                     }
                 }
-                if (describing == ref.refId) {
+                if (editing == ref.refId to FACT.describe) {
                     div {
                         className = ClassName("file-ref-describe")
                         Input {
@@ -322,7 +322,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                         Button {
                             disabled = busy != null
-                            onClick = { describing = null }
+                            onClick = { editing = null }
                             +"Cancel"
                         }
                     }
@@ -402,25 +402,22 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                         if (fileRefRepointable(ref, taking)) {
                             Button {
-                                disabled = busy != null || repointing == ref.refId
+                                disabled = busy != null || editing == ref.refId to FACT.local
                                 onClick = {
-                                    repointing = ref.refId
-                                    describing = null
-                                    // From what it names now, when that is a kept file: the usual change is a sibling.
-                                    val kept = ref.source == FREF.sourceClientLocal
-                                    repointRoot = if (kept) ref.root else null
-                                    repointPath = if (kept) ref.path.orEmpty() else ""
+                                    editing = ref.refId to FACT.local
+                                    val (root, path) = fileRefRepointStart(ref)
+                                    repointRoot = root
+                                    repointPath = path
                                 }
                                 +"Use a kept file…"
                             }
                         }
                         if (fileRefRemovable(ref)) {
                             Button {
-                                disabled = busy != null || describing == ref.refId
+                                disabled = busy != null || editing == ref.refId to FACT.describe
                                 onClick = {
-                                    describing = ref.refId
+                                    editing = ref.refId to FACT.describe
                                     describeText = ref.description.orEmpty()
-                                    repointing = null
                                 }
                                 +"Reword…"
                             }
@@ -450,7 +447,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         }
                     }
                 }
-                if (repointing == ref.refId && taking != null) {
+                if (editing == ref.refId to FACT.local && taking != null) {
                     div {
                         className = ClassName("file-ref-describe")
                         keptFileFields(fileRefChosenRoot(repointRoot, taking.roots), taking.roots, repointPath, busy != null, { repointRoot = it }, { repointPath = it })
@@ -461,20 +458,21 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                             onClick = {
                                 val root = fileRefChosenRoot(repointRoot, taking.roots)
                                 val wrong = fileRefRepointProblem(ref, root, repointPath)
-                                if (wrong != null || root == null) {
-                                    refuse(ref.refId, wrong.orEmpty())
-                                } else {
-                                    // No description sent: the ref keeps the one it has, as a Replace does.
-                                    run(ref.refId, FACT.local, added = false, ::fileRefNamedNote) {
-                                        ClientsApi.nameLocalFileRef(props.clientId, ref.refId, root, repointPath, description = null, expected)
-                                    }
+                                when {
+                                    wrong != null -> refuse(ref.refId, wrong)
+                                    // A root is chosen whenever nothing is wrong; said for the compiler's sake.
+                                    root != null ->
+                                        // No description sent: the ref keeps the one it has, as a Replace does.
+                                        run(ref.refId, FACT.local, added = false, ::fileRefNamedNote) {
+                                            ClientsApi.nameLocalFileRef(props.clientId, ref.refId, root, repointPath, description = null, expected)
+                                        }
                                 }
                             }
                             +"Use this file"
                         }
                         Button {
                             disabled = busy != null
-                            onClick = { repointing = null }
+                            onClick = { editing = null }
                             +"Cancel"
                         }
                     }
@@ -596,12 +594,14 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                         onClick = {
                             val root = fileRefChosenRoot(newRoot, taking.roots)
                             val wrong = fileRefLocalProblem(newId, listed, root, newPath)
-                            if (wrong != null || root == null) {
-                                refuse(FACT.adding, wrong.orEmpty())
-                            } else {
-                                val described = fileRefNewDescription(newDescription)
-                                run(FACT.adding, FACT.local, added = true, ::fileRefNamedNote) {
-                                    ClientsApi.nameLocalFileRef(props.clientId, newId, root, newPath, described, expected)
+                            when {
+                                wrong != null -> refuse(FACT.adding, wrong)
+                                // A root is chosen whenever nothing is wrong; said for the compiler's sake.
+                                root != null -> {
+                                    val described = fileRefNewDescription(newDescription)
+                                    run(FACT.adding, FACT.local, added = true, ::fileRefNamedNote) {
+                                        ClientsApi.nameLocalFileRef(props.clientId, newId, root, newPath, described, expected)
+                                    }
                                 }
                             }
                         }

@@ -505,6 +505,11 @@ class FileRefsTest {
         // A ref a draft removed is only put back.
         assertFalse(fileRefRepointable(ref("logo", removedInDraft = true), open))
 
+        // The editor starts at what a kept file names now, and empty for anything else.
+        assertEquals("approved" to "a.png", fileRefRepointStart(ref("logo", source = FREF.sourceClientLocal, root = "approved", path = "a.png")))
+        assertEquals(null to "", fileRefRepointStart(ref("logo", source = FREF.sourceLocal, root = "brand", path = "logo.png", stored = false)))
+        assertEquals(null to "", fileRefRepointStart(ref("logo")))
+
         // Where, then its path; and not the file it already names.
         val kept = ref("logo", source = FREF.sourceClientLocal, root = "approved", path = "a.png")
         assertEquals("Choose where the file is.", fileRefRepointProblem(kept, null, ""))

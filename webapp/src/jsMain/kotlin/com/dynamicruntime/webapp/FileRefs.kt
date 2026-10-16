@@ -219,6 +219,14 @@ fun fileRefKeptFileProblem(root: String?, path: String): String? =
 fun fileRefRepointable(ref: FileRefView, takes: FileRefTakes?): Boolean = takes?.roots?.isNotEmpty() == true && !ref.removedInDraft
 
 /**
+ * Where a row's "Use a kept file…" starts, as the root and the path: from what [ref] names now when that is a kept
+ * file -- the usual change is to a sibling -- and empty otherwise, since an upload's or a shipped file's place says
+ * nothing about where the client's own files are.
+ */
+fun fileRefRepointStart(ref: FileRefView): Pair<String?, String> =
+    if (ref.source == FREF.sourceClientLocal) ref.root to ref.path.orEmpty() else null to ""
+
+/**
  * What stops [ref] being pointed at the kept file in [root] at [path], or null: the two fields first, then a file it
  * already names. Whether there is such a file is the backend's to say, in its one sentence. Pure, and covered under
  * `jsNodeTest`.

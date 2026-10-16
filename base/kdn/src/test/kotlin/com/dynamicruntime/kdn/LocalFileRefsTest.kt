@@ -797,7 +797,6 @@ class LocalFileRefsTest : StringSpec({
         val client = LocalFileRefComponent.repointed
         val admin = adminOf(client)
         approve(client, "kept.png", otherPng)
-        approve(client, "kept2.png", png)
 
         // Shipped: the result is a stored override of the client's own file, keeping what the shipped ref says of it;
         // removing it shows the shipped one again.

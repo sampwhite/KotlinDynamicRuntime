@@ -642,8 +642,8 @@ ref a stored configuration holds, **Reword…** and **Remove**. Under the list, 
   own fields (`keptFileFields`) -- sent as `…/files/local` with the ref's own id and no description, so the
   description stays. A shipped ref becomes a stored override, which Remove takes back off; an upload is replaced;
   for a client with a sandbox it is a draft, as every change is. `fileRefRepointProblem` refuses the file the ref
-  already names, before anything is sent. A row opens one editor at a time: Reword… and Use a kept file… close
-  each other.
+  already names, before anything is sent; where the editor starts is `fileRefRepointStart`. The section has one
+  row editor open at a time (`editing`: which ref, and Reword… or Use a kept file…), so opening one closes any other.
 - **What a ref takes is asked for separately**, so the list is drawn even when `…/files/takes` cannot be had;
   nothing is added from the page then, and it says so. At the limit of refs the form gives way to a sentence,
   since an upload would be sent whole and then refused -- one that says what can be done (`fileRefAtLimitText`,
