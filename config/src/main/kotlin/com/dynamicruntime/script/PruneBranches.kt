@@ -3,6 +3,8 @@ package com.dynamicruntime.script
 import com.dynamicruntime.common.util.addDays
 import com.dynamicruntime.common.util.formatCompactId
 import com.dynamicruntime.common.util.formatDayPart
+import com.dynamicruntime.script.Subprocess.capture
+import com.dynamicruntime.script.Subprocess.inherit
 import java.io.File
 import kotlin.system.exitProcess
 import kotlin.time.Clock
@@ -657,43 +659,7 @@ object PruneBranches {
         return failureExit
     }
 
-    // --- subprocesses -------------------------------------------------------------------------------------
-
-    /** A finished subprocess: its exit code and its combined output. */
-    data class CmdResult(val code: Int, val out: String) {
-        val failed: Boolean get() = code != 0
-    }
-
-    /**
-     * Runs [cmd] in [dir] and captures its output. Stderr is merged into stdout: these commands say little,
-     * and one stream cannot then fill its pipe while we are reading the other.
-     */
-    private fun capture(dir: File, vararg cmd: String): CmdResult =
-        try {
-            val process = ProcessBuilder(*cmd)
-                .directory(dir)
-                .redirectErrorStream(true)
-                .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
-                .start()
-            val out = process.inputStream.bufferedReader().use { it.readText() }
-            CmdResult(process.waitFor(), out.trim())
-        } catch (e: Exception) {
-            CmdResult(failureExit, "could not run ${cmd.firstOrNull()}: ${e.message}")
-        }
-
-    /** Runs [cmd] in [dir] with its output going straight to the terminal. True on a zero exit. */
-    private fun inherit(dir: File, vararg cmd: String): Boolean =
-        try {
-            ProcessBuilder(*cmd)
-                .directory(dir)
-                .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-                .redirectError(ProcessBuilder.Redirect.INHERIT)
-                .start()
-                .waitFor() == 0
-        } catch (e: Exception) {
-            System.err.println("could not run ${cmd.firstOrNull()}: ${e.message}")
-            false
-        }
+    // --- git (run through Subprocess) ---------------------------------------------------------------------
 
     /** The checked-out branch, or null on a detached HEAD. */
     private fun currentBranch(repoDir: File): String? {
