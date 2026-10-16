@@ -95,6 +95,11 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
         gedraConfig(cxt, "main", clientNamespace(built), built) {
             defineClient(def(built, "Built on the template", extends = template))
         },
+        // Shipped with one picture, for a row that points it at a kept file instead (issue #1189).
+        gedraConfig(cxt, "art", clientNamespace(repointed), repointed) {
+            defineClient(def(repointed, "Repointed"))
+            fileRef("logo", "The logo it ships with.") { local(root, "logo.png") }
+        },
         // Shipped with one picture, for a stored entry of the same id that its load leaves out (issue #1192).
         gedraConfig(cxt, "art", clientNamespace(shadowed), shadowed) {
             defineClient(def(shadowed, "Shadowed"))
@@ -117,6 +122,7 @@ class LocalFileRefComponent(val missing: Boolean = false) : ComponentDefinition 
         const val template = "lfrtemplate"
         const val built = "lfrbuilt"
         const val shadowed = "lfrshadowed"
+        const val repointed = "lfrrepointed"
     }
 }
 
@@ -783,6 +789,54 @@ class LocalFileRefsTest : StringSpec({
         val env = nameLocal(user, refId, path, root)
         withClue(env) { (env[EP.status] as? Number)?.toInt() shouldBe status }
         return env[EP.errorMessage] as String
+    }
+
+    // Issue #1189: an existing ref pointed at a file the deployment keeps, from its row -- the call that names a kept
+    // file, with the ref's own id and no description, as a Replace sends no description.
+    "an existing ref is pointed at a kept file in place: a shipped one is overridden, an upload replaced, a draft drafted" {
+        val client = LocalFileRefComponent.repointed
+        val admin = adminOf(client)
+        approve(client, "kept.png", otherPng)
+        approve(client, "kept2.png", png)
+
+        // Shipped: the result is a stored override of the client's own file, keeping what the shipped ref says of it;
+        // removing it shows the shipped one again.
+        named(admin, "logo", "kept.png")
+        listed(admin).getValue("logo").let {
+            it[CCT.source] shouldBe FREF.sourceClientLocal
+            it[FREF.stored] shouldBe true
+            it[CCT.description] shouldBe "The logo it ships with."
+        }
+        posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "logo"))
+        listed(admin).getValue("logo").let {
+            it[CCT.source] shouldBe FREF.sourceLocal
+            it[FREF.stored] shouldBe false
+        }
+
+        // An upload: the same id now names the kept file, its description kept.
+        admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "pic", CCT.description to "The picture.", FREF.file to ContentData(png, "image/png", saveAsFilename = "pic.png", inLine = false)))
+        listed(admin).getValue("pic")[CCT.source] shouldBe FREF.sourceStore
+        val moved = named(admin, "pic", "kept.png")
+        moved[FREF.ref].toJsonMapOrEmpty()[CCT.path] shouldBe "kept.png"
+        storedRefs(client, CPY.copyConfigName).single { it[CCT.refId] == "pic" } shouldBe ownEntry("pic", "kept.png") + (CCT.description to "The picture.")
+
+        refs.forClient(client).refs.getValue("pic").def.path shouldBe "kept.png"
+
+        // With a sandbox -- on a client defined in data, as only such a client can be given one -- a draft the sandbox
+        // shows; the client keeps what it has until it is published.
+        val drafted = "lfrrepointdraft"
+        defineClient(drafted)
+        val draftAdmin = adminOf(drafted)
+        approve(drafted, "kept.png", otherPng)
+        approve(drafted, "kept2.png", png)
+        named(draftAdmin, "pic", "kept.png")
+        posted(draftAdmin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
+        named(draftAdmin, "pic", "kept2.png")[FREF.mode] shouldBe EDM.draft
+        listed(draftAdmin).getValue("pic").let {
+            it[CCT.path] shouldBe "kept2.png"
+            it[FREF.live] shouldBe false
+        }
+        refs.forClient(drafted).refs.getValue("pic").def.path shouldBe "kept.png"
     }
 
     "a client's own administrator names a file in a root open to clients, and it is the one in the client's own directory" {

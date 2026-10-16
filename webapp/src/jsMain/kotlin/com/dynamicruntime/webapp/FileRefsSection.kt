@@ -4,6 +4,7 @@ import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.user.UADEP
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import react.ChildrenBuilder
 import react.FC
 import react.Key
 import react.Props
@@ -75,6 +76,11 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
     // The ref whose description is being reworded, and what has been typed for it.
     var describing by useState<String?>(null)
     var describeText by useState("")
+    // The ref being pointed at a file the deployment keeps (issue #1189), and where and what. One editor of a row at
+    // a time: opening this closes the rewording, and the other way round.
+    var repointing by useState<String?>(null)
+    var repointRoot by useState<String?>(null)
+    var repointPath by useState("")
     // The form that adds one.
     var newId by useState("")
     var newDescription by useState("")
@@ -107,6 +113,8 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
             confirming = null
             describing = null
             describeText = ""
+            repointing = null
+            repointPath = ""
             newId = ""
             newDescription = ""
             newRoot = null
@@ -166,6 +174,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                     kept = kept + changed.refId
                     note = done(changed)
                     describing = null
+                    repointing = null
                     if (added) {
                         newId = ""
                         newDescription = ""
@@ -391,12 +400,27 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                                 }
                             }
                         }
+                        if (fileRefRepointable(ref, taking)) {
+                            Button {
+                                disabled = busy != null || repointing == ref.refId
+                                onClick = {
+                                    repointing = ref.refId
+                                    describing = null
+                                    // From what it names now, when that is a kept file: the usual change is a sibling.
+                                    val kept = ref.source == FREF.sourceClientLocal
+                                    repointRoot = if (kept) ref.root else null
+                                    repointPath = if (kept) ref.path.orEmpty() else ""
+                                }
+                                +"Use a kept file…"
+                            }
+                        }
                         if (fileRefRemovable(ref)) {
                             Button {
                                 disabled = busy != null || describing == ref.refId
                                 onClick = {
                                     describing = ref.refId
                                     describeText = ref.description.orEmpty()
+                                    repointing = null
                                 }
                                 +"Reword…"
                             }
@@ -423,6 +447,35 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                                     +"Remove"
                                 }
                             }
+                        }
+                    }
+                }
+                if (repointing == ref.refId && taking != null) {
+                    div {
+                        className = ClassName("file-ref-describe")
+                        keptFileFields(fileRefChosenRoot(repointRoot, taking.roots), taking.roots, repointPath, busy != null, { repointRoot = it }, { repointPath = it })
+                        Button {
+                            type = "primary"
+                            loading = busy == webAssetBusyKey(ref.refId, FACT.local)
+                            disabled = busy != null && busy != webAssetBusyKey(ref.refId, FACT.local)
+                            onClick = {
+                                val root = fileRefChosenRoot(repointRoot, taking.roots)
+                                val wrong = fileRefRepointProblem(ref, root, repointPath)
+                                if (wrong != null || root == null) {
+                                    refuse(ref.refId, wrong.orEmpty())
+                                } else {
+                                    // No description sent: the ref keeps the one it has, as a Replace does.
+                                    run(ref.refId, FACT.local, added = false, ::fileRefNamedNote) {
+                                        ClientsApi.nameLocalFileRef(props.clientId, ref.refId, root, repointPath, description = null, expected)
+                                    }
+                                }
+                            }
+                            +"Use this file"
+                        }
+                        Button {
+                            disabled = busy != null
+                            onClick = { repointing = null }
+                            +"Cancel"
                         }
                     }
                 }
@@ -536,35 +589,7 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 }
                 div {
                     className = ClassName("file-ref-add-row")
-                    label {
-                        className = ClassName("file-ref-field")
-                        span { +"Root" }
-                        Select {
-                            value = fileRefChosenRoot(newRoot, taking.roots)
-                            placeholder = "Where"
-                            disabled = busy != null
-                            style = js("({ minWidth: 160 })")
-                            options = taking.roots.map { root ->
-                                val option: dynamic = js("({})")
-                                option.label = root
-                                option.value = root
-                                option
-                            }.toTypedArray()
-                            onChange = { chosen -> newRoot = chosen as? String }
-                        }
-                    }
-                    label {
-                        className = ClassName("file-ref-field")
-                        span { +"Path" }
-                        Input {
-                            value = newPath
-                            placeholder = "Such as marks/hero.png"
-                            maxLength = FREF.maxPathLength
-                            disabled = busy != null
-                            style = js("({ minWidth: 240 })")
-                            onChange = { e -> newPath = (e.target.value as String).trim() }
-                        }
-                    }
+                    keptFileFields(fileRefChosenRoot(newRoot, taking.roots), taking.roots, newPath, busy != null, { newRoot = it }, { newPath = it })
                     Button {
                         loading = busy == webAssetBusyKey(FACT.adding, FACT.local)
                         disabled = busy != null && busy != webAssetBusyKey(FACT.adding, FACT.local)
@@ -593,6 +618,50 @@ val FileRefsSection = FC<FileRefsSectionProps> { props ->
                 }
                 failure?.let { errorText("Couldn't add the file.", it) }
             }
+        }
+    }
+}
+
+/**
+ * The two fields that name a file the deployment keeps for the client (issues #1164, #1189): where -- one of the
+ * [roots] open to clients -- and its path in the client's own directory there. One drawing for the add form and a
+ * row's "Use a kept file…", so the two ask for the same thing in the same words.
+ */
+private fun ChildrenBuilder.keptFileFields(
+    root: String?,
+    roots: List<String>,
+    path: String,
+    disabled: Boolean,
+    onRoot: (String?) -> Unit,
+    onPath: (String) -> Unit,
+) {
+    label {
+        className = ClassName("file-ref-field")
+        span { +"Root" }
+        Select {
+            value = root
+            placeholder = "Where"
+            this.disabled = disabled
+            style = js("({ minWidth: 160 })")
+            options = roots.map { name ->
+                val option: dynamic = js("({})")
+                option.label = name
+                option.value = name
+                option
+            }.toTypedArray()
+            onChange = { chosen -> onRoot(chosen as? String) }
+        }
+    }
+    label {
+        className = ClassName("file-ref-field")
+        span { +"Path" }
+        Input {
+            value = path
+            placeholder = "Such as marks/hero.png"
+            maxLength = FREF.maxPathLength
+            this.disabled = disabled
+            style = js("({ minWidth: 240 })")
+            onChange = { e -> onPath((e.target.value as String).trim()) }
         }
     }
 }

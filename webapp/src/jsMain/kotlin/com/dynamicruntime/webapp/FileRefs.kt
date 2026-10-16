@@ -204,9 +204,28 @@ fun fileRefChosenRoot(chosen: String?, roots: List<String>): String? = chosen?.t
  * Whether there is such a file is the backend's to say, in the one sentence it says of every reason.
  */
 fun fileRefLocalProblem(refId: String, existing: List<FileRefView>, root: String?, path: String): String? =
-    fileRefNewIdProblem(refId, existing)
-        ?: "Choose where the file is.".takeIf { root == null }
-        ?: "Give the file's path.".takeIf { path.isEmpty() }
+    fileRefNewIdProblem(refId, existing) ?: fileRefKeptFileProblem(root, path)
+
+/** What is missing from a kept file named in the two fields, or null: where it is, then its path. */
+fun fileRefKeptFileProblem(root: String?, path: String): String? =
+    "Choose where the file is.".takeIf { root == null } ?: "Give the file's path.".takeIf { path.isEmpty() }
+
+/**
+ * Whether [ref]'s row offers to point it at a file the deployment keeps for the client (issue #1189): only where a
+ * root is open to clients ([FileRefTakes.roots], which most deployments have none of), and not for a ref a draft
+ * removed, which has no entry to change, only one to put back. A ref the client was shipped with is offered it, as
+ * it is offered an upload: the result is a stored override, and removing it shows the shipped one again.
+ */
+fun fileRefRepointable(ref: FileRefView, takes: FileRefTakes?): Boolean = takes?.roots?.isNotEmpty() == true && !ref.removedInDraft
+
+/**
+ * What stops [ref] being pointed at the kept file in [root] at [path], or null: the two fields first, then a file it
+ * already names. Whether there is such a file is the backend's to say, in its one sentence. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun fileRefRepointProblem(ref: FileRefView, root: String?, path: String): String? =
+    fileRefKeptFileProblem(root, path)
+        ?: "'${ref.refId}' already names that file.".takeIf { ref.source == FREF.sourceClientLocal && ref.root == root && ref.path == path }
 
 /**
  * The description a **new** ref is sent with, from what was typed: trimmed, and none at all when that leaves

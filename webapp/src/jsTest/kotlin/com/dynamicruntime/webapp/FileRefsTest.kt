@@ -494,6 +494,36 @@ class FileRefsTest {
     }
 
     @Test
+    fun anExistingRefIsPointedAtAKeptFileFromItsRowWhereARootIsOpen() {
+        val open = FileRefTakes(takes.maxSize, takes.mimeTypes, takes.kinds, takes.refLimit, listOf("approved"))
+        // Offered for any ref -- uploaded, shipped, already a kept file -- once a root is open, and not before.
+        for (r in listOf(ref("logo"), ref("logo", source = FREF.sourceLocal, stored = false), ref("logo", source = FREF.sourceClientLocal, root = "approved", path = "a.png"))) {
+            assertTrue(fileRefRepointable(r, open), "should offer for ${r.source}")
+            assertFalse(fileRefRepointable(r, takes), "no root is open")
+            assertFalse(fileRefRepointable(r, null), "what a ref takes is not known")
+        }
+        // A ref a draft removed is only put back.
+        assertFalse(fileRefRepointable(ref("logo", removedInDraft = true), open))
+
+        // Where, then its path; and not the file it already names.
+        val kept = ref("logo", source = FREF.sourceClientLocal, root = "approved", path = "a.png")
+        assertEquals("Choose where the file is.", fileRefRepointProblem(kept, null, ""))
+        assertEquals("Give the file's path.", fileRefRepointProblem(kept, "approved", ""))
+        assertEquals("'logo' already names that file.", fileRefRepointProblem(kept, "approved", "a.png"))
+        assertNull(fileRefRepointProblem(kept, "approved", "b.png"))
+        assertNull(fileRefRepointProblem(kept, "seasonal", "a.png"))
+        // The same path under an upload or a shipped file is not the same file.
+        assertNull(fileRefRepointProblem(ref("logo", source = FREF.sourceLocal, root = "approved", path = "a.png", stored = false), "approved", "a.png"))
+        assertNull(fileRefRepointProblem(ref("logo"), "approved", "a.png"))
+
+        // Its row is redrawn from the change's answer, in its place: the new source and path.
+        val refs = listOf(ref("logo"), ref("banner"))
+        val moved = withFileRefChange(refs, FileRefChange("logo", "copy", EDM.live, kept))!!
+        assertEquals(listOf("logo", "banner"), moved.map { it.refId })
+        assertEquals(FREF.sourceClientLocal to "a.png", moved[0].source to moved[0].path)
+    }
+
+    @Test
     fun theListIsRedrawnFromWhatAChangeAnswered() {
         val refs = listOf(ref("logo"), ref("banner"))
         val replaced = ref("logo", description = "New.")
