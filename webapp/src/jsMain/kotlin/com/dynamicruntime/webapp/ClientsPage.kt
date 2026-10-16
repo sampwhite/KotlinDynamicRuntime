@@ -377,6 +377,20 @@ private fun ChildrenBuilder.clientDetail(
                 this.onChanged = onChanged
             }
         }
+        // Retiring it, or bringing it back (issue #1182): the platform's switch, so only for an administrator who sees
+        // every client -- who alone can reach a retired client's page, through the listing.
+        if (acrossClients) {
+            row?.let { overview ->
+                h2 { +"Retirement" }
+                RetirementSection {
+                    key = "retirement".unsafeCast<Key>()
+                    this.row = overview
+                    storedConfig = def?.storedConfig
+                    this.configs = configs
+                    this.onChanged = onChanged
+                }
+            }
+        }
         // Its own tab icon and brand mark (issue #1130) -- for a client this node carries, whose people there are
         // to see them. A sandbox shows its parent's, and says so.
         if (row?.status == ClientStatus.present.name) {
@@ -910,6 +924,76 @@ private val SandboxSection = FC<SandboxSectionProps> { props ->
         }
     }
     error?.let { errorText(if (control.add == true) "Couldn't add the sandbox." else "Couldn't remove the sandbox.", it) }
+}
+
+external interface RetirementSectionProps : Props {
+    var row: ClientOverview
+    /** The configuration holding the client's stored definition, as the definition read says; null until read. */
+    var storedConfig: String?
+    var configs: List<ConfigSummaryView>?
+    var onChanged: () -> Unit
+}
+
+/**
+ * Retiring a client, or bringing one back, on its detail page (issue #1182): what [retirementControl] says, and its
+ * action. Retiring is asked about first, saying what follows ([retireConsequence]), since it ends the client's sessions
+ * at once; bringing it back is not, since it only restores. Either is live in the one call, here and on every node, and
+ * [RetirementSectionProps.onChanged] re-reads the page. A refusal shows in the backend's words.
+ */
+private val RetirementSection = FC<RetirementSectionProps> { props ->
+    var busy by useState(false)
+    var confirming by useState(false)
+    var error by useState<DisplayError?>(null)
+    useEffect(props.row.clientId) { error = null }
+    val control = retirementControl(props.row, props.storedConfig, props.configs)
+    p {
+        className = ClassName("subtitle")
+        +control.text
+    }
+    fun run(retire: Boolean) {
+        busy = true
+        error = null
+        clientsScope.launch {
+            try {
+                ClientsApi.setRetired(props.row.clientId, retire)
+                props.onChanged()
+            } catch (e: Throwable) {
+                error = userFacingError(e)
+            } finally {
+                busy = false
+            }
+        }
+    }
+    when (control.retire) {
+        true -> Popconfirm {
+            title = "Retire ${props.row.clientId}?"
+            description = retireConsequence
+            okText = "Retire"
+            cancelText = "Cancel"
+            placement = "bottomLeft"
+            open = confirming
+            onOpenChange = { open -> confirming = open }
+            onConfirm = {
+                confirming = false
+                run(true)
+            }
+            okButtonProps = js("({ danger: true })")
+            disabled = busy
+            Button {
+                danger = true
+                loading = busy
+                +"Retire"
+            }
+        }
+        false -> Button {
+            type = "primary"
+            loading = busy
+            onClick = { run(false) }
+            +"Bring back"
+        }
+        null -> {}
+    }
+    error?.let { errorText(if (control.retire == false) "Couldn't bring the client back." else "Couldn't retire the client.", it) }
 }
 
 external interface MenuEditorProps : Props {

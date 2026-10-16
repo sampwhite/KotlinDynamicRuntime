@@ -807,4 +807,23 @@ class ClientsPageTest {
         assertEquals("4", workflowsText(4, false))
         assertEquals("4, survey", workflowsText(4, true))
     }
+
+    /** Retiring is offered only where the backend's switch can take it, and each place it cannot says why (issue #1182). */
+    @Test
+    fun retirementIsOfferedWhereTheSwitchCanTakeIt() {
+        fun row(vararg more: Pair<String, Any?>) = parseClientOverview(
+            listOf(mapOf(CLD.clientId to "acme", CLD.status to ClientStatus.present.name, CLD.origin to GedraConfigOrigin.stored.name) + more),
+        ).single()
+        val published = listOf(ConfigSummaryView("main", 2, true, null, null, 0))
+        assertEquals(true, retirementControl(row(), "main", published).retire)
+        assertEquals(false, retirementControl(row(CLD.status to ClientStatus.retired.name), null, null).retire)
+        // Nothing offered, with the reason: a sandbox, source code, a customer's root, unpublished changes, not loaded.
+        fun refusal(r: ClientOverview, configs: List<ConfigSummaryView>? = published) =
+            retirementControl(r, "main", configs).also { assertEquals(null, it.retire) }.text
+        assertTrue("with its parent, acme" in refusal(row(CLD.clientId to "acme:sandbox", CLD.sandboxOf to "acme")))
+        assertTrue("source code" in refusal(row(CLD.origin to GedraConfigOrigin.source.name)))
+        assertTrue("root of the customer 'acme'" in refusal(row(CLD.rootOf to "acme")))
+        assertTrue("unpublished changes" in refusal(row(), listOf(ConfigSummaryView("main", 3, false, null, null, 0))))
+        assertTrue("Not loaded" in refusal(row(CLD.status to ClientStatus.notEnabled.name)))
+    }
 }

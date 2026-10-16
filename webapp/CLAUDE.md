@@ -591,6 +591,15 @@ A sandbox's own detail says whose it is. In the listing each sandbox follows its
 `sandboxOf` and `hasSandbox`. A scoped administrator has no listing (issue #1082), so only an `allClients` one
 sees sandbox rows.
 
+**Retirement** (issue #1182, `RetirementSection` in `ClientsPage.kt`): under Sandbox, for an administrator who sees
+every client -- the platform's switch, `POST /admin/client/retirement/set {client, retired}` (#1111,
+`ClientsApi.setRetired`). **Retire** is a `danger` button behind a confirmation saying what follows
+(`retireConsequence`): the data is kept, the users can no longer sign in, open sessions end, and the sandbox goes with
+it. A retired client shows **Bring back** instead, unconfirmed since it only restores. Either is live at once. The
+action is offered only where the switch can take it (`retirementControl`, pure): a sandbox, a client defined in source
+code, a customer's root (the overview row's `rootOf`), and a definition whose configuration has unpublished changes
+each say why instead. A retired client stays in the listing, as "Retired", which is the way to its page and back.
+
 **Files** (issue #1176, `FileRefsSection.kt`, its pure half in `FileRefs.kt`, covered by `FileRefsTest`): under
 Web assets and drawn as they are, a client's **file refs** -- the named images its configuration holds (the calls
 are listed under "A client's file refs" above). A row a ref: a preview, its id with a mark for what is unusual
