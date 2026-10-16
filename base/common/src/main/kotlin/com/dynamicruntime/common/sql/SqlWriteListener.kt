@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.sql
 
 import com.dynamicruntime.common.context.KdrCxt
+import kotlin.time.Instant
 
 /**
  * Notified when a statement writes rows, with the tables it touched
@@ -19,15 +20,22 @@ import com.dynamicruntime.common.context.KdrCxt
  */
 fun interface SqlWriteListener {
     /**
-     * Called after a statement affected at least one row. [tableNames] is nearly always a single table.
+     * Called once a write is **committed** (issue #1256), with the tables it touched -- [tableNames] is nearly
+     * always a single table -- and [changedSince], the earliest `updatedAt` the write stamped on a row (the moment
+     * the statement ran, when it stamped none).
      *
-     * Called **inside** the writing session, and inside its transaction when there is one, so an
-     * implementation should be cheap and must not assume the write is committed -- a rolled-back transaction
-     * still reports here. In particular it must not *read* the written data from inside the notification: on
-     * the writer's own connection that read sees uncommitted rows (the table caches defer their reload past
-     * the transaction for exactly this reason). It must not throw -- and [SqlDatabase.publishWrite] enforces
-     * that by catching and logging, because by the time listeners run the write has already happened and a
-     * listener's failure must not make it look otherwise.
+     * After the commit, and not when the statement runs, because a listener on another thread acts on the
+     * notification at once: a table cache told while the writer's transaction was still open would refresh, miss
+     * the uncommitted row, and consider itself current. A write outside a transaction is committed by its statement
+     * and is reported straight after it; one inside a transaction is held on its session ([SqlSession.pendingWrites])
+     * and reported when the transaction commits, or never, if it rolls back. A statement nested in an outer
+     * transaction waits for the outer commit.
+     *
+     * [changedSince] is what lets a cache look back far enough. A transaction can run long after it stamped a row,
+     * and an unrelated refresh in between may have moved the cache's query start past that stamp.
+     *
+     * It must not throw -- [SqlDatabase.announceWrite] enforces that by catching and logging, because by the time
+     * listeners run the write has already happened and a listener's failure must not make it look otherwise.
      */
-    fun onWrite(cxt: KdrCxt, tableNames: List<String>)
+    fun onWrite(cxt: KdrCxt, tableNames: List<String>, changedSince: Instant)
 }

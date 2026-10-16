@@ -8,6 +8,7 @@ import com.dynamicruntime.common.exception.SRC
 import java.sql.Connection
 import java.sql.SQLException
 import java.sql.Statement
+import kotlin.time.Instant
 
 /**
  * A single pooled database connection plus the cache of prepared statements bound to it. Assigned to a
@@ -26,6 +27,12 @@ class SqlSession(val sqlDb: SqlDatabase) {
     var isBeingUsed: Boolean = false
 
     var inTran: Boolean = false
+
+    /**
+     * The writes made inside the open transaction, waiting to be announced to the [SqlWriteListener]s when it
+     * commits (issue #1256), and dropped when it rolls back. Empty outside a transaction.
+     */
+    val pendingWrites: MutableList<PendingWrite> = mutableListOf()
 
     val preparedStatements: MutableMap<String, SqlBoundStatement> = HashMap()
 
@@ -107,3 +114,6 @@ class SqlSession(val sqlDb: SqlDatabase) {
         fun get(cxt: KdrCxt): SqlSession? = cxt.session[sessionKey] as? SqlSession
     }
 }
+
+/** A committed-to-be write held by [SqlSession.pendingWrites]: who wrote it, to which tables, stamped from when. */
+class PendingWrite(val cxt: KdrCxt, val tableNames: List<String>, val changedSince: Instant)

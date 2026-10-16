@@ -87,7 +87,7 @@ class SqlTopicServiceTest : StringSpec({
         val service = SqlTopicService.get(cxt)
 
         val seen = mutableListOf<List<String>>()
-        val listener = SqlWriteListener { _, tableNames -> seen.add(tableNames) }
+        val listener = SqlWriteListener { _, tableNames, _ -> seen.add(tableNames) }
         service.addWriteListener(listener)
         // Registration is idempotent by identity, so a service whose checkInit runs twice cannot double up.
         service.addWriteListener(listener)
@@ -104,6 +104,44 @@ class SqlTopicServiceTest : StringSpec({
             sqlCxt.sqlDb.queryOneStatement(cxt, sqlCxt.sqlTopic!!.tranFor(null, "reread").queryLock, mapOf("stateKey" to "n1"))
         }
         seen.size shouldBe countAfterWrite
+    }
+
+    /**
+     * A transaction's writes are announced once it commits, and not at all if it rolls back (issue #1256). A
+     * listener on another thread acts on the announcement at once, so one made while the transaction was open
+     * would send a cache to read rows not yet committed, miss them, and count itself current.
+     */
+    "a transaction's writes are announced after it commits, and never when it rolls back" {
+        val tables = tableModule(cxt = KdrCxt.mkSimpleCxt("def"), namespace = "commitNs", topic = "commitNotify") {
+            table("CommitState", "Per-client transactional state") {
+                column("stateKey", "Key of the state row.")
+                primaryKey("stateKey")
+                withTransactions()
+            }
+        }
+        val cxt = bootCxt("commitNotifyTest", tables)
+        val seen = mutableListOf<List<String>>()
+        SqlTopicService.get(cxt).addWriteListener(SqlWriteListener { _, tableNames, _ -> seen.add(tableNames) })
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, "commitNotify")
+        // Made first, so the row exists and the cases below are a plain update inside one transaction.
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, "make", null, mapOf("stateKey" to "c1")) {}
+
+        seen.clear()
+        var inside: Int? = null
+        SqlTopicTranProvider.executeTopicTran(sqlCxt, "touch", null, mapOf("stateKey" to "c1")) {
+            inside = seen.size
+        }
+        // The lock row is written before the body runs, and nobody heard of it until the commit.
+        inside shouldBe 0
+        seen.shouldNotBeEmpty()
+
+        seen.clear()
+        shouldThrow<IllegalStateException> {
+            SqlTopicTranProvider.executeTopicTran(sqlCxt, "refused", null, mapOf("stateKey" to "c1")) {
+                throw IllegalStateException("refused")
+            }
+        }
+        seen shouldBe emptyList()
     }
 
     "listTables dumps the registered tables from the store" {

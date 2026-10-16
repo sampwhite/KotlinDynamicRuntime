@@ -18,6 +18,8 @@ import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toOptInstant
 import java.util.TreeMap
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.milliseconds
@@ -63,17 +65,36 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         private set
 
     /**
-     * Set by [markChanged] when this node itself writes the table, and cleared by the next completed reload.
-     * While set, a reload runs even though the clock says nothing can have changed yet.
+     * True from [markChanged] -- this node itself wrote the table -- until a reload that **began after** it has
+     * **completed**. While true, a reload runs even though the clock says nothing can have changed yet.
      *
      * This is what makes read-your-writes hold **within** a unit of work. Relying on the shared state row
      * alone would not: it is not written until the request ends, so a write and a read in the same request
      * would see a stale cache unless the caller remembered to arrange otherwise. A local write is the one
      * change this node knows about with certainty and for free, so it acts on it directly.
+     *
+     * Counted rather than flagged (issue #1256). A flag cleared when a reload *started* told a writer arriving
+     * mid-reload that its write was already in hand, and it read the snapshot from before that reload finished.
+     * Now each [markChanged] takes a number ([requestedLoads]); a reload notes the number it started at and, on
+     * completing, records that it covers it ([completedLoads]). A reader finding a write still uncovered takes the
+     * lock, which means waiting for the reload in progress, and then needs no query of its own.
      */
+    val forceReload: Boolean get() = completedLoads < requestedLoads.get()
+
+    /** How many local writes [markChanged] has been told of; see [forceReload]. */
+    private val requestedLoads = AtomicLong(0)
+
+    /** The [requestedLoads] number the last completed reload started at, so covers; written under the lock. */
     @Volatile
-    var forceReload: Boolean = false
-        private set
+    private var completedLoads: Long = 0
+
+    /**
+     * The earliest time a write announced since the last reload stamped a row (issue #1256), or null. The next
+     * reload starts its query no later than this, less [TCH.expectedMaxDriftMs]. A write is announced once it
+     * is committed, which may be long after it stamped its row; an unrelated reload in between can have moved
+     * [queryFromDate] past that stamp, and the row would otherwise never be read.
+     */
+    private val reachBackTo = AtomicReference<Instant?>(null)
 
     // The mutable interior. Real `private` plus a lock rather than the guide's @KdrPrivate marker: this is a
     // synchronized cache, the case the guide names as one where enforcement genuinely matters.
@@ -142,11 +163,20 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     }
 
     /**
-     * Records that this node just wrote the table, so the next reload happens even though no time has passed.
-     * Called through [SqlTableCacheService.noteTableChanged]; see [forceReload].
+     * Records that this node just wrote the table, so the next reload happens even though no time has passed,
+     * and reaches back to [changedSince], the earliest stamp the write put on a row ([reachBackTo]). Called
+     * through [SqlTableCacheService.noteTableChanged] once the write is committed; see [forceReload].
      */
-    fun markChanged() {
-        forceReload = true
+    fun markChanged(changedSince: Instant? = null) {
+        // The stamp before the count: a reload that sees the new count then finds the stamp, and one that read the
+        // count a moment earlier leaves the stamp for the reload the new count asks for.
+        if (changedSince != null) reachBackAtLeastTo(changedSince)
+        requestedLoads.incrementAndGet()
+    }
+
+    /** Moves [reachBackTo] to [at] when that is earlier, or when there is none. */
+    private fun reachBackAtLeastTo(at: Instant) {
+        reachBackTo.updateAndGet { held -> if (held == null || at < held) at else held }
     }
 
     /**
@@ -171,9 +201,8 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         }
         // Never reload from inside an open transaction: the query would run on the caller's own connection
         // and read its uncommitted rows into a snapshot every thread sees -- and a rollback would strand them
-        // there, since the committed row's older updatedAt is never re-read. The write's [forceReload] stays
-        // pending (and getAndRefresh's memo does not mask a pending reload), so the first read after the
-        // transaction ends performs the reload.
+        // there, since the committed row's older updatedAt is never re-read. The transaction's own writes are
+        // announced when it commits (issue #1256), so the first read after that performs the reload.
         if (SqlSession.get(cxt)?.inTran == true) {
             return
         }
@@ -188,7 +217,9 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     }
 
     private fun loadUnderLock(cxt: KdrCxt, sqlCxt: SqlCxt, tranStartTime: Instant, compareDate: Instant) {
-        val wasForced = forceReload
+        // The writes this pass will cover: those announced before it queries, so committed before it reads.
+        val requested = requestedLoads.get()
+        val wasForced = completedLoads < requested
         if (!wasForced && !shouldLoad(cxt, tranStartTime, compareDate)) {
             return
         }
@@ -196,18 +227,24 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         // already moved far enough forward that they can skip the query entirely.
         val now = cxt.instanceNow()
         lastStartTime = now
-        // Cleared before the query rather than after, so a write landing *during* it re-arms the flag and gets
-        // its own pass. Restored below if this pass fails, since then it covered nothing.
-        forceReload = false
+        // Taken after [requested], never before: a write announced in between is a number this pass does not
+        // cover, so another pass runs for it, and the stamp it leaves is either taken here (this query, which
+        // starts after it committed, reads its row) or left for that pass.
+        val reachBack = reachBackTo.getAndSet(null)
+        if (reachBack != null) {
+            val start = reachBack - TCH.expectedMaxDriftMs.milliseconds
+            val from = queryFromDate
+            if (from != null && from > start) queryFromDate = start
+        }
 
         var succeeded = false
         try {
             runLoad(cxt, sqlCxt, now)
             succeeded = true
+            if (requested > completedLoads) completedLoads = requested
         } finally {
-            if (!succeeded && wasForced) {
-                forceReload = true
-            }
+            // A failed pass covered nothing: the writes stay requested, and the stamp goes back for the retry.
+            if (!succeeded && reachBack != null) reachBackAtLeastTo(reachBack)
         }
     }
 
@@ -285,7 +322,8 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
         }
 
         // We have now queried up to (at least) `now`, so the next pass may start from there -- pulled back by
-        // the expected drift, and floored so a lagging clock cannot make us start in the future.
+        // the expected drift, or back to the newest row seen when that is earlier (a writer whose clock lags
+        // ours), but never more than [TCH.potentialLagMs] back.
         val expectedDrift = now - TCH.expectedMaxDriftMs.milliseconds
         val potentialLag = now - TCH.potentialLagMs.milliseconds
         val seen = lastSeen

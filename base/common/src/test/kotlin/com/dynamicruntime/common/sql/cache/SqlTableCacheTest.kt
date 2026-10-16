@@ -13,6 +13,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -394,8 +395,8 @@ class SqlTableCacheTest : StringSpec({
         SqlTableCacheService.getAndRefresh(cxt)
         service.refreshState(cxt).pendingTables shouldBe emptyList()
 
-        // A reload that could not run -- what an open transaction leaves behind -- has no generation move to
-        // explain it, and is the one case the memo alone would call current.
+        // A write no completed reload has covered, marked directly as a bulk load outside the data layer would be,
+        // moves no generation: it is the one case the memo alone would call current.
         cache.markChanged()
         service.refreshState(cxt).need shouldBe SqlCacheRefreshNeed.reloadPending
         SqlTableCacheService.getAndRefresh(cxt)
@@ -413,4 +414,87 @@ class SqlTableCacheTest : StringSpec({
         off.isRefreshed shouldBe false
         off.needsRefresh shouldBe false
     }
+
+    /**
+     * The race of issue #1256, driven on one thread with two contexts: a row is written inside a transaction that
+     * stays open while **another** context refreshes the cache, then commits. A refresh in that window cannot see
+     * the uncommitted row, and on a busy table it moves the cache's query start past the row's stamp -- so unless
+     * the commit itself tells the cache, and tells it how far back to look, the row is never read.
+     *
+     * The busy table is the unrelated row the reader commits during the window, stamped after the open row: it is
+     * what carries the query start past the open row's stamp. The open transaction is slow by a few seconds, as
+     * one doing validation under load is, which is what puts its stamp outside the cache's drift allowance.
+     */
+    "a row committed after another context refreshed during its transaction is still read (issue #1256)" {
+        val tables = gadgetTables("GadgetLate", "gcacheLate") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tables.first { it.tableName == "GadgetLate" }
+        val writer = bootCxt("cacheLate", tables)
+        val service = SqlTableCacheService()
+        writer.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(writer) // subscribes the write listener, as at boot
+        val cache = service.register(gadgetCache(table).params)
+        write(writer, table, "early", owner = "alice", label = "E")
+        SqlTableCacheService.getAndRefresh(writer)
+        cache.snapshot.get(cache.idOf("early")).shouldNotBeNull()
+
+        // Its own context, so its own database session: it is not inside the writer's transaction.
+        val reader = writer.mkSubContext("cacheLateReader")
+        val sqlCxt = SqlTopicService.mkSqlCxt(writer, table.topic)
+        sqlCxt.sqlDb.withSession(writer) {
+            sqlCxt.sqlDb.withTran(writer) {
+                write(writer, table, "late", owner = "alice", label = "L")
+                // The transaction runs on, slowly; meanwhile the table stays busy and another context reads.
+                writer.instanceConfig.clock.advanceBy(3.seconds)
+                write(reader, table, "busy", owner = "bob", label = "B")
+                SqlTableCacheService.getAndRefresh(reader)
+                cache.snapshot.get(cache.idOf("busy")).shouldNotBeNull()
+                // Not committed, so not visible: correct, so far.
+                cache.snapshot.get(cache.idOf("late")).shouldBeNull()
+            }
+        }
+
+        // Committed now. The writer's next read must find its own row.
+        SqlTableCacheService.getAndRefresh(writer)
+        cache.snapshot.get(cache.idOf("late")).shouldNotBeNull().value.label shouldBe "L"
+    }
+
+    /**
+     * The other half of issue #1256: a write stays pending until a reload that **began after it** has
+     * **completed**. A flag cleared when the reload started told a writer reading mid-reload that its row was in
+     * hand, and it read the snapshot from before. Watched from inside the reload, through the cache's own
+     * `extract`, which the reload calls for each row it reads -- the moment a reader on another thread would ask.
+     */
+    "a write stays pending until the reload that covers it has completed (issue #1256)" {
+        val tables = gadgetTables("GadgetPending", "gcachePending") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tables.first { it.tableName == "GadgetPending" }
+        val cxt = bootCxt("cachePending", tables)
+        val service = SqlTableCacheService()
+        cxt.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(cxt)
+        var cache: SqlTableCache<Gadget>? = null
+        val pendingWhileLoading = mutableListOf<Boolean>()
+        val params = gadgetCache(table).params
+        cache = service.register(
+            SqlCacheParams(
+                topic = params.topic,
+                tableName = params.tableName,
+                extract = { c, data -> pendingWhileLoading.add(cache!!.forceReload); params.extract(c, data) },
+                indexes = params.indexes,
+            ),
+        )
+        write(cxt, table, "p1", owner = "alice", label = "P1")
+        SqlTableCacheService.getAndRefresh(cxt)
+
+        // Announced (committed), so pending; the reload that reads it still finds it pending while it runs.
+        write(cxt, table, "p2", owner = "alice", label = "P2")
+        cache.forceReload shouldBe true
+        pendingWhileLoading.clear()
+        SqlTableCacheService.getAndRefresh(cxt)
+        pendingWhileLoading.shouldNotBeEmpty()
+        pendingWhileLoading.all { it } shouldBe true
+        // Covered once it completes.
+        cache.forceReload shouldBe false
+        cache.snapshot.get(cache.idOf("p2")).shouldNotBeNull()
+    }
 })
+

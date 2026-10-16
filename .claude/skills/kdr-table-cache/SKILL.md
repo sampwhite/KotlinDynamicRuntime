@@ -151,9 +151,12 @@ for (row in cursor.nextChanges(cxt)) {
 
 Mostly you do not have to think about this. It matters when diagnosing a stale read.
 
-1. **This node wrote it** — immediate. `SqlDatabase.publishWrite` tells the registered `SqlWriteListener`s
-   which tables a statement touched (from its `t:` markers), the cache service marks the cache, and the next
-   read reloads. **Automatic: a new write path announces itself by existing.**
+1. **This node wrote it** — immediate once committed. `SqlDatabase.publishWrite` hears every write with the
+   tables it touched (from its `t:` markers). Outside a transaction it tells the registered `SqlWriteListener`s
+   at once; inside one it holds the write on the session (`SqlSession.pendingWrites`) and tells them when the
+   transaction commits, or never, if it rolls back (issue #1256). The cache service marks the cache with the
+   earliest `updatedAt` the write stamped, and the next read reloads, reaching back to that stamp however long the
+   transaction ran. **Automatic: a new write path announces itself by existing.**
 2. **Another node wrote it** — its request end wrote the date into the shared `KdrCacheState` row; this node
    reads that row on a node-global throttle (`TCH.stateReadThrottleMs`, 250ms). *This* is what sets cross-node
    promptness.
@@ -161,7 +164,13 @@ Mostly you do not have to think about this. It matters when diagnosing a stale r
    is the backstop, not the promise.
 
 Reads never run inside an open transaction: a reload there would see uncommitted rows and strand them in a
-snapshot every thread shares. The write's reload stays pending until the transaction ends.
+snapshot every thread shares. The transaction's own writes are announced when it commits, so the first read after
+that reloads.
+
+**A write stays pending until a reload that began after it has completed** (`forceReload`, counted rather than
+flagged since #1256). A reader that finds its write still pending takes the cache's lock, which waits out a reload
+already in progress, rather than reading the snapshot from before it. Both halves of #1256 are pinned in
+`SqlTableCacheTest` on one thread with two contexts; a regression shows up there, not only under load.
 
 Outside a request (a script, a background job), wrap work in `SqlTableCacheService.withMonitoring(cxt) { ... }`
 so other nodes hear about it at once rather than at the floor.
@@ -194,8 +203,8 @@ state.pendingTables  // written on this node, not reloaded yet
 - `needsRefresh` is **not** `!isRefreshed`: with caching disabled neither holds, and a loop waiting on
   `!isRefreshed` would wait forever.
 - To act on the answer, `service.checkRefresh(cxt)` sweeps unconditionally, memo or no memo.
-- `changed` after your own write is the expected reading; `reloadPending` on its own means a reload could not
-  run, which in practice means a transaction was open.
+- `changed` after your own write is the expected reading; `reloadPending` on its own means a committed write
+  has not been covered by a completed reload yet -- momentary, unless a reload keeps failing.
 
 `KDR_TABLE_CACHE_DISABLED=true` turns every cache off; each lookup then takes the SQL query it was replacing.
 That is the first thing to try when a cache is suspected, because it isolates the question.

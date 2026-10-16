@@ -88,9 +88,9 @@ class SqlTableCacheService : ServiceInitializer {
      * it (see [SqlWriteListener]). A stable instance so [SqlTopicService.addWriteListener]'s identity check
      * makes a repeated `checkInit` harmless.
      */
-    val writeListener = SqlWriteListener { c, tableNames ->
+    val writeListener = SqlWriteListener { c, tableNames, changedSince ->
         for (tableName in tableNames) {
-            noteTableChanged(c, tableName)
+            noteTableChanged(c, tableName, changedSince)
         }
     }
 
@@ -278,10 +278,10 @@ class SqlTableCacheService : ServiceInitializer {
      *
      * A table with no cache is ignored, so a caller may announce a write unconditionally.
      */
-    fun noteTableChanged(cxt: KdrCxt, tableName: String) {
+    fun noteTableChanged(cxt: KdrCxt, tableName: String, changedSince: Instant? = null) {
         if (isDisabled) return
         val cache = caches[tableName] ?: return
-        cache.markChanged()
+        cache.markChanged(changedSince)
         // Advance the node-wide change generation, which is what invalidates every context's refresh memo --
         // including a parent context whose sub-context did the writing (see [changeGeneration]).
         changeGeneration.incrementAndGet()

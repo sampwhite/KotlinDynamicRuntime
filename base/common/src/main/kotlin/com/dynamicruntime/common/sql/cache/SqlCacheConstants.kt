@@ -37,14 +37,24 @@ object TCH {
      * row that falls outside the budget on a busy table is not late, it is **missed until its next genuine
      * write**: the query start never retreats past the rows already seen. Overshooting merely re-reads the
      * extra window's rows each pass, so the trade is priced steeply toward not missing.
+     *
+     * A write made **on this node** no longer depends on the budget (issue #1256): it is announced when its
+     * transaction commits, with the stamp it put on its row, and the next reload reaches back to that stamp however
+     * long the transaction ran. A row written by **another** node is still held to it, since this node learns of
+     * that write only through the shared state row.
      */
     const val expectedMaxDriftMs = 500L
 
     /**
-     * The floor the reload query never starts later than: two minutes behind now. This covers a node whose
-     * clock is behind the one that wrote the row -- during a blue/green switch, say -- where a query starting
-     * from this node's idea of "just now" would silently step over a row the other node stamped in what this
-     * node considers the future.
+     * How far back a reload query may start: never earlier than two minutes behind now.
+     *
+     * A reload starts from the newest row it has seen ([SqlTableCache]'s `lastSeen`), less [expectedMaxDriftMs],
+     * when that is earlier than this node's own now less the drift. That is what catches a row stamped by a node
+     * whose clock is **behind** this one -- during a blue/green switch, say -- which a start taken from this node's
+     * clock alone would step over. This bounds how far that reaches: on a quiet table, whose newest row may be
+     * days old, an unbounded start would re-read days of changes on every pass. So a writer may lag this node by
+     * up to two minutes and still be read. (Issue #1256 corrected this comment, which had described the bound
+     * as a floor the start never passed, the opposite of what it does.)
      */
     const val potentialLagMs = 2L * 60 * 1000
 
