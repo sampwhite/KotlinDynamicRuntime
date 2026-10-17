@@ -8,11 +8,13 @@ import com.dynamicruntime.common.sql.PF
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.sql.SqlWriteListener
 import com.dynamicruntime.common.sql.tableModule
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -394,8 +396,8 @@ class SqlTableCacheTest : StringSpec({
         SqlTableCacheService.getAndRefresh(cxt)
         service.refreshState(cxt).pendingTables shouldBe emptyList()
 
-        // A reload that could not run -- what an open transaction leaves behind -- has no generation move to
-        // explain it, and is the one case the memo alone would call current.
+        // A write no completed reload has covered, marked directly as a bulk load outside the data layer would be,
+        // moves no generation: it is the one case the memo alone would call current.
         cache.markChanged()
         service.refreshState(cxt).need shouldBe SqlCacheRefreshNeed.reloadPending
         SqlTableCacheService.getAndRefresh(cxt)
@@ -413,4 +415,213 @@ class SqlTableCacheTest : StringSpec({
         off.isRefreshed shouldBe false
         off.needsRefresh shouldBe false
     }
+
+    /**
+     * The race of issue #1256, driven on one thread with two contexts: a row is written inside a transaction that
+     * stays open while **another** context refreshes the cache, then commits. A refresh in that window cannot see
+     * the uncommitted row, and on a busy table it moves the cache's query start past the row's stamp -- so unless
+     * the commit itself tells the cache, and tells it how far back to look, the row is never read.
+     *
+     * The busy table is the unrelated row the reader commits during the window, stamped after the open row: it is
+     * what carries the query start past the open row's stamp. The open transaction is slow by a few seconds, as
+     * one doing validation under load is, which is what puts its stamp outside the cache's drift allowance.
+     */
+    "a row committed after another context refreshed during its transaction is still read (issue #1256)" {
+        val tables = gadgetTables("GadgetLate", "gcacheLate") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tables.first { it.tableName == "GadgetLate" }
+        val writer = bootCxt("cacheLate", tables)
+        val service = SqlTableCacheService()
+        writer.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(writer) // subscribes the write listener, as at boot
+        val cache = service.register(gadgetCache(table).params)
+        write(writer, table, "early", owner = "alice", label = "E")
+        SqlTableCacheService.getAndRefresh(writer)
+        cache.snapshot.get(cache.idOf("early")).shouldNotBeNull()
+
+        // Its own context, so its own database session: it is not inside the writer's transaction.
+        val reader = writer.mkSubContext("cacheLateReader")
+        val sqlCxt = SqlTopicService.mkSqlCxt(writer, table.topic)
+        sqlCxt.sqlDb.withSession(writer) {
+            sqlCxt.sqlDb.withTran(writer) {
+                write(writer, table, "late", owner = "alice", label = "L")
+                // The transaction runs on, slowly; meanwhile the table stays busy and another context reads.
+                writer.instanceConfig.clock.advanceBy(3.seconds)
+                write(reader, table, "busy", owner = "bob", label = "B")
+                SqlTableCacheService.getAndRefresh(reader)
+                cache.snapshot.get(cache.idOf("busy")).shouldNotBeNull()
+                // Not committed, so not visible: correct, so far.
+                cache.snapshot.get(cache.idOf("late")).shouldBeNull()
+            }
+        }
+
+        // Committed now. The writer's next read must find its own row.
+        SqlTableCacheService.getAndRefresh(writer)
+        cache.snapshot.get(cache.idOf("late")).shouldNotBeNull().value.label shouldBe "L"
+    }
+
+    /**
+     * The other half of issue #1256: a write stays pending until a reload that **began after it** has
+     * **completed**. A flag cleared when the reload started told a writer reading mid-reload that its row was in
+     * hand, and it read the snapshot from before. Watched from inside the reload, through the cache's own
+     * `extract`, which the reload calls for each row it reads -- the moment a reader on another thread would ask.
+     */
+    "a write stays pending until the reload that covers it has completed (issue #1256)" {
+        val tables = gadgetTables("GadgetPending", "gcachePending") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tables.first { it.tableName == "GadgetPending" }
+        val cxt = bootCxt("cachePending", tables)
+        val service = SqlTableCacheService()
+        cxt.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(cxt)
+        var cache: SqlTableCache<Gadget>? = null
+        val pendingWhileLoading = mutableListOf<Boolean>()
+        val params = gadgetCache(table).params
+        cache = service.register(
+            SqlCacheParams(
+                topic = params.topic,
+                tableName = params.tableName,
+                extract = { c, data -> pendingWhileLoading.add(cache!!.forceReload); params.extract(c, data) },
+                indexes = params.indexes,
+            ),
+        )
+        write(cxt, table, "p1", owner = "alice", label = "P1")
+        SqlTableCacheService.getAndRefresh(cxt)
+
+        // Announced (committed), so pending; the reload that reads it still finds it pending while it runs.
+        write(cxt, table, "p2", owner = "alice", label = "P2")
+        cache.forceReload shouldBe true
+        pendingWhileLoading.clear()
+        SqlTableCacheService.getAndRefresh(cxt)
+        pendingWhileLoading.shouldNotBeEmpty()
+        pendingWhileLoading.all { it } shouldBe true
+        // Covered once it completes.
+        cache.forceReload shouldBe false
+        cache.snapshot.get(cache.idOf("p2")).shouldNotBeNull()
+    }
+
+    /**
+     * A reload that fails covers nothing (issue #1256): the write stays pending, and the next reload still reads
+     * the row -- including a row committed late, behind where an unrelated reload moved the query start. The
+     * reload is made to fail by withdrawing the table from the schema store, which every query resolves it from.
+     */
+    "a write stays pending through a failed reload, and the next one still reads it (issue #1256)" {
+        val tables = gadgetTables("GadgetFail", "gcacheFail") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tables.first { it.tableName == "GadgetFail" }
+        val writer = bootCxt("cacheFail", tables)
+        val service = SqlTableCacheService()
+        writer.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(writer)
+        val cache = service.register(gadgetCache(table).params)
+        write(writer, table, "early", owner = "alice", label = "E")
+        SqlTableCacheService.getAndRefresh(writer)
+
+        val reader = writer.mkSubContext("cacheFailReader")
+        val sqlCxt = SqlTopicService.mkSqlCxt(writer, table.topic)
+        sqlCxt.sqlDb.withSession(writer) {
+            sqlCxt.sqlDb.withTran(writer) {
+                write(writer, table, "late", owner = "alice", label = "L")
+                writer.instanceConfig.clock.advanceBy(3.seconds)
+                write(reader, table, "busy", owner = "bob", label = "B")
+                SqlTableCacheService.getAndRefresh(reader)
+            }
+        }
+        cache.forceReload shouldBe true
+
+        val store = writer.instanceConfig.get(KdrSchemaStore.key) as KdrSchemaStore
+        writer.instanceConfig.put(KdrSchemaStore.key, KdrSchemaStore(tables = store.tables - table.tableName))
+        shouldThrow<Exception> { service.checkRefresh(KdrCxt.mkSimpleCxt("cacheFailBroken", writer.instanceConfig)) }
+        cache.forceReload shouldBe true
+        cache.snapshot.get(cache.idOf("late")).shouldBeNull()
+
+        writer.instanceConfig.put(KdrSchemaStore.key, store)
+        service.checkRefresh(KdrCxt.mkSimpleCxt("cacheFailRepaired", writer.instanceConfig))
+        cache.forceReload shouldBe false
+        cache.snapshot.get(cache.idOf("late")).shouldNotBeNull()
+    }
+
+    /**
+     * A transaction's writes to one table are announced once, with the earliest stamp among them, however many
+     * statements wrote it -- and a transaction joined from inside another is announced at the outer commit, not
+     * the inner one (issue #1256).
+     */
+    "a transaction announces each table once, at the outermost commit, with its earliest stamp (issue #1256)" {
+        val tables = gadgetTables("GadgetCoalesce", "gcacheCoalesce")
+        val table = tables.single()
+        val cxt = bootCxt("cacheCoalesce", tables)
+        val heard = mutableListOf<Pair<List<String>, Instant>>()
+        SqlTopicService.get(cxt).addWriteListener(SqlWriteListener { _, tableNames, since -> heard.add(tableNames to since) })
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, table.topic)
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.withTran(cxt) {
+                write(cxt, table, "c1", owner = "alice", label = "C1")
+                // Joined, not its own: nothing is announced when it returns.
+                sqlCxt.sqlDb.withTran(cxt) {
+                    write(cxt, table, "c2", owner = "alice", label = "C2")
+                    write(cxt, table, "c3", owner = "alice", label = "C3")
+                }
+                heard shouldBe emptyList()
+            }
+        }
+        // The stamp is the first row's, the earliest of the three (stored to the millisecond).
+        val stored = gadgetCache(table).also { it.checkRefresh(cxt) }
+        val first = stored.snapshot.get(stored.idOf("c1")).shouldNotBeNull().updatedAt
+        heard.map { it.first } shouldContainExactly listOf(listOf("GadgetCoalesce"))
+        heard.single().second.toEpochMilliseconds() shouldBe first.toEpochMilliseconds()
+    }
+
+    /**
+     * Another node's write committed late reaches back on this node too (issue #1256). This node heard nothing
+     * of it but the shared state row; without the stamp the row carries, a reload starts past the late row and
+     * steps over it. A detached cache stands in for the other node's view: it hears no announcement at all.
+     */
+    "a stamp from the shared state row reaches a reload back to another node's late row (issue #1256)" {
+        val tables = gadgetTables("GadgetPeer", "gcachePeer")
+        val table = tables.single()
+        val writer = bootCxt("cachePeer", tables)
+        val peer = gadgetCache(table)
+        write(writer, table, "early", owner = "alice", label = "E")
+        peer.checkRefresh(writer)
+
+        val reader = writer.mkSubContext("cachePeerReader")
+        val sqlCxt = SqlTopicService.mkSqlCxt(writer, table.topic)
+        var stamp: Instant? = null
+        sqlCxt.sqlDb.withSession(writer) {
+            sqlCxt.sqlDb.withTran(writer) {
+                write(writer, table, "late", owner = "alice", label = "L")
+                stamp = writer.instanceNow()
+                writer.instanceConfig.clock.advanceBy(3.seconds)
+                write(reader, table, "busy", owner = "bob", label = "B")
+                peer.checkRefresh(reader)
+            }
+        }
+        // Without the stamp, the peer's next reload starts past the late row.
+        peer.checkLoadCache(writer, writer.instanceNow())
+        peer.snapshot.get(peer.idOf("late")).shouldBeNull()
+        // With it, as the state row carries it, the reload reaches back.
+        peer.checkLoadCache(writer, writer.instanceNow(), stamp)
+        peer.snapshot.get(peer.idOf("late")).shouldNotBeNull()
+    }
+
+    /** The stamps ride in the state row beside the dates, earliest within the window, and never read as dates. */
+    "the state row keeps each table's earliest recent stamp apart from its date (issue #1256)" {
+        val tables = gadgetTables("GadgetSince", "gcacheSince") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val cxt = bootCxt("cacheSince", tables)
+        val service = SqlTableCacheService()
+        cxt.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(cxt)
+        val now = cxt.instanceNow()
+        val stale = now - (TCH.potentialLagMs + 1000).milliseconds
+
+        service.dbMergeState(cxt, mapOf("GadgetSince" to now, "Other" to now), mapOf("GadgetSince" to now - 2.seconds, "Other" to stale))
+        service.dbMergeState(cxt, mapOf("GadgetSince" to now + 1.seconds), mapOf("GadgetSince" to now - 1.seconds))
+        val row = service.dbQueryStateRow(cxt)
+        // The dates, as before -- the row is shared with this spec's other cases -- and no stamp read as a table.
+        val dates = service.readState(row)
+        dates.keys.filter { it.endsWith(CST.sinceMark) } shouldBe emptyList()
+        dates["GadgetSince"]?.toEpochMilliseconds() shouldBe (now + 1.seconds).toEpochMilliseconds()
+        // The earlier stamp holds against the later announcement; one past the window is dropped.
+        val since = service.readSince(row)
+        since["GadgetSince"]?.toEpochMilliseconds() shouldBe (now - 2.seconds).toEpochMilliseconds()
+        since["Other"].shouldBeNull()
+    }
 })
+

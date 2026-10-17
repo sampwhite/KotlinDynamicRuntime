@@ -26,9 +26,9 @@ enum class SqlCacheRefreshNeed {
     changed,
 
     /**
-     * A cache carries a write it has not reloaded yet ([SqlTableCache.forceReload]). Normally momentary; it
-     * persists while a transaction is open, since a reload inside one would read uncommitted rows into a
-     * snapshot every thread can see.
+     * A cache carries a committed write that no completed reload has covered yet ([SqlTableCache.forceReload]).
+     * Momentary: it lasts until the next reload finishes, and persists only while reloads keep failing. A write
+     * inside an open transaction is not pending at all until the transaction commits (issue #1256).
      */
     reloadPending,
 

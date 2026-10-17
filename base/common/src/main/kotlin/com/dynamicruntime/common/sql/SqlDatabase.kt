@@ -8,6 +8,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import com.dynamicruntime.common.annotation.KdrPrivate
 import com.dynamicruntime.common.util.toLowerCaseIdentifier
+import com.dynamicruntime.common.util.toOptInstant
 import java.sql.Connection
 import java.sql.Driver
 import java.sql.DriverManager
@@ -17,6 +18,7 @@ import java.sql.Statement
 import java.util.Properties
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
+import kotlin.time.Instant
 
 /**
  * Access to a traditional SQL database, including a fixed pool of [SqlSession] connections. Work is normally
@@ -184,13 +186,23 @@ class SqlDatabase(
             session.inTran = true
             block()
             conn.commit()
-            conn.autoCommit = true
+            // Committed from here on, whatever restoring auto-commit does next: the writes must be announced.
             committedIt = true
+            conn.autoCommit = true
         } catch (e: SQLException) {
             throw SqlStmtUtil.mkException("Could not execute transaction.", e)
         } finally {
             session.inTran = false
+            // The transaction's writes are announced now that they are committed (issue #1256), and forgotten when
+            // they were not: a write rolled back changed nothing anyone needs to hear about.
+            val pending = session.pendingWrites.values.toList()
+            session.pendingWrites.clear()
+            if (committedIt) {
+                for (write in pending) announceWrite(write.cxt, listOf(write.tableName), write.changedSince)
+            }
             if (!committedIt) {
+                // Auto-commit may be off still if the commit itself was what failed; turning it on below is safe
+                // either way, and a rollback after a commit that succeeded is a no-op.
                 // Roll back **before** restoring auto-commit: under JDBC, switching auto-commit on while a
                 // transaction is open commits it -- so the old order (auto-commit first) committed the partial work
                 // of every transaction that threw, and nothing was ever rolled back (found by issue #843, whose
@@ -257,7 +269,7 @@ class SqlDatabase(
         val pStmt = getAndBindPreparedStatement(cxt, boundStmt, data)
         try {
             val result = pStmt.executeUpdate()
-            publishWrite(cxt, stmt, result)
+            publishWrite(cxt, stmt, result, data)
             return result
         } catch (e: SQLException) {
             throw SqlStmtUtil.mkException("Could not execute query ${stmt.name}.", e)
@@ -278,34 +290,48 @@ class SqlDatabase(
      * table caches, today) is not its concern -- see [SqlWriteListener] for why that is worth an interface.
      *
      * Only for writes: reads go through [queryStatement], and a statement that matched no row
-     * ([rowsAffected] of zero) changed nothing. A write later rolled back is published anyway -- a cache
-     * listener defers its reload until the transaction has ended, so the cost is one reload that finds
-     * nothing, which is the right way round for a guess to be wrong.
+     * ([rowsAffected] of zero) changed nothing.
      *
-     * **A listener cannot fail the write.** This runs after `executeUpdate` has already happened (and, for an
-     * insert, before its generated keys are read), so a listener exception here would make a write that
-     * *succeeded* look failed to the caller -- inviting a retry that double-writes -- and would lose the
-     * generated key. The [SqlWriteListener] contract says implementations must not throw; this is where that
-     * contract is enforced rather than hoped for.
+     * **Announced once committed** (issue #1256). A statement outside a transaction is committed by running, so it
+     * is announced straight away ([announceWrite]); one inside a transaction is held on the session and announced
+     * when the transaction commits, or dropped if it rolls back. Announcing at the statement let a cache on another
+     * thread refresh inside the writer's transaction, miss the uncommitted row, and count itself current.
      */
     @KdrPrivate
-    fun publishWrite(cxt: KdrCxt, stmt: SqlStatement, rowsAffected: Int) {
+    fun publishWrite(cxt: KdrCxt, stmt: SqlStatement, rowsAffected: Int, data: Map<String, Any?> = emptyMap()) {
         if (rowsAffected <= 0 || stmt.tableNames.isEmpty()) {
             return
         }
+        // The row's own stamp where the statement set one -- what a cache's incremental query compares against --
+        // or the moment the statement ran.
+        val now = cxt.instanceNow()
+        val changedSince = data[PF.updatedAt].toOptInstant()?.let { if (it < now) it else now } ?: now
+        val session = SqlSession.get(cxt)
+        if (session != null && session.inTran) {
+            session.notePendingWrite(cxt, stmt.tableNames, changedSince)
+        } else {
+            announceWrite(cxt, stmt.tableNames, changedSince)
+        }
+    }
+
+    /**
+     * Tells the [SqlWriteListener]s about a committed write (issue #1256): straight after a statement outside a
+     * transaction, or for each of a transaction's writes once it commits.
+     *
+     * **A listener cannot fail the write.** It has already happened, so a listener exception here would make a
+     * write that *succeeded* look failed to the caller -- inviting a retry that double-writes. The listener
+     * contract says implementations must not throw; this is where that contract is enforced rather than hoped for.
+     */
+    @KdrPrivate
+    fun announceWrite(cxt: KdrCxt, tableNames: List<String>, changedSince: Instant) {
         // Read optionally, not through the throwing get(): write-listener notification is best-effort, and the
         // data layer runs below (and in tests without) the topic service -- a bare SqlDatabase must still write.
         val listeners = (cxt.instanceConfig.get(SqlTopicService.serviceName) as? SqlTopicService)?.writeListeners ?: return
         for (listener in listeners) {
             try {
-                listener.onWrite(cxt, stmt.tableNames)
+                listener.onWrite(cxt, tableNames, changedSince)
             } catch (e: Exception) {
-                LogSql.error(
-                    cxt,
-                    "Write listener failed for tables ${stmt.tableNames} on statement ${stmt.name}; " +
-                        "the write itself succeeded.",
-                    e,
-                )
+                LogSql.error(cxt, "Write listener failed for tables $tableNames; the write itself succeeded.", e)
             }
         }
     }
@@ -321,7 +347,7 @@ class SqlDatabase(
         val pStmt = getAndBindPreparedStatement(cxt, boundStmt, data)
         try {
             val result = pStmt.executeUpdate()
-            publishWrite(cxt, stmt, result)
+            publishWrite(cxt, stmt, result, data)
             if (result > 0 && counterValue != null) {
                 pStmt.generatedKeys.use { generatedKeys ->
                     if (generatedKeys.next()) {
