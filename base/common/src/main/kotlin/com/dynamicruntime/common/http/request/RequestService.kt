@@ -68,6 +68,9 @@ class RequestService : ServiceInitializer {
     /** The context root under which the self-contained webapp is served; from [ACFG.appContextRoot]. Bound in [checkInit]. */
     var appContextRoot: String = ContextRoot.wa
 
+    /** The context root the bare site root redirects to (issue #1268); from [ACFG.landingFocus]. Bound in [onCreate]. */
+    var landingContextRoot: String = ContextRoot.cp
+
     /** The context root under which immutable static content is served; from [ACFG.staticContextRoot]. Bound in [checkInit]. */
     var staticContextRoot: String = ContextRoot.st
 
@@ -347,6 +350,14 @@ class RequestService : ServiceInitializer {
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
         appContextRoot = (cxt.instanceConfig.get(ACFG.appContextRoot) as? String) ?: ContextRoot.wa
         staticContextRoot = (cxt.instanceConfig.get(ACFG.staticContextRoot) as? String) ?: ContextRoot.st
+        landingContextRoot = when (val landing = cxt.instanceConfig.get(ACFG.landingFocus)) {
+            null, ContextFocus.content.name -> contentContextRoot
+            ContextFocus.app.name -> appContextRoot
+            else -> throw KdrException(
+                "Refusing to start: ${ACFG.landingFocus} is '$landing', which is neither " +
+                    "${ContextFocus.content} (the portal) nor ${ContextFocus.app} (the web application).",
+            )
+        }
         // Each configured root maps to the focus it targets; the leading segment of a request is matched here.
         contextRootFocus = mapOf(
             apiContextRoot to ContextFocus.api,
@@ -468,11 +479,12 @@ class RequestService : ServiceInitializer {
         val focus = contextRootFocus[handler.contextRoot]
         if (focus == null) {
             // A GET for the bare root ("/" or empty context root) is a browser landing on the site: send it to
-            // the content root, whose content server (the portal) serves the landing page. Redirecting to the
-            // content root -- rather than straight to the portal page -- keeps the dispatcher unaware of the
-            // portal specifically. Any other unrecognized root stays a terse 404 (no decoding).
+            // the landing root -- the content root, whose content server (the portal) serves the landing page, or
+            // the web application's, as [ACFG.landingFocus] says (issue #1268). Redirecting to a root -- rather
+            // than straight to a page -- keeps the dispatcher unaware of the portal or the application
+            // specifically. Any other unrecognized root stays a terse 404 (no decoding).
             if (handler.contextRoot.isEmpty() && handler.method.equals("GET", ignoreCase = true)) {
-                handler.sendRedirect("/$contentContextRoot")
+                handler.sendRedirect("/$landingContextRoot")
                 return
             }
             LogRequest.debug(cxt) { "Rejecting request outside known context roots: ${handler.logRequestSummary()}" }

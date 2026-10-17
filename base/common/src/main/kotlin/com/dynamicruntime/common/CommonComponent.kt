@@ -21,6 +21,7 @@ import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
 import com.dynamicruntime.common.gedra.workflow.surveyStateConfig
 import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
 import com.dynamicruntime.common.cfact.cfactSchema
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.BOOT
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.fileref.FileRefService
@@ -31,6 +32,7 @@ import com.dynamicruntime.common.flavor.FlavorContribution
 import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.http.client.OutboundHttpService
+import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.job.JobService
 import com.dynamicruntime.common.job.jobExceptionTables
@@ -299,9 +301,15 @@ class CommonComponent : ComponentDefinition {
         FlavorDef(FLV.reference, "A reference deployment: a public instance to look around, saying so on its pages."),
     )
 
-    /** What core changes under a reference deployment (issue #1221): its home page, and a word on its sign-in page. */
+    /**
+     * What core changes under a reference deployment (issue #1221): its home page, and a word on its sign-in page;
+     * and the site root opening on the web application rather than the endpoint portal (issue #1268).
+     */
     override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
-        flavor(FLV.reference) { omnibusOverlay("kdrReference") },
+        flavor(FLV.reference) {
+            omnibusOverlay("kdrReference")
+            set(ACFG.landingFocus, ContextFocus.app.name)
+        },
     )
 
     /**
