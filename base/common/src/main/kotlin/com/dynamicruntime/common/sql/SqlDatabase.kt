@@ -167,17 +167,37 @@ class SqlDatabase(
     fun withTran(cxt: KdrCxt, block: () -> Unit) {
         val session = SqlSession.get(cxt)
         if (session != null) {
-            withTranAndSession(session, block)
+            withTranAndSession(cxt, session, block)
         } else {
-            withSession(cxt) { withTranAndSession(getMustExist(cxt), block) }
+            withSession(cxt) { withTranAndSession(cxt, getMustExist(cxt), block) }
         }
     }
 
-    fun withTranAndSession(session: SqlSession, block: () -> Unit) {
+    fun withTranAndSession(cxt: KdrCxt, session: SqlSession, block: () -> Unit) {
         if (session.inTran) {
             block()
             return
         }
+        // Recorded for the transaction's duration (issue #1266), after the listeners have pinned what they hold for
+        // it -- read while the connection is still in auto-commit, so outside the transaction.
+        val tran = SqlThreadTrans.OpenTran(this)
+        tranOpening(cxt, tran)
+        SqlThreadTrans.withOpen(tran) { runTran(session, block) }
+    }
+
+    /** Tells the [SqlTranListener]s a transaction on this database is about to open; a listener cannot refuse it. */
+    private fun tranOpening(cxt: KdrCxt, tran: SqlThreadTrans.OpenTran) {
+        val listeners = (cxt.instanceConfig.get(SqlTopicService.serviceName) as? SqlTopicService)?.tranListeners ?: return
+        for (listener in listeners) {
+            try {
+                listener.onTranOpening(cxt, tran)
+            } catch (e: Exception) {
+                LogSql.error(cxt, "Transaction listener failed on database $dbName; the transaction goes ahead.", e)
+            }
+        }
+    }
+
+    private fun runTran(session: SqlSession, block: () -> Unit) {
         val conn = session.conn
             ?: throw KdrException("No connection available for transaction on database $dbName.")
         var committedIt = false

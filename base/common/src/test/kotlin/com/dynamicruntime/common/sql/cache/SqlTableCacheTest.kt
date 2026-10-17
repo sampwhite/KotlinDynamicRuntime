@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.sql.cache
 
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.sql.KdrTable
@@ -18,6 +19,7 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -80,6 +82,19 @@ class SqlTableCacheTest : StringSpec({
             ),
         ),
     )
+
+    /**
+     * Runs [body] on a thread of its own and waits for it, rethrowing what it threw: another request, in the middle
+     * of a transaction this thread holds open. It has to be a real thread since #1266 -- a sibling context on the
+     * same thread reads the caches pinned for that transaction, which is the point of the pin.
+     */
+    fun onAnotherThread(body: () -> Unit) {
+        var failure: Throwable? = null
+        val t = Thread { try { body() } catch (e: Throwable) { failure = e } }
+        t.start()
+        t.join()
+        failure?.let { throw it }
+    }
 
     /** Inserts or updates a row. The clock is advanced first so `updatedAt` genuinely moves between writes. */
     fun write(
@@ -417,7 +432,7 @@ class SqlTableCacheTest : StringSpec({
     }
 
     /**
-     * The race of issue #1256, driven on one thread with two contexts: a row is written inside a transaction that
+     * The race of issue #1256, driven with a second thread: a row is written inside a transaction that
      * stays open while **another** context refreshes the cache, then commits. A refresh in that window cannot see
      * the uncommitted row, and on a busy table it moves the cache's query start past the row's stamp -- so unless
      * the commit itself tells the cache, and tells it how far back to look, the row is never read.
@@ -438,19 +453,21 @@ class SqlTableCacheTest : StringSpec({
         SqlTableCacheService.getAndRefresh(writer)
         cache.snapshot.get(cache.idOf("early")).shouldNotBeNull()
 
-        // Its own context, so its own database session: it is not inside the writer's transaction.
+        // Another request, on its own thread and context: it is not inside the writer's transaction.
         val reader = writer.mkSubContext("cacheLateReader")
         val sqlCxt = SqlTopicService.mkSqlCxt(writer, table.topic)
         sqlCxt.sqlDb.withSession(writer) {
             sqlCxt.sqlDb.withTran(writer) {
                 write(writer, table, "late", owner = "alice", label = "L")
-                // The transaction runs on, slowly; meanwhile the table stays busy and another context reads.
+                // The transaction runs on, slowly; meanwhile the table stays busy and another request reads.
                 writer.instanceConfig.clock.advanceBy(3.seconds)
-                write(reader, table, "busy", owner = "bob", label = "B")
-                SqlTableCacheService.getAndRefresh(reader)
-                cache.snapshot.get(cache.idOf("busy")).shouldNotBeNull()
-                // Not committed, so not visible: correct, so far.
-                cache.snapshot.get(cache.idOf("late")).shouldBeNull()
+                onAnotherThread {
+                    write(reader, table, "busy", owner = "bob", label = "B")
+                    SqlTableCacheService.getAndRefresh(reader)
+                    cache.snapshot.get(cache.idOf("busy")).shouldNotBeNull()
+                    // Not committed, so not visible: correct, so far.
+                    cache.snapshot.get(cache.idOf("late")).shouldBeNull()
+                }
             }
         }
 
@@ -520,8 +537,10 @@ class SqlTableCacheTest : StringSpec({
             sqlCxt.sqlDb.withTran(writer) {
                 write(writer, table, "late", owner = "alice", label = "L")
                 writer.instanceConfig.clock.advanceBy(3.seconds)
-                write(reader, table, "busy", owner = "bob", label = "B")
-                SqlTableCacheService.getAndRefresh(reader)
+                onAnotherThread {
+                    write(reader, table, "busy", owner = "bob", label = "B")
+                    SqlTableCacheService.getAndRefresh(reader)
+                }
             }
         }
         cache.forceReload shouldBe true
@@ -622,6 +641,82 @@ class SqlTableCacheTest : StringSpec({
         val since = service.readSince(row)
         since["GadgetSince"]?.toEpochMilliseconds() shouldBe (now - 2.seconds).toEpochMilliseconds()
         since["Other"].shouldBeNull()
+    }
+
+    /** An attached cache on a fresh table, with the service subscribed as at boot: what the #1266 cases share. */
+    fun pinnedSetup(name: String, isTestInstance: Boolean = true): Triple<KdrCxt, KdrTable, SqlTableCache<Gadget>> {
+        val tables = gadgetTables("Gadget$name", "gcache$name") + SqlTableCacheService.tables(KdrCxt.mkSimpleCxt("def"))
+        val table = tables.first { it.tableName == "Gadget$name" }
+        val cxt = bootCxt("cache$name", tables)
+        cxt.instanceConfig.put(ACFG.isTestInstance, isTestInstance)
+        val service = SqlTableCacheService()
+        cxt.instanceConfig.put(SqlTableCacheService.serviceName, service)
+        service.checkInit(cxt) // subscribes the write and transaction listeners
+        return Triple(cxt, table, service.register(gadgetCache(table).params))
+    }
+
+    /**
+     * Issue #1266: a transaction sees each cache as it stood when the transaction opened. Another thread's commit
+     * and reload in the middle of it do not reach it -- not through its own context, and not through a sibling
+     * context on the same thread -- and the pin goes when the transaction ends. A commit made just before it opened
+     * is in the pin, since opening refreshes first.
+     */
+    "a transaction reads the caches as they stood when it opened, whatever another thread reloads (issue #1266)" {
+        val (cxt, table, cache) = pinnedSetup("Pin")
+        write(cxt, table, "before", owner = "alice", label = "B0")
+        SqlTableCacheService.getAndRefresh(cxt)
+        // Committed by another request and not yet read here: opening the transaction refreshes it in.
+        onAnotherThread { write(KdrCxt.mkSimpleCxt("pinEarly", cxt.instanceConfig), table, "justBefore", owner = "alice", label = "B1") }
+
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, table.topic)
+        val sibling = cxt.mkSubContext("pinSibling")
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.withTran(cxt) {
+                cache.isPinned() shouldBe true
+                cache.snapshot.get(cache.idOf("justBefore")).shouldNotBeNull()
+                onAnotherThread {
+                    val other = KdrCxt.mkSimpleCxt("pinOther", cxt.instanceConfig)
+                    write(other, table, "during", owner = "bob", label = "D")
+                    SqlTableCacheService.getAndRefresh(other)
+                    cache.snapshot.get(cache.idOf("during")).shouldNotBeNull() // live there
+                }
+                // Not here, however asked.
+                cache.checkRefresh(cxt)
+                cache.snapshot.get(cache.idOf("during")).shouldBeNull()
+                cache.checkRefresh(sibling)
+                cache.snapshot.get(cache.idOf("during")).shouldBeNull()
+            }
+        }
+        cache.isPinned() shouldBe false
+        SqlTableCacheService.getAndRefresh(cxt)
+        cache.snapshot.get(cache.idOf("during")).shouldNotBeNull()
+    }
+
+    /**
+     * Issue #1266: inside a transaction that pinned a cache, falling back to SQL is refused -- through the
+     * transaction's context or a sibling context on the same thread -- since the query would join the transaction
+     * or take a second connection from the pool. A test instance throws, so a test finds the read; elsewhere it is
+     * a warning and the query goes ahead. Outside a transaction a fallback is the ordinary miss.
+     */
+    "a cache that cannot answer inside a transaction refuses to fall back to SQL (issue #1266)" {
+        val (cxt, table, cache) = pinnedSetup("Guard")
+        cache.guardFallback(cxt) // outside a transaction: fine
+        val sqlCxt = SqlTopicService.mkSqlCxt(cxt, table.topic)
+        sqlCxt.sqlDb.withSession(cxt) {
+            sqlCxt.sqlDb.withTran(cxt) {
+                shouldThrow<KdrException> { cache.guardFallback(cxt) }.message shouldContain "issue #1266"
+                shouldThrow<KdrException> { cache.guardFallback(cxt.mkSubContext("guardSibling")) }
+            }
+        }
+        cache.guardFallback(cxt)
+
+        val (prodCxt, prodTable, prodCache) = pinnedSetup("GuardProd", isTestInstance = false)
+        val prodSql = SqlTopicService.mkSqlCxt(prodCxt, prodTable.topic)
+        prodSql.sqlDb.withSession(prodCxt) {
+            prodSql.sqlDb.withTran(prodCxt) {
+                prodCache.guardFallback(prodCxt) // a warning, not a refusal
+            }
+        }
     }
 })
 
