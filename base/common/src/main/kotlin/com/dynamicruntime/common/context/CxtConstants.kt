@@ -143,6 +143,14 @@ object ACFG {
     const val staticContextRoot = "staticContextRoot"
 
     /**
+     * Which kind of context root a browser landing on the bare site root (`/`) is sent to (issue #1268): a
+     * `ContextFocus` name, `content` (the default, the endpoint portal) or `app` (the web application). A kind
+     * rather than a path, so the redirect follows whatever roots the node configures. Another value refuses the
+     * start. The `reference` flavor sets `app`, so a public reference deployment opens on the application.
+     */
+    const val landingFocus = "landingFocus"
+
+    /**
      * The email domain whose plain (un-plus-addressed) addresses are automatically granted the admin role --
      * how the *first* admin of a deployment comes to exist. Set directly by tests; when unset it defaults from
      * the `KDR_ADMIN_EMAIL_DOMAIN` env var. Absent in both means no address is ever auto-granted. See

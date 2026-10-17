@@ -1,6 +1,10 @@
 package com.dynamicruntime.kdn
 
+import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.TestHttpClient
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -38,6 +42,20 @@ class PortalHttpTest : StringSpec({
         val resp = client("bareRoot").sendGetRequestRaw("/")
         resp.rptStatusCode shouldBe 303
         resp.rptResponseHeaders["location"] shouldBe mutableListOf("/cp")
+    }
+
+    // A private instance for each: the landing is instance configuration, and the shared default lands on the portal.
+    "with landingFocus=app the bare root lands in the web application instead (issue #1268)" {
+        val cxt = Startup.mkTestBootCxt("landingApp", "kdnLandingApp1268", mapOf(ACFG.landingFocus to ContextFocus.app.name))
+        val resp = TestHttpClient(cxt.instanceConfig).sendGetRequestRaw("/")
+        resp.rptStatusCode shouldBe 303
+        resp.rptResponseHeaders["location"] shouldBe mutableListOf("/wa")
+    }
+
+    "a landingFocus naming neither the portal nor the application refuses the start" {
+        shouldThrow<KdrException> {
+            Startup.mkTestBootCxt("landingBad", "kdnLandingBad1268", mapOf(ACFG.landingFocus to ContextFocus.api.name))
+        }.message shouldContain ACFG.landingFocus
     }
 
     "GET /cp/does-not-exist yields a friendly HTML 404 (content root, no match)" {

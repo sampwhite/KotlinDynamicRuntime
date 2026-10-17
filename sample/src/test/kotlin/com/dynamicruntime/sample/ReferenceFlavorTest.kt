@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.workflow.WVF
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.kdn.Startup
@@ -23,7 +24,8 @@ import java.nio.file.Files
 /**
  * The `reference` deployment flavor (issue #1221): what a reference deployment changes, from the three components
  * that contribute to it -- core's home page and sign-in copy, the sample's note and its clients, and kdn's conference
- * demo, provisioned at boot with a walkthrough link on each workflow page -- and, without it, none of that.
+ * demo, provisioned at boot with a walkthrough link on each workflow page; and the site root opening on the web
+ * application -- and, without it, none of that.
  *
  * Booted in `unit`, where the sample does not load unless told to, against an empty flavor directory so a workspace's
  * own copy cannot reach the test. Private instances: they differ in flavor and in `KDR_LOAD_SAMPLE`.
@@ -65,6 +67,12 @@ class ReferenceFlavorTest : StringSpec({
         ClientService.get(plain).present(ConfDemo.client).shouldBeNull()
         MarkdownFragmentService.get(plain).resolveFragment(plain, WVF.helpFile, ConfDemo.client, ConfDemo.createTalkWorkflow)
             .orEmpty() shouldBe ""
+    }
+
+    "the site root opens on the web application, not the endpoint portal (issue #1268)" {
+        fun landing(cxt: KdrCxt) = TestHttpClient(cxt.instanceConfig).sendGetRequestRaw("/").rptResponseHeaders["location"]
+        landing(reference) shouldBe mutableListOf("/wa")
+        landing(plain) shouldBe mutableListOf("/cp")
     }
 
     "an explicit KDR_LOAD_SAMPLE beats the flavor's default" {
