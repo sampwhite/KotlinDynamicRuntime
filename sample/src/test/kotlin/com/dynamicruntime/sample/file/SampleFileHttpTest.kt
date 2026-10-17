@@ -14,7 +14,6 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.nio.file.Files
 
 /**
  * The file endpoints over **real HTTP**, against a real Jetty — which is the only way to cover the multipart
@@ -34,11 +33,9 @@ import java.nio.file.Files
 class SampleFileHttpTest : StringSpec({
 
 
-    val tempWorkspace = Files.createTempDirectory("kdrSampleFileHttpTest").toFile()
     lateinit var server: TestHttpServer
 
     beforeSpec {
-        System.setProperty("kdr.workspaceDir", tempWorkspace.absolutePath)
         // Boot the instance so its endpoints are registered, then serve them on a real socket.
         val instanceName = "sampleFileHttpTest"
         // Force SampleComponent.isLoaded on: it otherwise gates to developer envs, and mkTestBootCxt uses unit.
@@ -48,8 +45,6 @@ class SampleFileHttpTest : StringSpec({
 
     afterSpec {
         server.close()
-        System.clearProperty("kdr.workspaceDir")
-        tempWorkspace.deleteRecursively()
     }
 
     val client: HttpClient = HttpClient.newHttpClient()
@@ -93,7 +88,7 @@ class SampleFileHttpTest : StringSpec({
         downloaded.statusCode() shouldBe 200
         downloaded.headers().firstValue("Content-Type").get() shouldBe "application/octet-stream"
         downloaded.headers().firstValue("Content-Disposition").get() shouldContain "filename=\"large.bin\""
-        // The whole point: every byte survives the wire, the parser, the disk and the response.
+        // The whole point: every byte survives the wire, the parser, the file store and the response.
         downloaded.body().toList() shouldBe largeUpload.toList()
     }
 

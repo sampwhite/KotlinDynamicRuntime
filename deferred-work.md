@@ -528,20 +528,6 @@ clone to another client id in this one.
   import. Left out because no client holds file refs yet, so no import meets the refusal; the first clone or restore
   of one that does is the trigger, and the refusal says exactly what is missing.
 
-## When the sample's file endpoints should show how files are really kept
-
-Somebody reads `SampleFileStore` to learn how to store an upload, and copies it: a directory of its own under the
-workspace, an id per file, a metadata file it reads and writes itself, no S3, and files written by a node that is
-running in memory only.
-
-- **Move the sample's upload, list and download onto the file store** *(#1129, deferred here 2026-10-12).*
-  `FileStoreService` now keeps exactly what the sample keeps -- content, and its metadata beside it -- behind one
-  service, in a declared bucket, on a directory, S3 or memory. The sample predates it and still has its own store.
-  Moving it means declaring a bucket from `SampleComponent`, composing a key from the generated id, and deleting
-  `SampleFileStore`; the endpoints' shapes need not change. Left out of #1129 so that change added the store
-  without also rewriting its only prior art, and because files already uploaded to `sampleFiles/` on a developer's
-  machine would not be found by the new one.
-
 ## When an env-authed administrator on a public test deployment needs an invitation to reach the person invited
 
 On a public test deployment (issue #1150) mail follows the **caller**: an env-authed caller's mail is captured for

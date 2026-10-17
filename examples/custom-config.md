@@ -215,9 +215,8 @@ Nodes that hold different files give a ref different addresses, and each answers
 Notes:
 
 - **What may not be a root.** Neither the location nor a root may be inside one of the places that hold the
-  deployment's own data -- the workspace's `private/`, `h2Database/`, `logs/` and `sampleFiles/`, and the file
-  store's directory -- nor be a directory that *contains* one, which rules out the workspace directory itself,
-  anything above it and `/`. Both sides are judged by real path, so a link into such a place is in it, and a
+  deployment's own data -- the workspace's `private/`, `h2Database/` and `logs/`, and the file store's directory --
+  nor be a directory that *contains* one, which rules out the workspace directory itself, anything above it and `/`. Both sides are judged by real path, so a link into such a place is in it, and a
   `logs` that is itself a link is fenced where the logs really are. A relative declaration holds no `..` and no
   name beginning with a dot. **A declaration that breaks any of this refuses the boot, in every environment**: it
   is a fence, not a preference. (The default `localFiles` is nobody's declaration: where it may not be a location
