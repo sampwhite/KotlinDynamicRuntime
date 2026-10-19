@@ -159,6 +159,11 @@ kdr-backend` is the same boot from any directory if `bin/` is on your `PATH`.
   `KDR_FILE_STORE_TYPE=s3` and put a stand-in `S3Api` in the instance config under
   `FileStoreService.s3ApiConfigKey` (`FakeS3Api` in `base/common`'s tests keeps objects in a map and records
   every call); the real client is refused in a unit test.
+- **More stores than the default** (issue #1282): `KDR_FILE_STORES=second.type=memory` declares one beside it,
+  through the instance config as any other setting. A named `local` store needs an absolute `dir` in a unit test,
+  and a named `s3` store its own stand-in, under `FileStoreService.s3ApiConfigKeyOf(name)` -- never the
+  default's, so a test shows the stores are kept apart. A client's file is stored and read through
+  `FileStoreService.get(cxt).forOwner(cxt, client)`; the service's own calls refuse a key under `clients/`.
 - **The local files a file ref may name** (`KDR_LOCAL_FILES_DIR`, issue #1154) default to `localFiles/` in the
   workspace, which a server of yours would read. Nothing is ever written there, but to try a local ref name your
   own: `KDR_LOCAL_FILES_DIR=<a scratch dir>`, with each root a directory under it. **A unit test is given no

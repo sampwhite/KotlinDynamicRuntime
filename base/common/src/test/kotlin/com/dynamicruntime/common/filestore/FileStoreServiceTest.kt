@@ -202,7 +202,7 @@ class FileStoreServiceTest : StringSpec({
         val bytes = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0, -1)
 
         val before = cxt.now().truncateToMs()
-        val meta = service.put(cxt, bucket, "clients/acme/logo", ContentData(bytes, "image/png", saveAsFilename = "../../My Logo.png"), mapOf("slot" to "brandMark"))
+        val meta = service.put(cxt, bucket, "reports/acme/logo", ContentData(bytes, "image/png", saveAsFilename = "../../My Logo.png"), mapOf("slot" to "brandMark"))
 
         meta.mimeType shouldBe "image/png"
         meta.size shouldBe 6
@@ -214,13 +214,13 @@ class FileStoreServiceTest : StringSpec({
         meta.client shouldBe "acme"
         meta.extra shouldBe mapOf("slot" to "brandMark")
 
-        val file = service.get(cxt, bucket, "clients/acme/logo").shouldNotBeNull()
+        val file = service.get(cxt, bucket, "reports/acme/logo").shouldNotBeNull()
         file.bytes.toList() shouldBe bytes.toList()
         file.meta.toJsonMap() shouldBe meta.toJsonMap()
         // The moment answered is the moment recorded, to the precision the metadata file holds.
         file.meta.uploadedAt shouldBe meta.uploadedAt
-        service.meta(cxt, bucket, "clients/acme/logo").shouldNotBeNull().toJsonMap() shouldBe meta.toJsonMap()
-        service.list(cxt, bucket, "clients/").map { it.key } shouldContainExactly listOf("clients/acme/logo")
+        service.meta(cxt, bucket, "reports/acme/logo").shouldNotBeNull().toJsonMap() shouldBe meta.toJsonMap()
+        service.list(cxt, bucket, "reports/").map { it.key } shouldContainExactly listOf("reports/acme/logo")
 
         // As content to send: the stored type, the name offered back, the hash.
         val content = file.toContentData(inLine = false)
@@ -229,8 +229,8 @@ class FileStoreServiceTest : StringSpec({
         content.inLine shouldBe false
         content.hash shouldBe meta.hash
 
-        service.delete(cxt, bucket, "clients/acme/logo") shouldBe true
-        service.get(cxt, bucket, "clients/acme/logo").shouldBeNull()
+        service.delete(cxt, bucket, "reports/acme/logo") shouldBe true
+        service.get(cxt, bucket, "reports/acme/logo").shouldBeNull()
     }
 
     "a file stored by no signed-in user records none, and text is stored as its bytes" {
@@ -385,5 +385,110 @@ class FileStoreServiceTest : StringSpec({
         }
         // A context bound to no client records the deployment's own.
         service.put(cxt, bucket, "unbound", ContentData("u", "text/plain")).client shouldBe cxt.client
+    }
+
+    // --- Issue #1282: several stores, and a client's files reached through forOwner ------------------------------
+
+    "the stores KDR_FILE_STORES declares are kept beside the default one, each its own" {
+        val dir = tempDir()
+        val cxt = cxtWith(
+            ENV.unit, FSENV.type.name to FST.memory,
+            FSENV.stores.name to "second.type=memory,disk.type=local,disk.dir=${dir.absolutePath}",
+        )
+        val service = started(cxt)
+        service.storeNames() shouldContainExactly listOf(FSNM.default, "second", "disk")
+        service.storeNamed("disk").shouldBeInstanceOf<LocalFileStore>().location shouldBe dir.path
+        (service.storeNamed("second") === service.store) shouldBe false
+        service.storeNamed("nowhere").shouldBeNull()
+        File(dir, bucket).isDirectory shouldBe true
+        service.storesText() shouldBe "File stores: default = memory (memory), second = memory (memory), disk = local (${dir.path})"
+        // One store alone is said as it always was.
+        started(memoryCxt()).storesText() shouldBe "File store: memory (memory)"
+
+        // A file stored in one store is in that one only.
+        service.put(cxt, bucket, "notes/one", ContentData("1", "text/plain"))
+        service.storeNamed("second").shouldNotBeNull().meta(cxt, bucket, "notes/one").shouldBeNull()
+        service.store.meta(cxt, bucket, "notes/one").shouldNotBeNull()
+    }
+
+    "each S3 store runs over a stand-in of its own, and one the test did not hand in is refused" {
+        val defaultApi = FakeS3Api("a-$bucket")
+        val awsApi = FakeS3Api("b-$bucket")
+        val cxt = cxtWith(
+            ENV.unit, FSENV.type.name to FST.s3, FSENV.s3BucketPrefix.name to "a-", FileStoreService.s3ApiConfigKey to defaultApi,
+            FSENV.stores.name to "aws.type=s3,aws.region=us-east-1,aws.prefix=b-",
+            FileStoreService.s3ApiConfigKeyOf("aws") to awsApi,
+        )
+        started(cxt)
+        defaultApi.calls shouldContainExactly listOf("headBucket a-$bucket")
+        awsApi.calls shouldContainExactly listOf("headBucket b-$bucket")
+        FileStoreService.s3ApiConfigKeyOf(FSNM.default) shouldBe FileStoreService.s3ApiConfigKey
+
+        // The default's stand-in is not another store's.
+        val refused = shouldThrow<KdrException> {
+            created(
+                cxtWith(
+                    ENV.unit, FSENV.type.name to FST.s3, FileStoreService.s3ApiConfigKey to FakeS3Api(),
+                    FSENV.stores.name to "aws.type=s3,aws.region=us-east-1,aws.prefix=b-",
+                ),
+            )
+        }
+        refused.message shouldContain "The S3 file store 'aws' is not available in the unit test environment"
+        refused.message shouldContain "'${FileStoreService.s3ApiConfigKey}:aws'"
+    }
+
+    "the boot check holds every store to every declared bucket, saying which store is wrong" {
+        fun cxtFor(env: String, vararg more: Pair<String, Any?>) = cxtWith(
+            env, FSENV.type.name to FST.memory, FSENV.stores.name to "aws.type=s3,aws.region=us-east-1,aws.prefix=k-",
+            FileStoreService.s3ApiConfigKeyOf("aws") to FakeS3Api(), *more,
+        )
+        val strict = cxtFor(ENV.local)
+        val refused = shouldThrow<KdrException> { started(strict) }
+        refused.message shouldContain "Refusing to start: the file stores cannot each serve every declared bucket."
+        refused.message shouldContain "Store 'aws': The S3 bucket 'k-$bucket'"
+        fileStoreCheck(strict).shouldNotBeNull().findings shouldHaveSize 1
+
+        val warned = cxtFor(ENV.prod)
+        started(warned)
+        fileStoreCheck(warned).shouldNotBeNull().let {
+            it.mode shouldBe BootCheckMode.warn
+            it.findings.single() shouldContain "Store 'aws': "
+        }
+    }
+
+    "a client's files are reached through forOwner, and only in its own folder; the service's calls take no client's" {
+        val cxt = memoryCxt()
+        val service = started(cxt)
+        val acme = service.forOwner(cxt, "acme")
+        // Every client is on the default store until clients are assigned one (#1283).
+        acme.storeName shouldBe FSNM.default
+        acme.put(cxt, bucket, "clients/acme/logo", ContentData("a", "text/plain"))
+        acme.get(cxt, bucket, "clients/acme/logo").shouldNotBeNull()
+        service.forOwner(cxt, "globex").put(cxt, bucket, "clients/globex/logo", ContentData("g", "text/plain"))
+        service.put(cxt, bucket, "notes/plain", ContentData("p", "text/plain"))
+
+        // The service's own calls refuse a key or a prefix in a client's folder, and their listing leaves those out.
+        shouldThrow<KdrException> { service.get(cxt, bucket, "clients/acme/logo") }.message shouldContain
+            "The file-store key 'clients/acme/logo' is a client's"
+        shouldThrow<KdrException> { service.put(cxt, bucket, "clients/acme/other", ContentData("x", "text/plain")) }
+        shouldThrow<KdrException> { service.list(cxt, bucket, "clients/") }.message shouldContain "is a client's folder"
+        service.list(cxt, bucket, "notes/").map { it.key } shouldContainExactly listOf("notes/plain")
+        // The whole bucket holds clients' files, which the default listing does not take: refused, never answered short.
+        shouldThrow<KdrException> { service.list(cxt, bucket) }.message shouldContain "holds clients' files"
+
+        // A client's view takes its own folder and no other.
+        shouldThrow<KdrException> { acme.get(cxt, bucket, "clients/globex/logo") }.message shouldContain
+            "is not one of client 'acme''s, which are under 'clients/acme/'"
+        shouldThrow<KdrException> { acme.put(cxt, bucket, "notes/plain", ContentData("x", "text/plain")) }
+        acme.list(cxt, bucket).map { it.key } shouldContainExactly listOf("clients/acme/logo")
+        acme.list(cxt, bucket, "clients/acme/").map { it.key } shouldContainExactly listOf("clients/acme/logo")
+        shouldThrow<KdrException> { acme.list(cxt, bucket, "clients/") }.message shouldContain "not within client 'acme''s folder"
+        // An owner that could be no folder's name is no owner.
+        shouldThrow<KdrException> { service.forOwner(cxt, "../acme") }
+        // Nor is a path, which would be a folder inside another client's.
+        shouldThrow<KdrException> { service.forOwner(cxt, "acme/web") }.message shouldContain "it holds a slash"
+        shouldThrow<KdrException> { service.forOwner(cxt, "") }
+        // The prefix every client key is built from.
+        FNAME.clientKeyPrefix("acme") shouldBe "clients/acme/"
     }
 })

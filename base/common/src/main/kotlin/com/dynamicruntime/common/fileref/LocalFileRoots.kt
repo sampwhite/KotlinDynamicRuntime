@@ -10,7 +10,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
 import com.dynamicruntime.common.filestore.FNAME
-import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.filestore.FileStoreSpecs
 import com.dynamicruntime.common.sql.SecretsUtil
 import com.dynamicruntime.common.sql.SqlDbBuilder
 import com.dynamicruntime.common.util.byteSizeText
@@ -350,12 +350,12 @@ class LocalFileRoots(
 
         /**
          * The real paths of the places that hold the deployment's own data: [reservedWorkspaceDirs] in [workspace],
-         * and the file store's directory. **Each by its real path**, as a root is judged by its own: a workspace
+         * and the directory of every `local` file store it declares ([FileStoreSpecs.localDirsOf], issue #1282).
+         * **Each by its real path**, as a root is judged by its own: a workspace
          * whose `logs` is a link to `/var/log/kdr` keeps its logs there, and that is the place to stay out of.
          */
         fun reservedPlaces(cxt: KdrCxt, workspace: File = AppPaths.workspaceDir()): List<Path> =
-            // The last as a list of one: a `Path` is itself an `Iterable` of its own segments, and `+` would add those.
-            reservedWorkspaceDirs.map { realOf(File(workspace, it)) } + listOf(realOf(FileStoreService.localDirOf(cxt)))
+            reservedWorkspaceDirs.map { realOf(File(workspace, it)) } + FileStoreSpecs.localDirsOf(cxt).map { realOf(it) }
 
         /**
          * [file]'s real path -- links resolved -- or, for one that is not there, the real path of the nearest

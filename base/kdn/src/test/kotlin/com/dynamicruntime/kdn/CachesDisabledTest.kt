@@ -98,9 +98,9 @@ class CachesDisabledTest : StringSpec({
         val writer = writerOf(client)
         svc.setPublishedOnly(writer, client, true)
         val hash = png.sha256Hex()
-        FileStoreService.get(cxt).put(writer, FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(png, "image/png"))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writer, FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(png, "image/png"))
         svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic", hash) }, trial = true)
-        FileStoreService.get(cxt).delete(writer, FileRefService.bucket, FileRefService.keyOf(client, hash)) shouldBe true
+        FileStoreService.get(cxt).forOwner(cxt, client).delete(writer, FileRefService.bucket, FileRefService.keyOf(client, hash)) shouldBe true
         FileRefService.get(cxt).forget(client, hash)
 
         // An unrelated draft write goes through, a whole write and a patch: the missing file is the draft's already.

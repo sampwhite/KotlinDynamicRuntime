@@ -266,7 +266,7 @@ class PublishRefusalUndoTest : StringSpec({
     "an upload over a stored ref carries the fields of its entry this release does not read, and is refused for them" {
         val client = "undoextra"
         val admin = defineClient(client)
-        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), image(png))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), image(png))
         val entry = mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to png.sha256Hex(), "laterField" to "kept")
         val art = svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(entry) })
         svc.publish(writerOf(client), art.configId)
@@ -305,7 +305,7 @@ class PublishRefusalUndoTest : StringSpec({
         val admin = defineClient(client)
         approve(client, "own.png")
         val hash = png.sha256Hex()
-        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), image(png))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), image(png))
         val many = svc.writeConfig(writerOf(client), gedraConfig(cxt, "many", clientNamespace(client), client) { for (n in 1..FREF.maxRefs) fileRef("r$n", hash) })
         svc.publish(writerOf(client), many.configId)
         GedraConfigReload.reloadClient(cxt, client)
@@ -327,7 +327,7 @@ class PublishRefusalUndoTest : StringSpec({
         fun said(block: () -> Unit) = shouldThrow<KdrException> { block() }.also { it.code shouldBe EXC.badInput }.message.orEmpty()
 
         said { ClientFileRefEdit.upload(asAdmin, client, "logo", image(otherPng), long) } shouldContain "at most ${FREF.maxDescriptionLength} characters"
-        FileStoreService.get(cxt).get(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, otherPng.sha256Hex())).shouldBeNull()
+        FileStoreService.get(cxt).forOwner(cxt, client).get(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, otherPng.sha256Hex())).shouldBeNull()
         said { ClientFileRefEdit.nameLocal(asAdmin, client, "own", openRoot, "own.png", long) } shouldContain "at most"
         said { ClientFileRefEdit.describe(asAdmin, client, "own", long) } shouldContain "at most"
         ClientStoredEdit.editConfig(writerOf(client), client).shouldBeNull()

@@ -261,7 +261,8 @@ object ClientFileRefEdit {
      * more repairs it. What the store was last said to hold of it is dropped either way.
      */
     private fun storeBytes(cxt: KdrCxt, bound: KdrCxt, refs: FileRefService, owner: String, refId: String, hash: String, content: ContentData) {
-        val files = FileStoreService.get(bound)
+        // Outside the `try` below: a store this node cannot reach for the owner is the uploader's to be told of.
+        val files = FileStoreService.get(bound).forOwner(bound, owner)
         val key = FileRefService.keyOf(owner, hash)
         val there = try {
             files.get(bound, FileRefService.bucket, key)

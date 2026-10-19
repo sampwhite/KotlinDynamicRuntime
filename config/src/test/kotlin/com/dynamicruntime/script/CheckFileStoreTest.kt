@@ -28,6 +28,50 @@ class CheckFileStoreTest : StringSpec({
         CheckFileStore.parseArgs(listOf("--min-age-minutes")).shouldBeNull()
         CheckFileStore.parseArgs(listOf("--min-age-minutes", "-1")).shouldBeNull()
         CheckFileStore.parseArgs(listOf("--force")).shouldBeNull()
+        // One store of several (issue #1282).
+        CheckFileStore.parseArgs(listOf("--store", "disk")).shouldNotBeNull().store shouldBe "disk"
+        CheckFileStore.parseArgs(listOf("--store")).shouldBeNull()
+        CheckFileStore.parseArgs(listOf("--store", "--repair")).shouldBeNull()
+    }
+
+    "every store the node declares is checked, each named, and --store checks one; a memory store is passed over" {
+        val defaultDir = Files.createTempDirectory("kdrCheckDefault").toFile()
+        val diskDir = Files.createTempDirectory("kdrCheckDisk").toFile()
+        try {
+            val cxt = Startup.mkTestBootCxt(
+                "checkFileStores", "checkFileStoresTest",
+                mapOf(
+                    FSENV.type.name to FST.local, FSENV.dir.name to defaultDir.absolutePath,
+                    FSENV.stores.name to "disk.type=local,disk.dir=${diskDir.absolutePath},ram.type=memory",
+                ),
+            )
+            FileStoreService.get(cxt).put(cxt, bucket, "kept", ContentData("a".toByteArray(), "image/png"))
+            // Content with no metadata, in the second store alone: what a write that stopped part-way leaves.
+            File(diskDir, "$bucket/half").writeText("b")
+            val lines = mutableListOf<String>()
+
+            CheckFileStore.runOn(cxt, CheckFileStore.Options(emptyList(), repair = false, minAgeMinutes = 0)) { lines.add(it) } shouldBe
+                CheckFileStore.foundExit
+            lines shouldContain "Passing over the file store 'ram': it is 'memory', and holds nothing beyond its run."
+            lines.any { it.startsWith("Checking the file store 'default', local (${defaultDir.path})") } shouldBe true
+            lines.any { it.startsWith("Checking the file store 'disk', local (${diskDir.path})") } shouldBe true
+            lines.any { it.startsWith("disk/$bucket: ") && it.contains("'half' has content and no metadata") } shouldBe true
+
+            lines.clear()
+            CheckFileStore.runOn(cxt, CheckFileStore.Options(emptyList(), repair = false, minAgeMinutes = 0, store = "default")) { lines.add(it) } shouldBe 0
+            lines.last() shouldBe "Nothing left behind."
+
+            lines.clear()
+            CheckFileStore.runOn(cxt, CheckFileStore.Options(emptyList(), repair = true, minAgeMinutes = 0, store = "disk")) { lines.add(it) } shouldBe 0
+            lines.last() shouldBe "1 repaired, 0 left alone."
+            File(diskDir, "$bucket/half").exists() shouldBe false
+
+            CheckFileStore.runOn(cxt, CheckFileStore.Options(emptyList(), repair = false, minAgeMinutes = 0, store = "nowhere")) {} shouldBe
+                CheckFileStore.failureExit
+        } finally {
+            defaultDir.deleteRecursively()
+            diskDir.deleteRecursively()
+        }
     }
 
     "a run reports what is left behind, changes nothing until asked, and then repairs it" {
