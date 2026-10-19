@@ -530,16 +530,10 @@ clone to another client id in this one.
 
 ## When a deployment keeps its files on S3
 
-The `s3` file store (issue #1129) has only ever met a stub that checks no signatures. Do these **before** that
-deployment's first upload, not after: each one fails there, and one of them fails silently.
+The `s3` file store (issue #1129) has been run against Linode's S3-compatible Object Storage (issue #1271), and never
+against AWS itself. Do this **before** the first upload of an AWS deployment that needs it, not after: there it goes
+wrong without saying so.
 
-- **Settle the SDK's default checksums, against a real S3-compatible service** *(#1146, deferred here 2026-10-19).*
-  The SDK sends every upload as an `aws-chunked` body with a CRC32 trailer. AWS accepts that; some S3-compatible
-  services refuse it, and some store the framing as the content, which surfaces only on the next read, as a file
-  `FileStoreService.get` refuses as damaged. The likely fix is `requestChecksumCalculation` and
-  `responseChecksumValidation` at `WHEN_REQUIRED` whenever `KDR_S3_ENDPOINT` is set. Run the provider contract
-  (`FileStoreContractTest`'s cases) against one service a developer can start locally and once against AWS, and
-  have the `KDR_S3_ENDPOINT` description name what was tried. Trigger: the deployment names a non-AWS endpoint.
 - **Add the SDK's `sts` module, for web-identity and assumed-role credentials** *(#1145, deferred here
   2026-10-19).* Only `s3` and its URL-connection client are on the classpath, so EKS's IAM roles for service
   accounts, and a profile that assumes a role, cannot be read. Worse than a refusal: the default chain moves on,

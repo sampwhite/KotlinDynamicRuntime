@@ -30,6 +30,15 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
     val contentTypes = HashMap<String, String>()
     var listRequests = 0
 
+    /** Each put, by `bucket/key`: whether it carried the SDK's own checksum -- a trailer after its body, or a header. */
+    val checksummedPuts = HashMap<String, Boolean>()
+
+    /**
+     * Objects whose reads answer with a CRC32 checksum header that does not match their content, as a service that
+     * computes its checksums some other way would.
+     */
+    val otherwiseChecksummed = HashSet<String>()
+
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
         createContext("/") { exchange -> exchange.use { handle(it) } }
         start()
@@ -51,6 +60,7 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
             exchange.requestMethod == "PUT" -> {
                 objects["$bucket/$key"] = body
                 contentTypes["$bucket/$key"] = exchange.requestHeaders.getFirst("Content-Type").orEmpty()
+                checksummedPuts["$bucket/$key"] = carriesChecksum(exchange)
                 exchange.responseHeaders.add("ETag", "\"stub\"")
                 respond(exchange, 200)
             }
@@ -60,7 +70,10 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
             }
             "$bucket/$key" !in objects -> error(exchange, 404, "NoSuchKey")
             exchange.requestMethod == "HEAD" -> respond(exchange, 200)
-            else -> respond(exchange, 200, objects.getValue("$bucket/$key"))
+            else -> {
+                if ("$bucket/$key" in otherwiseChecksummed) exchange.responseHeaders.add("x-amz-checksum-crc32", "AAAAAA==")
+                respond(exchange, 200, objects.getValue("$bucket/$key"))
+            }
         }
     }
 
@@ -94,6 +107,17 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
         val noBody = exchange.requestMethod == "HEAD" || status == 204 || body.isEmpty()
         exchange.sendResponseHeaders(status, if (noBody) -1 else body.size.toLong())
         if (!noBody) exchange.responseBody.write(body)
+    }
+
+    /**
+     * Whether the request carries a checksum the SDK added of its own accord: announced as a trailer after a chunked
+     * body (what SDK 2.30 and later send by default), or computed into a header.
+     */
+    private fun carriesChecksum(exchange: HttpExchange): Boolean {
+        val headers = exchange.requestHeaders
+        return headers.getFirst("x-amz-trailer") != null || headers.getFirst("x-amz-sdk-checksum-algorithm") != null ||
+            headers.getFirst("x-amz-content-sha256").orEmpty().endsWith("-TRAILER") ||
+            headers.keys.any { it.lowercase().startsWith("x-amz-checksum-") }
     }
 
     /** The request's content, out of S3's chunked upload framing when the SDK used it. */
@@ -165,6 +189,24 @@ class SdkS3ApiTest : StringSpec({
         stub.objects.getValue("stub-files/clients/acme/logo").toList() shouldBe bytes.toList()
         api.get("stub-files", "clients/acme/logo").shouldNotBeNull().toList() shouldBe bytes.toList()
         api.head("stub-files", "clients/acme/logo") shouldBe true
+    }
+
+    // Issue #1271: an S3-compatible service need not take the SDK's default trailing checksum -- an older Linode
+    // endpoint was reported refusing it, others keep the framing as the content -- so through an endpoint an upload
+    // carries none. (Over this stub's
+    // plain HTTP the SDK still signs the body in chunks, SigV4's own streaming form; over HTTPS it sends it whole.)
+    "through an endpoint an upload carries no checksum of the SDK's own, and arrives intact" {
+        val bytes = ByteArray(70_000) { (it * 7).toByte() }
+        api.put("stub-files", "plain/one", bytes, "application/octet-stream")
+        stub.checksummedPuts["stub-files/plain/one"] shouldBe false
+        stub.objects.getValue("stub-files/plain/one").toList() shouldBe bytes.toList()
+        api.get("stub-files", "plain/one").shouldNotBeNull().toList() shouldBe bytes.toList()
+        // Nor is a read failed by a checksum the service computes some other way: what the store reads is checked
+        // against the SHA-256 in its own metadata (`FileStoreService.get`), on every provider alike. The SDK
+        // validates a read only when the call asks for its checksum, which none here does; were a later SDK to start
+        // by default, this is what would say so, and `responseChecksumValidation` is the setting to reach for.
+        stub.otherwiseChecksummed.add("stub-files/plain/one")
+        api.get("stub-files", "plain/one").shouldNotBeNull().toList() shouldBe bytes.toList()
     }
 
     "an object that is not there is null, false, and no error to delete" {

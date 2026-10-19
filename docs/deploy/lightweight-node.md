@@ -132,7 +132,7 @@ directory**:
 | `current` | A link to the release that runs |
 | `kdr.env` | The node's settings (step 8) |
 | `h2Database/` | The database file, created on the first start. A deploy never touches it. |
-| `fileStore/` | Files the application stores, created on the first start |
+| `fileStore/` | Files the application stores, created on the first start -- unless they are kept in object storage (see "Keeping files in Linode Object Storage" below) |
 | `flavor-overlays/` | The deployment's own wording for its deployment flavors, if any |
 | `private/` | Secrets: the mail provider's key (see "Mail and sign-in" below) |
 
@@ -364,6 +364,9 @@ This also removes H2's trace file (`kdr.dat.trace.db`), which H2 writes beside t
 and which grows only then. The application creates an empty database as it starts, and the `reference` flavor sets up
 the conference demo again. `kdr-node` (issue #1244) will offer this as `reset-data`, asking before it removes anything.
 
+A node that keeps its files in object storage (below) has no `fileStore/` to remove: empty its buckets instead, from
+the provider's console or with any S3 tool, while the service is stopped.
+
 ## Env auth on the node itself
 
 With `KDR_ASSUME_ENV_AUTH`, a request with no `X-Forwarded-For` header carries **env auth**: the test surface, such
@@ -435,3 +438,63 @@ Without the key nothing is sent, so nobody can be mailed a code. With it, the no
 the records Mailgun asks for (SPF and DKIM); Mailgun's dashboard shows which are missing. To send from a different
 address, or through Mailgun's EU endpoint, a deployment's own configuration code (its `customConfig`) sets
 `appFromAddress` or `mailgunUri`, which take the place of what the domain gives.
+
+## Keeping files in Linode Object Storage
+
+By default the node keeps the files the application stores -- a client's tab icon and brand mark, its file refs, the
+sample's uploads -- in `~/kdr/fileStore`, on its own disk. They can be kept in **Linode (Akamai) Object Storage**
+instead, which is S3-compatible: the application's `s3` file store, pointed at Linode. That keeps them off the node's
+disk and lets them outlive the node. The database stays on the node either way. This is optional, and nothing below
+is needed to run without it.
+
+**1. Make the buckets**, in Linode's Cloud Manager, under Object Storage, in the region nearest the node. The
+application creates none, and refuses to start while one it uses is missing. It uses one bucket per kind of file,
+each named with a prefix of your own -- bucket names are shared with Linode's other customers, so pick one nobody
+else will have, such as `examplesite-`:
+
+| Bucket | Holds |
+| --- | --- |
+| `<prefix>web-assets` | Each client's tab icon and brand mark, and its file refs |
+| `<prefix>sample-files` | Uploads through the sample's demo file endpoints, which a `dev` node such as this one loads |
+
+**2. Make an access key** under Object Storage, Access Keys. Choose **limited access** and give it read/write on
+those buckets only. Linode shows the secret once, and beside it the key's **S3 endpoint** for the region, such as
+`us-ord-10.linodeobjects.com` for Chicago. Use that hostname below, exactly: Linode's newer endpoints carry a digit
+the region's own name does not (`us-ord-10`, where the region is `us-ord`), and a key is known only at its own
+endpoint, so the right key at a neighbouring hostname is refused as one that "does not exist in our records".
+
+**3. Put the key on the node**, as the AWS SDK's credentials file of the `kdr` user. Credentials never go in
+`kdr.env` or the target file, which is in the repository:
+
+```bash
+mkdir -p ~/.aws && chmod 700 ~/.aws
+nano ~/.aws/credentials
+```
+
+```
+[default]
+aws_access_key_id = <the access key>
+aws_secret_access_key = <the secret key>
+```
+
+```bash
+chmod 600 ~/.aws/credentials
+```
+
+**4. Name the store in the target file**, beside the other settings, with the key's endpoint and your prefix. The
+region is the endpoint hostname's first part:
+
+```
+env.KDR_FILE_STORE_TYPE=s3
+env.KDR_S3_ENDPOINT=https://us-ord-10.linodeobjects.com
+env.KDR_S3_REGION=us-ord-10
+env.KDR_S3_BUCKET_PREFIX=examplesite-
+```
+
+Then deploy (`kdr-deploy <target>`), which writes them into `kdr.env` and restarts the service.
+
+**5. Check it.** The startup line in the log names the store (`File store: s3 (S3 at
+https://us-ord-10.linodeobjects.com (us-ord-10), buckets named 'examplesite-...'), 2 bucket(s) declared.`), and a
+bucket that is missing, or that the key cannot use, is named in the startup failure instead -- a `403 Forbidden` there
+is most often the key at the wrong endpoint (step 2). Then upload a client's favicon on the site and see it in the tab. Once the node runs this
+way, `~/kdr/fileStore` holds nothing the application reads, and can be removed.

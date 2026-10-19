@@ -34,7 +34,7 @@ object FSENV {
         defaultDoc = "`memory` when running in memory only (and in a unit test), else `local`",
         description = "Where files are kept: `memory` (in the JVM, gone when it stops, and bounded by nothing but " +
             "the heap -- for tests and a throwaway node), `local` (a directory on this machine, see " +
-            "KDR_FILE_STORE_DIR) or `s3` (AWS S3, see the KDR_S3_ variables). Every node of a deployment must name " +
+            "KDR_FILE_STORE_DIR) or `s3` (S3, or a service that speaks its API -- see the KDR_S3_ variables). Every node of a deployment must name " +
             "the same store, and `local` is one store only where the nodes share the directory, on a filesystem " +
             "that honors file locks between them.",
     )
@@ -48,8 +48,11 @@ object FSENV {
 
     val s3Region = EnvVarDef(
         "KDR_S3_REGION", group = ENVGRP.fileStore, defaultDoc = "unset; required for `s3`",
-        description = "The AWS region of an `s3` file store's buckets. Credentials are not configured here: they " +
-            "come from the AWS SDK's default chain (the environment, a profile, the machine's role).",
+        description = "The region of an `s3` file store's buckets: AWS's (`us-east-1`), or with KDR_S3_ENDPOINT the " +
+            "service's own -- for Linode, the first part of the endpoint's hostname (`us-ord-10`). Credentials are not configured " +
+            "here: they come from the AWS SDK's default chain -- AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in the " +
+            "environment, a profile in `~/.aws/credentials` (AWS_PROFILE to pick one), or the machine's role -- so " +
+            "they are never in this application's configuration or its secrets file.",
     )
 
     val s3BucketPrefix = EnvVarDef(
@@ -61,8 +64,11 @@ object FSENV {
 
     val s3Endpoint = EnvVarDef(
         "KDR_S3_ENDPOINT", group = ENVGRP.fileStore, defaultDoc = "unset (AWS itself)",
-        description = "The URL of a service other than AWS that speaks the S3 API, for an `s3` file store -- a " +
-            "local stand-in, another vendor. Addressed by path rather than by a bucket's own hostname.",
+        description = "The URL of a service other than AWS that speaks the S3 API, for an `s3` file store. Tried " +
+            "against Linode (Akamai) Object Storage at the endpoint its access key lists, such as " +
+            "`https://us-ord-10.linodeobjects.com` (issue #1271). Addressed " +
+            "by path rather than by a bucket's own hostname, and an upload through it carries no trailing checksum, " +
+            "which the AWS SDK otherwise adds and S3-compatible services need not accept.",
     )
 
     val check = EnvVarDef(
