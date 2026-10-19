@@ -78,7 +78,7 @@ data class CustomerDef(
     val customerId: String,
     /** The name presented for the customer. */
     val name: String,
-    /** An internal note about who, what or why. */
+    /** An internal note about who, what, or why. */
     val description: String? = null,
     /**
      * The customer's **root** client: the one whose administrators act for the customer as a whole. Set by the
