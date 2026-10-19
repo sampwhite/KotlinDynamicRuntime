@@ -20,9 +20,12 @@
 
 /- Shared by every mail. `footer` closes each one; a client overlays it to sign as itself. `htmlStyle` is the
    inline style of the HTML part's body (inline only: mail clients strip stylesheets), where a client sets its
-   colors. `testDeploymentNote` follows the footer on a public test deployment only (issue #1150). -/
+   colors. `sentFrom` follows the footer whenever the deployment's host is known, so a reader with several
+   instances can tell their mails apart (issue #1276); a client overlays it empty to leave it out.
+   `testDeploymentNote` follows that on a public test deployment only (issue #1150). -/
 # @common
 # +footer This message was sent automatically. If you were not expecting it, you can ignore it.
+# +sentFrom Sent from ${siteHost}.
 # +htmlStyle font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.5; color: #222222;
 # +testDeploymentNote This deployment is for testing and development only, and its data may be reset at any time.
 

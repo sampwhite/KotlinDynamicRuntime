@@ -12,6 +12,7 @@ import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
+import java.net.URI
 
 /** Constants for invitations (issue #751). */
 object INVITE {
@@ -26,7 +27,9 @@ object INVITE {
         description = "The URL a browser reaches this deployment at, e.g. 'https://app.example.com', used to " +
             "build the links that mailed invitations carry (issue #751). Unset (the default), a link is built " +
             "from the request's own scheme and host -- right for a node reached directly, wrong behind a proxy " +
-            "that rewrites them, which is when this must be set. No trailing slash.",
+            "that rewrites them, which is when this must be set. No trailing slash. Its host is also the one every " +
+            "mail names in its closing \"Sent from\" line (issue #1276); unset, only a test instance names the " +
+            "request's host there, and a real deployment names none.",
     )
 
 
@@ -50,6 +53,37 @@ object INVITE {
             }
         }
         return "$scheme://$host"
+    }
+
+    /**
+     * The deployment's host as a mail names it -- `dynamicruntime.org`, `localhost:7071` -- so a reader running
+     * several instances can tell their mails apart (issue #1276). Host and port, lower-cased, from:
+     * - the configured [publicUrl];
+     * - else, **on a test instance only**, the request's `Host`;
+     * - else null, and the mail says nothing.
+     *
+     * Narrower than [publicUrlFor] on purpose. `Host` is the caller's to send, and a mail is a message from the
+     * deployment's own domain: on a real deployment, someone asking for a code for another person's address with
+     * `Host: secure-login.example` would have the deployment name their site to the victim. Nor does it warn when
+     * the URL is unset, as [publicUrlFor] does, since every mail would.
+     */
+    fun publicHostFor(cxt: KdrCxt): String? = publicHostFor(
+        cxt.getEnvVar(publicUrl), cxt.instanceConfig.isTestInstance, cxt.request?.webRequest?.getRequestHeader("Host"),
+    )
+
+    /** [publicHostFor]'s decision, over the [configuredUrl], whether this [isTestInstance], and the request's [requestHost]. */
+    fun publicHostFor(configuredUrl: String?, isTestInstance: Boolean, requestHost: String?): String? {
+        configuredUrl?.trim()?.ifEmpty { null }?.let { return hostOf(it) }
+        if (!isTestInstance) return null
+        val host = requestHost?.trim()?.ifEmpty { null } ?: return null
+        return hostOf("http://$host")
+    }
+
+    /** The host and port of [url], lower-cased, or null when it does not parse as one with a host. */
+    fun hostOf(url: String): String? {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        val host = uri.host?.lowercase()?.ifEmpty { null } ?: return null
+        return if (uri.port == -1) host else "$host:${uri.port}"
     }
 
     /** The invitation page's URL for [token] under [publicUrl], or the page's path alone when the deployment's URL is unknown. */
