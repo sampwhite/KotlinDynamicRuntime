@@ -130,6 +130,17 @@ object FNAME {
     }
 
     /**
+     * The folder every client's files are under, in whichever bucket they are kept (issue #1282): a client's web
+     * assets and its file refs are `clients/<owner>/…`. Such a file is reached through
+     * [FileStoreService.forOwner], which keeps it in the store its client is assigned, and never through the
+     * service's own calls, which refuse a key in this folder.
+     */
+    const val clientsFolder = "clients/"
+
+    /** The folder of [owner]'s files: every key of a client's file begins with it. */
+    fun clientKeyPrefix(owner: String): String = checkKeyPrefix("$clientsFolder$owner/")
+
+    /**
      * [prefix], or a refusal: what a listing may be narrowed by -- nothing, a key, or a key followed by a slash
      * (the files under it). A prefix is matched against the start of a key as text, as S3 matches one.
      */

@@ -140,7 +140,7 @@ class StaticConfigTest : StringSpec({
         }
         upload.code shouldBe EXC.badInput
         upload.message.shouldNotBeNull() shouldContain "so it takes no file ref here"
-        FileStoreService.get(prod).get(bound(prod), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldBeNull()
+        FileStoreService.get(prod).forOwner(prod, client).get(bound(prod), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldBeNull()
     }
 
     // A sandbox's configuration is its parent's, so a sandbox of a client static in production is static there too:

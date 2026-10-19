@@ -211,6 +211,19 @@ class SdkS3ApiTest : StringSpec({
         api.get("stub-files", "plain/one").shouldNotBeNull().toList() shouldBe bytes.toList()
     }
 
+    // Issue #1282: a store may sign in with a profile of its own, which is how two stores are two accounts. The
+    // profile is read when a call first needs credentials, so the client is built, says what it is, and closes,
+    // with nothing on this machine to read.
+    "a client with a credentials profile names it, and is built and closed without signing in" {
+        val profiled = SdkS3Api("us-east-1", stub.endpoint, profile = "kdr-test-profile")
+        try {
+            profiled.location shouldBe "S3 at ${stub.endpoint} (us-east-1), profile 'kdr-test-profile'"
+            SdkS3Api("us-east-1").use { it.location shouldBe "S3 in us-east-1" }
+        } finally {
+            profiled.close()
+        }
+    }
+
     "an object that is not there is null, false, and no error to delete" {
         api.get("stub-files", "nothing/here").shouldBeNull()
         api.head("stub-files", "nothing/here") shouldBe false

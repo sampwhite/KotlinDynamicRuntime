@@ -166,7 +166,7 @@ class FileRefCopyTest : StringSpec({
         val admin = defineClient(client)
         uploaded(admin, "logo", png)
         writeIntro(admin, "![Logo](ref:logo)")[EP.status].shouldBeNull()
-        files.delete(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
+        files.forOwner(cxt, client).delete(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
         refs.forget(client, png.sha256Hex())
 
         writeIntro(admin, "Still ![Logo](ref:logo).")[EP.status].shouldBeNull()
@@ -219,7 +219,7 @@ class FileRefCopyTest : StringSpec({
         val client = "refcopygone"
         val admin = defineClient(client)
         uploaded(admin, "logo", png)
-        files.delete(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
+        files.forOwner(cxt, client).delete(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
 
         // What the store last said stands for a while, as it does for a listing; then the store is asked again.
         try {

@@ -6,6 +6,7 @@ import com.dynamicruntime.common.content.ContentResources
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.filestore.FNAME
 import com.dynamicruntime.common.filestore.FileBucketDef
 import com.dynamicruntime.common.filestore.FileMeta
 import com.dynamicruntime.common.filestore.FileStoreService
@@ -84,7 +85,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
             memo[owner]?.takeIf { nanoTime() - it.atNanos < memoMs * nanosPerMs }?.let { return it.slots }
         }
         val before = writes.get()
-        val files = FileStoreService.get(cxt)
+        val files = FileStoreService.get(cxt).forOwner(cxt, owner)
         val read = slotDefs.mapNotNull { def -> files.meta(cxt, bucket, keyOf(owner, def.slot))?.let { def.slot to it } }.toMap()
         // Kept only when no upload or removal landed while the store was being read: what was read may predate it.
         memo.compute(owner) { _, held -> if (writes.get() == before) Memo(nanoTime(), read) else held }
@@ -122,15 +123,19 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
     fun knownClient(cxt: KdrCxt, client: String): String = ClientService.get(cxt).requireKnown(client)
 
     /** The image in [slot] of [client]'s web assets, content and metadata, or null when the slot holds none. */
-    fun file(cxt: KdrCxt, client: String, slot: String): StoredFile? =
-        FileStoreService.get(cxt).get(cxt, bucket, keyOf(ownerOf(client), slotDef(slot).slot))
+    fun file(cxt: KdrCxt, client: String, slot: String): StoredFile? {
+        val owner = ownerOf(client)
+        return FileStoreService.get(cxt).forOwner(cxt, owner).get(cxt, bucket, keyOf(owner, slotDef(slot).slot))
+    }
 
     /**
      * The metadata of the image in [slot] of [client]'s web assets, without the image, or null when the slot holds
      * none (issue #1131). The store's own answer, as [file]'s is, never this node's memo of the slots.
      */
-    fun meta(cxt: KdrCxt, client: String, slot: String): FileMeta? =
-        FileStoreService.get(cxt).meta(cxt, bucket, keyOf(ownerOf(client), slotDef(slot).slot))
+    fun meta(cxt: KdrCxt, client: String, slot: String): FileMeta? {
+        val owner = ownerOf(client)
+        return FileStoreService.get(cxt).forOwner(cxt, owner).meta(cxt, bucket, keyOf(owner, slotDef(slot).slot))
+    }
 
     /**
      * Stores [content] as the image of [slot] of [client]'s web assets, replacing the one there, and answers the
@@ -157,7 +162,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
             put(WAS.slot, def.slot)
             cxt.userProfile.takeIf { it.isLoggedIn }?.displayName?.let { put(WAS.uploadedByName, it) }
         }
-        val meta = FileStoreService.get(cxt).put(
+        val meta = FileStoreService.get(cxt).forOwner(cxt, owner).put(
             cxt.mkSubContext("webAsset", owner), bucket, keyOf(owner, def.slot),
             ContentData(bytes, kind.mimeType, saveAsFilename = content.saveAsFilename), extra,
         )
@@ -170,7 +175,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
     fun remove(cxt: KdrCxt, client: String, slot: String): Boolean {
         val def = slotDef(slot)
         val owner = editableOwner(cxt, client)
-        val removed = FileStoreService.get(cxt).delete(cxt, bucket, keyOf(owner, def.slot))
+        val removed = FileStoreService.get(cxt).forOwner(cxt, owner).delete(cxt, bucket, keyOf(owner, def.slot))
         forget(owner)
         if (removed) LogWebAsset.info(cxt) { "Client '$owner' no longer has a ${def.label.lowercase()} of its own." }
         return removed
@@ -266,7 +271,7 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         fun ownerOf(client: String): String = configOwnerOf(client)
 
         /** Where [slot] of [owner]'s web assets is kept in the [bucket]. */
-        fun keyOf(owner: String, slot: String): String = "clients/$owner/web/$slot"
+        fun keyOf(owner: String, slot: String): String = "${FNAME.clientKeyPrefix(owner)}web/$slot"
 
         fun get(cxt: KdrCxt): ClientWebAssetService = cxt.instanceConfig.get(serviceName) as? ClientWebAssetService
             ?: throw KdrException("The $serviceName is not available on this node.")

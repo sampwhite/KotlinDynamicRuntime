@@ -206,7 +206,7 @@ class EndpointSkillExamplesTest : StringSpec({
         config.put(FileStoreService.serviceName, FileStoreService().apply { onCreate(cxt); checkInit(cxt) })
         val file = ContentData("PNG", "image/png", saveAsFilename = "logo.png")
 
-        val files = FileStoreService.get(cxt)
+        val files = FileStoreService.get(cxt).forOwner(cxt, "acme")
         val meta = files.put(cxt, "client-files", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
 
         val download = files.get(cxt, "client-files", "clients/acme/logo")?.toContentData()
@@ -220,7 +220,9 @@ class EndpointSkillExamplesTest : StringSpec({
         download.mimeType shouldBe "image/png"
         // "answer the metadata without fetching the file".
         files.meta(cxt, "client-files", "clients/acme/logo")?.hash shouldBe meta.hash
-        files.list(cxt, "client-files", "clients/acme/", limit = 100).map { it.key } shouldBe listOf("clients/acme/logo")
+        files.list(cxt, "client-files", limit = 100).map { it.key } shouldBe listOf("clients/acme/logo")
+        // "the service's own calls ... refuse a key in any client's folder".
+        shouldThrow<KdrException> { FileStoreService.get(cxt).get(cxt, "client-files", "clients/acme/logo") }
         // "A bucket nobody declared is refused."
         shouldThrow<KdrException> { files.get(cxt, "undeclared-files", "x") }
         // "delete(...) says whether there was one."
@@ -232,13 +234,13 @@ class EndpointSkillExamplesTest : StringSpec({
     fun fileMetaExample(): SchModule = schemaModule(cxt, "file") {
         fileDownloadEndpoint("/file/download", "Download a file by id.",
             inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
-            FileStoreService.get(c).get(c, "client-files", "clients/acme/${request["id"]}")?.toContentData()
+            FileStoreService.get(c).forOwner(c, "acme").get(c, "client-files", "clients/acme/${request["id"]}")?.toContentData()
                 ?: throw KdrException("No such file.", code = EXC.notFound)
         }
 
         fileMetaEndpoint("/file/download/meta", "What a file is, without the file.",
             inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
-            FileStoreService.get(c).meta(c, "client-files", "clients/acme/${request["id"]}")
+            FileStoreService.get(c).forOwner(c, "acme").meta(c, "client-files", "clients/acme/${request["id"]}")
         }
     }
 

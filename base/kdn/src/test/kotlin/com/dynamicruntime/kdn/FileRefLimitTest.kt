@@ -127,7 +127,7 @@ class FileRefLimitTest : StringSpec({
             },
         )
         publish(client, "main")
-        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), ContentData(png, "image/png"))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), ContentData(png, "image/png"))
         val hash = png.sha256Hex()
         // Over the limit across two configurations, the first of which -- as a load orders them -- holds only three.
         svc.writeConfig(writerOf(client), gedraConfig(cxt, "afew", clientNamespace(client), client) { for (n in 1..3) fileRef("r$n", hash) })
@@ -168,7 +168,7 @@ class FileRefLimitTest : StringSpec({
     "an id past the limit is one ref, however many declarations hold it" {
         val client = RefLimitComponent.double
         val hash = png.sha256Hex()
-        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(png, "image/png"))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(png, "image/png"))
         // Its own refs fill the limit, read first as stored ones are; then a stored override of a shipped ref, past it.
         svc.writeConfig(writerOf(client), gedraConfig(cxt, "amany", clientNamespace(client), client) { for (n in 1..FREF.maxRefs) fileRef("r$n", hash) })
         svc.writeConfig(writerOf(client), gedraConfig(cxt, "bover", clientNamespace(client), client) { fileRef("s2", hash) })

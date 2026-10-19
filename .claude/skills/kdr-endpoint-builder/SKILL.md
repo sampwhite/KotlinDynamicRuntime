@@ -177,6 +177,12 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   yourself, from ids you already hold, and keep the name as metadata (the file store does that for you).
 - **Keep the file in the file store**, `FileStoreService` (`com.dynamicruntime.common.filestore`), which runs on a
   directory, S3 or memory by configuration (`KDR_FILE_STORE_TYPE`), so your code never knows which:
+  - **A client's file goes through `forOwner(cxt, owner)`** (issue #1282): a view with the same calls, over the
+    store that client's files are kept in -- a deployment may declare several (`KDR_FILE_STORES`), and a client is
+    assigned one. Its keys are under the client's folder, `clients/<owner>/` (`FNAME.clientKeyPrefix(owner)`), and
+    the view takes no others; the service's own calls are the default store's and refuse a key in any client's
+    folder, so a client's files are never split between stores. A file that is no client's (the sample's uploads)
+    uses the service's calls directly.
   - Your component **declares the bucket** it keeps files in, once, in `addSchema`:
     `collector.addFileBucket(FileBucketDef("client-files", "What is kept there."))`. A bucket is the store's own
     unit of addressing on every provider (lowercase letters, digits, hyphens), and the boot checks each declared
@@ -201,17 +207,17 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
 // In your component's addSchema: the bucket, declared once.
 collector.addFileBucket(FileBucketDef("client-files", "Files a client's people upload."))
 
-// In an upload handler -- `file` is the upload's ContentData.
-val files = FileStoreService.get(cxt)
+// In an upload handler -- `file` is the upload's ContentData; acme's files, in the store acme's are kept in.
+val files = FileStoreService.get(cxt).forOwner(cxt, "acme")
 val meta = files.put(cxt, "client-files", "clients/acme/logo", file, extra = mapOf("purpose" to "brand"))
 
 // In a download handler: the file as the response, or a 404.
 files.get(cxt, "client-files", "clients/acme/logo")?.toContentData()
     ?: throw KdrException("No such file.", code = EXC.notFound)
 
-// What a file is, without fetching it: one file's, or a folder's.
+// What a file is, without fetching it: one file's, or a folder's -- acme's whole folder, with no prefix.
 files.meta(cxt, "client-files", "clients/acme/logo")
-files.list(cxt, "client-files", "clients/acme/", limit = 100)
+files.list(cxt, "client-files", limit = 100)
 files.delete(cxt, "client-files", "clients/acme/logo")
 ```
 
@@ -228,13 +234,13 @@ about whether there is one.
 ```kotlin
 fileDownloadEndpoint("/file/download", "Download a file by id.",
     inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
-    FileStoreService.get(c).get(c, "client-files", "clients/acme/${request["id"]}")?.toContentData()
+    FileStoreService.get(c).forOwner(c, "acme").get(c, "client-files", "clients/acme/${request["id"]}")?.toContentData()
         ?: throw KdrException("No such file.", code = EXC.notFound)
 }
 
 fileMetaEndpoint("/file/download/meta", "What a file is, without the file.",
     inputFields = { field("id", "Id of the file.", required = true) }) { c, request ->
-    FileStoreService.get(c).meta(c, "client-files", "clients/acme/${request["id"]}")  // null: a 404
+    FileStoreService.get(c).forOwner(c, "acme").meta(c, "client-files", "clients/acme/${request["id"]}")  // null: a 404
 }
 ```
 

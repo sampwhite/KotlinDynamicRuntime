@@ -56,7 +56,7 @@ class ClientWebAssetServiceTest : StringSpec({
 
     /** Stores the favicon as another node would: straight into the store, past this node's service. */
     fun Rig.storeFavicon() {
-        files.put(cxt.mkSubContext("otherNode", client), bucket, ClientWebAssetService.keyOf(client, WAS.favicon), ContentData(png, "image/png"))
+        files.forOwner(cxt, client).put(cxt.mkSubContext("otherNode", client), bucket, ClientWebAssetService.keyOf(client, WAS.favicon), ContentData(png, "image/png"))
     }
 
     "what a client's slots hold is read once and gone on for the memo's length" {

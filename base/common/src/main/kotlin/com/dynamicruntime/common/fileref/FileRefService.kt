@@ -4,6 +4,7 @@ import com.dynamicruntime.common.content.CMK
 import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.filestore.FNAME
 import com.dynamicruntime.common.filestore.FileMeta
 import com.dynamicruntime.common.filestore.FileStoreService
 import com.dynamicruntime.common.filestore.StoredFile
@@ -469,7 +470,7 @@ class FileRefService : ServiceInitializer, ContentServer {
         private const val nanosPerMs = 1_000_000L
 
         /** Where the file [hash] of [owner]'s is kept in the [bucket]: by its content, so it is written once. */
-        fun keyOf(owner: String, hash: String): String = "clients/$owner/refs/$hash"
+        fun keyOf(owner: String, hash: String): String = "${FNAME.clientKeyPrefix(owner)}refs/$hash"
 
         fun get(cxt: KdrCxt): FileRefService = cxt.instanceConfig.get(serviceName) as? FileRefService
             ?: throw KdrException("The $serviceName is not available on this node.")

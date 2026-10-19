@@ -133,7 +133,7 @@ class ClientFileRefsTest : StringSpec({
 
     /** Puts [bytes] where a ref of [client]'s names them, past the upload: what an import's files would be. */
     fun plant(client: String, bytes: ByteArray, on: KdrCxt = cxt): String {
-        FileStoreService.get(on).put(writerOf(client, on), FileRefService.bucket, FileRefService.keyOf(client, bytes.sha256Hex()), ContentData(bytes, "image/png"))
+        FileStoreService.get(on).forOwner(on, client).put(writerOf(client, on), FileRefService.bucket, FileRefService.keyOf(client, bytes.sha256Hex()), ContentData(bytes, "image/png"))
         return bytes.sha256Hex()
     }
 
@@ -203,7 +203,7 @@ class ClientFileRefsTest : StringSpec({
             mapOf(CCT.refId to "logo", CCT.source to FREF.sourceStore, CCT.hash to hash, CCT.description to "The logo."),
         )
         // The bytes are at a key made of their hash, recorded as the client's.
-        val kept = files.get(cxt, FileRefService.bucket, FileRefService.keyOf(client, hash)).shouldNotBeNull()
+        val kept = files.forOwner(cxt, client).get(cxt, FileRefService.bucket, FileRefService.keyOf(client, hash)).shouldNotBeNull()
         kept.bytes.toList() shouldBe png.toList()
         kept.meta.client shouldBe client
 
@@ -362,7 +362,7 @@ class ClientFileRefsTest : StringSpec({
         current.header(ContentResources.cacheControlHeader) shouldBe ContentResources.cacheControl
         current.header(HashedFileServing.contentPolicyHeader) shouldBe HashedFileServing.svgContentPolicy
         // Nothing was written over: the first upload's bytes are where they were.
-        files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldNotBeNull()
+        files.forOwner(cxt, client).meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())).shouldNotBeNull()
 
         // Told "from the draft" by a page that last saw a sandbox the client no longer has, a removal would take the
         // file from the client's people at once: it is refused, and nothing is removed. So with each other change.
@@ -376,7 +376,7 @@ class ClientFileRefsTest : StringSpec({
         listed(admin).keys.shouldBeEmpty()
         storedRefs(client).shouldBeEmpty()
         static(admin, nameOf("hero", svg)).rptStatusCode shouldBe EXC.notFound
-        files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, svg.sha256Hex())).shouldNotBeNull()
+        files.forOwner(cxt, client).meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, svg.sha256Hex())).shouldNotBeNull()
         // There is nothing left to remove.
         admin.expectError(EXC.badInput, UADEP.clientFilesRemove, mapOf(CCT.refId to "hero"))
     }
@@ -398,7 +398,7 @@ class ClientFileRefsTest : StringSpec({
 
         listed(admin).keys.shouldBeEmpty()
         storedRefs(client).shouldBeEmpty()
-        files.list(cxt, FileRefService.bucket, "clients/$client/").shouldBeEmpty()
+        files.forOwner(cxt, client).list(cxt, FileRefService.bucket).shouldBeEmpty()
     }
 
     "a client with a sandbox drafts a ref there, and its own people are served it once it is published" {
@@ -565,7 +565,7 @@ class ClientFileRefsTest : StringSpec({
         val hash = plant(client, png)
         svc.writeConfig(writer, gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("pic", hash) }, trial = true)
         // The draft's file goes: deleted from the store, no configuration changing.
-        files.delete(writer, FileRefService.bucket, FileRefService.keyOf(client, hash)) shouldBe true
+        files.forOwner(cxt, client).delete(writer, FileRefService.bucket, FileRefService.keyOf(client, hash)) shouldBe true
         refs.forget(client, hash)
 
         // An unrelated draft write goes through: the missing file is the draft's already. A whole write, and a patch.
@@ -609,7 +609,7 @@ class ClientFileRefsTest : StringSpec({
         // What is served is held to on every read, since an entry can be typed: bytes at a ref's key that no checked
         // upload put there -- a page, say -- are no file of the ref's, whatever the entry names.
         val page = "<html><script>x()</script></html>".toByteArray()
-        files.put(cxt.mkSubContext("planted", client), FileRefService.bucket, FileRefService.keyOf(client, page.sha256Hex()), ContentData(page, "text/html"))
+        files.forOwner(cxt, client).put(cxt.mkSubContext("planted", client), FileRefService.bucket, FileRefService.keyOf(client, page.sha256Hex()), ContentData(page, "text/html"))
         admin.postData(CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "page", CCT.source to FREF.sourceStore, CCT.hash to page.sha256Hex())))
         GedraConfigReload.reloadClient(cxt, client)
         refs.forClient(client).refs.keys shouldContainExactly setOf("logo", "alias", "page")
@@ -627,7 +627,7 @@ class ClientFileRefsTest : StringSpec({
         val client = "refearly"
         defineClient(client)
         val admin = adminOf(client)
-        fun stored(bytes: ByteArray) = files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, bytes.sha256Hex()))
+        fun stored(bytes: ByteArray) = files.forOwner(cxt, client).meta(cxt, FileRefService.bucket, FileRefService.keyOf(client, bytes.sha256Hex()))
 
         refused(admin, "logo", image(png), description = "x".repeat(FREF.maxDescriptionLength + 1))
         stored(png).shouldBeNull()
@@ -657,7 +657,7 @@ class ClientFileRefsTest : StringSpec({
         refs.forClient(full).refs.size shouldBe FREF.maxRefs
         val fullAdmin = adminOf(full)
         refused(fullAdmin, "fresh", image(otherPng)) shouldContain "as many as a client is served"
-        files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(full, otherPng.sha256Hex())).shouldBeNull()
+        files.forOwner(cxt, full).meta(cxt, FileRefService.bucket, FileRefService.keyOf(full, otherPng.sha256Hex())).shouldBeNull()
         // Replacing one it has is no addition.
         uploaded(fullAdmin, "r7", image(otherPng))
         // An entry typed into its configuration is held to the same limit, by the write's trial.
@@ -695,7 +695,7 @@ class ClientFileRefsTest : StringSpec({
         val admin = adminOf(client)
         uploaded(admin, "logo", image(png))
         val key = FileRefService.keyOf(client, png.sha256Hex())
-        files.delete(cxt, FileRefService.bucket, key) shouldBe true
+        files.forOwner(cxt, client).delete(cxt, FileRefService.bucket, key) shouldBe true
 
         // Serving reads the store, so it says so at once.
         static(admin, "logo").rptStatusCode shouldBe EXC.notFound
@@ -716,7 +716,7 @@ class ClientFileRefsTest : StringSpec({
         }
         // The same file uploaded again is written again, though its hash is one the client already names.
         uploaded(admin, "logo", image(png))
-        files.meta(cxt, FileRefService.bucket, key).shouldNotBeNull()
+        files.forOwner(cxt, client).meta(cxt, FileRefService.bucket, key).shouldNotBeNull()
         static(admin, "logo").rptResponseBytes!!.toList() shouldBe png.toList()
         listed(admin).getValue("logo")[FREF.missing] shouldBe false
     }
@@ -730,8 +730,8 @@ class ClientFileRefsTest : StringSpec({
         val writer = writerOf(client)
         // Written past the upload, straight at the keys: other bytes under the logo's hash, and the mark's own bytes
         // recorded as a type no ref may be.
-        files.put(writer, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), ContentData(otherPng, "image/png"))
-        files.put(writer, FileRefService.bucket, FileRefService.keyOf(client, svg.sha256Hex()), ContentData(svg, "text/plain"))
+        files.forOwner(cxt, client).put(writer, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex()), ContentData(otherPng, "image/png"))
+        files.forOwner(cxt, client).put(writer, FileRefService.bucket, FileRefService.keyOf(client, svg.sha256Hex()), ContentData(svg, "text/plain"))
 
         for (refId in listOf("logo", "mark")) {
             admin.expectError(EXC.notFound, UADEP.clientFilesDownload, args = mapOf(CCT.refId to refId))
@@ -937,7 +937,7 @@ class ClientFileRefsTest : StringSpec({
         admin.postData(UADEP.clientSandbox, mapOf(CLD.sandbox to true))
         uploaded(admin, "logo", image(png))[FREF.mode] shouldBe EDM.draft
 
-        FileStoreService.get(w).delete(w, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
+        FileStoreService.get(w).forOwner(w, client).delete(w, FileRefService.bucket, FileRefService.keyOf(client, png.sha256Hex())) shouldBe true
         FileRefService.get(w).forget(client, png.sha256Hex())
         GedraConfigReload.reloadClient(w, client)
         // Found by the sandbox's load, and worded by the client whose configuration it is.

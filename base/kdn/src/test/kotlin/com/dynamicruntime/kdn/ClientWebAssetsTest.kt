@@ -347,7 +347,7 @@ class ClientWebAssetsTest : StringSpec({
 
             // Another node's upload reaches this one only as a change in the store both read.
             val key = ClientWebAssetService.keyOf(client, WAS.favicon)
-            FileStoreService.get(cxt).put(cxt.mkSubContext("otherNode", client), ClientWebAssetService.bucket, key, image(otherPng, "image/png"))
+            FileStoreService.get(cxt).forOwner(cxt, client).put(cxt.mkSubContext("otherNode", client), ClientWebAssetService.bucket, key, image(otherPng, "image/png"))
             val second = WAS.versionedName(WAS.favicon, otherPng.sha256Hex())
             shellAssets(admin) shouldBe mapOf(WAS.favicon to first)
             now += (ClientWebAssetService.memoMs - 1) * 1_000_000
@@ -355,7 +355,7 @@ class ClientWebAssetsTest : StringSpec({
             now += 2 * 1_000_000
             shellAssets(admin) shouldBe mapOf(WAS.favicon to second)
 
-            FileStoreService.get(cxt).delete(cxt, ClientWebAssetService.bucket, key)
+            FileStoreService.get(cxt).forOwner(cxt, client).delete(cxt, ClientWebAssetService.bucket, key)
             shellAssets(admin) shouldBe mapOf(WAS.favicon to second)
             // The page that edits the slots asks the store, not the memo -- and what it reads becomes the memo.
             listed(admin).getValue(WAS.favicon).containsKey(WAS.name) shouldBe false

@@ -288,7 +288,7 @@ class LocalFileRefsTest : StringSpec({
         markMeta[FMETA.size] shouldBe svg.size.toLong()
 
         // Nothing was copied anywhere: a client that only ships its pictures has nothing in the file store.
-        FileStoreService.get(cxt).list(cxt, FileRefService.bucket, "clients/${LocalFileRefComponent.built}/").shouldBeEmpty()
+        FileStoreService.get(cxt).forOwner(cxt, LocalFileRefComponent.built).list(cxt, FileRefService.bucket).shouldBeEmpty()
         // And another client's people are not served it.
         defineClient("lfrother")
         static(memberOf("lfrother"), nameOf("logo", png)).rptStatusCode shouldBe EXC.notFound
@@ -476,7 +476,7 @@ class LocalFileRefsTest : StringSpec({
         // The client's own administrator edits the same configuration, and the ref they did not write is carried:
         // a ref of their own beside it, by an upload's hash...
         val hash = otherPng.sha256Hex()
-        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(otherPng, "image/png"))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(otherPng, "image/png"))
         posted(admin, CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "banner", CCT.source to FREF.sourceStore, CCT.hash to hash)))
         storedRefs(client).map { it[CCT.refId] } shouldBe listOf("logo", "banner")
         // ...and its description is theirs to reword, since that names no file.
@@ -546,7 +546,7 @@ class LocalFileRefsTest : StringSpec({
 
         // An unrelated edit of the same configuration is not refused for it...
         val hash = otherPng.sha256Hex()
-        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(otherPng, "image/png"))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(otherPng, "image/png"))
         posted(admin, CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "banner", CCT.source to FREF.sourceStore, CCT.hash to hash)))
         // ...the next load says what is wrong, once and by name...
         GedraConfigReload.reloadClient(cxt, client)
@@ -606,7 +606,7 @@ class LocalFileRefsTest : StringSpec({
         file.delete()
         ClientConfigIssues.get(cxt).issuesFor(sandboxOf(client)).shouldBeEmpty()
         val hash = otherPng.sha256Hex()
-        FileStoreService.get(cxt).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(otherPng, "image/png"))
+        FileStoreService.get(cxt).forOwner(cxt, client).put(writerOf(client), FileRefService.bucket, FileRefService.keyOf(client, hash), ContentData(otherPng, "image/png"))
         posted(admin, CFEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, mapOf(CCT.refId to "banner", CCT.source to FREF.sourceStore, CCT.hash to hash)))
         storedRefs(client).map { it[CCT.refId] } shouldBe listOf("pic", "banner")
 
