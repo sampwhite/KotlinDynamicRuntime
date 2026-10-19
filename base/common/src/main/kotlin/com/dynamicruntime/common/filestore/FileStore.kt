@@ -137,8 +137,15 @@ object FNAME {
      */
     const val clientsFolder = "clients/"
 
-    /** The folder of [owner]'s files: every key of a client's file begins with it. */
-    fun clientKeyPrefix(owner: String): String = checkKeyPrefix("$clientsFolder$owner/")
+    /**
+     * The folder of [owner]'s files: every key of a client's file begins with it. [owner] is one segment of a key --
+     * never a path, which would name a folder inside another client's.
+     */
+    fun clientKeyPrefix(owner: String): String {
+        val problem = if ('/' in owner) "it holds a slash" else keyProblem(owner)
+        problem?.let { throw KdrException("Not a file-store owner: '$owner' ($it).", null, EXC.badInput) }
+        return "$clientsFolder$owner/"
+    }
 
     /**
      * [prefix], or a refusal: what a listing may be narrowed by -- nothing, a key, or a key followed by a slash

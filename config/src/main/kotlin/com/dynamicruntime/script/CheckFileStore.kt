@@ -98,7 +98,8 @@ object CheckFileStore {
             return fail("No declared bucket ${unknown.joinToString { "'$it'" }}; declared: ${declared.joinToString().ifEmpty { "none" }}.")
         }
         val buckets = options.buckets.ifEmpty { declared }
-        val stores = (options.store?.let { listOf(it) } ?: names).map { it to service.storeNamed(it)!! }
+        val byName = names.mapNotNull { name -> service.storeNamed(name)?.let { name to it } }.toMap()
+        val stores = byName.filterKeys { options.store == null || it == options.store }.toList()
         val (memory, checkable) = stores.partition { it.second.providerType == FST.memory }
         if (checkable.isEmpty()) {
             return fail(
@@ -136,7 +137,7 @@ object CheckFileStore {
         // The wall clock's now, as every object's time is: not the instance's, which a test may have moved.
         val now = Clock.System.now()
         val repairs = found.groupBy({ it.first }, { it.second }).flatMap { (name, leftovers) ->
-            FileStoreCheck.repair(cxt, service.storeNamed(name)!!, leftovers, now, options.minAgeMinutes.minutes)
+            FileStoreCheck.repair(cxt, byName.getValue(name), leftovers, now, options.minAgeMinutes.minutes)
                 .map { name to it }
         }
         for ((name, r) in repairs) {

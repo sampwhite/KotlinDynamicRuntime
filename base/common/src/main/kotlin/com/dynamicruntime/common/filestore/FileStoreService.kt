@@ -390,8 +390,9 @@ class FileStoreService : ServiceInitializer {
 
         /**
          * The files in [bucket] whose key begins with [keyPrefix], in key order, each with its metadata and none with
-         * its content: every file this view takes when [keyPrefix] is empty -- the client's, or the default store's
-         * that are no client's.
+         * its content: every file this view takes when [keyPrefix] is empty -- the client's whole folder, or for the
+         * default view the bucket, which is refused when it holds any client's files: leaving them out of the answer
+         * would make it short of [limit] without saying so.
          *
          * **At most [limit] of them, and refused when there are more.** A listing reads a file's metadata for each
          * file it answers -- a request apiece on S3 -- so it is for the folder of one owner's files, and a caller
@@ -410,9 +411,15 @@ class FileStoreService : ServiceInitializer {
                 )
             }
             // One more than the limit is asked for, which is how "there are more" is told from "exactly that many".
-            // The default store's own listing leaves out every client's files, which it does not take.
             val asked = if (limit == Int.MAX_VALUE) limit else limit + 1
-            val found = store.list(cxt, bucket, prefix, asked).filter { ownFolder != null || !it.key.startsWith(FNAME.clientsFolder) }
+            val found = store.list(cxt, bucket, prefix, asked)
+            if (ownFolder == null && found.any { it.key.startsWith(FNAME.clientsFolder) }) {
+                throw KdrException(
+                    "The bucket '$bucket' holds clients' files, which the default store's listing does not take: list a " +
+                        "folder outside '${FNAME.clientsFolder}', or a client's through forOwner.",
+                    null, EXC.badInput,
+                )
+            }
             if (found.size > limit) {
                 throw KdrException(
                     "The bucket '$bucket' holds more than $limit files under '$prefix'. A listing is for one folder of " +

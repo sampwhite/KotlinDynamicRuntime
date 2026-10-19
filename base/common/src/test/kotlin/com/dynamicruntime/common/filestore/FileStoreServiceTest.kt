@@ -472,7 +472,9 @@ class FileStoreServiceTest : StringSpec({
             "The file-store key 'clients/acme/logo' is a client's"
         shouldThrow<KdrException> { service.put(cxt, bucket, "clients/acme/other", ContentData("x", "text/plain")) }
         shouldThrow<KdrException> { service.list(cxt, bucket, "clients/") }.message shouldContain "is a client's folder"
-        service.list(cxt, bucket).map { it.key } shouldContainExactly listOf("notes/plain")
+        service.list(cxt, bucket, "notes/").map { it.key } shouldContainExactly listOf("notes/plain")
+        // The whole bucket holds clients' files, which the default listing does not take: refused, never answered short.
+        shouldThrow<KdrException> { service.list(cxt, bucket) }.message shouldContain "holds clients' files"
 
         // A client's view takes its own folder and no other.
         shouldThrow<KdrException> { acme.get(cxt, bucket, "clients/globex/logo") }.message shouldContain
@@ -483,6 +485,9 @@ class FileStoreServiceTest : StringSpec({
         shouldThrow<KdrException> { acme.list(cxt, bucket, "clients/") }.message shouldContain "not within client 'acme''s folder"
         // An owner that could be no folder's name is no owner.
         shouldThrow<KdrException> { service.forOwner(cxt, "../acme") }
+        // Nor is a path, which would be a folder inside another client's.
+        shouldThrow<KdrException> { service.forOwner(cxt, "acme/web") }.message shouldContain "it holds a slash"
+        shouldThrow<KdrException> { service.forOwner(cxt, "") }
         // The prefix every client key is built from.
         FNAME.clientKeyPrefix("acme") shouldBe "clients/acme/"
     }
