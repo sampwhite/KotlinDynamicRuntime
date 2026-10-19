@@ -27,7 +27,8 @@ class MenuAudience(val condition: String, val name: String, val offered: Boolean
  *   client -- can only hide an item from the client's people.
  * - `hasAdminLevel` and "administers this client and no other" are, inside a real client, the administrators
  *   again: three names for one audience is the confusion this table exists to remove. `administersClient` is the
- *   one offered, being the statement about scope the rest of the menu asks.
+ *   one offered, being the statement about scope the rest of the menu asks. So are a customer's root administrators
+ *   (issue #1114), inside the root client.
  * - `#always` differs from "everyone" only on an edge node, which is not a distinction of people at all.
  */
 object HomeMenuAudiences {
@@ -48,6 +49,10 @@ object HomeMenuAudiences {
         MenuAudience(
             "${CFACTS.administersClient},~${CFACTS.isDeploymentAdmin},${CFACTS.app}", "Administrators of this client alone",
             offered = false,
+        ),
+        MenuAudience(
+            "${CFACTS.administersCustomer},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
+            "Administrators of a customer's root client", offered = false,
         ),
         MenuAudience(CFACTS.isDeploymentOperator, "Deployment operators", offered = false),
         MenuAudience("${CFACTS.hasTestAccess},${CFACTS.app}", "Env-authed sessions, on a test instance", offered = false),

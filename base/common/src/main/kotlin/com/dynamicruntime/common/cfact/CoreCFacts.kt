@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.cfact
 
 import com.dynamicruntime.common.context.BOOT
+import com.dynamicruntime.common.gedra.CustomerAccess
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.http.request.RoleLadder
@@ -69,6 +70,12 @@ object CFACTS {
      * after the `clientAdmin` section, which admits that `public` administrator for their own users' pages.
      */
     const val administersClient = "kdr:administersClient"
+
+    /**
+     * The caller administers a **customer** (issue #1114): client-wide, in the customer's root client, whose
+     * administrators act for the customer as a whole (#1107). What offers "My customer".
+     */
+    const val administersCustomer = "kdr:administersCustomer"
 
     /** The session is in ENV DEBUG (issue #517): env auth effective, and debug behaviors on. */
     const val hasEnvAuth = "kdr:hasEnvAuth"
@@ -225,6 +232,15 @@ fun addCoreCFacts(collector: SchemaCollector) {
         // `AdminRules`' own answer rather than a restatement of it: the rule has a carve-out (`public`) that a
         // second copy here would be the first place to forget.
     ) { AdminRules.isClientAdministrator(it) }
+    collector.addCFact(
+        CFactDef(
+            CFACTS.administersCustomer, CFGRP.caller,
+            "True when the caller administers a customer's root client, client-wide (issue #1114): the administrators " +
+                "who act for the customer as a whole, and may see its page. An administrator confined to an " +
+                "organization of the root is not one.",
+        ),
+        // The page's own rule, so the menu entry and the endpoint behind it are one answer.
+    ) { CustomerAccess.administeredCustomer(it) != null }
     collector.addCFact(
         CFactDef(
             CFACTS.hasAdminLevel, CFGRP.caller,

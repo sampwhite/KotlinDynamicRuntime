@@ -205,6 +205,13 @@ object HMENU {
      * listing: an item of its own so that its label can say so. Shown instead of [clients], never beside it.
      */
     const val myClient = "myClient"
+    /** The customers a deployment administrator oversees (issue #1114), each opening to its clients. */
+    const val customers = "customers"
+    /**
+     * The same page for an administrator of a customer's **root** client (issue #1114), where it opens their own
+     * customer rather than a listing: an item of its own so that its label can say so.
+     */
+    const val myCustomer = "myCustomer"
     /** The named reports an administrator may run over their client's forms (issue #981). */
     const val reports = "reports"
     /** The simulations a test instance offers, to provision a canned scenario and sign in to it (issue #997). */
@@ -276,6 +283,7 @@ object HMENU {
     const val pageForms = "forms"
     const val pageWorkflows = "workflows"
     const val pageClients = "clients"
+    const val pageCustomers = "customers"
     const val pageReports = "reports"
     /**
      * The Reports page's own hash parameters (issues #1007, #1036): the report that is open, how it is shown, and

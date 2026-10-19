@@ -135,6 +135,15 @@ object UADEP {
      */
     const val clientsOverview = "/${SECT.clientAdmin}/clients/overview"
 
+    /** The customers this deployment declares (issue #1114), for an administrator who sees every client. */
+    const val customers = "/${SECT.clientAdmin}/customers"
+
+    /**
+     * One customer and its clients (issue #1114): any, for an administrator who sees every client; their own, for an
+     * administrator of the customer's root client -- read-only, facts only.
+     */
+    const val customerOverview = "/${SECT.clientAdmin}/customer/overview"
+
     /**
      * Creates a client under the caller's customer (issue #1112): for an administrator of the customer's root client,
      * an id `<customer>_<name>`, with the creator's own admin user in it.

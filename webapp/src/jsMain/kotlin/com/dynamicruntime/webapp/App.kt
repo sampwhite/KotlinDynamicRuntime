@@ -235,6 +235,7 @@ val App = FC<Props> {
                                 pageWorkflows -> WorkflowsPage {}
                                 pageWorkflowForms -> FormsPage { listing = pageWorkflowForms }
                                 pageClients -> ClientsPage {}
+                                pageCustomers -> CustomersPage {}
                                 pageReports -> ReportsPage {}
                                 pageEditForm -> EditFormPage {}
                                 pageSurveyEdit -> SurveyEditPage {}
@@ -317,6 +318,10 @@ private const val pageForms = HMENU.pageForms
 // page reports honestly when the caller may not see it.
 private const val pageClients = HMENU.pageClients
 
+// The customer page (issue #1114): offered in the menu to a deployment administrator and to a customer's root
+// administrators; the route exists unconditionally, and the page reports honestly when the caller may not see it.
+private const val pageCustomers = HMENU.pageCustomers
+
 // The reports page (issue #1007): offered in the menu to administrators, as Clients is; the page says so honestly
 // when the caller may not run reports.
 private const val pageReports = HMENU.pageReports
@@ -370,6 +375,7 @@ private fun currentPage(): String {
         params[HP.page] == pageForms -> pageForms
         params[HP.page] == pageWorkflows -> pageWorkflows
         params[HP.page] == pageClients -> pageClients
+        params[HP.page] == pageCustomers -> pageCustomers
         params[HP.page] == pageReports -> pageReports
         params[HP.page] == pageEditForm -> pageEditForm
         params[HP.page] == pageSurveyEdit -> pageSurveyEdit
