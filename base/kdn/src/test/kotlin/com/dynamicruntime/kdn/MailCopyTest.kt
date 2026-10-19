@@ -69,6 +69,8 @@ class MailCopyTest : StringSpec({
             }
             namespace(MCOPY.common) {
                 key(MCOPY.footer, "Sent by the Mail Co desk.")
+                // And says nothing of the deployment (issue #1276): an emptied line is left out.
+                key(MCOPY.sentFrom, "")
             }
         }
     }
@@ -109,6 +111,45 @@ class MailCopyTest : StringSpec({
         // Every mail ends with the shared footer, in both parts.
         sent.text shouldContain "sent automatically"
         sent.html!! shouldContain "sent automatically"
+        // Then the deployment it came from (issue #1276): the configured public URL's host.
+        sent.text.substringAfter("sent automatically") shouldContain "Sent from mail.test."
+        sent.html!!.substringAfter("sent automatically") shouldContain "Sent from mail.test."
+    }
+
+    "a host is its URL's host and port, lower-cased, or nothing when there is none" {
+        INVITE.hostOf("https://Dynamicruntime.ORG/") shouldBe "dynamicruntime.org"
+        INVITE.hostOf("http://localhost:7071") shouldBe "localhost:7071"
+        INVITE.hostOf("http://[::1]:7070") shouldBe "[::1]:7070"
+        INVITE.hostOf("not a url") shouldBe null
+        INVITE.hostOf("http://") shouldBe null
+    }
+
+    /**
+     * With no configured URL, a test instance names the host the request came to -- what tells a developer's local
+     * instances apart -- and a real deployment names nothing, since `Host` is the caller's to send (issue #1276).
+     */
+    "without a public URL, only a test instance names the request's host" {
+        // The code that starts a registration, which goes to an address no user holds yet: nothing to set up first, on
+        // either instance, and a request a stranger can make.
+        fun codeMailVia(onCxt: KdrCxt, address: String, host: String): String? {
+            val browser = TestHttpClient(onCxt.instanceConfig)
+            browser.setHeader("Host", host)
+            browser.sendJsonPostRequest(
+                AEP.newContactSendVerify,
+                mapOf(AFLD.contactAddress to address, AFLD.contactType to "email", AFLD.formAuthToken to tokenOf(browser)),
+            )
+            return MailService.get(onCxt).lastEmailTo(address)?.text
+        }
+        val local = TestInstances.default("mailHostLocal")
+        codeMailVia(local, "mailhost-local@example.com", "localhost:7099").shouldNotBeNull() shouldContain "Sent from localhost:7099."
+
+        // A real instance keeps no copy of what it sends (issue #158), so its half is the decision itself: a `Host`
+        // the caller sent is never believed there, and a configured URL always wins.
+        INVITE.publicHostFor(null, isTestInstance = false, requestHost = "secure-login.example") shouldBe null
+        INVITE.publicHostFor(null, isTestInstance = true, requestHost = "localhost:7099") shouldBe "localhost:7099"
+        INVITE.publicHostFor("https://dynamicruntime.org", isTestInstance = false, requestHost = "secure-login.example") shouldBe
+            "dynamicruntime.org"
+        INVITE.publicHostFor(null, isTestInstance = true, requestHost = null) shouldBe null
     }
 
     "the invitation's link is an anchor in the HTML part and a bare URL in the text part" {
@@ -153,6 +194,7 @@ class MailCopyTest : StringSpec({
         val rendered = MailCopy.render(cxt, overlayClient, MCOPY.verifyCode, mapOf(MCOPY.codeParam to "123456"))
         rendered.text shouldContain "Your verification code is 123456."
         rendered.text shouldContain "Sent by the Mail Co desk."
+        rendered.text shouldNotContain "Sent from"
         // The overlay is the client's own: a user invited into another client reads the shipped copy, whoever
         // created them.
         val plain = "mailcopy-plain@other.test"

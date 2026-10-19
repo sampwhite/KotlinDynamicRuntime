@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.user.AFRAG
+import com.dynamicruntime.common.user.INVITE
 import com.dynamicruntime.common.user.PublicTestDeployment
 import com.dynamicruntime.common.util.MDR
 import com.dynamicruntime.common.util.MarkdownHooks
@@ -37,6 +38,13 @@ object MCOPY {
      */
     const val testDeploymentNote = "testDeploymentNote"
 
+    /**
+     * The line naming the deployment a mail came from, after the [footer] and before the [testDeploymentNote]
+     * (issue #1276): `Sent from ${siteHost}.` Its own key for the same reason as the note, and left out when the host
+     * is unknown (`INVITE.publicHostFor`) or a client overlays it with nothing.
+     */
+    const val sentFrom = "sentFrom"
+
     // The mails, one namespace each.
     const val verifyCode = "verifyCode"
     const val verifyCodePassword = "verifyCodePassword"
@@ -62,6 +70,8 @@ object MCOPY {
     const val urlParam = "url"
     /** The client's display name (`Acme`), supplied by `MailCopy.render` beside [clientParam] whenever a mail has a client. */
     const val clientNameParam = "clientName"
+    /** The deployment's host (`dynamicruntime.org`), supplied by `MailCopy.render` whenever it is known (issue #1276). */
+    const val siteHostParam = "siteHost"
 
     /**
      * Bound by every render (issue #795): `true` for the HTML part, `false` for the text part, so a body that
@@ -128,8 +138,13 @@ object MailCopy {
         fun copy(namespace: String, key: String): String = content[namespace]?.get(key)
             ?: throw KdrException("No mail copy '$namespace.$key' in the fragment file '${AFRAG.mail}'.")
 
-        val named = if (client == null || MCOPY.clientNameParam in params) params else {
+        val withClient = if (client == null || MCOPY.clientNameParam in params) params else {
             params + (MCOPY.clientNameParam to (ClientService.get(cxt).known(client)?.name ?: client))
+        }
+        // Which deployment sent it (issue #1276): supplied beside the client's name, for the line beneath the footer.
+        val siteHost = INVITE.publicHostFor(cxt)
+        val named = if (siteHost == null || MCOPY.siteHostParam in withClient) withClient else {
+            withClient + (MCOPY.siteHostParam to siteHost)
         }
         // Sanitized, then Markdown-escaped (issue #795): a value is substituted into copy the renderer then reads,
         // so an address like `_ops_@acme.test` must reach both parts verbatim rather than as emphasis. The two
@@ -141,11 +156,15 @@ object MailCopy {
         // On a public test deployment every mail says so, beneath whatever footer the client signs with (issue #1150).
         val note = if (PublicTestDeployment.isOn(cxt.instanceConfig)) copy(MCOPY.common, MCOPY.testDeploymentNote) else null
         val footer = copy(MCOPY.common, MCOPY.footer)
+        // The deployment's line (issue #1276), beneath the footer: only with a host to name, and a client may empty it.
+        val sentFrom = copy(MCOPY.common, MCOPY.sentFrom).takeIf { MCOPY.siteHostParam in named && it.isNotBlank() }
+        // Each closing line after the body, in order: the footer always, then whichever of the others apply.
+        val closing = listOfNotNull(footer, sentFrom, note)
 
         // The text part: the same source, rendered to plain text (issue #795).
         val forText = safe + (MCOPY.forHtmlParam to false)
-        val text = (body.evalTemplate(forText) + "\n\n" + footer.evalTemplate(forText) +
-            (note?.let { "\n\n" + it.evalTemplate(forText) } ?: "")).renderMarkdownText()
+        val text = (listOf(body.evalTemplate(forText)) + closing.map { it.evalTemplate(forText) })
+            .joinToString("\n\n").renderMarkdownText()
 
         // The HTML part: a URL-valued param written as a Markdown link so the renderer makes it an anchor (the
         // text part keeps the bare URL) -- the label escaped like any value, the target the URL itself; a role a
@@ -155,8 +174,7 @@ object MailCopy {
         } + (MCOPY.forHtmlParam to true)
         val hooks = MarkdownHooks(decorateSpan = ::decorateValue)
         val rendered = body.evalTemplate(forHtml).renderMarkdown(hooks) +
-            "<p style=\"$footerStyle\">" + footer.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>" +
-            (note?.let { "<p style=\"$footerStyle\">" + it.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>" } ?: "")
+            closing.joinToString("") { "<p style=\"$footerStyle\">" + it.evalTemplate(forHtml).renderMarkdownInline(hooks) + "</p>" }
         return RenderedMail(subject, text, wrapHtml(rendered, copy(MCOPY.common, MCOPY.htmlStyle)))
     }
 
