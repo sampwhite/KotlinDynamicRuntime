@@ -18,6 +18,7 @@ import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.naming.namespaceRoot
 import com.dynamicruntime.common.naming.rootedNameProblem
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Names and modes for the Gedra config checks (issue #299). */
 @Suppress("ConstPropertyName")
@@ -304,11 +305,77 @@ class GedraConfigCollector {
     private val configTraitConfigs = LinkedHashMap<String, GedraConfig>()
     private val namespaceOwners = linkedMapOf(GCFG.globalNamespace to GID.globalClient)
 
-    /** Problems found, in the order they were found. Empty unless something degraded. */
-    val issues: MutableList<GedraConfigIssue> = mutableListOf()
+    /**
+     * What the readers below see (issue #1264): the maps they read, as one immutable snapshot replaced by reference.
+     * A client's reload changes the maps above under the reload lock -- withdrawing the client's configs, then adding
+     * the fresh ones -- while requests read them with no lock, and a request iterating a map mid-change met a
+     * `ConcurrentModificationException`, an empty slot, or a client briefly gone. So a reader on another thread reads
+     * [published], which a change outside a [batch] replaces at once and a [batch] replaces once, when it ends: a
+     * reader sees the collector before the reload's swap or after it, never in between.
+     */
+    private class Registry(
+        val configsById: Map<String, GedraConfig>,
+        val traitOwners: Map<TraitKey, GedraTrait>,
+        val traitConfigs: Map<TraitKey, GedraConfig>,
+        val stateTraitOwners: Map<String, GedraTrait>,
+        val configTraitOwners: Map<String, GedraConfigTrait>,
+    )
+
+    @Volatile
+    private var published = Registry(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
+
+    /** The thread inside a [batch], which reads the maps as it is changing them; null outside one. */
+    @Volatile
+    private var batchThread: Thread? = null
+
+    /** The snapshot this thread reads: the working maps inside its own [batch], else the published ones. */
+    private fun read(): Registry = if (batchThread === Thread.currentThread()) {
+        Registry(configsById, traitOwners, traitConfigs, stateTraitOwners, configTraitOwners)
+    } else {
+        published
+    }
+
+    private fun publish() {
+        published = Registry(
+            LinkedHashMap(configsById), LinkedHashMap(traitOwners), LinkedHashMap(traitConfigs),
+            LinkedHashMap(stateTraitOwners), LinkedHashMap(configTraitOwners),
+        )
+    }
+
+    /** After a change: published now, unless a [batch] on this thread publishes when it ends. */
+    private fun changed() {
+        if (batchThread !== Thread.currentThread()) publish()
+    }
+
+    /** Whether this thread is inside a [batch] -- what `SchemaCollector` asks of its own per-client maps. */
+    fun isBatchingHere(): Boolean = batchThread === Thread.currentThread()
+
+    /**
+     * Runs [body], which changes the collector, publishing what it changed **once**, when it ends (issue #1264):
+     * readers on other threads see the collector as it was before [body] or as it is after, never part way -- a
+     * reload's withdrawal of a client's configs before it adds the fresh ones is never seen. Inside [body] this
+     * thread reads the working maps, so what it has just added is there for it. Reentrant on one thread. One
+     * writer at a time, which the reload lock (`GedraConfigReload`) guarantees, as boot's single thread does.
+     */
+    fun <T> batch(body: () -> T): T {
+        if (batchThread === Thread.currentThread()) return body()
+        batchThread = Thread.currentThread()
+        try {
+            return body()
+        } finally {
+            publish()
+            batchThread = null
+        }
+    }
+
+    /**
+     * Problems found, in the order they were found. Empty unless something degraded. Copy-on-write, since a reload
+     * adds to it while a request may be reading it (issue #1264).
+     */
+    val issues: MutableList<GedraConfigIssue> = CopyOnWriteArrayList()
 
     /** The configs kept, in contribution order. */
-    val configs: List<GedraConfig> get() = configsById.values.toList()
+    val configs: List<GedraConfig> get() = read().configsById.values.toList()
 
     /**
      * The traits [client] can see: its own, and `global`'s. Nothing else — that is the visibility rule, and
@@ -316,25 +383,25 @@ class GedraConfigCollector {
      * asks the question. Unique by id (issue #807): a client may not reuse a global trait's id, so its own traits
      * and the global ones never share one -- which is what lets every consumer of one client's view key by id.
      */
-    fun traitsFor(client: String): List<GedraTrait> = traitOwners.entries
+    fun traitsFor(client: String): List<GedraTrait> = read().traitOwners.entries
         .filter { (key, _) -> key.client == GID.globalClient || key.client == client }
         .map { it.value }
 
     /** Whether [traitId] is a **global** data trait's id -- one no client may reuse (issue #807). */
-    fun isGlobalTrait(traitId: String): Boolean = TraitKey(GID.globalClient, traitId) in traitOwners
+    fun isGlobalTrait(traitId: String): Boolean = TraitKey(GID.globalClient, traitId) in read().traitOwners
 
     /**
      * The **state** traits in force (issue #597). State is global -- a client does not vary the set (decision
      * 3) -- so this is every kept state trait, independent of client. It takes no client for that reason, unlike
      * [traitsFor]: there is nothing per-client to narrow to.
      */
-    fun stateTraits(): List<GedraTrait> = stateTraitOwners.values.toList()
+    fun stateTraits(): List<GedraTrait> = read().stateTraitOwners.values.toList()
 
     /**
      * The **config** traits in force (issue #316). Hardwired by the runtime rather than contributed per client,
      * so like [stateTraits] there is nothing per-client to narrow to.
      */
-    fun configTraits(): List<GedraConfigTrait> = configTraitOwners.values.toList()
+    fun configTraits(): List<GedraConfigTrait> = read().configTraitOwners.values.toList()
 
     /**
      * The traits [client] **owns** -- declared in a config of its own, rather than seen from `global`.
@@ -343,7 +410,7 @@ class GedraConfigCollector {
      * one is what a client can *see* (for `$ref` resolution), this is part of what it may *use*. See
      * `supportedTraits`, which is where they are combined.
      */
-    fun traitsOwnedBy(client: String): List<GedraTrait> = traitOwners.entries
+    fun traitsOwnedBy(client: String): List<GedraTrait> = read().traitOwners.entries
         .filter { (key, _) -> key.client == client }
         .map { it.value }
 
@@ -355,9 +422,10 @@ class GedraConfigCollector {
      * for it, and a client that presents `name` itself does not get it twice. In declaration order.
      */
     fun usagesFor(client: String): List<ClientTraitUsage> {
-        val own = configsById.values.filter { it.gedraId.client == client }.flatMap { it.usages }
+        val configs = read().configsById.values
+        val own = configs.filter { it.gedraId.client == client }.flatMap { it.usages }
         if (own.isNotEmpty()) return own
-        return configsById.values.filter { it.gedraId.client == GID.globalClient }.flatMap { it.usages }
+        return configs.filter { it.gedraId.client == GID.globalClient }.flatMap { it.usages }
     }
 
     /**
@@ -372,8 +440,9 @@ class GedraConfigCollector {
     fun reportsFor(client: String): List<ClientReport> {
         val out = LinkedHashMap<String, ClientReport>()
         val owners = if (client == GID.globalClient) listOf(client) else listOf(GID.globalClient, client)
+        val configs = read().configsById.values
         for (owner in owners) {
-            for (config in configsById.values.filter { it.gedraId.client == owner }) {
+            for (config in configs.filter { it.gedraId.client == owner }) {
                 for ((id, report) in config.reports) out.putIfAbsent(id, report)
             }
         }
@@ -383,7 +452,7 @@ class GedraConfigCollector {
     /** The `$defs` the kept configs generated, merged, for compiling with everything else. */
     fun defs(): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
-        for (config in configsById.values) {
+        for (config in read().configsById.values) {
             out.putAll(config.defs)
         }
         return out
@@ -431,7 +500,7 @@ class GedraConfigCollector {
      * whose configs were all judged when [other] took them.
      */
     fun absorbAll(other: GedraConfigCollector) {
-        other.configs.forEach { keep(it) }
+        batch { other.configs.forEach { keep(it) } }
     }
 
     /**
@@ -440,15 +509,16 @@ class GedraConfigCollector {
      * altered type names as its holder (issue #839).
      */
     fun contributorOf(client: String, typeName: String): GedraConfig? =
-        configsById.values.lastOrNull { it.gedraId.client == client && typeName in it.defs }
+        read().configsById.values.lastOrNull { it.gedraId.client == client && typeName in it.defs }
 
     /**
      * The config that declares the data trait [traitId] as [client] sees it -- the client's own, else the global one
      * (issue #972): the same visibility [traitsFor] applies, and, since a client's trait ids and global ones never
      * coincide, at most one of the two exists. Null when neither does.
      */
-    fun configOfTrait(client: String, traitId: String): GedraConfig? =
-        traitConfigs[TraitKey(client, traitId)] ?: traitConfigs[TraitKey(GID.globalClient, traitId)]
+    fun configOfTrait(client: String, traitId: String): GedraConfig? = read().traitConfigs.let {
+        it[TraitKey(client, traitId)] ?: it[TraitKey(GID.globalClient, traitId)]
+    }
 
     /**
      * Un-registers [config] -- the exact reverse of [keep] -- so a client's stored configuration can be
@@ -484,6 +554,7 @@ class GedraConfigCollector {
         ) {
             namespaceOwners.remove(config.namespace)
         }
+        changed()
         return true
     }
 
@@ -503,6 +574,7 @@ class GedraConfigCollector {
             configTraitOwners[traitId] = trait
             configTraitConfigs[traitId] = config
         }
+        changed()
     }
 
     /**

@@ -17,6 +17,9 @@ import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import com.dynamicruntime.common.startup.SchemaCollector
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.shouldNotBe
 
 /**
  * Collecting Gedra config bundles, and what happens when two of them disagree (issue #299).
@@ -362,6 +365,78 @@ class GedraConfigCollectorTest : StringSpec({
             trait("RootedEntry", "kdr:rooted", setOf(GedraDataType.formDoc)) { property("value", "Something.") }
         }
         GedraConfigCollector().add(devCxt, rooted) shouldBe true
+    }
+
+    // --- read while another thread reloads (issue #1264) -------------------------
+
+    /** Runs [body] on a thread of its own and waits for it, rethrowing what it threw: a request, mid-reload. */
+    fun onAnotherThread(body: () -> Unit) {
+        var failure: Throwable? = null
+        val t = Thread { try { body() } catch (e: Throwable) { failure = e } }
+        t.start()
+        t.join()
+        failure?.let { throw it }
+    }
+
+    val swapClient = "swap1264"
+
+    /** A client's config under one name, declaring [traitId]: what a reload withdraws, and then adds afresh. */
+    fun clientConfig(traitId: String) = nameConfig(
+        configName = "main", traitId = traitId, namespace = "client.$swapClient", client = swapClient,
+    )
+
+    /**
+     * A reload withdraws a client's config and adds the fresh one; a request reading meanwhile must see the client as
+     * it was, or as it is after -- never withdrawn, never half-changed. The swap runs in a batch, as the reload's does.
+     */
+    "another thread sees a reload's swap all at once, after it, never part way (issue #1264)" {
+        val collector = GedraConfigCollector()
+        collector.add(devCxt, nameConfig())
+        val before = clientConfig("before1264")
+        collector.add(devCxt, before)
+        fun owned() = collector.traitsOwnedBy(swapClient).map { it.traitId }
+
+        collector.batch {
+            collector.remove(before)
+            // This thread reads its own change, as the reload's next steps need to.
+            owned() shouldBe emptyList()
+            onAnotherThread {
+                owned() shouldContainExactly listOf("before1264")
+                collector.configs.map { it.name } shouldContainExactly listOf("coreTraits", "main")
+            }
+            collector.add(devCxt, clientConfig("after1264")) shouldBe true
+            owned() shouldContainExactly listOf("after1264")
+            onAnotherThread { owned() shouldContainExactly listOf("before1264") }
+        }
+        onAnotherThread { owned() shouldContainExactly listOf("after1264") }
+    }
+
+    "outside a batch, a change is seen by other threads at once (issue #1264)" {
+        val collector = GedraConfigCollector()
+        collector.add(devCxt, nameConfig())
+        onAnotherThread { collector.globalTraits() shouldContainKey "kdr:name" }
+        collector.add(devCxt, clientConfig("own1264"))
+        onAnotherThread { collector.traitsOwnedBy(swapClient).map { it.traitId } shouldContainExactly listOf("own1264") }
+    }
+
+    /** The schema collector's per-client maps -- what a client's variant is built from -- follow the same rule. */
+    "a client's overlay is published with the configs, once the batch ends (issue #1264)" {
+        val collector = SchemaCollector()
+        collector.addGedraConfig(devCxt, nameConfig())
+        val before = clientConfig("ovlBefore1264")
+        collector.addGedraConfig(devCxt, before)
+        fun overlaid() = collector.clientOverlays[swapClient].orEmpty().keys
+        val beforeKeys = overlaid()
+        beforeKeys.shouldNotBeEmpty()
+
+        collector.batch {
+            collector.removeGedraConfig(before)
+            overlaid() shouldBe emptySet()
+            onAnotherThread { overlaid() shouldBe beforeKeys }
+            collector.addGedraConfig(devCxt, clientConfig("ovlAfter1264"))
+            onAnotherThread { overlaid() shouldBe beforeKeys }
+        }
+        onAnotherThread { overlaid() shouldNotBe beforeKeys }
     }
 })
 
