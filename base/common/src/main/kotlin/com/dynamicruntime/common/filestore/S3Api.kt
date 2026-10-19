@@ -60,11 +60,11 @@ interface S3Api {
  * `aws-chunked` body with a CRC32 *trailer*. AWS accepts it, and so did Linode's `us-ord-10` endpoint when it was tried
  * (issue #1271), but S3-compatible services need not: one of Linode's older endpoints has been reported refusing it
  * (`XAmzContentSHA256Mismatch`), and some services store the framing as though it were the content, which would not
- * fail at the write but at the next read, as a file whose content does not hash to its metadata. So through an
- * endpoint a checksum is sent only where an operation requires one -- the SDK's own setting for exactly this -- which
- * every such service takes and costs nothing here, since the store checks what it reads itself. AWS keeps the SDK's
- * default. (A read is not validated against a checksum the service sends unless the call asks for one, and these
- * calls never do: what the store reads is checked against the SHA-256 in its own metadata instead.)
+ * fail at the write but at the next read, as a file whose content does not hash to its metadata. So through an endpoint
+ * a checksum is sent only where an operation requires one -- the SDK's own setting for exactly this, which puts uploads
+ * back in the form the SDK sent before 2.30 and costs nothing here, since the store checks what it reads itself. AWS
+ * keeps the SDK's default. (A read is not validated against a checksum the service sends unless the call asks for one,
+ * and these calls never do: what the store reads is checked against the SHA-256 in its own metadata instead.)
  *
  * The SDK is told which HTTP client to use, its JDK-backed one, rather than left to find one: the build
  * excludes its Netty and Apache clients (`base/common/build.gradle.kts`).

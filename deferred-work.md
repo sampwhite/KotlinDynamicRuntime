@@ -531,8 +531,9 @@ clone to another client id in this one.
 ## When a deployment keeps its files on S3
 
 The `s3` file store (issue #1129) has been run against Linode's S3-compatible Object Storage (issue #1271), and never
-against AWS itself. Do this **before** the first upload of an AWS deployment that needs it, not after: there it goes
-wrong without saying so.
+against AWS itself. Do this **before** the first start of an AWS deployment whose credentials come from a web identity
+or an assumed role, not after: the boot check is where the store first signs in, and there it can come up as an
+identity nobody chose without saying so.
 
 - **Add the SDK's `sts` module, for web-identity and assumed-role credentials** *(#1145, deferred here
   2026-10-19).* Only `s3` and its URL-connection client are on the classpath, so EKS's IAM roles for service

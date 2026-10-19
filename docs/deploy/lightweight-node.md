@@ -132,7 +132,7 @@ directory**:
 | `current` | A link to the release that runs |
 | `kdr.env` | The node's settings (step 8) |
 | `h2Database/` | The database file, created on the first start. A deploy never touches it. |
-| `fileStore/` | Files the application stores, created on the first start -- unless they are kept in object storage (see "Keeping files in Linode Object Storage" below) |
+| `fileStore/` | Files the application stores, created on the first start; none when they are kept in object storage (see "Keeping files in Linode Object Storage" below) |
 | `flavor-overlays/` | The deployment's own wording for its deployment flavors, if any |
 | `private/` | Secrets: the mail provider's key (see "Mail and sign-in" below) |
 
@@ -496,5 +496,5 @@ Then deploy (`kdr-deploy <target>`), which writes them into `kdr.env` and restar
 **5. Check it.** The startup line in the log names the store (`File store: s3 (S3 at
 https://us-ord-10.linodeobjects.com (us-ord-10), buckets named 'examplesite-...'), 2 bucket(s) declared.`), and a
 bucket that is missing, or that the key cannot use, is named in the startup failure instead -- a `403 Forbidden` there
-is most often the key at the wrong endpoint (step 2). Then upload a client's favicon on the site and see it in the tab. Once the node runs this
-way, `~/kdr/fileStore` holds nothing the application reads, and can be removed.
+is most often the key at the wrong endpoint (step 2). Then upload a client's favicon on the site and see it in the
+tab. Once the node runs this way, `~/kdr/fileStore` holds nothing the application reads, and can be removed.

@@ -30,7 +30,7 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
     val contentTypes = HashMap<String, String>()
     var listRequests = 0
 
-    /** Each put, by `bucket/key`: whether it carried the SDK's own checksum -- a trailer after its body, or a header. */
+    /** Each put, by `bucket/key`: whether it carried the SDK's own checksum, a trailer after its body or a header. */
     val checksummedPuts = HashMap<String, Boolean>()
 
     /**
@@ -71,7 +71,9 @@ private class S3Stub(vararg existingBuckets: String) : AutoCloseable {
             "$bucket/$key" !in objects -> error(exchange, 404, "NoSuchKey")
             exchange.requestMethod == "HEAD" -> respond(exchange, 200)
             else -> {
-                if ("$bucket/$key" in otherwiseChecksummed) exchange.responseHeaders.add("x-amz-checksum-crc32", "AAAAAA==")
+                if ("$bucket/$key" in otherwiseChecksummed) {
+                    exchange.responseHeaders.add("x-amz-checksum-crc32", "AAAAAA==")
+                }
                 respond(exchange, 200, objects.getValue("$bucket/$key"))
             }
         }
@@ -193,8 +195,8 @@ class SdkS3ApiTest : StringSpec({
 
     // Issue #1271: an S3-compatible service need not take the SDK's default trailing checksum -- an older Linode
     // endpoint was reported refusing it, others keep the framing as the content -- so through an endpoint an upload
-    // carries none. (Over this stub's
-    // plain HTTP the SDK still signs the body in chunks, SigV4's own streaming form; over HTTPS it sends it whole.)
+    // carries none. (Over this stub's plain HTTP the SDK still signs the body in chunks, SigV4's own streaming form;
+    // over HTTPS it sends it whole.)
     "through an endpoint an upload carries no checksum of the SDK's own, and arrives intact" {
         val bytes = ByteArray(70_000) { (it * 7).toByte() }
         api.put("stub-files", "plain/one", bytes, "application/octet-stream")
