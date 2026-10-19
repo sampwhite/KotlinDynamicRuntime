@@ -2,6 +2,7 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.UPF
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CUST
@@ -88,6 +89,21 @@ class ClientDelegatedCreateTest : StringSpec({
         // A member of the root is no administrator at all.
         val member = TestUser.create(cxt, "member@dlg1112.test", userClient = root)
         member.expectError(EXC.notAuthorized, UADEP.clientCreate, createBody("${root}_north"))
+    }
+
+    "an id outside the customer is refused alike whether it exists or not (issue #1288)" {
+        // Signed in at the root again: the first case moved this person's session into the client it made.
+        val atRoot = TestUser.create(cxt, "admin@dlg1112.test", userClient = root)
+        // `hub` exists (in source code); `nosuch1288` does not; `HUB` differs from `hub` only by case. The refusal
+        // must not tell them apart, or it says which of another customer's clients exist, and where.
+        fun refusal(clientId: String): Pair<Any?, String> {
+            val env = atRoot.expectError(EXC.badInput, UADEP.clientCreate, createBody(clientId))
+            return env[EP.status] to env[EP.errorMessage].toString().replace(clientId, "<id>")
+        }
+        val missing = refusal("nosuch1288")
+        refusal("hub") shouldBe missing
+        refusal("HUB") shouldBe missing
+        missing.second shouldContain "a customer's client ids are its own id or '${root}_<name>'"
     }
 
     "a customer on the free plan makes no clients" {

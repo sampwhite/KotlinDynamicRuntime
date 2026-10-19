@@ -5,6 +5,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * A client created by a customer's **root administrator** (issue #1112): the customer's own way to grow, beside the
@@ -70,6 +71,12 @@ object ClientDelegatedCreate {
             )
         val parent = clients.known(root)
             ?: throw KdrException("Client '$root' has no definition on this node.", code = EXC.notFound)
+        // The customer's prefix first (issue #1288), before anything looks the id up: the platform's create says
+        // whether an id is taken, and where it is defined, before the write judges the prefix -- which, for an id
+        // outside the customer, would tell its root's administrators which of other customers' clients exist. Inside
+        // the prefix, a taken id is one of the customer's own, which they may see.
+        val clientId = request[CLD.clientId].toOptStr().orEmpty()
+        newClientPrefixFault(clients, clientId, customer.customerId)?.let { throw KdrException.mkInput(it) }
         val created = ClientCreate.create(cxt, ClientFieldPolicies.delegatedDefinition(parent.toInfo(), request))
         // From here the client exists, whatever becomes of its creator's user: a failure is the result's to say.
         return try {
