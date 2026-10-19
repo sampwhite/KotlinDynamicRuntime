@@ -255,6 +255,23 @@ path), `service`, `publicUrl`, and how many releases to keep, then each setting 
 `deploy/targets/dynamicruntime.org.properties` is a complete example. A target file holds no secrets: the node keeps
 those in `private/`, which the command never touches.
 
+**Build only what the node runs.** The build happens in your workspace, so it would otherwise include whatever your
+workspace's `settings.gradle.kts` includes: your own configuration code (`customConfig`), which the application
+would apply on the node as it starts, and any scratch project. So a target names its build with `buildProfile`
+(`reference` for dynamicruntime.org), and `kdr-deploy` passes it to Gradle as `-PkdrBuild=reference`. Your settings
+file reads that property and leaves your own projects out when it is set. The block to copy is at the end of
+`examples/settings.gradle.kts.example`:
+
+```kotlin
+val kdrBuild: String? = providers.gradleProperty("kdrBuild").orNull
+if (kdrBuild == null) {
+    injectComponent(":customConfig", "customConfig")
+}
+```
+
+A developer build, IntelliJ's included, passes no property, so it still sees every project. Then the node's settings
+come only from its `kdr.env` and its flavors.
+
 A node of your own does not need to be in the repository. Keep its target file anywhere, for example
 `~/nodes/mynode.properties`, and pass its path instead of a name: `kdr-deploy ~/nodes/mynode.properties`. A relative
 path is read from the directory you run the command in. Keep that file outside the checkout rather than uncommitted in
@@ -273,7 +290,7 @@ kdr-deploy dynamicruntime.org
 The dry run shows what a deploy would do and changes nothing: the release it would make, which release runs now, how
 `kdr.env` would change, and which old releases it would remove. A deploy then, after asking:
 
-1. builds the distribution (`./gradlew :launch:installDist`), which is the release;
+1. builds the distribution (`./gradlew -PkdrBuild=<buildProfile> :launch:installDist`), which is the release;
 2. copies it to a new `releases/<date>-<time>-<commit>/`, with `-dirty` on the end when your checkout had uncommitted
    changes;
 3. writes `kdr.env` from the target when it differs, keeping the old one as `kdr.env.prev`;
@@ -295,11 +312,10 @@ The database is not in a release, so going back does not lose data.
 
 **What it does, by hand.** The distribution is `KotlinDynamicRuntime/launch/build/install/launch/`: a `bin/launch`
 script and a `lib/` of every jar the application needs, the web application among them. It is self-contained, unlike
-the jar `kdr-run` uses, which names jars by where they sit on your machine, and it carries your workspace's own
-configuration code (`customConfig`), which the application applies as it starts. Without the command:
+the jar `kdr-run` uses, which names jars by where they sit on your machine. Without the command:
 
 ```bash
-./gradlew :launch:installDist
+./gradlew -PkdrBuild=reference :launch:installDist
 release=$(date +%Y%m%d-%H%M)-$(git -C KotlinDynamicRuntime rev-parse --short HEAD)
 rsync -a KotlinDynamicRuntime/launch/build/install/launch/ kdr@example.org:kdr/releases/$release/
 ssh kdr@example.org "ln -sfn ~/kdr/releases/$release ~/kdr/current && systemctl --user restart kdr"
@@ -433,5 +449,7 @@ chmod 600 ~/kdr/private/secrets.properties
 Without the key nothing is sent, so nobody can be mailed a code. With it, the node also needs `KDR_MAIL_DOMAIN`
 (above), the domain the mail is sent from. For mail to reach inboxes rather than spam folders, that domain's DNS needs
 the records Mailgun asks for (SPF and DKIM); Mailgun's dashboard shows which are missing. To send from a different
-address, or through Mailgun's EU endpoint, a deployment's own configuration code (its `customConfig`) sets
-`appFromAddress` or `mailgunUri`, which take the place of what the domain gives.
+address, or through Mailgun's EU endpoint, configuration code built for that deployment sets `appFromAddress` or
+`mailgunUri`, which take the place of what the domain gives. Such code is a project your settings file injects under
+the deployment's build profile (`if (kdrBuild == "reference") ...`), not your workspace's own `customConfig`, which a
+deploy build leaves out.

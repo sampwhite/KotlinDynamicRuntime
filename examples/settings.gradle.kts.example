@@ -84,3 +84,17 @@ project(":multiNodeTest").projectDir = file("KotlinDynamicRuntime/multiNodeTest"
 // A client component from a private sibling checkout would be another line, e.g.:
 //
 //   injectComponent(":acmeBilling", "../acme-private/billing")
+
+// A deploy build (issue #1273). `kdr-deploy` builds with `-PkdrBuild=<the target's buildProfile>`, and a developer
+// build -- IntelliJ's included -- passes nothing. Guard what only this workspace uses, such as its own
+// configuration and any scratch project, so a deploy never carries it to a node:
+//
+//   val kdrBuild: String? = providers.gradleProperty("kdrBuild").orNull
+//   if (kdrBuild == null) {
+//       injectComponent(":customConfig", "customConfig")
+//       include("playground")
+//       project(":playground").projectDir = file("playground")
+//   }
+//
+// The value names the build, so a deployment that needs something of its own can add it under its name, e.g.
+// `if (kdrBuild == "reference") injectComponent(":referenceConfig", "deploy-config/reference")`.

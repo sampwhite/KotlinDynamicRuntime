@@ -24,6 +24,12 @@ data class DeployTarget(
     val publicUrl: String,
     /** How many releases to keep, the running one always among them. */
     val keepReleases: Int,
+    /**
+     * The name the build is made under (issue #1273), passed to Gradle as `-PkdrBuild=<name>`, or null to build as a
+     * developer does. A workspace's `settings.gradle.kts` reads it to leave out what a deploy should not carry: its
+     * own configuration (`customConfig`), its scratch projects.
+     */
+    val buildProfile: String?,
     /** The node's settings, written as `kdr.env` in this order; empty leaves the node's own file alone. */
     val env: Map<String, String>,
 ) {
@@ -38,8 +44,11 @@ data class DeployTarget(
     val port: Int get() = env["KDR_PORT"]?.toIntOrNull() ?: DPL.defaultPort
 
     companion object {
-        /** The keys a target file must have; every other key is `env.<VAR>` or [DPL.keepReleasesKey]. */
+        /** The keys a target file must have; every other key is `env.<VAR>`, [DPL.keepReleasesKey] or [DPL.buildProfileKey]. */
         private val required = listOf("host", "user", "baseDir", "service", "publicUrl")
+
+        /** What a build profile may be: a plain name, since it goes onto a Gradle command line. */
+        private val profilePattern = Regex("[A-Za-z][A-Za-z0-9_-]*")
 
         /**
          * Reads a target file's [text], named [name]. A properties file in its simplest form -- `key=value` per
@@ -62,7 +71,7 @@ data class DeployTarget(
                     require(variable.isNotEmpty()) { "Target '$name', line ${index + 1}: '${DPL.envPrefix}' names no variable." }
                     require(env.put(variable, value) == null) { "Target '$name': $variable is set twice." }
                 } else {
-                    require(key in required || key == DPL.keepReleasesKey) {
+                    require(key in required || key == DPL.keepReleasesKey || key == DPL.buildProfileKey) {
                         "Target '$name', line ${index + 1}: unknown key '$key'. A setting for the node is '${DPL.envPrefix}<VARIABLE>'."
                     }
                     require(values.put(key, value) == null) { "Target '$name': '$key' is set twice." }
@@ -77,9 +86,14 @@ data class DeployTarget(
                     "Target '$name': ${DPL.keepReleasesKey} must be a whole number of at least 2 (the running release and one to roll back to)."
                 }
             } ?: DPL.defaultKeepReleases
+            val profile = values[DPL.buildProfileKey]?.ifEmpty { null }?.also {
+                require(profilePattern.matches(it)) {
+                    "Target '$name': ${DPL.buildProfileKey} must be a plain name (letters, digits, '-', '_'), not '$it'."
+                }
+            }
             return DeployTarget(
                 name, values.getValue("host"), values.getValue("user"), baseDir, values.getValue("service"),
-                values.getValue("publicUrl").trimEnd('/'), keep, env,
+                values.getValue("publicUrl").trimEnd('/'), keep, profile, env,
             )
         }
 
@@ -117,6 +131,12 @@ object DPL {
 
     const val keepReleasesKey = "keepReleases"
     const val defaultKeepReleases = 3
+
+    /** A target file's key naming its build (issue #1273): see [DeployTarget.buildProfile]. */
+    const val buildProfileKey = "buildProfile"
+
+    /** The Gradle property a build profile is passed as, which a workspace's `settings.gradle.kts` reads. */
+    const val buildProperty = "kdrBuild"
 
     /** The application's own default port, when a target sets no `KDR_PORT`. */
     const val defaultPort = 7070

@@ -47,6 +47,16 @@ class DeployTest : StringSpec({
         problem(targetText.replace("baseDir=/home/kdr/kdr/", "baseDir=kdr")) shouldContain "absolute path"
         problem(targetText.replace("keepReleases=3", "keepReleases=1")) shouldContain "at least 2"
         problem("$targetText\njust words") shouldContain "expected key=value"
+        // It goes onto a Gradle command line, so only a plain name.
+        problem("$targetText\nbuildProfile=ref erence") shouldContain "plain name"
+        problem("$targetText\nbuildProfile=-Pother=x") shouldContain "plain name"
+    }
+
+    "a target's build profile reaches Gradle as -PkdrBuild, and none builds as a developer does (issue #1273)" {
+        target.buildProfile shouldBe null
+        Deploy.buildArgs(target) shouldBe listOf(":launch:installDist")
+        val profiled = DeployTarget.parse("node", "$targetText\nbuildProfile=reference")
+        Deploy.buildArgs(profiled) shouldBe listOf("-PkdrBuild=reference", ":launch:installDist")
     }
 
     "the repository's own target is a valid one" {
@@ -55,6 +65,8 @@ class DeployTest : StringSpec({
         val reference = DeployTarget.load(repo, "dynamicruntime.org")
         reference.host shouldBe "dynamicruntime.org"
         reference.env["KDR_DEPLOY_FLAVORS"] shouldBe "reference"
+        // Built without the workspace's own projects (issue #1273).
+        reference.buildProfile shouldBe "reference"
         // A target never carries a secret; the node keeps its own.
         reference.env.keys.none { it.contains("KEY") || it.contains("SECRET") || it.contains("PASSWORD") } shouldBe true
     }
