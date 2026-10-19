@@ -113,6 +113,11 @@ In the directory that *contains* `KotlinDynamicRuntime/` (the same directory as 
    That single line is all the deployment adds — it co-builds the project and wires it onto `launch`'s runtime
    classpath. No edits to `launch` or any version-controlled build file are needed.
 
+   **Not in a deploy build.** `kdr-deploy` builds under the target's build profile (`-PkdrBuild=<name>`, issue
+   #1273), and the example settings file guards this line with `if (kdrBuild == null)`, so a workspace's own
+   configuration never reaches a node. Configuration meant for a deployed node is a project of its own, injected
+   under that node's build name (`if (kdrBuild == "reference") injectComponent(...)`).
+
 6. **Select which applier runs** (when more than one is present) with `KDR_CUSTOM_CONFIG`, matched against the
    provider's simple class name; unset defaults to `KdrConfig`:
 

@@ -118,11 +118,33 @@ This is what makes a cache *indistinguishable* from the queries it replaces rath
 
 ```kotlin
 fun queryByUsername(cxt: KdrCxt, username: String): AuthUserRow? =
-    cachedUser(cxt) { it.snapshot.byIndex(AU.username, username) } ?: queryOne(cxt, AU.username, username)
+    cachedUser(cxt) { it.snapshot.byIndex(AU.username, username) } ?: userMiss(cxt) { queryOne(cxt, AU.username, username) }
 ```
 
 A disabled user is the routine miss — `queryOne` is documented to return disabled rows, and the cache does not
 hold them, so the fallback is what preserves that.
+
+**Guard the fallback.** Call `cache.guardFallback(cxt)` before the query (`UserService.userMiss` wraps it). Inside
+a transaction it refuses the fallback (below); outside one it does nothing. A deliberate SQL read -- a
+`_debug=dataFromSql` diagnosis, or a read under a lock -- is not a fallback and is not guarded.
+
+## Inside a transaction (issue #1266)
+
+**A transaction reads each cache as it stood when the transaction opened.** As `SqlDatabase.withTranAndSession`
+opens a transaction, the cache service refreshes (the connection still in auto-commit, so outside it) and pins
+every cache on that database; `cache.snapshot` then returns the pin, and `checkRefresh` does nothing, until the
+transaction ends. Another thread's reload in the middle does not reach it. The pin is per **thread** -- held in a
+`ScopedValue` bound for the transaction's block (`SqlThreadTrans`), so a sibling context on the same thread sees it
+too, and it ends with the block -- and per **database**: a cache on another pool stays live.
+
+- **It never includes the transaction's own writes.** Read those, and any row you hold locked or need current,
+  with SQL on the transaction's connection (`GedraDataService.readForPatch` is the model).
+- **A miss is not a reason to query.** The fallback would either join the transaction -- holding what it reads
+  until commit, the cross-table lock pattern that deadlocks -- or, through a context without the transaction, take
+  a second connection from the pool this thread already holds one of. `guardFallback` throws on a test instance and
+  logs a warning elsewhere (the query then goes ahead, so a missed case costs a warning, not a changed answer).
+- **Read what you need before opening the transaction** when it is an input to the work rather than the work's
+  own rows.
 
 ## Consuming changes: cursors
 
@@ -165,14 +187,13 @@ Mostly you do not have to think about this. It matters when diagnosing a stale r
 3. **Nobody announced it** — a migration or a DBA. The `minRecheckMs` floor (30s, `KDR_TABLE_CACHE_MIN_RECHECK_MS`)
    is the backstop, not the promise.
 
-Reads never run inside an open transaction: a reload there would see uncommitted rows and strand them in a
-snapshot every thread shares. The transaction's own writes are announced when it commits, so the first read after
-that reloads.
+Reads never reload inside an open transaction: a transaction reads its pin (see "Inside a transaction"). The
+transaction's own writes are announced when it commits, so the first read after that reloads.
 
 **A write stays pending until a reload that began after it has completed** (`forceReload`, counted rather than
 flagged since #1256). A reader that finds a write still pending first waits out a reload already in progress
 -- without holding a pooled connection -- and asks again, rather than reading the snapshot from before it. Both halves of #1256 are pinned in
-`SqlTableCacheTest` on one thread with two contexts; a regression shows up there, not only under load.
+`SqlTableCacheTest`, deterministically, with a second thread; a regression shows up there, not only under load.
 
 Outside a request (a script, a background job), wrap work in `SqlTableCacheService.withMonitoring(cxt) { ... }`
 so other nodes hear about it at once rather than at the floor.

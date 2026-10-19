@@ -47,6 +47,16 @@ class SqlTopicService : ServiceInitializer {
         }
     }
 
+    /** Told when a transaction is about to open (issue #1266); see [SqlTranListener]. */
+    val tranListeners = CopyOnWriteArrayList<SqlTranListener>()
+
+    /** Registers a [SqlTranListener] (idempotent by identity, as [addWriteListener] is). */
+    fun addTranListener(listener: SqlTranListener) {
+        if (tranListeners.none { it === listener }) {
+            tranListeners.add(listener)
+        }
+    }
+
     override fun checkInit(cxt: KdrCxt) {
         isInMemory = (cxt.instanceConfig.get(ACFG.inMemoryOnly) as? Boolean) ?: DbEnv.resolveInMemoryOnly(cxt)
     }

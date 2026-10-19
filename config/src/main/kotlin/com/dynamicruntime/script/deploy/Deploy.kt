@@ -22,7 +22,8 @@ import kotlin.system.exitProcess
  * ```
  *
  * The node is one `docs/deploy/lightweight-node.md` set up, and [DeployTarget] describes it. A deploy:
- * 1. builds the distribution (`:launch:installDist`), which is the release;
+ * 1. builds the distribution (`:launch:installDist`), which is the release, under the target's build profile
+ *    (`-PkdrBuild`), so the workspace's own projects stay out of it;
  * 2. copies it to a new `releases/<release>/` on the node;
  * 3. writes the node's `kdr.env` from the target, when it differs, keeping the old one as `kdr.env.prev`;
  * 4. points `current` at the new release and restarts the service;
@@ -76,6 +77,14 @@ object Deploy {
         builtAt.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + "-" + shortSha + if (dirty) "-dirty" else ""
 
     fun isReleaseName(name: String): Boolean = releasePattern.matches(name)
+
+    /**
+     * The Gradle arguments that build [target]'s release: `:launch:installDist`, under the target's build profile
+     * (`-PkdrBuild=<name>`, issue #1273) when it names one, which the workspace's `settings.gradle.kts` reads to leave
+     * out what a deploy should not carry.
+     */
+    fun buildArgs(target: DeployTarget): List<String> =
+        listOfNotNull(target.buildProfile?.let { "-P${DPL.buildProperty}=$it" }) + ":launch:installDist"
 
     /** [text] quoted for a POSIX shell, so a value reaches the node's command line as written. */
     fun shellQuote(text: String): String = "'" + text.replace("'", "'\\''") + "'"
@@ -167,7 +176,11 @@ object Deploy {
         println("Deploy to ${target.sshDestination} (${target.publicUrl})")
         println("  release:   $release${if (dirty) "   (the checkout has uncommitted changes)" else ""}")
         println("  running:   ${current ?: "nothing"}")
-        if (!options.skipBuild) println("  build:     ./gradlew :launch:installDist")
+        val build = "./gradlew ${buildArgs(target).joinToString(" ")}"
+        println(
+            if (options.skipBuild) "  build:     skipped -- deploying the distribution already built, as it was built"
+            else "  build:     $build",
+        )
         println("  copy:      ${DPL.distributionDir}/ -> ${target.releasesDir}/$release/")
         when {
             target.env.isEmpty() -> println("  kdr.env:   left as it is (the target sets nothing)")
@@ -188,10 +201,10 @@ object Deploy {
 
         if (!options.skipBuild) {
             val workspace = options.repoDir.parentFile
-            if (!inherit(workspace, "./gradlew", ":launch:installDist", "-q")) return fail("The build failed.")
+            if (!inherit(workspace, "./gradlew", *buildArgs(target).toTypedArray(), "-q")) return fail("The build failed.")
         }
         val dist = File(options.repoDir, DPL.distributionDir)
-        if (!File(dist, "bin/launch").isFile) return fail("No distribution at $dist; build it with ./gradlew :launch:installDist.")
+        if (!File(dist, "bin/launch").isFile) return fail("No distribution at $dist; build it with $build.")
         println("Copying the release...")
         if (!inherit(options.repoDir, "rsync", "-a", "--delete", "$dist/", "${target.sshDestination}:${target.releasesDir}/$release/")) {
             return fail("Copying the release failed; nothing on the node was switched.")

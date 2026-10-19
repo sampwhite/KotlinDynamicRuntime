@@ -1681,6 +1681,7 @@ class GedraDataService : ServiceInitializer {
         // is then taken for every scope, not only the no-client shapes the cache cannot key on.
         if (!cxt.hasDebugDiagnostic(GDBG.dataFromSql)) {
             cachedListGedras(cxt, kind, scope, limit, offset, rowFilter, sort, stateFilter)?.let { return it }
+            dataCache?.guardFallback(cxt)
         }
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
@@ -1830,6 +1831,7 @@ class GedraDataService : ServiceInitializer {
                 .filter { admitsRow(scope, it) }
                 .mapNotNull { it[GD.gedraId].toOptStr() }
         }
+        if (!cxt.hasDebugDiagnostic(GDBG.dataFromSql)) dataCache?.guardFallback(cxt)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraDataTopic)
         val table = gedraDataTable(cxt)
         val data = mutableMapOf<String, Any?>(GD.gedraKind to kind.name)
