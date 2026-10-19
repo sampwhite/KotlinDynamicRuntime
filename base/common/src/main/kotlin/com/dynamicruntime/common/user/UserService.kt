@@ -72,7 +72,7 @@ class UserService : ServiceInitializer {
 
     /** The identity with [identityId], cache-first, or null. */
     fun queryIdentityById(cxt: KdrCxt, identityId: String): AuthIdentityRow? =
-        cachedIdentity(cxt) { it.snapshot.get(it.idOf(identityId)) } ?: queryOneIdentity(cxt, AI.identityId, identityId)
+        cachedIdentity(cxt) { it.snapshot.get(it.idOf(identityId)) } ?: identityMiss(cxt) { queryOneIdentity(cxt, AI.identityId, identityId) }
 
     /**
      * The identity with [identityId] as stored now, read past the cache, or null: the base for a guarded write
@@ -82,7 +82,7 @@ class UserService : ServiceInitializer {
 
     /** The identity at the (normalized) [address], cache-first, or null. */
     fun queryIdentityByAddress(cxt: KdrCxt, address: String): AuthIdentityRow? =
-        cachedIdentity(cxt) { it.snapshot.byIndex(AI.primaryId, address) } ?: queryOneIdentity(cxt, AI.primaryId, address)
+        cachedIdentity(cxt) { it.snapshot.byIndex(AI.primaryId, address) } ?: identityMiss(cxt) { queryOneIdentity(cxt, AI.primaryId, address) }
 
     /**
      * An identity's stored map, for extracting a user row -- the lookup [AuthUserRow.extract] takes to derive
@@ -90,9 +90,24 @@ class UserService : ServiceInitializer {
      * resolver, not per row), so a listing that extracts a page of users pays a map hit each; a miss falls
      * back to SQL.
      */
+    /**
+     * The SQL [query] a user lookup falls back to when the cache cannot answer, guarded (issue #1266): refused inside
+     * a transaction that pinned the cache, as any cache fallback is ([SqlTableCache.guardFallback]).
+     */
+    private inline fun <R> userMiss(cxt: KdrCxt, query: () -> R): R {
+        userCache?.guardFallback(cxt)
+        return query()
+    }
+
+    /** As [userMiss], for an identity lookup. */
+    private inline fun <R> identityMiss(cxt: KdrCxt, query: () -> R): R {
+        identityCache?.guardFallback(cxt)
+        return query()
+    }
+
     private fun identityOf(cxt: KdrCxt): (String) -> Map<String, Any?>? {
         val cache = identityCache?.also { it.checkRefresh(cxt) }
-        return { id -> cache?.snapshot?.get(cache.idOf(id))?.value ?: queryOneIdentityRaw(cxt, AI.identityId, id) }
+        return { id -> cache?.snapshot?.get(cache.idOf(id))?.value ?: identityMiss(cxt) { queryOneIdentityRaw(cxt, AI.identityId, id) } }
     }
 
     /**
@@ -485,10 +500,10 @@ class UserService : ServiceInitializer {
         queryIdentityByAddress(cxt, primaryId)?.let { defaultUserOf(cxt, it) }
 
     fun queryByUsername(cxt: KdrCxt, username: String): AuthUserRow? =
-        cachedUser(cxt) { it.snapshot.byIndex(AU.username, username) } ?: queryOne(cxt, AU.username, username)
+        cachedUser(cxt) { it.snapshot.byIndex(AU.username, username) } ?: userMiss(cxt) { queryOne(cxt, AU.username, username) }
 
     fun queryByUserId(cxt: KdrCxt, userId: Long): AuthUserRow? =
-        cachedUser(cxt) { it.snapshot.get(it.idOf(userId)) } ?: queryOne(cxt, AU.userId, userId)
+        cachedUser(cxt) { it.snapshot.get(it.idOf(userId)) } ?: userMiss(cxt) { queryOne(cxt, AU.userId, userId) }
 
     /**
      * Serves a single-row lookup from the [userCache] when it holds the row, returning null when it does not
@@ -564,6 +579,7 @@ class UserService : ServiceInitializer {
             if (cached != null) found[id] = cached else missed.add(id)
         }
         if (missed.isNotEmpty()) {
+            userCache?.guardFallback(cxt)
             val sqlCxt = SqlTopicService.mkSqlCxt(cxt, authTopic)
             val table = authUsersTable(cxt)
             val stmt = SqlTopicUtil.mkNamedTableSelectStmt(sqlCxt, "qAuthUsersBy_${AU.userId}", table, listOf(AU.userId))

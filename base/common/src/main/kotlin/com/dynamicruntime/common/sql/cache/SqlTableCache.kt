@@ -14,6 +14,8 @@ import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.SqlSession
 import com.dynamicruntime.common.sql.SqlStatement
 import com.dynamicruntime.common.sql.SqlStmtUtil
+import com.dynamicruntime.common.sql.SqlDatabase
+import com.dynamicruntime.common.sql.SqlThreadTrans
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.common.util.toOptInstant
@@ -49,12 +51,20 @@ import kotlin.time.Instant
  */
 class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     /**
-     * The current read view. Replaced wholesale after a reload that changed something; never mutated. Safe to
-     * hold on to -- what a caller reads from it stays consistent even as a newer snapshot is published.
+     * The read view. Replaced wholesale after a reload that changed something; never mutated. Safe to hold on to
+     * -- what a caller reads from it stays consistent even as a newer snapshot is published.
+     *
+     * **Inside a transaction, the snapshot pinned when it opened** (issue #1266): while a transaction on this
+     * cache's database is open on the thread, every read sees the cache as it stood when that transaction began,
+     * whatever another thread's reload publishes meanwhile. It never includes the transaction's own writes; code
+     * that needs those, or a row it holds locked, reads SQL on the transaction's connection.
      */
+    @Suppress("UNCHECKED_CAST")
+    val snapshot: SqlCacheSnapshot<T> get() = (SqlThreadTrans.pinFor(this) as? SqlCacheSnapshot<T>) ?: current
+
+    /** The latest published view, whatever is pinned: what a reload replaces, and what a pin captures. */
     @Volatile
-    var snapshot: SqlCacheSnapshot<T> = SqlCacheSnapshot.empty(params.indexes)
-        private set
+    private var current: SqlCacheSnapshot<T> = SqlCacheSnapshot.empty(params.indexes)
 
     /** Whether this cache refreshes itself ([checkRefresh]) rather than being driven by the service. */
     var isDetached: Boolean = true
@@ -148,6 +158,36 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     fun idOf(vararg keyValues: Any?): String =
         keyValues.joinToString(TCH.idSeparator) { it?.toString() ?: "" }
 
+    // --- inside a transaction (issue #1266) -----------------------------------
+
+    /** Whether a transaction open on this thread pinned this cache's snapshot ([snapshot]). */
+    fun isPinned(): Boolean = SqlThreadTrans.pinFor(this) != null
+
+    /** Records this cache's latest view as [tran]'s pin; called by [SqlTableCacheService] as a transaction opens. */
+    fun pinFor(tran: SqlThreadTrans.OpenTran) {
+        tran.pins[this] = current
+    }
+
+    /** The database this cache's table lives on: a transaction there is what pins it. */
+    fun sqlDbOf(cxt: KdrCxt): SqlDatabase = SqlTopicService.mkSqlCxt(cxt, params.topic).sqlDb
+
+    /**
+     * Called by a reader about to fall back to SQL because this cache could not answer (issue #1266). Inside a
+     * transaction that pinned this cache, the fallback would either join the transaction -- holding the rows it
+     * reads until commit, the cross-table lock pattern that ends in deadlocks -- or, through a context with no
+     * transaction, take a second connection from the pool this thread already holds one of. So it is refused: on a
+     * test instance it throws, so a test finds the read; elsewhere it logs and the query goes ahead, so a missed
+     * case costs a warning rather than a changed answer. The fix is to read before the transaction opens, or to
+     * read SQL deliberately on the transaction's connection.
+     */
+    fun guardFallback(cxt: KdrCxt) {
+        if (!isPinned()) return
+        val message = "Table cache ${params.tableName} could not answer inside an open transaction, and falling back " +
+            "to SQL there is not allowed (issue #1266): read before the transaction opens, or read SQL on its connection."
+        if (cxt.instanceConfig.isTestInstance) throw KdrException(message)
+        LogSql.warn(cxt, message)
+    }
+
     // --- refreshing ---------------------------------------------------------
 
     /**
@@ -155,6 +195,8 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
      * registered cache once per context off one state-row read; a detached one queries its own table.
      */
     fun checkRefresh(cxt: KdrCxt) {
+        // Pinned for a transaction open on this thread (issue #1266): its view is fixed, so there is nothing to do.
+        if (isPinned()) return
         if (isDetached) {
             checkLoadCache(cxt, cxt.instanceNow())
         } else {
@@ -474,7 +516,7 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
                 multiStreamsOut[index.name] = changes
             }
         }
-        snapshot = SqlCacheSnapshot(byId, uniqueIndexes, multiIndexes, multiStreamsOut, ordered)
+        current = SqlCacheSnapshot(byId, uniqueIndexes, multiIndexes, multiStreamsOut, ordered)
     }
 
     // --- statements & lookups -----------------------------------------------
@@ -515,7 +557,7 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
      */
     override fun toJsonMap(): Map<String, Any?> {
         val bookkeeping = refreshLock.withLock { queryFromDate to lastSeen }
-        val current = snapshot
+        val current = current
         return linkedMapOf<String, Any?>(
             TCI.tableName to params.tableName,
             TCI.topic to params.topic,

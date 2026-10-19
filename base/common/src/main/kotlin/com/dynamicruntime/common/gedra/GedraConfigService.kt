@@ -546,6 +546,7 @@ class GedraConfigService : ServiceInitializer {
     fun readLatest(cxt: KdrCxt, configClassId: GedraId): GedraConfigRow? {
         val configId = configClassId.revisionClass()
         cachedLatest(cxt, configId)?.let { return it }
+        configCache?.guardFallback(cxt)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         val table = configTable(cxt)
         val stmt = latestQuery(sqlCxt, table)
@@ -565,6 +566,7 @@ class GedraConfigService : ServiceInitializer {
      */
     fun listConfigs(cxt: KdrCxt): List<GedraConfigRow> {
         cachedList(cxt)?.let { return it }
+        configCache?.guardFallback(cxt)
         val sqlCxt = SqlTopicService.mkSqlCxt(cxt, gedraConfigTopic)
         val table = configTable(cxt)
         val stmt = SqlStmtUtil.prepareSql(

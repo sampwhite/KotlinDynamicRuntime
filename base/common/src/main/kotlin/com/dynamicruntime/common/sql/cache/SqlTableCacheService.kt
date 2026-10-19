@@ -12,6 +12,7 @@ import com.dynamicruntime.common.sql.LogSql
 import com.dynamicruntime.common.sql.TOPIC
 import com.dynamicruntime.common.sql.SqlTopicService
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
+import com.dynamicruntime.common.sql.SqlTranListener
 import com.dynamicruntime.common.sql.SqlWriteListener
 import com.dynamicruntime.common.sql.tableModule
 import com.dynamicruntime.common.startup.ServiceInitializer
@@ -122,6 +123,22 @@ class SqlTableCacheService : ServiceInitializer {
      */
     override fun checkInit(cxt: KdrCxt) {
         SqlTopicService.get(cxt).addWriteListener(writeListener)
+        SqlTopicService.get(cxt).addTranListener(tranListener)
+    }
+
+    /**
+     * Pins the caches on a transaction's database as it opens (issue #1266): a refresh check first, while the
+     * connection is still in auto-commit, so the pin is the cache as it stood when the transaction began; then each
+     * cache's view recorded for the transaction, which every read inside it then sees ([SqlTableCache.snapshot]).
+     * A cache already pinned on this thread -- a second transaction opened inside the first -- keeps the first pin.
+     * A cache on another database is left live: a transaction here holds nothing there.
+     */
+    val tranListener = SqlTranListener { c, tran ->
+        if (isDisabled) return@SqlTranListener
+        val toPin = getSortedCaches().filter { !it.isPinned() && it.sqlDbOf(c) === tran.sqlDb }
+        if (toPin.isEmpty()) return@SqlTranListener
+        getAndRefresh(c)
+        toPin.forEach { it.pinFor(tran) }
     }
 
     /**
