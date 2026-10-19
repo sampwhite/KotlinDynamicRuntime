@@ -322,6 +322,14 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             HMENU.myClient, "My client", UiRoute(HMENU.pageClients),
             cfactExpression = "${CFACTS.administersClient},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
         )
+        // A customer's page (issue #1114), as two entries for the one page as the Clients entries are: a deployment
+        // administrator's list of customers, and for an administrator of a customer's root client their own customer,
+        // opened directly.
+        menuItem(HMENU.customers, "Customers", UiRoute(HMENU.pageCustomers), cfactExpression = "${CFACTS.isDeploymentAdmin},${CFACTS.app}")
+        menuItem(
+            HMENU.myCustomer, "My customer", UiRoute(HMENU.pageCustomers),
+            cfactExpression = "${CFACTS.administersCustomer},~${CFACTS.isDeploymentAdmin},${CFACTS.app}",
+        )
         // The client's named reports (issue #981), offered to whoever administers a client -- the caller the report
         // endpoints admit, so a `public` self-administrator is not offered a page that would refuse them (issue
         // #1091). The endpoints stay the authority.

@@ -40,6 +40,25 @@ object CUST {
 
     /** The choice list of customers a client may be filed under, for a form (issue #1107). */
     const val customerOptions = "customerOptions"
+
+    // --- the customer page (issue #1114) ---
+    /** Schema type name for one customer as the deployment's list of customers shows it. */
+    const val summaryTypeName = "CustomerSummary"
+
+    /** Schema type name for one customer's page: what it is, and its clients. */
+    const val overviewTypeName = "CustomerOverview"
+
+    /** On a customer's summary: how many clients it owns. */
+    const val clientCount = "clientCount"
+
+    /** On a customer's page: its clients, each as the Clients overview's row shapes it. */
+    const val clients = "clients"
+
+    /** The customer a page asks for; the caller's own when absent. */
+    const val customer = "customer"
+
+    /** Whether the customer is declared in source code (true) or in stored configuration. */
+    const val isSource = "isSource"
 }
 
 /**
@@ -59,7 +78,7 @@ data class CustomerDef(
     val customerId: String,
     /** The name presented for the customer. */
     val name: String,
-    /** An internal note about who, what or why. */
+    /** An internal note about who, what, or why. */
     val description: String? = null,
     /**
      * The customer's **root** client: the one whose administrators act for the customer as a whole. Set by the

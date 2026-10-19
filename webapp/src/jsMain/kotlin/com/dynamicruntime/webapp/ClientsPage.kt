@@ -287,7 +287,7 @@ private fun ChildrenBuilder.clientDetail(
         for ((label, value) in clientSummaryRows(clientId, row, def, acrossClients)) {
             // The counts lead to the listings behind them, as they do in the Clients listing -- which the caller
             // of one client no longer passes through on the way here.
-            val href = clientSummaryHref(label, row, acrossClients)
+            val href = clientSummaryHref(label, row, acrossClients, def?.info?.get(CLD.customerId).toOptStr())
             if (href == null) readOnlyField(label, value) else linkedField(label, value, href)
         }
         // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.

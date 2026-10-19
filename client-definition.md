@@ -235,7 +235,14 @@ what it likes. A sandbox is on its parent's plan and holds its own forms and use
 - **Shown.** The Clients overview carries a client's plan and usage (`planUsage`), and its page says it on one
   row: "Free: 12 of 100 forms, 3 of 20 users, 1 of 4 workflows, 2 of 10 schemas".
 
-The page showing a customer's clients is #1114's.
+**A customer has a page** (issue #1114). An administrator who sees every client lists the deployment's customers
+(`GET /clientAdmin/customers`: each one's plan, root client, and client count) and opens any one; an administrator
+of a customer's root client, client-wide, is shown their own (`GET /clientAdmin/customer/overview`, the caller's own
+when no `customer` is named). The page lists the customer's clients, sandboxes aside, as the Clients overview's rows:
+each one's facts, plan usage, publish and sandbox state, and issues. It is read-only and facts only, and each
+administrator still edits only their own client. The rule is `CustomerAccess`, which is also the `administersCustomer`
+cfact that offers "My customer" in the menu. No read width goes with it yet: the overview computes its facts itself,
+and a customer-wide `ReadScope` arrives with the first customer-wide data read that needs SQL to honor it.
 
 **Who sets each field** (issue #1108). Every field has a policy, declared once beside the definition's schema
 (`ClientFieldPolicies`; a field the schema declares without one fails as it is built). A policy has two parts: what

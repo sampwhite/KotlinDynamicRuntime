@@ -100,6 +100,8 @@ class HomeMenuTest : StringSpec({
             page(HMENU.users, "Users", HMENU.pageUsers),
             // One client to oversee, which the page opens directly (issue #1082): the entry says so.
             page(HMENU.myClient, "My client", HMENU.pageClients),
+            // Their client is `hub`, the root of the platform's own customer, which they act for (issue #1114).
+            page(HMENU.myCustomer, "My customer", HMENU.pageCustomers),
             page(HMENU.reports, "Reports", HMENU.pageReports),
             page(HMENU.cfactReference, "Client facts", HMENU.pageCfacts),
             // Their listing is every form in their client, not only their own (issue #1091).

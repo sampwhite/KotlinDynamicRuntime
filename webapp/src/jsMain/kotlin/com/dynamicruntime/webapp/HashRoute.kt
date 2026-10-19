@@ -112,6 +112,9 @@ object HP {
     /** Clients page: the client open in the detail view (issue #906), or absent for the listing. */
     const val client = "c"
 
+    /** Customers page: the customer open (issue #1114), or absent for the list -- or, for a root's administrator, their own. */
+    const val customer = "cu"
+
     /** Clients page: present for the overrides across every client (issue #917), the `allClients` administrator's view. */
     const val overrides = "ov"
 

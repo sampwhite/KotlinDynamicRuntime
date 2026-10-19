@@ -218,6 +218,9 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         present + absentClients(c).map { overviewRow(c, it.clientId, it.name, it.status) }
     }
 
+    // --- a customer's page (issue #1114), whose clients are rows of the overview above ----------------------------
+    customerOverviewEndpoints()
+
     type(CLD.sandboxResultTypeName) {
         type = SCT.kObject
         description = "What adding or removing a client's sandbox left (issue #932)."

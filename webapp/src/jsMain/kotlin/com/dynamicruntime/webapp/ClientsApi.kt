@@ -968,20 +968,38 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
 const val summaryFormsRow = "Forms"
 const val summaryUsersRow = "Users"
 
+/** The summary row naming the client's customer (issue #1114): its label, as the summary draws it. */
+val summaryCustomerRow: String = humanizeFieldName(CLD.customerId)
+
 /**
  * Where a row of the client's summary leads, or null for one that is only a fact (issue #1082): the Forms and Users
  * counts open the listings behind them, exactly as the same counts do in the Clients listing ([clientFormsHref],
  * [clientUsersHref]) -- for a client this node carries, which is where those pages work. An administrator of one
  * client lands on this summary and never sees the listing, so without this the counts would lead nowhere for the
- * one caller who used to follow them. Pure, and covered under `jsNodeTest`.
+ * one caller who used to follow them. The customer row opens the client's customer ([customerSummaryHref], issue
+ * #1114) when the caller may see it. Pure, and covered under `jsNodeTest`.
  */
-fun clientSummaryHref(label: String, row: ClientOverview?, acrossClients: Boolean): String? {
+fun clientSummaryHref(label: String, row: ClientOverview?, acrossClients: Boolean, customerId: String? = null): String? {
+    if (label == summaryCustomerRow) return customerSummaryHref(customerId, row, acrossClients)
     if (row == null || row.status != ClientStatus.present.name) return null
     return when (label) {
         summaryFormsRow -> clientFormsHref(row.clientId, acrossClients)
         summaryUsersRow -> clientUsersHref(row.clientId, acrossClients)
         else -> null
     }
+}
+
+/**
+ * Where the client summary's customer row leads (issue #1114): to the customer's page, exactly when the caller may
+ * open it -- always for an administrator who sees every client, and otherwise only on the page of the customer's
+ * root client ([ClientOverview.rootOf]), whose administrators act for the customer. Null elsewhere, where the page
+ * would only refuse: an administrator of another of the customer's clients sees its id as plain text. Pure, and
+ * covered under `jsNodeTest`.
+ */
+fun customerSummaryHref(customerId: String?, row: ClientOverview?, acrossClients: Boolean): String? = when {
+    customerId == null -> null
+    acrossClients || row?.rootOf == customerId -> customerHref(customerId)
+    else -> null
 }
 
 // --- editing the definition (issue #1026) ---------------------------------------------------------------------
