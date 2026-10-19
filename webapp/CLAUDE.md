@@ -828,7 +828,10 @@ A customer's page says what it is -- name, plan, root client, and where it is de
 aside, as the Clients overview's rows (`parseClientOverview`): load and issues on hover, counts, plan usage, and what
 it runs (`clientRunsText`). **Read-only, facts only.** Every row links to its client page for an administrator who
 sees every client; for a root's administrator only their own client does (`customerClientLinked`), since each edits
-only their own. A refusal (403, 404) is shown in the endpoint's words.
+only their own. A refusal (403, 404) is shown in the endpoint's words. The way up runs too: a client page's "Customer
+id" row opens the customer's page where the caller may open it (`customerSummaryHref`) -- always for a deployment
+administrator, and on the root client's page (the overview row's `rootOf`) for its administrators -- and is plain
+text elsewhere.
 
 ## The Reports page (issue #1007)
 

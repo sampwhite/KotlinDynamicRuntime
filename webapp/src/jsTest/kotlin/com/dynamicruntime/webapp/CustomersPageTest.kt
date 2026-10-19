@@ -39,6 +39,20 @@ class CustomersPageTest {
         assertEquals("#page=customers&cu=acme", customerHref("acme"))
     }
 
+    /** A client's summary links its customer only where the caller may open the customer's page. */
+    @Test
+    fun aClientsCustomerIsLinkedWhereItsPageWouldOpen() {
+        val root = row("acme", CLD.rootOf to "acme")
+        val east = row("acme_east")
+        // An administrator of every client: from any of the customer's clients.
+        assertEquals(customerHref("acme"), clientSummaryHref(summaryCustomerRow, east, acrossClients = true, customerId = "acme"))
+        // The root's administrator, on the root's page; nobody from another of its clients.
+        assertEquals(customerHref("acme"), clientSummaryHref(summaryCustomerRow, root, acrossClients = false, customerId = "acme"))
+        assertNull(clientSummaryHref(summaryCustomerRow, east, acrossClients = false, customerId = "acme"))
+        // A client no customer owns has nothing to link.
+        assertNull(clientSummaryHref(summaryCustomerRow, east, acrossClients = true, customerId = null))
+    }
+
     @Test
     fun aRowSaysWhatItRuns() {
         assertEquals("Latest", clientRunsText(row("a")))
