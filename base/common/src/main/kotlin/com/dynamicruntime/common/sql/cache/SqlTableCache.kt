@@ -91,6 +91,13 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
      */
     val forceReload: Boolean get() = completedLoads < requestedLoads.get()
 
+    /**
+     * Whether a completed reload covers the write that [markChanged] numbered [requested] -- began after it was
+     * announced and finished. What a caller asks about **its own** write, which [forceReload] cannot say on a busy
+     * node: there, writes keep arriving and the cache may be pending again for someone else's.
+     */
+    fun hasCovered(requested: Long): Boolean = completedLoads >= requested
+
     /** How many local writes [markChanged] has been told of; see [forceReload]. */
     private val requestedLoads = AtomicLong(0)
 
@@ -207,13 +214,14 @@ class SqlTableCache<T : Any>(val params: SqlCacheParams<T>) : JsonMappable {
     /**
      * Records that this node just wrote the table, so the next reload happens even though no time has passed,
      * and reaches back to [changedSince], the earliest stamp the write put on a row ([reachBackTo]). Called
-     * through [SqlTableCacheService.noteTableChanged] once the write is committed; see [forceReload].
+     * through [SqlTableCacheService.noteTableChanged] once the write is committed; see [forceReload]. Returns the
+     * write's number, which [hasCovered] answers for.
      */
-    fun markChanged(changedSince: Instant? = null) {
+    fun markChanged(changedSince: Instant? = null): Long {
         // The stamp before the count: a reload that sees the new count then finds the stamp, and one that read the
         // count a moment earlier leaves the stamp for the reload the new count asks for.
         if (changedSince != null) reachBackAtLeastTo(changedSince)
-        requestedLoads.incrementAndGet()
+        return requestedLoads.incrementAndGet()
     }
 
     /** Moves [reachBackTo] to [at] when that is earlier, or when there is none. */

@@ -1213,10 +1213,13 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * answer, which is what lets `SqlTopicService` read the table catalog at boot before any client exists
      * and anonymous callers be served without a special case.
      */
-    override fun storeFor(client: String?): KdrSchemaStore {
+    fun storeFor(client: String?): KdrSchemaStore {
         val store = schemaStore
         return if (client == null) store else clientStores[client] ?: store
     }
+
+    /** [client]'s own variant, or null when it varies nothing: what a context asks ([ClientSchemaSource]). */
+    override fun variantFor(client: String?): KdrSchemaStore? = client?.let { clientStores[it] }
 
     @Suppress("ConstPropertyName")
     companion object {

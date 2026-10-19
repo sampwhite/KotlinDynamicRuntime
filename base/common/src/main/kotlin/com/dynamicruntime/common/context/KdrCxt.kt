@@ -368,7 +368,8 @@ class KdrCxt(
     fun getClientSchema(): KdrSchemaStore {
         val bound = client
         clientSchema?.let { (forClient, store) -> if (forClient == bound) return store }
-        val store = (instanceConfig.get(KdrSchemaStore.clientSourceKey) as? ClientSchemaSource)?.storeFor(bound) ?: getGlobalSchema()
+        // A client that varies nothing reads this context's own global store, not the service's current one.
+        val store = (instanceConfig.get(KdrSchemaStore.clientSourceKey) as? ClientSchemaSource)?.variantFor(bound) ?: getGlobalSchema()
         clientSchema = bound to store
         return store
     }

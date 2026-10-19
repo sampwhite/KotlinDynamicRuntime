@@ -76,10 +76,15 @@ class KdrSchemaStore(
 }
 
 /**
- * Where a context finds the schema a client runs under (issue #946): the client's variant, or the global store when
- * it varies nothing. Implemented by `SchemaService`, which holds the variants, and published into the instance config
- * under [KdrSchemaStore.clientSourceKey]; declared here so the context reads it without depending on the startup layer.
+ * Where a context finds the schema a client runs under (issue #946). Implemented by `SchemaService`, which holds the
+ * variants, and published into the instance config under [KdrSchemaStore.clientSourceKey]; declared here so the
+ * context reads it without depending on the startup layer.
  */
 fun interface ClientSchemaSource {
-    fun storeFor(client: String?): KdrSchemaStore
+    /**
+     * [client]'s own variant, or null when it varies nothing (or there is no client). Null rather than the global
+     * store, so a context falls back to the global store **it** already holds: a reload replaces the service's global
+     * store, and handing back the live one would let one context read two global views at once.
+     */
+    fun variantFor(client: String?): KdrSchemaStore?
 }

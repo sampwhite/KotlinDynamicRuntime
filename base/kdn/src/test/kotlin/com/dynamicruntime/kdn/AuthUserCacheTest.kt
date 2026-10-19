@@ -192,15 +192,16 @@ class AuthUserCacheTest : StringSpec({
             .getValue(TCS.reloaded) as List<String>
         none shouldBe emptyList()
 
-        // Prove the reload actually performs a load, not just echoes the table names: a marked-for-reload
-        // cache has its pending flag cleared only by a completed load, so a reloadCaches that skipped the load
-        // would leave it set. (Driven at the service, since a read would clear the flag before we could look.)
+        // Prove the reload actually performs a load, not just echoes the table names: a marked write is covered
+        // only by a load that completes after it, so a reloadCaches that skipped the load would leave it uncovered.
+        // Asked of this write alone -- the instance is shared, and other specs' writes may leave the cache pending
+        // again for theirs. (Driven at the service, since a read would cover it before we could look.)
         val service = SqlTableCacheService.get(cxt)
         val cache = service.caches.getValue(UT.authUsers)
-        cache.markChanged()
-        cache.forceReload shouldBe true
+        val mark = cache.markChanged()
+        cache.hasCovered(mark) shouldBe false
         service.reloadCaches(cxt, UT.authUsers)
-        cache.forceReload shouldBe false
+        cache.hasCovered(mark) shouldBe true
 
         val plain = TestUser.create(cxt, "ureload-plain@example.com")
         plain.expectError(EXC.notAuthorized, OPS.cacheReloadPath)
