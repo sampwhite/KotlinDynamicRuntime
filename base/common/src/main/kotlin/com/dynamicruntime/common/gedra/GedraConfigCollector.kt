@@ -745,7 +745,7 @@ class GedraConfigCollector {
     }
 
     /**
-     * The first of a global [config]'s [traitIds], cfact names, workflow ids, task ids and report ids that is not rooted under
+     * The first of a global [config]'s [traitIds], cfact names, workflow ids, task ids, and report ids that is not rooted under
      * the config's own root (issues #951-#953), as a reason, or null.
      *
      * A task id is rooted because a global workflow is a container clients will add tasks to by overlay (#921 rule
