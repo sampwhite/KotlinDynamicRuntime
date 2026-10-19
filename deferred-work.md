@@ -528,6 +528,102 @@ clone to another client id in this one.
   import. Left out because no client holds file refs yet, so no import meets the refusal; the first clone or restore
   of one that does is the trigger, and the refusal says exactly what is missing.
 
+## When a deployment keeps its files on S3
+
+The `s3` file store (issue #1129) has only ever met a stub that checks no signatures. Do these **before** that
+deployment's first upload, not after: each one fails there, and one of them fails silently.
+
+- **Settle the SDK's default checksums, against a real S3-compatible service** *(#1146, deferred here 2026-10-19).*
+  The SDK sends every upload as an `aws-chunked` body with a CRC32 trailer. AWS accepts that; some S3-compatible
+  services refuse it, and some store the framing as the content, which surfaces only on the next read, as a file
+  `FileStoreService.get` refuses as damaged. The likely fix is `requestChecksumCalculation` and
+  `responseChecksumValidation` at `WHEN_REQUIRED` whenever `KDR_S3_ENDPOINT` is set. Run the provider contract
+  (`FileStoreContractTest`'s cases) against one service a developer can start locally and once against AWS, and
+  have the `KDR_S3_ENDPOINT` description name what was tried. Trigger: the deployment names a non-AWS endpoint.
+- **Add the SDK's `sts` module, for web-identity and assumed-role credentials** *(#1145, deferred here
+  2026-10-19).* Only `s3` and its URL-connection client are on the classpath, so EKS's IAM roles for service
+  accounts, and a profile that assumes a role, cannot be read. Worse than a refusal: the default chain moves on,
+  and on an EKS node can end at the *node's* role, so the store comes up as an identity nobody chose. Add `sts`
+  with the same HTTP-client exclusions, a test that the web-identity provider can be built, and a startup line
+  naming the kind of source that supplied the credentials. Static keys, an instance profile, ECS task roles and EKS
+  Pod Identity are unaffected. Trigger: the deployment's credentials come from a web identity or an assumed role.
+
+## When a deployment keeps local files for its clients
+
+Local file refs (issues #1154, #1164) are built and tested, but no deployment declares a root of local files yet,
+and none has opened one to clients. These are what a deployment that does will want.
+
+- **Remember what a served file is, by its hash** *(#1172, deferred here 2026-10-19).* Serving a local ref reads,
+  hashes and sniffs the file on every request -- for an SVG, a new `SAXParserFactory` and a full parse
+  (`WebAssetCheck.svgProblem`). The right address is cached by the browser; a wrong or bare one is `no-store` and
+  parsed each time, so a signed-in user of a client with local SVG refs can make a node do that on demand. A
+  bounded `hash -> kind` memo in `LocalFileSource`, consulted after hashing and before sniffing (so the hash must be
+  taken first), is exact, since the same bytes always sniff the same; and one factory configured once, if it is
+  safe to share. The listing's half was done in #1175. Must not move: a file rewritten in place within the same size
+  and date is served as its new bytes (`LocalFileRootsTest`). Trigger: a client with local SVG refs on a node with
+  real traffic.
+- **Let a client's administrator list their own directory of an open root** *(#1177, deferred here 2026-10-19).*
+  Today they must be told a path and type it, and a wrong one is answered with one deliberately vague sentence.
+  `GET /clientAdmin/client/files/roots/list {client?, root}` would list `<root>/<clientId>/` and below, held to every
+  rule a read is (no links, no hidden names, regular files, the size limit), bounded in depth and count, each entry
+  saying whether a ref already names it -- and become a picker in the Files section's two kept-file editors. To
+  decide: whether a listed file is sniffed (the `lookedAt` memo makes a second listing cheap), and whether an
+  administrator of every client may list a root that is not open. Trigger: a deployment opens a root to clients
+  (`KDR_LOCAL_FILE_CLIENT_ROOTS`).
+- **Show a node's roots on the operator's report, and flag an opened name that is no root** *(#1178, deferred here
+  2026-10-19).* What a node resolved is one startup line and nowhere else, so `KDR_LOCAL_FILE_CLIENT_ROOTS=aproved`
+  opens nothing without a sign, and a node started without the variable refuses its clients' local refs, which
+  looks like an intermittent fault. An `operator` endpoint beside `/operator/cache/state` (`LocalFileRoots.describe()`
+  is most of it), with how many refs name each root, and a boot-check warning -- never a refusal -- for an opened
+  name that matches no root and a placed root that is absent. Trigger: the first deployment that declares roots.
+- **Fence the deployment's data where its configuration puts it** *(#1167, deferred here 2026-10-19).* A root may
+  not be inside, or contain, the places holding the deployment's own data -- but only the file store's directory
+  follows configuration; `private/`, `h2Database/` and `logs/` are fenced at their defaults, so an H2 file placed by
+  `fileH2(filePath = …)` or logs written elsewhere are not. (The image sniff still stands between a path and a
+  file, so this is the fence saying less than it might, not a way to read a database.) Ask each owner where its data
+  is -- the SQL layer for every file-backed database, the logging setup for its directory -- in
+  `LocalFileRoots.reservedPlaces`. Trigger: a deployment that declares roots and moves its database or its logs.
+
+## When a client wants to try its branding before it goes live
+
+A client's favicon and brand mark (issue #1130) are web assets: not configuration, so live for everybody the moment
+they are uploaded, with no draft and nothing a sandbox can show.
+
+- **Name a file ref as a slot** *(#1187, deferred here 2026-10-19).* The client's definition names which of its
+  file refs is its favicon and which its brand mark, so branding is drafted in the sandbox and published with the
+  copy beside it, and a template's can be inherited. First decide whether it is wanted at all -- two slots that take
+  effect at once are simple -- and then whether the slots stay as a fallback or are migrated and the Web assets
+  section goes; two mechanisms for one thing is the worse end state. A slot's tighter limit (a favicon is 256 KB, a
+  ref 2 MB) is held when a ref is named as one. Trigger: a client asks to preview a new logo, or to change its
+  branding with its copy.
+
+## When a client needs to show its people a file that is not an image
+
+A file ref (issues #1153, #1154) is an image, told by its bytes, and that rule is what makes a ref safe to serve
+from the app's own origin under a root that asks for no sign-in -- and, for a local file, what keeps a path from
+being pointed at a key or a database.
+
+- **File types other than images, PDF first** *(#1166, deferred here 2026-10-19).* A declared list of kinds, an
+  extension of `WebImageKind`: how each is recognised, the type it is served as, inline or download, its own size
+  limit. A PDF served only as a download under a policy that lets it run nothing. Decided per source: the store's
+  list may grow while local files stay images only, since there the question is what a path may be made to
+  disclose. Tests against files dressed as each kind that are not. Not HTML or anything scripted. Trigger: a client
+  wants its copy to link to a document (a form, a policy, a brochure).
+
+## When a client's images have to move into the file store in bulk
+
+An image becomes a client's ref one upload at a time, or by configuration naming it where it is on a node's disk,
+which every node must then hold.
+
+- **Import a directory of images as a client's refs** *(#1165, deferred here 2026-10-19).* A `kdr-run` script in
+  `com.dynamicruntime.script` taking a client, a directory and a naming rule: each image goes the upload's way
+  (`ClientFileRefEdit.upload`, the image check, the size limit), with a dry run by default, and a mode that
+  **promotes** a client's local refs into the store, rewriting `{source: local, root, path}` to `{source: store,
+  hash}` (a stored override, for a ref in source configuration). To decide: one revision through one trial or
+  resumable; refusing a batch that would take the client past its 200 refs before a byte is stored; live or draft
+  for a client with a sandbox. Trigger: a client moved off local files, or a batch of pictures prepared outside the
+  app.
+
 ## When an env-authed administrator on a public test deployment needs an invitation to reach the person invited
 
 On a public test deployment (issue #1150) mail follows the **caller**: an env-authed caller's mail is captured for
