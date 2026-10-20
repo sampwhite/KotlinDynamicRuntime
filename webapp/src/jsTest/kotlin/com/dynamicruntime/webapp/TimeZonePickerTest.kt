@@ -35,6 +35,16 @@ class TimeZonePickerTest {
     }
 
     @Test
+    fun aLabelSaysThePlaceOnceOnly() {
+        assertEquals("Central Time (Chicago) \u00b7 GMT\u22125", zoneLabel("Central Time", "Chicago", "GMT\u22125"))
+        // Chrome's own name for some zones carries the place already.
+        assertEquals("Western European Time (Casablanca) \u00b7 GMT+1", zoneLabel("Western European Time (Casablanca)", "Casablanca", "GMT+1"))
+        assertEquals("Moscow Standard Time \u00b7 GMT+3", zoneLabel("Moscow Standard Time", "Moscow", "GMT+3"))
+        assertEquals("Almaty \u00b7 GMT+5", zoneLabel(null, "Almaty", "GMT+5"))
+        assertEquals("Central Time (Chicago)", zoneLabel("Central Time", "Chicago", ""))
+    }
+
+    @Test
     fun aZoneIntlDoesNotKnowHasNoChoice() {
         assertNull(timeZoneChoice("Mars/Olympus_Mons", winter))
     }
@@ -58,7 +68,7 @@ class TimeZonePickerTest {
 
     @Test
     fun beforeAnythingIsTypedTheCurrentAndBrowserZonesArePinnedAboveTheCommonOnes() {
-        val groups = timeZoneOptions(catalog, "", browserZone = "America/Chicago", currentZone = "America/Indiana/Knox")
+        val groups = timeZoneOptions(catalog, "", browserZone = "America/Chicago", currentZone = "America/Indiana/Knox", summer)
         assertEquals(listOf("Current", "This browser's", "Common zones"), titles(groups))
         assertEquals(listOf("America/Indiana/Knox"), zones(groups[0]))
         assertEquals(listOf("America/Chicago"), zones(groups[1]))
@@ -68,7 +78,7 @@ class TimeZonePickerTest {
 
     @Test
     fun oneZoneBothCurrentAndTheBrowsersIsPinnedOnceUnderTheStoredSpelling() {
-        val groups = timeZoneOptions(catalog, "", browserZone = "US/Central", currentZone = "America/Chicago")
+        val groups = timeZoneOptions(catalog, "", browserZone = "US/Central", currentZone = "America/Chicago", summer)
         assertEquals(listOf("Current, and this browser's", "Common zones"), titles(groups))
         assertEquals(listOf("America/Chicago"), zones(groups[0]))
     }
@@ -76,7 +86,7 @@ class TimeZonePickerTest {
     @Test
     fun theStoredSpellingIsKeptSoAnUntouchedDraftIsNoChange() {
         // A client stored under the old name keeps it, labeled as the zone it is.
-        val groups = timeZoneOptions(catalog, "", browserZone = null, currentZone = "Asia/Calcutta")
+        val groups = timeZoneOptions(catalog, "", browserZone = null, currentZone = "Asia/Calcutta", summer)
         assertEquals(listOf("Asia/Calcutta"), zones(groups[0]))
         assertEquals(timeZoneChoice("Asia/Kolkata", summer)?.label, groups[0].choices.single().label)
         assertTrue("Asia/Kolkata" !in zones(groups[1]), "the same zone is not offered again under its other name")
@@ -84,50 +94,89 @@ class TimeZonePickerTest {
 
     @Test
     fun theBrowsersOldSpellingIsOfferedUnderTheModernOne() {
-        val groups = timeZoneOptions(catalog, "", browserZone = "Asia/Calcutta", currentZone = null)
+        val groups = timeZoneOptions(catalog, "", browserZone = "Asia/Calcutta", currentZone = null, summer)
         assertEquals(listOf("This browser's", "Common zones"), titles(groups))
         assertEquals(listOf("Asia/Kolkata"), zones(groups[0]))
     }
 
     @Test
     fun aCurrentZoneIntlDoesNotKnowIsStillShownAsItIs() {
-        val groups = timeZoneOptions(catalog, "", browserZone = null, currentZone = "Mars/Olympus_Mons")
+        val groups = timeZoneOptions(catalog, "", browserZone = null, currentZone = "Mars/Olympus_Mons", summer)
         assertEquals("Mars/Olympus_Mons", groups[0].choices.single().label)
     }
 
     @Test
     fun noCurrentZoneMeansNoCurrentPin() {
-        assertEquals(listOf("Common zones"), titles(timeZoneOptions(catalog, "", browserZone = null, currentZone = "")))
+        assertEquals(listOf("Common zones"), titles(timeZoneOptions(catalog, "", browserZone = null, currentZone = "", summer)))
     }
 
     @Test
     fun typingSearchesEveryZoneByPlaceNameOrId() {
-        val knox = timeZoneOptions(catalog, "knox", browserZone = null, currentZone = null)
+        val knox = timeZoneOptions(catalog, "knox", browserZone = null, currentZone = null, summer)
         assertEquals(listOf("America/Indiana/Knox"), zones(knox.single()))
         // A name matches every zone carrying it; `_` in an id reads as a space.
-        assertTrue(zones(timeZoneOptions(catalog, "central time", null, null).single())
+        assertTrue(zones(timeZoneOptions(catalog, "central time", null, null, summer).single())
             .containsAll(listOf("America/Chicago", "America/Indiana/Knox")))
-        assertEquals(listOf("America/St_Johns"), zones(timeZoneOptions(catalog, "st johns", null, null).single()))
-        assertEquals("Matching zones", timeZoneOptions(catalog, "knox", null, null).single().title)
+        assertEquals(listOf("America/St_Johns"), zones(timeZoneOptions(catalog, "st johns", null, null, summer).single()))
+        assertEquals("Matching zones", timeZoneOptions(catalog, "knox", null, null, summer).single().title)
     }
 
     @Test
     fun anOffsetMatchesTheZonesAtExactlyThatOffset() {
-        val minusFive = zones(timeZoneOptions(catalog, "-5", null, null).single())
+        val minusFive = zones(timeZoneOptions(catalog, "-5", null, null, summer).single())
         assertTrue("America/Chicago" in minusFive && "America/Indiana/Knox" in minusFive)
         assertTrue("America/Denver" !in minusFive, "GMT-6 is not GMT-5")
-        assertEquals(minusFive, zones(timeZoneOptions(catalog, "GMT\u22125", null, null).single()))
-        assertEquals(listOf("Asia/Kolkata"), zones(timeZoneOptions(catalog, "+5:30", null, null).single()))
+        assertEquals(minusFive, zones(timeZoneOptions(catalog, "GMT\u22125", null, null, summer).single()))
+        assertEquals(listOf("Asia/Kolkata"), zones(timeZoneOptions(catalog, "+5:30", null, null, summer).single()))
         // An hour is that hour exactly: +5 is Karachi, not India's +5:30 or Nepal's +5:45.
-        assertEquals(listOf("Asia/Karachi"), zones(timeZoneOptions(catalog, "+5", null, null).single()))
-        assertEquals(listOf("Asia/Kathmandu"), zones(timeZoneOptions(catalog, "utc+05:45", null, null).single()))
+        assertEquals(listOf("Asia/Karachi"), zones(timeZoneOptions(catalog, "+5", null, null, summer).single()))
+        assertEquals(listOf("Asia/Kathmandu"), zones(timeZoneOptions(catalog, "utc+05:45", null, null, summer).single()))
+    }
+
+    @Test
+    fun zeroIsAnOffsetToo() {
+        // Intl writes a zero offset as a bare "GMT", which a typed +0, GMT or UTC must still reach.
+        // In January, when London and Lisbon are on GMT too.
+        val january = timeZoneCatalog(listed, winter)
+        val zero = listOf("+0", "-0", "GMT", "utc", "GMT+0", "UTC+00:00").map { zones(timeZoneOptions(january, it, null, null, winter).single()) }
+        assertTrue(zero.all { it == zero[0] }, "every spelling of zero finds the same zones: $zero")
+        assertTrue(zero[0].containsAll(listOf("Europe/London", "Europe/Lisbon", "UTC")))
+        assertTrue("Europe/Paris" !in zero[0], "GMT+1 is not GMT")
+    }
+
+    @Test
+    fun zeroMatchesHoweverTheEngineSpellsIt() {
+        // Node writes a zero offset "GMT", Chrome "GMT+0": a typed zero must find both.
+        val node = TimeZoneChoice("Africa/Accra", "Accra", "GMT", "Africa/Accra")
+        val chrome = TimeZoneChoice("Africa/Abidjan", "Abidjan", "GMT+0", "Africa/Abidjan")
+        val plusOne = TimeZoneChoice("Europe/London", "London", "GMT+1", "Europe/London")
+        for (query in listOf("+0", "gmt", "UTC+00:00")) {
+            val matches = timeZoneMatcher(query)
+            assertEquals(listOf(true, true, false), listOf(node, chrome, plusOne).map(matches), "for '$query'")
+        }
+        assertTrue(timeZoneMatcher("+1")(plusOne))
+    }
+
+    @Test
+    fun pinsAreLabeledWhenOnlyTheShortListIsLoaded() {
+        // Before a search the picker holds the short list alone: a pin off it is labeled by itself, not shown as an id.
+        val short = timeZoneCatalog(emptyList(), summer)
+        val groups = timeZoneOptions(short, "", browserZone = "Asia/Calcutta", currentZone = "America/Indiana/Knox", summer)
+        assertEquals(listOf("Current", "This browser's", "Common zones"), titles(groups))
+        assertEquals("Central Time (Knox) \u00b7 GMT\u22125", groups[0].choices.single().label)
+        assertEquals(listOf("Asia/Kolkata"), zones(groups[1]))
+    }
+
+    @Test
+    fun aBrowserReportingAnOffsetIsNotPinned() {
+        assertEquals(listOf("Common zones"), titles(timeZoneOptions(catalog, "", "Etc/GMT+5", null, summer)))
     }
 
     @Test
     fun aSearchKeepsOnlyThePinsThatMatchIt() {
-        val groups = timeZoneOptions(catalog, "knox", browserZone = "America/Chicago", currentZone = "America/Indiana/Knox")
+        val groups = timeZoneOptions(catalog, "knox", browserZone = "America/Chicago", currentZone = "America/Indiana/Knox", summer)
         assertEquals(listOf("Current"), titles(groups))
-        assertEquals(emptyList(), timeZoneOptions(catalog, "nowhere at all", "America/Chicago", "America/Indiana/Knox"))
+        assertEquals(emptyList(), timeZoneOptions(catalog, "nowhere at all", "America/Chicago", "America/Indiana/Knox", summer))
     }
 
     @Test

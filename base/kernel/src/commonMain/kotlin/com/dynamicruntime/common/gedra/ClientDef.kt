@@ -323,17 +323,6 @@ object ClientPresentationFields {
         }
     }
 
-    /** The one zone a client may name that is not a place's (issue #1115). */
-    const val utcZone = "UTC"
-
-    /**
-     * Whether [zone] is shaped like a zone a client may name (issue #1115): [utcZone], or an IANA area/location name
-     * (`America/Chicago`) that is not an `Etc/` offset. The shape alone: whether it is a zone at all is the
-     * platform's zone list to say (the JVM's in the client check, `Intl` in a browser). In the kernel so the
-     * time-zone picker offers exactly what the client check accepts (issue #1257).
-     */
-    fun isPlaceZoneName(zone: String): Boolean = zone == utcZone || ('/' in zone && !zone.startsWith("Etc/"))
-
     /** How the editor takes [name]'s value. */
     fun kind(name: String): Kind = when (name) {
         CLD.userLabels -> Kind.labels

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.util.TZONE
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.serverTimeZone
 import kotlinx.datetime.offsetAt
@@ -14,7 +15,7 @@ import kotlin.time.Instant
  */
 val deploymentZone: String = run {
     val hours = serverTimeZone.offsetAt(Clock.System.now()).totalSeconds / 3600
-    if (hours == 0) "UTC" else "Etc/GMT${if (hours < 0) "+" else "-"}${abs(hours)}"
+    if (hours == 0) TZONE.utc else "Etc/GMT${if (hours < 0) "+" else "-"}${abs(hours)}"
 }
 
 /**
@@ -66,7 +67,6 @@ private fun zonedParts(at: Instant, zone: String, withTime: Boolean): Map<String
     intlParts(at.toEpochMilliseconds().toDouble(), deploymentZone, withTime)
 }
 
-@Suppress("UNUSED_VARIABLE")
 private fun intlParts(epochMs: Double, zone: String, withTime: Boolean): Map<String, String> {
     val options: dynamic = if (withTime) {
         js("({ year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'shortGeneric' })")
@@ -74,9 +74,18 @@ private fun intlParts(epochMs: Double, zone: String, withTime: Boolean): Map<Str
         js("({ year: 'numeric', month: '2-digit', day: '2-digit' })")
     }
     options.timeZone = zone
-    // Two steps, not one expression: `js()` reads `new X(...).formatToParts(...)` as a constructor call.
-    val format: dynamic = js("new Intl.DateTimeFormat('en-US', options)")
-    val date: dynamic = js("new Date(epochMs)")
-    val parts: Array<dynamic> = format.formatToParts(date)
-    return parts.associate { (it.type as String) to (it.value as String) }
+    return intlFormatParts(epochMs, options).associate { (it.type as String) to (it.value as String) }
 }
+
+/**
+ * `new Intl.DateTimeFormat('en-US', options)`, in English as every date here is shown (issues #1115, #1257); throws,
+ * as `Intl` does, for an `options.timeZone` it does not know. Its own step because `js()` reads
+ * `new X(...).method(...)` as a constructor call of `X(...).method`: the format must be made before it is used.
+ */
+@Suppress("UNUSED_PARAMETER")
+fun intlDateTimeFormat(options: dynamic): dynamic = js("new Intl.DateTimeFormat('en-US', options)")
+
+/** The moment [epochMs] formatted with [options] ([intlDateTimeFormat]), as `Intl`'s typed parts. */
+@Suppress("UNUSED_PARAMETER")
+fun intlFormatParts(epochMs: Double, options: dynamic): Array<dynamic> =
+    intlDateTimeFormat(options).formatToParts(js("new Date(epochMs)")).unsafeCast<Array<dynamic>>()

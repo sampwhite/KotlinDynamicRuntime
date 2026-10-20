@@ -1,9 +1,11 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.gedra.ClientPresentationFields
+import com.dynamicruntime.common.util.TZONE
+import com.dynamicruntime.common.util.isPlaceZoneName
 import react.FC
 import react.Props
 import react.useMemo
+import react.useRef
 import react.useState
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -40,7 +42,7 @@ val commonTimeZones: List<String> = listOf(
     "Asia/Tokyo", "Asia/Seoul",
     // Australia and the Pacific.
     "Australia/Perth", "Australia/Adelaide", "Australia/Brisbane", "Australia/Sydney", "Pacific/Auckland",
-    ClientPresentationFields.utcZone,
+    TZONE.utc,
 )
 
 /**
@@ -52,7 +54,7 @@ val commonTimeZones: List<String> = listOf(
  */
 fun timeZoneCatalog(allZones: List<String>, at: Instant): List<TimeZoneChoice> {
     val seen = HashSet<String>()
-    return (commonTimeZones + allZones).filter { ClientPresentationFields.isPlaceZoneName(it) }.mapNotNull { zone ->
+    return (commonTimeZones + allZones).filter { isPlaceZoneName(it) }.mapNotNull { zone ->
         timeZoneChoice(zone, at)?.takeIf { seen.add(it.key) }
     }
 }
@@ -69,29 +71,48 @@ fun timeZoneChoice(zone: String, at: Instant): TimeZoneChoice? = try {
         intlZoneName(epochMs, zone, style)?.takeUnless { it.startsWith("GMT") }
     }
     val offset = (intlZoneName(epochMs, zone, "shortOffset") ?: "").replace('-', '\u2212')
-    val place = zone.substringAfterLast('/').replace('_', ' ')
-    val label = (if (name == null) place else "$name ($place)") + if (offset.isEmpty()) "" else " \u00b7 $offset"
-    TimeZoneChoice(zone, label, offset, intlResolvedZone(zone))
+    TimeZoneChoice(zone, zoneLabel(name, zone.substringAfterLast('/').replace('_', ' '), offset), offset, intlResolvedZone(zone))
 } catch (_: Throwable) {
     // An unknown zone is a RangeError from Intl.
     null
 }
 
 /**
- * The groups the picker's popup shows (issue #1257). Pinned at the top: the client's [currentZone] -- under exactly
- * the stored spelling, so the box shows it and an untouched draft does not count as a change, and even when the
- * [catalog] lacks it -- and the [browserZone], the person's own; one group when they are the same zone. Then, with no
- * [query], the [commonTimeZones]; with one, every zone in the catalog that matches it by place, name, id, or offset
- * (`-5`, `GMT+5:30`), the pins included only when they match too. Pure, and covered under `jsNodeTest`.
+ * A zone's label from its [name] (null when `Intl` gives only an offset), its [place], and its [offset]: "Central Time
+ * (Chicago) · GMT−5". The place is left out when the name already says it -- Chrome names Casablanca's zone "Western
+ * European Time (Casablanca)", Moscow's "Moscow Standard Time". Pure.
  */
-fun timeZoneOptions(catalog: List<TimeZoneChoice>, query: String, browserZone: String?, currentZone: String?): List<TimeZoneGroup> {
+fun zoneLabel(name: String?, place: String, offset: String): String {
+    val shown = when {
+        name == null -> place
+        name.contains(place, ignoreCase = true) -> name
+        else -> "$name ($place)"
+    }
+    return if (offset.isEmpty()) shown else "$shown \u00b7 $offset"
+}
+
+/**
+ * The groups the picker's popup shows (issue #1257). Pinned at the top: the client's [currentZone] -- under exactly
+ * the stored spelling, so the box shows it and an untouched draft does not count as a change, and even when `Intl`
+ * does not know it -- and the [browserZone], the person's own, under the [catalog]'s spelling where it holds the zone;
+ * one group when they are the same zone. A pin the catalog lacks is labeled for [at] on its own, so before anything is
+ * typed the catalog need only be the short list. Then, with no [query], the [commonTimeZones]; with one, every zone in
+ * the catalog that matches it by place, name, id, or offset (`-5`, `GMT+5:30`, `+0`), the pins included only when they
+ * match too. Pure, and covered under `jsNodeTest`.
+ */
+fun timeZoneOptions(
+    catalog: List<TimeZoneChoice>, query: String, browserZone: String?, currentZone: String?, at: Instant,
+): List<TimeZoneGroup> {
     val byZone = catalog.associateBy { it.zone }
-    fun known(zone: String) = byZone[zone] ?: catalog.firstOrNull { it.key == resolvedOrNull(zone) }
+    fun known(zone: String): TimeZoneChoice? = byZone[zone]
+        ?: resolvedOrNull(zone)?.let { key -> catalog.firstOrNull { it.key == key } }
+        ?: timeZoneChoice(zone, at)
     val current = currentZone?.takeIf { it.isNotBlank() }?.let { zone ->
         known(zone)?.let { TimeZoneChoice(zone, it.label, it.offset, it.key) }
             ?: TimeZoneChoice(zone, zone, "", zone)
     }
-    val browser = browserZone?.let { known(it) }
+    // A browser reporting an offset (`Etc/GMT+5`) is not offered: the client check would refuse it.
+    val browser = browserZone?.takeIf { isPlaceZoneName(it) }?.let { known(it) }
     val matches = timeZoneMatcher(query)
     val pins = buildList {
         if (current != null && browser != null && current.key == browser.key) {
@@ -111,23 +132,33 @@ fun timeZoneOptions(catalog: List<TimeZoneChoice>, query: String, browserZone: S
 }
 
 /**
- * What a typed [query] matches (issue #1257): an offset -- `-5`, `+5:30`, `GMT+10`, `UTC-3` -- matches the zones at
- * exactly that offset now; anything else matches by substring of the id or the label, ignoring case, `_` read as a
- * space and either minus sign as one. A blank query matches everything.
+ * What a typed [query] matches (issue #1257): an offset -- `-5`, `+5:30`, `GMT+10`, `UTC-3`, and `GMT`, `UTC` or `+0`
+ * for zero -- matches the zones at exactly that offset now; anything else matches by substring of the id or the
+ * label, ignoring case, `_` read as a space and either minus sign as one. A blank query matches everything.
  */
 fun timeZoneMatcher(query: String): (TimeZoneChoice) -> Boolean {
     val q = normalizeZoneText(query)
     if (q.isEmpty()) return { true }
-    val offset = offsetQuery.matchEntire(q)
-    if (offset != null) {
-        val (sign, hours, minutes) = offset.destructured
-        val wanted = "gmt$sign${hours.trimStart('0').ifEmpty { "0" }}" + if (minutes.isEmpty() || minutes == "00") "" else ":$minutes"
-        return { normalizeZoneText(it.offset) == wanted }
-    }
+    val wanted = offsetKey(q)
+    if (wanted != null) return { offsetKey(normalizeZoneText(it.offset)) == wanted }
     return { normalizeZoneText(it.zone).contains(q) || normalizeZoneText(it.label).contains(q) }
 }
 
-private val offsetQuery = Regex("""^(?:gmt|utc)?\s*([+-])(\d{1,2})(?::?(\d{2}))?$""")
+// `gmt` or `utc`, an offset, or both; a bare `gmt`/`utc` is the offset zero.
+private val offsetQuery = Regex("""^(?:(?:gmt|utc)\s*|(?=[+-]))(?:([+-])(\d{1,2})(?::?(\d{2}))?)?$""")
+
+/**
+ * The normalized [text] read as an offset, in one spelling (`gmt-5`, `gmt+5:30`, and `gmt` for zero), or null when it
+ * is not one. Both a typed query and `Intl`'s short offset go through it, because engines spell zero differently:
+ * Node writes a bare "GMT", Chrome "GMT+0".
+ */
+private fun offsetKey(text: String): String? {
+    val m = offsetQuery.matchEntire(text) ?: return null
+    val (sign, hours, minutes) = m.destructured
+    val h = hours.trimStart('0')
+    val min = minutes.takeUnless { it.isEmpty() || it == "00" }
+    return if (h.isEmpty() && min == null) "gmt" else "gmt$sign${h.ifEmpty { "0" }}" + (min?.let { ":$it" } ?: "")
+}
 
 private fun normalizeZoneText(text: String) = text.trim().lowercase().replace('_', ' ').replace('\u2212', '-')
 
@@ -161,26 +192,18 @@ private fun resolvedOrNull(zone: String): String? = try {
 }
 
 /** The name `Intl` resolves [zone] to (`Asia/Kolkata` to `Asia/Calcutta`, in Chrome); throws for a zone it does not know. */
-@Suppress("UNUSED_VARIABLE")
 private fun intlResolvedZone(zone: String): String {
     val options: dynamic = js("({})")
     options.timeZone = zone
-    // Two steps, as in intlZoneName: in one, `js()` reads `new X(...).resolvedOptions()` as a constructor call.
-    val format: dynamic = js("new Intl.DateTimeFormat('en-US', options)")
-    return format.resolvedOptions().timeZone as String
+    return intlDateTimeFormat(options).resolvedOptions().timeZone as String
 }
 
 /** [zone]'s name in the [style] `Intl` names it (`longGeneric`, `shortOffset`, ...) at [epochMs]; null if it gives none. */
-@Suppress("UNUSED_VARIABLE")
 private fun intlZoneName(epochMs: Double, zone: String, style: String): String? {
     val options: dynamic = js("({})")
     options.timeZone = zone
     options.timeZoneName = style
-    // Two steps, not one expression: `js()` reads `new X(...).formatToParts(...)` as a constructor call.
-    val format: dynamic = js("new Intl.DateTimeFormat('en-US', options)")
-    val date: dynamic = js("new Date(epochMs)")
-    val parts: Array<dynamic> = format.formatToParts(date)
-    return parts.firstOrNull { it.type == "timeZoneName" }?.value as? String
+    return intlFormatParts(epochMs, options).firstOrNull { it.type == "timeZoneName" }?.value as? String
 }
 
 /** The options antd's Select takes for [groups]: a `{ label, options }` group each, its zones as `{ label, value }`. */
@@ -206,18 +229,23 @@ external interface TimeZonePickerProps : Props {
  * is typed would otherwise be all ~420 zones. Clearing it is "none: the deployment's". The search text is the one
  * piece of state, owned here and handed back to antd as `searchValue`, so the box and the list cannot disagree; it
  * empties on a pick and when the popup closes.
+ *
+ * Labeling every zone takes ~1,700 `Intl` formats (~80ms), and most editors are opened to change something else. So
+ * only the short list is labeled when the picker is drawn, and every zone once, the first time a search is typed.
  */
 val TimeZonePicker = FC<TimeZonePickerProps> { props ->
-    // Labeled once, when the picker is drawn: 420 Intl formats per keystroke would show.
-    val catalog = useMemo { timeZoneCatalog(intlTimeZones(), Clock.System.now()) }
+    val now = useMemo { Clock.System.now() }
+    val common = useMemo { timeZoneCatalog(emptyList(), now) }
+    val every = useRef<List<TimeZoneChoice>>(null)
     val browserZone = useMemo { browserTimeZone() }
     var query by useState("")
+    val catalog = if (query.isBlank()) common else every.current ?: timeZoneCatalog(intlTimeZones(), now).also { every.current = it }
     val search: dynamic = js("({ filterOption: false })")
     search.searchValue = query
     search.onSearch = { text: String -> query = text }
     Select {
         value = props.value.ifBlank { null }
-        options = timeZoneGroupsToJs(timeZoneOptions(catalog, query, browserZone, props.value))
+        options = timeZoneGroupsToJs(timeZoneOptions(catalog, query, browserZone, props.value, now))
         showSearch = search
         allowClear = true
         placeholder = "None: the deployment's"

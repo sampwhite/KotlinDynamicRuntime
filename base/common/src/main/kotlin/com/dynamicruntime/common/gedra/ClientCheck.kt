@@ -3,6 +3,8 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.util.TZONE
+import com.dynamicruntime.common.util.isPlaceZoneName
 import kotlinx.datetime.TimeZone
 
 /** What checking the declared clients produced (issue #343). */
@@ -237,9 +239,9 @@ private fun ownProblem(
  * where the clock is today, not where the client's people are, and is wrong half the year wherever clocks change.
  */
 internal fun timeZoneFault(zone: String): String? = when {
-    zone == ClientPresentationFields.utcZone -> null
+    zone == TZONE.utc -> null
     zone !in TimeZone.availableZoneIds -> "is not an IANA time zone (America/Chicago, say)"
-    !ClientPresentationFields.isPlaceZoneName(zone) -> "is an offset or an abbreviation; name the place's zone (America/Chicago, say)"
+    !isPlaceZoneName(zone) -> "is an offset or an abbreviation; name the place's zone (America/Chicago, say)"
     else -> null
 }
 

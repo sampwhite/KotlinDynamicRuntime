@@ -88,6 +88,22 @@ private val cookieDateFormat = DateTimeComponents.Format {
  */
 val serverTimeZone: TimeZone = UtcOffset(hours = -8).asTimeZone()
 
+/** IANA time-zone names the code names. */
+@Suppress("ConstPropertyName")
+object TZONE {
+    /** Coordinated Universal Time: the one zone a client may name that is not a place's (issue #1115). */
+    const val utc = "UTC"
+}
+
+/**
+ * Whether [zone] is shaped like the time zone of a place (issue #1115), which is what a client may name: [TZONE.utc],
+ * or an IANA area/location name (`America/Chicago`) that is not an `Etc/` offset. An offset or an abbreviation (`EST`)
+ * says where the clock is today, not where the client's people are. The shape alone: whether the name is a zone at all
+ * is the platform's zone list to say (the JVM's in the client check, `Intl` in a browser). In the kernel so the client
+ * check and the time-zone picker (issue #1257) agree on it.
+ */
+fun isPlaceZoneName(zone: String): Boolean = zone == TZONE.utc || ('/' in zone && !zone.startsWith("Etc/"))
+
 /**
  * Parses a date string in the system formats: a full timestamp `yyyy-MM-dd'T'HH:mm:ss[.SSS]'Z'` (the
  * trailing `Z` is optional) or a date-only `yyyy-MM-dd` (interpreted as the start of that day in [zone]).
