@@ -553,8 +553,9 @@ than anybody needs yet (2026-10-20).
 
 - **What is in place** *(#1282).* Every client's file is reached through `FileStoreService.forOwner(cxt, owner)`, a
   view that takes only that client's folder, `clients/<owner>/`, while the service's own calls refuse a key in any
-  client's folder. So which client a file is for is said, and checked, wherever it is stored or read, and keeping a
-  client's files in another store is a change to `forOwner` alone.
+  client's folder. So which client a file is for is said, and checked, wherever it is stored or read, and *routing* a
+  client's files to another store is decided in `forOwner` alone -- the stores, the assignment and its checks below
+  are the rest of the work.
 - **Several named stores in a deployment** *(#1282, removed again 2026-10-20).* A `KDR_FILE_STORES` variable
   (`aws.type=s3,aws.region=…,aws.profile=…,disk.type=local,disk.dir=…`) parsed without a service
   (`FileStoreSpecs`), every store held to every bucket at boot, a credentials `profile` per S3 store, and

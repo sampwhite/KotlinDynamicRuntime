@@ -223,7 +223,12 @@ class FileStoreService : ServiceInitializer {
      * The files of the client [owner] (issue #1282) -- its web assets, its file refs, whatever else is kept under its
      * folder ([FNAME.clientKeyPrefix]). The view takes only keys in that folder, so what is a client's is said where
      * it is stored and read, and checked there.
+     *
+     * [cxt] is not read today. It is taken so that a store chosen per client (`deferred-work.md`, "When a client must
+     * keep its files somewhere other than its deployment's store") could be looked up here without changing every
+     * call site again.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun forOwner(cxt: KdrCxt, owner: String): FileStoreView = FileStoreView(owner)
 
     /** Stores [content] at [key] in [bucket] -- a key that is no client's ([forOwner]) -- as [FileStoreView.put] does. */
@@ -366,7 +371,7 @@ class FileStoreService : ServiceInitializer {
             val found = store.list(cxt, bucket, prefix, asked)
             if (ownFolder == null && found.any { it.key.startsWith(FNAME.clientsFolder) }) {
                 throw KdrException(
-                    "The bucket '$bucket' holds clients' files, which a listing of no client's does not take: list a " +
+                    "The bucket '$bucket' holds clients' files, which a listing outside any client's folder does not take: list a " +
                         "folder outside '${FNAME.clientsFolder}', or a client's through forOwner.",
                     null, EXC.badInput,
                 )
@@ -404,7 +409,6 @@ class FileStoreService : ServiceInitializer {
          * AWS SDK: the only way to an S3 store in the unit environment, where no network is reached.
          */
         const val s3ApiConfigKey = "fileStoreS3Api"
-
 
         /**
          * How long [get] waits before each further read of a file whose content does not match its metadata: long
