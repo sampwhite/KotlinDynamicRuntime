@@ -225,7 +225,7 @@ object Node {
      */
     fun clearFileStoreCommand(target: DeployTarget, remove: Boolean): String =
         "set -a; . ${shellQuote(target.envFile)}; set +a; KDR_LOG_LEVEL=warn " +
-            "\"\${JAVA_HOME:+\$JAVA_HOME/bin/}java\" $clearFileStoreHeap -cp ${shellQuote("${target.currentLink}/lib/*")} " +
+                $$"\"${JAVA_HOME:+$JAVA_HOME/bin/}java\" $$clearFileStoreHeap -cp $${shellQuote("${target.currentLink}/lib/*")} " +
             clearFileStoreMain + if (remove) " --remove" else ""
 
     /** The node's database directory. */

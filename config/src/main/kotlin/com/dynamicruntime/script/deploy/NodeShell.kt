@@ -12,7 +12,7 @@ import java.time.Duration
 
 /**
  * How the deploy commands reach a node and wait on it (issues #1243, #1244), shared by `kdr-deploy` and `kdr-node`:
- * the system `ssh`, so the operator's own configuration, agent and known hosts are used and no key passes through
+ * the system `ssh`, so the operator's own configuration, agent, and known hosts are used and no key passes through
  * this code, and the health checks a change to the node waits for.
  */
 object NodeShell {
