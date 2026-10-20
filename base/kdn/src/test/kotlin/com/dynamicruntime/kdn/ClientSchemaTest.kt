@@ -14,7 +14,6 @@ import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.naming.clientNamespace
-import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeSameInstanceAs
@@ -50,15 +49,17 @@ class ClientSchemaTest : StringSpec({
 
     fun knowsNote(store: KdrSchemaStore): Boolean = store.types[union]?.variants?.isKnown("note946") == true
 
+    // The instance is shared, and any client's reload republishes every store, so these hold a context to what it
+    // read -- what it contains, and that it keeps reading the same -- rather than to the service's live stores.
+
     "a context bound to a client that varies the schema reads that client's variant" {
         val bound = cxt.mkSubContext("bound", client)
-        val schema = SchemaService.get(cxt)
-        bound.getClientSchema() shouldBeSameInstanceAs schema.storeFor(client)
         knowsNote(bound.getClientSchema()) shouldBe true
         // The global store is the one every client shares, and knows nothing of the client's trait.
-        bound.getGlobalSchema() shouldBeSameInstanceAs schema.schemaStore
         knowsNote(bound.getGlobalSchema()) shouldBe false
         bound.getClientSchema() shouldNotBeSameInstanceAs bound.getGlobalSchema()
+        // Read again, the context answers from what it holds.
+        bound.getClientSchema() shouldBeSameInstanceAs bound.getClientSchema()
     }
 
     "re-binding the context's client re-resolves; a client that varies nothing reads the global store" {
@@ -79,7 +80,7 @@ class ClientSchemaTest : StringSpec({
         GedraConfigReload.reloadClient(cxt, client)
         bound.getClientSchema() shouldBeSameInstanceAs before
         bound.schemaStore = null
-        bound.getClientSchema() shouldBeSameInstanceAs SchemaService.get(cxt).storeFor(client)
         bound.getClientSchema() shouldNotBeSameInstanceAs before
+        knowsNote(bound.getClientSchema()) shouldBe true
     }
 })

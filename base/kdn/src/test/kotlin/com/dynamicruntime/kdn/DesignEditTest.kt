@@ -49,8 +49,10 @@ import io.kotest.matchers.string.shouldContain
 class DesignEditTest : StringSpec({
     val cxt = TestInstances.default("designEdit984")
     // Provisioned by its simulation (issue #997), so its configuration is published -- a Design View save publishes,
-    // as the Clients page's editors do, and refuses a config carrying unpublished changes (issue #1026).
-    val client = provisionDesignDemo(cxt).clients.single()
+    // as the Clients page's editors do, and refuses a config carrying unpublished changes (issue #1026). A copy of its
+    // own (the suffix): this spec edits the client, and the shared instance's plain `designdemo` belongs to
+    // `SimulationTest`, which provisions it again to prove a rerun is safe.
+    val client = provisionDesignDemo(cxt, "edit984").clients.single()
     val admin = TestUser.create(cxt, "designer@$client.test", level = ROLE.admin, userClient = client)
     val design = mapOf(EP.view to DSV.design)
     val viewPath = clientPath(GEP.workflowView, client)

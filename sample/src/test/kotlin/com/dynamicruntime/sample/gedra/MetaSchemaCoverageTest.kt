@@ -36,7 +36,7 @@ class MetaSchemaCoverageTest : StringSpec({
 
     "every type the node compiled -- the core's, the sample's and each client's -- passes the walk and the document" {
         val clients = (cxt.instanceConfig.get(KdrSchemaStore.clientSourceKey) as? ClientSchemaSource).shouldNotBeNull()
-        val stores = listOf(SC.acme, SC.globex).map { clients.storeFor(it).shouldNotBeNull() } + cxt.getGlobalSchema()
+        val stores = listOf(SC.acme, SC.globex).map { clients.variantFor(it).shouldNotBeNull() } + cxt.getGlobalSchema()
         val defs = stores.flatMap { it.defs.entries }.associate { it.key to it.value.toJsonMapOrEmpty() }
         defs.size shouldBeGreaterThan 100
         defs.flatMap { (name, body) -> faults(name, body, stored = false) }.shouldBeEmpty()

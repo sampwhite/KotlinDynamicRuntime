@@ -225,7 +225,44 @@ class SchemaCollector(
      * collapsed, and held apart from [cfacts] for the reason [clientOverlays] is held apart from [defs]:
      * folding them in would give every other client a name only this one declared.
      */
-    val clientCFacts: MutableMap<String, MutableList<CFactDef>> = LinkedHashMap()
+    val clientCFacts: Map<String, List<CFactDef>>
+        get() = if (gedraConfigs.isBatchingHere()) workingCFacts else publishedCFacts
+
+    // The working maps behind [clientCFacts] and [clientOverlays], changed only by the config being added or withdrawn,
+    // and the copies other threads read, published with the config collector's (issue #1264; see [batch]).
+    private val workingCFacts = LinkedHashMap<String, MutableList<CFactDef>>()
+    private val workingOverlays = LinkedHashMap<String, MutableMap<String, Any?>>()
+
+    @Volatile
+    private var publishedCFacts: Map<String, List<CFactDef>> = emptyMap()
+
+    @Volatile
+    private var publishedOverlays: Map<String, Map<String, Any?>> = emptyMap()
+
+    private fun publishClientMaps() {
+        publishedCFacts = workingCFacts.mapValues { it.value.toList() }
+        publishedOverlays = workingOverlays.mapValues { LinkedHashMap(it.value) }
+    }
+
+    /** After a change to the per-client maps: published now, unless a [batch] on this thread publishes when it ends. */
+    private fun clientMapsChanged() {
+        if (!gedraConfigs.isBatchingHere()) publishClientMaps()
+    }
+
+    /**
+     * Runs [body], which adds and withdraws Gedra configs, so that readers on other threads see the configs and the
+     * per-client maps from before it or after it, never part way (issue #1264): what a client's reload swaps --
+     * its configs withdrawn, then the fresh ones added -- is published once, as one change. See
+     * [GedraConfigCollector.batch]. One writer at a time, which the reload lock guarantees.
+     */
+    fun <T> batch(body: () -> T): T {
+        if (gedraConfigs.isBatchingHere()) return body()
+        return try {
+            gedraConfigs.batch(body)
+        } finally {
+            publishClientMaps()
+        }
+    }
 
     /**
      * Declares [def], optionally with the [source] that decides it, refusing a second declaration of the name.
@@ -378,7 +415,8 @@ class SchemaCollector(
      * is an alteration, and is held to the narrowing rules. Both arrive the same way, which is why the
      * distinction is drawn where the overlay is applied rather than where it is declared.
      */
-    val clientOverlays: MutableMap<String, MutableMap<String, Any?>> = LinkedHashMap()
+    val clientOverlays: Map<String, Map<String, Any?>>
+        get() = if (gedraConfigs.isBatchingHere()) workingOverlays else publishedOverlays
 
     /**
      * Takes a Gedra config bundle, checking it against the ones already taken, and folds the entry types its
@@ -410,8 +448,9 @@ class SchemaCollector(
         c.cfacts.putAll(cfacts)
         c.cfactSources.putAll(cfactSources)
         c.workflowFunctions.addAll(workflowFunctions)
-        for ((client, list) in clientCFacts) c.clientCFacts[client] = list.toMutableList()
-        for ((client, overlay) in clientOverlays) c.clientOverlays[client] = LinkedHashMap(overlay)
+        for ((client, list) in clientCFacts) c.workingCFacts[client] = list.toMutableList()
+        for ((client, overlay) in clientOverlays) c.workingOverlays[client] = LinkedHashMap(overlay)
+        c.publishClientMaps()
     }
 
     fun addGedraConfig(cxt: KdrCxt, config: GedraConfig): Boolean {
@@ -429,12 +468,13 @@ class SchemaCollector(
             // add -- a name is unique whichever route it arrives by.
             config.cfacts.forEach { putCFact(it) }
         } else {
-            clientOverlays.getOrPut(client) { LinkedHashMap() }.putAll(config.defs)
+            workingOverlays.getOrPut(client) { LinkedHashMap() }.putAll(config.defs)
             // Collected, not checked: whether a client may take this name depends on what every other
             // contributor declared, which is not known until the registries are built.
             if (config.cfacts.isNotEmpty()) {
-                clientCFacts.getOrPut(client) { mutableListOf() }.addAll(config.cfacts)
+                workingCFacts.getOrPut(client) { mutableListOf() }.addAll(config.cfacts)
             }
+            clientMapsChanged()
         }
         return true
     }
@@ -459,9 +499,10 @@ class SchemaCollector(
             val remaining = gedraConfigs.configs.filter { it.gedraId.client == client }
             val overlay = LinkedHashMap<String, Any?>()
             remaining.forEach { overlay.putAll(it.defs) }
-            if (overlay.isEmpty()) clientOverlays.remove(client) else clientOverlays[client] = overlay
+            if (overlay.isEmpty()) workingOverlays.remove(client) else workingOverlays[client] = overlay
             val cfacts = remaining.flatMap { it.cfacts }
-            if (cfacts.isEmpty()) clientCFacts.remove(client) else clientCFacts[client] = cfacts.toMutableList()
+            if (cfacts.isEmpty()) workingCFacts.remove(client) else workingCFacts[client] = cfacts.toMutableList()
+            clientMapsChanged()
         }
         return true
     }

@@ -1,9 +1,7 @@
 package com.dynamicruntime.kdn
 
-import com.dynamicruntime.common.context.ClientSchemaSource
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
-import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -38,6 +36,7 @@ import com.dynamicruntime.common.startup.SchemaCollector
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.startup.SchemaService
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -393,7 +392,7 @@ class ConfigSlotGateTest : StringSpec({
             ),
         )[CFEP.version] shouldBe 1
         admin.postData(ACEP.reload, mapOf(CFEP.client to client))[CFEP.issues].toJsonListOfMaps().shouldBeEmpty()
-        val types = (cxt.instanceConfig.get(KdrSchemaStore.clientSourceKey) as ClientSchemaSource).storeFor(client).types
+        val types = SchemaService.get(cxt).storeFor(client).types
         types.getValue("$ns.Wider").properties.keys shouldBe setOf("name", "more")
         types.getValue("$ns.NoteData").properties.keys shouldBe setOf("name", "more")
     }

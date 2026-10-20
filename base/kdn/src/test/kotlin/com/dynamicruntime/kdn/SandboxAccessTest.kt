@@ -6,6 +6,7 @@ import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.context.ENV
+import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
@@ -60,9 +61,9 @@ import io.kotest.matchers.shouldNotBe
 class SandboxAccessTest : StringSpec({
     val cxt = TestInstances.default("sandboxAccess929")
 
-    /** Defines [parent], with a sandbox unless [sandbox] is false, and makes it live. */
-    fun defineParent(parent: String, sandbox: Boolean = true) {
-        val config = gedraConfig(cxt, "main", clientNamespace(parent), parent) {
+    /** Defines [parent], with a sandbox unless [sandbox] is false, and makes it live on [on]'s instance. */
+    fun defineParent(parent: String, sandbox: Boolean = true, on: KdrCxt = cxt) {
+        val config = gedraConfig(on, "main", clientNamespace(parent), parent) {
             defineClient(
                 ClientDef(
                     clientId = parent, name = "Client $parent", usageType = ClientUsageType.dev,
@@ -70,8 +71,8 @@ class SandboxAccessTest : StringSpec({
                 ),
             )
         }
-        GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", parent).also { it.userId = 9290L }, config)
-        GedraConfigReload.reloadClient(cxt, parent)
+        GedraConfigService.get(on).writeConfig(on.mkSubContext("setup", parent).also { it.userId = 9290L }, config)
+        GedraConfigReload.reloadClient(on, parent)
     }
 
     /** Whether [user]'s session acts as an administrator: its roles say so, and the `clientAdmin` gate admits it. */
@@ -555,16 +556,19 @@ class SandboxAccessTest : StringSpec({
     }
 
     "with table caching switched off, a sandbox administrator still stands" {
+        // Its own instance (issue #1075): it switches table caching off and swaps the user cache, which are
+        // instance-wide -- on the shared one, every spec running meanwhile would lose its signed-in users.
+        val own = Startup.mkTestBootCxt("sandboxNoCache", "sandboxAccessNoCache")
         val parent = "sbxnocache"
-        defineParent(parent)
-        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        defineParent(parent, on = own)
+        val admin = TestUser.create(own, "chief@$parent.test", level = ROLE.admin, userClient = parent)
         admin.postData(AEP.openSandbox, emptyMap())
         actsAsAdmin(admin) shouldBe true
 
         // A user cache that is there and has not loaded -- as one is before its first load. (A node started with
         // `KDR_TABLE_CACHE_DISABLED` registers none at all: `CachesDisabledTest`.)
-        val service = SqlTableCacheService.get(cxt)
-        val users = UserService.get(cxt)
+        val service = SqlTableCacheService.get(own)
+        val users = UserService.get(own)
         val cache = users.userCache.shouldNotBeNull()
         service.isDisabled = true
         users.userCache = SqlTableCache(cache.params).also { it.isDetached = false }

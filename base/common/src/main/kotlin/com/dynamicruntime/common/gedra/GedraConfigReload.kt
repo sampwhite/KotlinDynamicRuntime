@@ -119,21 +119,25 @@ object GedraConfigReload {
         }
 
         // --- phase one: swap the collectors, reversibly ---
+        // As one change to every other thread (issue #1264): the client's configs withdrawn and the fresh ones added
+        // are published together when the batch ends, so a request never sees the client part way through, or gone.
         val previous = loader.loadedFor(client)
         val taken = mutableListOf<GedraConfig>()
-        try {
-            previous.forEach { collector.removeGedraConfig(it) }
-            for (config in fresh) {
-                if (collector.addGedraConfig(cxt, config)) taken.add(config)
+        collector.batch {
+            try {
+                previous.forEach { collector.removeGedraConfig(it) }
+                for (config in fresh) {
+                    if (collector.addGedraConfig(cxt, config)) taken.add(config)
+                }
+                // The client's copy of its template (issue #945), made against what it now holds, so a revision that
+                // starts or stops redefining a template trait changes the copy with it. Its overlays reach the
+                // services through `taken`, below, like the client's own.
+                taken.addAll(loader.addTemplateClones(cxt, collector, client, boot = false))
+            } catch (e: Exception) {
+                taken.forEach { collector.removeGedraConfig(it) }
+                previous.forEach { collector.addGedraConfig(cxt, it) }
+                throw e
             }
-            // The client's copy of its template (issue #945), made against what it now holds, so a revision that
-            // starts or stops redefining a template trait changes the copy with it. Its overlays reach the
-            // services through `taken`, below, like the client's own.
-            taken.addAll(loader.addTemplateClones(cxt, collector, client, boot = false))
-        } catch (e: Exception) {
-            taken.forEach { collector.removeGedraConfig(it) }
-            previous.forEach { collector.addGedraConfig(cxt, it) }
-            throw e
         }
         // Recorded now, so a failure below is repaired by running the reload again over the right prior set.
         loader.recordLoaded(client, taken)
