@@ -610,9 +610,16 @@ class UserService : ServiceInitializer {
         if (trimmed.isEmpty()) {
             return null
         }
-        val row = trimmed.toLongOrNull()?.let { queryByUserId(cxt, it) } ?: queryByPrimaryId(cxt, trimmed)
-        row ?: return null
-        return if (scope.admitsUserRow(row.client, row.org, row.userId, row.identityId)) row else null
+        fun admits(row: AuthUserRow) = scope.admitsUserRow(row.client, row.org, row.userId, row.identityId)
+        trimmed.toLongOrNull()?.let { id -> return queryByUserId(cxt, id)?.takeIf(::admits) }
+        // An address names a person, who may have users in several clients: the one it names here is among those
+        // the scope admits -- the person's default when it is one of them, else their first (issue #1293). Taking
+        // the default and then asking the scope would answer "no such user" exactly when the default is elsewhere,
+        // which says so to a caller who may not know it.
+        val identity = queryIdentityByAddress(cxt, trimmed) ?: return null
+        val default = defaultUserOf(cxt, identity)
+        val reachable = usersOfIdentity(cxt, identity.identityId).filter { !it.isDeleted && admits(it) }
+        return reachable.firstOrNull { it.userId == default?.userId } ?: reachable.firstOrNull()
     }
 
     /** Selects a single `AuthUsers` row by an indexed [field], or null. Returns the row even if disabled. */

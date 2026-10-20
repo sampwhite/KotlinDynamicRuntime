@@ -52,12 +52,16 @@ class ReportTypedCatalogTest : StringSpec({
     fun endpointsOf(catalog: Map<String, Any?>) = TestUser.endpointsIn(catalog)
     fun pathsOf(catalog: Map<String, Any?>) = TestUser.pathsIn(catalog)
 
-    /** Whether [user] may call the typed endpoint at [path]: a page of it, or the refusal of one with no authority over the client. */
+    /**
+     * Whether [user] may call the typed endpoint at [path]: a page of it, or a refusal -- of one with no authority over
+     * the client (403), or of one who may not look at that client at all, to whom its endpoint is as missing as a
+     * client that does not exist (404, issue #1293).
+     */
     fun mayCall(user: TestUser, path: String): Boolean {
         val env = user.client.sendJsonGetRequest(path, mapOf(EP.limit to 1))
         return when ((env[EP.status] as? Number)?.toInt()) {
             null -> env.containsKey(EP.items)
-            EXC.notAuthorized -> false
+            EXC.notAuthorized, EXC.notFound -> false
             else -> throw AssertionError("Calling '$path' answered neither a page nor a refusal: $env")
         }
     }
