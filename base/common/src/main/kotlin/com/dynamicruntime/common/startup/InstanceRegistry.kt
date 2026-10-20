@@ -73,14 +73,28 @@ object InstanceRegistry {
      * ignored on a cache hit, because the instance is already built. So a reused [instanceName] returns the
      * earlier instance and its earlier component set -- refused in the unit environment when they differ
      * (`requireSameSetup`), so a test shares an instance only by asking for the very setup it was built with.
+     *
+     * [stage] is how far the boot goes (issue #1289), [BootStage.ready] for a serving node; [services] names the
+     * services a [BootStage.collected] boot runs, and is ignored at any other stage. A cached instance asked for at
+     * another stage is refused in every environment: an instance booted part-way handed to code that expects a whole
+     * one would fail far from the cause, or quietly do less.
      */
     fun getOrCreateInstanceConfig(
         instanceName: String,
         components: List<ComponentDefinition>,
         overlay: Map<String, Any?> = emptyMap(),
+        stage: BootStage = BootStage.ready,
+        services: Set<String> = emptySet(),
     ): KdrInstanceConfig {
         synchronized(instanceConfigs) {
             instanceConfigs[instanceName]?.let { existing ->
+                val built = BootStage.of(existing)
+                if (built != stage) {
+                    throw KdrException(
+                        "Instance '$instanceName' was booted to the '$built' stage and is now asked for at '$stage'. " +
+                            "An instance booted part-way is never handed to code expecting another stage; use another name.",
+                    )
+                }
                 requireSameSetup(instanceName, existing, components, overlay)
                 return existing
             }
@@ -180,8 +194,35 @@ object InstanceRegistry {
                 serviceEntries.addAll(component.services(cxt))
             }
 
-            bindAndInitServices(cxt, node, startupEntries)
-            bindAndInitServices(cxt, node, serviceEntries)
+            config.put(BootStage.configKey, stage)
+            when (stage) {
+                // Only the services named, through checkInit: what a script working on the file store needs, and
+                // nothing that reaches the database (issue #1289).
+                BootStage.collected -> {
+                    val started = bindAndInitServices(cxt, node, startupEntries + serviceEntries, runReady = false, only = services)
+                    val missing = services - started.toSet()
+                    if (missing.isNotEmpty()) {
+                        throw KdrException("No service named ${missing.sorted().joinToString(", ")} is registered on this node.")
+                    }
+                }
+                BootStage.initialized -> {
+                    bindAndInitServices(cxt, node, startupEntries, runReady = false)
+                    bindAndInitServices(cxt, node, serviceEntries, runReady = false)
+                }
+                BootStage.ready -> {
+                    bindAndInitServices(cxt, node, startupEntries)
+                    bindAndInitServices(cxt, node, serviceEntries)
+                }
+            }
+            if (stage != BootStage.ready) {
+                LogStartup.info(cxt) {
+                    "Booted to the '$stage' stage: " + if (stage == BootStage.collected) {
+                        "services ${services.sorted().joinToString(", ").ifEmpty { "none" }}, through checkInit; no database."
+                    } else {
+                        "every service through checkInit; nothing started in the background."
+                    }
+                }
+            }
 
             instanceConfigs[instanceName] = config
             instanceSetups[instanceName] = setupOf(components, overlay)
@@ -193,9 +234,17 @@ object InstanceRegistry {
      * Creates each service from its factory and publishes it into the instance config
      * under its [ServiceInitializer.serviceName] (a later factory with the same name
      * replaces an earlier one -- useful for tests), then runs the three idempotent
-     * lifecycle passes across the registered set.
+     * lifecycle passes across the registered set -- the last only when [runReady] (issue #1289). With [only], a
+     * service not named there is built, to learn its name, and dropped unpublished. Returns the names of the services
+     * published.
      */
-    fun bindAndInitServices(cxt: KdrCxt, node: NodeProfile, entries: List<ServiceEntry>) {
+    fun bindAndInitServices(
+        cxt: KdrCxt,
+        node: NodeProfile,
+        entries: List<ServiceEntry>,
+        runReady: Boolean = true,
+        only: Set<String>? = null,
+    ): List<String> {
         val config = cxt.instanceConfig
         val names = mutableListOf<String>()
         for (entry in entries) {
@@ -207,6 +256,9 @@ object InstanceRegistry {
             }
             val service = entry.factory()
             val name = service.serviceName
+            if (only != null && name !in only) {
+                continue
+            }
             if (config.get(name) == null) {
                 names.add(name)
             }
@@ -217,7 +269,10 @@ object InstanceRegistry {
         val services = names.map { config.get(it) as ServiceInitializer }
         for (service in services) service.onCreate(cxt)
         for (service in services) service.checkInit(cxt)
-        for (service in services) service.checkReady(cxt)
+        if (runReady) {
+            for (service in services) service.checkReady(cxt)
+        }
+        return names
     }
 
     /**

@@ -44,6 +44,9 @@ class JobService : ServiceInitializer, AutoCloseable {
     /** The scheduler's timer, when this node runs one (issue #870). */
     @Volatile
     private var scheduler: ScheduledExecutorService? = null
+
+    /** Whether this node's scheduler is running: started by a serving node's boot, never by a script's (issue #1289). */
+    val isSchedulerRunning: Boolean get() = scheduler != null
     private val poolLock = Any()
 
     override fun checkInit(cxt: KdrCxt) {

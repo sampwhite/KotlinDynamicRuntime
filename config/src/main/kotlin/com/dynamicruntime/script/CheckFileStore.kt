@@ -5,6 +5,7 @@ import com.dynamicruntime.common.filestore.FST
 import com.dynamicruntime.common.filestore.FileLeftover
 import com.dynamicruntime.common.filestore.FileStoreCheck
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.startup.BootStage
 import com.dynamicruntime.common.util.formatDate
 import com.dynamicruntime.kdn.Startup
 import kotlin.system.exitProcess
@@ -26,9 +27,10 @@ import kotlin.time.Duration.Companion.minutes
  * since a write under way looks exactly like a write that stopped. Checking reads every file in every bucket it
  * is asked about, so it is run when wanted rather than at every boot.
  *
- * It boots the runtime the ordinary way ([Startup.mkBootCxt]) and starts no HTTP server, so it reaches the store
- * the deployment's own configuration names (`KDR_FILE_STORE_*`, `KDR_S3_*`, `KDR_FILE_STORES`) -- with the server
- * running or not. It passes over a `memory` store, which holds nothing beyond the run that made it, and refuses to
+ * It boots the runtime ([Startup.mkBootCxt]) only to the `collected` stage, with the file store's service alone (issue
+ * #1289), and starts no HTTP server. So it reaches the store the deployment's own configuration names
+ * (`KDR_FILE_STORE_*`, `KDR_S3_*`, `KDR_FILE_STORES`) and never the database: it runs with the server running or not,
+ * beside a server holding the database's lock, and with the database unreachable. It passes over a `memory` store, which holds nothing beyond the run that made it, and refuses to
  * run when that is all there is.
  *
  * Exit codes: 0 when nothing was found or everything found was repaired, 2 when something found is still there,
@@ -82,7 +84,8 @@ object CheckFileStore {
 
     fun run(args: List<String>): Int {
         val options = parseArgs(args) ?: return usage()
-        return runOn(bootScriptCxt("checkFileStore"), options) { println(it) }
+        val cxt = bootScriptCxt("checkFileStore", BootStage.collected, setOf(FileStoreService.serviceName))
+        return runOn(cxt, options) { println(it) }
     }
 
     /** The run itself, on a booted [cxt]: each line of what it says goes to [out]. */
