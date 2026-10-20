@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.util.isAsciiLetterOrDigit
+import com.dynamicruntime.common.util.isAsciiLetter
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.intern.Internable
 import com.dynamicruntime.common.util.ConvProblem
@@ -426,7 +428,10 @@ class GedraId private constructor(
             if (part.isEmpty()) {
                 return "A gedra $what may not be empty."
             }
-            val bad = part.firstOrNull { !(it.isAsciiLetter() || it.isAsciiDigit() || it == '_') }
+            // ASCII rather than isLetterOrDigit(), which is Unicode-aware: an id is ASCII by construction, and a base
+            // id that admitted Cyrillic lookalikes would be a way to mint two ids that read identically to a person
+            // and differ to the cache.
+            val bad = part.firstOrNull { !(it.isAsciiLetterOrDigit() || it == '_') }
             if (bad != null) {
                 return "A gedra $what may hold only letters, digits and underscores; '$part' holds '$bad'."
             }
@@ -436,11 +441,5 @@ class GedraId private constructor(
         private fun bad(fullId: String, why: String): Parsed.Failed =
             Parsed.failed(ConvProblem.badFormat, "'$fullId' is not a gedra id: $why.")
 
-        // Spelled out rather than using isLetterOrDigit(), which is Unicode-aware: an id is ASCII by
-        // construction, and a base id that admitted Cyrillic lookalikes would be a way to mint two ids that
-        // read identically to a person and differ to the cache.
-        private fun Char.isAsciiLetter() = this in 'a'..'z' || this in 'A'..'Z'
-
-        private fun Char.isAsciiDigit() = this in '0'..'9'
     }
 }

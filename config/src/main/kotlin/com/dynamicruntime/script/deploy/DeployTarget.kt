@@ -1,5 +1,6 @@
 package com.dynamicruntime.script.deploy
 
+import com.dynamicruntime.common.util.isPlainName
 import java.io.File
 
 /**
@@ -47,9 +48,6 @@ data class DeployTarget(
         /** The keys a target file must have; every other key is `env.<VAR>`, [DPL.keepReleasesKey] or [DPL.buildProfileKey]. */
         private val required = listOf("host", "user", "baseDir", "service", "publicUrl")
 
-        /** What a build profile may be: a plain name, since it goes onto a Gradle command line. */
-        private val profilePattern = Regex("[A-Za-z][A-Za-z0-9_-]*")
-
         /**
          * Reads a target file's [text], named [name]. A properties file in its simplest form -- `key=value` per
          * line, `#` comments, blank lines -- read by hand so that the `env.` entries keep the order they are written
@@ -87,7 +85,8 @@ data class DeployTarget(
                 }
             } ?: DPL.defaultKeepReleases
             val profile = values[DPL.buildProfileKey]?.ifEmpty { null }?.also {
-                require(profilePattern.matches(it)) {
+                // A plain name in ASCII, starting with a letter, since it goes onto a Gradle command line.
+                require(it.isPlainName("_-", letterFirst = true, asciiOnly = true)) {
                     "Target '$name': ${DPL.buildProfileKey} must be a plain name (letters, digits, '-', '_'), not '$it'."
                 }
             }

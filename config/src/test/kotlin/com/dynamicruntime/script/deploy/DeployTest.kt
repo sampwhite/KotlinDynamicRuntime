@@ -50,6 +50,8 @@ class DeployTest : StringSpec({
         // It goes onto a Gradle command line, so only a plain name.
         problem("$targetText\nbuildProfile=ref erence") shouldContain "plain name"
         problem("$targetText\nbuildProfile=-Pother=x") shouldContain "plain name"
+        // ASCII only (issue #1275): a lookalike letter is no letter to a command line.
+        problem("$targetText\nbuildProfile=référence") shouldContain "plain name"
     }
 
     "a target's build profile reaches Gradle as -PkdrBuild, and none builds as a developer does (issue #1273)" {

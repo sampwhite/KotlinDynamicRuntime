@@ -76,10 +76,18 @@ Double.fmtD(); Float.fmtF()     // KMP-safe, thread-safe fixed-precision (NOT De
 String.toOptBool(): Boolean?    // loose: first non-ws char y/t/1 -> true, n/f/0 -> false, else/blank -> null
 String.splitComma(): List<String>   // trims; blank -> emptyList
 String?.trimToNull(): String?       // trim; blank/empty -> null (the shared trim-and-blank normalizer)
+String.isPlainName(extra, letterFirst = false, asciiOnly = false): Boolean  // non-empty letters/digits + extra
+Char.isAsciiLetter(); Char.isAsciiLetterOrDigit()   // a-z/A-Z(/0-9) only, unlike isLetter's any alphabet
+String.kdocRefsAsCode(): String     // KDoc prose for Markdown: `[Symbol]` -> a code span, `[text](url)` kept
 StringBuilder.appendLiteral(text) / String.encodeLiteral()  // JSON string escaping
 Map<String,Any?>.getReqStr(key) / getOptStr(key)                 // required (throws) / optional string at a key
 Map<String,Any?>.getReqNonBlankStr(key) / getOptNonBlankStr(key) // same, but trimmed and a blank value reads as absent
 ```
+
+**A name of letters and digits plus a few marks is checked with `isPlainName`** (issue #1275), never a regex or a
+hand-written `all { … }`: state the marks, `letterFirst`, and `asciiOnly`, and keep a length or structure rule beside
+the call. Letters are Unicode unless `asciiOnly` -- ask for it where a lookalike matters (a command line, a URL
+segment, an id people compare). A scanner that finds where a name *ends* inside larger text is a different job.
 
 Never write `as` / `@Suppress("UNCHECKED_CAST")` — route through `toT()`/`toOptT()`/`toJsonMap()`. Like `getReqStr`
 beside `getOptStr`, `toT` is the *required* half: a null there is a broken invariant, not a value. Reach for the

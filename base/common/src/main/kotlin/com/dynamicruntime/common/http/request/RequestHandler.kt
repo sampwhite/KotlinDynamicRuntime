@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.util.isPlainName
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
@@ -324,7 +325,7 @@ class RequestHandler : WebRequest {
 
     private fun clientId(header: String, param: String): String? {
         val raw = getRequestHeader(header) ?: queryParams[param] as? String ?: return null
-        return raw.takeIf { it.length in 1..64 && it.all { c -> c.isLetterOrDigit() || c in "._:-" } }
+        return raw.takeIf { it.length in 1..64 && it.isPlainName("._:-") }
     }
 
     private fun readBody(): String {

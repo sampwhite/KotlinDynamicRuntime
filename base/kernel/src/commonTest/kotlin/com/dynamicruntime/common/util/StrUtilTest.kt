@@ -95,4 +95,41 @@ class StrUtilTest {
         assertEquals("2 MB", byteSizeText(2 * 1024 * 1024))
         assertEquals("32 MB", byteSizeText(32L * 1024 * 1024))
     }
+
+    // isPlainName (issue #1275), on both targets: one check of a name, the same in the browser as on the JVM.
+    @Test
+    fun plainNameTakesLettersDigitsAndTheMarksNamed() {
+        assertTrue("file-id_2".isPlainName("-_"))
+        assertFalse("file.id".isPlainName("-_"))
+        assertFalse("".isPlainName("-_"))
+        assertFalse("a b".isPlainName("_"))
+        // The marks are characters, not a pattern: a regex metacharacter is just itself.
+        assertTrue("a.b".isPlainName("."))
+        assertTrue("ab".isPlainName("."))
+    }
+
+    @Test
+    fun plainNameLetterFirstAndAsciiOnly() {
+        assertTrue("reference".isPlainName("_-", letterFirst = true))
+        assertFalse("2nd".isPlainName("_-", letterFirst = true))
+        assertFalse("-x".isPlainName("_-", letterFirst = true))
+        assertTrue("2nd".isPlainName("_-"))
+        // Unicode letters pass unless ASCII is asked for -- in the first place as elsewhere.
+        assertTrue("café".isPlainName(""))
+        assertFalse("café".isPlainName("", asciiOnly = true))
+        assertTrue("éa".isPlainName("", letterFirst = true))
+        assertFalse("éa".isPlainName("", letterFirst = true, asciiOnly = true))
+        assertTrue("Ab9".isPlainName("", letterFirst = true, asciiOnly = true))
+    }
+
+    // kdocRefsAsCode (issue #1275), on both targets: its regex is held to the browser's stricter engine as well.
+    @Test
+    fun kdocReferenceBecomesACodeSpanAndALinkStaysALink() {
+        assertEquals(
+            "Set by `ACFG.landingFocus` or `DirectAccess`; see [the guide](https://example.org/g).",
+            "Set by [ACFG.landingFocus] or [DirectAccess]; see [the guide](https://example.org/g).".kdocRefsAsCode(),
+        )
+        // A bracket that holds no symbol name is not a reference.
+        assertEquals("Pick [1] or [a b].", "Pick [1] or [a b].".kdocRefsAsCode())
+    }
 }

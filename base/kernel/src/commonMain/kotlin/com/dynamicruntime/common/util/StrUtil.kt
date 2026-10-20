@@ -10,11 +10,35 @@ fun String.splitComma(): List<String> {
  * otherwise made of letters, digits, and underscores. Written from scratch (rather than porting dn's
  * JVM-only `isJavaName`) so it is KMP compatible -- `Char.isLetter`/`isLetterOrDigit` are common stdlib.
  */
-fun String.isVariableName(): Boolean {
+fun String.isVariableName(): Boolean =
+    isNotEmpty() && (this[0].isLetter() || this[0] == '_') && isPlainName("_")
+
+/**
+ * Whether this string is a **plain name** (issue #1275): non-empty, and made only of letters, digits, and the
+ * characters in [extra] -- starting with a letter when [letterFirst], and with only ASCII letters and digits when
+ * [asciiOnly]. The one way the codebase checks that a value is "a name of letters and digits plus a few marks", so
+ * each such check states its own marks, first character, and alphabet, and nothing else.
+ *
+ * **Letters are Unicode by default**, as [Char.isLetterOrDigit] has them: `é` and Cyrillic letters pass. Say
+ * [asciiOnly] where the name goes somewhere a lookalike or an unusual character matters -- a command line, a URL
+ * segment, an id compared by people.
+ *
+ * Written as a character check rather than a regex, as [isVariableName] and [isEmailAddress] are: it is the same in
+ * the browser as on the JVM, and it cannot backtrack. A length rule, or a structure such as an address's one `@`, is
+ * the caller's, beside the call.
+ */
+fun String.isPlainName(extra: String, letterFirst: Boolean = false, asciiOnly: Boolean = false): Boolean {
     if (isEmpty()) return false
-    if (!(this[0].isLetter() || this[0] == '_')) return false
-    return all { it.isLetterOrDigit() || it == '_' }
+    val first = this[0]
+    if (letterFirst && !(if (asciiOnly) first.isAsciiLetter() else first.isLetter())) return false
+    return all { (if (asciiOnly) it.isAsciiLetterOrDigit() else it.isLetterOrDigit()) || it in extra }
 }
+
+/** Whether this is an ASCII letter: `a`-`z` or `A`-`Z`, unlike [Char.isLetter], which takes any alphabet's. */
+fun Char.isAsciiLetter(): Boolean = this in 'a'..'z' || this in 'A'..'Z'
+
+/** Whether this is an ASCII letter or digit, unlike [Char.isLetterOrDigit], which takes any alphabet's. */
+fun Char.isAsciiLetterOrDigit(): Boolean = isAsciiLetter() || this in '0'..'9'
 
 /**
  * Whether this string is a plausibly valid email address. Pragmatic, **not** full RFC 5322: the goal is to

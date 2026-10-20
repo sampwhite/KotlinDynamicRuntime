@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.naming
 
+import com.dynamicruntime.common.util.isPlainName
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.util.isVariableName
 
@@ -67,10 +68,10 @@ enum class OwnedNameKind(val label: String) {
 
     /** Whether [local] is a legal local part for this kind. */
     fun isLocalPart(local: String): Boolean = when (this) {
-        trait -> local.isNotEmpty() && local.all { it.isAsciiLetterOrDigit() || it == '_' }
-        cfact -> local.isNotEmpty() && local.all { it.isLetterOrDigit() || it == '_' || it == '.' }
+        trait -> local.isPlainName("_", asciiOnly = true)
+        cfact -> local.isPlainName("_.")
         workflow, task, report -> local.isVariableName()
-        fileRef -> local.isVariableName() && local.all { it.isAsciiLetterOrDigit() || it == '_' }
+        fileRef -> local.isVariableName() && local.isPlainName("_", asciiOnly = true)
     }
 
     /** The local-part rule, as a phrase for a refusal. */
@@ -84,7 +85,7 @@ enum class OwnedNameKind(val label: String) {
 
 /** Whether [root] is a legal owner root: ASCII letters and digits, starting with a letter. */
 fun isOwnerRoot(root: String): Boolean =
-    root.isNotEmpty() && root[0].isAsciiLetter() && root.all { it.isAsciiLetterOrDigit() }
+    root.isPlainName("", letterFirst = true, asciiOnly = true)
 
 /**
  * What is wrong with [name] as a **client's own** [kind] name, or null: it must be bare -- a colon means a
@@ -214,7 +215,3 @@ fun declaredTypeProblem(typeName: String, namespace: String): String? {
         "The type '$typeName' is declared in '$namespace' but is not under its root '$root'."
     }
 }
-
-private fun Char.isAsciiLetter() = this in 'a'..'z' || this in 'A'..'Z'
-
-private fun Char.isAsciiLetterOrDigit() = isAsciiLetter() || this in '0'..'9'
