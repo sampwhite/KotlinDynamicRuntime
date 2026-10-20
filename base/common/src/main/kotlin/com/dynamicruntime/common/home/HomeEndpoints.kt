@@ -494,6 +494,10 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         "The UiBlock: declared presentation structure, contributed by components and varied per client.", listed = false),
     MarkdownDocDef(HDOC.reporting, "Reporting", "docs/design/reporting.md",
         "Named reports over a client's forms: paths, combines, the load-time checks, and the cursor-paged run.", listed = false),
+    MarkdownDocDef(HDOC.fileRefs, "File refs", "docs/design/file-refs.md",
+        "A client's named files: where the bytes are, who may name them, and how they are judged and served.", listed = false),
+    MarkdownDocDef(HDOC.sandboxes, "Sandboxes", "docs/design/sandboxes.md",
+        "A client's sandbox: a second client that runs its drafts, so a change is tried before it is published.", listed = false),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
         "The MIT license the runtime is released under.", order = lastDocOrder),
 )

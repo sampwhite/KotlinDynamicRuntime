@@ -51,14 +51,6 @@ top-level entry to 0, increment it at each recursive step, and throw a `KdrExcep
 Pick a limit well above any legitimate nesting (20–50 is typical). See `SchParser.parseNode` and `JsonUtil`
 (its formatting/parsing nesting guards) for prior art.
 
-* Deployments will be done by a pull from a git repository, and a Gradle build will be done on the source code
-as part of the launch of an application. There will be no CI process to generate deployable "jar" files. This
-means a deployment agent can add Kotlin code specific to the deployment and have it picked up by the build. References
-to this additional code can be loaded by adusting the `settings.gradle.kts` file. That file is always defined
-in a directory that is a parent to the source code directory and is not version-controlled. Examples of the
-settings file will be provided in the source code. This is how a deployment can inject configuration into
-the deployed code, though most of the common variations should be done by examining environment variables.
-
 * We will support dynamically discovering parts of our code base, using reflection, and use plugin architectures 
 to allow "compoents" to extend behavior. At the time this document was written, this part of the code base is 
 yet to be written.

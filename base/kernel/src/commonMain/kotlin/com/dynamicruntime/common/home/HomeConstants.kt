@@ -409,5 +409,7 @@ object HDOC {
     const val gedraPatch = "gedra-patch"
     const val uiBlock = "ui-block"
     const val reporting = "reporting"
+    const val fileRefs = "file-refs"
+    const val sandboxes = "sandboxes"
     const val license = "license"
 }

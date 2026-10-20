@@ -258,6 +258,15 @@ sits in every `GedraId`, and which turns out to own more than an identifier: whi
 traits it supports, what its callers are shown, and what happens to its content when it is not there. Like the others it
 was written before the code, and it is grown as decisions settle rather than restated.
 
+[`docs/design/sandboxes.md`](docs/design/sandboxes.md) describes a client's **sandbox**: a second client, linked to
+it, that runs the client's drafts against users and data of its own, so a change is seen working before it is
+published. It covers why a sandbox is built as a client, what it runs, who may enter it and with what authority, and
+how it changes the way edits and publishing behave.
+
+[`docs/design/file-refs.md`](docs/design/file-refs.md) covers a client's **file refs**: named images its copy shows
+by name, with the bytes in the file store or on the node's own disk. It sets out where the bytes may be and who may
+name them, how a configuration holding refs is judged when a file can go missing, and how a ref is served.
+
 [`docs/design/ui-block.md`](docs/design/ui-block.md) names the **UiBlock** — a registered piece of declared presentation
 structure, merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
 It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact expressions by the
