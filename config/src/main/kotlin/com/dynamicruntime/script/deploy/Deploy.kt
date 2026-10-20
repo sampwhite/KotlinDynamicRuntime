@@ -1,14 +1,11 @@
 package com.dynamicruntime.script.deploy
 
-import com.dynamicruntime.script.CmdResult
 import com.dynamicruntime.script.Subprocess.capture
 import com.dynamicruntime.script.Subprocess.inherit
+import com.dynamicruntime.script.deploy.NodeShell.confirm
+import com.dynamicruntime.script.deploy.NodeShell.healthy
+import com.dynamicruntime.script.deploy.NodeShell.ssh
 import java.io.File
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
-import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.system.exitProcess
@@ -254,36 +251,6 @@ object Deploy {
     }
 
     /** Waits for the application to answer on the node, then through the public address. */
-    private fun healthy(target: DeployTarget): Boolean {
-        print("Waiting for the application on the node")
-        val nodeUp = waitFor(DPL.nodeHealthSeconds) { ssh(target, nodeHealthCommand(target)).out == "200" }
-        println(if (nodeUp) " -- up." else " -- no answer.")
-        if (!nodeUp) return false
-        print("Checking ${target.publicUrl}")
-        val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
-        val request = HttpRequest.newBuilder(URI.create("${target.publicUrl}/kda/health")).timeout(Duration.ofSeconds(10)).GET().build()
-        val publicUp = waitFor(DPL.publicHealthSeconds) {
-            runCatching { client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode() == 200 }.getOrDefault(false)
-        }
-        println(if (publicUp) " -- up." else " -- no answer through the public address (the node itself answers).")
-        return publicUp
-    }
-
-    private fun waitFor(seconds: Int, check: () -> Boolean): Boolean {
-        val until = System.nanoTime() + seconds * 1_000_000_000L
-        while (System.nanoTime() < until) {
-            if (check()) return true
-            print(".")
-            Thread.sleep(2000)
-        }
-        return false
-    }
-
-    private fun confirm(question: String): Boolean {
-        print("$question [y/N] ")
-        return readlnOrNull()?.trim()?.lowercase() in setOf("y", "yes")
-    }
-
     private fun parseArgs(args: List<String>): Options? {
         var target: String? = null
         var repo: File? = null
@@ -331,12 +298,6 @@ object Deploy {
         System.err.println("kdr-deploy: $message")
         return failureExit
     }
-
-    // --- subprocesses -------------------------------------------------------------------------------------------
-
-    /** Runs [command] on the node over SSH, with [stdin] as its input when given, and captures its output. */
-    private fun ssh(target: DeployTarget, command: String, stdin: String? = null): CmdResult =
-        capture(null, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", target.sshDestination, command, stdin = stdin)
 }
 
 fun main(args: Array<String>) {

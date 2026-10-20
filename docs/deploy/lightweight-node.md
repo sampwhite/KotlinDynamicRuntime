@@ -7,7 +7,7 @@ with the `reference` deployment flavor.
 
 The guide has two parts. **One-time setup** is done once per node, partly with `sudo`. **Deploying a build** is
 done every time, from your own machine, and needs no `sudo`: `kdr-deploy` does it in one command. Looking at a
-node and clearing its data are steps by hand for now, which `kdr-node` (issue #1244) is being written to do.
+node, reading its log, and clearing its data are `kdr-node`'s, from the same machine.
 
 The examples use `example.org` for the domain and `kdr` for the user that runs the application. Put in your own.
 
@@ -324,7 +324,23 @@ ssh kdr@example.org "curl -s http://127.0.0.1:7070/kda/health"
 
 ## Looking at a node
 
-`kdr-node` (issue #1244) will gather this in one command. By hand, over SSH:
+**`kdr-node` gathers it in one command** (issue #1244), from your machine, with the same target as `kdr-deploy`:
+
+```bash
+kdr-node dynamicruntime.org status
+```
+
+It reports the service (running or not, since when, its restarts), the release `current` points at and the
+releases kept, health, memory and disk, and the node's own view: the JVM's memory and uptime, the active deployment
+flavors, and what the boot checks found. It reads that view from the operator pages over SSH, as below, so nobody
+signs in. For the log:
+
+```bash
+kdr-node dynamicruntime.org logs --lines 200
+```
+
+Add `--follow` to keep watching it. `kdr-node dynamicruntime.org restart` restarts the service and waits until it
+answers. By hand, over SSH:
 
 | To see | Run on the node |
 | --- | --- |
@@ -367,8 +383,36 @@ the journal holds, or to look further back:
 
 ## Clearing the data
 
-A reference deployment's data is temporary, and is cleared from time to time. Stop the service, remove the database
-and the stored files, and start it again:
+A reference deployment's data is temporary, and is cleared from time to time. One command does it (issue #1244):
+
+```bash
+kdr-node dynamicruntime.org reset-data --dry-run
+```
+
+```bash
+kdr-node dynamicruntime.org reset-data
+```
+
+The dry run shows what would go and changes nothing: how many files each bucket would lose and keep, and the size of
+the database. The reset then, after asking:
+
+1. stops the service;
+2. empties the file store: every declared bucket, whether in `fileStore/` or in object storage (below);
+3. removes the database, `h2Database/`;
+4. starts the service, and waits until it answers on the node and through the public address.
+
+**The buckets themselves stay.** The application never creates one, and it refuses to start without them.
+
+**The web assets of clients defined in source stay too.** The sample's Acme is one. A client's favicon and brand mark
+live only in the file store, and a reset brings such a client back with the same id, so its images come back with it.
+A client created on the site is not brought back, so its images go with everything else.
+
+The emptying is done by a small command in the deployed release (`ClearFileStore`), run on the node under its own
+settings, so nothing is installed for it. The application creates an empty database as it starts, and the
+`reference` flavor sets up the conference demo again. Removing `h2Database/` also removes H2's trace file
+(`kdr.dat.trace.db`), which H2 writes beside the database when it runs into errors.
+
+By hand, with the files in `fileStore/`:
 
 ```bash
 systemctl --user stop kdr
@@ -376,12 +420,8 @@ rm -rf ~/kdr/h2Database ~/kdr/fileStore
 systemctl --user start kdr
 ```
 
-This also removes H2's trace file (`kdr.dat.trace.db`), which H2 writes beside the database when it runs into errors
-and which grows only then. The application creates an empty database as it starts, and the `reference` flavor sets up
-the conference demo again. `kdr-node` (issue #1244) will offer this as `reset-data`, asking before it removes anything.
-
-A node that keeps its files in object storage (below) has no `fileStore/` to remove: empty its buckets instead, from
-the provider's console or with any S3 tool, while the service is stopped.
+That removes the web assets too. A node that keeps its files in object storage has no `fileStore/`, so its buckets
+are emptied with the provider's console or an S3 tool, while the service is stopped.
 
 ## Env auth on the node itself
 
