@@ -92,6 +92,40 @@ cycle by forcing a re-resolve first:
 The lock lives at the workspace root (`kotlin-js-store/yarn.lock`), outside the versioned repo, so each
 workspace drifts on its own and every checkout hits this independently.
 
+### Concurrent specs: a bug-finding run (issue #1078)
+
+```bash
+./gradlew :base:common:test :base:kdn:test :sample:test -Pkdr.concurrentSpecs=4 --rerun
+```
+
+Runs four specs at a time, each on a thread of its own, in the three modules that carry a Kotest `ProjectConfig`
+reading the flag (`base:common`, `base:kdn`, `sample`). Unset, specs run one after another, as always; a malformed
+value fails the build rather than quietly running sequentially. All three were clean at four as of #1078.
+
+**Run it after a change to anything shared across requests or threads**, which ordinary sequential tests cannot
+exercise:
+
+- **Caching** -- the table caches (`common/sql/cache`), what a cache refresh or pin depends on, or any new cache.
+- **Resolving a client's configuration** -- the collectors, a reload, the schema stores, the client or customer
+  sets, anything a reload swaps while requests read it.
+
+Concurrency found real races in exactly these: a cache missing a row written during another thread's refresh
+(#1256), a transaction reading a cache another thread changed under it (#1266), and requests reading the schema
+collector while a reload changed it (#1264). A failure that appears only under the flag is a lead, not noise.
+
+A spec on a shared instance (`TestInstances`) has to hold when other specs run beside it:
+
+- **Count only what is yours.** Give the users or forms you count a prefix of your own and count through a search
+  on it, rather than counting the whole instance.
+- **Use clients of your own.** A demo provisioned by its simulation takes a suffix (`provisionDesignDemo(cxt,
+  "edit984")`); the unsuffixed one belongs to the spec testing the simulation.
+- **Never change instance-wide state** -- caching switched off, a swapped service, the clock. That takes an instance
+  of your own (`TestInstances`' rule), with a comment saying why.
+- **Check content, not identity, against live stores.** A reload replaces every schema store; compare what a
+  context holds with itself, not with the service's current one.
+- **Ask about your own write.** `SqlTableCache.markChanged()` returns the write's number and `hasCovered(it)` says
+  whether a completed reload covers it; "is anything pending" depends on everyone else's writes.
+
 ### `check` also validates KDoc `[link]`s (Dokka)
 
 `./gradlew check` runs **Dokka** (`dokkaGenerate`, wired into every module's `check`), whose job here is not
