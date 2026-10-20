@@ -503,6 +503,8 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         "A client's sandbox: a second client that runs its drafts, so a change is tried before it is published.", listed = false),
     MarkdownDocDef(HDOC.userSearch, "User search", "docs/design/user-search.md",
         "The admin user search, and the server-driven shape its console is built from.", listed = false),
+    MarkdownDocDef(HDOC.gedraWorkflow, "Gedra workflow (superseded)", "docs/history/gedra-workflow.md",
+        "The first workflow design, retired under #533 and kept for its reasoning.", listed = false),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
         "The MIT license the runtime is released under.", order = lastDocOrder),
 )

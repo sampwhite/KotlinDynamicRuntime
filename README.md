@@ -316,7 +316,7 @@ facts about a form, its workflows and its owner — promoted to columns, a row p
 grammar, how values are combined within a form and rolled up across a group, the checks a report passes when
 configuration loads, and what the cursor-paged run guarantees when forms change during a walk.
 
-[`docs/history/`](docs/history/) keeps designs that were tried and superseded, left as written so the reasoning is not
+`docs/history/` keeps designs that were tried and superseded, left as written so the reasoning is not
 lost. Today it holds one, [`gedra-workflow.md`](docs/history/gedra-workflow.md), the first workflow design, retired
 before most of it was built.
 

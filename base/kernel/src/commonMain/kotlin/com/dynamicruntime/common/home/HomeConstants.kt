@@ -409,6 +409,7 @@ object HDOC {
     const val gedraEntry = "gedra-entry"
     const val gedraStates = "gedra-states"
     const val userSearch = "user-search"
+    const val gedraWorkflow = "gedra-workflow"
     const val uiBlock = "ui-block"
     const val reporting = "reporting"
     const val fileRefs = "file-refs"
