@@ -293,13 +293,16 @@ body {
     border-color: var(--danger);
 }
 
-/* The debug index's tool links (issue #227): plain <a>s otherwise fall to the browser's default blue, which is
-   near-unreadable on the dark card. Use the same bright accent the Markdown links use. */
-.debug-index a {
+/* Every plain <a> the pages draw -- a breadcrumb, a table's Open or Download, an index's tool links -- would
+   otherwise fall to the browser's default blue, measured at 1.56:1 on the dark card (issue #1303). They take
+   the palette's link colour the back link and the Markdown links use (4.9:1), brighter and underlined on hover
+   (7.3:1). Plain anchors only: a classed one -- a menu item, an antd link button, `.back-link` -- keeps its own
+   rule, which any class outranks. */
+a:not([class]) {
     color: var(--accent-bright);
     text-decoration: none;
 }
-.debug-index a:hover { text-decoration: underline; }
+a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline; }
 
 /* The "← Listing" link atop a child page (issue #554; was the debug-only `.debug-back`). */
 .back-link {
@@ -404,7 +407,11 @@ body {
     border-radius: 10px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
     min-width: 190px;
-    overflow: hidden;
+    /* No taller than the window below the bar (57px), scrolling within itself past that (issue #1303): it hangs
+       off the sticky bar, so scrolling the page could never reach an item below the window's edge. */
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 /* Both an anchor (a nav item) and a button (Log out, which acts rather than navigates) carry this class, so
    it resets the button chrome to make the two presentations identical. */

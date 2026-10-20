@@ -10,6 +10,7 @@ import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.splitComma
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import kotlinx.browser.document
 import react.ChildrenBuilder
 import react.FC
 import react.Props
@@ -353,6 +354,12 @@ val AppBar = FC<AppBarProps> { props ->
         if (currentGroup != null && currentGroup !in expandedGroups) {
             expandedGroups = expandedGroups + currentGroup
         }
+    }
+
+    // The menu scrolls within itself past the window's edge (issue #1303), so once it is open the item for the page
+    // on screen is brought into view: a group opened for that page can put the item below the edge.
+    useEffect(open) {
+        if (open) document.querySelector(".app-menu .app-menu-item.is-current")?.asDynamic()?.scrollIntoView(js("({ block: 'nearest' })"))
     }
 
     header {
