@@ -98,9 +98,12 @@ class FileStoreOperatorEndpointsTest : StringSpec({
             it[FSB.folders].toJsonListOrEmpty() shouldContainExactly listOf("clients/")
             it[FSB.more] shouldBe true
         }
+        // Each file shown costs a read of its record, so what may be asked for is bounded.
+        operator.expectError(EXC.badInput, OPS.fileStoreListPath, args = mapOf(FSB.bucket to bucket, FSB.limit to FSB.maxLimit + 1))
+        operator.expectError(EXC.badInput, OPS.fileStoreListPath, args = mapOf(FSB.bucket to bucket, FSB.limit to 0))
     }
 
-    "a file is downloaded byte for byte under its key's last segment, and its record read alone" {
+    "a file is downloaded byte for byte under a name that opens, and its record read alone" {
         val key = ClientWebAssetService.keyOf("acme", "favicon")
         val download = operator.client.sendGetRequest(OPS.fileStoreDownloadPath, mapOf(FSB.bucket to bucket, FSB.key to key))
         download.rptStatusCode shouldBe EXC.ok
@@ -108,8 +111,12 @@ class FileStoreOperatorEndpointsTest : StringSpec({
         download.rptResponseBytes.shouldNotBeNull().toList() shouldBe png.toList()
         download.rptResponseHeaders["content-disposition"]?.first().shouldNotBeNull().let {
             it shouldContain "attachment"
-            it shouldContain "filename=\"favicon\""
+            // The name it was stored under, which carries its extension.
+            it shouldContain "filename=\"favicon-32.png\""
         }
+        // A file stored under no name -- a ref's, kept by its hash -- is named by its key and its kind's extension.
+        val ref = operator.client.sendGetRequest(OPS.fileStoreDownloadPath, mapOf(FSB.bucket to bucket, FSB.key to FileRefService.keyOf("acme", png.sha256Hex())))
+        ref.rptResponseHeaders["content-disposition"]?.first().shouldNotBeNull() shouldContain "filename=\"${png.sha256Hex()}.png\""
         val meta = operator.getItem(OPS.fileStoreDownloadMetaPath, mapOf(FSB.bucket to bucket, FSB.key to key))
         meta[FMETA.hash] shouldBe png.sha256Hex()
         meta[FMETA.fileName] shouldBe "favicon-32.png"
@@ -140,10 +147,16 @@ class FileStoreOperatorEndpointsTest : StringSpec({
             val opal = TestUser.createOperator(local, "fsb-local-operator@example.com")
             FileStoreService.get(local).put(local, bucket, "notes/whole.txt", ContentData("a".toByteArray(), "text/plain"))
             File(dir, "$bucket/notes/half.txt").writeText("b")
+            // A record that is there and cannot be read.
+            File(dir, "$bucket/notes/bad.txt").writeText("c")
+            File(dir, "$bucket/notes/bad.txt.meta.json").writeText("{not json")
             val rows = opal.getData(OPS.fileStoreListPath, mapOf(FSB.bucket to bucket, FSB.prefix to "notes/"))[FSB.files].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
-            rows.map { it[FSB.name] to it[FSB.state] } shouldContainExactly listOf("half.txt" to FSB.stateNoMeta, "whole.txt" to FSB.stateOk)
+            rows.map { it[FSB.name] to it[FSB.state] } shouldContainExactly
+                listOf("bad.txt" to FSB.stateUnreadableMeta, "half.txt" to FSB.stateNoMeta, "whole.txt" to FSB.stateOk)
             rows.first { it[FSB.name] == "half.txt" }[FSB.meta] shouldBe null
+            rows.first { it[FSB.name] == "bad.txt" }[FSB.meta] shouldBe null
             opal.expectError(EXC.notFound, OPS.fileStoreDownloadPath, args = mapOf(FSB.bucket to bucket, FSB.key to "notes/half.txt"))
+            opal.expectError(EXC.notFound, OPS.fileStoreDownloadPath, args = mapOf(FSB.bucket to bucket, FSB.key to "notes/bad.txt"))
             opal.client.sendGetRequest(OPS.fileStoreDownloadPath, mapOf(FSB.bucket to bucket, FSB.key to "notes/whole.txt")).rptStatusCode shouldBe EXC.ok
             // Content that no longer matches its record is refused, as every read refuses it, not handed out as good.
             File(dir, "$bucket/notes/whole.txt").writeText("changed")

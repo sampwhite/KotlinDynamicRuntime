@@ -67,13 +67,19 @@ class FileStoreBrowserTest {
         assertEquals("#page=fileStore", fileStoreHref())
         assertEquals("#page=fileStore&bucket=web-assets", fileStoreHref("web-assets"))
         assertEquals("#page=fileStore&bucket=web-assets&folder=clients%2Facme%2F", fileStoreHref("web-assets", "clients/acme/"))
+        // The folder as the hash names it, read as the endpoint names one: a typed address without the slash still matches.
+        assertEquals("", fileStoreFolder(null))
+        assertEquals("", fileStoreFolder("  "))
+        assertEquals("clients/acme/", fileStoreFolder("clients/acme"))
+        assertEquals("clients/acme/", fileStoreFolder("clients/acme/"))
         // The download address is `Http.apiUrl`'s, which reads the page's own origin: checked in the browser, not here.
     }
 
     @Test
     fun aFilesStateIsSaidOnlyWhenSomethingIsWrong() {
         assertNull(fileStateText(FSB.stateOk))
-        assertEquals("No record: a write that stopped part-way. It cannot be downloaded.", fileStateText(FSB.stateNoMeta))
+        assertEquals("No record: a write that stopped part-way.", fileStateText(FSB.stateNoMeta))
         assertEquals("No content: its record answers for a file that is not there.", fileStateText(FSB.stateNoContent))
+        assertEquals("Its record cannot be read.", fileStateText(FSB.stateUnreadableMeta))
     }
 }

@@ -575,6 +575,17 @@ than anybody needs yet (2026-10-20).
 Trigger: a client that must share a deployment with others **and** keep its files apart from theirs. One that can have
 a deployment of its own needs none of this.
 
+## When a bucket holds tens of thousands of objects
+
+The operator's file-store browser (issue #1297) derives a folder's contents from every object name beneath it,
+however deep, since no provider keeps folders: the top of a bucket names the whole bucket to show its first folders.
+
+- **A delimiter listing for the browser** *(#1297, deferred here 2026-10-20).* S3's `delimiter` answers the folders
+  under a prefix as `CommonPrefixes` in one request; a directory store reads one directory. A `FileStore.folders(cxt,
+  bucket, prefix)` each provider answers its own way would let `FileStoreBrowse` name only what is directly under
+  the prefix. Trigger: a bucket past tens of thousands of objects, where the top of it costs more than a few list
+  requests.
+
 ## When a deployment keeps local files for its clients
 
 Local file refs (issues #1154, #1164) are built and tested, but no deployment declares a root of local files yet,

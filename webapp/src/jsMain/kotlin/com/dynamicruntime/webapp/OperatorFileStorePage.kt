@@ -36,7 +36,7 @@ private val fileStoreScope = MainScope()
 val OperatorFileStorePage = FC<Props> {
     val params = hashParams()
     val bucket = params[HP.bucket]
-    val folder = params[HP.folder].orEmpty()
+    val folder = fileStoreFolder(params[HP.folder])
     var buckets by useState<Pair<List<BucketView>, StoreView?>?>(null)
     var listing by useState<ListingView?>(null)
     var error by useState<DisplayError?>(null)
@@ -141,7 +141,7 @@ val OperatorFileStorePage = FC<Props> {
                                         td { RelativeTime { iso = f.file?.uploadedAt ?: f.modifiedAt; this.now = now } }
                                         td { +storedByText(f) }
                                         td {
-                                            if (f.state != FSB.stateNoMeta) {
+                                            if (f.state == FSB.stateOk) {
                                                 a {
                                                     href = fileStoreDownloadUrl(bucket, f.key)
                                                     onClick = { e -> e.preventDefault(); startDownload(fileStoreDownloadUrl(bucket, f.key)) }

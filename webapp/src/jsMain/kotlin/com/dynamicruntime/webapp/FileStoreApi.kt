@@ -82,6 +82,15 @@ fun breadcrumbs(prefix: String): List<Pair<String, String>> {
     return crumbs
 }
 
+/**
+ * The folder the hash names, as the endpoint names one: empty for the top of a bucket, else ending in `/` -- so an
+ * address typed without the slash opens the folder the endpoint answers for.
+ */
+fun fileStoreFolder(raw: String?): String {
+    val trimmed = raw?.trim().orEmpty()
+    return if (trimmed.isEmpty() || trimmed.endsWith("/")) trimmed else "$trimmed/"
+}
+
 /** The page's address for [bucket]'s folder [prefix]; the bucket list with no bucket. */
 fun fileStoreHref(bucket: String? = null, prefix: String = ""): String = hashHref(
     buildList {
@@ -95,10 +104,11 @@ fun fileStoreHref(bucket: String? = null, prefix: String = ""): String = hashHre
 fun fileStoreDownloadUrl(bucket: String, key: String): String =
     Http.apiUrl(OPS.fileStoreDownloadPath, mapOf(FSB.bucket to bucket, FSB.key to key))
 
-/** A file's [state] in words; nothing for a whole file, which needs none. */
+/** A file's [state] in words; nothing for a whole file, which needs none. Only a whole file can be downloaded. */
 fun fileStateText(state: String): String? = when (state) {
-    FSB.stateNoMeta -> "No record: a write that stopped part-way. It cannot be downloaded."
+    FSB.stateNoMeta -> "No record: a write that stopped part-way."
     FSB.stateNoContent -> "No content: its record answers for a file that is not there."
+    FSB.stateUnreadableMeta -> "Its record cannot be read."
     else -> null
 }
 

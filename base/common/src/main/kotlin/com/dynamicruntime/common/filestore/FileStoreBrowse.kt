@@ -7,7 +7,8 @@ import kotlin.time.Instant
 /**
  * One file of a folder as the operator's browser lists it (issue #1297): its [key], its [name] (the key's last
  * segment), the store's record of it when there is one, the latest moment any of it changed, and its [state] -- whole
- * ([FSB.stateOk]), content with no record ([FSB.stateNoMeta]) or a record with no content ([FSB.stateNoContent]).
+ * ([FSB.stateOk]), content with no record ([FSB.stateNoMeta]), a record with no content ([FSB.stateNoContent]), or
+ * content beside a record that cannot be read ([FSB.stateUnreadableMeta]).
  */
 class BrowseFile(val key: String, val name: String, val meta: FileMeta?, val modifiedAt: Instant, val state: String) {
     /** As the listing carries it; a file with no record carries no `meta`, rather than a null one. */
@@ -43,6 +44,11 @@ class BrowseListing(val bucket: String, val prefix: String, val folders: List<St
  * set: an operator looking into a bucket wants to see something, where a listing that serves files refuses to be
  * cut short ([FileStoreService.list]). Only the files shown have their record read, so the cost is bounded by the
  * limit and not by the folder.
+ *
+ * **What a folder costs is every name beneath it**, however deep: the folders under a prefix are known only once
+ * every object under it has been named, so the top of a bucket names the whole bucket (a list request per thousand
+ * names on S3) to show its first folders. Fine at the scale a deployment keeps files today; a bucket of tens of
+ * thousands of objects would want the delimiter listing S3 offers (`deferred-work.md`).
  */
 object FileStoreBrowse {
     /**
@@ -81,18 +87,16 @@ object FileStoreBrowse {
         val shownKeys = keys.take(maxOf(0, limit - shownFolders.size))
         val files = shownKeys.map { key ->
             val content = contentAt[key]
-            val meta = metaAt[key]
+            val metaSeen = metaAt[key]
+            // The record is read only where there is one to read; one that is there and cannot be read is no file.
+            val meta = if (metaSeen != null) metaOf(key) else null
             val state = when {
                 content != null && meta != null -> FSB.stateOk
+                content != null && metaSeen != null -> FSB.stateUnreadableMeta
                 content != null -> FSB.stateNoMeta
                 else -> FSB.stateNoContent
             }
-            BrowseFile(
-                key, key.substringAfterLast('/'),
-                meta = if (meta != null) metaOf(key) else null,
-                modifiedAt = listOfNotNull(content, meta).max(),
-                state = state,
-            )
+            BrowseFile(key, key.substringAfterLast('/'), meta, modifiedAt = listOfNotNull(content, metaSeen).max(), state = state)
         }
         return BrowseListing(bucket, prefix, shownFolders, files, more = folders.size + keys.size > limit)
     }

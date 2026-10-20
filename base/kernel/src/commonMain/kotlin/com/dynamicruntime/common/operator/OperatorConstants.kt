@@ -73,6 +73,9 @@ object FSB {
     const val limit = "limit"
     const val defaultLimit = 500
 
+    /** The most a listing may be asked for: each file shown costs a read of its record, a request apiece on S3. */
+    const val maxLimit = 5000
+
     /** The folders directly under [prefix], each as its name ending in `/`. */
     const val folders = "folders"
 
@@ -96,6 +99,9 @@ object FSB {
 
     /** A record with no content: its download answers 404. */
     const val stateNoContent = "noContent"
+
+    /** Content beside a record that cannot be read: no file, and its download answers 404. */
+    const val stateUnreadableMeta = "unreadableMeta"
 
     // What the store is.
     const val provider = "provider"

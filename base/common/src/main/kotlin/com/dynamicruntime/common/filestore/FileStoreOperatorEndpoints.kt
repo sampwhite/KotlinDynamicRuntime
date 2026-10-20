@@ -16,6 +16,7 @@ import com.dynamicruntime.common.operator.OPS
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.sha256Hex
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.webasset.WebAssetCheck
 
 /**
  * The operator's browser over the file store (issue #1297): the buckets, a bucket folder by folder, and any file as
@@ -65,6 +66,7 @@ fun fileStoreOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fil
             option(FSB.stateOk, "A file")
             option(FSB.stateNoMeta, "Content with no record: a write that stopped part-way")
             option(FSB.stateNoContent, "A record with no content")
+            option(FSB.stateUnreadableMeta, "Content beside a record that cannot be read")
         }
     }
     type(FSB.listingTypeName) {
@@ -91,7 +93,7 @@ fun fileStoreOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fil
         inputFields = {
             field(FSB.bucket, "The bucket to list.", required = true)
             field(FSB.prefix, "The folder to list, as its key prefix ending in '/'; empty, or absent, for the top of the bucket.")
-            field(FSB.limit, "The most folders and files to answer (${FSB.defaultLimit} unless said).") { type = SCT.integer }
+            field(FSB.limit, "The most folders and files to answer (${FSB.defaultLimit} unless said, at most ${FSB.maxLimit}).") { type = SCT.integer }
         },
         tags = setOf(ETAG.internal),
     ) { c, request ->
@@ -99,7 +101,9 @@ fun fileStoreOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fil
         val bucket = declaredBucket(service, request[FSB.bucket].toOptStr().orEmpty())
         val prefix = FNAME.checkKeyPrefix(FileStoreBrowse.folderPrefix(request[FSB.prefix].toOptStr()))
         val limit = (request[FSB.limit] as? Number)?.toInt() ?: FSB.defaultLimit
-        if (limit < 1) throw KdrException("A listing's limit must be at least 1, not $limit.", null, EXC.badInput)
+        if (limit !in 1..FSB.maxLimit) {
+            throw KdrException("A listing's limit must be from 1 to ${FSB.maxLimit}, not $limit: each file shown costs a read of its record.", null, EXC.badInput)
+        }
         val store = service.store
         FileStoreBrowse.folderListing(bucket, prefix, store.objects(c, bucket, prefix), limit, store::tmpKeyOf) { key ->
             store.meta(c, bucket, key)
@@ -108,9 +112,9 @@ fun fileStoreOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fil
 
     fileDownloadEndpoint(
         OPS.fileStoreDownloadPath,
-        "One file of a bucket, as a download under its key's last segment -- checked against the hash its record " +
-            "holds, as every read is, so a damaged file is refused rather than handed out as good. A 404 when there " +
-            "is no such file.",
+        "One file of a bucket, as a download under the name it was stored under, else its key's last segment with " +
+            "its kind's extension -- checked against the hash its record holds, as every read is, so a damaged file " +
+            "is refused rather than handed out as good. A 404 when there is no such file.",
         inputFields = {
             field(FSB.bucket, "The bucket the file is in.", required = true)
             field(FSB.key, "The file's key in it.", required = true)
@@ -122,7 +126,7 @@ fun fileStoreOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fil
         val key = FNAME.checkKey(request[FSB.key].toOptStr().orEmpty())
         val file = wholeFile(c, service.store, bucket, key) ?: throw KdrException("There is no file '$key' in the bucket '$bucket'.", null, EXC.notFound)
         c.request?.webRequest?.let { HashedFileServing.downloadHeaders(it, file, null) }
-        ContentData(file.bytes, file.meta.mimeType, saveAsFilename = key.substringAfterLast('/'), inLine = false, hash = file.meta.hash)
+        ContentData(file.bytes, file.meta.mimeType, saveAsFilename = downloadName(key, file.meta), inLine = false, hash = file.meta.hash)
     }
 
     fileMetaEndpoint(
@@ -139,6 +143,14 @@ fun fileStoreOperatorSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.fil
         service.store.meta(c, bucket, FNAME.checkKey(request[FSB.key].toOptStr().orEmpty()))
     }
 }
+
+/**
+ * What a download of the file at [key] is saved as: the name it was stored under, which carries its extension; else
+ * the key's last segment with the extension of its kind, where the kind is one the application knows -- a bare hash
+ * saves as nothing a system can open.
+ */
+private fun downloadName(key: String, meta: FileMeta): String =
+    meta.fileName ?: listOfNotNull(key.substringAfterLast('/'), WebAssetCheck.declaredKind(meta.mimeType)?.extension).joinToString(".")
 
 /** [bucket], when a component declared it; else a 404 naming the buckets there are -- an operator may know them. */
 private fun declaredBucket(service: FileStoreService, bucket: String): String {

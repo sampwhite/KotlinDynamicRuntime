@@ -81,6 +81,13 @@ class FileStoreBrowseTest : StringSpec({
             it.modifiedAt shouldBe t2
         }
         top.files.first { it.name == "ghost.txt" }.meta.shouldNotBeNull()
+
+        // A record that is there and cannot be read makes no file either, and the row says so.
+        val broken = FileStoreBrowse.folderListing("web-assets", "", file("broken.txt") + file("fine.txt"), 10, { null }) { key ->
+            if (key == "broken.txt") null else meta(key)
+        }
+        broken.files.map { it.name to it.state } shouldContainExactly listOf("broken.txt" to FSB.stateUnreadableMeta, "fine.txt" to FSB.stateOk)
+        broken.files.first().meta.shouldBeNull()
     }
 
     "a long folder is cut, folders first, and says so -- and only the files shown have their record read" {
