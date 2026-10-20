@@ -188,7 +188,9 @@ the missing link, so a demonstration or test client is never held to them.
   creator gets their own admin user there, returned rather than switched to -- `/user/self/switchClient` moves the
   session; a creator's user that could not be made is said in the result (`userFailure`), the client made all the
   same. Only the root's client-wide administrators make clients -- not one confined to an organization -- and not on
-  the free plan, which makes none (nor on a plan name that is no plan, read as free).
+  the free plan, which makes none (nor on a plan name that is no plan, read as free). An id outside the customer's
+  prefix is refused before anything looks it up (issue #1288), so the refusal is the same whether another customer's
+  client holds it or nobody does: the create never says which of other customers' clients exist.
 - **A person makes their own self-serve client** (issue #1113), at `POST /user/self/createClient`, from `public`:
   one per person, counted per identity rather than per user, since a `public` administrator makes more users of
   their own. The person names the client, and the system names its id, `free_<name><random>`. It has no customer, so
