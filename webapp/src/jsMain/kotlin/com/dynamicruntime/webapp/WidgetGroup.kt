@@ -6,6 +6,9 @@ import com.dynamicruntime.common.util.FragmentResolver
 import com.dynamicruntime.common.util.resolveFragment
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 
 /**
  * What every widget-group needs from the backend, in one place: its UI-config envelope and its copy.
@@ -64,6 +67,17 @@ class Copy(private val byNamespace: Map<String, Map<String, String>>) {
     }
 }
 
+/**
+ * Whether [other] is the same answer as this one (issue #1313): the same fragment, features, settings, and state. A
+ * re-read that answers the same can then keep the typed config it built last time, so setting it into state changes
+ * nothing and nothing re-renders -- which is what makes re-reading on every refresh generation cheap in fact as well
+ * as in intent.
+ */
+fun UiConfig.answersSameAs(other: UiConfig?): Boolean =
+    other != null &&
+        fragment.fileId == other.fragment.fileId && fragment.buildId == other.fragment.buildId &&
+        features == other.features && settings == other.settings && state == other.state
+
 /** GETs a widget-group's UI-config. Cheap and meant to be re-fetched on navigation. */
 suspend fun fetchUiConfig(path: String): UiConfig {
     val results = Http.getApi(path)[EP.results].toJsonMapOrEmpty()
@@ -79,12 +93,48 @@ suspend fun fetchUiConfig(path: String): UiConfig {
     )
 }
 
-/** GETs the Markdown fragment file [ref] names, as the group's [Copy]. */
-suspend fun fetchCopy(ref: FragmentRef): Copy = Copy(
-    Http.getFragments(ref.fileId, ref.buildId).mapValues { (_, namespace) ->
-        namespace.toJsonMapOrEmpty().mapValues { (_, value) -> value?.toString() ?: "" }
-    },
-)
+/**
+ * GETs the Markdown fragment file [ref] names, as the group's [Copy] -- once per name (issue #1313). The build id
+ * hashes the file's merged content, which the backend serves as immutable, so a name names one copy for good: every
+ * group re-reading on a refresh, and the app bar beside the page, share one request and one [Copy] instance. A
+ * failed read is not kept, so a stale name's 404 is asked again by whoever names it next.
+ */
+suspend fun fetchCopy(ref: FragmentRef): Copy = copyByName.getOrPut("${ref.fileId}:${ref.buildId}") {
+    copyScope.async {
+        Copy(
+            Http.getFragments(ref.fileId, ref.buildId).mapValues { (_, namespace) ->
+                namespace.toJsonMapOrEmpty().mapValues { (_, value) -> value?.toString() ?: "" }
+            },
+        )
+    }
+}.let { read ->
+    try {
+        read.await()
+    } catch (e: Throwable) {
+        copyByName.remove("${ref.fileId}:${ref.buildId}")
+        throw e
+    }
+}
+
+/** Shared copy reads, outliving any one caller so a caller's cancellation does not cancel another's read. */
+private val copyScope = MainScope()
+
+/** The copy read for each `fileId:buildId`, bounded since a long-lived tab sees each deploy's names in turn. */
+private val copyByName = BoundedMap<String, Deferred<Copy>>(32)
+
+/** A map that forgets its oldest entry past [capacity], for content kept by an immutable name. */
+internal class BoundedMap<K, V>(private val capacity: Int) {
+    private val entries = LinkedHashMap<K, V>()
+
+    fun getOrPut(key: K, make: () -> V): V = entries[key] ?: make().also { value ->
+        entries[key] = value
+        if (entries.size > capacity) entries.remove(entries.keys.first())
+    }
+
+    fun remove(key: K) { entries.remove(key) }
+
+    val size: Int get() = entries.size
+}
 
 /**
  * [fetchCopy] with **stale-ref recovery** (issue #469). A fragment ref is per-caller and per-build, so a

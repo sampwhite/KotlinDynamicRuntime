@@ -11,6 +11,9 @@ import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.util.resolveDocLink
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 
 /**
  * One navigable Markdown document offered by the home page, already carrying its cache-busting build id.
@@ -192,8 +195,32 @@ fun docLinkResolver(currentSourcePath: String, links: List<HomeLink>, sourceRepo
  * runtime's conventions (the roots, the app id, the error envelope) for every group alike.
  */
 object HomeApi {
-    /** GET the home UI-config -- cheap and meant to be re-fetched on navigation. */
-    suspend fun fetchConfig(): HomeConfig = homeConfigFrom(fetchUiConfig(HEP.homeUiConfig))
+    /**
+     * GET the home UI-config -- cheap and meant to be re-fetched on navigation.
+     *
+     * Read by the app bar and by most pages, each on every refresh generation, so it is shared (issue #1313): a call
+     * joins a read still in flight for the same generation ([refreshGenerationNow]) rather than making its own, and
+     * an answer the same as the last one ([answersSameAs]) returns the [HomeConfig] built from it, so a consumer
+     * setting it into state redraws nothing. A finished read is never handed to a later call: one asking again --
+     * for a fresh fragment ref after a stale one, say -- gets a new read.
+     */
+    suspend fun fetchConfig(): HomeConfig {
+        val generation = refreshGenerationNow
+        val read = inFlight?.takeIf { it.first == generation && it.second.isActive }?.second
+            ?: homeApiScope.async { readConfig() }.also { inFlight = generation to it }
+        return read.await()
+    }
+
+    private suspend fun readConfig(): HomeConfig {
+        val raw = fetchUiConfig(HEP.homeUiConfig)
+        lastAnswer?.let { (answer, config) -> if (raw.answersSameAs(answer)) return config }
+        return homeConfigFrom(raw).also { lastAnswer = raw to it }
+    }
+
+    /** Shared reads, outliving any one caller so a caller's cancellation does not cancel another's read. */
+    private val homeApiScope = MainScope()
+    private var inFlight: Pair<Int, Deferred<HomeConfig>>? = null
+    private var lastAnswer: Pair<UiConfig, HomeConfig>? = null
 
     /** GET a whole Markdown document, verbatim; the caller renders it. */
     suspend fun fetchDoc(docId: String, buildId: String): String = Http.getDoc(docId, buildId)

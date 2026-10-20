@@ -120,6 +120,8 @@ val App = FC<Props> {
     // shade (measured: #818cf8 came out #717ad6), so it cannot pin the palette's value. `.ant-btn-link` takes its
     // colour from the app's CSS variables in app.css instead -- one source for `<a>` links and link buttons alike.
 
+    // Before any consumer's effect runs, so a fetch that consumer makes knows which generation it is for (issue #1313).
+    refreshGenerationNow = refresh
     RefreshContext.Provider {
         value = RefreshBus(refresh) { setRefresh { it + 1 } }
         // What the shell knows of the caller, for the pages to name themselves by (issue #1091).
