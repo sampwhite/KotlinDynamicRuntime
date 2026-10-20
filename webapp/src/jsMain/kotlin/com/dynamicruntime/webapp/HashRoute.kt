@@ -33,6 +33,10 @@ object HP {
     /** The page to show, e.g. `HMENU.pageCatalog`. */
     const val page = "page"
 
+    /** File store page (issue #1297): the bucket open, and the folder in it -- so Back steps out through the folders. */
+    const val bucket = "bucket"
+    const val folder = "folder"
+
     /** Catalog deep-link: the selected endpoint's HTTP method. */
     const val method = "m"
 

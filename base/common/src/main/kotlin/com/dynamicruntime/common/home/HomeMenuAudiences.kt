@@ -55,6 +55,7 @@ object HomeMenuAudiences {
             "Administrators of a customer's root client", offered = false,
         ),
         MenuAudience(CFACTS.isDeploymentOperator, "Deployment operators", offered = false),
+        MenuAudience("${CFACTS.isDeploymentOperator},${CFACTS.app}", "Deployment operators, on an app node", offered = false),
         MenuAudience("${CFACTS.hasTestAccess},${CFACTS.app}", "Env-authed sessions, on a test instance", offered = false),
         MenuAudience("${CFACTS.isEnvDebug},${CFACTS.app}", "Sessions in debug", offered = false),
         MenuAudience("${CFACTS.canEnableDebug},${CFACTS.app}", "Sessions that may turn debug on", offered = false),

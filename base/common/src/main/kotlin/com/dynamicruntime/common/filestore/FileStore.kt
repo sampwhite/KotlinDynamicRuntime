@@ -244,10 +244,12 @@ interface FileStore {
     fun list(cxt: KdrCxt, bucket: String, keyPrefix: String, max: Int = FNAME.defaultListLimit): List<FileEntry>
 
     /**
-     * Every object in [bucket], in name order: each file's content and metadata, and whatever is neither. For
-     * [FileStoreCheck], which walks a whole bucket, and not for serving: [list] is what answers for files.
+     * Every object in [bucket] whose name begins with [prefix] (every object, when it is empty), in name order: each
+     * file's content and metadata, and whatever is neither. Names and dates only, never a read of any of them. For
+     * [FileStoreCheck], which walks a whole bucket, and the operator's browser, which walks one folder (issue
+     * #1297); not for serving, where [list] is what answers for files.
      */
-    fun objects(cxt: KdrCxt, bucket: String): List<StoredObject>
+    fun objects(cxt: KdrCxt, bucket: String, prefix: String = ""): List<StoredObject>
 
     /**
      * When [name], one of [objects], is a temporary object this store writes on its way to a file, the key whose

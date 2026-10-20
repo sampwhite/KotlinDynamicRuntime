@@ -205,11 +205,14 @@ class LocalFileStore(val root: File) : FileStore {
             .toList()
     }
 
-    override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> {
+    override fun objects(cxt: KdrCxt, bucket: String, prefix: String): List<StoredObject> {
         val dir = bucketDir(bucket)
-        if (!dir.isDirectory) return emptyList()
-        return dir.walkTopDown().maxDepth(FNAME.maxKeyDepth).filter { it.isFile }
+        // The walk starts at the folder the prefix is in, so a folder of a large bucket costs its own files alone.
+        val from = prefix.substringBeforeLast('/', "").let { if (it.isEmpty()) dir else File(dir, it) }
+        if (!from.isDirectory) return emptyList()
+        return from.walkTopDown().maxDepth(FNAME.maxKeyDepth).filter { it.isFile }
             .map { StoredObject(it.relativeTo(dir).invariantSeparatorsPath, modifiedAt(it)) }
+            .filter { it.name.startsWith(prefix) }
             .sortedBy { it.name }
             .toList()
     }

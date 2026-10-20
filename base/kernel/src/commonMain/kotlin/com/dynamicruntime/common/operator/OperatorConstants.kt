@@ -44,6 +44,73 @@ object OPS {
 
     /** Forces this node's table cache(s) to reload now -- one table, or all. */
     const val cacheReloadPath = "/${SECT.operator}/cache/reload"
+
+    /** The file store's buckets, and what the store is (issue #1297). */
+    const val fileStoreBucketsPath = "/${SECT.operator}/fileStore/buckets"
+
+    /** The folders and files directly under a folder of a bucket (issue #1297). */
+    const val fileStoreListPath = "/${SECT.operator}/fileStore/list"
+
+    /** One file of a bucket, as a download (issue #1297); `/meta` after it is what the file is, without the file. */
+    const val fileStoreDownloadPath = "/${SECT.operator}/fileStore/download"
+    const val fileStoreDownloadMetaPath = "$fileStoreDownloadPath/meta"
+}
+
+/**
+ * Wire vocabulary of the operator's **file-store browser** (issue #1297), shared with the page that draws it: a
+ * bucket's folders and files, each file's record, and what the store is. The page reads these by name, as the
+ * cache-state page reads [TCS].
+ */
+@Suppress("ConstPropertyName")
+object FSB {
+    const val bucket = "bucket"
+    const val description = "description"
+
+    /** The folder listed: empty for the bucket's top, else segments each ending in `/`. */
+    const val prefix = "prefix"
+
+    /** The most folders and files a listing answers; past it the listing is cut and [more] is true. */
+    const val limit = "limit"
+    const val defaultLimit = 500
+
+    /** The most a listing may be asked for: each file shown costs a read of its record, a request apiece on S3. */
+    const val maxLimit = 5000
+
+    /** The folders directly under [prefix], each as its name ending in `/`. */
+    const val folders = "folders"
+
+    /** The files directly under [prefix]. */
+    const val files = "files"
+    const val more = "more"
+
+    // A file: its key in the bucket, its name (the key's last segment), its record ([FMETA]) when the store holds
+    // one, when any of it last changed, and whether it is whole.
+    const val key = "key"
+    const val name = "name"
+    const val meta = "meta"
+    const val modifiedAt = "modifiedAt"
+    const val state = "state"
+
+    /** Content and record both there: a file. */
+    const val stateOk = "ok"
+
+    /** Content with no record beside it: a write that stopped part-way. It is no file, and cannot be downloaded. */
+    const val stateNoMeta = "noMeta"
+
+    /** A record with no content: its download answers 404. */
+    const val stateNoContent = "noContent"
+
+    /** Content beside a record that cannot be read: no file, and its download answers 404. */
+    const val stateUnreadableMeta = "unreadableMeta"
+
+    // What the store is.
+    const val provider = "provider"
+    const val location = "location"
+
+    const val bucketTypeName = "FileStoreBucket"
+    const val storeTypeName = "FileStoreSummary"
+    const val fileTypeName = "FileStoreFile"
+    const val listingTypeName = "FileStoreListing"
 }
 
 

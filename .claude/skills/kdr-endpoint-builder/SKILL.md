@@ -180,7 +180,9 @@ fileDownloadEndpoint("/file/download", "Download a file by id.",
   - **A client's file goes through `forOwner(cxt, owner)`** (issue #1282): a view with the same calls, which takes
     keys under the client's folder, `clients/<owner>/` (`FNAME.clientKeyPrefix(owner)`), and no others. The
     service's own calls refuse a key in any client's folder, so what is a client's is said, and checked, wherever
-    it is stored or read. A file that is no client's (the sample's uploads) uses the service's calls directly.
+    it is stored or read. A file that is no client's (the sample's uploads) uses the service's calls directly. An
+    operator sees every file of every bucket on the **File store** page (issue #1297, `/operator/fileStore/…`),
+    which reads the provider past that rule.
   - Your component **declares the bucket** it keeps files in, once, in `addSchema`:
     `collector.addFileBucket(FileBucketDef("client-files", "What is kept there."))`. A bucket is the store's own
     unit of addressing on every provider (lowercase letters, digits, hyphens), and the boot checks each declared
