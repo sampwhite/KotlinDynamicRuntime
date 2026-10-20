@@ -1,10 +1,12 @@
 package com.dynamicruntime.common.filestore
 
+import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.AppPaths
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
@@ -33,9 +35,8 @@ object FSENV {
         description = "Where files are kept: `memory` (in the JVM, gone when it stops, and bounded by nothing but " +
             "the heap -- for tests and a throwaway node), `local` (a directory on this machine, see " +
             "KDR_FILE_STORE_DIR) or `s3` (S3, or a service that speaks its API -- see the KDR_S3_ variables). " +
-            "This is the **default** store; KDR_FILE_STORES declares others. Every node of a deployment must name the " +
-            "same stores, and `local` is one store only where the nodes share the directory, on a filesystem that " +
-            "honors file locks between them.",
+            "Every node of a deployment must name the same store, and `local` is one store only where the nodes " +
+            "share the directory, on a filesystem that honors file locks between them.",
     )
 
     val dir = EnvVarDef(
@@ -70,21 +71,6 @@ object FSENV {
             "S3-compatible services need not accept.",
     )
 
-    val stores = EnvVarDef(
-        "KDR_FILE_STORES", group = ENVGRP.fileStore, defaultDoc = "none: the default store alone",
-        description = "File stores besides the default one (issue #1282), which KDR_FILE_STORE_TYPE and its " +
-            "variables describe: `<store>.<attribute>=<value>` entries separated by commas, such as " +
-            "`aws.type=s3,aws.region=us-east-1,aws.prefix=acme-,aws.profile=kdr-aws,disk.type=local,disk.dir=/srv/kdr/files`. " +
-            "A name is a lowercase word (`default` is the default store's). Attributes: `type` (`memory`, `local` " +
-            "or `s3`); `dir` for `local`, required, taken from the workspace directory when relative; `region` for " +
-            "`s3`, required, with `endpoint`, `prefix` (of its bucket names) and `profile` (a profile in the AWS " +
-            "SDK's credentials file, which signs it in instead of the default chain) optional. Every declared store " +
-            "must serve every bucket, as the default must. A client's files go to the store it is assigned (issue " +
-            "#1283; until then, and for a client assigned none, the default), and every other file to the default. " +
-            "Every node of a deployment declares the same stores, under the same " +
-            "names. A mistake in it refuses the start.",
-    )
-
     val check = EnvVarDef(
         "KDR_FILE_STORE_CHECK", group = ENVGRP.fileStore, defaultDoc = "strict, except warn in production",
         description = "The mode of the boot check that the file store can serve every bucket a component " +
@@ -115,11 +101,10 @@ object FSENV {
  * real S3 ([s3ApiConfigKey]). The variable is read as every other is, so one set in the shell that runs the
  * tests reaches them too.
  *
- * **More than one store** (issue #1282): `KDR_FILE_STORES` ([FSENV.stores]) declares stores besides that default
- * one, by name ([FileStoreSpecs]). A client's files -- every key under [FNAME.clientsFolder] -- are reached through
- * [forOwner], which keeps them in the store the client is assigned; everything else through this service's own calls,
- * which are the default store's and refuse a client's key, so no client's file is ever kept where its client's are
- * not. The boot check holds every store to every declared bucket.
+ * **A client's files are reached through [forOwner]** (issue #1282): every key under [FNAME.clientsFolder], in a
+ * view that takes that client's folder and no other. This service's own calls refuse a key in any client's folder.
+ * Today both reach the one store; the view is the seam by which a client's files could one day be kept in a store
+ * of their own (`deferred-work.md`, "When a client must keep its files somewhere other than its deployment's store").
  *
  * **Who may read or write a file is not decided here.** A bucket and a key say nothing about whose a file is,
  * so the endpoint that composes the key is the one that has checked the caller.
@@ -127,76 +112,74 @@ object FSENV {
 class FileStoreService : ServiceInitializer {
     override val serviceName: String = FileStoreService.serviceName
 
-    /** Every store this instance keeps files in, by name: the default one first ([FileStoreSpecs.all]). */
-    private var stores: Map<String, FileStore> = emptyMap()
+    /** The provider this instance keeps its files in. */
+    lateinit var store: FileStore
+        private set
 
     private var buckets: Map<String, FileBucketDef> = emptyMap()
     private var checked = false
     private lateinit var defaultView: FileStoreView
 
-    /** The default store: where every file is kept that is no client's, and every client's not assigned another. */
-    val store: FileStore get() = stores.getValue(FSNM.default)
-
-    /** Which kind of store the default one is, an [FST] value. */
+    /** Which kind of store this instance runs on, an [FST] value. */
     val providerType: String get() = store.providerType
 
-    /** The names of the stores this instance keeps files in, [FSNM.default] first. */
-    fun storeNames(): List<String> = stores.keys.toList()
-
-    /** The store called [name], or null when this instance declares none. */
-    fun storeNamed(name: String): FileStore? = stores[name]
-
     override fun onCreate(cxt: KdrCxt) {
-        stores = FileStoreSpecs.all(cxt).associateTo(LinkedHashMap()) { it.name to createStore(cxt, it) }
+        store = createStore(cxt)
         buckets = SchemaCollector.get(cxt)?.fileBuckets.orEmpty().associateBy { it.name }
-        defaultView = FileStoreView(FSNM.default, store, owner = null)
+        defaultView = FileStoreView(owner = null)
     }
 
-    private fun createStore(cxt: KdrCxt, spec: FileStoreSpec): FileStore = when (spec.type) {
-        FST.memory -> MemoryFileStore()
-        FST.local -> LocalFileStore(localDir(cxt, spec))
-        FST.s3 -> {
-            if (spec.name == FSNM.default) {
-                FNAME.bucketPrefixProblem(spec.prefix)?.let { throw configError("${FSENV.s3BucketPrefix} is '${spec.prefix}'; $it.") }
+    private fun createStore(cxt: KdrCxt): FileStore {
+        val config = cxt.instanceConfig
+        // A unit test never writes a file to a disk it did not choose, even one that turns `inMemoryOnly` off
+        // to share a database between instances.
+        val inMemory = config.get(ACFG.inMemoryOnly) == true || config.env == ENV.unit
+        val type = cxt.getEnvVar(FSENV.type)?.trim()?.takeIf { it.isNotEmpty() } ?: if (inMemory) FST.memory else FST.local
+        return when (type) {
+            FST.memory -> MemoryFileStore()
+            FST.local -> LocalFileStore(localDir(cxt))
+            FST.s3 -> {
+                val prefix = cxt.getEnvVar(FSENV.s3BucketPrefix)?.trim().orEmpty()
+                FNAME.bucketPrefixProblem(prefix)?.let { throw configError("${FSENV.s3BucketPrefix} is '$prefix'; $it.") }
+                S3FileStore(s3Api(cxt), prefix)
             }
-            S3FileStore(s3Api(cxt, spec), spec.prefix)
+            else -> throw configError("${FSENV.type} is '$type'; it must be one of ${FST.all.joinToString()}.")
         }
-        else -> throw configError("${FSENV.type} is '${spec.type}'; it must be one of ${FST.all.joinToString()}.")
     }
 
-    private fun localDir(cxt: KdrCxt, spec: FileStoreSpec): File {
-        // The default is in the workspace, which is no test's to write in: a test on this store says where. A named
-        // store always says where (FileStoreSpecs).
-        if (spec.name == FSNM.default && cxt.getEnvVar(FSENV.dir).isNullOrBlank() && cxt.instanceConfig.env == ENV.unit) {
+    private fun localDir(cxt: KdrCxt): File {
+        // The default is in the workspace, which is no test's to write in: a test on this store says where.
+        if (cxt.getEnvVar(FSENV.dir).isNullOrBlank() && cxt.instanceConfig.env == ENV.unit) {
             throw configError(
                 "The '${FST.local}' file store has no directory by default in the unit test environment -- name " +
                     "one with ${FSENV.dir}, or use the '${FST.memory}' store.",
             )
         }
-        return spec.dir ?: localDirOf(cxt)
+        return localDirOf(cxt)
     }
 
-    private fun s3Api(cxt: KdrCxt, spec: FileStoreSpec): S3Api {
-        val standInKey = s3ApiConfigKeyOf(spec.name)
-        (cxt.instanceConfig.get(standInKey) as? S3Api)?.let { return it }
+    private fun s3Api(cxt: KdrCxt): S3Api {
+        (cxt.instanceConfig.get(s3ApiConfigKey) as? S3Api)?.let { return it }
         // The unit tests never reach a network (as `OutboundHttpService` refuses them): a test of the S3
-        // provider hands in a stand-in for S3, one for each S3 store, so two stores are kept apart there too.
+        // provider hands in a stand-in for S3 under [s3ApiConfigKey].
         if (cxt.instanceConfig.env == ENV.unit) {
             throw configError(
-                "The S3 file store '${spec.name}' is not available in the unit test environment -- put a stand-in " +
-                    "S3Api in the instance config under '$standInKey', or use the '${FST.memory}' store.",
+                "The S3 file store is not available in the unit test environment -- put a stand-in S3Api in the " +
+                    "instance config under '$s3ApiConfigKey', or use the '${FST.memory}' store.",
             )
         }
-        val region = spec.region ?: throw configError("${FSENV.type} is '${FST.s3}', which needs ${FSENV.s3Region}.")
-        val api = SdkS3Api(region, spec.endpoint, spec.profile)
+        val region = cxt.getEnvVar(FSENV.s3Region)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw configError("${FSENV.type} is '${FST.s3}', which needs ${FSENV.s3Region}.")
+        val api = SdkS3Api(region, cxt.getEnvVar(FSENV.s3Endpoint)?.trim()?.takeIf { it.isNotEmpty() })
         InstanceRegistry.registerForShutdown(api)
         return api
     }
 
-    private fun configError(message: String): KdrException = FileStoreSpecs.refusal(message)
+    private fun configError(message: String): KdrException =
+        KdrException("Refusing to start: $message", null, EXC.internalError, SRC.config, ACT.code)
 
     /**
-     * Makes every declared bucket ready in every store and records what stops any being so, as the boot check
+     * Makes every declared bucket ready and records what stops any being so, as the boot check
      * [BCHK.fileStore]: strict outside production, a warning in it ([FSENV.check] overrides). A warning leaves
      * the node serving everything that does not touch that bucket, which is the right trade for a store that
      * is one feature among many; the first use of the bucket then fails saying why.
@@ -205,33 +188,21 @@ class FileStoreService : ServiceInitializer {
         if (checked) return
         checked = true
         val mode = bootCheckMode(cxt, modeOverride(cxt, FSENV.check), prodMode = BootCheckMode.warn)
-        LogFileStore.info(cxt) { "${storesText()}, ${buckets.size} bucket(s) declared." }
+        LogFileStore.info(cxt) { "File store: ${store.providerType} (${store.location}), ${buckets.size} bucket(s) declared." }
         if (mode == BootCheckMode.off) {
             // Recorded as off, with nothing asked of the store: a check that did not run is said to be one,
             // rather than missing from the report as though there were none.
             BootCheckRegistry.get(cxt).record(BCHK.fileStore, FSENV.check.name, mode)
             return
         }
-        // Each finding names its store once there is more than one, so a report says which of them is wrong.
-        val findings = stores.flatMap { (name, store) ->
-            buckets.keys.flatMap { store.ensureBucket(cxt, it) }.map { if (stores.size == 1) it else "Store '$name': $it" }
-        }
+        val findings = buckets.keys.flatMap { store.ensureBucket(cxt, it) }
         BootCheckRegistry.get(cxt).record(BCHK.fileStore, FSENV.check.name, mode, findings)
         if (findings.isEmpty()) return
         if (mode == BootCheckMode.strict) {
-            val which = if (stores.size == 1) "the ${store.providerType} file store cannot" else "the file stores cannot each"
-            throw configError("$which serve every declared bucket. ${findings.joinToString(" ")}")
+            throw configError("the ${store.providerType} file store cannot serve every declared bucket. ${findings.joinToString(" ")}")
         }
         LogFileStore.warn(cxt) { "File store problems: ${findings.joinToString(" ")}" }
     }
-
-    /** The stores in words, for the startup line and a script's heading. */
-    fun storesText(): String =
-        if (stores.size == 1) {
-            "File store: ${store.providerType} (${store.location})"
-        } else {
-            "File stores: " + stores.entries.joinToString { (name, store) -> "$name = ${store.providerType} (${store.location})" }
-        }
 
     /** The buckets this instance serves: every one a component declared. */
     fun declaredBuckets(): List<FileBucketDef> = buckets.values.toList()
@@ -250,55 +221,35 @@ class FileStoreService : ServiceInitializer {
 
     /**
      * The files of the client [owner] (issue #1282) -- its web assets, its file refs, whatever else is kept under its
-     * folder ([FNAME.clientKeyPrefix]) -- in the store it keeps them in: today the default for every client, and the
-     * one a client is assigned once clients are (issue #1283). The view takes only keys in that folder, so a client's
-     * files are never split between stores.
+     * folder ([FNAME.clientKeyPrefix]). The view takes only keys in that folder, so what is a client's is said where
+     * it is stored and read, and checked there.
      */
-    fun forOwner(cxt: KdrCxt, owner: String): FileStoreView {
-        FNAME.clientKeyPrefix(owner)
-        val name = storeNameOf(cxt, owner)
-        val store = stores[name] ?: throw KdrException(
-            "Client '$owner' keeps its files in the file store '$name', which this node does not have " +
-                "(it has ${stores.keys.joinToString()}).",
-            null, EXC.notAvailable, SRC.config,
-        )
-        return FileStoreView(name, store, owner)
-    }
+    fun forOwner(cxt: KdrCxt, owner: String): FileStoreView = FileStoreView(owner)
 
-    /** The name of the store [owner]'s files are kept in. Every client's is the default until clients are assigned one (#1283). */
-    fun storeNameOf(cxt: KdrCxt, owner: String): String = FSNM.default
-
-    /**
-     * Stores [content] at [key] in [bucket] of the default store -- a key that is no client's ([forOwner]) -- as
-     * [FileStoreView.put] does.
-     */
+    /** Stores [content] at [key] in [bucket] -- a key that is no client's ([forOwner]) -- as [FileStoreView.put] does. */
     fun put(cxt: KdrCxt, bucket: String, key: String, content: ContentData, extra: Map<String, Any?> = emptyMap()): FileMeta =
         defaultView.put(cxt, bucket, key, content, extra)
 
-    /** The file at [key] in [bucket] of the default store, as [FileStoreView.get] reads one. */
+    /** The file at [key] in [bucket], as [FileStoreView.get] reads one. */
     fun get(cxt: KdrCxt, bucket: String, key: String): StoredFile? = defaultView.get(cxt, bucket, key)
 
-    /** The metadata of the file at [key] in [bucket] of the default store, without its content. */
+    /** The metadata of the file at [key] in [bucket], without its content. */
     fun meta(cxt: KdrCxt, bucket: String, key: String): FileMeta? = defaultView.meta(cxt, bucket, key)
 
-    /** Removes the file at [key] in [bucket] of the default store, and its metadata; whether there was one. */
+    /** Removes the file at [key] in [bucket], and its metadata; whether there was one. */
     fun delete(cxt: KdrCxt, bucket: String, key: String): Boolean = defaultView.delete(cxt, bucket, key)
 
-    /** The files in [bucket] of the default store under [keyPrefix], as [FileStoreView.list] lists them. */
+    /** The files in [bucket] under [keyPrefix], as [FileStoreView.list] lists them. */
     fun list(cxt: KdrCxt, bucket: String, keyPrefix: String = "", limit: Int = FNAME.defaultListLimit): List<FileEntry> =
         defaultView.list(cxt, bucket, keyPrefix, limit)
 
     /**
-     * One store's files, as a caller reaches them (issue #1282): the default store's that are no client's, or the
-     * client [owner]'s in the store it keeps them in ([forOwner]). Every call names a declared bucket and a key the
-     * view takes -- under [owner]'s folder, or, for the default view, outside every client's -- and both are checked
-     * here, so a provider is handed only names that passed.
+     * The store's files as a caller reaches them (issue #1282): those that are no client's, or the client [owner]'s
+     * ([forOwner]). Every call names a declared bucket and a key the view takes -- under [owner]'s folder, or, with no
+     * owner, outside every client's -- and both are checked here, so a provider is handed only names that passed.
      */
     inner class FileStoreView(
-        /** Which of the instance's stores this is: [FSNM.default], or one [FSENV.stores] declares. */
-        val storeName: String,
-        val store: FileStore,
-        /** The client whose files these are, or null for the default store's own. */
+        /** The client whose files these are, or null for those that are no client's. */
         val owner: String?,
     ) {
         private val ownFolder: String? = owner?.let { FNAME.clientKeyPrefix(it) }
@@ -308,7 +259,7 @@ class FileStoreService : ServiceInitializer {
             when {
                 ownFolder == null && key.startsWith(FNAME.clientsFolder) -> throw KdrException(
                     "The file-store key '$key' is a client's. A client's files are reached through forOwner, which " +
-                        "keeps them in the store the client is assigned.",
+                        "takes that client's folder and no other.",
                 )
                 ownFolder != null && !key.startsWith(ownFolder) -> throw KdrException(
                     "The file-store key '$key' is not one of client '$owner''s, which are under '$ownFolder'.",
@@ -390,9 +341,9 @@ class FileStoreService : ServiceInitializer {
 
         /**
          * The files in [bucket] whose key begins with [keyPrefix], in key order, each with its metadata and none with
-         * its content: every file this view takes when [keyPrefix] is empty -- the client's whole folder, or for the
-         * default view the bucket, which is refused when it holds any client's files: leaving them out of the answer
-         * would make it short of [limit] without saying so.
+         * its content: every file this view takes when [keyPrefix] is empty -- the client's whole folder, or with no
+         * owner the bucket, which is refused when it holds any client's files: leaving them out of the answer would
+         * make it short of [limit] without saying so.
          *
          * **At most [limit] of them, and refused when there are more.** A listing reads a file's metadata for each
          * file it answers -- a request apiece on S3 -- so it is for the folder of one owner's files, and a caller
@@ -415,7 +366,7 @@ class FileStoreService : ServiceInitializer {
             val found = store.list(cxt, bucket, prefix, asked)
             if (ownFolder == null && found.any { it.key.startsWith(FNAME.clientsFolder) }) {
                 throw KdrException(
-                    "The bucket '$bucket' holds clients' files, which the default store's listing does not take: list a " +
+                    "The bucket '$bucket' holds clients' files, which a listing of no client's does not take: list a " +
                         "folder outside '${FNAME.clientsFolder}', or a client's through forOwner.",
                     null, EXC.badInput,
                 )
@@ -454,11 +405,6 @@ class FileStoreService : ServiceInitializer {
          */
         const val s3ApiConfigKey = "fileStoreS3Api"
 
-        /**
-         * The key a test's stand-in [S3Api] for the store [name] goes under: [s3ApiConfigKey] for the default's. Not
-         * dotted, since a dotted key is a path into the instance config and would sit inside the default's.
-         */
-        fun s3ApiConfigKeyOf(name: String): String = if (name == FSNM.default) s3ApiConfigKey else "$s3ApiConfigKey:$name"
 
         /**
          * How long [get] waits before each further read of a file whose content does not match its metadata: long

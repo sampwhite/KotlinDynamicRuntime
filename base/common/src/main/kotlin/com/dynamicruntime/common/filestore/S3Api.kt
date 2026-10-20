@@ -4,7 +4,6 @@ import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.SRC
-import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider
 import software.amazon.awssdk.core.checksums.RequestChecksumCalculation
 import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.core.sync.RequestBody
@@ -52,8 +51,7 @@ interface S3Api {
 
 /**
  * [S3Api] over the AWS SDK for Java v2. Credentials come from the SDK's own default chain -- the environment,
- * a profile, the machine's role -- or, with a [profile], from that profile of the SDK's credentials file; so none is
- * ever in this application's configuration or its secrets file.
+ * a profile, the machine's role -- so none is ever in this application's configuration or its secrets file.
  *
  * [endpoint] points it at something other than AWS that speaks S3 (a local stand-in, another vendor -- Linode's
  * Object Storage is the one tried, issue #1271), which is addressed by path rather than by a bucket's own hostname.
@@ -71,21 +69,12 @@ interface S3Api {
  * The SDK is told which HTTP client to use, its JDK-backed one, rather than left to find one: the build
  * excludes its Netty and Apache clients (`base/common/build.gradle.kts`).
  */
-class SdkS3Api(val region: String, val endpoint: String? = null, val profile: String? = null) : S3Api, AutoCloseable {
-    override val location: String =
-        (if (endpoint == null) "S3 in $region" else "S3 at $endpoint ($region)") + (profile?.let { ", profile '$it'" } ?: "")
-
-    /**
-     * With a [profile], what signs this client in: that profile of the SDK's credentials file, rather than the default
-     * chain (issue #1282) -- how two stores sign in as two accounts. The client does not close a provider it was
-     * handed, so [close] does.
-     */
-    private val credentials: ProfileCredentialsProvider? = profile?.let { ProfileCredentialsProvider.create(it) }
+class SdkS3Api(val region: String, val endpoint: String? = null) : S3Api, AutoCloseable {
+    override val location: String = if (endpoint == null) "S3 in $region" else "S3 at $endpoint ($region)"
 
     private val client: S3Client = S3Client.builder()
         .httpClientBuilder(UrlConnectionHttpClient.builder())
         .region(Region.of(region))
-        .apply { credentials?.let { credentialsProvider(it) } }
         .apply {
             if (endpoint != null) {
                 endpointOverride(URI.create(endpoint))
@@ -135,10 +124,7 @@ class SdkS3Api(val region: String, val endpoint: String? = null, val profile: St
                 .map { StoredObject(it.key(), Instant.fromEpochMilliseconds(it.lastModified().toEpochMilli())) }
         }
 
-    override fun close() {
-        client.close()
-        credentials?.close()
-    }
+    override fun close() = client.close()
 
     /** Runs an S3 call, turning its failure into ours -- the one place an SDK exception is caught. */
     private fun <T> call(what: String, block: () -> T): T = try {

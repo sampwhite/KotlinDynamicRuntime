@@ -63,8 +63,8 @@ interface FileRefSource {
 class StoreFileSource : FileRefSource {
     override val source: String = FREF.sourceStore
 
-    /** What the store answered for one file, and when -- and which store it was (issue #1282). */
-    private class Asked(val atNanos: Long, val meta: FileMeta?, val store: String)
+    /** What the store answered for one file, and when. */
+    private class Asked(val atNanos: Long, val meta: FileMeta?)
 
     /**
      * What the file store last said of each file, by owner and hash, for [FileRefService.askedMemoMs]. An object is
@@ -131,14 +131,11 @@ class StoreFileSource : FileRefSource {
      */
     fun metaOf(cxt: KdrCxt, owner: String, hash: String, fresh: Boolean = false): FileMeta? {
         val memoKey = "$owner/$hash"
-        val files = FileStoreService.get(cxt).forOwner(cxt, owner)
         if (!fresh) {
-            // What another store said is no answer: a client moved to another store (issue #1283) is asked there.
-            asked[memoKey]?.takeIf { it.store == files.storeName && nanoTime() - it.atNanos < FileRefService.askedMemoMs * nanosPerMs }
-                ?.let { return it.meta }
+            asked[memoKey]?.takeIf { nanoTime() - it.atNanos < FileRefService.askedMemoMs * nanosPerMs }?.let { return it.meta }
         }
-        return files.meta(cxt, FileRefService.bucket, FileRefService.keyOf(owner, hash))
-            .also { asked[memoKey] = Asked(nanoTime(), it, files.storeName) }
+        return FileStoreService.get(cxt).forOwner(cxt, owner).meta(cxt, FileRefService.bucket, FileRefService.keyOf(owner, hash))
+            .also { asked[memoKey] = Asked(nanoTime(), it) }
     }
 
     /** Drops what was last said of the file [hash] under [owner]: an upload has just changed the answer. */

@@ -387,81 +387,12 @@ class FileStoreServiceTest : StringSpec({
         service.put(cxt, bucket, "unbound", ContentData("u", "text/plain")).client shouldBe cxt.client
     }
 
-    // --- Issue #1282: several stores, and a client's files reached through forOwner ------------------------------
-
-    "the stores KDR_FILE_STORES declares are kept beside the default one, each its own" {
-        val dir = tempDir()
-        val cxt = cxtWith(
-            ENV.unit, FSENV.type.name to FST.memory,
-            FSENV.stores.name to "second.type=memory,disk.type=local,disk.dir=${dir.absolutePath}",
-        )
-        val service = started(cxt)
-        service.storeNames() shouldContainExactly listOf(FSNM.default, "second", "disk")
-        service.storeNamed("disk").shouldBeInstanceOf<LocalFileStore>().location shouldBe dir.path
-        (service.storeNamed("second") === service.store) shouldBe false
-        service.storeNamed("nowhere").shouldBeNull()
-        File(dir, bucket).isDirectory shouldBe true
-        service.storesText() shouldBe "File stores: default = memory (memory), second = memory (memory), disk = local (${dir.path})"
-        // One store alone is said as it always was.
-        started(memoryCxt()).storesText() shouldBe "File store: memory (memory)"
-
-        // A file stored in one store is in that one only.
-        service.put(cxt, bucket, "notes/one", ContentData("1", "text/plain"))
-        service.storeNamed("second").shouldNotBeNull().meta(cxt, bucket, "notes/one").shouldBeNull()
-        service.store.meta(cxt, bucket, "notes/one").shouldNotBeNull()
-    }
-
-    "each S3 store runs over a stand-in of its own, and one the test did not hand in is refused" {
-        val defaultApi = FakeS3Api("a-$bucket")
-        val awsApi = FakeS3Api("b-$bucket")
-        val cxt = cxtWith(
-            ENV.unit, FSENV.type.name to FST.s3, FSENV.s3BucketPrefix.name to "a-", FileStoreService.s3ApiConfigKey to defaultApi,
-            FSENV.stores.name to "aws.type=s3,aws.region=us-east-1,aws.prefix=b-",
-            FileStoreService.s3ApiConfigKeyOf("aws") to awsApi,
-        )
-        started(cxt)
-        defaultApi.calls shouldContainExactly listOf("headBucket a-$bucket")
-        awsApi.calls shouldContainExactly listOf("headBucket b-$bucket")
-        FileStoreService.s3ApiConfigKeyOf(FSNM.default) shouldBe FileStoreService.s3ApiConfigKey
-
-        // The default's stand-in is not another store's.
-        val refused = shouldThrow<KdrException> {
-            created(
-                cxtWith(
-                    ENV.unit, FSENV.type.name to FST.s3, FileStoreService.s3ApiConfigKey to FakeS3Api(),
-                    FSENV.stores.name to "aws.type=s3,aws.region=us-east-1,aws.prefix=b-",
-                ),
-            )
-        }
-        refused.message shouldContain "The S3 file store 'aws' is not available in the unit test environment"
-        refused.message shouldContain "'${FileStoreService.s3ApiConfigKey}:aws'"
-    }
-
-    "the boot check holds every store to every declared bucket, saying which store is wrong" {
-        fun cxtFor(env: String, vararg more: Pair<String, Any?>) = cxtWith(
-            env, FSENV.type.name to FST.memory, FSENV.stores.name to "aws.type=s3,aws.region=us-east-1,aws.prefix=k-",
-            FileStoreService.s3ApiConfigKeyOf("aws") to FakeS3Api(), *more,
-        )
-        val strict = cxtFor(ENV.local)
-        val refused = shouldThrow<KdrException> { started(strict) }
-        refused.message shouldContain "Refusing to start: the file stores cannot each serve every declared bucket."
-        refused.message shouldContain "Store 'aws': The S3 bucket 'k-$bucket'"
-        fileStoreCheck(strict).shouldNotBeNull().findings shouldHaveSize 1
-
-        val warned = cxtFor(ENV.prod)
-        started(warned)
-        fileStoreCheck(warned).shouldNotBeNull().let {
-            it.mode shouldBe BootCheckMode.warn
-            it.findings.single() shouldContain "Store 'aws': "
-        }
-    }
+    // --- Issue #1282: a client's files reached through forOwner, in its own folder ---------------------------------
 
     "a client's files are reached through forOwner, and only in its own folder; the service's calls take no client's" {
         val cxt = memoryCxt()
         val service = started(cxt)
         val acme = service.forOwner(cxt, "acme")
-        // Every client is on the default store until clients are assigned one (#1283).
-        acme.storeName shouldBe FSNM.default
         acme.put(cxt, bucket, "clients/acme/logo", ContentData("a", "text/plain"))
         acme.get(cxt, bucket, "clients/acme/logo").shouldNotBeNull()
         service.forOwner(cxt, "globex").put(cxt, bucket, "clients/globex/logo", ContentData("g", "text/plain"))

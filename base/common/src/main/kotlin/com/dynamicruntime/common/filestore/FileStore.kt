@@ -131,9 +131,9 @@ object FNAME {
 
     /**
      * The folder every client's files are under, in whichever bucket they are kept (issue #1282): a client's web
-     * assets and its file refs are `clients/<owner>/…`. Such a file is reached through
-     * [FileStoreService.forOwner], which keeps it in the store its client is assigned, and never through the
-     * service's own calls, which refuse a key in this folder.
+     * assets and its file refs are `clients/<owner>/…`. Such a file is reached through [FileStoreService.forOwner],
+     * which takes that client's folder and no other, and never through the service's own calls, which refuse a key
+     * in this folder.
      */
     const val clientsFolder = "clients/"
 

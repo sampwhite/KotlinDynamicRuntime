@@ -57,9 +57,6 @@ dependencies {
         exclude(group = "software.amazon.awssdk", module = "apache5-client")
     }
     implementation("software.amazon.awssdk:url-connection-client")
-    // The credentials providers, `ProfileCredentialsProvider` among them, which a store naming a profile signs in
-    // with (issue #1282). They arrive through `s3` anyway; named so the code that uses them does not rest on that.
-    implementation("software.amazon.awssdk:auth")
 }
 
 // Publish the repository's README as a Markdown *document* resource, so MarkdownDocService can serve it (and
