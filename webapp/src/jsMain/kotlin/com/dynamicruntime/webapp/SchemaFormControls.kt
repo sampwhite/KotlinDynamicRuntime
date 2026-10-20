@@ -9,7 +9,6 @@ import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
-import kotlin.time.Clock
 import react.ChildrenBuilder
 import react.FC
 import react.Props
@@ -118,6 +117,8 @@ internal fun ChildrenBuilder.widget(
     presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
     /** The choices a form's layout offers in place of the schema's (issue #1022, [formChoiceList]). */
     choices: List<SchOption>? = null,
+    /** The id a date-time field's zone note takes, so the picker is described by it (issue #1235). */
+    zoneNoteId: String? = null,
     commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
@@ -201,10 +202,14 @@ internal fun ChildrenBuilder.widget(
                     commit()
                 }
                 markInvalid(asDynamic(), describedBy)
+                // The zone is part of what the time means, so it is read out with the field, beside any failure.
+                listOfNotNull(describedBy, zoneNoteId).ifEmpty { null }
+                    ?.let { asDynamic()["aria-describedby"] = it.joinToString(" ") }
             }
             span {
+                zoneNoteId?.let { asDynamic()["id"] = it }
                 className = ClassName("type-hint entry-zone")
-                +entryZoneNote(zone, Clock.System.now())
+                +entryZoneNote(zone)
             }
         }
         // File content (OpenAPI's `type: string, format: binary`): a file picker. What it emits is the

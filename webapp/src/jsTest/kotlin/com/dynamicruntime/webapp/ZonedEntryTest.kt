@@ -3,6 +3,7 @@ package com.dynamicruntime.webapp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 /**
@@ -70,6 +71,27 @@ class ZonedEntryTest {
     }
 
     @Test
+    fun aTimestampWithItsOwnOffsetIsTheMomentItNames() {
+        // 17:00 at UTC-5 is 22:00Z, which reads 3:30 AM the next day in Kolkata -- not 17:00 read in the browser.
+        assertEquals("2026-10-18T03:30:00", pickerWallOf("2026-10-17T17:00:00-05:00", "Asia/Kolkata"))
+        assertEquals("2026-10-17T11:30:00", pickerWallOf("2026-10-17T17:00:00.000+05:30", "UTC"))
+    }
+
+    @Test
+    fun aStoredMomentRoundTripsThroughTheDayjsBridge() {
+        // The picker's own value type: dayjs of the wall clock in, its wall clock read back out -- in whatever zone
+        // the machine running the test is in, which is the point.
+        for (zone in listOf(chicago, "Asia/Kolkata", "Asia/Kathmandu", "UTC", deploymentZone)) {
+            for (stored in listOf("2026-10-17T22:00:00.000Z", "2026-01-15T05:45:30.000Z")) {
+                val value = zonedPickerValue(stored, zone)
+                assertEquals(stored, zonedPickerIso(value, zone), "$stored in $zone")
+            }
+        }
+        assertNull(zonedPickerValue(null, chicago))
+        assertNull(zonedPickerIso(null, chicago))
+    }
+
+    @Test
     fun whatIsNotATimestampReachesThePickerAsItIs() {
         assertNull(pickerWallOf(null, chicago))
         assertNull(pickerWallOf(" ", chicago))
@@ -80,6 +102,17 @@ class ZonedEntryTest {
     fun anUnknownZoneIsEnteredInTheDeploymentsAsItIsShownThere() {
         assertEquals(deploymentZone, entryZone("Mars/Olympus_Mons"))
         assertEquals(chicago, entryZone(chicago))
+    }
+
+    @Test
+    fun theKeptNoteAndZoneFollowAChangeOfZone() {
+        // Both are kept between renders; a different zone must still get its own answer.
+        val first = entryZoneNote(chicago)
+        val second = entryZoneNote("Asia/Kolkata")
+        assertTrue(first.contains("Chicago") && second.contains("Kolkata"), "$first / $second")
+        assertEquals(chicago, entryZone(chicago))
+        assertEquals(deploymentZone, entryZone("Mars/Olympus_Mons"))
+        assertEquals("Asia/Kolkata", entryZone("Asia/Kolkata"))
     }
 
     @Test

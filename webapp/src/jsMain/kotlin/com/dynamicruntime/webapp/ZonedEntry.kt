@@ -28,8 +28,7 @@ fun zonedWallClock(at: Instant, zone: String): String {
     val options: dynamic = js(
         "({ hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })"
     )
-    options.timeZone = zone
-    val p = intlFormatParts(at.toEpochMilliseconds().toDouble(), options).associate { (it.type as String) to (it.value as String) }
+    val p = intlZonedParts(at.toEpochMilliseconds().toDouble(), zone, options)
     return "${p.getValue("year")}-${p.getValue("month")}-${p.getValue("day")}T" +
         "${p.getValue("hour")}:${p.getValue("minute")}:${p.getValue("second")}"
 }
@@ -60,14 +59,22 @@ private fun zoneOffset(at: Instant, zone: String): Duration {
 
 /**
  * The zone a date-time is entered in (issue #1235): [zone] when `Intl` knows it, else the [deploymentZone] --
- * the zone [formatTimestamp] then shows it in, so entry and display cannot disagree.
+ * the zone [formatTimestamp] then shows it in, so entry and display cannot disagree. The last answer is kept, since
+ * every date-time field asks on every render and the zone changes only with the shell's config.
  */
-fun entryZone(zone: String = DisplayZone.current): String = try {
-    zonedWallClock(Clock.System.now(), zone)
-    zone
-} catch (_: Throwable) {
-    deploymentZone
+fun entryZone(zone: String = DisplayZone.current): String {
+    lastEntryZone?.let { (asked, answer) -> if (asked == zone) return answer }
+    val answer = try {
+        zonedWallClock(Clock.System.now(), zone)
+        zone
+    } catch (_: Throwable) {
+        deploymentZone
+    }
+    lastEntryZone = zone to answer
+    return answer
 }
+
+private var lastEntryZone: Pair<String, String>? = null
 
 /**
  * What a date-time picker is handed for the stored [iso] moment: its wall clock in [zone] ([zonedWallClock]), or null
@@ -77,8 +84,21 @@ fun entryZone(zone: String = DisplayZone.current): String = try {
 fun pickerWallOf(iso: String?, zone: String): String? {
     val text = iso?.takeIf { it.isNotBlank() } ?: return null
     if (text.length < 16 || text[10] != 'T') return text
-    return text.parseDateOrNull()?.let { zonedWallClock(it, zone) } ?: text
+    // One with its own offset (`...T17:00:00-05:00`, from a payload typed by hand) is the moment it names too: passed
+    // through, dayjs would read it in the browser's zone and the next pick would shift it by the zones' difference.
+    val at = text.parseDateOrNull() ?: offsetTimestamp(text) ?: return text
+    return zonedWallClock(at, zone)
 }
+
+/** A timestamp carrying its own offset, as JavaScript's `Date.parse` reads one; null for anything it cannot. */
+@Suppress("UNUSED_PARAMETER")
+private fun offsetTimestamp(text: String): Instant? {
+    if (!timestampWithOffset.matches(text)) return null
+    val ms = js("Date.parse(text)") as Double
+    return if (ms.isNaN()) null else Instant.fromEpochMilliseconds(ms.toLong())
+}
+
+private val timestampWithOffset = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?[+-]\d{2}:?\d{2}$""")
 
 /**
  * The stored moment for a [wall] clock the picker returned, read in [zone] ([instantOfWallClock]), as the ISO-8601
@@ -106,3 +126,16 @@ fun entryZoneNote(zone: String, at: Instant): String {
     val choice = timeZoneChoice(zone, at) ?: return zone
     return if (isPlaceZoneName(zone)) choice.label else choice.offset.ifEmpty { zone }
 }
+
+/**
+ * [entryZoneNote] for now, kept between renders: every date-time field draws it on every render, and it changes only
+ * with the zone, or when the zone's offset does -- on the hour at most, which is what the kept answer is keyed by.
+ */
+fun entryZoneNote(zone: String): String {
+    val now = Clock.System.now()
+    val key = "$zone@${now.epochSeconds / 3600}"
+    lastEntryZoneNote?.let { (asked, note) -> if (asked == key) return note }
+    return entryZoneNote(zone, now).also { lastEntryZoneNote = key to it }
+}
+
+private var lastEntryZoneNote: Pair<String, String>? = null

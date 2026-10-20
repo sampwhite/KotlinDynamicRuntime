@@ -19,7 +19,6 @@ import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.normalizeEmail
-import kotlin.time.Clock
 import kotlinx.browser.document
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.awaitCancellation
@@ -1068,12 +1067,15 @@ val Users = FC<Props> {
                                 // The bounds are read in the client's zone, as the listed times are shown (issue
                                 // #1235), so "after 5:00 PM" means what the column says 5:00 PM is.
                                 val zone = entryZone()
+                                // Both pickers are described by the one note naming the zone.
+                                val zoneNote = "zone-${spec.name}"
                                 div {
                                     className = ClassName("filter-range")
                                     DatePicker {
                                         value = zonedPickerValue(range.after, zone)
                                         showTime = true
                                         showNow = false
+                                        asDynamic()["aria-describedby"] = zoneNote
                                         // Bounded: a date-time picker has a known amount to show, so it gains
                                         // nothing from being wider.
                                         style = js("({ maxWidth: 220 })")
@@ -1087,13 +1089,15 @@ val Users = FC<Props> {
                                         value = zonedPickerValue(range.before, zone)
                                         showTime = true
                                         showNow = false
+                                        asDynamic()["aria-describedby"] = zoneNote
                                         style = js("({ maxWidth: 220 })")
                                         onChange = { date, _ -> setRange(spec.name, DateRange(range.after, zonedPickerIso(date, zone))) }
                                     }
                                 }
                                 span {
+                                    asDynamic()["id"] = zoneNote
                                     className = ClassName("type-hint")
-                                    +"Times in ${entryZoneNote(zone, Clock.System.now())}. Leave either end empty for open-ended."
+                                    +"Times in ${entryZoneNote(zone)}. Leave either end empty for open-ended."
                                 }
                             }
                         }
