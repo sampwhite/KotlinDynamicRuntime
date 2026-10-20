@@ -186,7 +186,7 @@ val App = FC<Props> {
                         // pages in `restartOnRevisit` take it: a remount is not free elsewhere -- the catalog would
                         // refetch its whole listing, Profile would drop a password-change code mid-entry, and every
                         // page that registers a `hashchange` listener in `useEffectOnce` would leak one per click,
-                        // since `onHashChange` has no cleanup yet (deferred-work.md).
+                        // since `onHashChange` has no cleanup yet (docs/development/deferred-work.md).
                         ErrorBoundary {
                             key = (
                                 page + (hashParams()[debugToolParam]?.let { ":$it" } ?: "") +

@@ -85,7 +85,7 @@ object GDBG {
  * honors them and does not is worse than one that plainly cannot yet. (Locked entries are enforced: a workflow
  * declares its trait locks, and `TraitLockGuard` refuses a write to a trait locked for the writer, issue #857.)
  *
- * **Dry runs, and all-or-nothing across gedras.** See `gedra-patch.md`.
+ * **Dry runs, and all-or-nothing across gedras.** See `docs/design/gedra/patch.md`.
  *
  * ### Keyed traits (issue #487)
  *
@@ -1105,7 +1105,7 @@ class GedraDataService : ServiceInitializer {
      * patch is by **replay**, which is safe because every edit is idempotent by value: a `deleteOrNoOp` of an
      * absent entry is a no-op, an `addOrMerge` refolded over its own result is unchanged, and an
      * `addOrReplace` takes the supplied entry whole (see `applyEdit`). A retry re-applies what already landed
-     * and changes nothing but the audit stamps. See `gedra-patch.md`.
+     * and changes nothing but the audit stamps. See `docs/design/gedra/patch.md`.
      *
      * Kinds are applied in a fixed order the server chooses (`kindApplyOrder`) rather than the request's, so a
      * caller cannot reorder the phases by reordering their targets.

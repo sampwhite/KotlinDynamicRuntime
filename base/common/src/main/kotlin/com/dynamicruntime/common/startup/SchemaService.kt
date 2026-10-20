@@ -1205,8 +1205,8 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * What `KdrCxt.getClientSchema` returns for the context's bound client (issue #946). **Not what
      * `KdrCxt.getGlobalSchema` returns, and deliberately.** That stays global, because `RequestService`
      * resolves each endpoint's input and output types through it and caches them **keyed by path** -- so an
-     * endpoint has to mean one type for every caller or the cache is unsound. `client-definition.md` settles
-     * the split as case (a): permissive at the edge, strict where it is stored. The published type stays
+     * endpoint has to mean one type for every caller or the cache is unsound. `docs/design/client-definition.md`
+     * settles the split as case (a): permissive at the edge, strict where it is stored. The published type stays
      * global; this is what the *storage* side validates against.
      *
      * A client with no variant, and a caller with no client at all, both get the global store -- the same
@@ -1583,7 +1583,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 // The free-form map case (issue #251): an object declaring no properties, which the parser
                 // reads as open (`additionalProperties` defaults to `properties.isEmpty()`), so any keys are
                 // accepted and none are described. There is nothing to lay out as fields, so the form edits it
-                // as raw JSON. `gedra-entry.md` leans on this shape for an entry's `origin`, which stays
+                // as raw JSON. `docs/design/gedra/entry.md` leans on this shape for an entry's `origin`, which stays
                 // free-form until integrations land.
                 property(CX.extras, "Free-form JSON object; any keys are accepted, none are declared.") {
                     type = SCT.kObject

@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap
  * as the menu behaves today. Sending expressions instead would mean sending the caller's cfact set with them,
  * which puts `isAdmin` -- and whatever private vocabulary a client registered -- on the wire. Fragment
  * references go the other way and are left for the frontend, because they resolve against copy it has already
- * cached; see `ui-block.md`.
+ * cached; see `docs/design/ui-block.md`.
  */
 class UiBlockService : ServiceInitializer {
     override val serviceName: String = UiBlockService.serviceName

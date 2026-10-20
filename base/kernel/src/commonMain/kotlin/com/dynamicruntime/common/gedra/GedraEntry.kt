@@ -16,7 +16,7 @@ import kotlin.time.Instant
  * The field names an entry carries outside its trait's own data (issue #297).
  *
  * These are the **envelope**, and the reason [data] exists at all: the envelope is expected to grow —
- * `gedra-entry.md` still has `origin`, `lockedBy`, `createdBy` and `updatedBy` to add — and in a flat entry
+ * `docs/design/gedra/entry.md` still has `origin`, `lockedBy`, `createdBy` and `updatedBy` to add — and in a flat entry
  * every one of those additions would be a silent breaking change to any trait that already used that field
  * name. With the trait's fields one level down, the envelope can grow forever and no trait author notices.
  *
@@ -85,7 +85,7 @@ object GE {
  *
  * The field is **mutable**, unlike an entry's origin: an approval flips it in bulk across every trait the
  * approval covers, which is what makes "which values has nobody vouched for" a plain equality filter. See
- * `gedra-entry.md`.
+ * `docs/design/gedra/entry.md`.
  */
 @Suppress("ConstPropertyName")
 object GSRC {

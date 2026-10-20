@@ -15,8 +15,8 @@ everyone has silently agreed to ignore.
   issue and remove it here. This file only ever holds *not-yet-actionable* items; anything ready lives in the
   tracker.
 - **Reachable from context.** Link into an item by its section anchor from the code or a closing issue comment,
-  e.g. `// deferred: see deferred-work.md#when-a-deployment-serves-real-clients`, so it is found while working
-  on the relevant code, not only by reading top to bottom.
+  e.g. `// deferred: see docs/development/deferred-work.md#when-a-deployment-serves-real-clients`, so it is found while
+  working on the relevant code, not only by reading top to bottom.
 - **Keep items short.** The trigger, a line or two of what and why, and links back to the source — enough to
   reconstruct the decision, not a design doc.
 
@@ -148,9 +148,9 @@ it is worth doing now, since the file's own rule is that anything ready lives in
   **full-text search target** in logs (test instances log addresses where a real one would not). A **fault**
   that travels with the identity beats a per-request switch when the question spans a whole session.
 
-  This said *persona* until `client-definition.md` claimed that word for a formal concept — a named thing mapping
-  to roles and capabilities, then carried after a `%` in the same part of an email address this item wants to write
-  into (that address convention was retired in #750). Two meanings in one place was the collision; the formal one
+  This said *persona* until `docs/design/client-definition.md` claimed that word for a formal concept — a named thing
+  mapping to roles and capabilities, then carried after a `%` in the same part of an email address this item wants to
+  write into (that address convention was retired in #750). Two meanings in one place was the collision; the formal one
   keeps the word, and *fault* is not a coinage but the vocabulary #227 already uses for deliberate failure.
 
   Note what it is *not* for. The frontend fault route in #227 needs none of it, because making the browser
@@ -197,12 +197,12 @@ first. Noticeable because someone asks for it by name.
   boundary that already has to project `g-derived` out of input shapes, not a new mechanism.
 
 - **The rest of the export contract is already written down** in
-  [`gedra-entry.md`](gedra-entry.md) — `g-` keywords stripped by default with a small transformer table,
-  `discriminator.mapping` synthesized from the branches' `const` values, and the governing rule that an
-  inexact conversion must be *stricter* than us rather than looser. Read it before starting: the decisions are
-  made, only the code is missing. Note one known gap recorded there — `g-primaryKey` has no standard
-  equivalent, so stripping it makes the export looser, which is accepted because the constraint governs our
-  own stored entries rather than anything a third party validates.
+  [`docs/design/gedra/entry.md`](../design/gedra/entry.md) — `g-` keywords stripped by default with a small transformer
+  table, `discriminator.mapping` synthesized from the branches' `const` values, and the governing rule that an inexact
+  conversion must be *stricter* than us rather than looser. Read it before starting: the decisions are made, only the
+  code is missing. Note one known gap recorded there — `g-primaryKey` has no standard equivalent, so stripping it makes
+  the export looser, which is accepted because the constraint governs our own stored entries rather than anything a
+  third party validates.
 
 ## When public API documentation is written
 
@@ -214,8 +214,8 @@ catalog. Noticeable because somebody sits down to write it.
   defaults that never appear on a field — plain string input is trimmed, a blank scalar counts as absent,
   and numeric, boolean and date fields coerce from strings. The page states those as global rules, so a
   field's schema only has to show where it departs from them (`g-outerWhitespace: "keep"`,
-  `g-allowCoerce: false`). The rules are in `code-guide.md`'s "Relaxed validation and coercion is the default"
-  section.
+  `g-allowCoerce: false`). The rules are in `docs/development/code-guide.md`'s "Relaxed validation and coercion is the
+  default" section.
 
 ## When fragment copy computes with its data
 

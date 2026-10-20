@@ -4,9 +4,10 @@ The design of the universal stored entity and the schema constructs it needs. Th
 intent**, written before the code, when none of it was implemented; issue #240 tracked both this document and
 the schema work it called for. Much of it has since been built — the four schema constructs below among it.
 
-It is a companion to [`code-guide.md`](code-guide.md) — that file says how we write code, this one says what
-one particular subsystem is — and to [`deferred-work.md`](deferred-work.md), which holds the items named here
-as deliberately postponed.
+It is a companion to [`docs/development/code-guide.md`](../../development/code-guide.md) — that file says how we write
+code, this one says what one particular subsystem is — and to
+[`docs/development/deferred-work.md`](../../development/deferred-work.md), which holds the items named here as
+deliberately postponed.
 
 Decisions are stated plainly. Where something is genuinely unsettled it appears under
 [Open questions](#open-questions) rather than being papered over, and where something was considered and
@@ -511,8 +512,8 @@ Genuine optionality within a form — a radio group the user may leave unanswere
 
 ## Deferred
 
-Recorded here as considered, not overlooked; promoted to [`deferred-work.md`](deferred-work.md) as their
-triggers become concrete.
+Recorded here as considered, not overlooked; promoted to
+[`docs/development/deferred-work.md`](../../development/deferred-work.md) as their triggers become concrete.
 
 - **Attribute-level and role-conditional editability.** "Editable only by admins" is a predicate on the
   caller, not the boolean that splits into server-enforced immutability and presented-read-only. Deferring is

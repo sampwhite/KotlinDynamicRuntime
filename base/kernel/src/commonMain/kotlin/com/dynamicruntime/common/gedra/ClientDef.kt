@@ -661,8 +661,8 @@ fun SchTypeBuilder.clientAttribute() {
  *
  * Held as a typed field on the [GedraConfig] that declares it, whose [GedraId] already carries the client --
  * so the id *is* the binding and nothing says which client a definition belongs to twice. One bundle therefore
- * defines at most one client; every bundle sharing a client is read as one whole. See `client-definition.md`
- * for the reasoning behind each attribute.
+ * defines at most one client; every bundle sharing a client is read as one whole. See
+ * `docs/design/client-definition.md` for the reasoning behind each attribute.
  *
  * **Nothing here decides how a request is served.** This class declares, validates, and finds a client; what
  * its definition drives is built elsewhere -- the per-client schema variant (`SchemaService.storeFor`, issue

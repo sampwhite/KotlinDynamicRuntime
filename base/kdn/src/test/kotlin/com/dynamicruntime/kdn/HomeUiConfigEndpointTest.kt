@@ -75,7 +75,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         // The repo docs the README links to are registered too, each with its own source path, so a link to one
         // resolves to an in-app document (issue #492). This also proves the build copied them onto the classpath.
         val codeGuide = links.single { it[HFLD.id] == HDOC.codeGuide }
-        codeGuide[HFLD.sourcePath] shouldBe "code-guide.md"
+        codeGuide[HFLD.sourcePath] shouldBe "docs/development/code-guide.md"
         (codeGuide[HFLD.buildId] as String).isNotEmpty() shouldBe true
     }
 

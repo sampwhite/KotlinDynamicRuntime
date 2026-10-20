@@ -663,7 +663,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // A list endpoint because the answer is one result per target, and a POST because a patch is neither a
     // read nor an HTTP PATCH -- it targets an arbitrary set of rows rather than the resource at the URI, and
     // the PATCH method advertises body formats (RFC 6902's op arrays, RFC 7386's merge-patch where `null`
-    // deletes) that this design specifically does not use. See `gedra-patch.md`.
+    // deletes) that this design specifically does not use. See `docs/design/gedra/patch.md`.
     listEndpoint(
         GEP.patch,
         "Changes entries on one or more gedras, and answers with what became of each edit.",

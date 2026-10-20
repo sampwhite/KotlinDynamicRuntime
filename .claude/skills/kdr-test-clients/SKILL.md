@@ -156,9 +156,10 @@ later schema rejects" test.
     written inline; the `{ … }` is the `kdr-schema-builder` DSL. An overload takes `dataType` (a `$ref`) instead.
   - **`workflow(workflowId, entry: WfEntry) { <WfDefBuilder> }`** — a workflow definition (or `workflowFromMap`
     for the JSON form). See the compile-time `createForm` workflow in `sample/.../SampleClients.kt` for the
-    shape, and `gedra-workflow.md` for the model. An optional `label = "…"` in the block titles the page over
-    the form (issue #719); like a task's label it is a template, so `%{@t("file.ns.key")}` pulls it from a
-    fragment file and the boot checks the pull resolves.
+    shape, and the workflow pages of `docs/demo-client/` (from `create-talk.md`) for what each key does -- they are held
+    to the code by `ConfDemoDocsTest`. (`docs/history/gedra-workflow.md` is a superseded design; do not follow it.) An
+    optional `label = "…"` in the block titles the page over the form (issue #719); like a task's label it is a
+    template, so `%{@t("file.ns.key")}` pulls it from a fragment file and the boot checks the pull resolves.
   - **`cfact(name, group, description, toFrontend)`** — the cfacts the client may name in expressions.
   - **Not `stateTrait(...)`.** State is global, declared by components (issue #873): a client's config declaring
     one is refused at write, and a client-owned source config declaring one refuses the boot outside production.
@@ -354,7 +355,7 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
   by the `conf-demo` simulation. `docs/demo-client/` walks through its JSON for a reader, and `ConfDemoDocsTest` holds
   the two together. Read it for how the pieces fit; keep this skill's own examples short and test-shaped.
 - `base/common/.../gedra/GedraConfigService.kt` / `GedraConfigReload.kt` / `GedraConfigControl.kt` — the runtime.
-- Design docs (repo root, also on the home page): `gedra-config-and-data.md` (the model), `client-definition.md`
-  (the `ClientDef` spec), `gedra-workflow.md`.
+- Design docs (under `docs/design/`, also served in-app): `docs/design/gedra/config-and-data.md` (the model) and
+  `docs/design/client-definition.md` (the `ClientDef` spec).
 
 For the schema DSL used inside a `trait`, see `kdr-schema-builder`; for booting and `TestUser`, `kdr-testing`.

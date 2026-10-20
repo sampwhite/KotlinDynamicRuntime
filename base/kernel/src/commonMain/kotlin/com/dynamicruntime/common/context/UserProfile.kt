@@ -197,8 +197,9 @@ data class UserProfile(
          * something decides they should not. A deliberate stopping point rather than an oversight: the level
          * is what Sam asked for, and the capability is a separate grant that deserves its own reason.
          *
-         * Someday a production deployment may want to narrow what env auth grants -- see `deferred-work.md`,
-         * "When the people who can reach an edge stop being a small trusted group".
+         * Someday a production deployment may want to narrow what env auth grants -- see
+         * `docs/development/deferred-work.md`, "When the people who can reach an edge stop being a small trusted
+         * group".
          *
          * The address is the identity: it is what reaches the log line, and it is why [userId] stays the
          * default rather than being invented. Nothing may query by it -- see [isRowBacked].

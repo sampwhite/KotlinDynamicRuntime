@@ -63,8 +63,8 @@ class ReadScope(
      * cliff that looks exactly like data loss.
      *
      * The cost is that an organization narrows a view without ever sealing it, so it is not a confidentiality
-     * boundary: see deferred-work.md#when-an-organization-has-to-hide-content-not-just-narrow-it before
-     * anybody relies on one to keep content apart.
+     * boundary: see docs/development/deferred-work.md#when-an-organization-has-to-hide-content-not-just-narrow-it
+     * before anybody relies on one to keep content apart.
      */
     fun admitsOrg(rowOrg: String?): Boolean = org == null || rowOrg == null || rowOrg == org
 

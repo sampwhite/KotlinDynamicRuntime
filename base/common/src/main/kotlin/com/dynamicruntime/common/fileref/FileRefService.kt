@@ -94,7 +94,7 @@ class FileRefRegistry(
  * static root asks for no sign-in.
  *
  * **Rolling it out.** A node that predates the slot rewrites a configuration without it, so the release that adds
- * file refs is on every node before the first ref is stored (`gedra-config-and-data.md`).
+ * file refs is on every node before the first ref is stored (`docs/design/gedra/config-and-data.md`).
  */
 class FileRefService : ServiceInitializer, ContentServer {
     override val serviceName: String = FileRefService.serviceName

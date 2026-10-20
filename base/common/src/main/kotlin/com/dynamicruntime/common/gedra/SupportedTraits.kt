@@ -3,7 +3,7 @@ package com.dynamicruntime.common.gedra
 /**
  * The traits a client may **use** -- in forms, and in the entries it stores (issue #356).
  *
- * Three named concepts rather than two overloaded ones, per `client-definition.md`:
+ * Three named concepts rather than two overloaded ones, per `docs/design/client-definition.md`:
  *
  * | | |
  * |---|---|

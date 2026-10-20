@@ -859,8 +859,8 @@ text elsewhere.
 ## The Reports page (issue #1007)
 
 `#page=reports` lists a client's named reports (`GET /clientAdmin/reports`) down the left and runs the open one
-(`GET /clientAdmin/report/run`) as a table beside them; `reporting.md` at the repo root says what a report is. The
-pure half -- parsers, the run's query, the table's columns, a cell's text, the paging line, the links -- is
+(`GET /clientAdmin/report/run`) as a table beside them; `docs/design/reporting.md` at the repo root says what a report
+is. The pure half -- parsers, the run's query, the table's columns, a cell's text, the paging line, the links -- is
 `ReportsApi.kt` (covered by `ReportsPageTest`); `ReportsPage.kt` holds the components.
 
 - **Where the page is rides the hash**: `c` (the client, for an `allClients` administrator only -- a client's own
@@ -1463,7 +1463,7 @@ The JS target declares `nodejs()` alongside `browser {}` purely so this task exi
 disabled in `build.gradle.kts` so `check`/`build` never pull in a headless Chrome. There is **no** DOM/React
 test harness yet — component rendering, HTTP, and full-app behavior are still browser-driven, and verifying
 them means opening the app and looking. The case for changing that, and the decision it waits on, is recorded
-at `deferred-work.md#when-a-frontend-change-breaks-a-page-its-author-did-not-open`.
+at `docs/development/deferred-work.md#when-a-frontend-change-breaks-a-page-its-author-did-not-open`.
 
 **Keep the mapping testable.** A UI-config fetcher's `UiConfig` → typed-config transform lives as a pure
 top-level function next to its `*Api` object (`appConfigFrom`, `homeConfigFrom`, `authConfigFrom`,

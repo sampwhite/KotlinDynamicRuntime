@@ -12,7 +12,7 @@ package com.dynamicruntime.common.user
  *
  * It is deliberately plain data (strings, an enum, booleans), so serving it as JSON for a fully runtime
  * server-driven console -- the natural next step -- is a matter of rendering these, not redesigning them. See
- * `user-search.md` (repo root).
+ * `docs/history/user-search.md` (repo root).
  *
  * **Why the accessors are not here:** they take an `AuthUserRow`, a JVM type the front end never sees, so they
  * cannot be shared. The split is deliberate -- this says *what* a field is and how it is shown; the backend

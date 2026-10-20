@@ -642,7 +642,7 @@ class RequestService : ServiceInitializer {
      *
      * This is what makes a per-client endpoint mean the client's schema without touching the caches below.
      * They stay keyed by **path**, and stay sound, because the path names exactly one client -- which is
-     * `client-definition.md`'s "path separation dissolves the type-cache problem rather than answering it",
+     * `docs/design/client-definition.md`'s "path separation dissolves the type-cache problem rather than answering it",
      * now literal rather than anticipated. A shared path still resolves globally, so nothing about the shared
      * surface changes.
      *

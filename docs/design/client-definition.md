@@ -3,10 +3,10 @@
 How a client is described, what it owns, and what a deployment does with one. Written before any of it existed,
 as something to design against and argue with.
 
-It is a companion to [`gedra-config-and-data.md`](gedra-config-and-data.md), which describes how a gedra is
+It is a companion to [`docs/design/gedra/config-and-data.md`](gedra/config-and-data.md), which describes how a gedra is
 identified and how a deployment can be split by client — the mechanism this document gives a definition to —
-and to [`gedra-patch.md`](gedra-patch.md), whose endpoints are the first that will need a client's own view of
-a schema.
+and to [`docs/design/gedra/patch.md`](gedra/patch.md), whose endpoints are the first that will need a client's own view
+of a schema.
 
 **Much of it is now built.** Issue #340 was the planning issue. Clients are declared, validated and found
 (`ClientDef`, `ClientService`, issue #343); each present client gets its own schema variant (#356) and its own
@@ -590,8 +590,9 @@ what survives of it is the no-tag rule alone -- on `example.com` and `KDR_ADMIN_
 **no `+`** is one of the deployment's own people and earns the auto-admin grant, and a `+` tag says only that
 it is not.
 
-`deferred-work.md` used *persona* for a different payload in the same part of an address -- the identity-bound
-quality that makes a test user fail on demand. That use has been renamed to **fault**, which is not a coinage:
+`docs/development/deferred-work.md` used *persona* for a different payload in the same part of an address -- the
+identity-bound quality that makes a test user fail on demand. That use has been renamed to **fault**, which is not a
+coinage:
 #227 already uses it for deliberate failure. The formal concept keeps the word.
 
 **The fixtures take an explicit client, persona and personaSuffix**, which makes any address convention a
@@ -808,7 +809,7 @@ The merge is **by rule, per kind of definition**, and only two kinds look inside
 | Cfact, by name | The client's replaces the base's. |
 | Workflow, by workflow id | The client's replaces the base's, whole. Its tasks are not merged; that waits on task ids having a root (#921). |
 | Creation or survey workflow | The client's replaces the base's of that kind, whatever its id. |
-| Report, by report id | The client's replaces the base's, whole (issue #979). Both are client-owned bare ids; a global report is rooted and never replaced. Each report a client may run also has typed endpoints of its own, generated from it on every reload — see `reporting.md`, "Typed endpoints per report". |
+| Report, by report id | The client's replaces the base's, whole (issue #979). Both are client-owned bare ids; a global report is rooted and never replaced. Each report a client may run also has typed endpoints of its own, generated from it on every reload — see `docs/design/reporting.md`, "Typed endpoints per report". |
 | Trait usages (listing columns) | The client's list replaces the base's list. |
 | Fragment copy | Merged key by key: two levels, string values. The base's layer sits below the client's own. |
 | UiBlock | The UiBlock merge (keyed arrays, recursive), the base's layer below the client's own. |

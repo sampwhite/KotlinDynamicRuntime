@@ -4,8 +4,8 @@ How a stored gedra is **changed** — why it has to be a patch rather than an up
 and the family of endpoints around it. Written before any of it existed, as something to design against and
 argue with.
 
-It is a companion to [`gedra-entry.md`](gedra-entry.md), which describes the shape of a single stored entry,
-and to [`gedra-config-and-data.md`](gedra-config-and-data.md), which describes everything around one. Those two
+It is a companion to [`docs/design/gedra/entry.md`](entry.md), which describes the shape of a single stored entry,
+and to [`docs/design/gedra/config-and-data.md`](config-and-data.md), which describes everything around one. Those two
 cover reading and creating; this one covers changing, which turns out to be where most of the difficulty is.
 
 **Much of it is now built.** When this was written, creating, reading, listing and deleting a form document
@@ -230,18 +230,18 @@ There is an obvious-looking way to express the workflow's requirement, and it is
 narrow it**, adding the fields to `required`. The overlay mechanism exists, narrowing is the one thing an
 overlay is allowed to do, and it looks like precisely the right tool.
 
-It is wrong because `gedra-entry.md` already says what narrowing binds: *"Narrowing binds the write path, never
-the read path."* So an overlay that made the answers required would fail the write — converting a soft
-validation into a hard one, and breaking the partial save the optionality was there to allow. The rule that
-makes overlays safe is what makes them the wrong instrument here.
+It is wrong because `docs/design/gedra/entry.md` already says what narrowing binds: *"Narrowing binds the write path,
+never the read path."* So an overlay that made the answers required would fail the write — converting a soft validation
+into a hard one, and breaking the partial save the optionality was there to allow. The rule that makes overlays safe is
+what makes them the wrong instrument here.
 
 ### Where it probably belongs
 
-`gedra-entry.md` has already sketched the mechanism under *"Tasks declare what is owed"*: a task declares which
-`traitId`s and which primary keys it expects, and **missing data is a diff** between what the task expects and
-what the gedra holds. That diff *is* soft validation. What has not been said before is that the same diff is
-what gates workflow advancement, not merely what the GUI shades red — which raises the bar on it, since a
-report that only drives styling can be approximate and one that decides whether somebody may proceed cannot.
+`docs/design/gedra/entry.md` has already sketched the mechanism under *"Tasks declare what is owed"*: a task declares
+which `traitId`s and which primary keys it expects, and **missing data is a diff** between what the task expects and
+what the gedra holds. That diff *is* soft validation. What has not been said before is that the same diff is what gates
+workflow advancement, not merely what the GUI shades red — which raises the bar on it, since a report that only drives
+styling can be approximate and one that decides whether somebody may proceed cannot.
 
 Two consequences for this proposal, neither of which is work today:
 
@@ -406,8 +406,8 @@ I would start with the summary and treat the cross-kind union as a separate deci
   incrementing past the largest has a specific defect: delete the highest and the next insert reuses its
   number, so a held reference silently points at a different entry. That is fatal for this field rather than
   untidy, because `entryId` exists precisely to be the **stable** surrogate that `g-primaryKey` is not (see
-  `gedra-entry.md`, *Identity*). A stored high-water mark fixes the reuse and brings a counter that every future
-  write path has to maintain.
+  `docs/design/gedra/entry.md`, *Identity*). A stored high-water mark fixes the reuse and brings a counter that every
+  future write path has to maintain.
 
   The cost is about 22 characters per entry, accepted as part of a **deliberately verbose storage strategy**.
   That is a posture rather than an oversight, and it is the same one the product pitch rests on — that machines
@@ -540,7 +540,7 @@ opposite.
 
 - **"You may not supply this field in this task"** — a hard, write-path constraint. Narrowing an overlay is
   exactly the tool: the branch is a closed object, so an out-of-scope field is refused, and
-  `gedra-entry.md`'s rule that narrowing binds the write path is the behavior being asked for.
+  `docs/design/gedra/entry.md`'s rule that narrowing binds the write path is the behavior being asked for.
 - **"These answers are required before you may advance"** — soft. Narrowing would fail the write, which is the
   trap.
 
@@ -706,16 +706,16 @@ be carried are offered, and `appliesTo` is enforced by the schema rather than by
 
 ## It is a projection — the fourth, and the first of its sort
 
-In `gedra-entry.md`'s sense: a shape generated from one authored definition, never authored. That section lists
-input, admin input and output; patch input is another.
+In `docs/design/gedra/entry.md`'s sense: a shape generated from one authored definition, never authored. That section
+lists input, admin input and output; patch input is another.
 
 Part of the family is already implemented — the `g-derived` half of the **input** projection has run since
 #254, and #310 leans on it, which is why one `FormDoc` type serves both directions. What would be new:
 
 - **the first projection producing a named type** rather than transforming one endpoint's schema in place,
   which it must be, since three endpoints `$ref` it;
-- **the first projector in the Gedra tier**, which is where `gedra-entry.md` said it belongs, because it reads
-  the *trait* and not merely the schema;
+- **the first projector in the Gedra tier**, which is where `docs/design/gedra/entry.md` said it belongs, because it
+  reads the *trait* and not merely the schema;
 - **the first that adds rather than only removes** — `action` is new and `entryId` changes status. That
   stretches "projection", which elsewhere means narrowing. Worth naming as its own thing if that reads wrong,
   and the moment to decide is before code called `project…` does something the other projections do not.
@@ -724,8 +724,8 @@ Part of the family is already implemented — the `g-derived` half of the **inpu
 machinery — apply the input projection that drops every `g-derived` field, which is the whole envelope — but it
 leaves a wart: `entryId` is dropped as derived and immediately added back, because on a patch the caller does
 supply it. That wart is a finding rather than an annoyance: `g-derived` is a single boolean being asked a
-question that is **per-projection, not per-field**. `gedra-entry.md` left room for an object form of the keyword
-to say so; this does not justify inventing it.
+question that is **per-projection, not per-field**. `docs/design/gedra/entry.md` left room for an object form of the
+keyword to say so; this does not justify inventing it.
 
 The additive route sidesteps it, and is honest about how much the shapes differ. Its prerequisite: **`GedraTrait`
 did not carry its data schema** — only `traitId`, `typeName` and `appliesTo` — so the schema had to be read back
@@ -733,7 +733,7 @@ out of the built defs. Worth fixing on its own account, and since fixed (`GedraT
 definition", and its data shape is the most important part of it. With that field, `entryEditUnionDefs(traits)`
 sits beside `entryUnionDefs(traits)`: one source, two manufactured outputs, neither derived from the other.
 
-It composes as `gedra-entry.md`'s ordering rule says it should — **overlay, then project, then export**. A
+It composes as `docs/design/gedra/entry.md`'s ordering rule says it should — **overlay, then project, then export**. A
 task-scoped edit union is the trait, overlaid by the task's narrowing, then projected to patch-input shape.
 
 ## The relax-`required` question, answered (issue #487)

@@ -13,7 +13,7 @@ import com.dynamicruntime.common.util.toOptStr
  * One thing a patch asks of one entry (issue #337).
  *
  * The verb sits beside the trait rather than inside the entry, because an action is not a property of a value;
- * see `gedra-patch.md`. [entryId] and [data] are both optional, and both absences mean something — see
+ * see `docs/design/gedra/patch.md`. [entryId] and [data] are both optional, and both absences mean something — see
  * [editEnvelopeFields], which declares the same shape in schema.
  */
 class GedraEdit(

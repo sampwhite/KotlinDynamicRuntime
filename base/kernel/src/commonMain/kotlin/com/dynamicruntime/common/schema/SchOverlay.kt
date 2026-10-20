@@ -21,12 +21,12 @@ import com.dynamicruntime.common.util.toJsonMap
  * Overlaying the **document** and re-parsing removes that problem rather than solving it: `$ref` resolution
  * binds to whatever is in the map it was handed, so every reference to an altered type -- nested, inside a
  * union branch, through an array's `items` -- lands on the altered version with no traversal written and none
- * to get wrong. That is the case `client-definition.md` says cannot be faked with namespacing, and it is why
- * this layer exists at all.
+ * to get wrong. That is the case `docs/design/client-definition.md` says cannot be faked with namespacing, and it is
+ * why this layer exists at all.
  *
  * ### What it costs, and why that was already accepted
  *
- * The whole document is parsed again for each client that varies something. `client-definition.md` settled
+ * The whole document is parsed again for each client that varies something. `docs/design/client-definition.md` settled
  * this: *"Whatever the code is simplest carrying... the CPU and memory involved are small enough to ignore, and
  * simplicity of code is the thing actually being bought."* A client that overlays nothing gets the global
  * document back **by identity**, so it builds no variant at all.
@@ -76,7 +76,7 @@ fun overlayDefs(defs: Map<String, Any?>, overlays: Map<String, Any?>): Map<Strin
  * own right. That is a reason to name interior types, not merely a style preference.
  *
  * Nothing is ever written into [base] or anything it holds: unmentioned values are shared by reference and
- * never mutated. That is `client-definition.md`'s sharing invariant -- *"a variant may create new nodes and
+ * never mutated. That is `docs/design/client-definition.md`'s sharing invariant -- *"a variant may create new nodes and
  * point at old ones; it must not write into old ones"* -- as a property of how this is written rather than a
  * discipline somebody has to keep.
  *

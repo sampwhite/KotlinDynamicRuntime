@@ -4,11 +4,11 @@ How definitions and stored data are separated, identified, and kept from seeing 
 whoever has to work inside these rules — developers now, client administrators later — and for the reader who
 arrives six months from now wondering why an id looks like that.
 
-It is a companion to [`gedra-entry.md`](gedra-entry.md), which describes the shape of a single stored entry.
+It is a companion to [`docs/design/gedra/entry.md`](entry.md), which describes the shape of a single stored entry.
 This one is about everything around one: which family it belongs to, whose it is, who may see it, and what
 happens when two definitions disagree.
 
-Unlike `gedra-entry.md`, this document describes a mixture of what exists and what is intended. Each section
+Unlike `docs/design/gedra/entry.md`, this document describes a mixture of what exists and what is intended. Each section
 says which, and [What is real today](#what-is-real-today) collects the answer in one place. A rule that is not
 yet enforced is still a rule worth knowing, because the code is being written to leave room for it.
 
@@ -107,8 +107,8 @@ Three properties fall out of the format and are worth not breaking:
 
 ### A client is itself a defined thing
 
-*Built (issue #343; see [`client-definition.md`](client-definition.md)).* A client space is not a bare string that
-appears in ids — it is **config**, declared the way everything else is, in a `GedraConfig` of its own.
+*Built (issue #343; see [`docs/design/client-definition.md`](../client-definition.md)).* A client space is not a bare
+string that appears in ids — it is **config**, declared the way everything else is, in a `GedraConfig` of its own.
 
 That definition is **scoped to the client it defines**: the bundle declares the client id and carries that
 same id in its own `GedraId`. The apparent circularity is the point rather than a problem — an id can be

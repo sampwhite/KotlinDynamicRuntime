@@ -34,7 +34,8 @@ class GedraService : ServiceInitializer {
      * are interned as they are created and read, which is enough for `===` and for cheap keys and nothing more.
      * So use [readId], never `gedraIds.gedraId(...)`, until something populates this exhaustively. The memory
      * cache of gedra data that #310 anticipates is what would make the stronger reading honest; whoever builds
-     * it should come back and say so here. See deferred-work.md#when-gedra-data-is-held-in-a-memory-cache.
+     * it should come back and say so here. See
+     * docs/development/deferred-work.md#when-gedra-data-is-held-in-a-memory-cache.
      */
     val gedraIds: InternCache<GedraId> = InternCache("gedraIds")
 

@@ -3,7 +3,8 @@
 Dynamic schema and config: a Kotlin reimplementation of a dynamic,
 schema-driven application runtime. The proposal for this project can be found at
 [Kotlin, KMP, JSON Schema, SDUI, and Claude — the AI's rewrite](https://gyassa.com/personal/kdr-project-ai.html).
-The coding philosophy and conventions for the project are described in [`code-guide.md`](code-guide.md).
+The coding philosophy and conventions for the project are described in
+[`docs/development/code-guide.md`](docs/development/code-guide.md).
 
 ## The workspace
 
@@ -181,7 +182,7 @@ subprocess cannot do); `kdr-install` can add it to your shell's rc file.
 
 Command-line tooling is written in **Kotlin, not shell**: `kdr-run` launches any main class from the runtime
 classpath, and each `bin/` script above it is a thin wrapper that does no deciding. See
-[`code-guide.md`](code-guide.md) for why.
+[`docs/development/code-guide.md`](docs/development/code-guide.md) for why.
 
 ## Testing
 
@@ -202,7 +203,7 @@ says when, and what a spec on a shared test instance has to hold to pass it.
 
 ## Conventions
 
-See [`code-guide.md`](code-guide.md). In brief: Kotlin everywhere, minimal
+See [`docs/development/code-guide.md`](docs/development/code-guide.md). In brief: Kotlin everywhere, minimal
 reflection, explicit Map-based serialization, lowerCamelCase constants wrapped
 in upper-cased acronym objects (always referenced qualified), JSON-schema-driven
 configuration, a single universal exception (`KdrException`) and context
@@ -211,12 +212,12 @@ configuration, a single universal exception (`KdrException`) and context
 ## Configuration
 
 Application behavior is varied at startup largely through environment variables (a deliberate choice
-explained in [`code-guide.md`](code-guide.md)). Each variable is **declared once in code** as an `EnvVarDef`
-value — carrying its name, default, and documentation — so the declaration is the reference: the read path
-takes a declared def, so a variable nobody declared cannot even be read. Browse the declarations grouped by
-area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors). A running node also serves the live set — each
-variable and the value it actually resolved to *on that node* — at the operator endpoint
-`/operator/env/reference`, shown as the **Environment** view in the app.
+explained in [`docs/development/code-guide.md`](docs/development/code-guide.md)). Each variable is **declared once in
+code** as an `EnvVarDef` value — carrying its name, default, and documentation — so the declaration is the reference:
+the read path takes a declared def, so a variable nobody declared cannot even be read. Browse the declarations grouped
+by area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors). A running node also serves the live set — each variable
+and the value it actually resolved to *on that node* — at the operator endpoint `/operator/env/reference`, shown as the
+**Environment** view in the app.
 
 ## Deploying
 
@@ -235,47 +236,47 @@ by the `conf-demo` simulation on any test instance.
 
 ## Design documents
 
-[`gedra-entry.md`](gedra-entry.md) describes the **Gedra entry** — the universal stored entity the next phase
-of the project is built around — together with the JSON-schema constructs it needs (a declared discriminator,
-`if`/`then`/`else`, `g-primaryKey`, `g-derived`). It was written before any of it existed, as a statement of
-intent to design against, and it records what was deliberately left open or postponed. The schema constructs
-have since been built; `g-primaryKey` and the entity store itself have not.
+[`docs/design/gedra/entry.md`](docs/design/gedra/entry.md) describes the **Gedra entry** — the universal stored entity
+the next phase of the project is built around — together with the JSON-schema constructs it needs (a declared
+discriminator, `if`/`then`/`else`, `g-primaryKey`, `g-derived`). It was written before any of it existed, as a statement
+of intent to design against, and it records what was deliberately left open or postponed. The schema constructs have
+since been built; `g-primaryKey` and the entity store itself have not.
 
-[`gedra-config-and-data.md`](gedra-config-and-data.md) is its companion, about everything *around* a single
-entry: how a gedra is identified, how a deployment can be split by client, what one client's definitions may
-see of another's, and what happens when two definitions disagree. It marks each rule as built or intended,
-because it describes a subsystem partway through being written.
+[`docs/design/gedra/config-and-data.md`](docs/design/gedra/config-and-data.md) is its companion, about everything
+*around* a single entry: how a gedra is identified, how a deployment can be split by client, what one client's
+definitions may see of another's, and what happens when two definitions disagree. It marks each rule as built or
+intended, because it describes a subsystem partway through being written.
 
-[`gedra-patch.md`](gedra-patch.md) covers the remaining verb: how a stored gedra is **changed**. Creating,
-reading, listing and deleting exist; changing does not, and it is where the difficulty concentrates — locked
-and process-owned entries, merges of partial data, edits that span several documents and several data kinds,
-and a primary key that lives inside the data it identifies. Like `gedra-entry.md` it was written before the
-code, and it records why decisions changed as well as what they became.
+[`docs/design/gedra/patch.md`](docs/design/gedra/patch.md) covers the remaining verb: how a stored gedra is **changed**.
+Creating, reading, listing and deleting exist; changing does not, and it is where the difficulty concentrates — locked
+and process-owned entries, merges of partial data, edits that span several documents and several data kinds, and a
+primary key that lives inside the data it identifies. Like `docs/design/gedra/entry.md` it was written before the code,
+and it records why decisions changed as well as what they became.
 
-[`client-definition.md`](client-definition.md) describes the **client** — the thing whose id sits in every
-`GedraId`, and which turns out to own more than an identifier: which environments it is enabled in, which
-traits it supports, what its callers are shown, and what happens to its content when it is not there. Like
-the others it was written before the code, and it is grown as decisions settle rather than restated.
+[`docs/design/client-definition.md`](docs/design/client-definition.md) describes the **client** — the thing whose id
+sits in every `GedraId`, and which turns out to own more than an identifier: which environments it is enabled in, which
+traits it supports, what its callers are shown, and what happens to its content when it is not there. Like the others it
+was written before the code, and it is grown as decisions settle rather than restated.
 
-[`ui-block.md`](ui-block.md) names the **UiBlock** — a registered piece of declared presentation structure,
-merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
-It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact
-expressions by the backend before the response is built, fragment references by the frontend against copy it
-has already cached, and how SDUI data invokes frontend functionality at all — by naming an entry in a
-hardwired registry, with the names in shared kernel code so the reference is checkable at boot. Nothing is
-built yet; it exists so the term and the settled decisions are not buried in an issue thread.
+[`docs/design/ui-block.md`](docs/design/ui-block.md) names the **UiBlock** — a registered piece of declared presentation
+structure, merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
+It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact expressions by the
+backend before the response is built, fragment references by the frontend against copy it has already cached, and how
+SDUI data invokes frontend functionality at all — by naming an entry in a hardwired registry, with the names in shared
+kernel code so the reference is checkable at boot. Nothing is built yet; it exists so the term and the settled decisions
+are not buried in an issue thread.
 
-[`reporting.md`](reporting.md) covers **named reports**: a client's chosen trait values — and facts about a form,
-its workflows and its owner — promoted to columns, a row per form or per group. It sets out the path grammar, how
-values are combined within a form and rolled up across a group, the checks a report passes when configuration loads,
-and what the cursor-paged run guarantees when forms change during a walk.
+[`docs/design/reporting.md`](docs/design/reporting.md) covers **named reports**: a client's chosen trait values — and
+facts about a form, its workflows and its owner — promoted to columns, a row per form or per group. It sets out the path
+grammar, how values are combined within a form and rolled up across a group, the checks a report passes when
+configuration loads, and what the cursor-paged run guarantees when forms change during a walk.
 
 ## Deferred work
 
 Work we have deliberately put off — each with the condition that should make us revisit it — lives in
-[`deferred-work.md`](deferred-work.md), **not** in the issue tracker. The tracker stays a queue of things to
-act on soon; deferred items become issues only once their trigger fires. Consult and append to that file when
-you defer something rather than leaving a "someday" issue open.
+[`docs/development/deferred-work.md`](docs/development/deferred-work.md), **not** in the issue tracker. The tracker
+stays a queue of things to act on soon; deferred items become issues only once their trigger fires. Consult and append
+to that file when you defer something rather than leaving a "someday" issue open.
 
 ## License
 

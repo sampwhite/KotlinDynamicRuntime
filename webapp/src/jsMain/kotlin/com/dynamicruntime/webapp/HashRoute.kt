@@ -262,7 +262,7 @@ private fun hashUrl(params: List<Pair<String, String>>): String {
  * React ignores a state update from an unmounted component — so this is a leak rather than a defect. Undoing
  * it means changing the effect idiom, since the wrappers' effect body is a cancellable coroutine and the
  * cleanup is therefore a `try`/`finally` around `awaitCancellation` -- the idiom `useIdleBump` already uses.
- * Recorded in `deferred-work.md`.
+ * Recorded in `docs/development/deferred-work.md`.
  */
 fun onHashChange(handler: () -> Unit) {
     ensureHashDispatcher()

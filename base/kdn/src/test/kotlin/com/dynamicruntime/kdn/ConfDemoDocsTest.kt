@@ -4,7 +4,6 @@ import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.schema.SchGKeywords
-import com.dynamicruntime.common.util.headingSlug
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.kdn.confdemo.ConfDemo
@@ -24,8 +23,8 @@ import java.io.File
  *   for a bundle's whole `slots`, `<!-- kdr-doc: bundle=createTalk pointer=/kdr:workflowDef/0/definition -->` for a
  *   part of one (a JSON Pointer into the slots), or `<!-- kdr-doc: illustration -->` for a shape that is not the
  *   demo's. A marked block must equal what it names; a mismatch fails with the block as it should read, to paste in.
- * - **Every link resolves**: a page or repo file that exists, and a `#section` that is a heading of the page it names.
- *   An app route (`#page=...`) and an outside address are left alone.
+ * - **Every link resolves** -- checked with the rest of the repository's documentation by `RepoDocLinksTest`
+ *   (`base:common`), not here.
  * - **Every backticked `g-` keyword is one the schema layer knows.**
  * - **Every page is declared** (`confDemoDocs`), and every declaration has its page.
  *
@@ -83,32 +82,6 @@ class ConfDemoDocsTest : StringSpec({
         problems.shouldBeEmpty()
     }
 
-    "every link resolves, to a page or file that exists and a section it has" {
-        val problems = mutableListOf<String>()
-        for (page in pages) {
-            for ((line, target) in links(page)) {
-                val where = "${page.name}, line $line"
-                // An app route, which only the running app answers, or an address outside the repository.
-                if (target.contains("://") || target.startsWith("mailto:") || (target.startsWith("#") && target.contains("="))) continue
-                val path = target.substringBefore('#')
-                val anchor = target.substringAfter('#', "").ifEmpty { null }
-                val file = when {
-                    path.isEmpty() -> page
-                    path.startsWith("/") -> File(repoRoot, path.removePrefix("/"))
-                    else -> File(page.parentFile, path)
-                }.canonicalFile
-                if (!file.exists() || !file.path.startsWith(repoRoot.path)) {
-                    problems.add("$where: '$target' names '$path', which is not in the repository.")
-                    continue
-                }
-                if (anchor != null && anchor !in headingSlugs(file)) {
-                    problems.add("$where: '$target' names the section '#$anchor', which '${file.name}' has no heading for.")
-                }
-            }
-        }
-        problems.shouldBeEmpty()
-    }
-
     "every g- keyword named is one the schema layer knows" {
         val known = SchGKeywords.keywords
         val problems = pages.flatMap { page ->
@@ -125,7 +98,6 @@ private class DocTarget(val bundle: String, val pointer: String, val illustratio
 private class JsonBlock(val line: Int, val target: DocTarget?, val text: String)
 
 private val markerRegex = Regex("""^\s*<!--\s*kdr-doc:\s*(.*?)\s*-->\s*$""")
-private val linkRegex = Regex("""\[[^]]*]\(([^)\s]+)\)""")
 private val gKeywordRegex = Regex("""`(g-[A-Za-z]+)`""")
 
 /** Each ```json block of [page], with the marker on the line before it. */
@@ -172,22 +144,3 @@ private fun valueAt(root: Any?, pointer: String): Any? {
 
 /** [json] parsed, so two texts of one value compare equal however they are laid out. */
 private fun normalized(json: String): Any? = "{\"v\": $json}".jsonMap()?.get("v")
-
-/** Each Markdown link of [page] outside code, with its line number. */
-private fun links(page: File): List<Pair<Int, String>> {
-    var inFence = false
-    return page.readLines().flatMapIndexed { i, line ->
-        if (line.trimStart().startsWith("```")) inFence = !inFence
-        if (inFence) emptyList() else linkRegex.findAll(line.replace(Regex("`[^`]*`"), "")).map { i + 1 to it.groupValues[1] }.toList()
-    }
-}
-
-/** The anchor ids [file]'s headings render with, as GitHub and the app both mint them. */
-private fun headingSlugs(file: File): Set<String> {
-    if (!file.name.endsWith(".md")) return emptySet()
-    var inFence = false
-    return file.readLines().mapNotNull { line ->
-        if (line.trimStart().startsWith("```")) inFence = !inFence
-        if (inFence) null else Regex("""^#{1,6}\s+(.*?)\s*#*\s*$""").find(line)?.groupValues?.get(1)?.let { headingSlug(it) }
-    }.toSet()
-}
