@@ -271,7 +271,10 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
         fun ownerOf(client: String): String = configOwnerOf(client)
 
         /** Where [slot] of [owner]'s web assets is kept in the [bucket]. */
-        fun keyOf(owner: String, slot: String): String = "${FNAME.clientKeyPrefix(owner)}web/$slot"
+        fun keyOf(owner: String, slot: String): String = "${folderOf(owner)}$slot"
+
+        /** The folder of [owner]'s web assets in the [bucket], which every slot's key begins with. */
+        fun folderOf(owner: String): String = "${FNAME.clientKeyPrefix(owner)}web/"
 
         fun get(cxt: KdrCxt): ClientWebAssetService = cxt.instanceConfig.get(serviceName) as? ClientWebAssetService
             ?: throw KdrException("The $serviceName is not available on this node.")

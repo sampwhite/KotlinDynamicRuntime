@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# @desc: Look at a lightweight node, read its log, restart it, or reset its data (issue #1244).
+#
+# Operates the lightweight node a target describes -- deploy/targets/<name>.properties, or a path to a target file
+# -- on a node set up by docs/deploy/lightweight-node.md, the same target kdr-deploy uses. Runnable from any directory.
+#
+# Usage:
+#   kdr-node <target> status
+#   kdr-node <target> logs [--lines N] [--follow]
+#   kdr-node <target> restart [--yes]
+#   kdr-node <target> reset-data [--dry-run] [--yes]
+#
+# The node is reached with your own ssh; nothing on it needs sudo.
+#
+# A "dumb" wrapper, per the code guide: it resolves which checkout to act on -- the same rule kdr-run uses, so
+# KDR_WORKSPACE_DIR redirects it like the other commands -- passes the directory it was run from (kdr-run starts
+# Java in the workspace directory, so a relative target path would otherwise be read from there), and hands every
+# decision to Kotlin (Node.kt).
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_name="$(basename "$(cd "$script_dir/.." && pwd)")"   # the checkout directory name (e.g. KotlinDynamicRuntime)
+if [ -n "${KDR_WORKSPACE_DIR:-}" ]; then
+    root_dir="$( { cd -P "$KDR_WORKSPACE_DIR" 2>/dev/null && pwd; } || true )"
+    if [ -z "$root_dir" ]; then
+        echo "kdr-node: KDR_WORKSPACE_DIR=$KDR_WORKSPACE_DIR does not exist" >&2
+        exit 1
+    fi
+else
+    root_dir="$(cd "$script_dir/../.." && pwd)"           # the workspace directory (the dir holding the checkout)
+fi
+
+exec "$script_dir/kdr-run" com.dynamicruntime.script.deploy.NodeKt --repo "$root_dir/$repo_name" --cwd "$PWD" "$@"

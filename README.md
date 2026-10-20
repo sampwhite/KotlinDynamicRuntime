@@ -172,6 +172,7 @@ kdr-create-config  Scaffold the customConfig provider project and wire it into s
 kdr-source-dirs    Regenerate the source-directory manifest (current-source-directories.txt).
 kdr-prune-branches Delete your own remote branches that have gone untouched for N weeks.
 kdr-deploy         Deploy a build to a lightweight node, or roll it back (issue #1243).
+kdr-node           Look at a lightweight node, read its log, restart it, or reset its data (issue #1244).
 kdr-help           List the kdr commands (and shell functions) with one-line descriptions.
 ```
 
