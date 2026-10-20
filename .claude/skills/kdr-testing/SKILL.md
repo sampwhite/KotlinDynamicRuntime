@@ -433,6 +433,12 @@ already written. `AuthFlowTest` and `TimeTravelTest` are the worked examples.
 - **`Startup.mkBootCxt(...)`** — the raw boot, no unit-env forcing. Use it to test behavior in a **non-unit**
   environment, e.g. a startup guard: `mkBootCxt("g", "gI", mapOf(ACFG.env to ENV.dev, ACFG.inMemoryOnly to true))`.
 
+- **Boot only as far as a script does (issue #1289).** Both boots take a `stage`: `BootStage.ready` (the default, a
+  serving node), `initialized` (every service through `checkInit`, none through `checkReady`, so no scheduler and
+  no boot-time provisioning), or `collected` (only the `services` named, and no database). A test of a script boots
+  to the stage the script does, e.g. `mkTestBootCxt(n, i, overlay, stage = BootStage.collected, services =
+  setOf(FileStoreService.serviceName))` for `CheckFileStore`. An instance name is held to one stage.
+
 - **Share an instance by default; justify a private one (issue #1075).** In `base:kdn`, take the
   `TestInstances` entry whose setup you need -- `TestInstances.default(cxtName)` for the base components, or a
   profile such as `storedConfigWarn`, `envAuth` or `notTestInstance`. Each call returns a **fresh context** on one

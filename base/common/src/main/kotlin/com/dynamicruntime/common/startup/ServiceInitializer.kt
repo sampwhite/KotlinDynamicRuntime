@@ -28,9 +28,18 @@ interface ServiceInitializer {
     /** Pass 1: construct-time setup; may contribute to the schema collector. */
     fun onCreate(cxt: KdrCxt) {}
 
-    /** Pass 2: idempotent initialization; may be triggered early by a dependent service. */
+    /**
+     * Pass 2: idempotent initialization; may be triggered early by a dependent service. Leaves the service usable, and
+     * starts nothing: a script boot (`BootStage.initialized`, issue #1289) ends here, and a script calls the service
+     * directly.
+     */
     fun checkInit(cxt: KdrCxt) {}
 
-    /** Pass 3: idempotent final check that the service is fully ready for use. */
+    /**
+     * Pass 3: idempotent final check that the service is fully ready for use -- and where it **begins to serve**: starts
+     * background work (the job scheduler), provisions data at boot (the conference demo), announces itself to the
+     * deployment's other nodes, or warms what would otherwise load on first use. Only a serving node's boot
+     * (`BootStage.ready`) runs it, so anything a script must not set off belongs here and not in [checkInit].
+     */
     fun checkReady(cxt: KdrCxt) {}
 }

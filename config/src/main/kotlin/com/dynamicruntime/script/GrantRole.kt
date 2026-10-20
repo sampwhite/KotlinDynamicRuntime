@@ -54,6 +54,8 @@ object GrantRole {
         val role = positional.getOrNull(1) ?: ROLE.admin
         val revoke = GRF.revoke in flags
 
+        // To the `initialized` stage (issue #1289): the database is usable, and no job scheduler starts and nothing is
+        // provisioned, as a serving node's boot would.
         val cxt = bootScriptCxt("grantRole")
         if (cxt.instanceConfig.get(ACFG.inMemoryOnly) == true) {
             return fail(

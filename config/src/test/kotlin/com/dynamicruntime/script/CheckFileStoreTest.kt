@@ -3,6 +3,7 @@ package com.dynamicruntime.script
 import com.dynamicruntime.common.filestore.FSENV
 import com.dynamicruntime.common.filestore.FST
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.startup.BootStage
 import com.dynamicruntime.common.http.request.ContentData
 import com.dynamicruntime.common.webasset.ClientWebAssetService
 import com.dynamicruntime.kdn.Startup
@@ -44,6 +45,8 @@ class CheckFileStoreTest : StringSpec({
                     FSENV.type.name to FST.local, FSENV.dir.name to defaultDir.absolutePath,
                     FSENV.stores.name to "disk.type=local,disk.dir=${diskDir.absolutePath},ram.type=memory",
                 ),
+                // Booted as the script boots (issue #1289): the file store alone, no database.
+                stage = BootStage.collected, services = setOf(FileStoreService.serviceName),
             )
             FileStoreService.get(cxt).put(cxt, bucket, "kept", ContentData("a".toByteArray(), "image/png"))
             // Content with no metadata, in the second store alone: what a write that stopped part-way leaves.
@@ -80,6 +83,7 @@ class CheckFileStoreTest : StringSpec({
             val cxt = Startup.mkTestBootCxt(
                 "checkFileStore", "checkFileStoreTest",
                 mapOf(FSENV.type.name to FST.local, FSENV.dir.name to dir.absolutePath),
+                stage = BootStage.collected, services = setOf(FileStoreService.serviceName),
             )
             val files = FileStoreService.get(cxt)
             files.put(cxt, bucket, "kept", ContentData("a".toByteArray(), "image/png"))

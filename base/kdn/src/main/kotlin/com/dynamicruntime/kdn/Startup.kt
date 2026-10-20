@@ -8,6 +8,7 @@ import com.dynamicruntime.common.CommonComponent
 import com.dynamicruntime.common.logging.LogSetup
 import com.dynamicruntime.common.mail.MAIL
 import com.dynamicruntime.common.startup.ComponentDefinition
+import com.dynamicruntime.common.startup.BootStage
 import com.dynamicruntime.common.startup.InstanceRegistry
 
 /**
@@ -33,6 +34,10 @@ object Startup {
         instanceName: String,
         overlay: Map<String, Any?> = emptyMap(),
         additionalComponents: List<ComponentDefinition> = emptyList(),
+        /** How far the boot goes (issue #1289); see [BootStage]. A serving node's default. */
+        stage: BootStage = BootStage.ready,
+        /** The services a [BootStage.collected] boot runs, by name. */
+        services: Set<String> = emptySet(),
     ): KdrCxt {
         // Resolve env exactly as getOrCreateInstanceConfig does, so logging is initialized for the same
         // environment before that call emits its first "Initializing instance" line.
@@ -41,7 +46,7 @@ object Startup {
             ?: ENV.local
         LogSetup.ensureInit(env)
         val components = listOf(CommonComponent(), KdnComponent()) + additionalComponents
-        val config = InstanceRegistry.getOrCreateInstanceConfig(instanceName, components, overlay)
+        val config = InstanceRegistry.getOrCreateInstanceConfig(instanceName, components, overlay, stage, services)
         return InstanceRegistry.createCxt(cxtName, config)
     }
 
@@ -70,6 +75,8 @@ object Startup {
         instanceName: String,
         overlay: Map<String, Any?> = emptyMap(),
         additionalComponents: List<ComponentDefinition> = emptyList(),
+        stage: BootStage = BootStage.ready,
+        services: Set<String> = emptySet(),
     ): KdrCxt {
         val testOverlay = LinkedHashMap(overlay)
         testOverlay[ACFG.env] = ENV.unit
@@ -80,6 +87,6 @@ object Startup {
         // is not a test instance loads it -- so a test of such a node could otherwise send real mail. A test that
         // needs a key names its own secret.
         testOverlay.putIfAbsent(MAIL.mailgunApiKeySecretKey, noTestMailKeySecret)
-        return mkBootCxt(cxtName, instanceName, testOverlay, additionalComponents)
+        return mkBootCxt(cxtName, instanceName, testOverlay, additionalComponents, stage, services)
     }
 }
