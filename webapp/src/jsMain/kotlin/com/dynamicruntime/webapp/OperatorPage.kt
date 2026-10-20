@@ -330,6 +330,10 @@ val OperatorIndex = FC<Props> {
                 a { href = childHref(HMENU.pageCacheState, HMENU.pageOperator); +"Cache state" }
                 +" \u2014 this node's table caches beside the dates every node shares, with a reload action."
             }
+            li {
+                a { href = childHref(HMENU.pageFileStore, HMENU.pageOperator); +"File store" }
+                +" \u2014 the file store's buckets, each drilled folder by folder, every file downloadable."
+            }
         }
     }
 }

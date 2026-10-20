@@ -117,7 +117,7 @@ class S3FileStore(val api: S3Api, val bucketPrefix: String = "") : FileStore {
         }
     }
 
-    override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> = api.listObjects(physicalBucket(bucket), "")
+    override fun objects(cxt: KdrCxt, bucket: String, prefix: String): List<StoredObject> = api.listObjects(physicalBucket(bucket), prefix)
 
     /**
      * S3 has no lock to hold, so what is asked again is asked a moment before the removal: which of the key's two

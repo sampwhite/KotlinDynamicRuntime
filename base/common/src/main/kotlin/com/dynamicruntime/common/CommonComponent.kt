@@ -27,6 +27,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.fileref.clientFileRefSchema
 import com.dynamicruntime.common.filestore.FileStoreService
+import com.dynamicruntime.common.filestore.fileStoreOperatorSchema
 import com.dynamicruntime.common.flavor.FLV
 import com.dynamicruntime.common.flavor.FlavorContribution
 import com.dynamicruntime.common.flavor.FlavorDef
@@ -215,6 +216,8 @@ class CommonComponent : ComponentDefinition {
         collector.addFileBucket(ClientWebAssetService.bucketDef(), appOnly)
         // A client's file refs (issue #1153): the administrator's endpoints. Their files are kept in the same bucket.
         collector.addModule(clientFileRefSchema(cxt), appOnly)
+        // The operator's browser over the file store (issue #1297): app-only, as the store is.
+        collector.addModule(fileStoreOperatorSchema(cxt), appOnly)
         // The cfacts an expression may name, for whoever is authoring configuration against them. In the
         // `clientAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
         // has a registry of its own to report -- see `cfactSchema`.

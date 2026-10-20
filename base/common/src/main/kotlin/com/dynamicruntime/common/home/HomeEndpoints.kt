@@ -368,6 +368,11 @@ fun homeMenuBlock(): UiBlockSource = uiBlock(
             HMENU.cacheState, "Cache state", UiRoute(HMENU.pageCacheState),
             cfactExpression = CFACTS.isDeploymentOperator, parentId = HMENU.operator,
         )
+        // The file-store browser (issue #1297): app-only, since an edge keeps no files.
+        menuItem(
+            HMENU.fileStore, "File store", UiRoute(HMENU.pageFileStore),
+            cfactExpression = "${CFACTS.isDeploymentOperator},${CFACTS.app}", parentId = HMENU.operator,
+        )
         // Offered to a client-scoped operator or admin (issue #488) -- the same caller the `clientOperator`
         // section admits, asked as a cfact so the menu offer and the gate cannot drift.
         menuItem(

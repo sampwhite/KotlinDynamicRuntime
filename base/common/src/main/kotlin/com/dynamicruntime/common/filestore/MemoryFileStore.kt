@@ -65,10 +65,12 @@ class MemoryFileStore : FileStore {
     override fun delete(cxt: KdrCxt, bucket: String, key: String): Boolean = files(bucket).remove(key) != null
 
     /** Each file as its two objects, though here they are one entry: so a check walks this store as any other. */
-    override fun objects(cxt: KdrCxt, bucket: String): List<StoredObject> =
-        files(bucket).entries.flatMap { (key, file) ->
-            listOf(StoredObject(key, file.meta.uploadedAt), StoredObject(FileMeta.metaKey(key), file.meta.uploadedAt))
-        }.sortedBy { it.name }
+    override fun objects(cxt: KdrCxt, bucket: String, prefix: String): List<StoredObject> =
+        files(bucket).tailMap(prefix, true).entries.asSequence()
+            .takeWhile { it.key.startsWith(prefix) }
+            .flatMap { (key, file) ->
+                listOf(StoredObject(key, file.meta.uploadedAt), StoredObject(FileMeta.metaKey(key), file.meta.uploadedAt))
+            }.sortedBy { it.name }.toList()
 
     /** A file's two halves are one entry here, so a write leaves nothing part-way to clear. */
     override fun clearLeftover(cxt: KdrCxt, bucket: String, leftover: FileLeftover, cutoff: Instant): Boolean = false
