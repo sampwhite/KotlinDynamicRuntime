@@ -10,6 +10,8 @@ import com.dynamicruntime.common.util.isVariableName
 import com.dynamicruntime.common.util.splitComma
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import kotlinx.browser.document
+import org.w3c.dom.Element
 import react.ChildrenBuilder
 import react.FC
 import react.Props
@@ -355,6 +357,23 @@ val AppBar = FC<AppBarProps> { props ->
         }
     }
 
+    // The menu scrolls within itself past the window's edge (issue #1303), so what you are looking for is brought
+    // into view rather than left below it. On opening, that is the page on screen: its item, or -- when you have
+    // collapsed the group holding it -- that group's marked header.
+    useEffect(open) {
+        if (!open) return@useEffect
+        val current = document.querySelector("#$navMenuId .app-menu-item.is-current")
+            ?: document.querySelector("#$navMenuId .app-menu-parent.is-current")
+        if (current != null) revealInMenu(current, current)
+    }
+    // On expanding a group, its header and children -- as many as fit, the header first. Keyed on the group just
+    // expanded (cleared by a collapse), so the effect runs once per expansion, after the children are drawn.
+    var justExpanded by useState<String?>(null)
+    useEffect(justExpanded) {
+        val header = justExpanded?.let { document.getElementById(menuParentId(it)) } ?: return@useEffect
+        revealInMenu(header, header.nextElementSibling ?: header)
+    }
+
     header {
         className = ClassName(if (elevated) "app-bar admin" else "app-bar")
         a {
@@ -614,6 +633,9 @@ val AppBar = FC<AppBarProps> { props ->
                 }
                 div {
                     className = ClassName("app-menu")
+                    // Its own id, so the reveal effects above look in this menu and not the user menu, which
+                    // shares the `.app-menu` and `.is-current` classes.
+                    asDynamic()["id"] = navMenuId
 
                     // No "signed in as" label here any more (issue #276). Identity moved to the bar, which is
                     // visible whether or not the menu is open -- and the bar is still on screen while it is,
@@ -634,7 +656,7 @@ val AppBar = FC<AppBarProps> { props ->
                             // check refuses one, precisely because this render would discard it (issue #517) --
                             // so drawing it as a plain header loses nothing. The header labels the child group
                             // for assistive tech via `aria-labelledby`, matching the `role="group"` below.
-                            val headerId = "menu-parent-${node.item.id}"
+                            val headerId = menuParentId(node.item.id)
                             // The header is marked when the group holds the page on screen; a collapsed group is
                             // opened on arrival by the effect above, not by forcing `expanded` here -- otherwise the
                             // toggle could never close the group you are in (a silent no-op, webapp/CLAUDE.md).
@@ -652,6 +674,7 @@ val AppBar = FC<AppBarProps> { props ->
                                         else expandedGroups + node.item.id
                                     expandedGroups = next
                                     writeExpandedGroups(next)
+                                    justExpanded = if (expanded) null else node.item.id
                                 }
                                 // Label on the left, a dropdown-style chevron on the right: down when it can be
                                 // opened, up when it can be closed.
@@ -766,6 +789,37 @@ fun currentMenuItem(items: List<MenuItem>, page: String): MenuItem? =
 /** The id of the drill-down group whose child is the page on screen, or null when the current item is
  *  top-level or the menu offers no route to [page]. What the bar opens on arrival (issue #554). */
 fun currentGroupId(items: List<MenuItem>, page: String): String? = currentMenuItem(items, page)?.parentId
+
+/** The element id of the navigation menu, and of a group's header within it. */
+private const val navMenuId = "app-nav-menu"
+private fun menuParentId(itemId: String) = "menu-parent-$itemId"
+
+/**
+ * Scrolls the navigation menu -- and only it, never the page -- so that the run from [first] to [last] is in view
+ * (issue #1303). `scrollIntoView` was the obvious call, but it scrolls every ancestor that can, the window
+ * included, and cannot say "this run, its top first".
+ */
+private fun revealInMenu(first: Element, last: Element) {
+    val menu = document.getElementById(navMenuId) ?: return
+    val box = menu.getBoundingClientRect()
+    val delta = menuScrollDelta(
+        box.top + menu.clientTop, box.top + menu.clientTop + menu.clientHeight,
+        first.getBoundingClientRect().top, last.getBoundingClientRect().bottom,
+    )
+    if (delta != 0.0) menu.scrollTop += delta
+}
+
+/**
+ * How far to scroll a scrolling box whose visible part runs from [viewTop] to [viewBottom] so that a run from
+ * [runTop] to [runBottom] (all in the same coordinates) is in view: not at all when it already is; otherwise the
+ * least that shows its bottom, but never so far that its top leaves -- a run taller than the box shows its top,
+ * which for a group is its header. Positive scrolls down. Pure, covered under `jsNodeTest` (issue #1303).
+ */
+fun menuScrollDelta(viewTop: Double, viewBottom: Double, runTop: Double, runBottom: Double): Double = when {
+    runTop < viewTop -> runTop - viewTop
+    runBottom > viewBottom -> minOf(runBottom - viewBottom, runTop - viewTop)
+    else -> 0.0
+}
 
 /** A top-level menu item together with the items that name it as their [MenuItem.parentId] (issue #517). */
 class MenuNode(val item: MenuItem, val children: List<MenuItem>)

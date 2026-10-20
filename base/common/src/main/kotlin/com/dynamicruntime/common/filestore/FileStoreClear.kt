@@ -13,7 +13,7 @@ import kotlin.time.Instant
  *
  * **Every object goes, file by file**: each file's content and metadata ([FileStore.delete]), and then whatever a
  * write that stopped part-way left of a removed file ([FileStoreCheck]'s leftovers -- a local store's temporary files,
- * content with no metadata), since a reset is the moment nothing is writing. What [keep] answers true for is left
+ * content with no metadata), since a reset is the moment nothing is writing. What `keep` answers true for is left
  * exactly as it is, leftovers included.
  */
 object FileStoreClear {
