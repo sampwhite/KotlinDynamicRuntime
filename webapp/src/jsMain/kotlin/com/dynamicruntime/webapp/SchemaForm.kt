@@ -460,6 +460,9 @@ fun fieldRowId(path: String): String = "fld-$path"
 
 fun fieldErrorsId(path: String): String = "err-$path"
 
+/** The id of the note naming the zone a date-time field at [path] is read in (issue #1235), for `aria-describedby`. */
+fun fieldZoneNoteId(path: String): String = "zone-$path"
+
 /**
  * Brings the field at [path] into view and puts focus on it, or does nothing when no field is rendered there.
  *
@@ -1125,6 +1128,7 @@ private fun ChildrenBuilder.renderField(
             presentation = prop.presentation ?: vt.presentation, opts = opts,
             // The form's own choices (issue #1022), when its layout restates them.
             choices = copy?.entry?.choices?.let { formChoiceList(vt, copy.entry, value) },
+            zoneNoteId = fieldZoneNoteId(path),
             commit = { errors.noteCommit(path) },
         ) { newValue ->
             errors.noteEdit(path)
@@ -1461,7 +1465,10 @@ private fun ChildrenBuilder.renderScalarList(
             // inside a list (removing an element is the remove control's job), which is what a boolean
             // element asks about (issue #261).
             if (elementType != null) {
-                widget(elementType, element, required = true, editable = true, opts = opts, commit = { errors.noteCommit(elementPath) }) { replace(it) }
+                widget(
+                    elementType, element, required = true, editable = true, opts = opts,
+                    zoneNoteId = fieldZoneNoteId(elementPath), commit = { errors.noteCommit(elementPath) },
+                ) { replace(it) }
             } else {
                 Input {
                     this.value = displayValue(element)

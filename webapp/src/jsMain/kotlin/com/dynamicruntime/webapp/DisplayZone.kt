@@ -73,6 +73,15 @@ private fun intlParts(epochMs: Double, zone: String, withTime: Boolean): Map<Str
     } else {
         js("({ year: 'numeric', month: '2-digit', day: '2-digit' })")
     }
+    return intlZonedParts(epochMs, zone, options)
+}
+
+/**
+ * The moment [epochMs] in [zone], formatted with [options] -- `Intl`'s own, without the zone, which this sets -- as its
+ * parts by type (`year`, `hour`, `timeZoneName`, ...). Throws, as `Intl` does, for a zone it does not know. What the
+ * display (issue #1115) and date-time entry (issue #1235) both read a moment through.
+ */
+fun intlZonedParts(epochMs: Double, zone: String, options: dynamic): Map<String, String> {
     options.timeZone = zone
     return intlFormatParts(epochMs, options).associate { (it.type as String) to (it.value as String) }
 }

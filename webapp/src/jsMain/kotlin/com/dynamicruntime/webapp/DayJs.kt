@@ -9,7 +9,7 @@ package com.dynamicruntime.webapp
  * every declaration in it to a named export of antd; dayjs is its own module, and the function *is* that
  * module's export.
  *
- * Only the two operations the date widget needs are declared. Dayjs has a large surface, and none of the rest
+ * Only the operations the date widget needs are declared. Dayjs has a large surface, and none of the rest
  * is wanted here: the runtime's date type is the schema's string, and this exists purely to hand antd the
  * shape it insists on.
  */
@@ -24,4 +24,10 @@ external interface Dayjs {
 
     /** Whether the parse produced a real date; dayjs answers with an object either way. */
     fun isValid(): Boolean
+
+    /**
+     * The date as [template] spells it, in the zone the object is in -- the browser's, for every value antd makes. How
+     * a date-time picker's wall clock is read back to be placed in the client's zone ([zonedPickerIso], issue #1235).
+     */
+    fun format(template: String): String
 }

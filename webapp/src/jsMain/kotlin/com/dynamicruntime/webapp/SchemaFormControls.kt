@@ -14,6 +14,7 @@ import react.FC
 import react.Props
 import react.dom.html.ReactHTML.input
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.textarea
 import react.useState
 import web.cssom.ClassName
@@ -116,6 +117,8 @@ internal fun ChildrenBuilder.widget(
     presentation: String? = vt.presentation, opts: FormOpts = FormOpts(),
     /** The choices a form's layout offers in place of the schema's (issue #1022, [formChoiceList]). */
     choices: List<SchOption>? = null,
+    /** The id a date-time field's zone note takes, so the picker is described by it (issue #1235). */
+    zoneNoteId: String? = null,
     commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
@@ -174,20 +177,39 @@ internal fun ChildrenBuilder.widget(
         // picker is uncontrolled, so a date the form already held -- from a restored link, or a payload loaded
         // through the request-JSON panel -- never appeared in the field. The conversions are antd's terms, not
         // ours: it speaks Dayjs where the schema says string.
-        ControlKind.Date, ControlKind.DateTime -> {
-            val dayOnly = kind == ControlKind.Date
+        ControlKind.Date -> DatePicker {
+            this.value = value?.toString()?.takeIf { it.isNotBlank() }?.let { dayjs(it) }?.takeIf { it.isValid() }
+            // A day emits the day text, which has no zone. Cleared emits null, which reads as absent (issue #187).
+            onChange = { date, dateString ->
+                emit(if (date == null) null else dateString)
+                commit()
+            }
+            markInvalid(asDynamic(), describedBy)
+        }
+        // A moment is entered in the client's zone, as it is shown (issue #1235): the picker holds the wall clock
+        // there, and what is picked is read there, emitted as ISO-8601 in UTC -- the shape the kernel parses and
+        // writes back. The zone is named beside it.
+        ControlKind.DateTime -> {
+            val zone = entryZone()
             DatePicker {
-                this.value = value?.toString()?.takeIf { it.isNotBlank() }?.let { dayjs(it) }?.takeIf { it.isValid() }
-                // A `date-time` field needs the time picked too. Without this the widget can only return a
-                // day, so binding a full timestamp and then touching the field would quietly drop its time.
-                showTime = !dayOnly
-                onChange = { date, dateString ->
-                    // A day emits the day text; a moment emits ISO-8601 in UTC, which is exactly the shape the
-                    // kernel parses and writes back. Cleared emits null, which reads as absent (issue #187).
-                    emit(if (date == null) null else if (dayOnly) dateString else date.toISOString())
+                this.value = zonedPickerValue(value?.toString(), zone)
+                // The time is picked too: without it the widget returns only a day, and touching a bound full
+                // timestamp would quietly drop its time.
+                showTime = true
+                showNow = false
+                onChange = { date, _ ->
+                    emit(zonedPickerIso(date, zone))
                     commit()
                 }
                 markInvalid(asDynamic(), describedBy)
+                // The zone is part of what the time means, so it is read out with the field, beside any failure.
+                listOfNotNull(describedBy, zoneNoteId).ifEmpty { null }
+                    ?.let { asDynamic()["aria-describedby"] = it.joinToString(" ") }
+            }
+            span {
+                zoneNoteId?.let { asDynamic()["id"] = it }
+                className = ClassName("type-hint entry-zone")
+                +entryZoneNote(zone)
             }
         }
         // File content (OpenAPI's `type: string, format: binary`): a file picker. What it emits is the
