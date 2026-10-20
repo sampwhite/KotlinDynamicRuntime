@@ -109,9 +109,9 @@ class SchOverlayTest : StringSpec({
         out.keys shouldContainExactly setOf("core.Name", "acme.Extra")
     }
 
-    // `client-definition.md`: a variant may create new nodes and point at old ones; it must not write into old
-    // ones. Asserted rather than trusted, because every client shares this document and a write here would
-    // corrupt all of them at once -- silently, and at boot.
+    // `docs/design/client-definition.md`: a variant may create new nodes and point at old ones; it must not write into
+    // old ones. Asserted rather than trusted, because every client shares this document and a write here would corrupt
+    // all of them at once -- silently, and at boot.
     "the global document is untouched, at every level the overlay reached" {
         val global = defs("core.Name" to nameType(128))
         val before = global.node("core.Name", SCH.properties, "name")

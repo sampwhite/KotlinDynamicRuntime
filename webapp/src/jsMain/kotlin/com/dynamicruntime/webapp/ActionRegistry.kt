@@ -61,7 +61,8 @@ class FrontendActions(
      *
      * The mirror of the backend's boot check, and the only guard for the gap that check cannot see: the
      * backend refuses a block naming an undeclared function, but a function declared *and* named *and* never
-     * implemented is a click that silently does nothing. Asserted at startup rather than discovered by a user.
+     * implemented is a click that silently does nothing. Asserted by a webapp test (`FrontendActionsTest`) rather
+     * than discovered by a user.
      */
     fun missing(): List<String> = UiActions.declared.map { it.name }.filterNot { byName.containsKey(it) }
 }

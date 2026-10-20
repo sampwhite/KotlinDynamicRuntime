@@ -15,8 +15,8 @@ everyone has silently agreed to ignore.
   issue and remove it here. This file only ever holds *not-yet-actionable* items; anything ready lives in the
   tracker.
 - **Reachable from context.** Link into an item by its section anchor from the code or a closing issue comment,
-  e.g. `// deferred: see deferred-work.md#when-a-deployment-serves-real-clients`, so it is found while working
-  on the relevant code, not only by reading top to bottom.
+  e.g. `// deferred: see docs/development/deferred-work.md#when-a-deployment-serves-real-clients`, so it is found while
+  working on the relevant code, not only by reading top to bottom.
 - **Keep items short.** The trigger, a line or two of what and why, and links back to the source — enough to
   reconstruct the decision, not a design doc.
 
@@ -48,31 +48,6 @@ start to matter.
   Google (which embeds it in the token), and check it in `GoogleIdTokenVerifier.verify` against what the browser
   sent. Defense-in-depth on top of the audience binding, and Google's own recommendation for the ID-token flow.
 
-- **Google sign-in: throttle JWKS refetches** *(#157 review).* `GoogleJwksKeySource` refetches Google's signing
-  keys on every `kid` cache miss, under a global lock — so a burst of tokens carrying bogus key ids (bounded
-  per-IP by the login rate limit, but not across IPs) can keep it refetching and serialize real Google logins.
-  Add a minimum refetch interval so a miss shortly after a fetch fails fast instead of re-fetching.
-
-## When the runtime supports clients
-
-The point at which configuration can be scoped to a client rather than only to the deployment.
-
-**This trigger has fired** (#343, #356, #611: clients are declared, each has its own schema variant, and a
-client's configuration is stored and reloaded at runtime). The values below are still resolved per deployment,
-so the item is actionable and wants promoting to an issue, as the file's own rule says.
-
-- **Per-client configuration** *(from #97 §6 and #155).* Let values currently resolved per-deployment vary per
-  client. Known candidates: the error-display / obfuscation policy (`obfuscateSensitiveErrors`), the
-  frontend idle-bump interval (`idleBumpIntervalMs`), and the login-cookie timeout period.
-
-## When a deployment has a second client
-
-The point at which "every client" stops meaning "the only client", so a grant that reads as harmless today
-starts handing out reach over somebody else's data.
-
-**This trigger has fired**: every deployment carries `hub` and `public`, and the sample component adds more.
-The item below still waits on its own stated condition, a production deployment to narrow.
-
 - **Auto-admin's scope should narrow before production** *(from #225, revised by #352).* The rule grants `admin`
   (which ranks above `operator` on the role ladder) and `allClients` to a no-`+` address on a controlled domain —
   the configured `KDR_ADMIN_EMAIL_DOMAIN`, or `example.com` outside production. #352 settled two thirds of the
@@ -82,7 +57,17 @@ The item below still waits on its own stated condition, a production deployment 
   script. What remains is production: the design has `example.com` not working there at all — which holds, since it
   is a controlled domain only outside production — and only a subset of admin-domain addresses holding
   `allClients`. That is not built, and cannot be tested against anything real until there is a production
-  deployment to narrow — which is the trigger.
+  deployment to narrow. Every deployment already has more than one client (`hub`, `public`, and the sample's), so
+  what this waits on is production, not a second client.
+
+- **Cookie consent, and a `deviceId` minted before login** *(cedar lesson).* Logging a `deviceId` that traces one
+  browser across anonymous browsing and repeated login/logout was a high-value search key in cedar. It requires
+  minting the `deviceId` cookie on the first (anonymous) request, and cedar found the cookie-privacy/consent question
+  a big enough deal to reshape how cookies were set. Today `deviceId` is deliberately **login-gated** (minted only at
+  login, in `RequestService.checkAddAuthCookies`), and no consent is asked for. Settle how consent is asked and
+  recorded first; only then consider the early `deviceId`. If revived: split minting (unconditional, early) from
+  `recordDevice`/auth-cookie writing (login-gated), give the cookie its own lifetime, and never `Set-Cookie` on the
+  immutable-cached static assets (#137).
 
 ## When an organization has to hide content, not just narrow it
 
@@ -112,67 +97,6 @@ user's console — which is what makes it worth interrupting them about.
   `ErrorFallback` in `webapp/.../ErrorBoundary.kt` is a plain component the boundary swaps in, and
   `installGlobalErrorHandlers` is where the non-render failures already arrive and currently only report.
 
-## When the logging integration is built out (structured / OpenSearch sinks)
-
-The point at which logs become searchable fields — the moment a per-browser tracing id starts to look worth
-logging.
-
-- **A `deviceId` in logs is tempting here, but gated on cookie consent** *(cedar lesson).* Logging a `deviceId`
-  that traces one browser across anonymous browsing and repeated login/logout was a high-value search key in
-  cedar. It requires minting the `deviceId` cookie on the first (anonymous) request — and cedar found the
-  cookie-privacy/consent question a big enough deal to reshape how cookies were set. Today `deviceId` is
-  deliberately **login-gated** (minted only at login, in `RequestService.checkAddAuthCookies`); keep it that way
-  until the cookie-consent story exists (see *When a deployment serves real clients*). If revived: split minting
-  (unconditional, early) from `recordDevice`/auth-cookie writing (login-gated), give the cookie its own
-  lifetime, and never `Set-Cookie` on the immutable-cached static assets (#137).
-
-## When user-scoped content is stored
-
-The point at which a user owns something with structure — a document, workflow state, a part-written form — so
-that "this user's data is broken" becomes a thing that can be true.
-
-**This trigger has fired** (#310: a user now owns form documents). The item below is therefore actionable and
-wants promoting to an issue rather than sitting here; it is left in place only until somebody decides whether
-it is worth doing now, since the file's own rule is that anything ready lives in the tracker.
-
-- **Trigger keywords in email addresses, to make a user fail on demand** *(cedar practice; discussed under
-  #227).* On a backend that permits it (`isTestInstance` to begin with), encode keywords into a user's email
-  address so that logging in as them injects a chosen failure. The point is **contrast**: run the same flow as
-  a good user and as a bad one and diff the behavior, rather than reasoning about an error path in isolation.
-  It earns its keep specifically on failures *partway through stored content*, which is why it waits for that
-  content to exist — today the interesting per-user variation is the privilege rung, and `becomeUser`'s
-  `level` already covers that.
-
-  Two properties are why this form was preferred over a flag or a header, and both should survive into
-  whatever gets built: an address is the **first thing you look at** when inspecting a login, and it is a
-  **full-text search target** in logs (test instances log addresses where a real one would not). A **fault**
-  that travels with the identity beats a per-request switch when the question spans a whole session.
-
-  This said *persona* until `client-definition.md` claimed that word for a formal concept — a named thing mapping
-  to roles and capabilities, then carried after a `%` in the same part of an email address this item wants to write
-  into (that address convention was retired in #750). Two meanings in one place was the collision; the formal one
-  keeps the word, and *fault* is not a coinage but the vocabulary #227 already uses for deliberate failure.
-
-  Note what it is *not* for. The frontend fault route in #227 needs none of it, because making the browser
-  throw requires no identity — keep the two separate. This one is about the backend misbehaving for a
-  particular user, and its natural injection points are the handlers that read and write that user's content.
-
-## When gedra data is held in a memory cache
-
-The point at which a node keeps the gedras it serves in memory rather than querying for each one — anticipated
-in #310 as arriving "not too long from now", and noticeable because somebody builds it.
-
-**This trigger has fired**: `GedraDataCache` holds every gedra of a client in memory. `GedraService.gedraIds` is
-still filled only as ids are created and read, so the item below is actionable and wants promoting to an issue.
-
-- **Let a gedra id cache miss mean "no such gedra"** *(from #280, #310).* `InternCache`'s second property is
-  that where a cache holds *every* extant value, a miss answers an existence question without touching the
-  database. `GedraService.gedraIds` cannot claim it: ids are interned as gedras are created and read, so the
-  cache is a subset and a miss means only "not seen here yet". Everything therefore goes through `readId`,
-  which parses on a miss and asserts nothing about existence. A memory cache of the data is what would make
-  the population exhaustive per client, and whoever builds it should say so on that field — the code carries
-  the note at the point where somebody would otherwise assume the stronger reading.
-
 ## When schema is exported for third-party tooling
 
 The point at which somebody outside this codebase needs the API in a form their own tools read — most likely
@@ -196,13 +120,14 @@ first. Noticeable because someone asks for it by name.
   and a client's own tooling calls a payload valid that we return a 400 for. It is a second projection at the
   boundary that already has to project `g-derived` out of input shapes, not a new mechanism.
 
-- **The rest of the export contract is already written down** in
-  [`gedra-entry.md`](gedra-entry.md) — `g-` keywords stripped by default with a small transformer table,
-  `discriminator.mapping` synthesized from the branches' `const` values, and the governing rule that an
-  inexact conversion must be *stricter* than us rather than looser. Read it before starting: the decisions are
-  made, only the code is missing. Note one known gap recorded there — `g-primaryKey` has no standard
-  equivalent, so stripping it makes the export looser, which is accepted because the constraint governs our
-  own stored entries rather than anything a third party validates.
+- **The rest of the export contract is already written down**, in two places. The `SCH.gPrefix` KDoc in
+  `SchemaConstants.kt` holds the rule itself: `g-` keywords stripped by default, a small transformer table for the
+  few with a standard equivalent, and the governing rule that an inexact conversion must be *stricter* than us
+  rather than looser. [`docs/design/gedra/entry.md`](../design/gedra/entry.md) adds `discriminator.mapping`,
+  synthesized at export from the branches' `const` values, and the one known gap: `g-primaryKey` has no standard
+  equivalent, so stripping it makes the export looser, which is accepted because the constraint governs our own
+  stored entries rather than anything a third party validates. Read both before starting: the decisions are made,
+  only the code is missing.
 
 ## When public API documentation is written
 
@@ -214,8 +139,8 @@ catalog. Noticeable because somebody sits down to write it.
   defaults that never appear on a field — plain string input is trimmed, a blank scalar counts as absent,
   and numeric, boolean and date fields coerce from strings. The page states those as global rules, so a
   field's schema only has to show where it departs from them (`g-outerWhitespace: "keep"`,
-  `g-allowCoerce: false`). The rules are in `code-guide.md`'s "Relaxed validation and coercion is the default"
-  section.
+  `g-allowCoerce: false`). The rules are in `docs/development/code-guide.md`'s "Relaxed validation and coercion is the
+  default" section.
 
 ## When fragment copy computes with its data
 
@@ -229,8 +154,8 @@ Until then every substitution is "print this", which no type can get wrong.
   a number (a cleanly-numeric string like `"15"` now coerces, #608; a non-numeric one still throws, #293).
   Catching that means evaluating against realistic values, which means first deciding
   where those come from — supplied by the caller at the endpoint, or declared beside the fragment so a boot
-  check can run with nobody present. Deferred because the shipped copy reads five paths in total and none of
-  them compute, so a check with nothing to find would be tested against invented cases only.
+  check can run with nobody present. Deferred because none of the paths the shipped copy reads compute, so a
+  check with nothing to find would be tested against invented cases only.
 
 ## When a customer wants detailed provenance, including "where used", in the configuration UI
 
@@ -424,14 +349,14 @@ clear an edge's Google gate is staff, and the gate is the whole of the decision.
   withheld — it is a capability rather than a rung, so the full-scope admin sections stay closed to an
   env-authed caller, which is the natural first thing to revisit rather than the last.
 
-## When a client asks for more flexible workflow implementation options
+## When the workflow designer is greatly expanded in scope and functionality
 
-The point at which a client defined in data wants workflows shaped beyond what shipped copy allows: copy of its own
-for its labels, layouts and pages, rather than rewording a component's -- and, further, workflows that **select
-among** that copy **by reference** (a workflow choosing which fragment to show by a key rather than inlining the
-text). The first makes a client-owned fragment file worth building, the second a declarative selector; until then a
-client overlays existing component copy and that is enough. Design and full rationale live in the fragment design
-doc, `kdr-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
+The point at which the workflow designer is grown to let a client author workflows well beyond rewording shipped
+copy. Two things a client cannot do today would then matter: **declare copy files of its own** (new file ids, not
+overlays of a component's), and have a workflow **select among** that copy **by reference** (choosing which fragment
+to show by a key rather than inlining the text). The first makes a client-owned fragment file worth building, the
+second a declarative selector. Until then a client overlays existing component copy, and that is enough. Design and
+full rationale live in the fragment design doc, `kdr-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
 
 - **Client-defined template (fragment) files** *(from the "client-declared fragments" iteration in the design
   doc).* Let a client declare its own **base** fragment files -- new fileIds, not just overlays of
@@ -439,10 +364,9 @@ doc, `kdr-design/thoughts-on-fragments.md` (private `sampwhite/Actions`).
   New fileIds are clientId-namespaced so they cannot collide with component ids (separator sub-decision: only
   `-`/`_` pass `isSafeFileId` today and both already occur in ids, while `.`/`:`/`/` are each reserved
   elsewhere -- so this needs either a widened `isSafeFileId` with one dedicated char or a structural clientId
-  field). **Prerequisite, not a follow-up:** the audience boot checks must resolve a pull's target audience in
-  the *variant's* client view, not the boot view (today `declaredAudience` uses the boot `cxt`) -- it fails
-  *silently* for a client's own backend pulls, so it must land with this, not after. No cross-client
-  references; reuse across clients is an in-source **clone-and-own** "include", never a live lookup.
+  field). The audience boot checks already resolve a pull's target audience in the variant's client
+  (`declaredAudience` takes the client, #505), so a client's own backend pulls are checked as they should be. No
+  cross-client references; reuse across clients is an in-source **clone-and-own** "include", never a live lookup.
 
   *What #974 added (deferred here 2026-10-08).* Where it stands: a client's stored `fragmentDef` entry is always
   read as an overlay. A new key in a shipped file is an orphan (refused at write). An overlay of a file **no
@@ -502,7 +426,8 @@ who has not signed in is in the default client. So a client's login page, and th
 show the deployment's.
 
 - **Resolve the client from the request's domain** *(#1130, deferred here 2026-10-12).* `ClientDef.domainPrefix`
-  and `customDomain` are declared and unread. Once a request's host names a client, an anonymous visitor to
+  and `customDomain` are declared, checked for clashes between clients, and shown on the Clients page, but not yet
+  used to resolve a request's client. Once a request's host names a client, an anonymous visitor to
   `acme.example.com` has one, and both the static address (`ClientWebAssetService.serve`) and the fragment server,
   which has had this limit since #456, follow without a change of their own: each already asks the context whose
   client it is. It is a new trust level rather than a new lookup -- the host is the caller's to choose -- which is
@@ -716,3 +641,29 @@ nothing to the server's classpath.
 - **A module of their own** *(from #1243).* Split them out the day they need a library the application has no use for
   (an SSH client, a cloud provider's SDK), so it stays out of every release. That module also needs its own way onto
   `kdr-run`'s classpath, since `kdr-run` launches from the `launch` project's pathing jar.
+
+## When a client wants to start its sandbox over
+
+A client's sandbox ([`docs/design/sandboxes.md`](../design/sandboxes.md)) keeps users and data of its own, under the
+sandbox's client id. Removing the sandbox keeps them, and they come back when it is added again
+(`ClientSandboxEdit`); nothing clears them.
+
+- **Clear a sandbox's data** *(from #925).* An operator or client administrator action that removes a sandbox's
+  users and forms, or resets the sandbox to empty, so a client that has finished one round of trying a change can
+  begin the next with nothing left over. #925 deferred it until somebody wants it.
+
+## When batch editing of form documents becomes common
+
+`POST /gedra/patch` admits every target before it writes, then applies one transaction per target. A refusal in the
+apply phase (a trait lock, a visibility gate, a stale `entryId`, a failed `underLock` check, or validation) leaves the
+earlier targets committed; #1307 makes such a refusal say which target it was and what landed. Today only direct API
+callers send more than one target: the webapp's form editor (`GedraForms.kt`) and workflow save (`WorkflowSave.kt`)
+each send one.
+
+- **Refuse a multi-target patch whole, in the common case** *(beside #1307, deferred here 2026-10-20).* Run the
+  apply-phase checks, everything that can fail, once before the first transaction as well as again inside each
+  target's transaction, so a patch that would be refused is refused with nothing written. It is Cedar's practice:
+  there, atomicity was to avoid confusing the user, not to prevent bad data. One form's traits being locked and
+  another's not was common, and failing the whole edit was cleaner than a partial one. The guarantee is best-effort,
+  since data can change between the pre-check and the transaction, which is acceptable because a batch edit is a
+  convenience and the user can retry.

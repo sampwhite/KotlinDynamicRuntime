@@ -12,7 +12,8 @@ object GED {
      * What is being asked of the entry — the verb, and the reason a patch is not an update.
      *
      * It sits beside `traitId` rather than inside the entry, because an action is not a property of an entry.
-     * An entry is a value; "delete this entry" is a different thing said *about* one. See `gedra-patch.md`.
+     * An entry is a value; "delete this entry" is a different thing said *about* one. See "Changing a gedra: the
+     * patch" in `docs/design/gedra/entry.md`.
      */
     const val action = "action"
 }

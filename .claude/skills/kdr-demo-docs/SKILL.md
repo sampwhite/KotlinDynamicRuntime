@@ -105,10 +105,12 @@ cleanly fails there -- then, for every `.md` in `docs/demo-client/`:
 
 - **every marked block equals what it names**, compared as values, so layout is free. A mismatch prints the block
   as it should read, to paste in. An unmarked JSON block is a failure.
-- **every link resolves**: a page or repo file that exists, and a `#section` that is a heading of the page it names
-  (slugs are GitHub's, which `headingSlug` matches). App routes (`#page=...`) and outside URLs are left alone.
 - **every backticked `g-...` is a keyword the schema layer knows** (`SchGKeywords`).
 - **the pages and `confDemoDocs()` agree**: a page without a declaration, or the reverse, fails.
+
+Links are checked with the rest of the repository's documentation by `RepoDocLinksTest` (`base:common`, issue
+#1294): a page or repo file that exists, and a `#section` that is a heading of the page it names (slugs are
+GitHub's, which `headingSlug` matches). App routes (`#page=...`) and outside URLs are left alone.
 
 What the test does **not** check is prose: a claim like "the form shows one field" is yours to verify (below).
 

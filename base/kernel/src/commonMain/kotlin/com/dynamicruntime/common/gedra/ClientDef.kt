@@ -661,8 +661,8 @@ fun SchTypeBuilder.clientAttribute() {
  *
  * Held as a typed field on the [GedraConfig] that declares it, whose [GedraId] already carries the client --
  * so the id *is* the binding and nothing says which client a definition belongs to twice. One bundle therefore
- * defines at most one client; every bundle sharing a client is read as one whole. See `client-definition.md`
- * for the reasoning behind each attribute.
+ * defines at most one client; every bundle sharing a client is read as one whole. See
+ * `docs/design/client-definition.md` for the reasoning behind each attribute.
  *
  * **Nothing here decides how a request is served.** This class declares, validates, and finds a client; what
  * its definition drives is built elsewhere -- the per-client schema variant (`SchemaService.storeFor`, issue
@@ -702,18 +702,20 @@ data class ClientDef(
     /**
      * Where this client is enabled. Elsewhere, it may still be *referred to* and is otherwise not present.
      *
-     * The **only** axis deciding which clients a deployment carries -- there is no separate node-level
+     * The **only per-node** axis deciding which clients a deployment carries -- there is no separate node-level
      * notion -- so two deployments in one environment necessarily carry the same clients, and a deployment
-     * focused on a subset would have to be its own environment.
+     * focused on a subset would have to be its own environment. Presence also needs the client not to be
+     * [retired] ([isEnabledIn]), which holds on every node alike.
      *
      * Naming any environment beyond `unit` and `local` requires naming both of those as well: a client in
      * active use must never be one that local development and the unit tests are locked out of.
      *
-     * **Naming nothing retires the client**, everywhere, and is the only way to do so. The definition stays,
-     * the content stays, and only access stops -- the same decision #326 made for a gedra one level up: keep
-     * the row, flip a flag, let reads treat it as absent. Two things follow. Un-enabling **reclaims nothing**,
-     * so re-enabling brings all of a retired client's content back, including data somebody may have assumed
-     * was gone; deleting a client for real is a different question with the shape of a purge. And a retired
+     * **Naming nothing leaves the client absent everywhere**, which is legal, but it is not how a client is
+     * retired: [retired] is (issue #1111), so that bringing a client back finds its environments untouched. Either
+     * way the definition stays, the content stays, and only access stops -- the same decision #326 made for a gedra
+     * one level up: keep the row, flip a flag, let reads treat it as absent. Two things follow. Absence **reclaims
+     * nothing**, so a client brought back brings all of its content back, including data somebody may have assumed
+     * was gone; deleting a client for real is a different question with the shape of a purge. And an absent
      * client is still *known* -- it can be referred to, and extended from -- which is why the registry keeps
      * "known" and "present" apart rather than collapsing them.
      */

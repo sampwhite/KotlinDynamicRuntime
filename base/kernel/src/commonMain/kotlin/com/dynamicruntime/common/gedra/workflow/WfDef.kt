@@ -315,9 +315,10 @@ object WVF {
  * The field names of a **workflow-save result** (issue #535) -- the shape `/gedra/<client>/workflow/save`
  * returns, either way. A save is not all-or-nothing at the HTTP level: an incomplete one is a **result**
  * ([saved] false, [unmetTraits] naming what is missing), not an error, the soft-validation shape
- * `gedra-patch.md` draws. A satisfied create carries the created gedra under [item], the shape `formDoc/create`
- * returns; a satisfied edit carries only the form's `gedraId` (issue #827) -- it signals that the form's state may have
- * moved, as a patch does, and the page re-reads the workflow view rather than rendering from the save.
+ * `docs/design/gedra/entry.md` draws ("Changing a gedra: the patch"). A satisfied create carries the created gedra
+ * under [item], the shape `formDoc/create` returns; a satisfied edit carries only the form's `gedraId` (issue #827)
+ * -- it signals that the form's state may have moved, as a patch does, and the page re-reads the workflow view rather
+ * than rendering from the save.
  */
 @Suppress("ConstPropertyName")
 object WSF {
@@ -424,7 +425,8 @@ enum class WfEditMode { inline }
 /**
  * One trait a task collects, and whether an entry of it must be present for the task to be complete.
  * **Requiredness lives here, on the workflow**, never on the trait's schema: the trait marks its fields
- * optional and the workflow says which entries it needs -- the soft-validation seam `gedra-patch.md` draws.
+ * optional and the workflow says which entries it needs -- the soft-validation seam `docs/design/gedra/entry.md`
+ * draws ("Changing a gedra: the patch").
  */
 class WfTraitRef(val traitId: String, val required: Boolean = true)
 

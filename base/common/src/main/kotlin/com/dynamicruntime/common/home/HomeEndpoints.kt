@@ -472,28 +472,39 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
- * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the code guide,
- * and the license; the design documents are served but unlisted, reached from the README's links (issue #1238).
+ * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the extending
+ * guide, the code guide, and the license; the design documents are served but unlisted, reached from the README's
+ * links (issue #1238).
  */
 fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.readme, "Read me", "README.md",
         "What the runtime is, where it came from, and how to set it up."),
-    MarkdownDocDef(HDOC.codeGuide, "Code guide", "code-guide.md",
+    MarkdownDocDef(HDOC.extending, "Extending", "docs/extending.md",
+        "How a deployment, a component, or a client varies what the runtime does, and the rule behind it."),
+    MarkdownDocDef(HDOC.codeGuide, "Code guide", "docs/development/code-guide.md",
         "How code here is written, including where it deliberately departs from Kotlin norms."),
-    MarkdownDocDef(HDOC.clientDefinition, "Client definition", "client-definition.md",
+    MarkdownDocDef(HDOC.clientDefinition, "Client definition", "docs/design/client-definition.md",
         "How a client is described, what it owns, and what a deployment does with one.", listed = false),
-    MarkdownDocDef(HDOC.deferredWork, "Deferred work", "deferred-work.md",
+    MarkdownDocDef(HDOC.deferredWork, "Deferred work", "docs/development/deferred-work.md",
         "What has deliberately not been done yet, each item under the condition that should reopen it.", listed = false),
-    MarkdownDocDef(HDOC.gedraConfigAndData, "Gedra config and data", "gedra-config-and-data.md",
+    MarkdownDocDef(HDOC.gedraConfigAndData, "Gedra config and data", "docs/design/gedra/config-and-data.md",
         "How gedra definitions and stored data are separated, identified, and kept apart.", listed = false),
-    MarkdownDocDef(HDOC.gedraEntry, "Gedra entry", "gedra-entry.md",
+    MarkdownDocDef(HDOC.gedraEntry, "Gedra entry", "docs/design/gedra/entry.md",
         "The design of the universal stored entity and the schema constructs it needs.", listed = false),
-    MarkdownDocDef(HDOC.gedraPatch, "Gedra patch", "gedra-patch.md",
-        "How a stored gedra is changed: why a patch, what the input looks like, and the endpoints around it.", listed = false),
-    MarkdownDocDef(HDOC.uiBlock, "UI block", "ui-block.md",
+    MarkdownDocDef(HDOC.gedraStates, "Gedra states", "docs/design/gedra/states.md",
+        "What a gedra records beyond its data: derived and asserted state, and who writes and reads it.", listed = false),
+    MarkdownDocDef(HDOC.uiBlock, "UI block", "docs/design/ui-block.md",
         "The UiBlock: declared presentation structure, contributed by components and varied per client.", listed = false),
-    MarkdownDocDef(HDOC.reporting, "Reporting", "reporting.md",
+    MarkdownDocDef(HDOC.reporting, "Reporting", "docs/design/reporting.md",
         "Named reports over a client's forms: paths, combines, the load-time checks, and the cursor-paged run.", listed = false),
+    MarkdownDocDef(HDOC.fileRefs, "File refs", "docs/design/file-refs.md",
+        "A client's named files: where the bytes are, who may name them, and how they are judged and served.", listed = false),
+    MarkdownDocDef(HDOC.sandboxes, "Sandboxes", "docs/design/sandboxes.md",
+        "A client's sandbox: a second client that runs its drafts, so a change is tried before it is published.", listed = false),
+    MarkdownDocDef(HDOC.userSearch, "User search", "docs/design/user-search.md",
+        "The admin user search, and the server-driven shape its console is built from.", listed = false),
+    MarkdownDocDef(HDOC.gedraWorkflow, "Gedra workflow (superseded)", "docs/history/gedra-workflow.md",
+        "The first workflow design, retired under #533 and kept for its reasoning.", listed = false),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
         "The MIT license the runtime is released under.", order = lastDocOrder),
 )

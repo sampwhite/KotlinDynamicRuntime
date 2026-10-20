@@ -147,7 +147,7 @@ class UserSearchCriteria(
     val textTerms: Map<String, String> = emptyMap(),
     /**
      * A single free-text term matched across *every* substring text field at once -- the account's email, real
-     * name, or username (issue #581). Where [textTerms] AND (each named field must match), this is one OR: a
+     * name, username, or persona (issue #581). Where [textTerms] AND (each named field must match), this is one OR: a
      * row matches when the term is a substring of any of those. It backs a single type-ahead box that finds a
      * user however the person searching remembers them; null (or blank, dropped before here) is no constraint.
      */
@@ -202,7 +202,7 @@ fun searchUserRows(rows: List<AuthUserRow>, criteria: UserSearchCriteria): UserS
         }
     }
     // The single "any text" term (issue #581): OR across every substring text field's texts, so one box finds a
-    // user by email, real name, or username at once. The exact-match fields (client) are left out -- a client
+    // user by email, real name, username, or persona at once. The exact-match fields (client) are left out -- a client
     // id is a picked value, not a fragment a person types into a search-for-a-user box.
     criteria.anyText?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { term ->
         matched = matched.filter { row ->

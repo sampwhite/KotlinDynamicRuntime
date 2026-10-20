@@ -1,5 +1,10 @@
 # The admin user search, and its server-driven-UI shape (issue #411)
 
+**Status: built** (issue #411). Since then the console has gained a persona field (issue #750) and four date ranges
+(issues #462, #750), and the endpoint a single free-text term matched across several fields (issue #581). The shared
+spec described here is built; the fully runtime version in
+[The next step: fully runtime SDUI](#the-next-step-fully-runtime-sdui) is not.
+
 The admin console's user search is a **brute-force scan of the in-memory `AuthUsers` cache**, not a SQL query.
 That is the whole reason it can search and sort on things that are not database columns — the public name
 (username-or-email), and, because a user's organization is not a column either, the entire read scope. This
@@ -8,17 +13,28 @@ description of the fields that both the backend and the console build from.
 
 ## What the search is
 
-`GET /clientAdmin/userSearch` (and the full-scope `/admin/userSearch`) filters and sorts **active** users:
+`GET /clientAdmin/userSearch` (and the full-scope `/admin/userSearch`) filters and sorts **active** users.
+
+**The authoritative list of fields is `userSearchFieldSpecs`** in `UserSearchSpec.kt` (`base/kernel`), the shared
+description [below](#the-sdui-shape-one-description-both-sides); read it there rather than trusting a copy. The
+backend's `userSearchFields` registry (`UserSearch.kt`, `base/common`) is a superset of it. At the time of writing,
+the console offers:
 
 - **email** — case-insensitive substring
 - **name** — case-insensitive substring of the real-world name *or* the username (so pasting a login handle
   finds the account, the behavior the old single search box had)
 - **client** — exact match; only meaningful to an `allClients` caller, since anyone else is already confined to
   their own client by scope
-- **updatedAt** — a from/to instant range
+- **persona** — case-insensitive substring of the persona or its suffix (issue #750), so `admin` finds the
+  administrators and `B` finds one member of a batch
+- **four date ranges**, each a from/to instant pair — edited, last login, registered, and activated
 
-sorted by any of those (default `updatedAt` descending), capped at a large default (`USF.defaultLimit` = 500),
-reporting `numItems` / `numAvailable` / `hasMore`.
+The endpoint also takes axes the console does not show: `publicName`, a range over the update time, and `q`, one
+free-text term matched against every substring field at once — email, name, username, and persona (issue #581).
+
+Results are sorted by any field (default `updatedAt` descending, though the console no longer shows the update time,
+since a login moves it), capped at a large default (`USF.defaultLimit` = 500), and report `numItems` /
+`numAvailable` / `hasMore`.
 
 **Active users only, by design.** The cache holds enabled rows (its initial load is enabled-only; a row
 disabled later enters as a tombstone). Finding a *disabled or deleted* account to re-enable stays on the SQL
@@ -68,6 +84,8 @@ And the **exact** filter kind renders specifically as the client picker (its opt
 a second exact field would need that generalized.
 
 ## The next step: fully runtime SDUI
+
+*Not built.* Nothing serves the spec today, and the console renders only from its compiled copy.
 
 This is **compile-time** SDUI — the description is shared source, not a wire payload. The natural next step, if
 a deployment ever needs to vary the search fields without shipping a new front-end bundle, is to **serve the

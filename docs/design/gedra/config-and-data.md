@@ -4,11 +4,11 @@ How definitions and stored data are separated, identified, and kept from seeing 
 whoever has to work inside these rules — developers now, client administrators later — and for the reader who
 arrives six months from now wondering why an id looks like that.
 
-It is a companion to [`gedra-entry.md`](gedra-entry.md), which describes the shape of a single stored entry.
+It is a companion to [`docs/design/gedra/entry.md`](entry.md), which describes the shape of a single stored entry.
 This one is about everything around one: which family it belongs to, whose it is, who may see it, and what
 happens when two definitions disagree.
 
-Unlike `gedra-entry.md`, this document describes a mixture of what exists and what is intended. Each section
+Unlike `docs/design/gedra/entry.md`, this document describes a mixture of what exists and what is intended. Each section
 says which, and [What is real today](#what-is-real-today) collects the answer in one place. A rule that is not
 yet enforced is still a rule worth knowing, because the code is being written to leave room for it.
 
@@ -75,7 +75,9 @@ bundle. Both abbreviations are two characters, always, so the first six characte
 you read a column of them.
 
 **The client** is the owning client space, or the reserved `global` for anything belonging to the deployment
-rather than to a client. It is the most consequential segment; see [Client separation](#client-separation).
+rather than to a client. It is the most consequential segment; see [Client separation](#client-separation). A
+**sandbox** client (issue #927) is its parent's id with `:sandbox` appended, so a form document in Acme's sandbox is
+`gd.fd.acme:sandbox.e2026…`; see [The sandbox client](../sandboxes.md#the-sandbox-client).
 
 **The base id is opaque.** It is built to be invariant given its inputs, never to be taken apart. Two flavors:
 
@@ -91,12 +93,21 @@ user already have one of these?" is answered by constructing the id and asking, 
 **The suffix** after `~` is optional and means different things by family. For data it is a child's position
 within an imported parent — a spreadsheet's rows share their parent's base id and differ by suffix, so a set
 that arrived together is visible as such and often traceable back to the row. For config it is the
-**revision**, and an absent suffix will mean *the revision active in this context* — which is how a preview
-environment and production can name the same workflow and get different answers.
+**revision** (issue #612), and an absent suffix means *the revision active in this context* — which is how a preview
+environment and production can name the same workflow and get different answers. Two rules go with it:
+
+- **A revision is a canonical whole number**, spelled the one way its integer prints, so `~3`, `~03`, and `~+3` cannot
+  be three ids for one revision: only `~3` is accepted. A data id's suffix is a child index and stays free-form.
+- **A present suffix is lineage, not a pin that execution follows.** A stored reference that names a revision (a
+  `WfRef` on a gedra, recording which bundle revision shaped it) says which revision was current when it was written,
+  for audit and diagnosis. Execution always resolves against the active revision.
 
 Three properties fall out of the format and are worth not breaking:
 
-- **`.` and `~` are unreserved in RFC 3986**, so an id needs no escaping in a URL.
+- **`.` and `~` are unreserved in RFC 3986**, so an id needs no escaping in a URL — except a sandbox's, whose
+  client segment holds a `:`. A colon is legal unescaped in a URL path, query, and fragment, but
+  `encodeURIComponent` escapes it, so a reader decodes an id before parsing it. The colon is not a separator, so
+  parsing is unchanged.
 - **The base id is held to `[A-Za-z0-9_]`**, ASCII only. That keeps the separators out, which is what makes
   the format parseable; it keeps a base id a single token to a log tokenizer, so pasting one into a search
   finds it; and it stops a Cyrillic lookalike minting an id that reads identically to a person and differently
@@ -107,8 +118,8 @@ Three properties fall out of the format and are worth not breaking:
 
 ### A client is itself a defined thing
 
-*Built (issue #343; see [`client-definition.md`](client-definition.md)).* A client space is not a bare string that
-appears in ids — it is **config**, declared the way everything else is, in a `GedraConfig` of its own.
+*Built (issue #343; see [`docs/design/client-definition.md`](../client-definition.md)).* A client space is not a bare
+string that appears in ids — it is **config**, declared the way everything else is, in a `GedraConfig` of its own.
 
 That definition is **scoped to the client it defines**: the bundle declares the client id and carries that
 same id in its own `GedraId`. The apparent circularity is the point rather than a problem — an id can be
@@ -151,9 +162,9 @@ and then surfaces as a permissions bug.
 
 ## Visibility
 
-A client's definitions may reference definitions **they own, or that `global` owns**. Nothing else. Extending
-a trait and pulling one in to make it available in a client space are both reaches across configs, and both
-are bounded this way.
+A client's definitions may reference definitions **they own, or that `global` owns**. Nothing else, with one
+exception: a client built on a **template** also sees the template's definitions. Extending a trait and pulling one in
+to make it available in a client space are both reaches across configs, and both are bounded this way.
 
 The mechanism is namespace ownership, not a separate store per client:
 
@@ -163,6 +174,11 @@ The mechanism is namespace ownership, not a separate store per client:
 - A config owned by client C may only `$ref` into namespaces owned by **C or `global`**. This holds by
   construction: C's own types sit in C's overlays, never in the global defs, and C's schema is the global defs
   plus C's overlays, so another client's type is simply not there to resolve.
+- **The template exception** (issue #945). A client that extends another (`extendsFromClientId`) runs a copy of each
+  of the template's **source** configs, filed under the client. The copy keeps the template's namespace, so no type is
+  renamed and a `$ref` inside the template's types still resolves, and the template keeps owning that namespace, so
+  the client cannot author into it. Because the copy is the client's own config, an entry the client stores against a
+  template trait resolves against the client. A template's stored configs are never copied.
 
 Global names are owned by **root** (#950): every component declares the owner root its namespaces live under --
 core's one root is `kdr` (`kdr.core`, `kdr.gedra`, ...) -- and a module or config under another owner's root says
@@ -199,6 +215,26 @@ Uniqueness within a client's view would force ugly names — a `name` trait and 
 same thing — except that **a trait declares the set of kinds it applies to**. `name` means the same thing on a
 form document and on workflow data, so it is one trait bound to both. Where two traits genuinely are different
 concepts, they get different ids, which was the right answer anyway.
+
+### Workflow and task ids follow the same owner rules
+
+*Built (issue #921, slice #953).* A client's own workflow and its tasks are bare (`loanReview`, `income`). A
+**global** workflow — one a component ships for every client — is `<root>:<name>` (`kdr:loanReview`), and so is
+every task in it (`kdr:income`), because a global workflow is a container clients will add tasks to by overlay, and a
+bare task of core's could one day meet one of theirs. The local part is a variable name either way, and both forms
+are checked as config is collected (see [What is checked today](#what-is-checked-today)).
+
+There is **no shadowing by id**: a client's `loanReview` beside a global `kdr:loanReview` is two workflows. A client
+is meant to change a global workflow by *overlaying* it — naming `kdr:loanReview` and merging its task list by task
+id — which is not built; a client wanting its own defines a bare one. Only the single-instance kinds, creation and
+survey, shadow, and they shadow **by kind**: a client's creation workflow replaces the global one whatever its id,
+since a client has one answer to how a form is created. A client built on a template holds the same rule against
+the template's workflows.
+
+A rooted id is not a variable name, so every place that uses a workflow id as an identifier carries it as a string:
+the `WfRef` text (`gc.cd.global.loans~1#kdr:loanReview`), stored state keys, query parameters, hash routes, and
+fragment namespaces, which are pulled by string (`%{@t("loanCopy.kdr:loanReview.title")}`), never by a bare `${...}`
+path.
 
 ## A trait's own data lives under `data`
 
@@ -244,14 +280,23 @@ saying so.
 Falling through is right when you are looking across clients and wrong when you are not. Inside one client
 every trait is known, so an unrecognized `traitId` there is a caller error and should be reported as one.
 
-So strictness is the **reader's** choice rather than a second union: one type, and an endpoint validating in
-strict mode refuses to fall into the default instead of a differently-shaped type existing without one. Two
-rules go with that:
+The union does not do that reporting. A reader may refuse the default branch (`SchOpts.allowUnknownVariant`
+off), but it is **on** by default, and no production reader turns it off. That keeps our reading in step with the
+document we publish: a union that declares a default branch says so in its JSON Schema, so a stock validator accepts
+an unknown trait, and our own validator agrees with it.
 
-- **Strict is the default and leniency is opted into.** The lenient direction silently accepts data nobody
-  can interpret, and a mistake in the strict direction reports itself.
-- Endpoints scoped to a single client are strict; endpoints that can see data across clients need the
-  leniency.
+Strictness is applied **at write** instead, where the mistake can be named:
+
+- **A data write refuses a trait its client does not support** (`checkTraitsSupported`, issue #379). A trait id that
+  is misspelled, or that belongs to another client, is a 400 unless the caller sends `allowAdditionalTraits`, which
+  stores it on the default branch. Only what the call writes is checked, so a document holding an entry written
+  earlier, or under the flag, stays editable without it.
+- **A state entry naming no state trait this node declares is refused outright** (issue #597). State traits are
+  global and component-authored, so there is no flag: an unknown one is a caller's mistake, never a client's
+  extension.
+- **Reads stay lenient.** An entry already stored, or one met across clients, falls to the default branch.
+
+So leniency is still what a caller opts into, per write, and a mistake in the strict direction reports itself.
 
 ## What is checked, and what a failure does
 
@@ -319,8 +364,9 @@ is not one is a 400 whose message names each path and what is wrong there, with 
 `extraData.failures` as a request's own input failures are. A path names the slot, the entry by its **key**, and the
 field: `kdr:clientDef.enabledEnvironments[1]`, `kdr:cfactDef[ready].group`. Beyond the shapes, the gate asks what a
 shape cannot say: the client definition's own rules (`readClientDef`, against `WrittenClientInfo`), that a usage
-rule's `display` is a template that parses, and that no type is declared twice in `kdr:schemaDef`, where the second would silently replace the first (a repeat in
-another slot is either legal -- two overlays of one file are two layers -- or refused already as what it is).
+rule's `display` is a template that parses, and that no type is declared twice in `kdr:schemaDef`, where the second
+would silently replace the first (a repeat in another slot is either legal -- two overlays of one file are two layers
+-- or refused already as what it is).
 
 **Only what a write changes is judged.** The gate is handed the configuration's revision as it stands, and an
 entry the write carries unchanged is not judged again -- the trial reload's rule, for its reason: a fault a stored
@@ -345,145 +391,6 @@ fields of a file ref's entry this release does not read (`FileRefDef.extra`).
 - **No write of a node can remove a slot it does not read.** A slot a later release retires stays in its rows until
   that release's own migration takes it out.
 
-### File refs: configuration that points outside itself (issues #1153, #1154)
-
-`kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a
-client's **file ref** is a named file, and its entry says where the bytes are by its `source`. Most are in the
-**file store** -- `{ refId, source: "store", hash, description? }`, the SHA-256 of the file's bytes, kept in
-bucket `web-assets` at `clients/<client>/refs/<hash>` -- and those are what the points below describe. A ref may
-instead name a **local file**, which the section after covers.
-
-- **The hash is the pointer.** The key is derived from it and never stored, so an entry names exactly one sequence
-  of bytes, an object is written once and never rewritten, and a draft cannot change what a published revision
-  names. Removing a ref leaves its object, which older revisions still name.
-- **What a file is -- its type, its size, its name -- is not in the entry.** It is the file store's own record,
-  written by the upload that checked the bytes. An entry can be typed through these endpoints, and the content type a
-  file is served under must not come from something that can be typed. Serving checks, on every read, that the file
-  is the one the ref names and a kind a ref may be (`StoreFileSource.read`).
-- **Drafted and published like any other configuration.** `FileRefService` builds a registry per client from the
-  configurations the collector holds for it, so the tiers and the sandbox need no rule of their own: a sandbox
-  previews a ref its parent has only drafted, and the parent serves the one it published. This is the difference
-  from a client's web assets (#1130), which are not configuration and have neither.
-- **Judged in a fixed order.** A load and a write's trial read a client's configurations in different orders, so
-  the registry orders them itself before it judges them -- the stored ones, then the source ones, each by id: of
-  two configurations declaring one ref id, the first in that order keeps it, in both. A check whose answer
-  depended on the order read would be a new problem to every trial.
-- **Only stored configuration may hold a ref into the file store.** A hash names bytes in one deployment's file
-  store, and source configuration runs on every machine: such a ref declared in source is a source problem, which
-  refuses the boot outside production. (A ref declared in source names a local file.)
-- **A load asks the store once per distinct file**, and goes on the answer for ten minutes (an object is not
-  rewritten, so the answer changes only if one is deleted). A ref whose bytes are missing is a reported problem that
-  costs only the ref: it is kept, listed as missing, and answered as not found.
-- **Whether a file is there is asked again at each write** (`GedraConfigTrial.fileRefBaseline`). A write's trial
-  subtracts the problems the client already has, and every other check reads only configuration, so what the last
-  load recorded stays true. A file does not: one that went missing since the load would be a problem "the write
-  introduces" to every later write of the client, including the one that takes the ref away. So the refs the node
-  runs for the client, and for its sandbox, are judged again as the trial is, and a write is refused only for a
-  file its own ref names.
-- **Drafts nothing runs are judged as they were** (issue #1171). A client that runs only published configuration
-  *without* a sandbox has latest revisions no node loads, so no load records what they already have. For such a
-  client a draft write's baseline also holds a trial of the stored set as it stood before the write -- each written
-  config back at its prior revision, a new one left out -- so a draft ref whose file has gone, or any other problem
-  a draft already had, does not refuse a later draft write that does not bring it; one that does is refused as ever.
-- **A sandbox's problems forgive a write, not a publish.** A write is judged with the latest revisions, which the
-  sandbox runs, so what the sandbox already has the drafts already have. A publish changes what the client's own
-  people are served, and is judged against the client alone: a draft ref whose file has gone is refused there,
-  since publishing it is what would bring the problem to them.
-- **A reload never refuses for a file that went missing under a ref the node already serves**
-  (`reportConfigProblem(aroseWhileRunning = …)`). Where problems are strict, anything else a load finds refuses
-  it; but this one no write could have been refused for, and the write that led to the reload is stored by then.
-  It is reported and recorded, and the ref kept. A boot, and a ref a reload *brings*, are held as strictly as
-  ever.
-- **Uploading a file again puts it back.** An upload reads the file it would store before deciding it is already
-  there, so one whose bytes are gone or damaged is written again.
-- **A client is served at most 200 refs.** Holding more is one problem of the client's, with the first 200 served
-  and the rest left out, which is what bounds a load. A write that would take a client over is refused by its
-  trial -- whichever configuration, and whether it is an upload, a typed entry or an import -- and an upload says
-  so before it stores the file. A client already over can still take refs away.
-- **Nothing removes a file.** A replaced or removed ref's object stays for the revisions that still name it, and
-  nothing yet bounds how many a client leaves behind: nothing sweeps away what no revision names. (What a write
-  that stopped part-way leaves is another matter, which the operator's `CheckFileStore` script finds, #1147.)
-- **An export or import does not carry files.** A configuration imported where the bytes are not -- another
-  deployment's store, or **another client of this one**, since a file is kept under the client whose configuration
-  names it -- is refused, naming each ref whose file is not there.
-
-Not to be confused with `GedraDataType.fileRef`, a kind of *data* gedra with no write path yet -- a claim on a file
-held as data. The two share the word.
-
-### File refs to local files: an image where it already is (issue #1154)
-
-The second `source`. `{ refId, source: "local", root, path, description? }` names a file on the node's own disk,
-under a **root** the deployment declared -- `fileRef("logo") { local("brand", "logo.svg") }` in source
-configuration. No hash is authored: it is the hash of the file as it is read. Where roots are, and what may not be
-one, is the deployment's to say and is written up in `examples/custom-config.md`; the rules themselves are
-`LocalFileRoots`.
-
-- **Which source may be written where.**
-
-  | | source configuration | stored, by the server's own code or an `allClients` administrator | stored, by a client's own administrator |
-  |---|---|---|---|
-  | `store` (a hash) | refused: a problem at the load | yes | yes |
-  | `local` (a root and a path) | yes | yes | **no** -- 403 |
-  | `clientLocal` (a root and a path, in the client's own directory) | yes | yes | only into a root open to clients -- else 403 |
-
-  A path in configuration is a string naming a file on the server, and stored configuration is written through
-  the API by a client's own people. So `GedraConfigService` refuses a write that **adds or changes** a local ref
-  from anyone but the server's own code or an administrator who sees every client, judged against the revision
-  read under the write's lock -- a bundle write, a patch and an import alike. "The server's own code" is a write
-  with no signed-in caller (a script, a job) and a write that says its content is the code's whoever started it
-  (`ConfigWrite.authoredInCode`, which `Simulations.provisionConfig` sets: a simulation is started by a signed-in
-  caller, and what it writes is the simulation's). **A client's own administrator's** write may still *carry* a
-  local ref the revision already holds, so their edit of the same configuration is not refused for something they
-  did not write; it may reword the ref's description, which names no file; and it may leave the ref out, or
-  upload over it. An edit of theirs that is refused and undone puts back what was there
-  (`patchConfig(restoring = …)`).
-- **A client's own ref is the third source** (issue #1164). `{ refId, source: "clientLocal", root, path }` reads
-  `<root>/<owner>/<path>`: the directory, in a root the deployment opened to clients
-  (`KDR_LOCAL_FILE_CLIENT_ROOTS`), of the client whose ref it is. It is the one local ref a client's own
-  administrator may write (`GedraConfigService.mayNameLocalFile`, asked of the root's *name* and never of the
-  disk, so a root that is not open is refused the same whether or not it exists).
-  - **Why a source of its own.** What a ref reaches is then said by the ref, and not by how a node is configured.
-    A `local` ref names `<root>/<path>` whatever is opened, so opening a root changes nothing an operator wrote.
-    A `clientLocal` ref names the client's directory, and where its root is not open -- the deployment closed
-    it, one node was started without the variable, the release was rolled back to one that does not read the
-    source -- it names **nothing**, and is reported and answered as not found. It never becomes the other kind.
-    Had division been a property of the root, every one of those would have turned a tenant's ref into one that
-    reads from the root's top.
-  - A write that turns one kind into the other is a re-pointing (`FileRefDef.pointer` carries the source), and
-    is held to the rule for the kind it writes.
-  - The owner is `configOwnerOf(client)`: a sandbox's is its parent, and for a ref a client inherits from a
-    template it is the inheriting client -- so a template's `clientLocal` ref is a file each for the template
-    and for every client built on it. The entry holds the root and the path as written and never the client's
-    segment: copied to another client, it names that client's own file.
-  - `POST /clientAdmin/client/files/local` is the call that names one, landing as an upload does; it refuses a
-    root that is not open, and a file that is not there, before it writes anything. `GET …/files/roots` lists
-    the open roots by name, to the administrator of a client.
-- **A client's page is where its administrator works with them** (issue #1176): the Files section lists each ref
-  -- whether a `stored` configuration holds it, which is what makes it the API's to remove and to reword
-  (`POST …/files/describe`), where one the client was shipped with can only be uploaded over -- and asks
-  `GET …/files/takes` what a ref's file may be, so the page offers what the backend will accept. Each change
-  may say how its caller expects it to take effect (`mode`): whether it is a draft is decided at the request, by
-  whether the client has a sandbox then, and one that would do otherwise than its caller told its user is a 409.
-- **What is stored overrides what is shipped.** A stored ref takes the place of a source ref of the same id, with
-  no problem said -- as stored copy takes the place of the source's. So an upload replaces a shipped image, and
-  removing the upload reveals it again. Any *other* second declaration of an id is still a problem.
-- **The entry is held to its source** by the slot gate: a `store` ref has a hash and no root or path, a `local`
-  one a root and a plain path and no hash. An entry with both would be read by one and look like the other.
-- **The bytes are hashed every time they are served** (`LocalFileSource`). Remembering a hash by a file's size and
-  date could give the permanent cache header to bytes the address does not name. So a file edited on disk is a new
-  address with no reload, an old address gets the current bytes under `no-store`, and nodes holding different
-  files answer each other's addresses the same way -- a shared cache only ever keeps the exact bytes an address
-  names. A steady state needs every node to hold the same files.
-- **A file that is missing, unreadable or not an image** is a `no-store` 404 when asked for and a configuration
-  problem when its client loads, which keeps the ref. The problem says one thing whatever the reason, since what a
-  parser says of a file that is not an image can repeat what is in it; the reason is in the node's log.
-- **A listing reads each local file** to say its hash, so its cost is the files'; the limit of 200 refs a client
-  and 2 MB a file is what bounds it. A load and a write's trial do not: they ask only whether a file can be
-  served, and that is remembered for a file that has not changed (where it is, its size, its date), so a save
-  costs a `stat` a ref and not a read. Serving remembers nothing.
-- **Roll it out everywhere first**, as with the slot itself: a node on the release before reads no `local` ref
-  (it leaves one out, as a source it does not read), and its upload over one writes an entry this release drops.
-
 **Two things the gate leaves to the trial reload**, which judges them in the document they belong to: a **schema
 body** (`kdr:schemaDef.schema`, `kdr:traitDef.dataSchema`) need only be an object here, since parsed on its own it
 would be refused for naming a sibling type or for being an alteration of a global one; and what is **inside a
@@ -492,9 +399,10 @@ hold one. The trial refuses a new one of either.
 
 A conversion fault the reassembly itself finds in a written body -- a client id holding a colon -- is a 400 for the
 same reason, with the fault kept as its cause and its extra data (a parser's code and position) carried up; a fault
-not marked a conversion is still a server error. **The rule and the response are separate**: what a valid definition is does not depend on where it
-arrives, and what happens to an invalid one does. A write is refused; a row already stored is read by the lenient
-reader (`ClientDef.fromInfo`, through `reassembleGedraConfig`), so the deploy that tightens a rule strands nobody.
+not marked a conversion is still a server error. **The rule and the response are separate**: what a valid
+definition is does not depend on where it arrives, and what happens to an invalid one does. A write is refused; a row
+already stored is read by the lenient reader (`ClientDef.fromInfo`, through `reassembleGedraConfig`), so the deploy
+that tightens a rule strands nobody.
 
 The unit is the **client**, not the config. A client's definition is spread across its configs (its `clientDef` in
 one, the traits its workflows collect in another), and a stored config depends only on source code and its own
@@ -539,6 +447,15 @@ refuses everywhere.
 The production path is only survivable because of the default branch above: entries carrying a dropped trait
 fall through as unrecognized rather than failing validation. The two decisions hold each other up, which is
 worth knowing before changing either.
+
+### File refs: configuration that points outside itself
+
+`kdr:fileRefDef` is the first slot whose entries name something that is not in the configuration: a client's
+**file refs** are named files, kept in the file store or on the node's own disk. They have their own document,
+[`docs/design/file-refs.md`](../file-refs.md). It is also where the one change file refs make to the rules above is
+described: a file can go missing while nothing in the configuration changes, so a write's trial judges a ref's file
+again rather than trusting the last load, and a reload does not refuse for a file that went missing under a ref the
+node already serves.
 
 ### The boundary, so this does not get over-applied
 
@@ -599,17 +516,23 @@ is what gives the warning teeth.
 | The config kind, config bundles, traits, and the entry types they generate | **built** |
 | Component-contributed config, and the checks over it | **built** |
 | The environment split for those checks | **built** |
-| The default branch, and strictness as a reader's choice | **built** |
+| The default branch, open on read; an unsupported trait refused at write unless asked for | **built** — #379, #597 |
 | Storing data gedras, and reading them back within a caller's scope | **built** — form documents, #310 |
 | Updating a stored gedra's entries | **built** — the patch, #337 |
 | Client separation across deployments | intended — nothing loads a subset of clients yet; a deployment will name the clients it loads in its own configuration, independent of its environment name |
 | Client-authored config, and the visibility check | **built** — config stored per client (#611), namespace ownership, `traitsFor`, and `$ref` bounded by construction (a client's schema holds only global and its own types) |
 | Client spaces defined in config, scoped to themselves | **built** — #343 |
 | Traits for stored config, declared separately from data traits | **built** — #316 |
-| File refs: a client's named files, by hash, as a config slot | **built** — #1153, images only |
-| File refs to local files: an image under a root the deployment declares, with no import | **built** — #1154 |
-| A client's own administrator naming a local file, in the client's own directory of a root the deployment opened to clients | **built** — #1164, as a third source (`clientLocal`) and two endpoints. A client's page lists, uploads, names and removes its file refs (#1176). Not built: browsing what is in a root (#1177). |
+| File refs: a client's named files, in the file store or on the node's own disk | **built** — see [`docs/design/file-refs.md`](../file-refs.md) |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
+| Stored configuration forgiven at load: a fault dropped at its finest grain, and kept on the client's `issues` list | **built** — #839–#841 |
+| Strict at write: the trial reload, and the slot gate before it | **built** — #843, #1051, #1052 |
+| The schema for schema, generated from the keyword tables and served at `GET /schema/metaSchema` | **built** — #1056 |
+| A write carrying the slots this node does not read | **built** — #1153 |
+| The publish impact report, judged against the client's stored rows | **built** — #935 |
+| Protection tiers: a client runs its latest revision or only its published one, per environment | **built** — #617 |
+| Sandboxes: a client's `<parent>:sandbox`, for trying a change against its own data | **built** — #927, #928; see [`docs/design/sandboxes.md`](../sandboxes.md) |
+| Template extension: a client built on a copy of another's source configuration | **built** — #945 |
 | Promotion from database to source code | intended |
 
 Anything marked *intended* is a rule the built code is shaped to leave room for, not a promise about when it

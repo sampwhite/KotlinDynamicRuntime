@@ -8,7 +8,7 @@ import com.dynamicruntime.common.home.HACT
  *
  * **Declared in the kernel because neither side can check the other.** The reference is authored in
  * backend data and the implementation is a frontend artifact, so the vocabulary has to be shared code or a
- * misspelled name is a click that silently does nothing. See `ui-block.md`.
+ * misspelled name is a click that silently does nothing. See `docs/design/ui-block.md`.
  *
  * [arity] is here rather than left to the implementation because it is what the **backend** validates against:
  * an array's length is readable without parsing, so a wrong parameter count becomes a boot failure instead of

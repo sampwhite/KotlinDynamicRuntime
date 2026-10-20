@@ -48,7 +48,7 @@ object TISS {
  * *template*. It cannot catch a missing key or a type mismatch, because those are facts about the data a
  * caller will supply, not about the text. A missing key is answerable without evaluating -- see
  * [TemplatePaths.missingFrom], which checks required paths against a map -- but a *type* mismatch is not, and
- * is deferred: see `deferred-work.md#when-fragment-copy-computes-with-its-data`.
+ * is deferred: see `docs/development/deferred-work.md#when-fragment-copy-computes-with-its-data`.
  *
  * Recovery after a bad block is deliberately coarse. When the *expression* fails to parse, the block's extent
  * is still known, so scanning resumes after it and later blocks are reported too. When the block itself never

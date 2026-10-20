@@ -75,7 +75,7 @@ class HomeUiConfigEndpointTest : StringSpec({
         // The repo docs the README links to are registered too, each with its own source path, so a link to one
         // resolves to an in-app document (issue #492). This also proves the build copied them onto the classpath.
         val codeGuide = links.single { it[HFLD.id] == HDOC.codeGuide }
-        codeGuide[HFLD.sourcePath] shouldBe "code-guide.md"
+        codeGuide[HFLD.sourcePath] shouldBe "docs/development/code-guide.md"
         (codeGuide[HFLD.buildId] as String).isNotEmpty() shouldBe true
     }
 
@@ -89,21 +89,24 @@ class HomeUiConfigEndpointTest : StringSpec({
             .obj(UIC.state).list(HFLD.links).map { it!!.toJsonMap() }
         val ids = links.map { it[HFLD.id] }
         val core = listOf(
-            HDOC.readme, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
-            HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraPatch, HDOC.uiBlock, HDOC.reporting, HDOC.license,
+            HDOC.readme, HDOC.extending, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
+            HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraStates, HDOC.uiBlock, HDOC.reporting,
+            HDOC.fileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.gedraWorkflow,
+            HDOC.license,
         )
         ids shouldContainAll core
         // Each carries the source path the resolver needs, so none is served without it.
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // The listing offers the README, the code guide, and the license (issue #1238); the design documents are served
-        // but unlisted, as a suite's inner pages -- the conference demo's, say -- are (issue #1136).
+        // The listing offers the README, the extending guide, the code guide, and the license (issue #1238); the design
+        // documents are served but unlisted, as a suite's inner pages -- the conference demo's, say -- are (issue #1136).
         val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
-        listed shouldContainAll listOf(HDOC.readme, HDOC.codeGuide, HDOC.license)
+        val offered = listOf(HDOC.readme, HDOC.extending, HDOC.codeGuide, HDOC.license)
+        listed shouldContainAll offered
         // The license reads last, after the documents components loaded after `common` contribute (issue #1238).
         listed.last() shouldBe HDOC.license
-        core.filterNot { it in listOf(HDOC.readme, HDOC.codeGuide, HDOC.license) }.forEach { it shouldNotBeIn listed }
+        core.filterNot { it in offered }.forEach { it shouldNotBeIn listed }
     }
 
     // Issue #1136: a component declares its own documents, and one it marks unlisted is still sent -- so a link to it

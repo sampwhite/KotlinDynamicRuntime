@@ -72,13 +72,29 @@ val embedDocs by tasks.registering(Copy::class) {
         rename { "readme.md" }
     }
     // The repo docs the README links to (issue #492): served in-app so those interior links resolve to a
-    // document rather than the source repository. Their file names are their doc ids (code-guide.md ->
-    // docId "code-guide"); keep this list in step with the HDOC registry in HomeEndpoints.
-    from(layout.projectDirectory.dir("../..")) {
-        include(
-            "code-guide.md", "client-definition.md", "deferred-work.md",
-            "gedra-config-and-data.md", "gedra-entry.md", "gedra-patch.md", "ui-block.md", "reporting.md",
-        )
+    // document rather than the source repository. Each is copied under its doc id, which is its name in the
+    // classpath (docs/development/code-guide.md -> md-docs/code-guide.md, docId "code-guide"). The ids outlived
+    // the files' move under docs/ (issue #1294), so in-app links to them still work. Keep this map in step with
+    // the HDOC registry and coreDocs() in HomeEndpoints, which carries the same paths.
+    val inAppDocs = mapOf(
+        "docs/extending.md" to "extending",
+        "docs/development/code-guide.md" to "code-guide",
+        "docs/development/deferred-work.md" to "deferred-work",
+        "docs/design/client-definition.md" to "client-definition",
+        "docs/design/gedra/config-and-data.md" to "gedra-config-and-data",
+        "docs/design/gedra/entry.md" to "gedra-entry",
+        "docs/design/gedra/states.md" to "gedra-states",
+        "docs/design/ui-block.md" to "ui-block",
+        "docs/design/reporting.md" to "reporting",
+        "docs/design/file-refs.md" to "file-refs",
+        "docs/design/sandboxes.md" to "sandboxes",
+        "docs/design/user-search.md" to "user-search",
+        "docs/history/gedra-workflow.md" to "gedra-workflow",
+    )
+    for ((path, docId) in inAppDocs) {
+        from(layout.projectDirectory.file("../../$path")) {
+            rename { "$docId.md" }
+        }
     }
     // The MIT license the README links to (issue #555): extension-less at the repo root, so it is copied in
     // and given the `.md` name MarkdownDocService serves under (docId "license"). The plain-text license

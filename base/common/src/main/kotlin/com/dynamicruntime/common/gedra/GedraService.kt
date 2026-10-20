@@ -33,8 +33,9 @@ class GedraService : ServiceInitializer {
      * "no such gedra" for a cache that holds *every* extant id, and nothing loads them exhaustively — data ids
      * are interned as they are created and read, which is enough for `===` and for cheap keys and nothing more.
      * So use [readId], never `gedraIds.gedraId(...)`, until something populates this exhaustively. The memory
-     * cache of gedra data that #310 anticipates is what would make the stronger reading honest; whoever builds
-     * it should come back and say so here. See deferred-work.md#when-gedra-data-is-held-in-a-memory-cache.
+     * cache of gedra data that #310 anticipates is what would make the stronger reading honest; `GedraDataCache`
+     * now holds a client's gedras, and issue #1309 decides whether a miss here should be allowed to mean "no such
+     * gedra". Until it does, the weaker reading stands.
      */
     val gedraIds: InternCache<GedraId> = InternCache("gedraIds")
 

@@ -104,7 +104,8 @@ object FSENV {
  * **A client's files are reached through [forOwner]** (issue #1282): every key under [FNAME.clientsFolder], in a
  * view that takes that client's folder and no other. This service's own calls refuse a key in any client's folder.
  * Today both reach the one store; the view is the seam by which a client's files could one day be kept in a store
- * of their own (`deferred-work.md`, "When a client must keep its files somewhere other than its deployment's store").
+ * of their own (`docs/development/deferred-work.md`, "When a client must keep its files somewhere other than its
+ * deployment's store").
  *
  * **Who may read or write a file is not decided here.** A bucket and a key say nothing about whose a file is,
  * so the endpoint that composes the key is the one that has checked the caller.
@@ -224,9 +225,9 @@ class FileStoreService : ServiceInitializer {
      * folder ([FNAME.clientKeyPrefix]). The view takes only keys in that folder, so what is a client's is said where
      * it is stored and read, and checked there.
      *
-     * [cxt] is not read today. It is taken so that a store chosen per client (`deferred-work.md`, "When a client must
-     * keep its files somewhere other than its deployment's store") could be looked up here without changing every
-     * call site again.
+     * [cxt] is not read today. It is taken so that a store chosen per client (`docs/development/deferred-work.md`,
+     * "When a client must keep its files somewhere other than its deployment's store") could be looked up here without
+     * changing every call site again.
      */
     @Suppress("UNUSED_PARAMETER")
     fun forOwner(cxt: KdrCxt, owner: String): FileStoreView = FileStoreView(owner)

@@ -18,7 +18,7 @@ object CL {
      * `hub` names the position rather than the purpose. What this client is *for* is exactly what is still
      * being learned, so a name describing the job would risk going stale, while a name for where it sits stays
      * true whatever it comes to hold -- and it survives the future where several internal clients exist, since
-     * one of them is still the hub. See `client-definition.md`.
+     * one of them is still the hub. See `docs/design/client-definition.md`.
      */
     const val hub = "hub"
 

@@ -3,7 +3,11 @@
 Dynamic schema and config: a Kotlin reimplementation of a dynamic,
 schema-driven application runtime. The proposal for this project can be found at
 [Kotlin, KMP, JSON Schema, SDUI, and Claude — the AI's rewrite](https://gyassa.com/personal/kdr-project-ai.html).
-The coding philosophy and conventions for the project are described in [`code-guide.md`](code-guide.md).
+The coding philosophy and conventions for the project are described in
+[`docs/development/code-guide.md`](docs/development/code-guide.md).
+
+Many applications are built from this one runtime. How a deployment, a component, or a client varies what it does --
+and the rule that keeps those variations out of the core -- is mapped in [`docs/extending.md`](docs/extending.md).
 
 ## The workspace
 
@@ -48,14 +52,23 @@ launch           # application entry points; source root is launch/apps (package
 sample           # demo app (file upload/download endpoints) the launcher loads in developer environments
 webapp           # Kotlin/JS + React (antd) front end (the browser bundle)
 appui            # JVM host that serves the webapp bundle under the /wa context root
+edge             # the KdrEdge component: the front door a node booted in the edge role serves (StartEdge)
+multiNodeTest    # the multi-node test harness and the in-backend fixtures it drives (development only)
 bin              # convenience command-line scripts (see Command-line scripts below)
-build-logic      # included build providing the kdr.kotlin-conventions convention plugins
-examples         # templates a deployment copies into the workspace directory
+build-logic      # included build providing the kdr.kotlin-*-conventions convention plugins
+examples         # templates and guides a deployment copies into the workspace directory
+deploy/targets   # one properties file per deploy target (host, user, directories), read by kdr-deploy
+docs             # design, development, deployment, and demo-client documentation
+gradle           # the canonical Gradle wrapper, which kdr-install copies into the workspace directory
+.claude/skills   # the house APIs written down for agent sessions, their examples compiled as tests
 ```
 
 Module dependencies: `base/common` → `base/kernel` (JVM variant); `base/kdn` → `base/common`;
-`config` → `base/common` + `base/kdn`; `sample` → `config`; `appui` → `config`;
-`launch` → `config` + `sample` + `appui`; `webapp` → `base/kernel` (JS variant).
+`config` → `base/common` + `base/kdn`; `sample`, `appui`, `edge`, and `multiNodeTest` → `config`;
+`launch` → `config` + `appui`, with `sample`, `edge`, and `multiNodeTest` on its runtime classpath only;
+`webapp` → `base/kernel` (JS variant). Nothing may compile-depend on `edge`. `launch` picks up `edge` and
+`multiNodeTest` only when the workspace's `settings.gradle.kts` includes them, and leaves `multiNodeTest` out of the
+distribution it builds.
 
 **`base/kernel` is the one worth knowing about.** Its `commonMain` holds pure, transpile-safe Kotlin — no
 `java.*`, no reflection — including the universal exception, the JSON/date/string utilities, the template
@@ -66,11 +79,16 @@ implementations that agree until they do not. Code moved there keeps its origina
 
 ## Building
 
-This project builds with Gradle (Kotlin DSL) on a JDK 25 toolchain. Shared
-build configuration — the Kotlin plugin/version, repositories, the JVM
-toolchain, and the Kotest test stack — lives in the `kdr.kotlin-conventions`
-convention plugin under `build-logic/`, so each module's build script only
-declares `plugins { id("kdr.kotlin-conventions") }` plus its own dependencies.
+This project builds with Gradle (Kotlin DSL) on a JDK 25 toolchain. Shared build configuration — the Kotlin
+plugin/version, repositories, the JVM toolchain, the Kotest test stack, and the Dokka link check — lives in a family
+of three convention plugins under `build-logic/`, so each module's build script only names its plugin plus its own
+dependencies:
+
+| plugin | used by |
+| --- | --- |
+| `kdr.kotlin-conventions` | every other module (plain JVM): `base/common`, `config`, `launch`, `edge`, and the rest |
+| `kdr.kotlin-kernel-conventions` | `base/kernel`, which it gives both a JVM and a JS target |
+| `kdr.kotlin-multiplatform-conventions` | `webapp`, which declares its own JS target |
 
 ### The settings file is supplied per-deployment
 
@@ -161,12 +179,13 @@ front end at once — see [`examples/intellij-dev-setup.md`](examples/intellij-d
 invoke them by path. `kdr-help` lists them with these same one-line descriptions.
 
 ```
-kdr-install        Idempotently set up or update this deployment to run the kdr commands.
+kdr-install        Idempotently set up or update this deployment to run the kdr commands (--reset-how-to: how to undo parts).
 kdr-backend        Run the backend server (StartKt) via :launch:run.
 kdr-edge           Run the edge server (StartEdgeKt) beside an ordinary backend.
 kdr-webapp         Start the Kotlin/JS webapp dev server on http://localhost:8080.
 kdr-tests          Run every module's tests (the `check` task across every subproject).
 kdr-probe          Drive a running instance as a chosen caller: scenarios, or a single call.
+kdr-multinode-db   Create, reset or drop the multi-node harness's local Postgres database (kdr_multinode).
 kdr-run            Launch any Kotlin main class from the project's runtime classpath.
 kdr-create-config  Scaffold the customConfig provider project and wire it into settings.gradle.kts.
 kdr-source-dirs    Regenerate the source-directory manifest (current-source-directories.txt).
@@ -181,7 +200,7 @@ subprocess cannot do); `kdr-install` can add it to your shell's rc file.
 
 Command-line tooling is written in **Kotlin, not shell**: `kdr-run` launches any main class from the runtime
 classpath, and each `bin/` script above it is a thin wrapper that does no deciding. See
-[`code-guide.md`](code-guide.md) for why.
+[`docs/development/code-guide.md`](docs/development/code-guide.md) for why.
 
 ## Testing
 
@@ -193,6 +212,14 @@ Use `check`, not `test`. The multiplatform modules (`base/kernel`, `webapp`) hav
 expose `jvmTest` / `jsNodeTest` — and Gradle runs a named task wherever it exists while saying nothing about
 the projects lacking it, so `test` leaves those modules' results silently absent.
 
+`check` also runs `dokkaGenerate`, with Dokka set to fail on any warning. A KDoc `[link]` that does not resolve
+therefore fails the gate, as a failing test does.
+
+The multi-node harness, `./gradlew :multiNodeTest:harness`, sits outside the gate: it starts three backends on a
+dedicated PostgreSQL database and runs its scenario suites against them, which takes a minute or two.
+`bin/kdr-multinode-db create` makes that database first (`reset` and `drop` are the other two actions), and
+`-Pattach=<urls>` runs the suites against nodes already running instead.
+
 `kdr-probe` drives a **running** instance as a chosen caller, for the checks a unit test cannot make — real
 cookies, the real dispatcher, live roles. Run it with no arguments to list its scenarios.
 
@@ -202,7 +229,7 @@ says when, and what a spec on a shared test instance has to hold to pass it.
 
 ## Conventions
 
-See [`code-guide.md`](code-guide.md). In brief: Kotlin everywhere, minimal
+See [`docs/development/code-guide.md`](docs/development/code-guide.md). In brief: Kotlin everywhere, minimal
 reflection, explicit Map-based serialization, lowerCamelCase constants wrapped
 in upper-cased acronym objects (always referenced qualified), JSON-schema-driven
 configuration, a single universal exception (`KdrException`) and context
@@ -211,12 +238,16 @@ configuration, a single universal exception (`KdrException`) and context
 ## Configuration
 
 Application behavior is varied at startup largely through environment variables (a deliberate choice
-explained in [`code-guide.md`](code-guide.md)). Each variable is **declared once in code** as an `EnvVarDef`
-value — carrying its name, default, and documentation — so the declaration is the reference: the read path
-takes a declared def, so a variable nobody declared cannot even be read. Browse the declarations grouped by
-area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors). A running node also serves the live set — each
-variable and the value it actually resolved to *on that node* — at the operator endpoint
-`/operator/env/reference`, shown as the **Environment** view in the app.
+explained in [`docs/development/code-guide.md`](docs/development/code-guide.md)). Each variable is **declared once in
+code** as an `EnvVarDef` value — carrying its name, default, and documentation — so the declaration is the reference:
+the read path takes a declared def, so a variable nobody declared cannot even be read. Browse the declarations grouped
+by area (`DbEnv`, `NodeUtil`, `LogSetup`, and their neighbors). A running node also serves the live set — each variable
+and the value it actually resolved to *on that node* — at the operator endpoint `/operator/env/reference`, shown as the
+**Environment** view in the app.
+
+The other path is code: a deployment can supply its own configuration class in a project outside this repository,
+which the launcher discovers through `ServiceLoader` and selects by the `KDR_CUSTOM_CONFIG` environment variable.
+[`examples/custom-config.md`](examples/custom-config.md) shows how, and `kdr-create-config` scaffolds the project.
 
 ## Deploying
 
@@ -235,47 +266,66 @@ by the `conf-demo` simulation on any test instance.
 
 ## Design documents
 
-[`gedra-entry.md`](gedra-entry.md) describes the **Gedra entry** — the universal stored entity the next phase
-of the project is built around — together with the JSON-schema constructs it needs (a declared discriminator,
-`if`/`then`/`else`, `g-primaryKey`, `g-derived`). It was written before any of it existed, as a statement of
-intent to design against, and it records what was deliberately left open or postponed. The schema constructs
-have since been built; `g-primaryKey` and the entity store itself have not.
+[`docs/design/gedra/entry.md`](docs/design/gedra/entry.md) describes the **Gedra entry** — the universal stored entity
+the next phase of the project is built around — together with the JSON-schema constructs it needs (a declared
+discriminator, `if`/`then`/`else`, `g-primaryKey`, `g-derived`). It was written before any of it existed, as a statement
+of intent to design against, and it records what was deliberately left open or postponed. Much of it has since been
+built, the schema constructs and the entity store among it. Its section *Changing a gedra: the patch* covers how a
+stored gedra is **changed**: why it is a patch rather than an update, what the input looks like, and the endpoints
+around it. That design is also mostly built, and the section records why decisions changed as well as what they
+became.
 
-[`gedra-config-and-data.md`](gedra-config-and-data.md) is its companion, about everything *around* a single
-entry: how a gedra is identified, how a deployment can be split by client, what one client's definitions may
-see of another's, and what happens when two definitions disagree. It marks each rule as built or intended,
-because it describes a subsystem partway through being written.
+[`docs/design/gedra/config-and-data.md`](docs/design/gedra/config-and-data.md) is its companion, about everything
+*around* a single entry: how a gedra is identified, how a deployment can be split by client, what one client's
+definitions may see of another's, and what happens when two definitions disagree. It marks each rule as built or
+intended, because it describes a subsystem partway through being written.
 
-[`gedra-patch.md`](gedra-patch.md) covers the remaining verb: how a stored gedra is **changed**. Creating,
-reading, listing and deleting exist; changing does not, and it is where the difficulty concentrates — locked
-and process-owned entries, merges of partial data, edits that span several documents and several data kinds,
-and a primary key that lives inside the data it identifies. Like `gedra-entry.md` it was written before the
-code, and it records why decisions changed as well as what they became.
+[`docs/design/gedra/states.md`](docs/design/gedra/states.md) covers **state entries**: a second family of entries, kept
+beside a form's data rather than in it. It sets out the state traits a client declares, the difference between a
+state the platform derives and one a caller asserts, and how states are stored (`GedraDataStates`) and written.
 
-[`client-definition.md`](client-definition.md) describes the **client** — the thing whose id sits in every
-`GedraId`, and which turns out to own more than an identifier: which environments it is enabled in, which
-traits it supports, what its callers are shown, and what happens to its content when it is not there. Like
-the others it was written before the code, and it is grown as decisions settle rather than restated.
+[`docs/design/client-definition.md`](docs/design/client-definition.md) describes the **client** — the thing whose id
+sits in every `GedraId`, and which turns out to own more than an identifier: which environments it is enabled in, which
+traits it supports, what its callers are shown, and what happens to its content when it is not there. Like the others it
+was written before the code, and it is grown as decisions settle rather than restated. Much of it is now built.
 
-[`ui-block.md`](ui-block.md) names the **UiBlock** — a registered piece of declared presentation structure,
-merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
-It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact
-expressions by the backend before the response is built, fragment references by the frontend against copy it
-has already cached, and how SDUI data invokes frontend functionality at all — by naming an entry in a
-hardwired registry, with the names in shared kernel code so the reference is checkable at boot. Nothing is
-built yet; it exists so the term and the settled decisions are not buried in an issue thread.
+[`docs/design/sandboxes.md`](docs/design/sandboxes.md) describes a client's **sandbox**: a second client, linked to
+it, that runs the client's drafts against users and data of its own, so a change is seen working before it is
+published. It covers why a sandbox is built as a client, what it runs, who may enter it and with what authority, and
+how it changes the way edits and publishing behave.
 
-[`reporting.md`](reporting.md) covers **named reports**: a client's chosen trait values — and facts about a form,
-its workflows and its owner — promoted to columns, a row per form or per group. It sets out the path grammar, how
-values are combined within a form and rolled up across a group, the checks a report passes when configuration loads,
-and what the cursor-paged run guarantees when forms change during a walk.
+[`docs/design/file-refs.md`](docs/design/file-refs.md) covers a client's **file refs**: named images its copy shows
+by name, with the bytes in the file store or on the node's own disk. It sets out where the bytes may be and who may
+name them, how a configuration holding refs is judged when a file can go missing, and how a ref is served.
+
+[`docs/design/ui-block.md`](docs/design/ui-block.md) names the **UiBlock** — a registered piece of declared presentation
+structure, merged from layers as a fragment is, and the counterpart to Gedra (stored entity data) and fragments (copy).
+It records what a UiBlock is the unit of, and where each kind of reference inside one resolves: cfact expressions by the
+backend before the response is built, fragment references by the frontend against copy it has already cached, and how
+SDUI data invokes frontend functionality at all — by naming an entry in a hardwired registry, with the names in shared
+kernel code so the reference is checkable at boot. It was written as intent, so that the term and the settled decisions
+were not buried in an issue thread, and is now largely built.
+
+[`docs/design/user-search.md`](docs/design/user-search.md) describes the **admin user search**: a scan of the
+in-memory user cache rather than a SQL query, which is why it can search and sort on values that are not columns, and
+the server-driven-UI shape it was given, in which one shared description of the fields drives both the backend and the
+console.
+
+[`docs/design/reporting.md`](docs/design/reporting.md) covers **named reports**: a client's chosen trait values — and
+facts about a form, its workflows and its owner — promoted to columns, a row per form or per group. It sets out the path
+grammar, how values are combined within a form and rolled up across a group, the checks a report passes when
+configuration loads, and what the cursor-paged run guarantees when forms change during a walk.
+
+`docs/history/` keeps designs that were tried and superseded, left as written so the reasoning is not
+lost. Today it holds one, [`gedra-workflow.md`](docs/history/gedra-workflow.md), the first workflow design, retired
+before most of it was built.
 
 ## Deferred work
 
 Work we have deliberately put off — each with the condition that should make us revisit it — lives in
-[`deferred-work.md`](deferred-work.md), **not** in the issue tracker. The tracker stays a queue of things to
-act on soon; deferred items become issues only once their trigger fires. Consult and append to that file when
-you defer something rather than leaving a "someday" issue open.
+[`docs/development/deferred-work.md`](docs/development/deferred-work.md), **not** in the issue tracker. The tracker
+stays a queue of things to act on soon; deferred items become issues only once their trigger fires. Consult and append
+to that file when you defer something rather than leaving a "someday" issue open.
 
 ## License
 

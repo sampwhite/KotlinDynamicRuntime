@@ -7,7 +7,9 @@ per form, or one row per group of forms. It is what an administrator asks for wh
 what is X", or "how many forms have each X, and what do their Ys add up to".
 
 Built in slices under #975: cursor paging (#976), report paths (#977), evaluating them (#978), report definitions
-(#979), the registry that checks them when configuration loads (#980), and the endpoints that run them (#981).
+(#979), the registry that checks them when configuration loads (#980), and the endpoints that run them (#981). Two
+later efforts added most of what follows them: history under #1033 (#1034–#1037), and the typed per-report endpoints
+under #1083 (#1086, #1088, and #1128).
 
 ## A report
 
@@ -232,10 +234,10 @@ only when every snapshot asks the same question -- over the **whole client**, st
 the columns as they were bound). A report grouping by nothing is snapshotted as its one total row: a total over
 time is a chart too. A snapshot's rows are cut at 2,000 groups, in key order, and say so.
 
-Two things take one:
+Three things take one:
 
-- **`POST /clientAdmin/report/snapshot`** -- now, by hand (trigger `manual`), for any grouped report (`reportId`, and `client` for an
-  administrator who sees every client). The snapshot comes back in the response.
+- **`POST /clientAdmin/report/snapshot`** -- now, by hand (trigger `manual`), for any report, grouped or not
+  (`reportId`, and `client` for an administrator who sees every client). The snapshot comes back in the response.
 - **The nightly `reportHistory` job** (issue #1035), at 03:30 UTC -- half an hour after the derived-state recompute,
   so a report grouping by a form's status snapshots what that recompute just brought up to date -- for every
   client, each report that declares `history = true` (a global one for every client), once per scheduled slot: a
@@ -243,6 +245,8 @@ Two things take one:
   run reads fails that report's task and the launch goes on; a dry run notes what it would take and stores nothing.
   A sandbox is skipped: a nightly series of its preview data is nobody's chart (a snapshot by hand there still
   works). It can be launched by hand through the operator's job endpoints, as any job can.
+- **The `report-history-demo` simulation** (issue #1036) stores backdated snapshots as demo data (trigger
+  `simulated`), so a test instance has a series to chart; see *Samples*.
 
 **`GET /clientAdmin/report/history`** lists a report's snapshots for a client, newest first and paged by cursor as
 every reporting endpoint is, with a summary saying whether the job snapshots the report and how many snapshots it
@@ -278,11 +282,14 @@ The sample component declares four reports:
 
 `expensesByYear` and `auditOverview` ask for history (`history = true`), so the nightly job snapshots them.
 
+The conference demo declares two more, `submissionsByTrack` and `questionnaireSummary`, shown bundle by bundle in
+[`demo-client/reports.md`](../demo-client/reports.md).
+
 A fresh node has no forms, so each runs empty. The `report-demo` simulation (issue #997) creates some on a test
 instance that loads the sample -- run it from the webapp's **Simulations** page, or `kdr-probe --url <the node>
-report-demo` (the flag goes before the scenario): 32 acme forms over three owners, five auditors and five reporting years (some with no
-audit, some with open findings) and 10 globex forms with one to four yearly records — a second page of a detail run
-and several groups of a grouped one. Each run adds forms; an in-memory node needs it again after a restart.
+report-demo` (the flag goes before the scenario): 32 acme forms over three owners, five auditors and five reporting
+years (some with no audit, some with open findings) and 10 globex forms with one to four yearly records — a second
+page of a detail run and several groups of a grouped one. Each run adds forms; an in-memory node needs it again after a restart.
 
 The `report-history-demo` simulation (issue #1036) does the same and then gives the two history reports a series:
 five days of six more acme forms each, with a snapshot of both reports stored after each day's forms and **dated

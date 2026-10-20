@@ -401,13 +401,18 @@ object HFRAG {
 @Suppress("ConstPropertyName")
 object HDOC {
     const val readme = "readme"
+    const val extending = "extending"
     const val codeGuide = "code-guide"
     const val clientDefinition = "client-definition"
     const val deferredWork = "deferred-work"
     const val gedraConfigAndData = "gedra-config-and-data"
     const val gedraEntry = "gedra-entry"
-    const val gedraPatch = "gedra-patch"
+    const val gedraStates = "gedra-states"
+    const val userSearch = "user-search"
+    const val gedraWorkflow = "gedra-workflow"
     const val uiBlock = "ui-block"
     const val reporting = "reporting"
+    const val fileRefs = "file-refs"
+    const val sandboxes = "sandboxes"
     const val license = "license"
 }

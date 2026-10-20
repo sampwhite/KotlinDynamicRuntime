@@ -48,7 +48,7 @@ class BrowseListing(val bucket: String, val prefix: String, val folders: List<St
  * **What a folder costs is every name beneath it**, however deep: the folders under a prefix are known only once
  * every object under it has been named, so the top of a bucket names the whole bucket (a list request per thousand
  * names on S3) to show its first folders. Fine at the scale a deployment keeps files today; a bucket of tens of
- * thousands of objects would want the delimiter listing S3 offers (`deferred-work.md`).
+ * thousands of objects would want the delimiter listing S3 offers (`docs/development/deferred-work.md`).
  */
 object FileStoreBrowse {
     /**

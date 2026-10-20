@@ -76,7 +76,7 @@ class ClientSchemaVariantTest : StringSpec({
     }
 
     // Endpoints stay global on a variant, which is what keeps `RequestService`'s path-keyed type caches
-    // sound -- case (a) in `client-definition.md`.
+    // sound -- case (a) in `docs/design/client-definition.md`.
     "a variant shares the global endpoints and tables" {
         val service = schema(boot("variantTest"))
         val variant = service.storeFor(CL.hub)

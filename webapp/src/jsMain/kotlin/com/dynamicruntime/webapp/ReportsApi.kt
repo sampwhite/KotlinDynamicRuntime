@@ -425,7 +425,7 @@ private fun csvRawText(value: Any?, kind: String): String = when (value) {
  * A UTC timestamp as a spreadsheet takes one: `2026-10-05T19:50:31.543Z` written `2026-10-05 19:50:31`. The ISO form
  * -- its `T`, its fraction, its `Z` -- is one spreadsheets commonly leave as text, where the plain form is the one
  * they are documented to read as a date and time. The time is still UTC; the file cannot say so per cell, and
- * `reporting.md` does. Anything else -- a day, a time with another offset -- is written as it is.
+ * `docs/design/reporting.md` does. Anything else -- a day, a time with another offset -- is written as it is.
  */
 fun csvTimestamp(text: String): String =
     if (text.length >= 20 && text[10] == 'T' && text.endsWith("Z") && text[4] == '-' && text[13] == ':') {

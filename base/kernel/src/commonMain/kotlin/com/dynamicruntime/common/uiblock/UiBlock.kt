@@ -2,7 +2,7 @@ package com.dynamicruntime.common.uiblock
 
 import com.dynamicruntime.common.exception.KdrException
 
-/** Well-known keys inside a UiBlock's JSON, and the ordering convention. See `ui-block.md`. */
+/** Well-known keys inside a UiBlock's JSON, and the ordering convention. See `docs/design/ui-block.md`. */
 @Suppress("ConstPropertyName")
 object UIB {
     /**

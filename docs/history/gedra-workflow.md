@@ -1,23 +1,26 @@
 # The Gedra Workflow
 
 **Status: superseded.** Phase 1 of this design shipped as issue #381 and was **retired under issue #533**
-before phases 2–4 were built; the replacement is tracked by issue #532, with its design notes in the private
-`sampwhite/Actions` repo (`kdr-design/thoughts-workflow-poc.md`, `kdr-design/thoughts-gedra-states.md`). Two
-ideas carry forward: the **soft-validation seam** — a completeness gate stops an advance and never fails a
-write; see the soft-validation section of `gedra-patch.md` — and completeness as **presence of an entry, not a
-judgment of its content**. The rest of this document is left as written, as the record of a design that was
-tried, so its arguments are not re-derived.
+before phases 2–4 were built; the replacement is tracked by issue #532. The current workflow model is described by
+`WfDef.kt`, the workflow definition and its KDoc, and by the `kdr-test-clients` skill, which shows workflows being
+defined in a client's configuration and run. Two ideas carry forward: the **soft-validation seam** — a completeness
+gate stops an advance and never fails a write — and completeness as **presence of an entry, not a judgment of its
+content** (see "Tasks declare what is owed" in `docs/design/gedra/entry.md`). The rest of this document is left as
+written, as the record of a design that was tried, so its arguments are not re-derived. Its references to
+`docs/design/gedra/patch.md` are to a document since folded into `docs/design/gedra/entry.md`, as the section
+"Changing a gedra: the patch".
 
 ---
 
 The design of the workflow: a stateful gedra that a **user** fills in, hands to an **advisor**, and moves
 through a sequence of states until it is done — collecting form entries along the way. This is a **declaration
-of intent**, written before the code, in the manner of [`gedra-entry.md`](gedra-entry.md).
+of intent**, written before the code, in the manner of [`docs/design/gedra/entry.md`](../design/gedra/entry.md).
 
-It is a companion to [`gedra-patch.md`](gedra-patch.md), which already specifies the *edit* mechanism a
-workflow uses (the cross-kind `PATCH`, entry locking, soft validation), and to
-[`gedra-config-and-data.md`](gedra-config-and-data.md), which specifies where a *definition* lives. This
-document is about everything those two left as "the workflow decides": the states, the transitions, who may
+It is a companion to `docs/design/gedra/patch.md` (now
+[the patch section of `docs/design/gedra/entry.md`](../design/gedra/entry.md#changing-a-gedra-the-patch)), which
+already specifies the *edit* mechanism a workflow uses (the cross-kind `PATCH`, entry locking, soft validation), and to
+[`docs/design/gedra/config-and-data.md`](../design/gedra/config-and-data.md), which specifies where a *definition*
+lives. This document is about everything those two left as "the workflow decides": the states, the transitions, who may
 take one, and how the thing passes between people.
 
 Decisions are stated plainly. Genuinely unsettled points are under [Open questions](#open-questions) rather
@@ -28,15 +31,15 @@ than papered over.
 The workflow is deliberately a thin layer. Most of what it needs is built:
 
 - **`wfData`** is a defined gedra kind — "data captured while a workflow was followed"
-  ([`GedraId.kt`](base/kernel/src/commonMain/kotlin/com/dynamicruntime/common/gedra/GedraId.kt)). A workflow
+  ([`GedraId.kt`](../../base/kernel/src/commonMain/kotlin/com/dynamicruntime/common/gedra/GedraId.kt)). A workflow
   *instance* is one `gd.wf.` gedra.
 - **`formDoc`** gedras are the forms. A workflow "manages a group of forms which belong to it"
-  (`gedra-patch.md`).
+  (`docs/design/gedra/patch.md`).
 - **The `PATCH`** already crosses kinds in one call, locks entries, deletes/merges/replaces, and applies
   scope up front — so *editing* a workflow and its forms together is done
-  ([`GedraDataService.patchGedras`](base/common/src/main/kotlin/com/dynamicruntime/common/gedra/GedraDataService.kt)).
+  ([`GedraDataService.patchGedras`](../../base/common/src/main/kotlin/com/dynamicruntime/common/gedra/GedraDataService.kt)).
 - **`GedraConfig`** source-code bundles (like
-  [`coreTraits`](base/common/src/main/kotlin/com/dynamicruntime/common/gedra/CoreTraits.kt)) are where traits
+  [`coreTraits`](../../base/common/src/main/kotlin/com/dynamicruntime/common/gedra/CoreTraits.kt)) are where traits
   are authored — "traits now, workflows later." A workflow *definition* is a new member of that bundle.
 - **`SectionRules`** already gates an endpoint section on an off-ladder **capability** (today `allClients`),
   which is exactly the shape the `advisor` role takes.
@@ -58,7 +61,7 @@ gd.wf.acme.u42_loanReview        the workflow instance (wfData) — the state li
 
 The workflow instance is the **root of a small graph**: it names its member forms, and it carries the state.
 A deterministic base id (`u42_loanReview`) means "does user 42 already have a loanReview?" is answered by
-*building the id and asking*, never by a lookup — the property `gedra-config-and-data.md` calls out for
+*building the id and asking*, never by a lookup — the property `docs/design/gedra/config-and-data.md` calls out for
 deterministic ids, and the reason there is no assignee-to-workflow lookup table.
 
 ### Where the state lives — the `data` map, not columns
@@ -121,8 +124,8 @@ different definition names different ones.
 ### Steps: the reopenable task set
 
 A **task** is a step: a unit of editing, declaring the traits its page may touch and the subset of those that
-must be filled for the task to be *complete* (`gedra-patch.md`: "a task declares the traits and key ranges in
-scope for the task edit"). The workflow's tasks are its steps, and completeness is expressed **per task** — a
+must be filled for the task to be *complete* (`docs/design/gedra/patch.md`: "a task declares the traits and key ranges
+in scope for the task edit"). The workflow's tasks are its steps, and completeness is expressed **per task** — a
 `submit` requires *its tasks* complete, and reports which are unfinished when it refuses.
 
 Tasks are also what a targeted **"request changes"** reopens. When the advisor returns a workflow, they name
@@ -145,7 +148,7 @@ any subset, in any combination, and order among tasks is not enforced.
 
 ### Guards, and the soft-validation seam
 
-`gedra-patch.md` already draws the crucial line and this design must not cross it:
+`docs/design/gedra/patch.md` already draws the crucial line and this design must not cross it:
 
 > **Soft validation** is the workflow's. It does **not** fail the write. It stops you *advancing*.
 
@@ -191,8 +194,8 @@ nothing at all.
 Per [Q1], we build toward the config-driven engine, and the buildable-now form of that is a definition
 authored as **source-code config** — a `GedraConfig`, exactly as `coreTraits` is. This realizes the general
 engine (states/transitions/guards are data the engine interprets) while sidestepping the deferred *database*
-config storage (`gedra-config-and-data.md`: "Config written in source code is … declared directly"). The fall
-back to a single concrete workflow, if the engine proves too large this pass, is then just *authoring one
+config storage (`docs/design/gedra/config-and-data.md`: "Config written in source code is … declared directly"). The
+fall back to a single concrete workflow, if the engine proves too large this pass, is then just *authoring one
 definition and not generalizing* — no architectural undo.
 
 The authoring DSL extends the existing `gedraConfig { trait(...) }` with `workflow(...)`:
@@ -222,17 +225,8 @@ fun loanConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, "loanConfig", "acme"
 assets step is wrong"), not in the definition — the definition only says this transition is the kind that sends
 steps back. `submit`/`resubmit` name the tasks they require complete.
 
-**Names follow the owner rules** (issue #921, slice #953). A client's own workflow and its tasks are bare
-(`loanReview`, `income`), as above. A **global** workflow — one a component ships for every client — is
-`<root>:<name>` (`kdr:loanReview`), and so is every task in it (`kdr:income`), because a global workflow is a
-container clients will add tasks to by overlay, and a bare task of core's could one day meet one of theirs. The
-local part is a variable name either way. There is **no shadowing by id**: a client's `loanReview` beside a global
-`kdr:loanReview` is two workflows. A client means to change a global one by *overlaying* it — naming
-`kdr:loanReview` and merging its task list by task id — which is not built yet; a client wanting its own defines a
-bare one. Only the single-instance kinds (creation, survey) still shadow, **by kind**. Since a rooted id is not a
-variable name, every place that uses a workflow id as an identifier takes it as a string: the `WfRef` text
-(`gc.cd.global.loans~1#kdr:loanReview`), stored state keys, query parameters, hash routes, fragment namespaces
-(pulled by string, `%{@t("loanCopy.kdr:loanReview.title")}`, never a bare `${...}` path).
+**Names follow the owner rules** (issue #921, slice #953), which are now stated in
+[Workflow and task ids follow the same owner rules](../design/gedra/config-and-data.md#workflow-and-task-ids-follow-the-same-owner-rules).
 
 The definition is compiled into a **kernel-shared model** (`base/kernel`, beside `GedraConfig`) so the
 **frontend runs the same state machine** the backend enforces — the pattern `CLAUDE.md` names as the point of
@@ -287,7 +281,7 @@ is to take a transition, which requires matching it.
 ### Advisor is a deployment capability role
 
 Per [Q3] **advisor is a deployment capability role** — off the ladder, the same shape as `allClients`
-([`ROLE`/`RoleLadder`](base/kernel), and the capability mechanism in the access-control note of `CLAUDE.md`).
+([`ROLE`/`RoleLadder`](../../base/kernel), and the capability mechanism in the access-control note of `CLAUDE.md`).
 "May act as an advisor" (the capability, gating the advisor *section*) is thus separated from "holds *this*
 workflow" (the assignment). The `WfDefinition.advisorRole` is that capability's name; a deployment naming its
 own sets it there.
@@ -377,8 +371,8 @@ what to show from the same definition the backend runs.
 Two views, because there are two roles:
 
 - **User view** — a workflow's forms rendered as **task pages** (a task declares the traits its page edits —
-  `gedra-patch.md`); a save that maps to `POST /wf/{id}/patch`; and a **Submit** that maps to the transition,
-  showing soft-validation reasons inline against the fields they name rather than as a wall of errors.
+  `docs/design/gedra/patch.md`); a save that maps to `POST /wf/{id}/patch`; and a **Submit** that maps to the
+  transition, showing soft-validation reasons inline against the fields they name rather than as a wall of errors.
 - **Advisor view** — the **queue** (`GET /advisor/queue`), and a read-mostly form view with the advisor's
   transitions (**Approve** / **Request changes**) as the actions, the request-changes path carrying a note
   back to the user.
@@ -424,17 +418,17 @@ Nothing before phase 3 commits to the general engine being worth its weight; pha
   engine **refuses to write** a group assignment rather than approximating one, so nothing has to be migrated
   when the real thing arrives.
 - **Locked entries and reopenability.** *A follow-up phase, gated on entry locking existing at all — which is
-  first a `PATCH`-layer concern (`gedra-patch.md`), not the workflow's.* Locking touches the workflow in both
-  directions. It **produces** locks: `approve` is the "approval has occurred" that locks the entries it signs
-  off (`gedra-patch.md`), so a terminal transition is what would stamp `lockedBy`. And it **respects** them:
-  reopening a task whose editable entries are all locked is moot — the `PATCH` would refuse every edit anyway —
-  so a `return` naming such a task should be *refused*, not left as an empty gesture. The seam is already here:
-  `WfTask.editableTraitIds` is what the reopenable-set check reads; when locks exist, a task is reopenable iff
-  it has at least one unlocked editable entry, and the reopen validation (today only "the task exists") gains
-  that predicate. This is the non-linear reopen model paying a debt it always implied: because the advisor may
-  point at *any* task, the set of tasks that can genuinely be sent back has to be computed, not assumed.
+  first a `PATCH`-layer concern (`docs/design/gedra/patch.md`), not the workflow's.* Locking touches the workflow in
+  both directions. It **produces** locks: `approve` is the "approval has occurred" that locks the entries it signs off
+  (`docs/design/gedra/patch.md`), so a terminal transition is what would stamp `lockedBy`. And it **respects** them:
+  reopening a task whose editable entries are all locked is moot — the `PATCH` would refuse every edit anyway — so a
+  `return` naming such a task should be *refused*, not left as an empty gesture. The seam is already here:
+  `WfTask.editableTraitIds` is what the reopenable-set check reads; when locks exist, a task is reopenable iff it has at
+  least one unlocked editable entry, and the reopen validation (today only "the task exists") gains that predicate. This
+  is the non-linear reopen model paying a debt it always implied: because the advisor may point at *any* task, the set
+  of tasks that can genuinely be sent back has to be computed, not assumed.
 - **Concurrent edits during review.** Once `inReview`, may the user still edit? The lock/`process-only`
-  entry machinery (`gedra-patch.md`) is the tool, but which entries lock on `submit` is a per-definition
+  entry machinery (`docs/design/gedra/patch.md`) is the tool, but which entries lock on `submit` is a per-definition
   policy this document does not fix.
 - **History granularity.** Every transition is recorded in `data`; whether each *edit* is, or only each state
   change, is a volume question deferred until the workflow is real enough to measure.

@@ -311,7 +311,7 @@ non-2xx body is a standardized envelope (issue #103), built by `RequestHandler.e
 - **`errorMessage`** — the message: rendered from fragment copy when the exception carries a `KdrMsg`
   (`KdrException.mkMsg`, issue #108), otherwise the raw `fullMessage()` (the cause chain). A `sensitive` error
   is replaced by a generic sentence where the deployment obfuscates (`KDR_OBFUSCATE_ERRORS`, on in prod); other
-  5xx bodies are not yet redacted on the wire (`deferred-work.md`).
+  5xx bodies are not yet redacted on the wire (`docs/development/deferred-work.md`).
 - **`errorFromFragment`** — whether `errorMessage` is fragment copy rather than a raw message. Always present.
 - **`requestUri`** — as on a success response.
 - **`extraData`** — whatever remains of the exception's bag (e.g. `offset` / `line` / `lineCol`), **nested**

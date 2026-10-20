@@ -272,9 +272,11 @@ Notes:
     client's own refs into it, and refuses a client administrator who tries to name one.
   - The client's directory is named exactly as the client's id is, and is not a link. A sandbox reads its
     parent's directory. Copied to another client, the same entry names that client's own file.
-  - **A template's `clientLocal` ref is each client's own.** A client built on the template reads its own
-    directory, and the template reads the template's: give each one the file, or the ref is a problem for the
-    one that lacks it (a refused boot in development for a client defined in source).
+  - **A template's `clientLocal` ref is each client's own, with the template's file as the default** (issue #1180).
+    A client built on the template reads its own directory first, and the template's only when its own file is
+    absent, so a client replaces the template's picture by putting its own there. A file the client has but that
+    cannot be served is the client's problem, and the template's does not stand in for it. See
+    [Inheritance, sandboxes, and what is stored](../docs/design/file-refs.md#inheritance-sandboxes-and-what-is-stored).
   - A client's administrator names a file from the **Files** section of the client's page (issue #1176), which
     offers it under the upload once a root is open -- a root from the list and a typed path. Behind it are
     `POST /clientAdmin/client/files/local` and `GET /clientAdmin/client/files/roots`, which says which roots are

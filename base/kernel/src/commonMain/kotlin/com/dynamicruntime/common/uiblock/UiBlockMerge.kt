@@ -8,8 +8,13 @@ import com.dynamicruntime.common.content.overlayPrecedence
  * ### The order
  *
  * 1. **Base** layers, in declaration order.
- * 2. **Component** overlays (`client == null`), in declaration order.
- * 3. **This client's** overlays, in declaration order.
+ * 2. Then the overlays, in the order [overlayPrecedence] gives them, declaration order settling ties within a step:
+ *    - **component** overlays (`client == null`);
+ *    - a deployment **flavor**'s, a step fragments have and a UiBlock does not yet use, since no UiBlock layer
+ *      comes from a flavor;
+ *    - what this client **inherited** from the template it extends (issue #945);
+ *    - this client's own from **source** configuration;
+ *    - this client's own from **stored** configuration.
  *
  * Later wins, and a client gets the last word -- the same precedence fragments use, decided the same way: a
  * client is the most specific thing with an opinion, and a component must not be able to take a customer's

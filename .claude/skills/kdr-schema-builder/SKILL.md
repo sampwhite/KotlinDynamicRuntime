@@ -123,7 +123,8 @@ common case (ordinary free text) is already covered. Reach for `preserveWhitespa
 input field whose edge whitespace is content -- a **password** is the canonical case, so its exact bytes are
 stored and matched; `noOuterWhitespace()` (`"reject"`) on a code or identifier where surfacing a paste error
 beats silently cleaning it; `trimmed()` (`"trim"`) only to force the strip on output/stored values too, since
-input already trims. This default is part of the codebase's relaxed-coercion posture (see `code-guide.md`).
+input already trims. This default is part of the codebase's relaxed-coercion posture (see
+`docs/development/code-guide.md`).
 
 ## Standard constraints: `pattern`, exclusive bounds, `uniqueItems` (issue #823)
 

@@ -6,10 +6,9 @@
 // header, carrying the address on the context — lives in `base/common` and stays there. The test for where a
 // behavior belongs: does an ordinary node need it to behave correctly? Yes means common; no means here.
 //
-// `launch` compile-depends on this and registers it in `StartEdge` only, mirroring how `appui` is wired. That
-// is the one allowed reference: `launch` is not a component, and knowing boot roles is its job. When boot-role
-// gating lands, this moves to ServiceLoader discovery with the component self-gating on the `edge` role, and
-// even that reference goes away.
+// `launch` takes it `runtimeOnly`, guarded so a workspace that leaves the module out still configures, and it is
+// discovered through ServiceLoader with the component gating itself on the `edge` boot role -- so nothing anywhere
+// names this module at compile time.
 plugins {
     id("kdr.kotlin-conventions")
 }

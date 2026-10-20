@@ -41,10 +41,10 @@ import com.dynamicruntime.common.util.toOptStr
  * parsing, so re-parsing is what makes a reference to an altered type resolve to the altered form -- for
  * nested constructs, union branches, and array items alike -- with no traversal to get wrong.
  *
- * Endpoints and tables are **shared by reference** with the global store. `client-definition.md` settles that
- * a variant carrying tables identical to global's is harmless and that sharing them is free; endpoints are the
- * same case, and the per-client generated endpoints (`buildClientEndpoints`, issue #387) are added to every
- * store's endpoint map afterward rather than changing what this does.
+ * Endpoints and tables are **shared by reference** with the global store. `docs/design/client-definition.md` settles
+ * that a variant carrying tables identical to global's is harmless and that sharing them is free; endpoints are the
+ * same case, and the per-client generated endpoints (`buildClientEndpoints`, issue #387) are added to every store's
+ * endpoint map afterward rather than changing what this does.
  *
  * The per-client entry unions are built here too, from `supportedTraits(client)`, but only where they differ
  * from global's (`changedUnions`). Applying a variant to a request happens elsewhere: `SchemaService.storeFor`

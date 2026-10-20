@@ -43,7 +43,7 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  *
  * Nothing in [base] or [overlay] is written to. A part the overlay does not mention is the base's value, shared by
  * reference -- a variant may create new nodes and point at old ones; it must not write into old ones
- * (`client-definition.md`).
+ * (`docs/design/client-definition.md`).
  */
 fun mergeOverlay(spec: MergeSpec, base: Map<String, Any?>, overlay: Map<String, Any?>, path: String = ""): MergeOutcome {
     val problems = mutableListOf<Problem>()

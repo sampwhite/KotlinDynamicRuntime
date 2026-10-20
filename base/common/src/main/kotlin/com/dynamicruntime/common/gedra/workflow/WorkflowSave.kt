@@ -23,8 +23,8 @@ import com.dynamicruntime.common.gedra.entryDataOf
  *    support, or an entry whose trait the task never declared. These are programming or client errors, not a
  *    person's incomplete form, and a caller cannot make progress by "trying harder".
  *  - An **incomplete form** is a *result*, not an error: [WSF.saved] false with [WSF.unmetTraits] naming the
- *    required traits no entry satisfied. That is the soft-validation seam `gedra-patch.md` draws -- the gate
- *    stops the save without failing the call, and it says exactly what to go fill in.
+ *    required traits no entry satisfied. That is the soft-validation seam `docs/design/gedra/entry.md` draws ("Changing
+ *    a gedra: the patch") -- the gate stops the save without failing the call, and it says exactly what to go fill in.
  *
  * A `create` save makes the gedra ([GedraDataService.createGedra]), stamping the workflow reference under
  * `creationWorkflowId`, and answers with the stored row the way `formDoc/create` does -- under [WSF.item]. An
