@@ -96,10 +96,11 @@ class ClientCFactTest : StringSpec({
         // was reachable only by people running the deployment, for whom every client is already theirs;
         // `clientOperator` admits a customer's own operator or admin, and a customer able to read their
         // neighbors' vocabulary is the same leak that decided cfact names are not held unique across clients.
-        // Refused for a confined operator as well as a confined admin -- neither holds `allClients`.
-        globexAdmin.expectError(EXC.badInput, clientPath(CFD.cfactsPath, SC.acme))
-        acmeAdmin.expectError(EXC.badInput, clientPath(CFD.cfactsPath, SC.globex))
-        acmeOperator.expectError(EXC.badInput, clientPath(CFD.cfactsPath, SC.globex))
+        // Refused for a confined operator as well as a confined admin -- neither holds `allClients` -- and as a client
+        // with no reference of its own is: another client's endpoint is as missing as one that does not exist (#1293).
+        globexAdmin.expectError(EXC.notFound, clientPath(CFD.cfactsPath, SC.acme))
+        acmeAdmin.expectError(EXC.notFound, clientPath(CFD.cfactsPath, SC.globex))
+        acmeOperator.expectError(EXC.notFound, clientPath(CFD.cfactsPath, SC.globex))
     }
 
     "an expression may name a client's cfact only in that client's scope" {

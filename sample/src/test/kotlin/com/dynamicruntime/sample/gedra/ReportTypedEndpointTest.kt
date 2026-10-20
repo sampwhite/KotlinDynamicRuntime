@@ -209,12 +209,14 @@ class ReportTypedEndpointTest : StringSpec({
         // One who sees every client may call any client's.
         walk(full, run(SC.globex, SC.yearlyNotes)).size shouldBe 1
         walk(full, run(SC.acme, SC.auditOverview)).size shouldBe formIds.size
-        // Another client's administrator may not, in either direction.
-        globexAdmin.expectError(EXC.notAuthorized, run(SC.acme, SC.auditOverview))
-        admin.expectError(EXC.notAuthorized, aggregate(SC.globex, SC.yearlyNotes))
-        // Nor one who administers no client, nor an ordinary user of this one.
+        // Another client's administrator may not, in either direction -- and is answered as for a client or a report
+        // that does not exist, so the refusal says neither that the client is there nor which reports it has (#1293).
+        globexAdmin.expectError(EXC.notFound, run(SC.acme, SC.auditOverview))
+        admin.expectError(EXC.notFound, aggregate(SC.globex, SC.yearlyNotes))
+        // Nor one who administers no client (in `public`, to whom acme's endpoint is as missing as for another client's
+        // administrator), nor an ordinary user of this one (theirs to call, and refused for the role).
         TestUser.create(cxt, "typed-self@example.com", level = ROLE.admin, userClient = CL.public)
-            .expectError(EXC.notAuthorized, run(SC.acme, SC.auditOverview))
+            .expectError(EXC.notFound, run(SC.acme, SC.auditOverview))
         owner.expectError(EXC.notAuthorized, run(SC.acme, SC.auditOverview))
     }
 

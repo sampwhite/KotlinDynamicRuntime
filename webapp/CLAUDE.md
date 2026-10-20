@@ -435,8 +435,9 @@ rather than at runtime.
 **From a user to what is theirs** (issue #1081): each row ends in a **Go to** column -- `Forms · Client`, the
 `UserLinks` component -- and the editor of an existing user shows the same two links under its Client field. `Forms`
 is `userFormsHref`: the forms listing confined to that user **by id, never by address**. The listing's `user` takes
-either, but an address names a person, and the backend resolves it to their *default* user, which for somebody with
-users in two clients (or two personas in one) need not be the row the link was on. For an `allClients` administrator
+either, but an address names a person, and the backend resolves it to one of their users the caller may see -- their
+*default* when it is one of those, else their first (issue #1293) -- which for somebody with users in two clients (or
+two personas in one) need not be the row the link was on. For an `allClients` administrator
 the link also carries the user's `client` -- when it is one this node carries (`userFormsSurface`, read off the
 page's `clientChoices`) -- so the listing is drawn on that client's surface; for a client not carried here it carries
 none, since a surface that does not exist would fail to load where the bare link still lists the user's forms. A
@@ -450,7 +451,8 @@ says who the listing is confined to on a line beneath it: "User 12: Pat Lee — 
 (`scopeUserLabel`). That comes from **the listing itself** (issue #1095): its `summary` carries `scopeUser`, the user
 the server resolved the request's `user` to, so the name is of the rows on screen by construction, a user with no
 forms is still named, and there is no second request. It matters most for an address, which names a person: the
-server resolves it to their default user, and this line is the only thing that says which of their users that was.
+server resolves it to one of their users in the caller's reach (their default where it can), and this line is the
+only thing that says which of their users that was.
 The bracket is the persona and its suffix (the client first, for an `allClients` administrator) -- always, since
 saying it costs a word where finding out whether the person has other users would cost a lookup.
 

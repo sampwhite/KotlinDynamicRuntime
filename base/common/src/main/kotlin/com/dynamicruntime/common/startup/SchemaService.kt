@@ -1689,6 +1689,19 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             )
         }
 
+        /**
+         * Whether [endpoint] is open to [cxt]'s caller **as a client's own** (issue #1293): one bound to no client is;
+         * one bound to a client is open to that client's people and to an administrator who may look at every client
+         * ([ROLE.allClients]) -- the rule [catalogClient] names a surface by -- and to nobody else. For anybody else
+         * another client's copy is as absent as a client that does not exist: the dispatcher answers it as a missing
+         * path, and the catalog's lookup as no match, so neither says which clients have endpoints of their own (and
+         * the lookup does not hand out another client's schema).
+         */
+        fun clientEndpointOpenTo(cxt: KdrCxt, endpoint: KdrEndpoint): Boolean {
+            val client = endpoint.client ?: return true
+            return client == cxt.userProfile.client || cxt.userProfile.roles.contains(ROLE.allClients)
+        }
+
         private fun hasEndpoints(cxt: KdrCxt, client: String): Boolean =
             // Read optionally, not through the throwing get(): "this node advertises no endpoints for that
             // client" is the right answer when no store has been compiled, and keeps catalogClient on the
@@ -1884,8 +1897,10 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // which from the outside look identical.
             // A caller without env auth may look up only what the listing shows them (issues #489, #1128) --
             // otherwise the single-lookup would be a one-call way past the restriction.
+            // Another client's own endpoint is no match for a caller who may not look at that client (issue #1293),
+            // as a client that does not exist is none.
             val found = surface.schema.endpoints["$path:$method"]
-                ?.takeIf { it.existsFor(cxt) && (cxt.isEnvAuthEffective || shownWithoutEnvAuth(cxt, it)) }
+                ?.takeIf { it.existsFor(cxt) && clientEndpointOpenTo(cxt, it) && (cxt.isEnvAuthEffective || shownWithoutEnvAuth(cxt, it)) }
             val endpoint = found?.takeIf { isVisibleTo(cxt, it) }
             explainAccess(cxt, if (found != null && endpoint == null) listOf(found) else emptyList())
             val renderings = listOfNotNull(endpoint).map { renderEndpoint(it, surface.schema.defs) }

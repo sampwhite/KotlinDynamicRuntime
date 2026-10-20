@@ -1235,6 +1235,11 @@ class GedraDataService : ServiceInitializer {
                     "'${kind.name}'. A gedra id already says what kind it is, so the two have to agree.",
             )
         }
+        // Reach first (issue #1293): the edits below are judged by how the id's client declares its traits, which a
+        // caller who cannot reach the form must not learn by how their patch is refused.
+        if (queryGedra(cxt, target.gedraId.fullId, kind, scope) == null) {
+            throw KdrException("No ${kind.name} gedra '${target.gedraId}'.", code = EXC.notFound)
+        }
         // One edit per entry, not per trait: two edits may name two *different* entries of one keyed trait --
         // which is the whole point of a primary key (issue #487) -- but naming one entry twice is still
         // contradictory, a "replace" written twice or a delete racing a merge, with no honest reading. The
@@ -1258,9 +1263,6 @@ class GedraDataService : ServiceInitializer {
                     },
                 )
             }
-        }
-        if (queryGedra(cxt, target.gedraId.fullId, kind, scope) == null) {
-            throw KdrException("No ${kind.name} gedra '${target.gedraId}'.", code = EXC.notFound)
         }
     }
 

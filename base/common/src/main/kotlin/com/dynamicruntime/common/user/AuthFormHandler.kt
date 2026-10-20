@@ -279,8 +279,10 @@ class AuthFormHandler(
         isEntity: Boolean?, name: String?, formAuthToken: String, verifyCode: String,
     ): Map<String, Any?> {
         requireValidToken(cxt, formAuthToken)
+        // An id with no user is refused as a wrong code for one that has a user (issue #1293): a form token is all
+        // an anonymous caller needs to ask, so a distinct "not found" would let anybody count the user ids there are.
         val row = userService.queryByUserId(cxt, userId)
-            ?: throw KdrException("User $userId could not be found.", code = EXC.notFound)
+            ?: refuseUnknownLogin(cxt, userId.toString(), formAuthToken, verifyCode)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode)
         if (username != null) {
             val other = userService.queryByUsername(cxt, username)
