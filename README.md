@@ -195,6 +195,10 @@ the projects lacking it, so `test` leaves those modules' results silently absent
 `kdr-probe` drives a **running** instance as a chosen caller, for the checks a unit test cannot make — real
 cookies, the real dispatcher, live roles. Run it with no arguments to list its scenarios.
 
+`-Pkdr.concurrentSpecs=4` runs the specs of `base/common`, `base/kdn` and `sample` four at a time — a bug-finding
+run, worth making after a change to caching or to how a client's configuration is resolved. The `kdr-testing` skill
+says when, and what a spec on a shared test instance has to hold to pass it.
+
 ## Conventions
 
 See [`code-guide.md`](code-guide.md). In brief: Kotlin everywhere, minimal

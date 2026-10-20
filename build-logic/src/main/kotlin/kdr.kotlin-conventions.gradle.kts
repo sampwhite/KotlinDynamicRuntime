@@ -40,6 +40,9 @@ dependencies {
     add("testImplementation", "io.kotest:kotest-assertions-core:6.2.1")
 }
 
+/** The Gradle property, and the test JVM's system property, that turns on concurrent specs (issue #1078). */
+val concurrentSpecsProperty = "kdr.concurrentSpecs"
+
 // Kotest runs on the JUnit Platform.
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
@@ -50,6 +53,17 @@ tasks.withType<Test>().configureEach {
     // extension tests: `InstanceRegistry` keeps every instance a suite boots for the life of the JVM, so the
     // suite's heap only grows, and raising the ceiling postpones rather than ends this.
     maxHeapSize = "1536m"
+    // Concurrent specs, for an occasional bug-finding run (issue #1078): `-Pkdr.concurrentSpecs=4` runs four specs
+    // at a time, each on its own thread, in the modules carrying a Kotest `ProjectConfig` that reads it. Unset, specs
+    // run one after another, as always. Declared as the test's system property, so changing it reruns the tests.
+    // Checked here rather than in the config, which Kotest loads quietly: a mistyped value there would run the specs
+    // one at a time without saying so, when the run was asked for to find concurrency bugs.
+    providers.gradleProperty(concurrentSpecsProperty).orNull?.let { value ->
+        require((value.toIntOrNull() ?: 0) >= 1) {
+            "-P$concurrentSpecsProperty is '$value'; it has to be a whole number of specs at a time, 1 or more."
+        }
+        systemProperty(concurrentSpecsProperty, value)
+    }
 }
 
 
