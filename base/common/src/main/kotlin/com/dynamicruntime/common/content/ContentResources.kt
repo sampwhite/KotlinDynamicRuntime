@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.content
 
+import com.dynamicruntime.common.util.isPlainName
 import com.dynamicruntime.common.util.crc32Hex
 import java.util.concurrent.ConcurrentHashMap
 
@@ -68,7 +69,7 @@ object ContentResources {
 
     /** A content file id must be a plain file-name token (guards the classpath lookup against traversal). */
     fun isSafeFileId(fileId: String): Boolean =
-        fileId.isNotEmpty() && fileId.all { it.isLetterOrDigit() || it == '-' || it == '_' }
+        fileId.isPlainName("-_")
 
     /** The raw bytes of `<dir>/<fileId>.md`, or null when the id is unsafe or the resource is absent. */
     fun readBytes(dir: String, fileId: String): ByteArray? {

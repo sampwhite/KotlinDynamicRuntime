@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.util.isPlainName
 import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
@@ -270,7 +271,7 @@ object EnvAuthRules {
         if (trimmed.isEmpty() || trimmed.length > ENVA.maxAddressLength) {
             return null
         }
-        if (!trimmed.all { it.isLetterOrDigit() || it in ENVA.extraAddressChars }) {
+        if (!trimmed.isPlainName(ENVA.extraAddressChars)) {
             return null
         }
         val at = trimmed.indexOf(ADMR.atChar)

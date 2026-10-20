@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.user
 
+import com.dynamicruntime.common.util.isPlainName
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.exception.KdrException
@@ -11,8 +12,7 @@ import com.dynamicruntime.common.util.hashPassword
 
 /** Validates a username: starts with a letter, contains only letters/digits/underscore, at least 4 chars. */
 fun checkValidUsername(username: String) {
-    val valid = username.length >= 4 && username[0].isLetter() &&
-        username.all { it.isLetterOrDigit() || it == '_' }
+    val valid = username.length >= 4 && username.isPlainName("_", letterFirst = true)
     if (!valid) {
         throw KdrException.mkInput(
             "Username '$username' is invalid: it must start with a letter, contain only letters, digits, or " +

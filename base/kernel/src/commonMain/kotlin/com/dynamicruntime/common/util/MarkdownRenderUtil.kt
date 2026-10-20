@@ -175,6 +175,24 @@ object TextSink : MarkdownSink {
 }
 
 /**
+ * Matches a KDoc symbol reference -- a bare name between `[` and `]`, dotted members allowed -- and not a `[text](url)`
+ * link. The closing bracket is escaped: the JVM takes a bare one, but the browser's engine, in the Unicode mode Kotlin/JS
+ * compiles a `Regex` to, refuses it.
+ */
+private val kdocReference = Regex("""\[([A-Za-z][\w.]*)\](?!\()""")
+
+/**
+ * [this] KDoc-written prose made ready for a Markdown document: each symbol reference, a name between `[` and `]` --
+ * a link in the source, a dangling one in CommonMark -- becomes an inline-code span, so it reads as "a name" rather
+ * than a broken link. A real `[text](url)` link is left alone (the negative lookahead).
+ *
+ * For the operator references that show a declaration's own documentation (issue #1275): the environment-variable
+ * reference and the cfacts reference, which had a copy each. Belongs to neither, so either may stop calling it if it
+ * ever wants other treatment, without the other noticing.
+ */
+fun String.kdocRefsAsCode(): String = kdocReference.replace(this) { "`${it.groupValues[1]}`" }
+
+/**
  * Escapes every character that could open or close an inline construct in [this], so it renders as written in
  * either output. What a caller substituting an untrusted *value* into Markdown applies to it (issue #795): the
  * mails do, so an address like `_ops_@acme.test` reaches both parts verbatim.

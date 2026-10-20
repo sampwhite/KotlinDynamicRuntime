@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.operator
 
+import com.dynamicruntime.common.util.kdocRefsAsCode
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EVSRC
 import com.dynamicruntime.common.context.EnvVarDef
@@ -74,20 +75,9 @@ private fun appendVar(sb: StringBuilder, config: KdrInstanceConfig, def: EnvVarD
         else -> sb.append(inlineCode(value)).append(" -- from ").append(from).append(".\n\n")
     }
 
-    sb.append("**Default when unset:** ").append(prose(def.defaultDoc)).append("\n\n")
-    sb.append(prose(def.description)).append("\n\n")
+    sb.append("**Default when unset:** ").append(def.defaultDoc.kdocRefsAsCode()).append("\n\n")
+    sb.append(def.description.kdocRefsAsCode()).append("\n\n")
 }
-
-/** Matches a KDoc symbol reference -- a bare name between `[` and `]` (dotted members allowed), not a `[text](url)` link. */
-private val kdocReference = Regex("""\[([A-Za-z][\w.]*)](?!\()""")
-
-/**
- * A def's KDoc prose rendered for the operator document: a symbol reference, a name between `[` and `]` --
- * clickable in the source for a developer, but a dangling link if dropped into CommonMark verbatim -- becomes an
- * inline-code span, which reads as "a name" rather than a broken link. A real `[text](url)` link is left alone (the
- * negative lookahead); the descriptions carry none today, but the guard keeps this honest if one is ever added.
- */
-private fun prose(text: String): String = kdocReference.replace(text) { "`${it.groupValues[1]}`" }
 
 /** Plain words for a resolution source, so the document reads for an operator rather than naming a constant. */
 private fun sourceText(source: String): String = when (source) {

@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra.report
 
+import com.dynamicruntime.common.util.isPlainName
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.isBareKeyChar
 import com.dynamicruntime.common.gedra.keyListText
@@ -424,4 +425,4 @@ private class ReportPathScanner(private val text: String) {
  * whitespace or a quote is far likelier a slip than a name.
  */
 fun isReportFieldName(name: String): Boolean =
-    name.isNotEmpty() && name.all { it.isLetterOrDigit() || it == '_' || it == '-' || it == '$' }
+    name.isPlainName("_-$")
