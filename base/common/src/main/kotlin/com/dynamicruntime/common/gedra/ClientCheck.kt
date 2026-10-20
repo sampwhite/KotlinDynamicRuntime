@@ -237,13 +237,11 @@ private fun ownProblem(
  * where the clock is today, not where the client's people are, and is wrong half the year wherever clocks change.
  */
 internal fun timeZoneFault(zone: String): String? = when {
-    zone == utcZoneId -> null
+    zone == ClientPresentationFields.utcZone -> null
     zone !in TimeZone.availableZoneIds -> "is not an IANA time zone (America/Chicago, say)"
-    zone.startsWith("Etc/") || '/' !in zone -> "is an offset or an abbreviation; name the place's zone (America/Chicago, say)"
+    !ClientPresentationFields.isPlaceZoneName(zone) -> "is an offset or an abbreviation; name the place's zone (America/Chicago, say)"
     else -> null
 }
-
-private const val utcZoneId = "UTC"
 
 /** What is wrong with [ClientDef.enabledEnvironments], or null. */
 private fun envProblem(config: GedraConfig, def: ClientDef): GedraConfigIssue? {

@@ -40,6 +40,7 @@ import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.common.webasset.WAS
+import kotlin.time.Clock
 
 /**
  * One client as the Clients page lists it (issue #905): a row of `/clientAdmin/clients/overview`. [status] and
@@ -949,7 +950,7 @@ fun clientSummaryRows(clientId: String, row: ClientOverview?, def: ClientDefinit
             add("Domain" to marked(CLD.domainPrefix, info[CLD.customDomain].toOptStr() ?: info[CLD.domainPrefix].toOptStr()?.let { "$it (prefix)" } ?: "\u2014"))
             add("Web resources" to marked(CLD.webResourcesId, text(CLD.webResourcesId)))
             add("Preload" to marked(CLD.preload, if (info[CLD.preload] == true) "Yes" else "No"))
-            add("Time zone" to (info[CLD.timeZone].toOptStr() ?: "None: the deployment's"))
+            add("Time zone" to timeZoneText(info[CLD.timeZone].toOptStr(), Clock.System.now()))
             add("Static config" to marked(CLD.staticConfig, if (info[CLD.staticConfig] == true) "Yes" else "No"))
             add("User labels" to list(info[CLD.userLabels].toJsonListOfStrings()))
             add("Traits" to list(def.traitIds))
@@ -1005,10 +1006,11 @@ fun customerSummaryHref(customerId: String?, row: ClientOverview?, acrossClients
 // --- editing the definition (issue #1026) ---------------------------------------------------------------------
 
 /**
- * What the definition editor says of the time zone (issue #1115): what to write, and that changing it moves nothing
- * already stored.
+ * What the definition editor says of the time zone (issues #1115, #1257): how to find one, and that changing it moves
+ * nothing already stored.
  */
-const val timeZoneEditNote = "The time zone is an IANA name, such as America/Chicago; blank is the deployment's. " +
+const val timeZoneEditNote = "Type a city, a zone's name, or an offset such as -5 to find a time zone beyond the " +
+    "common ones; cleared, the client's is the deployment's. " +
     "Changing it moves no stored moment: a time already saved stays that time, shown in the new zone."
 
 /**

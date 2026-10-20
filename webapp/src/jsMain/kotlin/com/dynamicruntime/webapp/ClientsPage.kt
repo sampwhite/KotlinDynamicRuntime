@@ -609,6 +609,13 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
                         onChange = { e -> set((e.target.checked == true).toString()) }
                     }
                 }
+                ClientPresentationFields.Kind.timeZone -> choiceRow(label) {
+                    TimeZonePicker {
+                        value = draft[name].orEmpty()
+                        disabled = busy
+                        onChange = { v -> set(v) }
+                    }
+                }
                 else -> textField(label, draft[name].orEmpty(), disabled = busy) { v -> set(v) }
             }
         }
