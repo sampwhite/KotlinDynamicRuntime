@@ -1,12 +1,14 @@
 # The Gedra Workflow
 
 **Status: superseded.** Phase 1 of this design shipped as issue #381 and was **retired under issue #533**
-before phases 2–4 were built; the replacement is tracked by issue #532, with its design notes in the private
-`sampwhite/Actions` repo (`kdr-design/thoughts-workflow-poc.md`, `kdr-design/thoughts-gedra-states.md`). Two
-ideas carry forward: the **soft-validation seam** — a completeness gate stops an advance and never fails a
-write; see the soft-validation section of `docs/design/gedra/patch.md` — and completeness as **presence of an entry, not
-a judgment of its content**. The rest of this document is left as written, as the record of a design that was tried, so
-its arguments are not re-derived.
+before phases 2–4 were built; the replacement is tracked by issue #532. The current workflow model is described by
+`WfDef.kt`, the workflow definition and its KDoc, and by the `kdr-test-clients` skill, which shows workflows being
+defined in a client's configuration and run. Two ideas carry forward: the **soft-validation seam** — a completeness
+gate stops an advance and never fails a write — and completeness as **presence of an entry, not a judgment of its
+content** (see "Tasks declare what is owed" in `docs/design/gedra/entry.md`). The rest of this document is left as
+written, as the record of a design that was tried, so its arguments are not re-derived. Its references to
+`docs/design/gedra/patch.md` are to a document since folded into `docs/design/gedra/entry.md`, as the section
+"Changing a gedra: the patch".
 
 ---
 
@@ -14,8 +16,9 @@ The design of the workflow: a stateful gedra that a **user** fills in, hands to 
 through a sequence of states until it is done — collecting form entries along the way. This is a **declaration
 of intent**, written before the code, in the manner of [`docs/design/gedra/entry.md`](../design/gedra/entry.md).
 
-It is a companion to [`docs/design/gedra/patch.md`](../design/gedra/patch.md), which already specifies the *edit*
-mechanism a workflow uses (the cross-kind `PATCH`, entry locking, soft validation), and to
+It is a companion to `docs/design/gedra/patch.md` (now
+[the patch section of `docs/design/gedra/entry.md`](../design/gedra/entry.md#changing-a-gedra-the-patch)), which
+already specifies the *edit* mechanism a workflow uses (the cross-kind `PATCH`, entry locking, soft validation), and to
 [`docs/design/gedra/config-and-data.md`](../design/gedra/config-and-data.md), which specifies where a *definition*
 lives. This document is about everything those two left as "the workflow decides": the states, the transitions, who may
 take one, and how the thing passes between people.
@@ -222,17 +225,8 @@ fun loanConfig(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, "loanConfig", "acme"
 assets step is wrong"), not in the definition — the definition only says this transition is the kind that sends
 steps back. `submit`/`resubmit` name the tasks they require complete.
 
-**Names follow the owner rules** (issue #921, slice #953). A client's own workflow and its tasks are bare
-(`loanReview`, `income`), as above. A **global** workflow — one a component ships for every client — is
-`<root>:<name>` (`kdr:loanReview`), and so is every task in it (`kdr:income`), because a global workflow is a
-container clients will add tasks to by overlay, and a bare task of core's could one day meet one of theirs. The
-local part is a variable name either way. There is **no shadowing by id**: a client's `loanReview` beside a global
-`kdr:loanReview` is two workflows. A client means to change a global one by *overlaying* it — naming
-`kdr:loanReview` and merging its task list by task id — which is not built yet; a client wanting its own defines a
-bare one. Only the single-instance kinds (creation, survey) still shadow, **by kind**. Since a rooted id is not a
-variable name, every place that uses a workflow id as an identifier takes it as a string: the `WfRef` text
-(`gc.cd.global.loans~1#kdr:loanReview`), stored state keys, query parameters, hash routes, fragment namespaces
-(pulled by string, `%{@t("loanCopy.kdr:loanReview.title")}`, never a bare `${...}` path).
+**Names follow the owner rules** (issue #921, slice #953), which are now stated in
+[Workflow and task ids follow the same owner rules](../design/gedra/config-and-data.md#workflow-and-task-ids-follow-the-same-owner-rules).
 
 The definition is compiled into a **kernel-shared model** (`base/kernel`, beside `GedraConfig`) so the
 **frontend runs the same state machine** the backend enforces — the pattern `CLAUDE.md` names as the point of

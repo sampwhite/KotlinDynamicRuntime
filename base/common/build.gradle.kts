@@ -83,11 +83,12 @@ val embedDocs by tasks.registering(Copy::class) {
         "docs/design/client-definition.md" to "client-definition",
         "docs/design/gedra/config-and-data.md" to "gedra-config-and-data",
         "docs/design/gedra/entry.md" to "gedra-entry",
-        "docs/design/gedra/patch.md" to "gedra-patch",
+        "docs/design/gedra/states.md" to "gedra-states",
         "docs/design/ui-block.md" to "ui-block",
         "docs/design/reporting.md" to "reporting",
         "docs/design/file-refs.md" to "file-refs",
         "docs/design/sandboxes.md" to "sandboxes",
+        "docs/design/user-search.md" to "user-search",
     )
     for ((path, docId) in inAppDocs) {
         from(layout.projectDirectory.file("../../$path")) {

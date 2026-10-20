@@ -185,8 +185,8 @@ fun sampleTraits(cxt: KdrCxt): GedraConfig = gedraConfig(cxt, ST.sampleTraits, S
     // the way in (an edit's data is validated as a fragment, `g-optionalContents`, issue #487), so a required
     // field no longer makes `addOrMerge` unreachable; completeness is settled against the merged result. This
     // trait is still **everything optional** on purpose, because that is what real merge targets look like:
-    // their requiredness is a soft rule the workflow owns, not a per-page schema check (see the soft-validation
-    // section of `docs/design/gedra/patch.md`). The questionnaire is the case it is named for: one entry holding a long
+    // their requiredness is a soft rule the workflow owns, not a per-page schema check (see "Changing a gedra: the
+    // patch" in `docs/design/gedra/entry.md`). The questionnaire is the case it is named for: one entry holding a long
     // body of answers, of which a page updates a few.
     trait(
         ST.questionnaireEntry,

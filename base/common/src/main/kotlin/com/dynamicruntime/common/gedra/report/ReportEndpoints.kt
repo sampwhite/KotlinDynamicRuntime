@@ -282,8 +282,8 @@ fun reportSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, REP.namespace) {
     generalEndpoint(
         UADEP.reportSnapshot,
         "Takes a snapshot of a report now (issue #1034): its grouped run -- the report's own grouping and excluded " +
-            "columns, over the whole client -- stored as it is at this moment, and returned. Any grouped report may " +
-            "be snapshotted by hand; the nightly job takes only those that ask for history. Client-wide: refused for " +
+            "columns, over the whole client -- stored as it is at this moment, and returned. Any report may be " +
+            "snapshotted by hand, one grouping by nothing as its one total row; the nightly job takes only those that ask for history. Client-wide: refused for " +
             "an administrator confined to an organization. Refused past ${REP.scanLimitEnvVar.name} forms, as a run is.",
         HttpMethod.POST,
         outputRef = REP.snapshotType,

@@ -75,7 +75,9 @@ bundle. Both abbreviations are two characters, always, so the first six characte
 you read a column of them.
 
 **The client** is the owning client space, or the reserved `global` for anything belonging to the deployment
-rather than to a client. It is the most consequential segment; see [Client separation](#client-separation).
+rather than to a client. It is the most consequential segment; see [Client separation](#client-separation). A
+**sandbox** client (issue #927) is its parent's id with `:sandbox` appended, so a form document in Acme's sandbox is
+`gd.fd.acme:sandbox.e2026…`; see [The sandbox client](../sandboxes.md#the-sandbox-client).
 
 **The base id is opaque.** It is built to be invariant given its inputs, never to be taken apart. Two flavors:
 
@@ -91,12 +93,21 @@ user already have one of these?" is answered by constructing the id and asking, 
 **The suffix** after `~` is optional and means different things by family. For data it is a child's position
 within an imported parent — a spreadsheet's rows share their parent's base id and differ by suffix, so a set
 that arrived together is visible as such and often traceable back to the row. For config it is the
-**revision**, and an absent suffix will mean *the revision active in this context* — which is how a preview
-environment and production can name the same workflow and get different answers.
+**revision** (issue #612), and an absent suffix means *the revision active in this context* — which is how a preview
+environment and production can name the same workflow and get different answers. Two rules go with it:
+
+- **A revision is a canonical whole number**, spelled the one way its integer prints, so `~3`, `~03`, and `~+3` cannot
+  be three ids for one revision: only `~3` is accepted. A data id's suffix is a child index and stays free-form.
+- **A present suffix is lineage, not a pin that execution follows.** A stored reference that names a revision (a
+  `WfRef` on a gedra, recording which bundle revision shaped it) says which revision was current when it was written,
+  for audit and diagnosis. Execution always resolves against the active revision.
 
 Three properties fall out of the format and are worth not breaking:
 
-- **`.` and `~` are unreserved in RFC 3986**, so an id needs no escaping in a URL.
+- **`.` and `~` are unreserved in RFC 3986**, so an id needs no escaping in a URL — except a sandbox's, whose
+  client segment holds a `:`. A colon is legal unescaped in a URL path, query, and fragment, but
+  `encodeURIComponent` escapes it, so a reader decodes an id before parsing it. The colon is not a separator, so
+  parsing is unchanged.
 - **The base id is held to `[A-Za-z0-9_]`**, ASCII only. That keeps the separators out, which is what makes
   the format parseable; it keeps a base id a single token to a log tokenizer, so pasting one into a search
   finds it; and it stops a Cyrillic lookalike minting an id that reads identically to a person and differently
@@ -151,9 +162,9 @@ and then surfaces as a permissions bug.
 
 ## Visibility
 
-A client's definitions may reference definitions **they own, or that `global` owns**. Nothing else. Extending
-a trait and pulling one in to make it available in a client space are both reaches across configs, and both
-are bounded this way.
+A client's definitions may reference definitions **they own, or that `global` owns**. Nothing else, with one
+exception: a client built on a **template** also sees the template's definitions. Extending a trait and pulling one in
+to make it available in a client space are both reaches across configs, and both are bounded this way.
 
 The mechanism is namespace ownership, not a separate store per client:
 
@@ -163,6 +174,11 @@ The mechanism is namespace ownership, not a separate store per client:
 - A config owned by client C may only `$ref` into namespaces owned by **C or `global`**. This holds by
   construction: C's own types sit in C's overlays, never in the global defs, and C's schema is the global defs
   plus C's overlays, so another client's type is simply not there to resolve.
+- **The template exception** (issue #945). A client that extends another (`extendsFromClientId`) runs a copy of each
+  of the template's **source** configs, filed under the client. The copy keeps the template's namespace, so no type is
+  renamed and a `$ref` inside the template's types still resolves, and the template keeps owning that namespace, so
+  the client cannot author into it. Because the copy is the client's own config, an entry the client stores against a
+  template trait resolves against the client. A template's stored configs are never copied.
 
 Global names are owned by **root** (#950): every component declares the owner root its namespaces live under --
 core's one root is `kdr` (`kdr.core`, `kdr.gedra`, ...) -- and a module or config under another owner's root says
@@ -199,6 +215,26 @@ Uniqueness within a client's view would force ugly names — a `name` trait and 
 same thing — except that **a trait declares the set of kinds it applies to**. `name` means the same thing on a
 form document and on workflow data, so it is one trait bound to both. Where two traits genuinely are different
 concepts, they get different ids, which was the right answer anyway.
+
+### Workflow and task ids follow the same owner rules
+
+*Built (issue #921, slice #953).* A client's own workflow and its tasks are bare (`loanReview`, `income`). A
+**global** workflow — one a component ships for every client — is `<root>:<name>` (`kdr:loanReview`), and so is
+every task in it (`kdr:income`), because a global workflow is a container clients will add tasks to by overlay, and a
+bare task of core's could one day meet one of theirs. The local part is a variable name either way, and both forms
+are checked as config is collected (see [What is checked today](#what-is-checked-today)).
+
+There is **no shadowing by id**: a client's `loanReview` beside a global `kdr:loanReview` is two workflows. A client
+is meant to change a global workflow by *overlaying* it — naming `kdr:loanReview` and merging its task list by task
+id — which is not built; a client wanting its own defines a bare one. Only the single-instance kinds, creation and
+survey, shadow, and they shadow **by kind**: a client's creation workflow replaces the global one whatever its id,
+since a client has one answer to how a form is created. A client built on a template holds the same rule against
+the template's workflows.
+
+A rooted id is not a variable name, so every place that uses a workflow id as an identifier carries it as a string:
+the `WfRef` text (`gc.cd.global.loans~1#kdr:loanReview`), stored state keys, query parameters, hash routes, and
+fragment namespaces, which are pulled by string (`%{@t("loanCopy.kdr:loanReview.title")}`), never by a bare `${...}`
+path.
 
 ## A trait's own data lives under `data`
 
@@ -244,14 +280,23 @@ saying so.
 Falling through is right when you are looking across clients and wrong when you are not. Inside one client
 every trait is known, so an unrecognized `traitId` there is a caller error and should be reported as one.
 
-So strictness is the **reader's** choice rather than a second union: one type, and an endpoint validating in
-strict mode refuses to fall into the default instead of a differently-shaped type existing without one. Two
-rules go with that:
+The union does not do that reporting. A reader may refuse the default branch (`SchOpts.allowUnknownVariant`
+off), but it is **on** by default, and no production reader turns it off. That keeps our reading in step with the
+document we publish: a union that declares a default branch says so in its JSON Schema, so a stock validator accepts
+an unknown trait, and our own validator agrees with it.
 
-- **Strict is the default and leniency is opted into.** The lenient direction silently accepts data nobody
-  can interpret, and a mistake in the strict direction reports itself.
-- Endpoints scoped to a single client are strict; endpoints that can see data across clients need the
-  leniency.
+Strictness is applied **at write** instead, where the mistake can be named:
+
+- **A data write refuses a trait its client does not support** (`checkTraitsSupported`, issue #379). A trait id that
+  is misspelled, or that belongs to another client, is a 400 unless the caller sends `allowAdditionalTraits`, which
+  stores it on the default branch. Only what the call writes is checked, so a document holding an entry written
+  earlier, or under the flag, stays editable without it.
+- **A state entry naming no state trait this node declares is refused outright** (issue #597). State traits are
+  global and component-authored, so there is no flag: an unknown one is a caller's mistake, never a client's
+  extension.
+- **Reads stay lenient.** An entry already stored, or one met across clients, falls to the default branch.
+
+So leniency is still what a caller opts into, per write, and a mistake in the strict direction reports itself.
 
 ## What is checked, and what a failure does
 
@@ -319,8 +364,9 @@ is not one is a 400 whose message names each path and what is wrong there, with 
 `extraData.failures` as a request's own input failures are. A path names the slot, the entry by its **key**, and the
 field: `kdr:clientDef.enabledEnvironments[1]`, `kdr:cfactDef[ready].group`. Beyond the shapes, the gate asks what a
 shape cannot say: the client definition's own rules (`readClientDef`, against `WrittenClientInfo`), that a usage
-rule's `display` is a template that parses, and that no type is declared twice in `kdr:schemaDef`, where the second would silently replace the first (a repeat in
-another slot is either legal -- two overlays of one file are two layers -- or refused already as what it is).
+rule's `display` is a template that parses, and that no type is declared twice in `kdr:schemaDef`, where the second
+would silently replace the first (a repeat in another slot is either legal -- two overlays of one file are two layers
+-- or refused already as what it is).
 
 **Only what a write changes is judged.** The gate is handed the configuration's revision as it stands, and an
 entry the write carries unchanged is not judged again -- the trial reload's rule, for its reason: a fault a stored
@@ -353,9 +399,10 @@ hold one. The trial refuses a new one of either.
 
 A conversion fault the reassembly itself finds in a written body -- a client id holding a colon -- is a 400 for the
 same reason, with the fault kept as its cause and its extra data (a parser's code and position) carried up; a fault
-not marked a conversion is still a server error. **The rule and the response are separate**: what a valid definition is does not depend on where it
-arrives, and what happens to an invalid one does. A write is refused; a row already stored is read by the lenient
-reader (`ClientDef.fromInfo`, through `reassembleGedraConfig`), so the deploy that tightens a rule strands nobody.
+not marked a conversion is still a server error. **The rule and the response are separate**: what a valid
+definition is does not depend on where it arrives, and what happens to an invalid one does. A write is refused; a row
+already stored is read by the lenient reader (`ClientDef.fromInfo`, through `reassembleGedraConfig`), so the deploy
+that tightens a rule strands nobody.
 
 The unit is the **client**, not the config. A client's definition is spread across its configs (its `clientDef` in
 one, the traits its workflows collect in another), and a stored config depends only on source code and its own
@@ -469,7 +516,7 @@ is what gives the warning teeth.
 | The config kind, config bundles, traits, and the entry types they generate | **built** |
 | Component-contributed config, and the checks over it | **built** |
 | The environment split for those checks | **built** |
-| The default branch, and strictness as a reader's choice | **built** |
+| The default branch, open on read; an unsupported trait refused at write unless asked for | **built** — #379, #597 |
 | Storing data gedras, and reading them back within a caller's scope | **built** — form documents, #310 |
 | Updating a stored gedra's entries | **built** — the patch, #337 |
 | Client separation across deployments | intended — nothing loads a subset of clients yet; a deployment will name the clients it loads in its own configuration, independent of its environment name |
@@ -478,6 +525,14 @@ is what gives the warning teeth.
 | Traits for stored config, declared separately from data traits | **built** — #316 |
 | File refs: a client's named files, in the file store or on the node's own disk | **built** — see [`docs/design/file-refs.md`](../file-refs.md) |
 | Config revisions, and an absent suffix meaning "active" | **built** — #612 |
+| Stored configuration forgiven at load: a fault dropped at its finest grain, and kept on the client's `issues` list | **built** — #839–#841 |
+| Strict at write: the trial reload, and the slot gate before it | **built** — #843, #1051, #1052 |
+| The schema for schema, generated from the keyword tables and served at `GET /schema/metaSchema` | **built** — #1056 |
+| A write carrying the slots this node does not read | **built** — #1153 |
+| The publish impact report, judged against the client's stored rows | **built** — #935 |
+| Protection tiers: a client runs its latest revision or only its published one, per environment | **built** — #617 |
+| Sandboxes: a client's `<parent>:sandbox`, for trying a change against its own data | **built** — #927, #928; see [`docs/design/sandboxes.md`](../sandboxes.md) |
+| Template extension: a client built on a copy of another's source configuration | **built** — #945 |
 | Promotion from database to source code | intended |
 
 Anything marked *intended* is a rule the built code is shaped to leave room for, not a promise about when it

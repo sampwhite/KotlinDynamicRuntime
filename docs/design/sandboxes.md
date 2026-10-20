@@ -223,8 +223,8 @@ The `kdr-test-clients` skill shows how a test gives its own client a sandbox and
 ## What is not built
 
 - **Clearing a sandbox's data.** A removed sandbox keeps its users and forms, and nothing clears them or resets a
-  sandbox to empty. #925 deferred this. It is not yet recorded in
-  [`docs/development/deferred-work.md`](../development/deferred-work.md).
+  sandbox to empty. #925 deferred this, and it is recorded in
+  [`docs/development/deferred-work.md`](../development/deferred-work.md#when-a-client-wants-to-start-its-sandbox-over).
 - **Another kind of linked client.** The `<parent>:<role>` form allows for one, such as a client for per-client time
   travel, but none exists.
 - **Open issues** that touch sandboxes: tests for access in a few remaining cases (#1201), drafts and the impact check

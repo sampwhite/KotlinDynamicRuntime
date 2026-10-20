@@ -15,8 +15,8 @@ import kotlin.time.Instant
 /**
  * The field names an entry carries outside its trait's own data (issue #297).
  *
- * These are the **envelope**, and the reason [data] exists at all: the envelope is expected to grow —
- * `docs/design/gedra/entry.md` still has `origin`, `lockedBy`, `createdBy` and `updatedBy` to add — and in a flat entry
+ * These are the **envelope**, and the reason [data] exists at all: the envelope is expected to grow — `createdBy` and
+ * `updatedBy` were added this way, and `docs/design/gedra/entry.md` still has `origin` to add — and in a flat entry
  * every one of those additions would be a silent breaking change to any trait that already used that field
  * name. With the trait's fields one level down, the envelope can grow forever and no trait author notices.
  *

@@ -20,12 +20,12 @@ this in more detail later on. Reflection can be used to discover whether a class
 an override configuration class, but such classes should always implement an expected interface whose
 methods do not require reflection to call.
 
-* In the cases where we want to signal that a declaration should be thought of as 'internal' or 'private' 
-even though it is left with open visibility, we annotate it with `@KdrInternal` or `@KdrPrivate` 
-(defined in the `common` project). These are source-level markers only and do not change actual visibility.
-They should be used sparingly and will tend to be applied when we need to make an existing 'internal' or
-'private' attribute/method accessible to other code in a way that has limited logical implications. An
-example scenario is where only a unit test wants to access an attribute or method.
+* In the cases where we want to signal that a declaration should be thought of as 'internal' or 'private'
+even though it is left with open visibility, we annotate it with `@KdrInternal` or `@KdrPrivate` (defined in
+`base:kernel`, though their package is `com.dynamicruntime.common.annotation`). These are source-level markers only
+and do not change actual visibility. They should be used sparingly and will tend to be applied when we need to make
+an existing 'internal' or 'private' attribute/method accessible to other code in a way that has limited logical
+implications. An example scenario is where only a unit test wants to access an attribute or method.
 
 * This code base will use environment variables more than is typical to create variations in configuration on startup.
 Each is **declared once in code** as an `EnvVarDef` value (grouped by area — see `DbEnv`, `NodeUtil`,
@@ -81,15 +81,15 @@ a third party API and is limited to a single file, then the literal string can b
 We knowingly violate Kotlin style on this. Because a lowerCamelCase `const val` trips Kotlin's naming
 inspection, every acronym Object that holds such constants is annotated with `@Suppress("ConstPropertyName")`
 at the object level (one annotation covers all the constants inside it) — see the objects in
-`ExceptionConstants.kt` (`EXC`, `SRC`, `ACT`) and `LogSetup` for the pattern. Do not suppress per-constant.
-If the constant is a string that is a key that is part of a schema, such as in a JSON schema, the name of the 
+`ExceptionConstants.kt` (`EXC`, `SRC`, `ACT`) and `FMETA` in `FileMetaConstants.kt` for the pattern. Do not
+suppress per-constant. If the constant is a string that is a key that is part of a schema, such as in a JSON schema, the name of the 
 string should match its value.
 
 * Constant declarations will always be wrappered by a Kotlin Object whose name is an acronym of 
 the topic to which the constants apply. If the string constants are used across more than one class, they will
 typically be put into a separate Kotlin file that ends with the suffix `Constants.kt` and the Objects will
-not be wrappered by another class or object. The acronym name will have at most five characters and will
-tend to be shorter for constants that are visible in more parts of the code. An exception is made for
+not be wrappered by another class or object. The acronym name will have about six characters at most (`CFACTS`,
+`ENVGRP`) and will tend to be shorter for constants that are visible in more parts of the code. An exception is made for
 constants that are essentially private to a class. Those can be wrappered by a single upper case letter.
 
 * The acronym Object name is always upper-cased, and the constant is always referenced through it in a fully
@@ -179,6 +179,19 @@ prefix for the family of types it owns — the schema layer uses `Sch` (`SchType
 * The `Kdr` prefix is the always-available fallback. Use it for the core, cross-cutting runtime types when
 nothing more specific fits — `KdrCxt`, `KdrException`, `KdrRequest`, `KdrResponse`. If you cannot find a better
 disambiguator and the bare name would be ambiguous, `Kdr` is there.
+
+### KDoc
+
+* A name in square brackets is a **Dokka link**, not emphasis, and it must resolve. Dokka runs with
+`failOnWarning` in all three convention plugins, and `./gradlew check` runs it, so a dangling `[x]` fails the gate
+as a failing test does.
+
+* Write a local variable, a parameter of another function, a placeholder, or any other name that is not a
+resolvable declaration in backticks (`` `name` ``), never in brackets. For a placeholder inside a code span, write
+`<name>` rather than keeping the brackets.
+
+* KDoc in `base:kernel` must not link to a `base:common` symbol. Kernel's Dokka cannot see common, so the link
+dangles; name the common class in backticks or plain text instead.
 
 ### Endpoints that are not the application: `fixture` and `demo`
 
@@ -286,34 +299,20 @@ There are several reasons we choose this, and they compound:
   handler receive a value it does not have to re-clean.
 
 One deliberate asymmetry is worth stating, because it is easy to mistake for inconsistency: we are relaxed
-about **the values flowing through** a schema, but **strict about our own schema-authoring keywords**. The
-`g-` keywords are ours, so their list is closed (`SchGKeywords`, issue #822): a `g-` key that is not one of them
-is refused by name, and so is one of ours whose value has the wrong shape -- `g-allowCoerce: "yes"`, a
-`g-presentation` outside `PRES`, a `g-primaryKey` that is not a list -- as are an unknown error code or a
-`g-outerWhitespace` mode we do not recognize. That kind of mistake is otherwise *silent*: the schema looks like it
-says something and quietly does not. Where the refusal lands follows the configuration rule: in source code it
-fails the boot (outside production); in a client's stored schema it is refused at write, and at load the one
-keyword is dropped and reported. A key without the `g-` prefix is the document's own, and left alone. Leniency is
-for the data; fail-fast is for the schema author.
+about **the values flowing through** a schema, but **strict about our own schema-authoring keywords**. The `g-`
+keywords are ours, so their list is closed (`SchGKeywords`, issue #822): a `g-` key that is not one of them is
+refused by name, and so is one of ours whose value has the wrong shape. The standard keywords this layer reads are
+held to their shape in the same way (`SchStdKeywords`, issue #1053), a few that would imply behavior we do not have
+are refused rather than ignored, and `pattern` is restricted to the syntax the JVM and the browser read alike
+(`SchPattern`), because the same validator runs in both. Any other key is the document's own, and left alone.
+That kind of mistake is otherwise *silent*: the schema looks like it says something and quietly does not. Where the
+refusal lands follows the configuration rule: in source code it fails the boot (outside production); in a client's
+stored schema it is refused at write, and at load the one keyword is dropped and reported. Leniency is for the data;
+fail-fast is for the schema author. The `kdr-schema-builder` skill lists what is refused, and the pattern dialect.
 
-The standard keywords follow the same line from the other side (issue #823). One we read is enforced exactly --
-the length, size and numeric bounds (`exclusiveMinimum` / `exclusiveMaximum` included), `pattern`, `uniqueItems`,
-`const`, `required` -- and is **held to its shape** (`SchStdKeywords`, issue #1053): `type: "strng"`, `required:
-"name"`, `properties: []` and `additionalProperties: "no"` are refused by name, where each used to be read as though
-the keyword were absent, so that a typo in a *value* turned validation off as silently as a misspelled `g-` key
-does. It is the same closed-shape rule, kept to the keywords we interpret, and it lands the same way: the boot
-fails in source, a client's write is refused, and at load the one keyword is dropped and reported -- which for most
-of them changes nothing about how the definition validates, since dropping it is how it was already being read (the
-few that used to stop the whole type compiling now cost the keyword instead of the type). Some of what is refused is
-legal JSON Schema this layer does not read -- a list of types, a tuple of `items`, `true` standing for a schema --
-and the refusal says so, rather than wording it as a typo. A handful that would imply behavior we do not have, or that duplicate a construct of ours,
-are **refused** by name rather than ignored: `enum` (use `g-options`), `allOf`, `anyOf`, `not`,
-`dependentSchemas`, and a `oneOf` without a discriminator. Any other standard or unknown keyword stays allowed --
-a denylist, deliberately, so a document may carry keywords of its own as documentation. `pattern` is ECMA-262, as
-JSON Schema specifies, restricted to the syntax the JVM and the browser read alike (`SchPattern`): the same
-validator runs in both, and a pattern the two engines read differently would accept a value on one side and
-refuse it on the other. When schema is exported, our constructs are emitted as their JSON Schema equivalents
-(`g-options` as `enum`), per `SCH.gPrefix`.
+If schema is ever exported for third-party tooling, our constructs would be emitted as their JSON Schema equivalents
+(`g-options` as `enum`), per `SCH.gPrefix`. Nothing consumes an export today, so none of that is built; see
+[When schema is exported for third-party tooling](deferred-work.md#when-schema-is-exported-for-third-party-tooling).
 
 **The accepted downside.** Relaxed coercion and validation will sometimes let data into the system that
 tighter, stricter rules would have caught and rejected -- a value that was malformed in a way we chose to
@@ -414,8 +413,8 @@ Concretely, a data class hosts its own serialization — implementing a small sh
 `JsonMappable` with `toJsonMap()`) so response handling can be written generically — and a companion method that
 defines its schema type and owns that type's name, with its field-name constants declared right beside it.
 Consumers call `x.toJsonMap()` and `TheType.defineSchema(builder)` rather than re-implementing the mapping or
-re-declaring the fields elsewhere. `KdrEndpoint` (with its `toJsonMap`, `defineInfoType`, and the `EI` field
-constants) is the reference example.
+re-declaring the fields elsewhere. `FileMeta` (with its `toJsonMap`, `fromJsonMap`, and `defineInfoType`, and
+the `FMETA` field constants, kept in the kernel so the webapp reads the same keys) is the reference example.
 
 **A data class also for `copy()`, wherever a caller rebuilds an instance to change one field.** Writing the
 other fields out by hand at a call site is the same failure as scattering the serialization: it compiles, it
@@ -430,8 +429,8 @@ nobody has thought of yet.
 We will use a richly defined Exception class named "KdrException" which will have an attribute to
 specify the HTTP code that should be sent back to a REST call. It defaults to `500`. Generally, we will
 see exceptions in the lens of the HTTP codes they are likely to generate. The exception class will
-also have a `source` attribute indicating in generic terms where the issue showed up. The source code
-will **not** define any other exception classes.
+also have a `source` attribute indicating in generic terms where the issue showed up. The backend and kernel
+code will **not** define any other exception classes.
 
 In general, we will groom our error handling so that if you look at the full stack or errors, you should
 get a good sense of where the error occurred and precisely the source of the issue. In some cases, errors
@@ -493,8 +492,8 @@ at every runtime jar at its build location (the jars stay separate — no resour
 `bin/kdr-run` launches any `main` against it with a fast, plain-`java` start (rebuilding only when sources
 actually changed — it consults a source-directory manifest to decide).
 
-We call one of these a **kdr command**: a thin `bin/kdr-*` shell entry point backed by a Kotlin `main` (in the
-`config` module's `com.dynamicruntime.script` package), launched via `kdr-run`. "Command" avoids collision with
+We call one of these a **kdr command**: a thin `bin/kdr-*` shell entry point typically backed by a Kotlin `main`
+in the `config` module's `com.dynamicruntime.script` package and launched via `kdr-run`. "Command" avoids collision with
 Kotlin's own `.kts` scripting; `kdr-run` itself is the shell-only launcher the others run through.
 
 Two conventions go with this:

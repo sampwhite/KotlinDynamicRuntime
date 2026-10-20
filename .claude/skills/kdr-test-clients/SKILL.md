@@ -1,6 +1,6 @@
 ---
 name: kdr-test-clients
-description: Set up an isolated test scenario by creating a NEW CLIENT (with its own traits, workflows, schema) on a SHARED instance, instead of booting a new instance per test. Because form docs, workflows, and users are isolated by a client boundary, a fresh client id is a clean namespace, so one booted node serves many scenarios. Covers the stored-config capability this rests on — the `gedraConfig` DSL (`defineClient`/`trait`/`workflow`/`cfact`), `GedraConfigService.writeConfig`, `GedraConfigReload.reloadClient` (making config live with no restart), the `/clientAdmin/config/{bundle,bundle/write,bundle/publish,reload,publishedOnly}` HTTP endpoints, and the latest/published-only/static protection tiers (#617). Also covers placing a `TestUser` in the new client, the client-isolation boundary (client-in-id + ReadScope→SQL), and time travel (instance-wide `InstanceClock` today; per-client is a documented but unbuilt seam). Use when writing a test that needs its own client/workflow/trait/schema, when creating or editing a client/workflow/trait/schema in the database at runtime, or when deciding between a new instance and a new client for a scenario.
+description: Set up an isolated test scenario by creating a NEW CLIENT (with its own traits, workflows, schema) on a SHARED instance, instead of booting a new instance per test. Because form docs, workflows, and users are isolated by a client boundary, a fresh client id is a clean namespace, so one booted node serves many scenarios. Covers the stored-config capability this rests on — the `gedraConfig` DSL (`defineClient`/`trait`/`workflow`/`cfact`), `GedraConfigService.writeConfig`, `GedraConfigReload.reloadClient` (making config live with no restart), the `/clientAdmin/config/{bundle,bundle/write,bundle/publish,reload,publishedOnly}` HTTP endpoints, the latest and published-only protection tiers (#617), and `staticConfig`, which is not a tier (#824). Also covers placing a `TestUser` in the new client, the client-isolation boundary (client-in-id + ReadScope→SQL), and time travel (instance-wide `InstanceClock` today; per-client is a documented but unbuilt seam). Use when writing a test that needs its own client/workflow/trait/schema, when creating or editing a client/workflow/trait/schema in the database at runtime, or when deciding between a new instance and a new client for a scenario.
 ---
 
 # Creating clients dynamically, and using one per test scenario
@@ -349,7 +349,7 @@ There is a real clock abstraction (issue #160), but read the scope carefully for
 
 - `base/kdn/src/test/.../GedraConfigReloadTest.kt` — the service path (write + reload + isolation + rollback).
 - `base/kdn/src/test/.../GedraConfigEndpointTest.kt` — the HTTP path as an admin.
-- `base/kdn/src/test/.../GedraConfigTierTest.kt` — the latest/published-only/static tiers.
+- `base/kdn/src/test/.../GedraConfigTierTest.kt` — the latest and published-only tiers, and `staticConfig`.
 - `base/kdn/src/main/.../confdemo/ConfDemo.kt` — **the full worked example of a client definition** (issue #1137): the
   conference demo, a client split into a `base` bundle and a bundle per workflow, built with the DSL and provisioned
   by the `conf-demo` simulation. `docs/demo-client/` walks through its JSON for a reader, and `ConfDemoDocsTest` holds

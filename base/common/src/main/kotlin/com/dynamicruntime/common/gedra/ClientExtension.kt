@@ -37,8 +37,9 @@ import com.dynamicruntime.common.uiblock.UiBlockSource
  * - The template's **client definition** is not cloned: the client defines itself. It takes defaults from the
  *   template's instead -- see [mergeDef].
  *
- * Nothing deeper is merged. A workflow's tasks waiting on #921's task-id rule is the clearest case: a client that
- * changes a template workflow restates it.
+ * Nothing deeper is merged. A workflow's tasks are the clearest case: a task list has an order, and placing a new
+ * task relative to its neighbors is not built (the declared overlay merge, issue #985, leaves anchors open), so a
+ * client that changes a template workflow restates it.
  *
  * Two of the client's own configs defining one id are still the collision they always were -- the merge removes
  * a template definition, never one of the client's.

@@ -5,8 +5,8 @@ as something to design against and argue with.
 
 It is a companion to [`docs/design/gedra/config-and-data.md`](gedra/config-and-data.md), which describes how a gedra is
 identified and how a deployment can be split by client — the mechanism this document gives a definition to —
-and to [`docs/design/gedra/patch.md`](gedra/patch.md), whose endpoints are the first that will need a client's own view
-of a schema.
+and to the patch, in [`docs/design/gedra/entry.md`](gedra/entry.md#changing-a-gedra-the-patch), whose endpoints were
+the first to need a client's own view of a schema.
 
 **Much of it is now built.** Issue #340 was the planning issue. Clients are declared, validated and found
 (`ClientDef`, `ClientService`, issue #343); each present client gets its own schema variant (#356) and its own
@@ -48,8 +48,10 @@ For the client configuration itself, the client has the following attributes.
   so that it would be a legal JavaScript variable name and only have ASCII characters. It is embedded in
   the GedraId. It is unique **without regard to case** (issue #1106): `Acme` beside `acme` would be two clients
   that read as one to a person, so a create is refused (409) for an id another client holds up to case, and the
-  load drops the later of two such definitions -- a reload's own client being the later -- strictly outside
-  production, as any other refused definition.
+  load drops the later of two such definitions -- a reload's own client being the later -- as it does any other
+  refused definition. How strictly follows where the definition came from (issue #839): one in source code is
+  strict outside production, and one in stored configuration is forgiven, dropped with a warning, everywhere but
+  the unit tests.
 * `description` - An optional internal description for humans to understand who, what, or why for the client.
 * `usageType` - An enum list of usage purposes for the client which may grow over time. Some new behaviors
   or features may condition themselves on the usage type to control visibility of changes. 
@@ -57,8 +59,10 @@ For the client configuration itself, the client has the following attributes.
   any strong guarantee that we will not potentially kill the entire client and start over.
   The current list is
   * `production` - Client is being actively used by users who care about the stability of the application.
-  * `test` - The client is a client that exists only to run tests against. A test client may allow
-    certain test fixture endpoints to be available, even in prod.
+  * `test` - The client is a client that exists only to run tests against. A test client was to allow
+    certain test fixture endpoints to be available, even in prod. *Not built that way:* a test endpoint is fenced
+    by the deployment instead, and exists only on a test instance (`forTestingOnly`, issues #125 and #1149), so no
+    client's type opens one in prod. See "Usage types, and what a caller is shown" below.
   * `dev` - The client exists for development work, some real users may try out functionaly, but there is
     no active usage by external users in support of their business. However, the dev environment, when 
     deployed in prod, will attempt to keep to prod style behaviors.
@@ -69,10 +73,11 @@ For the client configuration itself, the client has the following attributes.
     of recently added content.
 * `audience` - Whose client this is: `internal` (ours -- staff, batch activity, the deployment's own work) or
   `customer` (somebody else's). Orthogonal to `usageType`, which says what a client is *for*: an internal client
-  can be `production`, `dev` or `test`. It is not merely a label -- it decides what a caller is proactively
-  shown, and it relaxes the functional-group restriction below -- so **it may be set only in source code**, never
-  by a client authoring its own configuration in data. The same reasoning that limits a database-defined client
-  to extending template clients.
+  can be `production`, `dev` or `test`. It is not merely a label: it relaxes the functional-group restriction
+  below, which is the only thing that reads it today. (It was also to decide what a caller is proactively shown,
+  which is not built; see "Usage types, and what a caller is shown" below.) Because it gates a capability, **only
+  the platform sets it** -- source code, or an `allClients` administrator -- and never a client's own
+  administrator (issue #1108). The same reasoning limits a database-defined client to extending template clients.
 * `webResourcesId` - An ID that identifies a package of resources that can have things like a 
   custom favicon (plus other related images), general look and feel images, and CSS file. Note, two different
   clients can share a `webResourceId`. The mechanics of where these packages of resources are in source
@@ -83,13 +88,12 @@ For the client configuration itself, the client has the following attributes.
   client's signed-in people in place of the deployment's. They are not configuration -- no draft, no publish --
   and a sandbox shows its parent's. Beside them (issue #1153) a client's stored configuration holds **file refs**:
   named images of its own, kept in the file store by the hash of their bytes, and -- unlike the two above --
-  drafted, previewed in the sandbox and published with the rest of its configuration. A ref may also name an
+  drafted, previewed in the sandbox, and published with the rest of its configuration. A ref may also name an
   image already on the machine, under a root the deployment declares (issue #1154) -- how a client is shipped
-  with artwork that an upload then overrides. A template's ref to a file in each client's own directory of an open
-  root falls back to the template's own file for a client that has none (issue #1180), and a client's stored
-  override of a template's ref that cannot be served leaves the template's in place (issue #1170). The client's copy shows one as an image by naming it,
-  `![Our logo](ref:logo)` (issue #1186), so a replaced image needs no edit to the copy, and copy naming a ref the
-  client lacks is refused where it is written. A package two clients share is still this field's to become.
+  with artwork that an upload then overrides. The client's copy shows one as an image by naming it,
+  `![Our logo](ref:logo)` (issue #1186), so a replaced image needs no edit to the copy. File refs, and how a
+  template passes them on, are described in [`file-refs.md`](file-refs.md). A package two clients share is still
+  this field's to become.
 * `enabledEnvironments` - A list of environments where the client is enabled. Even if not enabled, it
   can still be referred to, but the client will otherwise be considered not to be present. 
   It defaults to the list {'unit', 'local', 'dev'}. It is an error if any environment besides `unit` and `local`
@@ -98,8 +102,10 @@ For the client configuration itself, the client has the following attributes.
   We do not need thorough test coverage for this attribute until we actually have real deployments. The
   environments that exist are `unit`, `local`, `dev`, `integration` and `prod`; `staging` is anticipated and
   does not exist yet.
-  This is the **only** axis deciding which clients a deployment carries. A deployment focused on a subset of
-  clients would therefore have to be its own environment.
+  This is the **only per-node** axis deciding which clients a deployment carries. A deployment focused on a
+  subset of clients would therefore have to be its own environment. Two other conditions decide whether a client
+  is present, and neither varies by node: a client the platform has `retired` is absent everywhere, and a sandbox
+  is present only where its parent is and still asks for one.
 * `preload` - Whether to practively load all computations done on freshly loaded cache for the client before the
   node says it is ready to receive requests. Not yet testable.
 * `staticConfig` - If true, **in production** the client takes nothing from the database (issue #824): its
@@ -116,7 +122,7 @@ For the client configuration itself, the client has the following attributes.
  the base client and formally released. The third, to create a test variant of a prod client for focused testing.
  If this value is present, it will also default the `webResourceId` to the `webResourceId` of the pulled in client,
  and the client includes the pulled-in client's `includedTraits` and `userLabels` ahead of its own. It will also
- pull in the same `organizations` once organizations are built (they are not yet). Note, this key can only
+ pull in the same `organizations` once a client can declare them (it cannot yet; see below). Note, this key can only
  cross-reference to a client that is defined in source code and will pull in only the source code definition. Any
  database data overlays that may be present will be ignored. How the clone and the overlay combine is described
  under "Inheritance between clients" below.
@@ -137,11 +143,23 @@ For the client configuration itself, the client has the following attributes.
  configuration loads -- so a misspelled label in a workflow is caught there rather than silently never matching.
  A suggestion, not a bound: any label may be applied to a user. Each label is written once and trimmed; a blank,
  padded or repeated one is refused.
-* `organizations` - A complex definition of organizations associated with this client, we will implement this
- at a later date.
+* `organizations` - A complex definition of organizations associated with this client. *Not built.* What exists is
+ narrower: a user may carry an organization (`org`), which narrows an administrator's reads to it
+ (`ReadScope.ofOrg`), and which reports, sandbox access, and a customer root's client create all respect. A client
+ declaring its organizations, and a client inheriting them, are what is still to come.
 * `customerId` - The **customer** that owns this client (issue #1107), set only by the platform, like `audience`.
  A source client names a customer declared in source; a stored client may name either. Optional, since some clients
  belong to no customer; see "Customers" below.
+* `testFeatures` - A free-form set of test and demo feature names (issue #599): a behavior asks whether its name is
+ in the set, so adding one needs no enum change. It gates behavior, never schema, and is **honored only on a test
+ instance** -- elsewhere it is stripped from the client the node carries -- so it can never switch a demo behavior
+ on in production. It may be stored as data (issue #696); only the platform sets it.
+* `sandbox` - Whether the client has a **sandbox** beside it (issues #925 and #928): a second client,
+ `<parent>:sandbox`, that runs this client's latest configuration, drafts included, with users and data of its own.
+ Its definition is derived from the parent's and never authored. What a sandbox runs, who may enter it, and how it
+ changes editing and publishing are described in [`sandboxes.md`](sandboxes.md).
+* `retired` - Whether the platform has retired the client (issue #1111): its data is kept, and the client is absent
+ in every environment. Only the platform sets or clears it; see "Environments, availability and retirement" below.
 
 **Customers** (issue #1107). A customer owns a set of clients, and its id is the **prefix** of the ids of the
 clients created for it: customer `acme` owns the id `acme` itself and every `acme_<name>`, so two customers creating
@@ -152,7 +170,9 @@ names a **root** client (`rootClientId`), one of its own, whose administrators w
 Only the platform declares a customer: in source code, with `defineCustomer` beside a client's definition, or in the
 stored configuration of `hub` (the `kdr:customerDef` slot), which only an `allClients` administrator may change. A
 stored configuration of any other client declaring one is refused at write and dropped at load. Core declares the
-platform's own customer, `kdr`, whose root is `hub`, and `hub` and `public` belong to it.
+platform's own customer, `kdr`, whose root is `hub`, and `hub` and `public` belong to it. Some ids no customer may
+take, case aside: the platform's own (`kdr`, `hub`, `public`, `house`, and the global client's `global`) and the
+self-serve prefix, `free`. Core's `kdr` is the one declaration allowed its id.
 
 **Clients with no customer** are a supported kind, and of two sorts:
 
@@ -328,8 +348,8 @@ client that is already there.
 **Creating a client from data is one call** (issue #1054): `POST /admin/client/create` (`ADEP.clientCreate`,
 `ClientCreate`), the platform operator's, since there is no client to administer until it exists. Its input is a
 third type made by the same declaration, `ClientCreate`: the written form's properties for the fields somebody
-decides when a client is made (`ClientCreateFields`) -- not `staticConfig`, which only source may set, nor `preload`,
-`includedTraits` and `testFeatures`, which are added through the client's configuration afterwards. So the endpoint
+decides when a client is made (`ClientCreateFields`): every field but the traits it includes, its static lock, its
+retirement, and its test features, as "Who sets each field" above says. So the endpoint
 catalog draws a form from it, with the environments and the templates there are as choices. The definition is
 written as the client's first stored configuration (`main`), published, and the client loaded; it is present at
 once on a node whose environment it is enabled in, and stored but not present on one it is not (the result says
@@ -354,8 +374,8 @@ sets**: everything global stays visible so that `$ref`s resolve, while a trait t
 supported by it for forms or data entry. 
 
 The client can define new schemas using the same process of altering, extending, or new as is done for traits.
-(Extending -- a new type declared as a base plus a delta -- is not built yet: it is `g-extends`, issue #990. Today a
-new type is written out in full, and may pull another in by `$ref` as a property.)
+(Extending -- a new type declared as a base plus a delta -- is `g-extends`, built in issue #990. A new type may
+also pull another in by `$ref` as a property.)
 It will be typical for complex traits that they will pull in schemas using "$ref" and it is quite
 possible that a client will target the schema that was pulled in by the "$ref". This would leave the parent
 part of the schema alone.
@@ -390,7 +410,8 @@ that varies something gets its own copies of the client-shaped endpoints, issue 
 ## The model
 
 A **client is a config object**, not a table row. It is a typed field beside `traits` on a `GedraConfig` whose
-`GedraId` already carries the client, so the id *is* the binding — nothing has to say which client a definition belongs to twice.
+`GedraId` already carries the client, so the id *is* the binding — nothing has to say which client a definition
+belongs to twice.
 One bundle therefore defines at most one client, and every bundle sharing a client is read as one whole. Two
 bundles both declaring the *client itself* is a load-time error; two bundles adding traits to the same client is
 the ordinary case.
@@ -422,7 +443,8 @@ More than the length of this document suggests, because several pieces were shap
 - **`entryUnionDefs` / `entryEditUnionDefs`** are already **functions of (client, kind)**, called once today with
   the global scope. Per-client views are those functions called again with a different set.
 - **`traitsFor(client)`** answers "this client's traits, plus global's" — which is the **visibility** question.
-  The set the unions should be built from is the client's *supported* traits, which nothing computes yet.
+  The set the unions should be built from is the client's *supported* traits, which nothing computed yet. (Since
+  built: `supportedTraits`.)
 - **`ReadScope` / `ReadScopeRules`** already confine reads by client, and the SQL layer already carries a
   `client` column on the tables that need one.
 
@@ -445,7 +467,8 @@ client is, and no registry that can be asked whether one exists or is enabled.
 
 ## What has to wait
 
-- **Organizations**, said in the specification and big enough to be several issues.
+- **Organizations**, said in the specification and big enough to be several issues. (A user's own organization,
+  which narrows an administrator's reads, has since been built; a client declaring its organizations has not.)
 - **The per-client compiled schema.** The assembly functions are ready; the *store* is not. (Since built,
   issue #356.)
 - **Domain routing** (`domainPrefix`, `customDomain`), which needs a client resolved from the request rather
@@ -472,8 +495,14 @@ a client can be declared — which is the safest way to introduce a concept this
 
 **`hub` is the client that `local` becomes** — a real client, defined in the `common` component, and one of the
 first written in this structure. **`public` stays as it is**: existing behavior untouched, with the
-application's default anonymous web resources serving as its resources. It is for demoing rather than real use,
-and its own shape is still to be sketched.
+application's default anonymous web resources serving as its resources. It is for demoing rather than real use.
+Its shape has since been settled: a `demo`, `customer` client under the platform's customer `kdr`, including
+`#allGlobal`. It is where a self-registered user lands (issue #805), and the only place a person makes their own
+self-serve client from (issue #1113); see "`public` is not a client in the ordinary sense" below.
+
+**`house` is a third, and owns nothing** (issue #386). It is the client of an env-authed caller: somebody who
+reached a node through an authenticating edge and acts for the business itself rather than for any customer. No row
+is ever scoped to it; it says who is acting, and is never a key to store anything under.
 
 **Why `local` had to go.** `CL.local` and `ENV.local` are the same string meaning unrelated things, and they
 would sit beside each other constantly once a client declares `enabledEnvironments`. It had already caused one
@@ -513,10 +542,11 @@ is nothing to migrate.
 
 ## Environments, availability and retirement
 
-**`enabledEnvironments` is the only axis.** There is no separate node-level notion of which clients a deployment
-carries. A consequence worth knowing: two deployments in the same environment necessarily carry the same
+**`enabledEnvironments` is the only per-node axis.** There is no separate node-level notion of which clients a
+deployment carries. A consequence worth knowing: two deployments in the same environment necessarily carry the same
 clients, so a deployment focused on a subset would have to be its own environment, and `ENV` is a closed set of
-five.
+five. Two other conditions decide presence, and neither varies by node: a retired client is absent everywhere
+(below), and a sandbox is present only where its parent is and still asks for one.
 
 **Both `unit` and `local` must be present whenever any other environment is named.** The reason belongs with the
 rule: a client in active use must never be one that local development and the unit tests are locked out of.
@@ -528,12 +558,12 @@ nothing scoped by it is reached, its users cannot sign in, a session already ope
 sandbox goes with it. Clearing the flag brings it back as it was -- its `enabledEnvironments` were never touched,
 which is why retiring is a flag of its own rather than emptying them (a client enabled nowhere is still legal,
 and absent everywhere). A client defined in source code is retired there; a customer's root is retired only once
-another root is named. The definition stays, the content stays, only access stops. That is the same decision #326 made for a gedra one level up: keep the row, flip a
-flag, let reads treat it as absent. Two things follow from the resemblance being real. **Retiring reclaims
-nothing** — a retired client's content is still stored and bringing it back brings all of it back, including data
-somebody may have assumed was gone; deleting a client for real is a different question with the shape of a
-purge. And **the client list only grows**, which is fine for a per-request set lookup though every definition
-still loads at boot.
+another root is named. The definition stays, the content stays, only access stops. That is the same decision #326
+made for a gedra one level up: keep the row, flip a flag, let reads treat it as absent. Two things follow from the
+resemblance being real. **Retiring reclaims nothing** — a retired client's content is still stored and bringing it
+back brings all of it back, including data somebody may have assumed was gone; deleting a client for real is a
+different question with the shape of a purge. And **the client list only grows**, which is fine for a per-request
+set lookup though every definition still loads at boot.
 
 ## A client that is not there
 
@@ -544,7 +574,13 @@ users cannot get in, its content cannot be read. Not an error and not a permissi
 longer exists, which is what makes support and recovery possible. Being a widening exception, it wants naming
 call by call rather than granted as a class.
 
-Three things follow.
+**What is built** gates a client's people (issue #1111). A session whose client this node does not carry is no
+longer honored (`RequestService`), a sign-in to such a client is refused and says whether it was retired
+(`AuthFormHandler`), the user listings an identity sees leave its users out (`UserService`), and an administrator
+cannot create a user in it (`AdminEndpoints`).
+
+**What is intended and not built** gates its content. `GedraService` does not consult the client registry, so a
+`GedraId` of an absent client is not refused yet. Three things follow for whoever builds it.
 
 **A client check is a new gate on a `GedraId`, and the cheapest one.** An id carries its client, so "is this
 client present here?" is a set lookup answerable **before any database access**, exactly as the kind check
@@ -560,10 +596,11 @@ same time.
 **The table cache inherits it.** Rows held in memory are held for the clients this deployment supports, so
 client presence is a filter on what is cached rather than a check applied afterward.
 
-**This is testable today.** A client **defined in source code and not enabled in `unit`** is precisely a client
-that is known and not present — one instance, no configuration reload, no frontend. A unit test can declare one
-enabled in `local` only, then assert that in a `unit` boot its ids are refused, its users cannot be created, and
-an `allClients` caller can still reach it on the calls that allow it. The disappearance case is the same state
+**It is testable without a second instance.** A client **defined in source code and not enabled in `unit`** is
+precisely a client that is known and not present — one instance, no configuration reload, no frontend. A unit test
+can declare one enabled in `local` only, then assert that in a `unit` boot its users cannot be created or sign in;
+once the `GedraId` gate is built, that its ids are refused and an `allClients` caller can still reach it on the
+calls that allow it. The disappearance case is the same state
 arrived at differently, and the code cannot tell them apart, which is the point. If a test ever needs two
 populations rather than one, `InstanceRegistry.register` plus a load flag is the second instrument, as the
 sample module already does.
@@ -610,6 +647,12 @@ constraint is the target client's type, not the deployment environment, which me
 able to determine a client **from the data it was given**: "carries something that identifies a client" is a
 requirement on its input.
 
+*Not built as written.* What was built fences by the **deployment** instead: a test endpoint exists only on a test
+instance (`forTestingOnly`, issues #125 and #1149), and a client's `testFeatures` are honored only there (issue
+#696). The deployment fence is the outer guard, and it is what keeps test endpoints out of production. Whether a
+client's usage type should also be asserted inside it, so that on a test instance a test endpoint reaches only
+`test` or `demo` clients, is open (see "Open questions").
+
 **A "normal" user is one whose client is customer-facing.** The question these filters answer is not what
 somebody may *do* — the endpoints stay callable — but what is worth *showing* them, which is a fact about their
 relationship to the product rather than about their permissions. A support engineer on a deliberately restricted
@@ -626,8 +669,9 @@ they are dangerous but that **theirs are better** — a curation decision rather
 
 **"Visible to some, callable by all" is a third axis**, beside roles (what may be done) and `ReadScope` (over
 whose rows). The patch work reached the same need and recorded it as a per-endpoint `notAdvertised` flag,
-deliberately distinct from access; the flag says *do not advertise* and "normal" says *to whom*. Two callers now,
-so it should be built once.
+deliberately distinct from access; the flag says *do not advertise* and "normal" says *to whom*. Two callers,
+so it should be built once. *Neither half is built:* no endpoint carries a `notAdvertised` flag, and nothing reads
+`audience` to decide what a caller is shown.
 
 ## The traits a client supports
 
@@ -647,7 +691,7 @@ That leaves three named concepts rather than two overloaded ones:
 | | |
 |---|---|
 | `traitsFor(client)` *(exists)* | what a client can **see** — its own and global's, for `$ref` resolution |
-| `supportedTraits(client)` | what a client may **use** in forms and data entry |
+| `supportedTraits(client)` *(since built)* | what a client may **use** in forms and data entry |
 | `ClientDef.includedTraits` | what a client **wrote down** to get there |
 
 ### Why declaration, and not the alternatives
@@ -700,8 +744,8 @@ force the question "which is it?". That is the same conflation as using `allClie
 
 **And it makes `audience` an authority axis.** It stops being a label the moment it gates a capability, so it
 must not be self-declarable: a client authoring its own configuration could otherwise write `audience:
-internal` and take a functional group with it. Settable in source, refused from data — the treatment the
-specification already gives to which clients a database-defined client may extend.
+internal` and take a functional group with it. Set by the platform -- source code, or an `allClients`
+administrator -- and refused from a client's own administrator (issue #1108), as "Who sets each field" records.
 
 ### Two consequences
 
@@ -807,12 +851,13 @@ The merge is **by rule, per kind of definition**, and only two kinds look inside
 | Trait, by trait id | The client's replaces the base's, whole. It is an override, not a conflict. |
 | Schema type, by qualified name | The client's replaces the base's, whole. |
 | Cfact, by name | The client's replaces the base's. |
-| Workflow, by workflow id | The client's replaces the base's, whole. Its tasks are not merged; that waits on task ids having a root (#921). |
+| Workflow, by workflow id | The client's replaces the base's, whole. Its tasks are not merged: a task list has an order, and placing a new task relative to its neighbors is not built, so a client that changes a base workflow restates it. |
 | Creation or survey workflow | The client's replaces the base's of that kind, whatever its id. |
 | Report, by report id | The client's replaces the base's, whole (issue #979). Both are client-owned bare ids; a global report is rooted and never replaced. Each report a client may run also has typed endpoints of its own, generated from it on every reload — see `docs/design/reporting.md`, "Typed endpoints per report". |
 | Trait usages (listing columns) | The client's list replaces the base's list. |
 | Fragment copy | Merged key by key: two levels, string values. The base's layer sits below the client's own. |
 | UiBlock | The UiBlock merge (keyed arrays, recursive), the base's layer below the client's own. |
+| File ref, by ref id | The client's source ref replaces the base's; a stored one overrides it instead. See [`file-refs.md`](file-refs.md#inheritance-sandboxes-and-what-is-stored). |
 | Client definition | The client's own fields stand; see `extendsFromClientId` above for what is defaulted. |
 
 So the built client holds each definition **once**. A redefinition takes the base's definition out of the clone
@@ -883,13 +928,20 @@ The only place to look for status.
 
 ## Nothing blocking
 
-Everything the first slice needs is decided. What remains is either parked by choice or a question of ordering
-rather than design.
+Nothing open blocks work. The first slice (issue #343) shipped long ago, as has most of what this document planned;
+what remains is parked by choice or a question of ordering rather than design.
 
 ## Open
 
-**Dynamic disabling** is a topic of its own, to be taken up when it arrives. Nothing decided here is expected
-to change because of it, so it does not need anticipating.
+**Whether a client's usage type gates test and demo endpoints.** The deployment fence is built and keeps them out
+of production; asserting the target client's type inside it, on a test instance, is not (see "Usage types, and what
+a caller is shown").
 
-**Sequencing the auto-admin inversion** is no longer open: the `+client%persona` convention was retired in
-issue #750, and a `+` tag now says only that an address is not one of the deployment's own people.
+**What a caller is shown.** Filtering what is advertised by whether a caller's client is customer-facing, and the
+`notAdvertised` flag beside it, are decided and not built.
+
+## Answered
+
+**Dynamic disabling** arrived as retirement (issue #1111): the platform's `retired` flag takes a client out of
+every environment live, with no restart, and brings it back as it was. See "Environments, availability and
+retirement". Nothing decided here had to change for it.
