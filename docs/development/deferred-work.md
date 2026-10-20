@@ -209,6 +209,22 @@ each still running on every later hash change.
   `useIdleBump` uses it — but applying it still means changing five working effects for a leak with no symptom.
   `App`'s listener is deliberately exempt either way — the root never unmounts.
 
+## When listings get long enough that losing your place in one costs somebody
+
+A listing page is unmounted when it is left and mounted with no rows when it is come back to, so returning to it
+(Back, or the menu) lands at the top: the browser's own scroll restoration runs on `popstate` before the rows have
+arrived, and the page it left was shorter than the one it returns to. Measured on the Users page with 62 rows: a
+scroll of 2000 came back as 0 (#1313). A refresh while on the page keeps its place, since a re-read replaces the
+rows in place. The trigger fires when somebody works down a long list a form at a time -- opening a form from the
+forms listing, then going back to carry on from where they were -- and has to find their place again on every
+return.
+
+- **Restore a listing's scroll position on return.** Keep the position per history entry (`history.state`, or a
+  map keyed by the hash), and restore it once the page's rows have rendered, not on navigation. The forms listing
+  is the first case; the Users page, the Clients listing, and a report's run are the others. Deferred because it
+  touches every listing page, and because "once the rows have rendered" is per page: each page has to say when
+  its content is in, which a shared hook can ask for but not decide.
+
 ## When an edge fronts a backend that allows anonymous access
 
 Today an edge challenges **every** proxied request (#419), which is right while it fronts internal

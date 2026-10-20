@@ -63,13 +63,21 @@ val DocsPage = FC<Props> {
         }
     }
 
-    // Fetch whichever document the hash names. Clear the old text and error up front, so switching documents
-    // never shows the previous body under the new heading; a token drops a slow response that a later switch
-    // has superseded (docsScope is module-global, so a launch outlives this effect).
-    useEffect(openId, config) {
-        val link = config?.links?.firstOrNull { it.id == openId }
-        docText = null
-        docError = null
+    // Fetch whichever document the hash names, keyed on the document and its build -- never on the config object,
+    // which a refresh replaces whether or not anything changed (issue #1313): re-running then cleared the text, the
+    // page collapsed, and the reader was scrolled to the top. Clear the old text and error only when the document
+    // changes, so switching documents never shows the previous body under the new heading, while a new build of the
+    // open one keeps its text until the replacement arrives. A token drops a slow response that a later switch has
+    // superseded (docsScope is module-global, so a launch outlives this effect).
+    val openLink = config?.links?.firstOrNull { it.id == openId }
+    val lastOpen = useRef<String>(null)
+    useEffect(openId, openLink?.docId, openLink?.buildId) {
+        val link = openLink
+        if (lastOpen.current != openId) {
+            lastOpen.current = openId
+            docText = null
+            docError = null
+        }
         if (link != null) {
             val token = (latestDoc.current ?: 0) + 1
             latestDoc.current = token

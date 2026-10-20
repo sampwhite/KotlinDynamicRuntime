@@ -70,10 +70,13 @@ val Profile = FC<Props> {
         }
     }
 
+    // Seeded from the stored name, and again only when that changes (a save) -- never from a re-read, which a refresh
+    // makes whether or not anything changed and which would wipe a name being typed (issue #1313).
+    val storedName = config?.user?.name
+    useEffect(storedName) { draftName = storedName ?: "" }
+
     // Re-read the config (and its copy) on every refresh generation (issue #115) -- on mount, and whenever a
     // navigation or state mutation bumps it, so a password change here reloads the page's affordances.
-    useEffect(config) { draftName = config?.user?.name ?: "" }
-
     useEffect(generation) {
         profileScope.launch { myUsers = apiResult { AuthApi.fetchUsers() }.valueOr(emptyList()) }
         loadConfig { c ->

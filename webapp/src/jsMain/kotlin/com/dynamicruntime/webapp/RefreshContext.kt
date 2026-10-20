@@ -20,6 +20,15 @@ import react.use
  */
 class RefreshBus(val generation: Int, val bump: () -> Unit)
 
+/**
+ * The generation [App] is rendering, for a fetch helper that is not a component and so cannot read the context
+ * (issue #1313). [HomeApi.fetchConfig] shares one request among the consumers that re-read on the same generation;
+ * a later generation -- a sign-in, a save -- never joins a request started before it, so it is never handed an
+ * answer from before the change. Written by [App] as it renders, which is before any consumer's effect runs.
+ */
+var refreshGenerationNow: Int = 0
+    internal set
+
 /** The context carrying the [RefreshBus]; [App] is the sole provider. The default is inert (generation 0, a
  *  no-op bump) and applies only to a consumer rendered outside the provider, which nothing is. */
 val RefreshContext = createContext(RefreshBus(0) {})
