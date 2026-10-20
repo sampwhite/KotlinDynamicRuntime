@@ -543,6 +543,38 @@ identity nobody chose without saying so.
   naming the kind of source that supplied the credentials. Static keys, an instance profile, ECS task roles and EKS
   Pod Identity are unaffected. Trigger: the deployment's credentials come from a web identity or an assumed role.
 
+## When a client must keep its files somewhere other than its deployment's store
+
+A deployment keeps every file in one store (issue #1129): its directory, its S3 buckets, or memory. A client whose
+files must be elsewhere -- data residency, a customer's own cloud account -- is today given a deployment of its own
+(`docs/deploy/lightweight-node.md`), which keeps the store per deployment and simple to run. What would let one
+deployment keep different clients' files in different stores is designed and part-built, and was set aside as more
+than anybody needs yet (2026-10-20).
+
+- **What is in place** *(#1282).* Every client's file is reached through `FileStoreService.forOwner(cxt, owner)`, a
+  view that takes only that client's folder, `clients/<owner>/`, while the service's own calls refuse a key in any
+  client's folder. So which client a file is for is said, and checked, wherever it is stored or read, and *routing* a
+  client's files to another store is decided in `forOwner` alone -- the stores, the assignment and its checks below
+  are the rest of the work.
+- **Several named stores in a deployment** *(#1282, removed again 2026-10-20).* A `KDR_FILE_STORES` variable
+  (`aws.type=s3,aws.region=…,aws.profile=…,disk.type=local,disk.dir=…`) parsed without a service
+  (`FileStoreSpecs`), every store held to every bucket at boot, a credentials `profile` per S3 store, and
+  `CheckFileStore --store`. Built, tested and merged in fd42265d, then taken out in the change that wrote this, because
+  without a client assigned to a store it was a setting that looked like it did something and did not. Bring it
+  back from there.
+- **A client assigned to one of them** *(#1283, deferred here 2026-10-20).* A platform-only `ClientDef.fileStore`
+  that `forOwner` routes by (a sandbox by its parent), checked at load (`ClientCheck`: a store the node lacks is a
+  configuration problem, never a fallback to the default), and a change of store refused in the config trial while
+  the old store holds a file the new one lacks. Its costs are why it waits: that check reads the client's files
+  inside a configuration write, and every node must declare the same stores.
+- **The Clients page** *(#1284, deferred here 2026-10-20).* A "File store" row in the definition summary, and a
+  choice of the node's stores in the definition editor for an administrator of every client.
+- **Moving a client's files to another store** *(#1285, deferred here 2026-10-20).* A `kdr-run` script copying a
+  client's folder between stores, keeping each file's metadata and checking each copy's hash.
+
+Trigger: a client that must share a deployment with others **and** keep its files apart from theirs. One that can have
+a deployment of its own needs none of this.
+
 ## When a deployment keeps local files for its clients
 
 Local file refs (issues #1154, #1164) are built and tested, but no deployment declares a root of local files yet,

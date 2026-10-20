@@ -152,12 +152,6 @@ class LocalFileRootsTest : StringSpec({
         val store = File(base, "store").apply { mkdirs() }
         refusal(ENV.local, FSENV.dir.name to store.absolutePath, LFENV.dir.name to File(store, "pictures").absolutePath) shouldContain "is inside"
         refusal(ENV.local, FSENV.dir.name to store.absolutePath, LFENV.roots.name to "all=${base.absolutePath}") shouldContain "contains"
-        // And so is every other local store the node declares (issue #1282).
-        val named = File(base, "named").apply { mkdirs() }
-        refusal(
-            ENV.local, FSENV.stores.name to "disk.type=local,disk.dir=${named.absolutePath}",
-            LFENV.dir.name to File(named, "pictures").absolutePath,
-        ) shouldContain "is inside"
         // By its real path: a link into one is in it.
         val link = File(base, "innocent")
         Files.createSymbolicLink(link.toPath(), store.toPath())

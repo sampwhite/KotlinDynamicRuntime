@@ -516,25 +516,3 @@ https://us-ord-10.linodeobjects.com (us-ord-10), buckets named 'examplesite-...'
 bucket that is missing, or that the key cannot use, is named in the startup failure instead -- a `403 Forbidden` there
 is most often the key at the wrong endpoint (step 2). Then upload a client's favicon on the site and see it in the
 tab. Once the node runs this way, `~/kdr/fileStore` holds nothing the application reads, and can be removed.
-
-### More than one file store
-
-A deployment may keep files in more than one place: the store above, and others it names in `KDR_FILE_STORES`,
-for example a second account's S3 buckets, or a directory on the node. Each is `<store>.<attribute>=<value>`,
-separated by commas:
-
-```
-env.KDR_FILE_STORES=aws.type=s3,aws.region=us-east-1,aws.prefix=examplesite-,aws.profile=aws
-```
-
-- **What each store takes:** `type` (`s3`, `local` or `memory`); for `s3`, `region` and optionally `endpoint`,
-  `prefix` and `profile`; for `local`, `dir`.
-- **`profile` is a section of `~/.aws/credentials`** (`[aws]` here) beside the `[default]` one. That's how two
-  stores sign in as two accounts, still with no key in the target file.
-- **Every store must hold every bucket the application uses,** as the default store must: make
-  `examplesite-web-assets` and `examplesite-sample-files` for the store above. The startup line lists each store,
-  and the start is refused while one of them cannot serve a bucket.
-- **Declaring a store changes nothing on its own.** Every client's files stay in the default store until a client
-  can be assigned another (issue #1283), and a client assigned none keeps using the default.
-- **Every node of a deployment declares the same stores, under the same names.**
-
