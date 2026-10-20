@@ -401,6 +401,7 @@ object HFRAG {
 @Suppress("ConstPropertyName")
 object HDOC {
     const val readme = "readme"
+    const val extending = "extending"
     const val codeGuide = "code-guide"
     const val clientDefinition = "client-definition"
     const val deferredWork = "deferred-work"

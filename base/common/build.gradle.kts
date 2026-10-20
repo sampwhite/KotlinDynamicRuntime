@@ -77,6 +77,7 @@ val embedDocs by tasks.registering(Copy::class) {
     // the files' move under docs/ (issue #1294), so in-app links to them still work. Keep this map in step with
     // the HDOC registry and coreDocs() in HomeEndpoints, which carries the same paths.
     val inAppDocs = mapOf(
+        "docs/extending.md" to "extending",
         "docs/development/code-guide.md" to "code-guide",
         "docs/development/deferred-work.md" to "deferred-work",
         "docs/design/client-definition.md" to "client-definition",

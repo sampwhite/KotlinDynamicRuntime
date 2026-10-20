@@ -6,6 +6,9 @@ schema-driven application runtime. The proposal for this project can be found at
 The coding philosophy and conventions for the project are described in
 [`docs/development/code-guide.md`](docs/development/code-guide.md).
 
+Many applications are built from this one runtime. How a deployment, a component, or a client varies what it does --
+and the rule that keeps those variations out of the core -- is mapped in [`docs/extending.md`](docs/extending.md).
+
 ## The workspace
 
 Two terms recur throughout this project and its documentation. The **workspace directory** is the directory

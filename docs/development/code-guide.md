@@ -51,9 +51,13 @@ top-level entry to 0, increment it at each recursive step, and throw a `KdrExcep
 Pick a limit well above any legitimate nesting (20–50 is typical). See `SchParser.parseNode` and `JsonUtil`
 (its formatting/parsing nesting guards) for prior art.
 
-* We will support dynamically discovering parts of our code base, using reflection, and use plugin architectures 
-to allow "compoents" to extend behavior. At the time this document was written, this part of the code base is 
-yet to be written.
+* Behavior outside the runtime's own theme is not written into the core. When an application needs something the
+core does not do, the core gains a place to plug it in or an option to switch it on, and the behavior itself is
+supplied from outside the core code base -- by a component, a deployment's own code, or a client's configuration. We
+do not try to anticipate every customization: when a variation turns up that the existing mechanisms cannot
+express, the hook for it is added then (*on-demand customization hooks*), rather than the variation being inlined
+beside the behavior it varies. Components and other injected code are discovered at startup through `ServiceLoader`
+(`KdrProvider`), not by reflective scanning. [`docs/extending.md`](../extending.md) maps what can be extended today.
 
 * Many different applications will be built from the same source code. Configuration and choice of components
 will dictate what a particular application does.

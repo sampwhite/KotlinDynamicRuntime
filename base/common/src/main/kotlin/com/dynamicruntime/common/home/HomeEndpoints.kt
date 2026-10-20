@@ -472,12 +472,15 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
- * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the code guide,
- * and the license; the design documents are served but unlisted, reached from the README's links (issue #1238).
+ * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the extending
+ * guide, the code guide, and the license; the design documents are served but unlisted, reached from the README's
+ * links (issue #1238).
  */
 fun coreDocs(): List<MarkdownDocDef> = listOf(
     MarkdownDocDef(HDOC.readme, "Read me", "README.md",
         "What the runtime is, where it came from, and how to set it up."),
+    MarkdownDocDef(HDOC.extending, "Extending", "docs/extending.md",
+        "How a deployment, a component, or a client varies what the runtime does, and the rule behind it."),
     MarkdownDocDef(HDOC.codeGuide, "Code guide", "docs/development/code-guide.md",
         "How code here is written, including where it deliberately departs from Kotlin norms."),
     MarkdownDocDef(HDOC.clientDefinition, "Client definition", "docs/design/client-definition.md",
