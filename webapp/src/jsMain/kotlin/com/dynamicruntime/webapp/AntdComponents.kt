@@ -134,8 +134,15 @@ external interface SelectProps : PropsWithChildren {
      * handler on the same visible elements. See `DebugChoice` for the measured behavior.
      */
     var virtual: Boolean?
-    /** Makes the control a real text input that narrows the popup as you type. Boolean form only here. */
-    var showSearch: Boolean?
+    /**
+     * Makes the control a real text input that narrows the popup as you type: `true`, or antd 6's object form
+     * (`{ searchValue, onSearch, filterOption }`), where its search settings now live -- rc-select reads the object
+     * over the legacy top-level props. A picker that controls its own options passes `filterOption: false` there and
+     * builds the list from the search text itself (`TimeZonePicker`, issue #1257).
+     */
+    var showSearch: dynamic
+    /** What the popup says when there are no options to show (antd's default is an empty-box icon and "No data"). */
+    var notFoundContent: String?
     /** Fires as the popup opens (`true`) and closes (`false`). antd 6's name; `onDropdownVisibleChange` is deprecated. */
     var onOpenChange: ((open: Boolean) -> Unit)?
 }

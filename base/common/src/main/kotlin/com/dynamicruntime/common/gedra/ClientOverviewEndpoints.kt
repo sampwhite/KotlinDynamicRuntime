@@ -384,7 +384,7 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
                             type = SCT.boolean
                             allowCoerce = false
                         }
-                        ClientPresentationFields.Kind.text -> emptyIsAbsent = false
+                        ClientPresentationFields.Kind.text, ClientPresentationFields.Kind.timeZone -> emptyIsAbsent = false
                     }
                 }
             }

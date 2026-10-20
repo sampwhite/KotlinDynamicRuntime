@@ -785,7 +785,7 @@ defined in **stored** configuration (`definitionEditable`: present, origin store
 the backend refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the fields the caller's policy lets them edit (issue #1116, `ClientPresentationFields.namesFor`):
 for a client's administrator its name, description, time zone (issue #1115; the editor says a change moves no stored
-moment), and user labels as one comma line (`labelsOfText`); for an administrator who sees every client also its
+moment; picked, not typed -- see "The time-zone picker" below), and user labels as one comma line (`labelsOfText`); for an administrator who sees every client also its
 usage type and audience (selects), environments (a multi-select), preload (a checkbox), domain prefix, custom domain,
 and web resources -- seeded from the client's **stored** definition, the retrieve's
 `storedDefinition` (`definitionDraftOf`; what the client runs differs from it by an unpublished draft, which the
@@ -808,6 +808,27 @@ definition the result returned as its baseline until the page re-reads, so a qui
 values back. A success bumps the refresh generation, so the heading, the
 listing row and the shell follow the new name. The editable set is the kernel's `ClientPresentationFields`, which
 the endpoint's input and this editor both read.
+
+**The time-zone picker** (issue #1257, `TimeZonePicker.kt`). The time zone is `ClientPresentationFields.Kind.timeZone`,
+drawn as `TimeZonePicker`: an antd `Select` that builds its own options rather than letting antd filter, since before
+anything is typed it shows a short list (`commonTimeZones`, about 40, one per region people pick, plus `UTC`, which
+`Intl.supportedValuesOf` leaves out but the backend accepts), and typing searches all of the browser's ~420 zones by
+place, name, id, or offset (`-5`, `GMT+5:30`, and `GMT`, `UTC` or `+0` for zero, which `Intl` writes as a bare "GMT" --
+an offset matches exactly). Only the short list is labeled when the picker is drawn; every zone (~1,700 `Intl`
+formats, ~80ms) the first time a search is typed. Search goes through antd 6's object form,
+`showSearch = { searchValue, onSearch, filterOption: false }`, with the search text the picker's one piece of state.
+Pinned at the top: the client's current zone, under exactly its stored spelling (so an untouched draft is no change,
+and a zone off the short list still shows), and the browser's own. Labels are `Intl`'s ("Central Time (Chicago) ·
+GMT−5", the long generic name, the id's place, the short offset for today), so the webapp ships no zone data. Two
+things `Intl` does that the code relies on knowing: **Chrome lists and resolves legacy spellings** (`Asia/Calcutta`,
+`Europe/Kiev`; even `Asia/Kolkata` resolves to `Asia/Calcutta`), so zones are matched by what `Intl` resolves them to
+(`TimeZoneChoice.key`) and the short list's modern spelling is the one offered and saved; and **UTC's generic name is
+just "GMT"**, so a name that is only an offset falls back to the long one or to the place. What the picker offers is
+what the client check accepts, by the kernel's `isPlaceZoneName` (`DateUtil.kt`), and its `Intl` calls share
+`DisplayZone.kt`'s `intlDateTimeFormat`, which carries the `js()` constructor-call workaround. The read-only row shows the
+same label beside the stored id (`timeZoneText`). The logic is pure and covered under `jsNodeTest`
+(`TimeZonePickerTest`); the self-serve create page (#1228) is meant to use the same picker, starting on the browser's
+zone.
 
 Denied honestly in two layers, as Users is: `HomeApi.fetchConfig().canManageUsers == false` shows a
 not-available panel without calling the endpoint, and a refusal from the endpoint -- a `public` self-administrator,

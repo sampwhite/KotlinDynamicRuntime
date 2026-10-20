@@ -108,7 +108,7 @@ object ClientDefinitionEdit {
                 ClientPresentationFields.Kind.flag -> value == true
                 ClientPresentationFields.Kind.choice -> value.toOptStr()?.trim()?.ifEmpty { null }
                     ?: throw KdrException.mkInput("Client '$client' needs a '$key'; a blank one is refused.")
-                ClientPresentationFields.Kind.text -> if (key == CLD.name) {
+                ClientPresentationFields.Kind.text, ClientPresentationFields.Kind.timeZone -> if (key == CLD.name) {
                     value.toOptStr()?.trim()?.ifEmpty { null }
                         ?: throw KdrException.mkInput("Client '$client' needs a name; a blank one is refused.")
                 } else {

@@ -279,6 +279,12 @@ object ClientPresentationFields {
 
         /** On or off. */
         flag,
+
+        /**
+         * An IANA time zone, picked from a list rather than typed (issue #1257). Text on the wire, held as [text]
+         * is -- trimmed, blank clearing it -- and checked by the client check, not here.
+         */
+        timeZone,
     }
 
     /** Each editable field, a [CLD] key, in the order an editor draws them, with what the endpoint says of it. */
@@ -323,6 +329,7 @@ object ClientPresentationFields {
         CLD.usageType, CLD.audience -> Kind.choice
         CLD.enabledEnvironments -> Kind.choices
         CLD.preload -> Kind.flag
+        CLD.timeZone -> Kind.timeZone
         else -> Kind.text
     }
 
