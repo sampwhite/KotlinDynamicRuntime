@@ -22,6 +22,7 @@ import com.dynamicruntime.common.startup.InstanceRegistry
  * beside the production entry so every path that boots the application is visible
  * in one place.
  */
+@Suppress("ConstPropertyName")
 object Startup {
     /**
      * Boots an instance from the two base components ([CommonComponent] + [KdnComponent]) plus any
