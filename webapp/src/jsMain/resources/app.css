@@ -991,6 +991,9 @@ button.wf-cell-more { font-size: .8rem; margin-top: 2px; }
 .op-detail:first-child { margin-top: 2px; }
 .op-detail-label { color: var(--text-dim); font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
 .type-hint { color: var(--text-faint); font-style: italic; margin: 2px 0; }
+/* The zone a date-time picker's times are read in (issue #1235), beside the picker. Not faint like other hints: a
+   typed time means a different moment without it, so it takes the muted text colour, which reads on the card. */
+.type-hint.entry-zone { color: var(--text-muted); margin-left: 8px; }
 
 /* A listing page's index (the Operator overview, the Documents page; issues #540, #554): a list of readable
    accent links, each with a line on what it opens -- the same shape as the debug index. */

@@ -995,6 +995,20 @@ in the deployment's day start (`deploymentZone`, labeled `GMT-8`). A day-only va
 shifted. Each function takes the zone as an argument too, which is how its tests pass one. The CSV download keeps
 UTC (`csvTimestamp`): a file cannot say a zone per cell.
 
+**And entered in it** (issue #1235, `ZonedEntry.kt`): a `date-time` field in a schema form and the Users page's date
+range filters read and write in the same zone (`entryZone()`, which falls back to the deployment's for a zone `Intl`
+does not know, as the display does), naming it beside the picker ("India Standard Time (Kolkata) · GMT+5:30",
+`entryZoneNote`). antd's picker knows only the browser's zone and makes its own plain `dayjs()` values (typed text, an
+empty field), so the conversion is on its **wall clock**, not by handing it zone-aware values: a stored moment goes in
+as the date and time it reads in the client's zone (`zonedPickerValue`), and what is picked comes back read there
+(`zonedPickerIso`, `instantOfWallClock`). Where daylight saving makes a wall clock ambiguous the answer is
+`java.time`'s, so browser and server agree: a skipped spring-forward time moves forward by the gap, a repeated
+fall-back time is the earlier moment. No dayjs `utc`/`timezone` plugin, and no zone database: the kernel's
+kotlinx-datetime cannot convert zones in the browser, whose bundle carries only `@js-joda/core`. The panel's **Now**
+is hidden (`showNow = false`): antd's now is the browser's wall clock, which read in the client's zone is not now
+there. One edge is documented rather than handled: a time in the *browser's* own skipped hour, when its zone and the
+client's change clocks on different days. A day-only picker is untouched.
+
 ## Choice widgets, and the free-entry one (issues #261, #418)
 
 `SchemaForm` draws a choice field from the schema, and which control it draws is decided by two keywords:

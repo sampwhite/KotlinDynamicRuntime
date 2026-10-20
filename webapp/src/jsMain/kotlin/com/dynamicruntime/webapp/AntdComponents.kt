@@ -218,6 +218,12 @@ external interface DatePickerProps : PropsWithChildren {
     /** Whether to pick a time as well as a day; set for a `date-time` field so the time is not lost. */
     var showTime: Boolean?
 
+    /**
+     * Whether the panel offers "Now". Off for a time entered in the client's zone (issue #1235): antd's now is the
+     * browser's wall clock, which read in the client's zone is not now there.
+     */
+    var showNow: Boolean?
+
     /** antd calls this with (date, dateString): the Dayjs object and its formatted text. */
     var onChange: ((date: Dayjs?, dateString: String) -> Unit)?
 

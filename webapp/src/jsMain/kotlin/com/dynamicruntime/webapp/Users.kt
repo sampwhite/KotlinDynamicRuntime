@@ -19,6 +19,7 @@ import com.dynamicruntime.common.user.userSearchFieldSpecsByName
 import com.dynamicruntime.common.user.userSortKeys
 import com.dynamicruntime.common.util.isEmailAddress
 import com.dynamicruntime.common.util.normalizeEmail
+import kotlin.time.Clock
 import kotlinx.browser.document
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.awaitCancellation
@@ -1064,30 +1065,35 @@ val Users = FC<Props> {
                             }
                             UserFilterKind.dateRange -> {
                                 val range = rangeFilters[spec.name] ?: DateRange()
+                                // The bounds are read in the client's zone, as the listed times are shown (issue
+                                // #1235), so "after 5:00 PM" means what the column says 5:00 PM is.
+                                val zone = entryZone()
                                 div {
                                     className = ClassName("filter-range")
                                     DatePicker {
-                                        value = range.after?.let { dayjs(it) }?.takeIf { it.isValid() }
+                                        value = zonedPickerValue(range.after, zone)
                                         showTime = true
+                                        showNow = false
                                         // Bounded: a date-time picker has a known amount to show, so it gains
                                         // nothing from being wider.
                                         style = js("({ maxWidth: 220 })")
-                                        onChange = { date, _ -> setRange(spec.name, DateRange(date?.toISOString(), range.before)) }
+                                        onChange = { date, _ -> setRange(spec.name, DateRange(zonedPickerIso(date, zone), range.before)) }
                                     }
                                     span {
                                         className = ClassName("type-hint")
                                         +"to"
                                     }
                                     DatePicker {
-                                        value = range.before?.let { dayjs(it) }?.takeIf { it.isValid() }
+                                        value = zonedPickerValue(range.before, zone)
                                         showTime = true
+                                        showNow = false
                                         style = js("({ maxWidth: 220 })")
-                                        onChange = { date, _ -> setRange(spec.name, DateRange(range.after, date?.toISOString())) }
+                                        onChange = { date, _ -> setRange(spec.name, DateRange(range.after, zonedPickerIso(date, zone))) }
                                     }
                                 }
                                 span {
                                     className = ClassName("type-hint")
-                                    +"Leave either end empty for open-ended."
+                                    +"Times in ${entryZoneNote(zone, Clock.System.now())}. Leave either end empty for open-ended."
                                 }
                             }
                         }
