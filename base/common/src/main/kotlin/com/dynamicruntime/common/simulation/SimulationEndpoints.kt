@@ -5,6 +5,7 @@ import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.test.SIM
 import com.dynamicruntime.common.util.toOptStr
 
@@ -36,6 +37,33 @@ fun simulationSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.simulation
             field(SIM.suffix, "Appended to the client id for a fresh copy; lowercase letters and digits. Absent, the demo client itself.")
         },
     ) { c, request -> provisionImpactDemo(c, request[SIM.suffix].toOptStr()) }
+
+    simulationEndpoint(
+        ListingDemo.simulationName,
+        "Provisions the listing demo (issue #1316): a client holding many forms and users -- by default " +
+            "${ListingDemo.defaultForms} forms and ${ListingDemo.defaultUsers} users, past the 500-row cap -- so the " +
+            "forms listing and the Users page can be reviewed against long lists. Each form has a searchable title, a " +
+            "category, an amount and a due date; a few owners hold many forms, most a few, and some none; one user " +
+            "in six is unclaimed. A rerun tops up to the counts rather than adding them again, so asking for more " +
+            "grows the lists and asking for fewer changes nothing. Give a suffix for a fresh copy (listingdemo2).",
+        inputFields = {
+            field(SIM.suffix, "Appended to the client id for a fresh copy; lowercase letters and digits. Absent, the demo client itself.")
+            field(SIM.formCount, "How many forms the client is to hold, from 1 to ${ListingDemo.maxCount}.") {
+                type = SCT.integer
+                default = ListingDemo.defaultForms
+            }
+            field(SIM.userCount, "How many users the client is to hold, from 1 to ${ListingDemo.maxCount}.") {
+                type = SCT.integer
+                default = ListingDemo.defaultUsers
+            }
+        },
+    ) { c, request ->
+        provisionListingDemo(
+            c, request[SIM.suffix].toOptStr(),
+            formCount = (request[SIM.formCount] as? Number)?.toInt() ?: ListingDemo.defaultForms,
+            userCount = (request[SIM.userCount] as? Number)?.toInt() ?: ListingDemo.defaultUsers,
+        )
+    }
 }
 
 /**

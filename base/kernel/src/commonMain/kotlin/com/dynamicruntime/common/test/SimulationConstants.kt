@@ -62,4 +62,10 @@ object SIM {
      * Lowercase letters and digits only, since it becomes part of a client id.
      */
     const val suffix = "suffix"
+
+    /** For a simulation that fills a listing (issue #1316): how many forms the client is to hold. */
+    const val formCount = "formCount"
+
+    /** For a simulation that fills a listing (issue #1316): how many users the client is to hold. */
+    const val userCount = "userCount"
 }
