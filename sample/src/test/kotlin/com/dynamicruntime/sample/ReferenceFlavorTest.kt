@@ -52,6 +52,13 @@ class ReferenceFlavorTest : StringSpec({
         copy(plain, AFRAG.auth, "login")["intro"] shouldBe ""
     }
 
+    "core says on the profile page that the bar switches between a person's users too (issue #1330)" {
+        copy(reference, AFRAG.profile, "users")["helpExtra"].orEmpty() shouldContain "bar at the top"
+        copy(plain, AFRAG.profile, "users")["helpExtra"] shouldBe ""
+        // The help pulls it, so a reference deployment's help ends with it and anyone else's with nothing.
+        copy(plain, AFRAG.profile, "users")["help"].orEmpty() shouldContain $$"${@t(\"users.helpExtra\")}"
+    }
+
     "the sample loads, by the flavor's default, and says what its clients demonstrate" {
         reference.instanceConfig.resolveEnvVar(SampleComponent.loadSampleEnvVar).source shouldBe EVSRC.flavor
         MarkdownFragmentService.get(reference).effectiveFragmentsFor(reference, SF.content, null).shouldNotBeNull()

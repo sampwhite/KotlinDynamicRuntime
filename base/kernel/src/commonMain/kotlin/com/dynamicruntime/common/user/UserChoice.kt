@@ -16,6 +16,7 @@ object UCF {
     const val name = "name"
     const val isCurrent = "isCurrent"
     const val isDefault = "isDefault"
+    const val signsInAs = "signsInAs"
     const val clientName = "clientName"
 }
 
@@ -40,6 +41,12 @@ data class UserChoice(
     val isDefault: Boolean = false,
     /** The name of the user's [client] (issue #1110), what a person calls it; null when it has none to give. */
     val clientName: String? = null,
+    /**
+     * Whether a sign-in by the person's address lands on this user (issue #1330): the chosen default when it can be
+     * used, else the one last acted as -- the rule worked out, where [isDefault] is only the choice. The two differ
+     * when a chosen default is disabled, unclaimed, or in a client not carried here, and sign-in passes it over.
+     */
+    val signsInAs: Boolean = false,
 ) {
     /**
      * The full label: the client and persona, the personaSuffix when there is one, and the name when there is one --
@@ -78,6 +85,7 @@ data class UserChoice(
         if (isCurrent) put(UCF.isCurrent, true)
         if (isDefault) put(UCF.isDefault, true)
         if (clientName != null) put(UCF.clientName, clientName)
+        if (signsInAs) put(UCF.signsInAs, true)
     }
 
     @Suppress("ConstPropertyName")
@@ -95,6 +103,7 @@ data class UserChoice(
             isCurrent = info[UCF.isCurrent] == true,
             isDefault = info[UCF.isDefault] == true,
             clientName = info.getOptStr(UCF.clientName),
+            signsInAs = info[UCF.signsInAs] == true,
         )
 
         /** Defines the [infoTypeName] schema type (the shape of [toInfo]) on [builder], kept beside the serialization. */
@@ -109,6 +118,7 @@ data class UserChoice(
                 property(UCF.isCurrent, "Whether the session is acting as this user.") { type = SCT.boolean }
                 property(UCF.isDefault, "Whether this is the identity's chosen default user.") { type = SCT.boolean }
                 property(UCF.clientName, "The name of the user's client, when it has one.")
+                property(UCF.signsInAs, "Whether a sign-in by the person's address lands on this user.") { type = SCT.boolean }
             }
         }
     }

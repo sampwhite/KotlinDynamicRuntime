@@ -22,6 +22,8 @@ import react.use
  *   a document is left as written.
  * - [fileRefs] are the file refs the caller's client is served (issue #1186), what an image in copy naming one is
  *   drawn from -- see [copyRefAddress]. Empty until the shell has been told, when such an image draws its alt text.
+ * - [inSandbox] is whether the session is in a sandbox (issue #1330), which decides how a switch to another of the
+ *   person's users is made -- see [switchesFromSandbox]. False until the shell has been told.
  *
  * A data class, so that a refresh which says the same thing is the same value and redraws nothing.
  */
@@ -31,6 +33,7 @@ data class ShellFacts(
     val docs: List<HomeLink> = emptyList(),
     val sourceRepoBase: String? = null,
     val fileRefs: Map<String, String> = emptyMap(),
+    val inSandbox: Boolean = false,
 )
 
 /** The context carrying the [ShellFacts]; [App] is the sole provider. The default is "not yet told". */
@@ -50,6 +53,7 @@ fun shellFactsOf(config: HomeConfig): ShellFacts = ShellFacts(
     docs = config.links,
     sourceRepoBase = config.sourceRepoBase,
     fileRefs = config.fileRefs,
+    inSandbox = switchesFromSandbox(config),
 )
 
 /**

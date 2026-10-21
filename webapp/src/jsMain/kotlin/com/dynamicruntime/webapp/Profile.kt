@@ -1,17 +1,27 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.passwordRuleError
+import com.dynamicruntime.common.user.personaTerm
 import com.dynamicruntime.common.util.evalTemplate
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.h1
 import react.dom.html.ReactHTML.h2
 import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.table
+import react.dom.html.ReactHTML.tbody
+import react.dom.html.ReactHTML.td
+import react.dom.html.ReactHTML.th
+import react.dom.html.ReactHTML.thead
+import react.dom.html.ReactHTML.tr
 import react.useEffect
 import react.useState
 import web.cssom.ClassName
@@ -48,12 +58,13 @@ val Profile = FC<Props> {
      * (or a change made elsewhere) re-seeds it instead of leaving a stale value sitting in the field.
      */
     var draftName by useState("")
-    // The person's users (issue #752), for offering to remove a `public` placeholder once they hold a user in a
-    // real client; and which removal is armed (a two-step confirm, since it is permanent).
+    // The person's users (issues #752, #1330): the table of them, from which the person switches, chooses the one a
+    // sign-in lands on, or removes a `public` one; and which removal is armed (a two-step confirm, it being permanent).
     var myUsers by useState<List<UserChoice>>(emptyList())
     var confirmingRemove by useState<Long?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
+    val shellFacts = useShellFacts()
 
     /** Loads (or reloads) the config; the page re-reads it after a password change, so the copy follows. */
     fun loadConfig(onLoaded: (ProfileConfig) -> Unit = {}) {
@@ -178,14 +189,150 @@ val Profile = FC<Props> {
         }
     }
 
+    /**
+     * Becomes [target] and **stays on this page** (issue #1330): a fresh session as that user, then a bump, so the
+     * page, the table and the bar re-read as the new user. From inside a sandbox the switch is the leave (issue #1197),
+     * as the bar's switcher makes it.
+     */
+    fun switchTo(target: UserChoice) = run {
+        if (shellFacts.inSandbox) AuthApi.leaveSandbox(target.userId) else AuthApi.switchUser(target.userId)
+        confirmingRemove = null
+        note = null
+        afterSessionChange(bump, listOf(HP.page to HMENU.pageProfile))
+    }
+
+    /** Chooses [target] as the user a sign-in by the address lands on (issue #1330); the bar's list follows the bump. */
+    fun makeDefault(target: UserChoice) = run {
+        myUsers = AuthApi.setDefaultUser(target.userId)
+        note = t("users", "defaultSet", "Signing in now takes you to that user.")
+        bump()
+    }
+
     fun logout() = run {
         AuthApi.logout()
         navigateHash(emptyList())
         bump()
     }
 
+    /**
+     * The person's users as a table (issue #1330): each one's persona and client, the active one highlighted, the one
+     * a sign-in lands on marked, and on each row what may be done with it -- switch to it (staying on this page),
+     * make it the one a sign-in lands on, or remove it when it is a `public` one (issue #752, two steps, since it is
+     * permanent). The help above it says what these users are, filled from the table's own facts.
+     */
+    fun ChildrenBuilder.usersSection() {
+        val rows = profileUserRows(myUsers)
+        h2 { +t("users", "title", "Your users") }
+        div {
+            className = ClassName("subtitle")
+            Markdown {
+                // The copy may pull the flavor's addition (`users.helpExtra`) with `${@t(...)}`, resolved against this
+                // page's own copy -- empty as shipped, and a reference deployment's overlay fills it.
+                source = t("users", "help", usersHelpDefault)
+                    .evalTemplate(mapOf("users" to usersHelpData(myUsers)), resolver = copy.fragmentResolver())
+            }
+        }
+        table {
+            className = ClassName("op-table profile-users")
+            thead {
+                tr {
+                    th { +t("users", "userColumn", "User") }
+                    th { +t("users", "clientColumn", "Client") }
+                    th { +"" }
+                }
+            }
+            tbody {
+                for (row in rows) {
+                    val target = row.user
+                    tr {
+                        if (row.isActive) className = ClassName("profile-user-active")
+                        // The marks sit under the user they describe, so the table keeps to three columns.
+                        td {
+                            div { +row.label }
+                            if (row.isActive) span { className = ClassName("user-mark active"); +t("users", "activeMark", "Active now") }
+                            if (row.signsInAs) span { className = ClassName("user-mark"); +t("users", "signsInAsMark", "Signs in as") }
+                        }
+                        td {
+                            span {
+                                title = target.client
+                                +row.clientLabel
+                            }
+                        }
+                        td {
+                            div {
+                                className = ClassName("profile-user-actions")
+                                if (confirmingRemove == target.userId) {
+                                    Button {
+                                        danger = true
+                                        size = "small"
+                                        disabled = busy
+                                        onClick = { removePublic(target) }
+                                        +t("placeholder", "confirm", "Permanently remove")
+                                    }
+                                    Button {
+                                        size = "small"
+                                        disabled = busy
+                                        onClick = { confirmingRemove = null }
+                                        +t("placeholder", "cancel", "Cancel")
+                                    }
+                                } else {
+                                    if (row.canSwitch) {
+                                        Button {
+                                            size = "small"
+                                            disabled = busy
+                                            onClick = { switchTo(target) }
+                                            +t("users", "switch", "Switch to this user")
+                                        }
+                                    }
+                                    if (row.canMakeDefault) {
+                                        Button {
+                                            size = "small"
+                                            disabled = busy
+                                            onClick = { makeDefault(target) }
+                                            +t("users", "makeDefault", "Sign in as this one")
+                                        }
+                                    }
+                                    if (row.canRemove) {
+                                        Button {
+                                            size = "small"
+                                            disabled = busy
+                                            onClick = { confirmingRemove = target.userId }
+                                            +t("placeholder", "remove", "Remove")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // A `public` user's removal is permanent, so what it costs is said beside the table -- the whole registration
+        // when it is the person's only user (issue #752).
+        if (rows.any { it.canRemove }) {
+            p {
+                className = ClassName("type-hint")
+                +if (removalEndsEverything(myUsers)) {
+                    t(
+                        "placeholder", "helpOnly",
+                        "This is your only account. Removing it permanently deletes your registration: you are " +
+                            "signed out, and your email address is free to register again.",
+                    )
+                } else {
+                    t(
+                        "placeholder", "help",
+                        "You registered before being placed anywhere, so you have an account in the public " +
+                            "placeholder client. You can remove it. This is permanent, and your other accounts are " +
+                            "not affected.",
+                    )
+                }
+            }
+        }
+    }
+
     div {
-        className = ClassName("card")
+        // Wider while the users table shows (issue #1330): three columns and a row of actions do not fit a form's card.
+        className = ClassName(if (showsUsersTable(myUsers)) "card profile-wide" else "card")
         h1 { +t("profile", "title", "Your profile") }
 
         val user = config?.user
@@ -215,6 +362,25 @@ val Profile = FC<Props> {
                 }
             }
         }
+
+        // The client this user belongs to (issue #1330), by its name -- what a person calls it -- with the id when it has
+        // none. Taken from the person's own entry in their users, which carries the name; the profile carries the id.
+        val clientId = user?.client?.ifBlank { null }
+        if (clientId != null) {
+            p {
+                className = ClassName("subtitle")
+                MarkdownInline {
+                    source = t("profile", "clientLine", $$"Client: **${user.clientName}**")
+                        .evalTemplate(mapOf("user" to mapOf("clientName" to profileClientName(myUsers, clientId))))
+                }
+            }
+        }
+
+        // The person's users (issues #1330, #752): who they can act as, which one they are, and which one a sign-in
+        // lands on -- the thing the person most often finds confusing -- with the switch, the default and a `public`
+        // user's removal on each row. Shown when there is more than one user, or a `public` one to remove; a person
+        // with one ordinary user has nothing to choose, and the client line above says where they are.
+        if (showsUsersTable(myUsers)) usersSection()
 
         // Sits with the identity line, not among the password controls: what you are called is not a
         // credential, which is also why saving it needs no emailed code.
@@ -344,55 +510,6 @@ val Profile = FC<Props> {
             }
         }
 
-        // The `public` placeholder (issue #752): a person may remove their `public` users, up to and including the
-        // last of everything -- they registered themselves, so they can register again. The copy says which.
-        val removable = removablePublicUsers(myUsers)
-        if (removable.isNotEmpty()) {
-            h2 { +t("placeholder", "title", "Your public account") }
-            p {
-                className = ClassName("subtitle")
-                +if (removalEndsEverything(myUsers)) {
-                    t(
-                        "placeholder", "helpOnly",
-                        "This is your only account. Removing it permanently deletes your registration: you are " +
-                            "signed out, and your email address is free to register again.",
-                    )
-                } else {
-                    t(
-                        "placeholder", "help",
-                        "You registered before being placed anywhere, so you have an account in the public " +
-                            "placeholder client. You can remove it. This is permanent, and your other accounts are " +
-                            "not affected.",
-                    )
-                }
-            }
-            for (target in removable) {
-                val label = target.qualifierWithin(myUsers).ifEmpty { target.label() }
-                div {
-                    className = ClassName("row")
-                    if (confirmingRemove == target.userId) {
-                        Button {
-                            danger = true
-                            disabled = busy
-                            onClick = { removePublic(target) }
-                            +(t("placeholder", "confirm", "Permanently remove") + " [$label]")
-                        }
-                        Button {
-                            disabled = busy
-                            onClick = { confirmingRemove = null }
-                            +t("placeholder", "cancel", "Cancel")
-                        }
-                    } else {
-                        Button {
-                            disabled = busy
-                            onClick = { confirmingRemove = target.userId }
-                            +(t("placeholder", "remove", "Remove") + " [$label]")
-                        }
-                    }
-                }
-            }
-        }
-
         div {
             className = ClassName("row")
             Button {
@@ -418,3 +535,69 @@ fun removablePublicUsers(users: List<UserChoice>): List<UserChoice> = users.filt
  * covered under `jsNodeTest`.
  */
 fun removalEndsEverything(users: List<UserChoice>): Boolean = users.size == 1
+
+/**
+ * The help over the users table when the page's copy has not arrived (issue #1330): what the users are, which one is
+ * active, and which one a sign-in lands on. The shipped copy is `users.help` in the `profile` fragment file, which
+ * also pulls the flavor's addition; this fallback pulls nothing, there being no copy to pull from.
+ */
+private const val usersHelpDefault =
+    $$"Your sign-in reaches more than one user: each is you in a client, under a persona, with its own forms and " +
+        $$"access. You are acting as **${users.active}**. Signing in again takes you to **${users.signsInAs}**."
+
+/** One row of the profile's users table (issue #1330): the user, how it reads, its marks, and what it offers. */
+class ProfileUserRow(
+    val user: UserChoice,
+    /** The persona and suffix, as the badge words a user: `Member`, `Member B`, `Admin`. */
+    val label: String,
+    /** The client, by its name when it has one. */
+    val clientLabel: String,
+    /** The user the session is acting as. */
+    val isActive: Boolean,
+    /** The user a sign-in by the address lands on. */
+    val signsInAs: Boolean,
+    val canSwitch: Boolean,
+    /** Whether "sign in as this one" is offered: on every row a sign-in does not already reach. */
+    val canMakeDefault: Boolean,
+    /** A `public` user, which the person may remove (issue #752). */
+    val canRemove: Boolean,
+)
+
+/** The users table's rows (issue #1330), in the list's order. Pure, covered under `jsNodeTest`. */
+fun profileUserRows(users: List<UserChoice>): List<ProfileUserRow> = users.map { u ->
+    ProfileUserRow(
+        user = u,
+        label = personaTerm(u.persona, u.personaSuffix),
+        clientLabel = u.clientName?.ifBlank { null } ?: u.client,
+        isActive = u.isCurrent,
+        signsInAs = u.signsInAs,
+        canSwitch = !u.isCurrent,
+        canMakeDefault = !u.signsInAs && users.size > 1,
+        canRemove = u.client == CL.public,
+    )
+}
+
+/**
+ * Whether the profile shows the users table (issue #1330): when the person has more than one user to tell apart, or
+ * a `public` one they may remove. A person with one ordinary user has nothing to choose. Pure, covered under
+ * `jsNodeTest`.
+ */
+fun showsUsersTable(users: List<UserChoice>): Boolean = users.size > 1 || removablePublicUsers(users).isNotEmpty()
+
+/**
+ * What the users table's help is filled from (issue #1330): `active`, the user the session is acting as, and
+ * `signsInAs`, the one a sign-in lands on -- each as `Member B in Acme`. The one a sign-in lands on falls back to the
+ * active one when the list marks none. Pure, covered under `jsNodeTest`.
+ */
+fun usersHelpData(users: List<UserChoice>): Map<String, Any?> {
+    fun phrase(u: UserChoice?) = u?.let { "${personaTerm(it.persona, it.personaSuffix)} in ${it.clientName?.ifBlank { null } ?: it.client}" } ?: ""
+    val active = users.firstOrNull { it.isCurrent }
+    return mapOf("active" to phrase(active), "signsInAs" to phrase(users.firstOrNull { it.signsInAs } ?: active))
+}
+
+/**
+ * The name of the client [clientId] the profile's user belongs to (issue #1330): from the person's entry for it in
+ * [users], which carries the client's name, else the id. Pure, covered under `jsNodeTest`.
+ */
+fun profileClientName(users: List<UserChoice>, clientId: String): String =
+    users.firstOrNull { it.isCurrent && it.client == clientId }?.clientName?.ifBlank { null } ?: clientId

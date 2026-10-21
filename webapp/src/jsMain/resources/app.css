@@ -1314,6 +1314,25 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 /* A configuration row that wants attention (issue #1026): one offered Publish, which a note above the table sends
    people to. The warning chip's tint, so it reads as "look here", not as an error. */
 .op-table tr.op-row-attention > td { background: rgba(217, 119, 6, .16); }
+/* The profile's table of the person's users (issue #1330): the one the session is acting as is tinted with the
+   accent and marked; the one a sign-in lands on is marked too. A mark is the file refs' small pill, the active one
+   in the accent so the two read apart. */
+.op-table tr.profile-user-active > td { background: color-mix(in oklab, var(--accent) 16%, transparent); }
+.user-mark {
+    display: inline-block;
+    margin: 0 6px 2px 0;
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.user-mark.active { border-color: var(--accent-bright); color: var(--text); }
+.profile-user-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+/* The profile's card while it holds that table: room for three columns and a row of actions, still a page to read. */
+.card.profile-wide { width: min(780px, 92vw); }
 
 /* The workflow pages (issue #792): counts right-aligned under their headings, so the columns read as numbers. */
 .wf-aggregate .wf-count { text-align: right; width: 90px; }

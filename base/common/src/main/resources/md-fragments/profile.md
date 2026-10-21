@@ -5,7 +5,33 @@
 # +title Your profile
 # +signedInAs Signed in as **${user.publicName}**
 # +emailLine Email: `${user.email}`
+# +clientLine Client: **${user.clientName}**
 # +logout Log out
+
+/- The person's users (issue #1330): what they are, which one the session is acting as, and which one a sign-in lands
+   on -- the chosen default when it can be used, else the one last acted as. ${users.active} and ${users.signsInAs}
+   are supplied by the page, each as "Member B in Acme". `helpExtra` is empty as shipped; a deployment flavor's overlay
+   adds to it (the reference flavor says the bar can switch too). -/
+# @users
+# +title Your users
+# +help
+Your sign-in reaches more than one user: each is you in a client, under a persona, with its own forms and access.
+You are acting as **${users.active}**; switch to another below and you stay on this page.
+
+Signing in again takes you to **${users.signsInAs}**: the user you choose with **Sign in as this one**, or else the
+one you last acted as.
+
+${@t("users.helpExtra")}
+
+
+# +helpExtra
+# +userColumn User
+# +clientColumn Client
+# +activeMark Active now
+# +signsInAsMark Signs in as
+# +switch Switch to this user
+# +makeDefault Sign in as this one
+# +defaultSet Signing in now takes you to that user.
 
 /- The public placeholder (issue #752): a person may remove their public users, down to nothing -- they
    registered themselves, so they can register again. `helpOnly` is for their last user. -/
