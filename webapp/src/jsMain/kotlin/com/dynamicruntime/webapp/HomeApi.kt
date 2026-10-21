@@ -82,6 +82,11 @@ class HomeConfig(
     /** When the caller is in a client's sandbox (issue #931): which client's, for the marker and the way back. */
     val sandboxOf: SandboxOf? = null,
     /**
+     * Whether the caller's client is a shared demo space visitors join (issue #1248), so the bar carries the standing
+     * note that what they do there, other visitors see.
+     */
+    val sharedDemo: Boolean = false,
+    /**
      * The caller's client's own web assets (issue #1130): each slot it has set (`WAS.favicon`, `WAS.brandMark`) to
      * its image by name and content. A slot not in it is the deployment's own image.
      */
@@ -152,6 +157,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         sandboxOf = (config.state[HFLD.sandboxOf] as? String)?.let {
             SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it, stranded = config.state[HFLD.sandboxStranded] == true)
         },
+        sharedDemo = config.state[HFLD.sharedDemo] == true,
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },

@@ -1269,6 +1269,26 @@ sandbox and success) and marks the page root (`data-test-deployment`, `markPageT
 page's content clears it. Fixed at the bottom, not the top, so it shows at any scroll without competing with the
 sticky bar. Every mail says the same beneath its footer (`common.testDeploymentNote`).
 
+## Joining a demo client (issue #1248)
+
+On a deployment that offers it (`JOIN.offeredKey`, set by the `reference` flavor), a visitor signed in to `public` can
+**join** a demo client -- `acme` or `designdemo` as an administrator, `confdemo` as a speaker, organizer or committee
+member -- getting a user of their own identity in that **one shared** client. What a client may be joined as is its
+definition's `joinRoles` (kernel `ClientJoinRole`: a persona, a suffix telling two roles' users apart, labels, and
+what the page says of it), held at load by `ClientCheck.joinRoleFaults` (never on `public`, `hub`, a sandbox or a
+production client).
+
+- **`JoinPage` (`#page=join&c=<client>`, `JoinApi.kt`)** lists the client's roles (`GET /user/self/joinable`) under the
+  disclosure (`joinDisclosure`): that the space is shared, that an administrator -- another visitor -- sees the users'
+  names and addresses and can change or disable them, and that it all goes when the site's data is cleared. A join
+  is offered only once the acknowledgement is ticked, and `POST /user/self/join` refuses one without it. A join
+  moves the session (`afterSessionChange`); a role already joined offers **Open as** instead (a switch).
+- **The "Shared demo" chip** in the bar, while the shell config's `state.sharedDemo` is true, is the standing note on
+  every page that what you do there other visitors see; clicked, it says so (`sharedDemoNoteText`).
+- **Where joining is not offered**, or for a caller outside `public`, both endpoints answer 404, and the page shows
+  that refusal. The demo clients `designdemo` and `confdemo` are provisioned at boot on a reference deployment
+  (test instances only), so there is always one to join. The public home page (#1324) is where visitors meet it.
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative

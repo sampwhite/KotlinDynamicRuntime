@@ -187,6 +187,7 @@ val AppBar = FC<AppBarProps> { props ->
     // Whether the identity badge's user menu is open (issue #749); independent of the hamburger's.
     var userMenuOpen by useState(false)
     var sandboxInfoOpen by useState(false)
+    var sharedDemoInfoOpen by useState(false)
     // Which drill-down groups are expanded (issue #540). Collapsed by default -- a group's children show on
     // demand, keeping a long menu short -- and remembered per browser, so an operator who opens the Operator
     // group finds it open next time. Held as the set of expanded parent ids.
@@ -522,6 +523,30 @@ val AppBar = FC<AppBarProps> { props ->
             // client that has one; inside one, "Acme Sandbox" -- for anyone there, and always on screen as the bar is,
             // so nobody mistakes the sandbox for the real client. The chip opens a popover saying what the sandbox is,
             // with the way back: a switch (issue #749) to the person's own user in that client.
+            // A shared demo space (issue #1248): a standing note on every page, since the bar is on every page, that
+            // what the caller does here other visitors see. Clicked, it says what that means.
+            if (config?.sharedDemo == true) {
+                val clientName = config?.users.orEmpty().firstOrNull { it.isCurrent }?.clientName ?: config?.user?.client.orEmpty()
+                button {
+                    className = ClassName("bar-badge shared-demo-chip")
+                    asDynamic()["aria-haspopup"] = "dialog"
+                    asDynamic()["aria-expanded"] = sharedDemoInfoOpen
+                    title = "A shared demo space: other visitors see what you do here. Click for more."
+                    onClick = { sharedDemoInfoOpen = !sharedDemoInfoOpen }
+                    +"Shared demo"
+                }
+                if (sharedDemoInfoOpen) {
+                    div {
+                        className = ClassName("app-menu-overlay")
+                        onClick = { sharedDemoInfoOpen = false }
+                    }
+                    div {
+                        className = ClassName("app-menu sandbox-info")
+                        asDynamic()["role"] = "dialog"
+                        p { +sharedDemoNoteText(clientName) }
+                    }
+                }
+            }
             val inSandbox = config?.sandboxOf
             if (inSandbox != null) {
                 button {

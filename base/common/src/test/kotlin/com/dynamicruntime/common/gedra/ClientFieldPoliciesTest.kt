@@ -36,6 +36,7 @@ class ClientFieldPoliciesTest : StringSpec({
         ClientFieldPolicies.platformFields shouldContainExactly listOf(
             CLD.clientId, CLD.customerId, CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.extendsFromClientId,
             CLD.domainPrefix, CLD.customDomain, CLD.webResourcesId, CLD.preload, CLD.staticConfig, CLD.retired, CLD.testFeatures,
+            CLD.joinRoles,
         )
     }
 

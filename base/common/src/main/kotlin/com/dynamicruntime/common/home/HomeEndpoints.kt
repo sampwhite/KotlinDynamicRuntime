@@ -4,6 +4,7 @@ import com.dynamicruntime.common.user.SandboxAccess
 import com.dynamicruntime.common.fileref.FileRefService
 import com.dynamicruntime.common.gedra.sandboxParentOf
 import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.ClientJoin
 import com.dynamicruntime.common.content.MDOC
 import com.dynamicruntime.common.content.MarkdownDocDef
 import com.dynamicruntime.common.content.lastDocOrder
@@ -156,6 +157,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     "deployment's display default (KDR_DISPLAY_TIME_ZONE); absent when neither is set, for the " +
                     "deployment's day start.",
             )
+            property(
+                HFLD.sharedDemo,
+                "True when the caller's client is a demo client visitors join (issue #1248), or its sandbox, on a deployment that offers " +
+                    "joining, so every page notes it is a shared space; absent otherwise.",
+            ) { type = SCT.boolean }
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
             property(
@@ -221,6 +227,12 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // Where the client's people are (issue #1115): the zone the webapp shows moments in -- the client's, else
                 // the deployment's display default. Absent, the webapp shows the deployment's day start.
                 ClientService.getOrNull(c)?.displayZoneOf(c.client)?.let { put(HFLD.timeZone, it) }
+                // A shared demo space (issue #1248): what the caller does here, other visitors see -- and in its sandbox
+                // too, which every administrator who joined may open, and whose own definition declares no roles.
+                val demo = sandboxParentOf(c.client) ?: c.client
+                if (ClientJoin.isOffered(c) && ClientService.getOrNull(c)?.present(demo)?.joinRoles?.isNotEmpty() == true) {
+                    put(HFLD.sharedDemo, true)
+                }
                 // In a sandbox (issue #931): whose it is, so the shell marks it and offers the way back.
                 sandboxParentOf(c.client)?.let { parent ->
                     put(HFLD.sandboxOf, parent)

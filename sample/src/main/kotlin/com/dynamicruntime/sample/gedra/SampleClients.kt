@@ -42,6 +42,8 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SLDM
 import com.dynamicruntime.common.schema.layout
 import com.dynamicruntime.common.uiblock.UIB
+import com.dynamicruntime.common.gedra.ClientJoinRole
+import com.dynamicruntime.common.user.PERSONA
 
 /**
  * The sample fragment file and the keys it carries (issue #456) -- named rather than written as literals
@@ -291,6 +293,16 @@ private fun acmeClient(cxt: KdrCxt): GedraConfig =
                 // editors save drafts for it; globex keeps the live-at-once path.
                 sandbox = true,
                 customerId = SC.acme,
+                // A visitor to a reference deployment may join acme as an administrator (issue #1248), to look around
+                // a client from its administrator's side: its users, its configuration, its sandbox.
+                joinRoles = listOf(
+                    ClientJoinRole(
+                        name = PERSONA.admin,
+                        label = "Administrator",
+                        persona = PERSONA.admin,
+                        summary = "Manage Acme: its users, its copy and menu, its forms and reports, and its sandbox.",
+                    ),
+                ),
             ),
         )
 

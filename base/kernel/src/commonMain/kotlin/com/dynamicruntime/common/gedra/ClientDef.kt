@@ -174,6 +174,9 @@ object ClientFieldPolicies {
         CLD.staticConfig to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         CLD.retired to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
         CLD.testFeatures to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
+        // Who may join the client from `public`, and as what (issue #1248): authority over who becomes its
+        // administrator, so the platform's, and never handed on to a client another makes.
+        CLD.joinRoles to p(ClientFieldAtCreate.cleared, ClientFieldEdit.platform),
     )
 
     /** [field]'s policy; a field with none is a fault, since every field the schema declares has one. */
@@ -208,7 +211,8 @@ object ClientFieldPolicies {
      * the client administrator's [editorFields]: where the client is reached and what it presents with, what it is
      * for and whose it is, where it runs, and its preload. Not its customer or the template it extends, which move
      * what the client is under or holds and stay a deliberate configuration write; not its static lock (source only),
-     * its retirement (its own section, #1182), or its test features (a test instance's).
+     * its retirement (its own section, #1182), its test features (a test instance's), or its join roles (#1248, a
+     * list of roles the editor's one-line fields cannot hold).
      */
     val platformEditorFields: List<String> = listOf(
         CLD.usageType, CLD.audience, CLD.enabledEnvironments, CLD.preload, CLD.domainPrefix, CLD.customDomain,
@@ -401,6 +405,9 @@ object CLD {
 
     /** Whether the platform retired the client (issue #1111); see [ClientDef.retired]. */
     const val retired = "retired"
+
+    /** The roles a visitor may join the client as (issue #1248); see [ClientDef.joinRoles]. */
+    const val joinRoles = "joinRoles"
 
     /** Schema type name for the input of a client's creation by a customer's root administrator (issue #1112). */
     const val delegatedCreateTypeName = "ClientDelegatedCreate"
@@ -818,6 +825,14 @@ data class ClientDef(
      * [enabledEnvironments].
      */
     val retired: Boolean = false,
+    /**
+     * The roles a visitor signed in to `public` may **join** this client as (issue #1248): each gives the visitor a
+     * user of their own identity here, of the role's persona -- so its default roles, never `allClients` or
+     * `operator` -- with the role's labels. Empty for a client nobody joins, which is every client but a demo one.
+     * Joining is offered only where the deployment says so (`JOIN.offeredKey`), so declaring roles opens nothing on a
+     * node that does not. Set only by the platform; a sandbox and a client made by another never take it.
+     */
+    val joinRoles: List<ClientJoinRole> = emptyList(),
 ) {
     init {
         // Held to the one label rule ([normalizeUserLabels]) that a label on a *user* is held to, and refused here,
@@ -874,6 +889,7 @@ data class ClientDef(
         if (sandbox) put(CLD.sandbox, true)
         if (customerId != null) put(CLD.customerId, customerId)
         if (retired) put(CLD.retired, true)
+        if (joinRoles.isNotEmpty()) put(CLD.joinRoles, joinRoles.map { it.toJsonMap() })
     }
 
     companion object {
@@ -921,6 +937,7 @@ data class ClientDef(
             sandbox = m[CLD.sandbox] as? Boolean ?: false,
             customerId = m[CLD.customerId].toOptStr(),
             retired = m[CLD.retired] as? Boolean ?: false,
+            joinRoles = ClientJoinRole.listFrom(m[CLD.joinRoles]),
         )
 
         private fun <E : Enum<E>> enumOf(values: List<E>, name: String?, field: String): E =
@@ -1063,6 +1080,10 @@ data class ClientDef(
             prop(CLD.retired, "Whether the platform retired the client: its data kept, and the client absent everywhere.") {
                 type = SCT.boolean
                 allowCoerce = false
+            }
+            prop(CLD.joinRoles, "The roles a visitor signed in to public may join the client as, on a deployment that offers it.") {
+                type = SCT.array
+                items { ClientJoinRole.declareProperties(this) }
             }
         }
     }

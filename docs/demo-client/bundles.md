@@ -28,7 +28,19 @@ The client, its traits, its columns in the forms list, its shared type, its fact
       "usageType": "demo",
       "enabledEnvironments": ["unit", "local", "dev"],
       "includedTraits": ["kdr:name"],
-      "userLabels": ["committee"]
+      "userLabels": ["committee"],
+      "joinRoles": [
+        {"name": "speaker", "label": "Speaker", "persona": "member", "summary": "Submit a talk, and follow it through the committee's review."},
+        {"name": "organizer", "label": "Organizer", "persona": "admin", "summary": "See every talk submitted, and run the conference's workflows."},
+        {
+          "name": "committee",
+          "label": "Committee member",
+          "persona": "admin",
+          "personaSuffix": "review",
+          "userLabels": ["committee"],
+          "summary": "Review the talks whose survey is complete, and accept them."
+        }
+      ]
     }
   ],
   "kdr:traitDef": [

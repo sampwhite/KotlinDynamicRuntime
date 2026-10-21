@@ -142,6 +142,12 @@ object HFLD {
     const val timeZone = "timeZone"
 
     /**
+     * `state.sharedDemo`: true when the caller's client is a demo client visitors join (issue #1248), or its sandbox, on
+     * a deployment that offers joining -- so every page carries the standing note that this is a shared space; absent otherwise.
+     */
+    const val sharedDemo = "sharedDemo"
+
+    /**
      * `state.sandboxStranded`: beside [sandboxOf], true when the caller's sandbox user acts with no roles (issue
      * #1197), so the shell says access has ended instead of offering doors that will not open; absent otherwise.
      * Whatever the reason: the user it was opened from is disabled or no longer stands for the parent (lost the
@@ -299,6 +305,9 @@ object HMENU {
     const val pageSimulations = "simulations"
     /** Become any user through the `becomeUser` fixture's form (issue #1183), for a caller with test access. */
     const val pageBecomeUser = "becomeUser"
+
+    /** Joining a demo client from `public` (issue #1248): its roles, the shared-space disclosure, and the join. */
+    const val pageJoin = "join"
     const val pageProfile = "profile"
     const val pageLogin = "login"
     const val pageRegister = "register"
