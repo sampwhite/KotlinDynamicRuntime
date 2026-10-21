@@ -80,7 +80,7 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
 
     /**
      * Uploads [parts] to [path] as this user -- a `multipart/form-data` request, a `ContentData` for the file and
-     * any other value for a field travelling with it -- and returns the **whole envelope**, a success's or an
+     * any other value for a field traveling with it -- and returns the **whole envelope**, a success's or an
      * error's, so one call serves a test of either: read `results` from it, or `status`.
      */
     fun upload(path: String, parts: Map<String, Any?>): Map<String, Any?> =

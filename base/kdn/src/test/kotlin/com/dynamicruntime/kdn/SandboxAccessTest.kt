@@ -58,6 +58,7 @@ import io.kotest.matchers.shouldNotBe
  *
  * One booted instance; a parent client per case.
  */
+@Suppress("BooleanLiteralArgument")
 class SandboxAccessTest : StringSpec({
     val cxt = TestInstances.default("sandboxAccess929")
 
@@ -198,13 +199,14 @@ class SandboxAccessTest : StringSpec({
     // (`SandboxAccess.standingOf`) -- not with what its own row was made with the day the sandbox was opened. Each
     // case changes something outside, or the sandbox row, and asks the sandbox session.
 
-    /** What [user]'s session can do across clients: what its roles say, and what three gates answer for [other]. */
+    /** The answers `reachOf` collects, one per way a session could reach across clients. */
     class Reach(val listed: Boolean, val adminSection: Boolean, val namesOther: Boolean, val overviewShowsOther: Boolean) {
         val any: Boolean get() = listed || adminSection || namesOther || overviewShowsOther
         override fun toString(): String =
             "allClients listed=$listed, admin section admits=$adminSection, names another client=$namesOther, overview lists another=$overviewShowsOther"
     }
 
+    /** What [user]'s session can do across clients: what its roles say, and what three gates answer for [other]. */
     fun reachOf(user: TestUser, other: String): Reach = Reach(
         listed = ROLE.allClients in user.selfRoles(),
         // The `admin` section: `admin` and `allClients` both.
