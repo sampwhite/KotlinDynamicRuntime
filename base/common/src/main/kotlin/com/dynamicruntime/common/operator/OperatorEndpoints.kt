@@ -15,6 +15,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.util.formatDate
 import java.lang.management.ManagementFactory
 import java.util.Locale
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Keys of the `/operator/system/info` report. Self-named per the code guide, even though the report is
@@ -247,7 +248,8 @@ private fun systemInfo(cxt: KdrCxt, collect: Boolean): Map<String, Any?> {
             OSI.nodeStartTime to NodeService.vmStartTime.formatDate(),
             OSI.currentTime to now.formatDate(),
             OSI.uptimeMs to uptime.inWholeMilliseconds,
-            OSI.uptimeText to uptime.toString(),
+            // Whole seconds: `Duration.toString()` writes every digit of the fraction (issue #1317).
+            OSI.uptimeText to uptime.inWholeSeconds.seconds.toString(),
         ),
         OSI.gc to gcReport,
         OSI.runtime to linkedMapOf(
