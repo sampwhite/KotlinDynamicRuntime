@@ -145,7 +145,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             type = SCT.array
             items { type = SCT.string }
         }
-        property(CIT.dataRef, "The schema reference of the trait's data -- its fields -- into the catalog's \$defs.")
+        property(CIT.dataRef, $$"The schema reference of the trait's data -- its fields -- into the catalog's $defs.")
         property(
             CIT.customized,
             "Whether the client alters or extends the trait, which makes it supported without being included.",
