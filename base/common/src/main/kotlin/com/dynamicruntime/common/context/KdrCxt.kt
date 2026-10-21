@@ -2,6 +2,7 @@ package com.dynamicruntime.common.context
 
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.logging.RequestLogCapture
 import com.dynamicruntime.common.util.splitComma
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -117,6 +118,14 @@ class KdrCxt(
      * for `foo` would fire on `_debug=foobar`.
      */
     var debug: String? = null
+
+    /**
+     * Where this request's log lines are kept, as well as logged, when it is capturing them (issue #1173): set by the
+     * dispatcher for `_debug=captureLogs`, once the caller is known to be permitted it, or for the in-process test
+     * client. Shared with sub contexts, so work done on the request's behalf is kept too; a background job is not
+     * part of the request and has none.
+     */
+    override var logCapture: RequestLogCapture? = null
 
     /**
      * The view of a page the request asks for (issue #972) -- `DSV.design` for Design View -- from the off-contract
@@ -279,6 +288,7 @@ class KdrCxt(
         sub.envAuthDebug = envAuthDebug
         sub.isDirect = isDirect
         sub.debug = debug // debug tags travel with the request
+        sub.logCapture = logCapture // so does a capture of its log lines, which is shared, not copied
         sub.view = view // so does the requested view
         sub.appId = appId // request identity travels with the request...
         sub.traceId = traceId // ...so a sub context's log lines carry the same trace id

@@ -92,7 +92,8 @@ class StoredOptionsSourceTest : StringSpec({
         val refused = admin.expectError(EXC.badInput, ACEP.bundleWrite, writeBody(config(client, CUST.customerOptions)))
         refused[EP.errorMessage].toString() shouldContain
             "sources its options from '${CUST.customerOptions}', which stored configuration may not name"
-        admin.getItems(ACEP.bundles, mapOf(CFEP.client to client)).size shouldBe 0
+        // Nothing stored: the client has no stored configuration at all.
+        admin.expectError(EXC.notFound, ACEP.bundles, args = mapOf(CFEP.client to client))
     }
 
     "and one already stored is dropped at load, with the issue said" {

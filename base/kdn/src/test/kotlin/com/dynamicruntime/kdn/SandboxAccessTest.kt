@@ -211,7 +211,9 @@ class SandboxAccessTest : StringSpec({
         adminSection = user.client.sendJsonGetRequest(ACEP.bundles, mapOf(CFEP.client to other))[EP.status] == null,
         // The scoped surface, naming a client that is not the caller's own: admitted only to one who sees every client.
         namesOther = user.client.sendJsonGetRequest(UADEP.clientDefinition, mapOf(CLD.client to other))[EP.status] == null,
-        overviewShowsOther = user.getItems(UADEP.clientsOverview).any { it[CLD.clientId] == other },
+        // A caller the scoped surface refuses is shown no overview at all.
+        overviewShowsOther = user.client.sendJsonGetRequest(UADEP.clientsOverview)[EP.items].toJsonListOfMaps()
+            .any { it[CLD.clientId] == other },
     )
 
     "allClients taken away outside the sandbox is no longer held inside it, for an administrator of the parent" {

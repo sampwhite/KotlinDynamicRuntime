@@ -27,6 +27,7 @@ import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toOptLong
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
@@ -62,7 +63,12 @@ class GedraConfigWriteTrialTest : StringSpec({
         CFEP.slots to gedraConfigToEntries(config),
     )
 
-    fun stored(client: String): Int = admin.getItems(ACEP.bundles, mapOf(CFEP.client to client)).size
+    /** How many bundles [client] has stored: none when the client has no stored configuration at all, a 404. */
+    fun stored(client: String): Int {
+        val env = admin.client.sendJsonGetRequest(ACEP.bundles, mapOf(CFEP.client to client))
+        if (env[EP.status].toOptLong() == EXC.notFound.toLong()) return 0
+        return env[EP.items].toJsonListOfMaps().size
+    }
 
     /** A config holding [client]'s definition and the traits [traitIds] -- for another config to collect. */
     fun defs(client: String, vararg traitIds: String) = config(client, "defs") {
