@@ -113,6 +113,22 @@ class UserSwitchTest : StringSpec({
         choices(me) shouldHaveSize 2
     }
 
+    // Issue #1330: the list says which user a sign-in by the address lands on, so the profile page need not guess.
+    "the user a sign-in lands on is marked: the one last acted as, and a chosen default over it" {
+        val address = "switch-signsin1330@example.com"
+        val first = TestUser.create(cxt, address)
+        val second = TestUser.create(cxt, address, personaSuffix = "B")
+        fun signsInAs(user: TestUser) = choices(user).single { it[UCF.signsInAs] == true }[UCF.userId]
+        // No choice made: the one the person last acted as, which creating the second one was.
+        signsInAs(second) shouldBe second.userId
+        // A chosen default wins, and a later switch does not undo it.
+        second.postData(AEP.setDefaultUser, mapOf(AFLD.userId to first.userId))
+        signsInAs(second) shouldBe first.userId
+        second.postData(AEP.switchUser, mapOf(AFLD.userId to first.userId))
+        first.postData(AEP.switchUser, mapOf(AFLD.userId to second.userId))
+        signsInAs(second) shouldBe first.userId
+    }
+
     "the chosen default wins over the most recently used user when an address logs in unnamed" {
         val address = "switch-default@example.com"
         val first = TestUser.create(cxt, address)

@@ -234,9 +234,23 @@ Current UI-config endpoints:
   address logs in as, and `POST /user/self/removePublic {userId}` permanently removes one of the person's own
   `public` users (issue #752), down to nothing -- a `public` user's owner registered themselves and can register
   again, so the last user may go too, retiring the identity. Removing the acting user moves the session to the
-  person's default user, or ends it when none remains. The **profile page** offers it ("Your public account")
-  for every `public` user in the switcher's list, and says when it is the whole registration
-  (`removablePublicUsers`, `removalEndsEverything`). The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
+  person's default user, or ends it when none remains. The **profile page** (issue #1330) names the user's client
+  and, for a person with more than one user or a `public` one, shows them all in a table ("Your users": Persona,
+  Client, and Name only when the users are named differently): the active one tinted and marked **Active now**, and
+  the one a sign-in lands on marked **Next sign-in** from the list's `signsInAs` -- the default rule worked out
+  (`defaultUserOf`), which differs from `isDefault` (the choice alone) when sign-in passes a chosen default over.
+  Each row offers **Switch to this user**, which stays on the profile page (`afterSessionChange` with the profile's
+  hash; the leave from inside a sandbox, read from `ShellFacts.inSandbox`), **Use for next sign-in** (`setDefault`)
+  where a sign-in does not already land, and **Remove** on a `public` row, two-step, saying when it is the whole
+  registration (`removablePublicUsers`, `removalEndsEverything`). The table's rules are pure (`profileUserRows`,
+  `showsUsersTable`, `showsNameColumn`, `usersHelpData`, covered by `ProfileUsersTest`). Its status line is the
+  `profile` file's `users.help`, which pulls `users.helpExtra` -- empty as shipped, and the reference flavor's overlay
+  says the bar switches too. The concept behind it is `users.whatIsThis`, opened by the heading's **What is this?**
+  (`WhatIsThis`: a disclosure that opens its explanation inline, Markdown from the copy it explains, drawing no link
+  when that copy is empty). The link's own words ("What is this?", "Hide") are the app's, not a page's: the shell's
+  `home` file's `whatIsThis` namespace, told to every page through `ShellFacts` once the bar has its copy, so a page's
+  file holds only its explanation.
+  The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
   bar needs no fetch of its own: for a person with more than one user the **identity badge** says which one this
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)
   and becomes the menu that switches; with one user it is the plain label it always was. The default persona

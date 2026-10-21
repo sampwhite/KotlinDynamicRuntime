@@ -253,6 +253,9 @@ val AppBar = FC<AppBarProps> { props ->
                     console.error("$errorLogPrefix could not load app-bar copy: ${it.message}")
                 }
             }
+            // The shell's copy carries words every page uses (a "What is this?" link's, issue #1330), so the facts are
+            // told again with it; unchanged facts are kept as they were, so this redraws nothing when nothing moved.
+            copy?.let { props.onShellFacts(shellFactsOf(cfg, it)) }
             brandAfterLoad(copy != null, copy?.opt(HFRAG.homeNs, HFRAG.brand), everLoaded.current == true)
                 ?.let { brandState = it }
         }

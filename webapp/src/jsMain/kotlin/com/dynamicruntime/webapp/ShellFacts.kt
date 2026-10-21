@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.uiblock.UiRoute
 import react.createContext
@@ -22,6 +23,12 @@ import react.use
  *   a document is left as written.
  * - [fileRefs] are the file refs the caller's client is served (issue #1186), what an image in copy naming one is
  *   drawn from -- see [copyRefAddress]. Empty until the shell has been told, when such an image draws its alt text.
+ * - [inSandbox] is whether the session is in a sandbox (issue #1330), which decides how a switch to another of the
+ *   person's users is made -- see [switchesFromSandbox]. False until the shell has been told.
+ * - [whatIsThisLink] and [whatIsThisHide] are the words of every "What is this?" link and of closing what it opened
+ *   ([WhatIsThis], issue #1330): the app's words, not a page's, so they are the shell's copy (the `home` file's
+ *   `whatIsThis` namespace) rather than each page's. Null until the shell's copy has arrived, when the link says it
+ *   in English.
  *
  * A data class, so that a refresh which says the same thing is the same value and redraws nothing.
  */
@@ -31,6 +38,9 @@ data class ShellFacts(
     val docs: List<HomeLink> = emptyList(),
     val sourceRepoBase: String? = null,
     val fileRefs: Map<String, String> = emptyMap(),
+    val inSandbox: Boolean = false,
+    val whatIsThisLink: String? = null,
+    val whatIsThisHide: String? = null,
 )
 
 /** The context carrying the [ShellFacts]; [App] is the sole provider. The default is "not yet told". */
@@ -41,15 +51,19 @@ fun useShellFacts(): ShellFacts = use(ShellFactsContext)
 
 /**
  * The [ShellFacts] a home config says (issue #1091): the caller's fact, and the label of whichever entry of their
- * menu routes to the forms listing -- the menu offers one per caller, whichever of its two it is. Pure, covered under
+ * menu routes to the forms listing -- the menu offers one per caller, whichever of its two it is -- and, once the
+ * shell's copy ([shellCopy], the `home` file) has arrived, the words of a "What is this?" link. Pure, covered under
  * `jsNodeTest`.
  */
-fun shellFactsOf(config: HomeConfig): ShellFacts = ShellFacts(
+fun shellFactsOf(config: HomeConfig, shellCopy: Copy? = null): ShellFacts = ShellFacts(
     administersClient = config.administersClient,
     formsEntryLabel = config.menu.firstOrNull { (it.action as? UiRoute)?.page == HMENU.pageForms }?.label?.ifBlank { null },
     docs = config.links,
     sourceRepoBase = config.sourceRepoBase,
     fileRefs = config.fileRefs,
+    inSandbox = switchesFromSandbox(config),
+    whatIsThisLink = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisLink)?.ifBlank { null },
+    whatIsThisHide = shellCopy?.opt(HFRAG.whatIsThisNs, HFRAG.whatIsThisHide)?.ifBlank { null },
 )
 
 /**

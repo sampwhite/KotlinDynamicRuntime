@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.context.UserProfile
 import com.dynamicruntime.common.home.HFEAT
 import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.UiCall
 import com.dynamicruntime.common.uiblock.UiRoute
@@ -154,6 +155,11 @@ class ConfigParsersTest {
             mapOf(HFLD.id to "clientForms", HFLD.label to "Audits", UIB.action to "forms"),
         )
         assertEquals(ShellFacts(administersClient = true, formsEntryLabel = "Audits"), admin)
+        // A "What is this?" link's words are the shell's copy (issue #1330), told once that copy has arrived.
+        val config = homeConfigFrom(uiConfig(features = emptyMap(), state = emptyMap()))
+        val withCopy = shellFactsOf(config, Copy(mapOf(HFRAG.whatIsThisNs to mapOf(HFRAG.whatIsThisLink to "Why?", HFRAG.whatIsThisHide to "Close"))))
+        assertEquals("Why?" to "Close", withCopy.whatIsThisLink to withCopy.whatIsThisHide)
+        assertEquals(null, shellFactsOf(config).whatIsThisLink)
         assertEquals("Audits", formsListingName(admin))
         // No entry for the page (a client hid it), or one with no words: the name falls back on the caller's fact.
         assertEquals(null, facts(emptyMap(), mapOf(HFLD.id to "users", HFLD.label to "Users", UIB.action to "users")).formsEntryLabel)

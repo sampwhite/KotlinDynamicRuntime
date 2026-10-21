@@ -354,7 +354,8 @@ class UserService : ServiceInitializer {
 
     /**
      * The users the caller may switch to (issue #749): the registered, enabled users of the session's identity in
-     * the clients this node carries (issue #1110), the current one, and the chosen default marked. Empty for a caller no identity backs -- a logged-out
+     * the clients this node carries (issue #1110), with the current one, the chosen default, and the one a sign-in
+     * lands on (issue #1330) marked. Empty for a caller no identity backs -- a logged-out
      * caller, a manufactured profile, or a cookie issued before the split -- and for one whose own user no longer
      * acts for it, which may switch nowhere.
      */
@@ -369,11 +370,15 @@ class UserService : ServiceInitializer {
         // Only users in a client this node carries (issue #1110): one in a retired client, or one not enabled here,
         // would be a door the switch then refuses. Each named as its client is, for the menu.
         val clients = ClientService.getOrNull(cxt)
+        // Which one a sign-in by the address lands on (issue #1330), by the rule the sign-in itself uses -- so a chosen
+        // default sign-in passes over is not the one marked.
+        val signsInAs = defaultUserOf(cxt, identity)?.userId
         return registeredUsersOf(cxt, identity).filter { clients?.isPresent(it.client) != false }.map {
             UserChoice(
                 it.userId, it.client, it.persona, it.personaSuffix, it.name,
                 isCurrent = it.userId == profile.userId, isDefault = it.userId == identity.defaultUserId,
                 clientName = clients?.known(it.client)?.name?.ifBlank { null },
+                signsInAs = it.userId == signsInAs,
             )
         }
     }
