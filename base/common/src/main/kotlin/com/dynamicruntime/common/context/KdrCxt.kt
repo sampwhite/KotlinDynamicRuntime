@@ -407,14 +407,20 @@ class KdrCxt(
     }
 
     /**
-     * Whether the request's [debug] tag lists [name] as one of its comma-separated words -- an **exact** word,
+     * Whether the request's [debug] tag lists [tag] as one of its comma-separated words -- an **exact** word,
      * not a substring, so `_debug=explainInputFully` does not answer a check for `explainInput`. The way to
-     * gate diagnostic behavior on a `_debug` tag; use this rather than `debug?.contains(name)`.
+     * gate diagnostic behavior on a `_debug` tag; use this rather than `debug?.contains(...)`. The word is a
+     * [DebugTagDef] its component declares (issue #1334), and one no loaded component declared is refused.
      */
-    fun hasDebug(name: String): Boolean = debug?.splitComma()?.contains(name) == true
+    fun hasDebug(tag: DebugTagDef): Boolean {
+        // A word no loaded component declared is refused even when nobody sent it (issue #1334): this line runs on
+        // every pass through the code that checks the word, so its tests find the omission.
+        DebugTags.get(instanceConfig)?.requireDeclared(tag)
+        return debug?.splitComma()?.contains(tag.name) == true
+    }
 
     /**
-     * Whether the diagnostic `_debug` tag [name] is both **requested** ([hasDebug]) and **permitted** on this
+     * Whether the diagnostic `_debug` tag [tag] is both **requested** ([hasDebug]) and **permitted** on this
      * request: a caller with [hasTestAccess] (issue #1149), or a session in ENV DEBUG (issue #517). The single
      * fence every diagnostic tag that surfaces internal detail (`explainAccess`, `explainError`, `explainScope`,
      * `explainInput`) asks, so they cannot drift -- `_debug` is an off-contract key any caller can send, so a
@@ -422,8 +428,8 @@ class KdrCxt(
      * test instance. A plain diagnostic that only echoes the caller's own request may still use [hasDebug]
      * directly.
      */
-    fun hasDebugDiagnostic(name: String): Boolean =
-        hasDebug(name) && (hasTestAccess || isEnvDebug)
+    fun hasDebugDiagnostic(tag: DebugTagDef): Boolean =
+        hasDebug(tag) && (hasTestAccess || isEnvDebug)
 
     /** Duration since this context was created, in milliseconds. */
     fun durationMs(): Double = (System.nanoTime() - nanoTime) / 1_000_000.0

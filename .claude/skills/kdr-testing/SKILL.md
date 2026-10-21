@@ -313,6 +313,13 @@ caller who asks would undo the hiding it exists to explain. Every diagnostic `_d
 `explainScope`, `explainInput`, ...) is fenced the same way, through `KdrCxt.hasDebugDiagnostic`. Without it, a
 filtering bug shows up only as a count one lower than expected.
 
+**Which words exist** (issue #1334): each is a `DebugTagDef` declared beside the code that reads it and contributed by
+its component's `debugTags()`. `hasDebug` and `hasDebugDiagnostic` take the def, and a word no loaded component
+declared is refused when checked, so the list is complete. `/app/ui/config` lists them, each with what it does and
+its kind (explain, log or alter), under `state.debugTags`, to a caller the words answer. The app bar's debug box
+offers them from a "+ tag" picker beside it. To send one from a test, use its `.name`: `mapOf(EP.debug to
+SS.explainAccess.name)`. A new word is a `DebugTagDef` added to its component's list.
+
 **What did this request log?** `_debug=captureLogs` (issue #1173) returns the request's log lines under
 `_meta.logs`, on a success and on an error alike, and keeps them down to debug whatever the topics are set to, so one
 request's debug output needs no node-wide `KDR_LOG_LEVEL=debug`. Each line is its level, topic, and message, plus an
@@ -324,6 +331,12 @@ is restored are not kept, because the fence cannot be decided earlier.
 curl -s -b "$JAR" -X POST 'http://localhost:7071/kda/admin/user/setName?_debug=captureLogs' \
   -H 'Content-Type: application/json' -d '{"userId": 5, "name": "x"}' | jq '._meta.logs'
 ```
+
+**Logging more for one request:** `_debug=logSql` (issue #1334) logs every SQL statement the request runs, at debug
+on the `sql` topic, with its name, its SQL, and its bound values through `RequestArgsLog` (a secret by name redacted,
+an address masked, a long value abbreviated). It is logging switched on for one request rather than for the node. On
+a node logging at info the lines reach none of the node's sinks, so pair it with `captureLogs` to read them:
+`_debug=logSql,captureLogs`.
 
 ## Probing a running instance (`kdr-probe`)
 

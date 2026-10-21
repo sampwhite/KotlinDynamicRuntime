@@ -1,5 +1,7 @@
 package com.dynamicruntime.common
 
+import com.dynamicruntime.common.context.DebugTagDef
+import com.dynamicruntime.common.gedra.GDBG
 import com.dynamicruntime.common.gedra.stateRecomputeJob
 import com.dynamicruntime.common.gedra.workflow.TraitLockGuard
 import com.dynamicruntime.common.cfact.addCoreCFacts
@@ -34,11 +36,13 @@ import com.dynamicruntime.common.flavor.FlavorDef
 import com.dynamicruntime.common.flavor.flavor
 import com.dynamicruntime.common.http.client.OutboundHttpService
 import com.dynamicruntime.common.http.request.ContextFocus
+import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.job.JobService
 import com.dynamicruntime.common.job.jobExceptionTables
 import com.dynamicruntime.common.job.jobOperatorSchema
 import com.dynamicruntime.common.job.jobTables
+import com.dynamicruntime.common.logging.RLOG
 import com.dynamicruntime.common.naming.OWNR
 import com.dynamicruntime.common.node.InstanceConfigService
 import com.dynamicruntime.common.node.NodeService
@@ -73,6 +77,8 @@ import com.dynamicruntime.common.gedra.gedraSchema
 import com.dynamicruntime.common.gedra.gedraStateAdminSchema
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.home.HFRAG
+import com.dynamicruntime.common.sql.SQLDBG
+import com.dynamicruntime.common.startup.SS
 import com.dynamicruntime.common.user.AFRAG
 import com.dynamicruntime.common.app.appSchema
 import com.dynamicruntime.common.home.coreDocs
@@ -304,6 +310,21 @@ class CommonComponent : ComponentDefinition {
             fragmentFiles(FRAG.sample) +
             // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.
             backendFragmentFiles(AFRAG.mail, shownOn = "the mails the sign-in and invitation flows send")
+
+    /**
+     * The `_debug` words core reads (issue #1334): the request pipeline's own, the catalog's and the gedra layer's.
+     * Core loads on every node, so a word the request pipeline checks is declared wherever it is checked.
+     */
+    override fun debugTags(cxt: KdrCxt): List<DebugTagDef> = listOf(
+        RLOG.captureLogs,
+        SQLDBG.logSql,
+        RequestHandler.explainError,
+        SS.explainAccess,
+        SS.explainInput,
+        GDBG.explainScope,
+        GDBG.dataFromSql,
+        GDBG.stateFromSql,
+    )
 
     /** The deployment flavors core owns (issue #1221). */
     override fun flavorDefs(cxt: KdrCxt): List<FlavorDef> = listOf(

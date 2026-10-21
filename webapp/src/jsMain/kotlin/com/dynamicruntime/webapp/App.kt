@@ -67,6 +67,8 @@ val App = FC<Props> {
     var envAuthSuppressible by useState(false)
     var envAuthActing by useState(false)
     var envAuthDebug by useState(false)
+    // The `_debug` words the box offers (issue #1334); kept as held when a refresh tells the same list, so it redraws nothing.
+    val (debugTags, setDebugTags) = useState(emptyList<DebugTagChoice>())
     // Whether to draw the testing band (issue #1150): from the app config, like the values beside it.
     var publicTestDeployment by useState(false)
     // App is the root component (it never unmounts), so the listener lives for the page's lifetime; no cleanup.
@@ -102,6 +104,8 @@ val App = FC<Props> {
             envAuthSuppressible = appConfig().envAuthSuppressible
             envAuthActing = appConfig().isEnvAuthed
             envAuthDebug = appConfig().envAuthDebug
+            val toldTags = appConfig().debugTags
+            setDebugTags { held -> if (held == toldTags) held else toldTags }
             publicTestDeployment = appConfig().publicTestDeployment
             // From the config, not the state just set: a state read in this same effect still holds the old value.
             markPageTestDeployment(appConfig().publicTestDeployment)
@@ -164,6 +168,7 @@ val App = FC<Props> {
                         this.envAuthSuppressible = envAuthSuppressible
                         this.envAuthActing = envAuthActing
                         this.envAuthDebug = envAuthDebug
+                        this.debugTags = debugTags
                     }
                     div {
                         className = ClassName("app-content")

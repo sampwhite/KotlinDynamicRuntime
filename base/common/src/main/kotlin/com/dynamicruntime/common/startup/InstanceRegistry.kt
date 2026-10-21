@@ -1,6 +1,8 @@
 package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.DebugTagDef
+import com.dynamicruntime.common.context.DebugTags
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.content.FRAG
 import com.dynamicruntime.common.content.FragmentSource
@@ -142,6 +144,7 @@ object InstanceRegistry {
             val fragmentSources = mutableListOf<FragmentSource>()
             val uiBlockSources = mutableListOf<UiBlockSource>()
             val docs = mutableListOf<MarkdownDocDef>()
+            val debugTags = mutableListOf<DebugTagDef>()
             for (component in loaded) {
                 // With the component in hand, so what it contributes is held to its owner root (issue #950).
                 collector.contributingAs(cxt, component) {
@@ -149,6 +152,7 @@ object InstanceRegistry {
                     fragmentSources.addAll(component.fragments(cxt))
                     uiBlockSources.addAll(component.uiBlocks(cxt))
                     docs.addAll(component.docs(cxt))
+                    debugTags.addAll(component.debugTags(cxt))
                     // Same loop, so every config is present before any service binds -- which is what lets
                     // SchemaService compile them, and #301 assemble over them, with nothing left to arrive.
                     for (config in component.gedraConfigs(cxt)) {
@@ -186,6 +190,7 @@ object InstanceRegistry {
             config.put(FRAG.registryKey, fragmentSources.toList())
             config.put(UIB.registryKey, uiBlockSources.toList())
             config.put(MDOC.registryKey, checkedMarkdownDocs(docs))
+            config.put(DebugTags.registryKey, DebugTags.of(debugTags))
 
             val startupEntries = mutableListOf<ServiceEntry>()
             val serviceEntries = mutableListOf<ServiceEntry>()

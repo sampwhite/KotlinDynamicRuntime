@@ -16,6 +16,7 @@ import org.w3c.dom.Element
 import react.ChildrenBuilder
 import react.FC
 import react.Props
+import react.create
 import react.dom.html.ReactHTML.a
 import react.dom.html.ReactHTML.button
 import react.dom.html.ReactHTML.div
@@ -160,6 +161,8 @@ external interface AppBarProps : Props {
      * toggle -- but it gates the persistent `_debug` box, which is shown only while debug is on.
      */
     var envAuthDebug: Boolean
+    /** The `_debug` words the box offers to append (issue #1334), from the app config. */
+    var debugTags: List<DebugTagChoice>
 }
 
 /**
@@ -485,6 +488,35 @@ val AppBar = FC<AppBarProps> { props ->
                         if (valid && debugTags.trim() != debugRequestTags()) {
                             setDebugRequestTags(debugTags)
                             bump()
+                        }
+                    }
+                }
+                // The words the node declares (issue #1334), each with what it does, appended to the box on a pick.
+                // A Select that never holds a value: it shows its placeholder, and a pick applies at once, as
+                // committing the box does. A word the box already has is shown but cannot be picked again.
+                if (props.debugTags.isNotEmpty()) {
+                    val present = debugTagWords(debugTags)
+                    Select {
+                        this.size = "small"
+                        this.value = null
+                        this.placeholder = "+ tag"
+                        this.popupMatchSelectWidth = 420
+                        this.style = js("({ width: 72 })")
+                        asDynamic()["aria-label"] = "Add a debug tag to the box"
+                        this.options = props.debugTags.map { tag ->
+                            val option: dynamic = js("({})")
+                            option.value = tag.name
+                            option.disabled = tag.name in present
+                            option.label = DebugTagOption.create { this.tag = tag }
+                            option
+                        }.toTypedArray()
+                        this.onChange = { picked ->
+                            val next = withDebugTag(debugTags, picked as String)
+                            debugTags = next
+                            if (next != debugRequestTags()) {
+                                setDebugRequestTags(next)
+                                bump()
+                            }
                         }
                     }
                 }
@@ -900,5 +932,30 @@ private fun ChildrenBuilder.menuItemView(
             }
         }
         null -> Unit
+    }
+}
+
+private external interface DebugTagOptionProps : Props {
+    var tag: DebugTagChoice
+}
+
+/** One word in the debug-tag picker (issue #1334): the word and what kind of word it is, then what it does. */
+private val DebugTagOption = FC<DebugTagOptionProps> { props ->
+    div {
+        className = ClassName("debug-tag-option")
+        div {
+            span {
+                className = ClassName("debug-tag-name")
+                +props.tag.name
+            }
+            span {
+                className = ClassName("debug-tag-kind")
+                +debugTagKindLabel(props.tag.kind)
+            }
+        }
+        div {
+            className = ClassName("debug-tag-description")
+            +props.tag.description
+        }
     }
 }

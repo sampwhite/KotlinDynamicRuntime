@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.context
 
+import com.dynamicruntime.common.exception.KdrException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
@@ -71,23 +73,51 @@ class KdrCxtTest : StringSpec({
 
     "hasDebug matches a whole comma-separated word, not a substring (issue #107)" {
         val cxt = KdrCxt.mkSimpleCxt("request")
+        val explainInput = DebugTagDef("explainInput", "Echoes the input.")
+        val explain = DebugTagDef("explain", "A prefix of the word above.")
+        val foo = DebugTagDef("foo", "Another word.")
+        val bar = DebugTagDef("bar", "And another.")
 
-        cxt.hasDebug("explainInput") shouldBe false // no _debug tag at all
+        cxt.hasDebug(explainInput) shouldBe false // no _debug tag at all
 
         cxt.debug = "explainInput"
-        cxt.hasDebug("explainInput") shouldBe true
+        cxt.hasDebug(explainInput) shouldBe true
 
         // A tag among several, and tolerant of the whitespace splitComma trims.
         cxt.debug = "foo, explainInput ,bar"
-        cxt.hasDebug("explainInput") shouldBe true
-        cxt.hasDebug("foo") shouldBe true
-        cxt.hasDebug("bar") shouldBe true
+        cxt.hasDebug(explainInput) shouldBe true
+        cxt.hasDebug(foo) shouldBe true
+        cxt.hasDebug(bar) shouldBe true
 
         // The bug this replaces: a substring must NOT match.
         cxt.debug = "explainInputFully"
-        cxt.hasDebug("explainInput") shouldBe false
+        cxt.hasDebug(explainInput) shouldBe false
         cxt.debug = "explainInput"
-        cxt.hasDebug("explain") shouldBe false
+        cxt.hasDebug(explain) shouldBe false
+    }
+
+    "a word no loaded component declared is refused when checked, sent or not (issue #1334)" {
+        val declared = DebugTagDef("declaredWord", "Declared by a component.")
+        val cxt = KdrCxt.mkSimpleCxt("request")
+        cxt.instanceConfig.put(DebugTags.registryKey, DebugTags.of(listOf(declared)))
+
+        cxt.hasDebug(declared) shouldBe false
+        cxt.debug = "declaredWord"
+        cxt.hasDebugDiagnostic(declared) shouldBe false // declared and sent, but no test access here
+        cxt.hasDebug(declared) shouldBe true
+
+        shouldThrow<KdrException> { cxt.hasDebug(DebugTagDef("undeclaredWord", "Nobody declared it.")) }
+            .message shouldContain "no loaded component declares it"
+        // A second def spelling a declared word is a second description of it, and refused too.
+        shouldThrow<KdrException> { cxt.hasDebug(DebugTagDef("declaredWord", "A rival description.")) }
+    }
+
+    "a word declared twice refuses the registry, and a def must be a word of a known kind" {
+        shouldThrow<KdrException> {
+            DebugTags.of(listOf(DebugTagDef("twice", "One."), DebugTagDef("twice", "Two.")))
+        }.message shouldContain "'twice' is declared more than once"
+        shouldThrow<IllegalArgumentException> { DebugTagDef("not a word", "Spaces.") }
+        shouldThrow<IllegalArgumentException> { DebugTagDef("word", "Kindless.", kind = "other") }
     }
 
     "now is shifted by the time-travel offset" {

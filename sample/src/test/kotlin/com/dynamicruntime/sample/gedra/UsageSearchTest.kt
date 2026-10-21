@@ -160,7 +160,7 @@ class UsageSearchTest : StringSpec({
             // Diagnostic tags, so they answer a caller with test access (issue #1149).
             admin.client.sendJsonGetRequest(
                 clientPath(GEP.formDocs, SC.acme),
-                mapOf(exact(SC.siteAudit) to unique, EP.debug to GDBG.explainScope),
+                mapOf(exact(SC.siteAudit) to unique, EP.debug to GDBG.explainScope.name),
             )
         }
         // The search returned exactly the uniquely-named row...
@@ -182,7 +182,7 @@ class UsageSearchTest : StringSpec({
             // Diagnostic tags, so they answer a caller with test access (issue #1149).
             admin.client.sendJsonGetRequest(
                 clientPath(GEP.formDocs, SC.acme),
-                mapOf(exact(SC.siteAudit) to unique, EP.debug to "${GDBG.dataFromSql},${GDBG.explainScope}"),
+                mapOf(exact(SC.siteAudit) to unique, EP.debug to "${GDBG.dataFromSql.name},${GDBG.explainScope.name}"),
             )
         }
         resp[EP.items].toJsonListOfMaps().map { displayValue(it, SC.siteAudit) } shouldBe listOf(unique)

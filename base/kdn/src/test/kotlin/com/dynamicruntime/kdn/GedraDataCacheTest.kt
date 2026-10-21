@@ -126,7 +126,7 @@ class GedraDataCacheTest : StringSpec({
         // leak into the sibling tests that share this instance.
         val viaCache = svc.queryGedra(cxt, caraDocId, kind, scope).shouldNotBeNull()
         val held = cxt.debug
-        cxt.debug = GDBG.dataFromSql
+        cxt.debug = GDBG.dataFromSql.name
         val viaSql = try {
             svc.queryGedra(cxt, caraDocId, kind, scope).shouldNotBeNull()
         } finally {

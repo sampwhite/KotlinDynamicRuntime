@@ -2,6 +2,7 @@ package com.dynamicruntime.common.startup
 
 import com.dynamicruntime.common.content.FragmentSource
 import com.dynamicruntime.common.content.MarkdownDocDef
+import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.flavor.FlavorContribution
 import com.dynamicruntime.common.flavor.FlavorDef
@@ -146,6 +147,14 @@ interface ComponentDefinition : KdrProvider {
      * collected in component order, which is the order the Documents list shows them in.
      */
     fun docs(cxt: KdrCxt): List<MarkdownDocDef> = emptyList()
+
+    /**
+     * The `_debug` words this component reads (issue #1334), each declared once as a [DebugTagDef] beside the code
+     * that checks it. Gathered from the loaded components at boot, into the list the app bar's debug box offers; a
+     * word two components declare refuses the boot, and one checked but declared by no loaded component is refused
+     * when checked.
+     */
+    fun debugTags(cxt: KdrCxt): List<DebugTagDef> = emptyList()
 
     /**
      * The Gedra config bundles this component defines (issue #299) -- traits, workflows, clients. Collected

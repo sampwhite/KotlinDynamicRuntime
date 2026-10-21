@@ -1,5 +1,6 @@
 package com.dynamicruntime.sample.gedra
 
+import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.gedra.GCFG
 import com.dynamicruntime.common.gedra.GE
@@ -24,7 +25,10 @@ object GFX {
     const val fixtureSource = "fixture"
 
     /** `_debug` tag: report what the manufactured union holds and which branch each entry reached. */
-    const val explainEntries = "explainEntries"
+    val explainEntries = DebugTagDef(
+        "explainEntries",
+        "The sample's entries fixture reports what its union holds and which branch each entry reached, under _meta.",
+    )
 
     /** `_meta` key the tag writes under. */
     const val entriesExplained = "entriesExplained"

@@ -124,7 +124,7 @@ class GedraEntryFixtureTest : StringSpec({
         val client = TestHttpClient(cxt.instanceConfig).alwaysWithTestAccess()
         val response = client.sendEditRequest(
             fillOut,
-            mapOf(EP.debug to GFX.explainEntries),
+            mapOf(EP.debug to GFX.explainEntries.name),
             mapOf<String, Any?>(
                 GFX.entries to listOf(
                     entry("Known"),
@@ -162,7 +162,7 @@ class GedraEntryFixtureTest : StringSpec({
         // The fixture, for a caller with test access (issue #1149).
         val member = TestUser.create(cxt, "member@explain1072.test", userClient = client).also { it.client.alwaysWithTestAccess() }
         val response = member.client.sendEditRequest(
-            fillOut, mapOf(EP.debug to GFX.explainEntries), mapOf<String, Any?>(GFX.entries to listOf(entry("Mine"))), HttpMethod.POST,
+            fillOut, mapOf(EP.debug to GFX.explainEntries.name), mapOf<String, Any?>(GFX.entries to listOf(entry("Mine"))), HttpMethod.POST,
         ).rptResponseData?.jsonMap() ?: emptyMap()
         val known = response.getValue(EP.meta).toJsonMapOrEmpty().getValue(GFX.entriesExplained).toJsonMapOrEmpty()[GFX.knownTraits]
         known.toJsonListOfStrings() shouldContain "explainNote1072"
