@@ -7,6 +7,9 @@ import com.dynamicruntime.common.util.isPlaceZoneName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
@@ -17,6 +20,11 @@ import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.ul
 import react.useState
 import web.cssom.ClassName
+import com.dynamicruntime.common.util.byteSizeText
+import com.dynamicruntime.common.util.joinAsPhrase
+import com.dynamicruntime.common.webasset.WebAssetKinds
+import react.dom.html.ReactHTML.h3
+import react.dom.html.ReactHTML.span
 
 private val createOwnScope = MainScope()
 
@@ -25,10 +33,70 @@ private val createOwnScope = MainScope()
  * when given -- the zone the creator's browser is in, as the card starts it (issue #1115). Pure, and covered under
  * `jsNodeTest`.
  */
-fun createOwnClientRequest(name: String, description: String, timeZone: String): Map<String, Any?> = buildMap {
+fun createOwnClientRequest(
+    name: String,
+    description: String,
+    timeZone: String,
+    /** The new client's home copy (issue #1336), by the create's field names ([CLD.homeCopyFields]' keys). */
+    home: Map<String, String> = emptyMap(),
+): Map<String, Any?> = buildMap {
     put(CLD.name, name.trim())
     description.trim().ifEmpty { null }?.let { put(CLD.description, it) }
     timeZone.trim().ifEmpty { null }?.let { put(CLD.timeZone, it) }
+    for (field in CLD.homeCopyFields.keys) home[field]?.trim()?.ifEmpty { null }?.let { put(field, it) }
+}
+
+/** An image picked for a web-asset slot (issue #1336): the browser's `File`, its name, content type and size. */
+class PickedImage(val file: Any, val name: String, val mimeType: String, val size: Long)
+
+/**
+ * What is wrong with an image of [mimeType] and [size] for the web-asset [slot] (issue #1336), or null when the
+ * server would take it -- asked before the create, so no client is made only to have its image refused. The kinds
+ * and limits are the server's own ([WebAssetKinds]); the server still decides, by the bytes. Pure, and covered under
+ * `jsNodeTest`.
+ */
+fun imageProblem(slot: String, mimeType: String, size: Long): String? {
+    val def = WebAssetKinds.slotDef(slot) ?: return "'$slot' is not an image this client has."
+    val what = def.label.lowercase()
+    if (WebAssetKinds.declaredKind(mimeType) == null) {
+        return "The $what must be ${joinAsPhrase(WebAssetKinds.kinds.map { it.label }, last = "or")}."
+    }
+    if (size <= 0L) return "The $what file is empty."
+    if (size > def.maxSize) return "The $what is ${byteSizeText(size)}; it may be at most ${byteSizeText(def.maxSize.toLong())}."
+    return null
+}
+
+/**
+ * What a slot takes, for the picker beside it: "PNG, SVG, ICO, JPEG or WebP, up to 256 KB.", worded as the Clients
+ * page's web assets word it ([imageTakesText]). Pure.
+ */
+fun imageLimitText(slot: String): String =
+    imageTakesText(WebAssetKinds.kinds.map { it.label }, WebAssetKinds.slotDef(slot)?.maxSize?.toLong() ?: 0L)
+
+/** One image the create could not upload (issue #1336): which, as a person calls it, and why. */
+class ImageUploadFailure(val label: String, val reason: String)
+
+/**
+ * What the card says when the client was made and moved to, but an image did not upload (issue #1336): which, and
+ * why, and that it can be added from My client; null when every one did, and the page moves home. Pure, and covered
+ * under `jsNodeTest`.
+ */
+fun imageUploadsNote(failures: List<ImageUploadFailure>): String? {
+    if (failures.isEmpty()) return null
+    // A reason is the server's sentence, period and all; the note ends its own.
+    val each = failures.joinToString("; ") { "the ${it.label.lowercase()} couldn't be uploaded: ${it.reason.trim().trimEnd('.')}" }
+    return "Your client was created, but $each. Add ${if (failures.size == 1) "it" else "them"} from My client."
+}
+
+/**
+ * What the card adds when the client was made but the session did not move to it (issue #1336): the images picked --
+ * [labels], as a person calls them -- were not uploaded, since only the client's administrator may set them. Null
+ * when none was picked. Pure, and covered under `jsNodeTest`.
+ */
+fun imagesNotUploadedNote(labels: List<String>): String? {
+    if (labels.isEmpty()) return null
+    val what = joinAsPhrase(labels.map { it.lowercase() })
+    return "The $what you chose ${if (labels.size == 1) "wasn't" else "weren't"} uploaded."
 }
 
 /** What creating one's own client did (issue #1228), as the card reads it. */
@@ -105,9 +173,10 @@ fun createOwnClientNext(result: CreateOwnClientResult): CreateOwnClientNext =
 fun ownClientStartZone(browserZone: String?): String = browserZone?.takeIf { isPlaceZoneName(it) }.orEmpty()
 
 object CreateOwnClientApi {
-    suspend fun create(name: String, description: String, timeZone: String): CreateOwnClientResult = parseCreateOwnClientResult(
-        Http.sendApi("POST", AEP.createOwnClient, createOwnClientRequest(name, description, timeZone))[EP.results].toJsonMapOrEmpty(),
-    )
+    suspend fun create(name: String, description: String, timeZone: String, home: Map<String, String> = emptyMap()): CreateOwnClientResult =
+        parseCreateOwnClientResult(
+            Http.sendApi("POST", AEP.createOwnClient, createOwnClientRequest(name, description, timeZone, home))[EP.results].toJsonMapOrEmpty(),
+        )
 }
 
 external interface CreateOwnClientCardProps : Props {
@@ -133,7 +202,13 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
     var busy by useState(false)
     var error by useState<DisplayError?>(null)
     var note by useState<String?>(null)
+    // The new client's home page (issue #1336): its copy, by the create's field names, and the images picked per slot.
+    var home by useState<Map<String, String>>(emptyMap())
+    var images by useState<Map<String, PickedImage>>(emptyMap())
+    // Set once the client is made and moved to but an image did not upload: the card stays to say so, then goes on.
+    var continueReady by useState(false)
     val bump = useRefreshBump()
+    val imageProblems = images.mapValues { (slot, img) -> imageProblem(slot, img.mimeType, img.size) }.filterValues { it != null }
 
     fun act(work: suspend () -> Unit) {
         busy = true
@@ -174,39 +249,130 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                 p { +"You created your own client, $label, but this site no longer carries it. A person creates one, so there is no other to make." }
             }
             OwnClientCardMode.create -> {
-                h2 { +"Create your own client" }
-                p { +"A client of your own, to build forms and workflows in, with you as its administrator." }
-                ul {
-                    li { +"Its id is made from the name you give it." }
-                    li { +"It is on the free plan." }
-                    li { +"You become its administrator, and the page moves there once it is made." }
-                    li { +"A person creates one; once yours is made, this card opens it." }
-                }
-                textField("Name", name, disabled = busy, placeholder = "The name people see", maxLength = 80) { name = it }
-                textField("Note", description, disabled = busy, placeholder = "Optional: who, what or why") { description = it }
-                choiceRow("Time zone") {
-                    TimeZonePicker {
-                        value = timeZone
-                        disabled = busy
-                        onChange = { v -> timeZone = v }
+                // Made and moved to, but an image did not upload: the client exists, so nothing here is to be created
+                // again -- the note and the way on below are all the card says.
+                if (continueReady) {
+                    h2 { +"Your client" }
+                } else {
+                    h2 { +"Create your own client" }
+                    p { +"A client of your own, to build forms and workflows in, with you as its administrator." }
+                    ul {
+                        li { +"Its id is made from the name you give it." }
+                        li { +"It is on the free plan." }
+                        li { +"You become its administrator, and the page moves there once it is made." }
+                        li { +"A person creates one; once yours is made, this card opens it." }
                     }
-                }
-                Button {
-                    type = "primary"
-                    loading = busy
-                    disabled = name.isBlank()
-                    onClick = {
-                        act {
-                            val next = createOwnClientNext(CreateOwnClientApi.create(name, description, timeZone))
-                            note = next.note
-                            if (next.moves) afterSessionChange(bump) else bump()
+                    textField("Name", name, disabled = busy, placeholder = "The name people see", maxLength = 80) { name = it }
+                    // "Internal": the home page below has a note of its own, which the client's people do see.
+                    textField("Internal note", description, disabled = busy, placeholder = "Optional: who, what or why; only administrators see it") { description = it }
+                    choiceRow("Time zone") {
+                        TimeZonePicker {
+                            value = timeZone
+                            disabled = busy
+                            onChange = { v -> timeZone = v }
                         }
                     }
-                    +"Create the client"
+                    // Its home page, set as it is made (issue #1336): the copy is published with the client, so it shows
+                    // at once, and the images upload once the client exists. All of it optional, and all of it changeable.
+                    h3 { +"Your client's home page (optional)" }
+                    p { className = ClassName("subtitle"); +"All of this can be changed later, from My client." }
+                    fun homeText(field: String) = home[field].orEmpty()
+                    fun setHome(field: String, value: String) { home = home + (field to value) }
+                    textField("Wordmark", homeText(CLD.homeBrand), disabled = busy, placeholder = "The name beside your logo", maxLength = CLD.homeBrandMaxLength) {
+                        setHome(CLD.homeBrand, it)
+                    }
+                    textField("Title", homeText(CLD.homeTitle), disabled = busy, placeholder = "Welcome", maxLength = CLD.homeTitleMaxLength) { setHome(CLD.homeTitle, it) }
+                    for ((field, label) in listOf(CLD.homeIntro to "Introduction", CLD.homeNote to "Note")) {
+                        choiceRow(label) {
+                            TextArea {
+                                value = homeText(field)
+                                disabled = busy
+                                placeholder = if (field == CLD.homeIntro) "What your client is for. Markdown." else "Optional, beneath the introduction. Markdown."
+                                maxLength = CLD.homeTextMaxLength
+                                asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 8 })")
+                                onChange = { e -> setHome(field, e.target.value as String) }
+                            }
+                        }
+                    }
+                    for (def in WebAssetKinds.slotDefs) {
+                        choiceRow(def.label) {
+                            val picked = images[def.slot]
+                            FilePickButton {
+                                // Qualified: the card's own `label` (the client's) would otherwise be what this names.
+                                this.label = if (picked == null) "Choose\u2026" else "Change\u2026"
+                                accept = WebAssetKinds.acceptedMimeTypes
+                                this.busy = false
+                                disabled = busy
+                                onPicked = { file, size ->
+                                    val f = file.asDynamic()
+                                    images = images + (def.slot to PickedImage(file, f.name as String, (f.type as? String).orEmpty(), size))
+                                }
+                            }
+                            span { className = ClassName("subtitle"); +" ${picked?.name ?: imageLimitText(def.slot)}" }
+                            if (picked != null) {
+                                Button {
+                                    type = "link"
+                                    disabled = busy
+                                    onClick = { images = images - def.slot }
+                                    +"Remove"
+                                }
+                            }
+                            imageProblems[def.slot]?.let { p { className = ClassName("error-text"); +it } }
+                        }
+                    }
+                    Button {
+                        type = "primary"
+                        loading = busy
+                        disabled = name.isBlank() || imageProblems.isNotEmpty()
+                        onClick = {
+                            act {
+                                val result = CreateOwnClientApi.create(name, description, timeZone, home)
+                                val next = createOwnClientNext(result)
+                                fun labelOf(slot: String) = WebAssetKinds.slotDef(slot)?.label ?: slot
+                                note = next.note
+                                if (!next.moves) {
+                                    // Not the client's administrator here, so the images picked cannot be set: say so.
+                                    note = listOfNotNull(next.note, imagesNotUploadedNote(images.keys.map(::labelOf))).joinToString(" ")
+                                    bump()
+                                    return@act
+                                }
+                                // Moved: the session is the new client's administrator, who may set its images -- each
+                                // slot its own upload, so they go together.
+                                val client = result.client
+                                val failures = coroutineScope {
+                                    images.map { (slot, img) ->
+                                        async {
+                                            try {
+                                                ClientsApi.uploadWebAsset(client, slot, img.file)
+                                                null
+                                            } catch (e: Throwable) {
+                                                ImageUploadFailure(labelOf(slot), userFacingError(e).text)
+                                            }
+                                        }
+                                    }.awaitAll().filterNotNull()
+                                }
+                                val uploadsNote = imageUploadsNote(failures)
+                                if (uploadsNote == null) {
+                                    afterSessionChange(bump)
+                                } else {
+                                    note = uploadsNote
+                                    continueReady = true
+                                }
+                            }
+                        }
+                        +"Create the client"
+                    }
                 }
             }
         }
         note?.let { p { className = ClassName("subtitle"); +it } }
+        if (continueReady) {
+            Button {
+                type = "primary"
+                onClick = { afterSessionChange(bump) }
+                +"Continue to your client"
+            }
+        }
         error?.let { errorText(if (made != null) "Couldn't open your client." else "Couldn't create the client.", it) }
     }
 }

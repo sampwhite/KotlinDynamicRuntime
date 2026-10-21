@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HFRAG
 import com.dynamicruntime.common.app.EnvAuthOp
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.home.HACT
@@ -249,7 +250,7 @@ val AppBar = FC<AppBarProps> { props ->
                     console.error("$errorLogPrefix could not load app-bar copy: ${it.message}")
                 }
             }
-            brandAfterLoad(copy != null, copy?.opt("home", "brand"), everLoaded.current == true)
+            brandAfterLoad(copy != null, copy?.opt(HFRAG.homeNs, HFRAG.brand), everLoaded.current == true)
                 ?.let { brandState = it }
         }
     }

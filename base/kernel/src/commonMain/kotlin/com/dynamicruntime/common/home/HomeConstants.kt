@@ -412,6 +412,15 @@ object HACT {
 object HFRAG {
     const val home = "home"
 
+    /** The home file's namespace for the home page's own copy: its wordmark, title, intro and note. */
+    const val homeNs = "home"
+
+    /** The home page's copy keys a self-serve create sets (issue #1336). */
+    const val brand = "brand"
+    const val title = "title"
+    const val intro = "intro"
+    const val note = "note"
+
     /** The home file's namespace for the forms listing's copy (issue #791). */
     const val formsNs = "forms"
 

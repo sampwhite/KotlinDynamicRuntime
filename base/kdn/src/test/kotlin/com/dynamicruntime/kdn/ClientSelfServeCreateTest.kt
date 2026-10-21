@@ -35,6 +35,12 @@ import com.dynamicruntime.common.home.HEP
 import com.dynamicruntime.common.home.HFLD
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.content.MarkdownFragmentService
+import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraId
+import com.dynamicruntime.common.home.HFRAG
 
 /**
  * A person's own self-serve client (issue #1113): created from `public`, one per person, on the free plan, with the
@@ -90,6 +96,55 @@ class ClientSelfServeCreateTest : StringSpec({
         // A visitor who has not signed in acts in public too, and has made nothing.
         TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()[UIC.state]
             .toJsonMapOrEmpty()[HFLD.selfServeClient] shouldBe null
+    }
+
+    "the new client's home copy is written and published with it, so its home page reads it at once (issue #1336)" {
+        val person = TestUser.create(cxt, "branded@self1336.test")
+        val client = person.postData(
+            AEP.createOwnClient,
+            mapOf(
+                CLD.name to "Branded", CLD.homeBrand to " Maker Co ", CLD.homeTitle to "Welcome to Maker",
+                CLD.homeIntro to "**Hello** there.", CLD.homeNote to "   ",
+            ),
+        )[CLD.client].toOptStr().shouldNotBeNull()
+        // In the editors' own config, published -- though the client has a sandbox, whose copy edits are drafts.
+        GedraConfigService.get(cxt).publishedOnly(cxt, client) shouldBe true
+        // Read as the client's own, as the copy editor reads it: a client's configs are its own rows.
+        val bound = cxt.mkSubContext("selfServe1336", client)
+        val copyRow = GedraConfigService.get(cxt).readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+            .shouldNotBeNull()
+        copyRow.isPublished shouldBe true
+        // What the client's home page reads: trimmed, and a blank note left out, so the shipped one stands.
+        val home = MarkdownFragmentService.get(cxt).effectiveFragmentsFor(cxt, HFRAG.home, client).shouldNotBeNull().content[HFRAG.homeNs]
+            .shouldNotBeNull()
+        home[HFRAG.brand] shouldBe "Maker Co"
+        home[HFRAG.title] shouldBe "Welcome to Maker"
+        home[HFRAG.intro] shouldBe "**Hello** there."
+        val stored = copyRow.entriesBySlot()[CCT.fragmentDef].orEmpty().single()[CCT.content].toJsonMapOrEmpty()[HFRAG.homeNs]
+            .toJsonMapOrEmpty()
+        stored.keys shouldBe setOf(HFRAG.brand, HFRAG.title, HFRAG.intro)
+    }
+
+    "without home copy, the create writes no copy config" {
+        val person = TestUser.create(cxt, "plain@self1336.test")
+        val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Plain"))[CLD.client].toOptStr().shouldNotBeNull()
+        val bound = cxt.mkSubContext("selfServe1336", client)
+        // Its definition is there, read the same way -- so the absence below is the copy config's, not the read's.
+        GedraConfigService.get(cxt).readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CLD.definitionConfigName)).shouldNotBeNull()
+        GedraConfigService.get(cxt).readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)) shouldBe null
+    }
+
+    "a wordmark past its limit is refused, and no client is made" {
+        val person = TestUser.create(cxt, "long@self1336.test")
+        person.expectError(400, AEP.createOwnClient, mapOf(CLD.name to "Long", CLD.homeBrand to "x".repeat(CLD.homeBrandMaxLength + 1)))
+        // Refused before anything was made: the person's one client is still theirs to create.
+        person.postData(AEP.createOwnClient, mapOf(CLD.name to "Long"))[CLD.client].toOptStr().shouldNotBeNull()
+    }
+
+    "only the home keys a self-serve create sets are taken, each trimmed, a blank one left out" {
+        ClientSelfServeCreate.homeCopy(mapOf(HFRAG.brand to " B ", HFRAG.note to " ", HFRAG.intro to "I", "other" to "x")) shouldBe
+            mapOf(HFRAG.home to mapOf(HFRAG.homeNs to mapOf(HFRAG.brand to "B", HFRAG.intro to "I")))
+        ClientSelfServeCreate.homeCopy(mapOf(HFRAG.title to "  ")) shouldBe emptyMap()
     }
 
     "a person creates one, from public only" {

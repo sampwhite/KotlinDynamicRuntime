@@ -1325,6 +1325,21 @@ read off the identity, for `public` callers only) rather than trying the create:
 (`AuthApi.switchClient`), and a client this node no longer carries is said to be gone
 (`state.selfServeClientAbsent`). It is the last section of the public home page, below.
 
+**Setting up the new client's home page as it is made** (issue #1336). Under those fields an optional group,
+"Your client's home page", takes a wordmark, a title, an introduction and a note (the `home.md` keys `brand`, `title`,
+`intro`, `note`, sent as `CLD.homeBrand` and its neighbours, blanks left out), and a favicon and a brand mark. The copy
+rides the create: the backend writes it as the client's `copy` config beside `main`, in the same trial-judged write,
+and **publishes both**, so it is live at once although a self-serve client has a sandbox and every later copy edit is
+a draft. It lands where the Clients page's copy editor would put it, so editing it there later behaves as for any
+client. The images cannot ride the create -- a web asset is a file, uploaded to a client that must already exist --
+so once the create has moved the session, the card uploads each through the ordinary
+`POST /clientAdmin/client/web/upload` as the new client's administrator. Every image is checked first against its slot
+(`imageProblem`, by the kernel's `WebAssetKinds.slotDefs` and kinds, which the backend's checks read too), and Create
+waits while one is wrong, so a file the server would refuse never leaves a client half set up. An upload refused
+anyway leaves the card in place with a note naming which (`imageUploadsNote`) and **Continue to your client**: the
+client exists, and the image is added from My client. The client's own note is labeled "Internal note" here, to keep
+it apart from the home page's.
+
 ## The public home page (issue #1324)
 
 For a caller **signed in** to `public` (`isPublicHome`), Home draws `PublicHome` under its hero and intro: what a

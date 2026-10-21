@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.home.HFRAG
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -97,7 +98,7 @@ val Home = FC<Props> {
                         if (appConfig().hasTestAccess) TestAccessCard {}
                         // The hero: the brand mark beside the wordmark. The wordmark is "copy" like everything
                         // else here, so a deployment that names no brand simply gets no hero.
-                        copy.opt("home", "brand")?.let { brandName ->
+                        copy.opt(HFRAG.homeNs, HFRAG.brand)?.let { brandName ->
                             div {
                                 className = ClassName("home-hero")
                                 img {
@@ -113,11 +114,11 @@ val Home = FC<Props> {
                                 }
                             }
                         }
-                        copy.opt("home", "title")?.let { h1 { +it } }
-                        copy.opt("home", "intro")?.let { Markdown { source = it } }
+                        copy.opt(HFRAG.homeNs, HFRAG.title)?.let { h1 { +it } }
+                        copy.opt(HFRAG.homeNs, HFRAG.intro)?.let { Markdown { source = it } }
                         // A note beneath the intro (issue #1221), empty as shipped: room for a component's own word on
                         // a deployment -- a flavor's, say -- without its competing with whoever rewords the intro.
-                        copy.opt("home", "note")?.takeIf { it.isNotBlank() }?.let {
+                        copy.opt(HFRAG.homeNs, HFRAG.note)?.takeIf { it.isNotBlank() }?.let {
                             div {
                                 className = ClassName("home-note")
                                 Markdown { source = it }

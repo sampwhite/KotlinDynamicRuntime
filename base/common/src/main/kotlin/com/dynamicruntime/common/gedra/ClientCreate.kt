@@ -65,7 +65,18 @@ object ClientCreate {
      * transaction: a client the write refuses takes its customer back with it, and a root that cannot be named is
      * said in the result ([Result.customerFailure]) rather than thrown, since the client was made.
      */
-    fun create(cxt: KdrCxt, request: Map<String, Any?>): Result {
+    fun create(
+        cxt: KdrCxt,
+        request: Map<String, Any?>,
+        /**
+         * The client's first copy (issue #1336): a fragment file's id to its overlay, `namespace -> key -> value`, as
+         * the copy editor stores one. Written in the editors' own config ([CPY.copyConfigName]) beside the definition,
+         * in the same write -- judged with it, so a key no shipped file declares refuses the create -- and published
+         * with it, so it is live at once although a client with a sandbox otherwise saves its copy as drafts. Later
+         * edits from the copy editor land in that same config, as they would have. None by default.
+         */
+        copy: Map<String, Map<String, Map<String, String>>> = emptyMap(),
+    ): Result {
         val client = request[CLD.clientId].toOptStr().orEmpty()
         // First, since a live sandbox's id is one this node knows: it would otherwise read as a client that exists.
         sandboxParentOf(client)?.let { parent ->
@@ -84,8 +95,12 @@ object ClientCreate {
         val name = CLD.definitionConfigName
         val written = try {
             val config = reassembleForWrite(bound, name, clientNamespace(client), client, mapOf(CCT.clientDef to listOf(definition)))
+            val writes = buildList {
+                add(ConfigWrite(config, mustBeNew = true))
+                if (copy.isNotEmpty()) add(ConfigWrite(copyConfig(bound, client, copy), mustBeNew = true))
+            }
             try {
-                svc.writeConfig(bound, config, trial = true, mustBeNew = true)
+                svc.writeConfigs(bound, client, writes, trial = true)
             } catch (e: KdrException) {
                 // The id was free when asked and taken by the time the write held the lock: another create of it.
                 if (e.code != EXC.conflict) throw e
@@ -105,9 +120,20 @@ object ClientCreate {
             throw e
         }
         // Published, so the client loads whatever its tier: one asking for a sandbox runs only what is published.
-        // The write's trial judged this very definition, alone, so the publish has nothing new to refuse; were it
-        // to, the configuration stays written and unpublished, and a second create is told the id has one.
-        val published = svc.publish(bound, written.configId, trial = true)
+        // The write's trial judged this very definition, with the copy written beside it, so the publish has nothing
+        // new to refuse; were it to, the configuration stays written and unpublished, and a second create is told the
+        // id has one.
+        val published = svc.publish(bound, written.first().configId, trial = true)
+        // The copy with it (issue #1336): judged with the definition by the write, so its publish has nothing new to
+        // refuse either. Were it to fail, the client is made all the same -- its definition is published -- so the
+        // copy is left a draft, for its administrator to publish, rather than failing a create that has happened.
+        for (row in written.drop(1)) {
+            try {
+                svc.publish(bound, row.configId, trial = true)
+            } catch (e: Exception) {
+                LogGedra.error(cxt, "Client '$client' was created, but its copy config '${row.configId}' could not be published.", e)
+            }
+        }
         // From here the client exists, whatever becomes of loading it: a failure is the result's to say.
         var loadFailure: String? = null
         val issues = try {
@@ -212,6 +238,12 @@ object ClientCreate {
             code = EXC.conflict,
         )
     }
+
+    /** The editors' own config ([CPY.copyConfigName]) of [client]'s, holding [copy]'s overlays (issue #1336). */
+    private fun copyConfig(bound: KdrCxt, client: String, copy: Map<String, Map<String, Map<String, String>>>): GedraConfig =
+        gedraConfig(bound, CPY.copyConfigName, clientNamespace(client), client) {
+            for ((fileId, content) in copy) fragmentOverlay(fileId, content)
+        }
 
     /** The definition [request] asks for, as the `kdr:clientDef` slot holds one: its [ClientCreateFields] that were given. */
     private fun definitionOf(request: Map<String, Any?>): Map<String, Any?> {

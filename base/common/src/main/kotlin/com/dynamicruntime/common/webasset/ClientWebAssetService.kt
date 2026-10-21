@@ -27,9 +27,6 @@ import java.util.concurrent.atomic.AtomicLong
 /** Logger for a client's web assets (issue #1130). */
 object LogWebAsset : KdrLogger("webAsset")
 
-/** One slot of a client's web assets: its wire name, what a person calls it, and the most bytes its image may be. */
-class WebSlotDef(val slot: String, val label: String, val maxSize: Int)
-
 /**
  * A client's own web assets (issue #1130): the tab icon and the brand mark its administrator uploads, which stand
  * in for the deployment's for that client's people.
@@ -242,13 +239,8 @@ class ClientWebAssetService : ServiceInitializer, ContentServer {
 
         /** Nanoseconds in a millisecond: [memoMs] in the unit [nanoTime] counts. */
         const val nanosPerMs = 1_000_000L
-        private const val bytesPerKb = 1024
-
-        /** The slots, in listing order. A favicon is small by nature; a brand mark may be a photograph. */
-        val slotDefs = listOf(
-            WebSlotDef(WAS.favicon, "Favicon", 256 * bytesPerKb),
-            WebSlotDef(WAS.brandMark, "Brand mark", 1024 * bytesPerKb),
-        )
+        /** The slots, in listing order: the kernel's ([WebAssetKinds.slotDefs], issue #1336), which the create card reads. */
+        val slotDefs = WebAssetKinds.slotDefs
 
         /**
          * The bucket's declaration, for the component that registers this service to make. A client's file refs
