@@ -1356,7 +1356,18 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 }
 .join-disclosure h2 { margin-top: 0; font-size: 15px; }
 .join-disclosure p { margin: 0 0 8px; }
-.join-acknowledge { display: block; margin-top: 10px; font-weight: 600; cursor: pointer; }
+/* The acknowledgment itself is what the disclosure leads to, so it stands apart from the paragraphs above it: set off by
+   a rule, larger, bolder, and in the bright accent (well over 4.5:1 on the inset), not just a heavier weight. */
+.join-acknowledge {
+    display: block;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--accent-brighter);
+    cursor: pointer;
+}
 .join-role { margin: 0 0 14px; }
 .join-role p { margin: 0 0 6px; }
 
