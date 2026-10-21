@@ -1129,6 +1129,7 @@ private fun ChildrenBuilder.renderField(
             // The form's own choices (issue #1022), when its layout restates them.
             choices = copy?.entry?.choices?.let { formChoiceList(vt, copy.entry, value) },
             zoneNoteId = fieldZoneNoteId(path),
+            multiline = copy?.entry?.multiline == true,
             commit = { errors.noteCommit(path) },
         ) { newValue ->
             errors.noteEdit(path)

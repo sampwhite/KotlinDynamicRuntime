@@ -180,6 +180,13 @@ object UADEP {
     const val clientTraitsSet = "/${SECT.clientAdmin}/client/traits/set"
 
     /**
+     * Creates or edits one of a client's own traits from a design (issue #1118): a new trait in a configuration of its
+     * own, an edit in the configuration that holds it, made to take effect as [clientDefinitionSet]'s saves do.
+     * Scoped as [clientDefinition] is.
+     */
+    const val clientTraitDesign = "/${SECT.clientAdmin}/client/traits/design"
+
+    /**
      * The copy and interface one client's own configuration changes (issue #916) -- fragment keys and UiBlock
      * items, each with the value it replaces and the config that set it. Scoped as [clientDefinition] is.
      */

@@ -311,6 +311,24 @@ The trigger is a client asking for it; none has. When one does:
 - **Design View's ghost for a conditional field** (#972) shows a field that is absent; a choice that is absent needs a
   marking of its own.
 
+## When a client wants a gated trait from the traits editor
+
+A **gated trait** opens with a yes/no question -- "Do you do X?" -- that the data requires, and its other fields are
+filled in only when the answer is yes. It is the most common reason for a field required in the data rather than on
+one form, and the traits editor (#1118) can already make the gate: a yes/no field marked required. What it cannot
+make is the rest: the other fields applying only on yes.
+
+The schema can say it today (`SchCondition`, issue #253: a property required or forbidden depending on another), so
+this is editor work, not schema work. The trigger is a client asking to design one in the editor rather than by hand.
+When one does:
+
+- **Offer the shape directly**: a trait whose first field is its gate, and fields marked "only when yes", written as
+  an `if`/`then` forbidding them on no (and, where asked, requiring them on yes).
+- **Say it in the preview**: the form hides a forbidden field already (`fieldHiddenReason`), so the preview shows the
+  gate working as the person designs it.
+- **Read it back**: `traitDesignOf` refuses a trait with an `if`/`then` today, as a field not of the editor's kinds;
+  the gated shape would be the one conditional it reads.
+
 ## When a closed choice list has to change
 
 A closed `g-options` list is a promise that nothing else is valid, and the promise is made at **both** ends:

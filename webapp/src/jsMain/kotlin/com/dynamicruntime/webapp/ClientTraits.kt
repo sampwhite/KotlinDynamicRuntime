@@ -6,6 +6,8 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.IMP
+import com.dynamicruntime.common.gedra.TraitDesign
+import com.dynamicruntime.common.gedra.traitDesignFromInfo
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.humanizeFieldName
 import com.dynamicruntime.common.util.toJsonListOfMaps
@@ -33,13 +35,24 @@ class TraitChoiceView(
     val customized: Boolean,
 )
 
-/** The catalog the picker draws: the [traits], the schema of their fields, and why groups are refused, if they are. */
+/**
+ * The catalog the picker draws: the [traits], the schema of their fields, and why groups are refused, if they are --
+ * and for the traits editor (issue #1118) the client's [own] traits and its plan's [quotas].
+ */
 class TraitCatalogView(
     val client: String,
     val traits: List<TraitChoiceView>,
     val defs: Map<String, Any?>,
     val groupsRefused: String?,
+    val own: List<OwnTraitView> = emptyList(),
+    val quotas: TraitQuotasView? = null,
 )
+
+/** One of the client's own traits: where it is stored, and its design or why the editor cannot edit it. */
+class OwnTraitView(val traitId: String, val configName: String?, val design: TraitDesign?, val notEditable: String?)
+
+/** The plan's limits a design is held to (issue #1109): schemas declared and allowed, and attributes per schema. */
+class TraitQuotasView(val plan: String, val schemasUsed: Int?, val schemasLimit: Int?, val attributesLimit: Int?)
 
 /** The catalog as `/clientAdmin/client/traits` answers it. */
 fun parseTraitCatalog(raw: Map<String, Any?>): TraitCatalogView = TraitCatalogView(
@@ -55,6 +68,22 @@ fun parseTraitCatalog(raw: Map<String, Any?>): TraitCatalogView = TraitCatalogVi
     },
     defs = raw[SCH.dDefs].toJsonMapOrEmpty(),
     groupsRefused = raw[CIT.groupsRefused].toOptStr(),
+    own = raw[CIT.ownTraits].toJsonListOfMaps().map {
+        OwnTraitView(
+            traitId = it[CIT.traitId].toOptStr().orEmpty(),
+            configName = it[CIT.configName].toOptStr(),
+            design = it[CIT.design]?.toJsonMapOrEmpty()?.let(::traitDesignFromInfo),
+            notEditable = it[CIT.notEditable].toOptStr(),
+        )
+    },
+    quotas = raw[CIT.quotas]?.toJsonMapOrEmpty()?.let { q ->
+        TraitQuotasView(
+            plan = q[CIT.plan].toOptStr().orEmpty(),
+            schemasUsed = (q[CIT.schemasUsed] as? Number)?.toInt(),
+            schemasLimit = (q[CIT.schemasLimit] as? Number)?.toInt(),
+            attributesLimit = (q[CIT.attributesLimit] as? Number)?.toInt(),
+        )
+    },
 )
 
 /** The picker's choices: the traits ticked one by one, and whether every global trait is included. */

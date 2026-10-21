@@ -86,6 +86,15 @@ class ControlKindTest {
     }
 
     @Test
+    fun longTextIsTheLayoutsWordOnPlainTextOnly() {
+        // Issue #1118: a layout's `multiline` makes plain text a text area, and nothing else.
+        assertEquals(ControlKind.LongText, controlKind(fieldType(string()), required = false, editable = true, multiline = true))
+        assertEquals(ControlKind.Text, controlKind(fieldType(mapOf(SCH.type to SCT.integer)), false, true, multiline = true))
+        assertEquals(ControlKind.Choice, controlKind(fieldType(string(mapOf(SCH.options to opts))), true, true, multiline = true))
+        assertEquals(ControlKind.ReadOnly, controlKind(fieldType(string()), false, editable = false, multiline = true))
+    }
+
+    @Test
     fun optionsWinOverTheBaseType() {
         // The ordering that matters: a field carrying a choice list is a choice widget, not the text box its base
         // type would get. A list is allowed only on a plain string or an untyped field -- the parser refuses one on

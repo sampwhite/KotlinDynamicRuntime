@@ -13,6 +13,7 @@ import react.Props
 import react.create
 import react.dom.html.ReactHTML.code
 import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.p
 import react.dom.html.ReactHTML.span
 import react.dom.html.ReactHTML.table
@@ -56,6 +57,9 @@ external interface ClientTraitsSectionProps : Props {
  * page's other editors' saves do: live, or a draft for a client with a sandbox, which it says beside Save
  * ([saveEffectText]) and sends ([expectedMode]). A live save that would take away a trait the client's forms hold is
  * refused with the impact report, shown in a dialog whose **Save anyway** acknowledges it.
+ *
+ * Under the picker, the client's **own** traits (issue #1118): each with **Edit**, or why it cannot be edited here,
+ * then **New trait**, which open the [TraitDesignEditor].
  */
 val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
     val generation = useRefreshGeneration()
@@ -71,6 +75,9 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
     var saveError by useState<DisplayError?>(null)
     var note by useState<String?>(null)
     var impact by useState<ImpactReportView?>(null)
+    // The own trait the editor is open on (issue #1118): its id, "" for a new trait, null when closed.
+    var designing by useState<String?>(null)
+    var designNote by useState<String?>(null)
     // Which client a save or a read was started for: an answer for a client the page has moved on from lands nowhere.
     val latest = useRef(0)
 
@@ -78,6 +85,8 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
         latest.current = (latest.current ?: 0) + 1
         catalog = null
         opened = emptySet()
+        designing = null
+        designNote = null
         busy = false
         saveError = null
         note = null
@@ -220,6 +229,31 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
             +it
         }
     }
+    ownTraits(shown, designing, busy, onOpen = { designing = it; designNote = null })
+    designing?.let { open ->
+        TraitDesignEditor {
+            // Keyed by what it opened on, so a draft for one trait never carries into another.
+            key = "design-$open".unsafeCast<Key>()
+            this.clientId = props.clientId
+            this.baseline = shown.own.firstOrNull { it.traitId == open }?.design
+            quotas = shown.quotas
+            this.savesDraft = props.savesDraft
+            formsOpenable = props.formsOpenable
+            onSaved = { said ->
+                designing = null
+                designNote = said
+                props.onChanged()
+            }
+            onCancel = { designing = null }
+            onChanged = props.onChanged
+        }
+    }
+    designNote?.let {
+        p {
+            className = ClassName("subtitle")
+            +it
+        }
+    }
     Modal {
         open = impact != null
         title = "Some stored forms hold these traits"
@@ -301,3 +335,77 @@ private fun ChildrenBuilder.traitRows(
 /** The type declaring [trait]'s fields, from the catalog's parsed schema; null when it carries none. */
 private fun fieldsTypeOf(trait: TraitChoiceView, types: Map<String, SchType>): SchType? =
     trait.dataRef?.let(::refName)?.let { types[it] }
+
+/**
+ * The client's own traits (issue #1118): each with its name, how many fields it has and where it is stored, and
+ * **Edit** -- or why the editor cannot edit it -- then **New trait**, unless the plan allows no more schemas.
+ */
+private fun ChildrenBuilder.ownTraits(catalog: TraitCatalogView, designing: String?, busy: Boolean, onOpen: (String) -> Unit) {
+    h3 { +"Its own traits" }
+    p {
+        className = ClassName("subtitle")
+        +("Traits this client defines for itself, supported without being included. A new one is stored in a " +
+            "configuration of its own.")
+    }
+    if (catalog.own.isNotEmpty()) {
+        div {
+            className = ClassName("op-table-scroll")
+            table {
+                className = ClassName("op-table")
+                thead {
+                    tr {
+                        th { +"Trait" }
+                        th { +"Name" }
+                        th { className = ClassName("op-num"); +"Fields" }
+                        th { +"Stored in" }
+                        th { +"" }
+                    }
+                }
+                tbody {
+                    catalog.own.forEach { own ->
+                        tr {
+                            key = own.traitId.unsafeCast<Key>()
+                            td { code { +own.traitId } }
+                            td { +(own.design?.label ?: "—") }
+                            td { className = ClassName("op-num"); +(own.design?.fields?.size?.toString() ?: "—") }
+                            td { +(own.configName ?: "source code") }
+                            td {
+                                if (own.design != null) {
+                                    Button {
+                                        type = "link"
+                                        size = "small"
+                                        disabled = busy || designing != null
+                                        onClick = { onOpen(own.traitId) }
+                                        +"Edit"
+                                    }
+                                } else {
+                                    span {
+                                        className = ClassName("type-hint")
+                                        +(own.notEditable ?: "")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    val refusal = newTraitRefusal(catalog.quotas)
+    if (designing == null) {
+        p {
+            Button {
+                size = "small"
+                disabled = busy || refusal != null
+                onClick = { onOpen("") }
+                +"New trait"
+            }
+        }
+        refusal?.let {
+            p {
+                className = ClassName("type-hint")
+                +it
+            }
+        }
+    }
+}

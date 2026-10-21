@@ -1272,6 +1272,14 @@ object ClientsApi {
     suspend fun setIncludedTraits(request: Map<String, Any?>): TraitsSetResult =
         parseTraitsSetResult(Http.sendApi("POST", UADEP.clientTraitsSet, request)[EP.results].toJsonMapOrEmpty())
 
+    /**
+     * Saves a trait's design (issue #1118) -- [request] from [traitDesignRequest]: a new trait, or an edit of one the
+     * client stores; live, or a draft for a client with a sandbox. An edit that strands stored data is refused with
+     * the impact report ([impactOf]) until acknowledged.
+     */
+    suspend fun saveTraitDesign(request: Map<String, Any?>): TraitDesignResult =
+        parseTraitDesignResult(Http.sendApi("POST", UADEP.clientTraitDesign, request)[EP.results].toJsonMapOrEmpty())
+
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())
