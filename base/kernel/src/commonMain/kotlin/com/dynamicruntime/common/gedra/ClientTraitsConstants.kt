@@ -79,4 +79,38 @@ object CIT {
      * it (`trait_<traitId>`), so each is published, judged and, later, carried on its own.
      */
     const val configPrefix = "trait_"
+
+    // --- extending and narrowing a global trait (issue #1119) ---
+    const val narrowingTypeName = "ClientTraitNarrowing"
+    const val narrowResultTypeName = "ClientTraitNarrowResult"
+
+    /** On a design: the global trait it extends; absent for a trait of its own. */
+    const val extendsTrait = "extendsTrait"
+
+    /** On a narrowing ([TraitNarrowing]): the fields the client's forms leave out. */
+    const val hidden = "hidden"
+
+    /** On a global trait in the catalog: the client's narrowing of it ([TraitNarrowing.toInfo]); absent when it cannot be edited. */
+    const val narrowing = "narrowing"
+
+    /** On a global trait in the catalog: the stored configuration holding the client's narrowing of it, when one does. */
+    const val narrowingConfig = "narrowingConfig"
+
+    /** On a global trait in the catalog: why the editor cannot edit the client's alteration of it; absent when it can. */
+    const val narrowingNotEditable = "narrowingNotEditable"
+
+    /** On the catalog: the global layouts of the types in its `$defs`, by type name, so a preview is labeled. */
+    const val layouts = "layouts"
+
+    /**
+     * On a draft save's result: the impact report of publishing it (issue #935), run against the live client --
+     * information only, since publishing asks again. Absent when the save is live, or publishing would affect nothing.
+     */
+    const val draftImpact = "draftImpact"
+
+    /**
+     * The prefix of the stored configuration the editor makes for a narrowing of a global trait: one per trait, named
+     * for it (`narrow_<traitId>`, a rooted id's colon an underscore).
+     */
+    const val narrowPrefix = "narrow_"
 }

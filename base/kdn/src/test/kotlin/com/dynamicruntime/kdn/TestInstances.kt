@@ -57,4 +57,8 @@ object TestInstances {
     /** With [ExtensionTemplateComponent]'s source template: for tests of clients defined on a template (issue #945). */
     fun extensionTemplate(cxtName: String): KdrCxt =
         Startup.mkTestBootCxt(cxtName, "kdnSharedExtensionTemplate", emptyMap(), listOf(ExtensionTemplateComponent()))
+
+    /** With [TraitBaseComponent]'s global trait: for tests that narrow or extend one (issue #1119). */
+    fun traitBases(cxtName: String): KdrCxt =
+        Startup.mkTestBootCxt(cxtName, "kdnSharedTraitBases", emptyMap(), listOf(TraitBaseComponent()))
 }

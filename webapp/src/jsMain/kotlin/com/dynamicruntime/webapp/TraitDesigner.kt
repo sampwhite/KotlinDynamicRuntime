@@ -12,6 +12,8 @@ import com.dynamicruntime.common.gedra.schemaAttributeCount
 import com.dynamicruntime.common.gedra.traitDesignFromInfo
 import com.dynamicruntime.common.gedra.traitDesignProblems
 import com.dynamicruntime.common.gedra.withKeys
+import com.dynamicruntime.common.schema.SCH
+import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
@@ -48,9 +50,15 @@ fun TraitDesign.withFieldMoved(index: Int, by: Int): TraitDesign {
 
 /** This design with [label] as its name and [description] -- blank, none. */
 fun TraitDesign.withHeading(label: String, description: String): TraitDesign =
-    TraitDesign(traitId, label, description.ifBlank { null }, fields)
+    copy(label = label, description = description.ifBlank { null })
 
-private fun TraitDesign.copyFields(list: List<TraitFieldDesign>) = TraitDesign(traitId, label, description, list)
+private fun TraitDesign.copyFields(list: List<TraitFieldDesign>) = copy(fields = list)
+
+/**
+ * A new trait's draft extending [base] -- a global trait's id (issue #1119) -- or, with null, a trait of its own. Only a
+ * trait not yet saved may change what it extends; its fields are kept either way.
+ */
+fun TraitDesign.extending(base: String?): TraitDesign = TraitDesign(traitId, label, description, fields, base)
 
 /** This field relabeled. */
 fun TraitFieldDesign.withLabel(label: String) = TraitFieldDesign(key, label, kind, description, required, choices)
@@ -95,12 +103,16 @@ fun kindLabel(kind: TraitFieldKind): String = when (kind) {
     TraitFieldKind.choices -> "Several choices"
 }
 
-/** [draft] with its keys, as the backend will give them: the preview's, and what the rules are asked of. */
-fun keyedDraft(draft: TraitDesign, takenTraitIds: Set<String>): TraitDesign = withKeys(draft, takenTraitIds)
+/**
+ * [draft] with its keys, as the backend will give them: the preview's, and what the rules are asked of. An extension's
+ * fields avoid its [base]'s keys, as the backend's do.
+ */
+fun keyedDraft(draft: TraitDesign, takenTraitIds: Set<String>, base: TraitBaseView? = null): TraitDesign =
+    withKeys(draft, takenTraitIds, base?.body?.get(SCH.properties).toJsonMapOrEmpty().keys)
 
 /** What is wrong with [draft], in the kernel's words, against the [baseline] it was opened from (null for a new trait). */
-fun draftProblems(draft: TraitDesign, baseline: TraitDesign?): List<String> =
-    traitDesignProblems(keyedDraft(draft, emptySet()), baseline)
+fun draftProblems(draft: TraitDesign, baseline: TraitDesign?, base: TraitBaseView? = null): List<String> =
+    traitDesignProblems(keyedDraft(draft, emptySet(), base), baseline)
 
 /** Whether [draft] differs from the [baseline] it was opened from; a new trait always does. */
 fun draftChanged(draft: TraitDesign, baseline: TraitDesign?): Boolean = baseline == null || draft.toInfo() != baseline.toInfo()
@@ -111,9 +123,17 @@ fun draftAttributeCount(draft: TraitDesign): Int = schemaAttributeCount(keyedDra
 /** The qualified name the preview's schema is parsed under, so its layout joins to it. */
 const val previewTypeName = "preview.TraitDraftData"
 
-/** The preview's schema, by [previewTypeName]: the draft as it will be written, over the [stored] schema it edits. */
-fun previewDefs(draft: TraitDesign, stored: Map<String, Any?>? = null): Map<String, Any?> =
-    mapOf(previewTypeName to keyedDraft(draft, emptySet()).toDataSchema(stored))
+/**
+ * The preview's schema, by [previewTypeName]: the draft as it will be written, over the [stored] schema it edits. An
+ * extension's is resolved onto its [base], as the backend resolves it (issue #1119), so the preview shows the base's
+ * fields, labeled by its layout, and the ones the draft adds.
+ */
+fun previewDefs(draft: TraitDesign, stored: Map<String, Any?>? = null, base: TraitBaseView? = null): Map<String, Any?> {
+    val keyed = keyedDraft(draft, emptySet(), base)
+    if (base == null) return mapOf(previewTypeName to keyed.toDataSchema(stored))
+    val defs = mapOf(base.typeName to base.bodyWithLayout, previewTypeName to keyed.toExtension(base.typeName, base.required.toList(), stored))
+    return resolveExtensions(defs).defs
+}
 
 /**
  * What the plan allows, said beside the fields (issue #1109): the attributes [count] against the per-schema limit,
@@ -154,11 +174,15 @@ fun traitDesignRequest(clientId: String, draft: TraitDesign, expected: String, a
     if (acknowledge) put(IMP.acknowledgeImpact, true)
 }
 
-/** What a design's save did: the configuration the trait is in, the trait as designed now, and how it took effect. */
-class TraitDesignResult(val configName: String, val design: TraitDesign, val mode: String)
+/**
+ * What a design's save did: the configuration the trait is in, the trait as designed now, how it took effect, and --
+ * for a draft -- what publishing it would do to the live client's forms (issue #1119).
+ */
+class TraitDesignResult(val configName: String, val design: TraitDesign, val mode: String, val draftImpact: ImpactReportView? = null)
 
 fun parseTraitDesignResult(raw: Map<String, Any?>): TraitDesignResult = TraitDesignResult(
     configName = raw[CIT.configName].toOptStr().orEmpty(),
     design = traitDesignFromInfo(raw[CIT.design].toJsonMapOrEmpty()),
     mode = raw[CPY.mode].toOptStr().orEmpty(),
+    draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
 )

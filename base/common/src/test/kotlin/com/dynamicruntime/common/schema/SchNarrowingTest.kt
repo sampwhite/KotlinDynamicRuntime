@@ -154,6 +154,22 @@ class SchNarrowingTest : StringSpec({
         found[0] shouldContain "Extend the type instead"
     }
 
+    "an array's elements narrow by the same rules: fewer choices, but never more (issue #1119)" {
+        val tags = linkedMapOf(
+            SCH.type to SCT.array,
+            SCH.items to linkedMapOf(SCH.type to SCT.string, SCH.options to listOf("x", "y", "z")),
+        )
+        val withTags = base + (SCH.properties to (base.getValue(SCH.properties) as Map<*, *>) + ("tags" to tags))
+        fun tagProblems(items: Map<String, Any?>) = narrowingProblems(
+            "core.Thing", withTags,
+            mapOf(SCH.merge to mapOf(SCH.properties to "merge"), SCH.properties to mapOf("tags" to (tags + (SCH.items to items)))),
+        ).map { it.message }
+        tagProblems(linkedMapOf(SCH.type to SCT.string, SCH.options to listOf("x", "z"))) shouldBe emptyList()
+        tagProblems(linkedMapOf(SCH.type to SCT.string, SCH.options to listOf("x", "w"))).single() shouldContain "'w'"
+        // Anything else about an element still counts as a change.
+        tagProblems(linkedMapOf(SCH.type to SCT.integer, SCH.options to listOf("x"))).single() shouldContain "'${SCH.type}'"
+    }
+
     "problems are reported together rather than one per boot" {
         problems(
             mapOf(

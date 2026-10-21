@@ -29,7 +29,8 @@ import com.dynamicruntime.common.util.toOptStr
  *  2. **Fewer choices**, or a choice list where there was none: [SCH.options] whose values are a subset, or
  *     an options list applied to an attribute that had none -- including **closing an open list**
  *     ([SCH.openOptions]), which is the same act said in the other keyword: a list that bounded nothing
- *     starts bounding. Opening a closed one is its opposite and is refused with the widenings.
+ *     starts bounding. Opening a closed one is its opposite and is refused with the widenings. An array's
+ *     [SCH.items] are judged by these same rules (issue #1119), so a list of several choices narrows as one does.
  *  3. **More required**: [SCH.required] as a superset of the base's.
  *
  * Anything else that affects validation is refused, naming the alternative.
@@ -140,8 +141,14 @@ private fun compare(
     }
     checkOpenOptions(path, at, base, variant, out)
     checkRequired(path, at, base, variant, out)
+    // An array's elements are judged by the same rules (issue #1119): elements accepting less make an array that
+    // accepts less, so a list of several choices may be narrowed as a single choice is.
+    val baseItems = (base[SCH.items] as? Map<*, *>)?.toJsonMap()
+    val variantItems = (variant[SCH.items] as? Map<*, *>)?.toJsonMap()
+    val itemsCompared = baseItems != null && variantItems != null
+    if (itemsCompared) compare("$path[]", "$at.${SCH.items}", baseItems, variantItems, out)
     for (key in base.keys + variant.keys) {
-        if (key in presentationKeys || key in narrowingKeys) {
+        if (key in presentationKeys || key in narrowingKeys || (key == SCH.items && itemsCompared)) {
             continue
         }
         if (base[key] != variant[key]) {

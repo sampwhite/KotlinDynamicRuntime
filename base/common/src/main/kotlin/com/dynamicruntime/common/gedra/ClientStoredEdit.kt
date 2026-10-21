@@ -100,6 +100,14 @@ object ClientStoredEdit {
         if (target.draft) SandboxEdits.reloadParent(cxt, target.client)
         else publishAndReload(cxt, target.bound, target.client, written, undo, restorePublished, impact)
 
+    /**
+     * For a [target] that saved a draft, what publishing [written] would do to the stored data of the client it is
+     * the draft of (issues #935, #1119): run against the live client, so the person working in the sandbox sees it
+     * at the save, for information -- publishing still asks. Null for a live save, or when nothing would be affected.
+     */
+    fun draftImpact(target: EditTarget, written: GedraConfigRow): ImpactReport? =
+        if (!target.draft) null else ConfigImpact.reportFor(target.bound, target.client, written, anyTier = true).takeIf { it.blocks }
+
     /** The stored config of the bound client's that holds its definition (`clientDef`), or null when none does. */
     fun definitionHolder(bound: KdrCxt): GedraConfigRow? =
         GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.entriesBySlot()[CCT.clientDef]?.isNotEmpty() == true }

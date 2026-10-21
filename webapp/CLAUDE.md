@@ -858,6 +858,21 @@ field's other keywords, a layout's hints, errors and strings from Design View. A
 field made required, a choice removed) is refused with the impact report, in the same dialog and **Save anyway** as
 the picker's.
 
+**Narrowing and extending a global trait** (issue #1119; `TraitNarrowEditor.kt`, its pure half in `TraitNarrower.kt`,
+covered by `TraitNarrowerTest`). Each global trait's row offers **Narrow…** (**Narrowed…** once the client has one), or
+says it was altered by hand. The narrowing editor lists the trait's fields (`narrowFieldRows`, labeled from the
+catalog's resolved `layouts`) with **Shown**, **Required**, and **Choices kept**, offering only moves that narrow: hiding
+is the layout's -- an authoritative field list, the default for every workflow, the data unchanged -- and a field the
+data requires cannot be hidden (`hideLockedReason`); requiring and keeping fewer choices change the data
+(`requireLockedReason`). The model is the kernel's `TraitNarrowing`, whose `toAlteration` the preview merges over the
+platform's type (`narrowPreviewDefs`) exactly as the backend writes it: the client's alteration of the trait's data
+type, saved through `/clientAdmin/client/traits/narrow` (`traitNarrowRequest`) into `narrow_<trait>` or where a stored
+alteration is. **As the trait is declared** clears it. A narrowing does not include a trait, and says so for one the
+client does not. A **new trait** may **Start from** a global trait (`extending`): its fields are added to the base's,
+which are listed and kept, and the preview resolves the extension onto the base (`previewDefs` with a
+`TraitBaseView`); what a trait extends is fixed once saved. Every one of these saves, as a sandbox's draft, says what
+publishing it would do to the live client's forms (`draftImpact`, `draftImpactText`) -- for information.
+
 **Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,
 refused on anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) for any form
 whose layout says so.

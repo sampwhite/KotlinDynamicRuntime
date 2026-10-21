@@ -187,6 +187,12 @@ object UADEP {
     const val clientTraitDesign = "/${SECT.clientAdmin}/client/traits/design"
 
     /**
+     * Narrows a global trait for a client (issue #1119): hides fields in its layout, requires fields, and restricts
+     * choices, written as the client's alteration of the trait's data type. Scoped as [clientDefinition] is.
+     */
+    const val clientTraitNarrow = "/${SECT.clientAdmin}/client/traits/narrow"
+
+    /**
      * The copy and interface one client's own configuration changes (issue #916) -- fragment keys and UiBlock
      * items, each with the value it replaces and the config that set it. Scoped as [clientDefinition] is.
      */

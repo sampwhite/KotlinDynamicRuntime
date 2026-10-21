@@ -29,6 +29,8 @@ external interface TraitDesignEditorProps : Props {
     var clientId: String
     /** The trait as stored, which the draft starts from; null for a new trait. */
     var baseline: TraitDesign?
+    /** The catalog: the global traits a new trait may extend (issue #1119), and their schema and layouts. */
+    var catalog: TraitCatalogView
     var quotas: TraitQuotasView?
     /** Whether a save is a draft, as the page last read the client ([savesAsDraft]): said beside Save, and sent with it. */
     var savesDraft: Boolean
@@ -53,6 +55,10 @@ external interface TraitDesignEditorProps : Props {
  * ([draftQuotaText]) and **Add field** stops at them. A save takes effect as the page's other editors' do -- live, or a
  * draft for a client with a sandbox -- and an edit that would strand data stored forms hold is refused with the impact
  * report, whose dialog's **Save anyway** acknowledges it.
+ *
+ * A new trait may **extend** a global trait (issue #1119): **Starts from** picks the base, whose own fields are listed
+ * and kept as it has them, and the fields designed here are added to them -- the preview shows the whole. What a trait
+ * extends is fixed once it is saved. A draft's save says what publishing it would do to the live client's forms.
  */
 val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
     var draft by useState(props.baseline ?: newTraitDraft())
@@ -62,13 +68,16 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
     var impact by useState<ImpactReportView?>(null)
     val baseline = props.baseline
     val isNew = baseline == null
+    // What the draft extends, as the catalog serves it (issue #1119).
+    val extended = draft.extendsTrait?.let { id -> props.catalog.traits.firstOrNull { it.traitId == id } }
+    val base = extended?.let { traitBaseOf(props.catalog, it) }
 
-    val problems = draftProblems(draft, baseline)
+    val problems = draftProblems(draft, baseline, base)
     val count = draftAttributeCount(draft)
     val changed = draftChanged(draft, baseline)
     val preview = useMemo(draft.toInfo().toString()) {
         if (problems.any { it.contains("needs at least one field") }) null else {
-            val defs = previewDefs(draft)
+            val defs = previewDefs(draft, base = base)
             try {
                 parseSchemaTypes(defs)[previewTypeName]?.let { it to collectLayouts(defs) }
             } catch (e: Exception) {
@@ -84,7 +93,8 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
             try {
                 val result = ClientsApi.saveTraitDesign(traitDesignRequest(props.clientId, draft, expectedMode(props.savesDraft), acknowledge))
                 impact = null
-                props.onSaved(savedNote("Saved trait ${result.design.traitId} to ${result.configName}.", result.mode))
+                val said = savedNote("Saved trait ${result.design.traitId} to ${result.configName}.", result.mode)
+                props.onSaved(listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" "))
             } catch (e: Throwable) {
                 val report = impactOf(e)
                 if (report != null) impact = report else saveError = saveFailure(e, props.onChanged)
@@ -105,6 +115,29 @@ val TraitDesignEditor = FC<TraitDesignEditorProps> { props ->
                 +"Its id is "
                 code { +id }
                 +". A trait's id and its fields' keys never change; their labels may."
+            }
+        }
+        // What it extends (issue #1119): chosen for a new trait, fixed for a saved one.
+        if (isNew) {
+            choiceRow("Starts from") {
+                Select {
+                    value = draft.extendsTrait.orEmpty()
+                    options = choiceOptions(
+                        listOf("Nothing: a trait of its own" to "") + props.catalog.traits.filter { traitBaseOf(props.catalog, it) != null }
+                            .map { "Extends ${it.traitId}" to it.traitId },
+                    )
+                    disabled = busy
+                    style = js("({ minWidth: 260 })")
+                    onChange = { v -> draft = draft.extending((v as? String)?.ifEmpty { null }) }
+                }
+            }
+        }
+        base?.let { b ->
+            p {
+                className = ClassName("type-hint")
+                +"${if (isNew) "Adds to" else "Extends"} "
+                code { +draft.extendsTrait.orEmpty() }
+                +(", whose fields it keeps as they are: " + narrowFieldRows(b).joinToString(", ") { it.label } + ". The fields below are added.")
             }
         }
         draft.fields.forEachIndexed { i, field ->

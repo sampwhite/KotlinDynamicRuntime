@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
@@ -35,22 +36,40 @@ import com.dynamicruntime.common.util.toOptStr
  * report until acknowledged (issue #935). A new trait has no data to judge.
  */
 object ClientTraitDesignEdit {
-    /** What a save did: the configuration the trait is in, the trait as designed now, and how it took effect. */
-    class Result(val configName: String, val design: TraitDesign, val issues: List<GedraConfigIssue>, val mode: String)
+    /**
+     * What a save did: the configuration the trait is in, the trait as designed now, how it took effect, and -- for a
+     * draft -- what publishing it would do to the live client's stored data.
+     */
+    class Result(
+        val configName: String,
+        val design: TraitDesign,
+        val issues: List<GedraConfigIssue>,
+        val mode: String,
+        val draftImpact: ImpactReport? = null,
+    )
 
     /** One of the client's own traits: where it is stored, and its design or why the editor cannot edit it. */
-    private class StoredTrait(val row: GedraConfigRow, val entry: Map<String, Any?>) {
+    private class StoredTrait(val row: GedraConfigRow, val entry: Map<String, Any?>, val read: TraitDesignRead) {
         val traitId: String = entry[CCT.traitId].toOptStr().orEmpty()
-        val read: TraitDesignRead =
-            traitDesignOf(traitId, entry[CCT.description].toOptStr(), entry[CCT.dataSchema].toJsonMapOrEmpty())
     }
 
     /** The traits [bound]'s client stores, latest revisions, drafts included: what the editor starts from. */
-    private fun storedTraits(bound: KdrCxt): Map<String, StoredTrait> = buildMap {
+    private fun storedTraits(bound: KdrCxt, bases: Map<String, GlobalTraitBase>): Map<String, StoredTrait> = buildMap {
+        val byType = bases.values.associateBy { it.typeName }
         for (row in GedraConfigService.get(bound).listConfigs(bound)) {
             for (entry in row.entriesBySlot()[CCT.traitDef].orEmpty()) {
-                val trait = StoredTrait(row, entry)
-                if (trait.traitId.isNotEmpty()) put(trait.traitId, trait)
+                val traitId = entry[CCT.traitId].toOptStr() ?: continue
+                val description = entry[CCT.description].toOptStr()
+                val dataSchema = entry[CCT.dataSchema].toJsonMapOrEmpty()
+                // An extension's data says what it extends (issue #1119).
+                val read = if (!dataSchema.containsKey(SCH.extends)) {
+                    traitDesignOf(traitId, description, dataSchema)
+                } else {
+                    val base = byType[dataSchema[SCH.extends].toOptStr()]
+                    if (base == null) TraitDesignRead(null, "It extends a type that is not a global trait's.")
+                    else traitExtensionDesignOf(traitId, description, dataSchema, base.traitId, base.required)
+                }
+                put(traitId, StoredTrait(row, entry, read))
             }
         }
     }
@@ -66,7 +85,7 @@ object ClientTraitDesignEdit {
      * any declared in source code, which are edited there. In the order they are stored.
      */
     fun ownTraits(cxt: KdrCxt, client: String): List<Map<String, Any?>> {
-        val stored = storedTraits(cxt.mkSubContext("traitDesigns", client))
+        val stored = storedTraits(cxt.mkSubContext("traitDesigns", client), globalTraitBases(cxt))
         val listed = stored.values.map { t ->
             buildMap {
                 put(CIT.traitId, t.traitId)
@@ -112,7 +131,8 @@ object ClientTraitDesignEdit {
         }
         val target = ClientStoredEdit.target(cxt, client, "traitDesign", expected)
         val bound = target.bound
-        val stored = storedTraits(bound)
+        val bases = globalTraitBases(cxt)
+        val stored = storedTraits(bound, bases)
         val taken = stored.keys + runningOwnTraitIds(cxt, client)
         val existing = design.traitId?.let { id ->
             stored[id] ?: throw KdrException(
@@ -122,22 +142,33 @@ object ClientTraitDesignEdit {
             )
         }
         val before = existing?.let { it.read.design ?: throw KdrException.mkInput("Trait '${it.traitId}' cannot be edited here. ${it.read.notEditable}") }
-        val keyed = withKeys(design, taken)
-        val problems = traitDesignProblems(keyed, before)
+        // An extension's fields are added to its base's, whose keys its own may not take (issue #1119).
+        val base = design.extendsTrait?.let { id ->
+            bases[id] ?: throw KdrException.mkInput("There is no global trait '$id' to extend.")
+        }
+        val baseKeys = base?.body?.get(SCH.properties).toJsonMapOrEmpty().keys
+        val keyed = withKeys(design, taken, baseKeys)
+        val problems = traitDesignProblems(keyed, before) +
+            keyed.fields.mapNotNull { f -> f.key?.takeIf { it in baseKeys && before?.fields?.none { b -> b.key == it } != false }?.let {
+                "Field '$it' is already one of ${base?.traitId}'s fields."
+            } }
         if (problems.isNotEmpty()) throw KdrException.mkInput(problems.joinToString(" "))
         val traitId = keyed.traitId!!
+        val pascal = traitId.replaceFirstChar { it.uppercase() }
         val written: GedraConfigRow
         val reload: ConfigReloadResult
         if (existing == null) {
             val name = CIT.configPrefix + traitId
+            val namespace = clientNamespace(client)
             val entry = buildMap {
                 put(CCT.traitId, traitId)
-                put(CCT.typeName, "${clientNamespace(client)}.${traitId.replaceFirstChar { it.uppercase() }}Entry")
+                put(CCT.typeName, "$namespace.${pascal}Entry")
                 put(CCT.appliesTo, listOf(GedraDataType.formDoc.name))
                 keyed.description?.let { put(CCT.description, it) }
-                put(CCT.dataSchema, keyed.toDataSchema())
+                // An extension's data is its base's plus its own fields (`g-extends`); any other trait's is its own.
+                put(CCT.dataSchema, base?.let { keyed.toExtension(it.typeName, it.required) } ?: keyed.toDataSchema())
             }
-            val config = reassembleForWrite(bound, name, clientNamespace(client), client, mapOf(CCT.traitDef to listOf(entry)))
+            val config = reassembleForWrite(bound, name, namespace, client, mapOf(CCT.traitDef to listOf(entry)))
             written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true)
             // Nothing stored can hold a trait that did not exist, so there is no impact to judge. A publish refused
             // after the write's own trial passed leaves the configuration as a draft, which the refusal says.
@@ -148,7 +179,8 @@ object ClientTraitDesignEdit {
             }
             val entry = LinkedHashMap(existing.entry)
             keyed.description?.let { entry[CCT.description] = it } ?: entry.remove(CCT.description)
-            entry[CCT.dataSchema] = keyed.toDataSchema(existing.entry[CCT.dataSchema].toJsonMapOrEmpty())
+            val stored = existing.entry[CCT.dataSchema].toJsonMapOrEmpty()
+            entry[CCT.dataSchema] = base?.let { keyed.toExtension(it.typeName, it.required, stored) } ?: keyed.toDataSchema(stored)
             if (entry == existing.entry) throw KdrException.mkInput("Trait '$traitId' is already designed so; nothing to save.")
             fun patch(row: GedraConfigRow, to: Map<String, Any?>) = GedraConfigService.get(bound).patchConfig(bound, row.configId, trial = true) { slots ->
                 val out = LinkedHashMap(slots)
@@ -163,6 +195,6 @@ object ClientTraitDesignEdit {
                 impact = impact,
             )
         }
-        return Result(written.configId.baseId, keyed, reload.issues, target.mode)
+        return Result(written.configId.baseId, keyed, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 }
