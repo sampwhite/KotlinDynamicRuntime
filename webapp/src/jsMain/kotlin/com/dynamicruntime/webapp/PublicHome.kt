@@ -21,6 +21,9 @@ import web.cssom.ClassName
 
 private val publicHomeScope = MainScope()
 
+/** Where a switch asked from "Your other accounts" reports its failure; a demo card's is its client id. */
+private const val accountsSection = "#accounts"
+
 /**
  * Whether Home is the public home page (issue #1324): for a caller **signed in** to `public`. A visitor who has not
  * signed in acts in `public` too, and keeps the ordinary Home with its sign-in. Pure, and covered under `jsNodeTest`.
@@ -32,6 +35,9 @@ fun otherAccounts(users: List<UserChoice>): List<UserChoice> = users.filterNot {
 
 /** The roles of [demo] the caller has joined as, each to open. Pure. */
 fun joinedRoles(demo: JoinableView): List<JoinRoleView> = demo.roles.filter { it.userId != null }
+
+/** The roles of [demo] whose user an administrator has disabled since the caller joined: said, never offered again. Pure. */
+fun removedRoles(demo: JoinableView): List<JoinRoleView> = demo.roles.filter { it.removed }
 
 /** Whether [demo] has a role the caller may still join -- one not held, and not taken away by an administrator. Pure. */
 fun hasRoleToJoin(demo: JoinableView): Boolean = demo.roles.any { it.userId == null && !it.removed }
@@ -57,7 +63,8 @@ val PublicHome = FC<PublicHomeProps> { props ->
     var demos by useState<List<JoinableView>?>(null)
     var demosError by useState<DisplayError?>(null)
     var busy by useState(false)
-    var switchError by useState<DisplayError?>(null)
+    // A failed switch, and where it was asked for -- a demo's client id, or the accounts list -- so it is said there.
+    var switchError by useState<Pair<String, DisplayError>?>(null)
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
@@ -73,7 +80,7 @@ val PublicHome = FC<PublicHomeProps> { props ->
         }
     }
 
-    fun switchTo(work: suspend () -> Unit) {
+    fun switchTo(from: String, work: suspend () -> Unit) {
         busy = true
         switchError = null
         publicHomeScope.launch {
@@ -81,7 +88,7 @@ val PublicHome = FC<PublicHomeProps> { props ->
                 work()
                 afterSessionChange(bump)
             } catch (e: Throwable) {
-                switchError = userFacingError(e)
+                switchError = from to userFacingError(e)
             } finally {
                 busy = false
             }
@@ -104,12 +111,13 @@ val PublicHome = FC<PublicHomeProps> { props ->
                         className = ClassName("card public-demo")
                         h3 { +demo.name }
                         demo.description?.let { p { className = ClassName("subtitle"); +it } }
-                        ul {
-                            for (role in demo.roles) {
-                                li {
-                                    +role.label
-                                    span { className = ClassName("subtitle"); +" — ${role.summary}" }
-                                }
+                        ul { for (role in demo.roles) li { roleLine(role) } }
+                        // A role an administrator took away is said here, as the Join page says it, not left as a card
+                        // with nothing to do.
+                        for (role in removedRoles(demo)) {
+                            p {
+                                className = ClassName("subtitle")
+                                +"One of ${demo.name}'s administrators has disabled your ${role.label} user."
                             }
                         }
                         div {
@@ -117,17 +125,21 @@ val PublicHome = FC<PublicHomeProps> { props ->
                             for (role in joinedRoles(demo)) {
                                 Button {
                                     disabled = busy
-                                    onClick = { switchTo { AuthApi.switchUser(role.userId!!) } }
+                                    asDynamic()["aria-label"] = "Open ${demo.name} as ${role.label}"
+                                    onClick = { switchTo(demo.client) { AuthApi.switchUser(role.userId!!) } }
                                     +"Open as ${role.label}"
                                 }
                             }
                             if (hasRoleToJoin(demo)) {
+                                val anotherRole = joinedRoles(demo).isNotEmpty()
                                 a {
                                     href = joinHref(demo.client)
-                                    +(if (joinedRoles(demo).isEmpty()) "Join…" else "Join as another role…")
+                                    asDynamic()["aria-label"] = if (anotherRole) "Join ${demo.name} as another role" else "Join ${demo.name}"
+                                    +(if (anotherRole) "Join as another role…" else "Join…")
                                 }
                             }
                         }
+                        switchError?.takeIf { it.first == demo.client }?.let { errorText("Couldn't open ${demo.name}.", it.second) }
                     }
                 }
             }
@@ -142,20 +154,22 @@ val PublicHome = FC<PublicHomeProps> { props ->
                 ul {
                     className = ClassName("public-accounts")
                     for (user in others) {
+                        val shown = user.qualifierWithin(config.users).ifEmpty { user.label() }
                         li {
-                            span { +user.qualifierWithin(config.users).ifEmpty { user.label() } }
+                            span { +shown }
                             Button {
                                 size = "small"
                                 disabled = busy
-                                onClick = { switchTo { AuthApi.switchUser(user.userId) } }
+                                asDynamic()["aria-label"] = "Switch to $shown"
+                                onClick = { switchTo(accountsSection) { AuthApi.switchUser(user.userId) } }
                                 +"Switch"
                             }
                         }
                     }
                 }
+                switchError?.takeIf { it.first == accountsSection }?.let { errorText("Couldn't switch.", it.second) }
             }
         }
-        switchError?.let { errorText("Couldn't switch.", it) }
 
         CreateOwnClientCard {
             made = config.selfServeClient

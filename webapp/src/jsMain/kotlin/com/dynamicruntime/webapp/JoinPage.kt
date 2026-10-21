@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
+import react.ChildrenBuilder
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.a
@@ -108,10 +109,7 @@ val JoinPage = FC<Props> {
                 for (role in view.roles) {
                     div {
                         className = ClassName("join-role")
-                        p {
-                            +role.label
-                            span { className = ClassName("subtitle"); +" — ${role.summary}" }
-                        }
+                        p { roleLine(role) }
                         val joinedAs = role.userId
                         if (role.removed) {
                             p {
@@ -139,4 +137,10 @@ val JoinPage = FC<Props> {
             }
         }
     }
+}
+
+/** A demo client's [role] as a line: its label, and what it does (issue #1248). The Join page's and the public home's. */
+fun ChildrenBuilder.roleLine(role: JoinRoleView) {
+    +role.label
+    span { className = ClassName("subtitle"); +" \u2014 ${role.summary}" }
 }

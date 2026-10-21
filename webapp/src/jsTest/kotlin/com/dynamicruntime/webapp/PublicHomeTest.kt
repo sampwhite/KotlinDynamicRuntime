@@ -43,6 +43,9 @@ class PublicHomeTest {
         val taken = JoinableView("acme", "Acme", null, listOf(role("admin", removed = true)))
         assertTrue(joinedRoles(taken).isEmpty())
         assertTrue(!hasRoleToJoin(taken))
+        // ...and is said, so the card is not left with nothing to do and no reason.
+        assertEquals(listOf("admin"), removedRoles(taken).map { it.name })
+        assertTrue(removedRoles(none).isEmpty())
         val partly = JoinableView("confdemo", "Conference demo", null, listOf(role("speaker", userId = 9), role("organizer")))
         assertEquals(listOf("speaker"), joinedRoles(partly).map { it.name })
         assertTrue(hasRoleToJoin(partly))
