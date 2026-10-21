@@ -668,17 +668,6 @@ private val DefinitionEditor = FC<DefinitionEditorProps> { props ->
 }
 
 /** A labeled row holding a control other than a text input, laid out as [textField]'s row is. */
-private fun ChildrenBuilder.choiceRow(label: String, control: ChildrenBuilder.() -> Unit) {
-    div {
-        className = ClassName("row")
-        span {
-            className = ClassName("field-label")
-            +label
-        }
-        control()
-    }
-}
-
 external interface StoredConfigTableProps : Props {
     var configs: List<ConfigSummaryView>
     var row: ClientOverview?

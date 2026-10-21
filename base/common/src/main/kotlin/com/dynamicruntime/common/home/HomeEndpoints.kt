@@ -170,6 +170,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 "For a caller signed in to public, the self-serve client their person created (issue #1228); absent when " +
                     "they have made none.",
             )
+            property(
+                HFLD.selfServeClientAbsent,
+                "Beside selfServeClient, true when this node does not carry that client (retired, or run elsewhere); absent " +
+                    "otherwise.",
+            ) { type = SCT.boolean }
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
             property(
@@ -243,6 +248,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                     if (identityId != null && users != null) {
                         users.queryIdentityById(c, identityId)?.identityData?.get(IDD.selfServeClient).toOptStr()?.let {
                             put(HFLD.selfServeClient, it)
+                            // A person creates one, so a client retired or run elsewhere is said, not offered to open.
+                            if (ClientService.getOrNull(c)?.isPresent(it) != true) put(HFLD.selfServeClientAbsent, true)
                         }
                     }
                 }

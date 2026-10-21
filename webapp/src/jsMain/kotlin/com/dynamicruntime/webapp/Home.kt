@@ -129,6 +129,7 @@ val Home = FC<Props> {
                         if (current.user.isLoggedIn && current.user.client == CL.public) {
                             CreateOwnClientCard {
                                 made = current.selfServeClient
+                                madeAbsent = current.selfServeClientAbsent
                                 madeName = current.users.firstOrNull { it.client == current.selfServeClient }?.clientName
                             }
                         }

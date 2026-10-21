@@ -20,6 +20,34 @@ class CreateOwnClientTest {
     }
 
     @Test
+    fun theCardOffersTheCreateUntilTheClientIsMadeThenOpensItOrSaysItIsGone() {
+        assertEquals(OwnClientCardMode.create, ownClientCardMode(null, madeAbsent = false))
+        assertEquals(OwnClientCardMode.open, ownClientCardMode("free_x", madeAbsent = false))
+        assertEquals(OwnClientCardMode.unavailable, ownClientCardMode("free_x", madeAbsent = true))
+    }
+
+    @Test
+    fun theCardStartsOnTheBrowsersZoneOnlyWhenAClientMayNameIt() {
+        assertEquals("America/Chicago", ownClientStartZone("America/Chicago"))
+        assertEquals("UTC", ownClientStartZone("UTC"))
+        // An offset a browser may report is refused by the create: start on none instead.
+        assertEquals("", ownClientStartZone("Etc/GMT+5"))
+        assertEquals("", ownClientStartZone(null))
+    }
+
+    @Test
+    fun aCreateThatMovedMovesThePageAndOneThatDidNotRereadsWithTheReason() {
+        val moved = createOwnClientNext(parseCreateOwnClientResult(mapOf(CLD.client to "free_a", CLD.switched to true, CLD.present to true)))
+        assertTrue(moved.moves)
+        assertNull(moved.note)
+        val stuck = createOwnClientNext(
+            parseCreateOwnClientResult(mapOf(CLD.client to "free_b", CLD.switched to false, CLD.present to true, CLD.userFailure to "Full.")),
+        )
+        assertTrue(stuck.rereads, "made, so the config is re-read and the create not offered again")
+        assertTrue(stuck.note!!.contains("free_b"))
+    }
+
+    @Test
     fun aCreateThatMovedTheSessionSaysNothingMore() {
         val moved = parseCreateOwnClientResult(mapOf(CLD.client to "free_shopab12cd", CLD.switched to true, CLD.present to true))
         assertEquals("free_shopab12cd", moved.client)

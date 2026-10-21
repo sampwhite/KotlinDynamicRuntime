@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.IDD
 import com.dynamicruntime.common.user.TestUser
@@ -77,6 +78,15 @@ class ClientSelfServeCreateTest : StringSpec({
         // In the new client it is not said: the home page's card is for public.
         made(person) shouldBe null
         made(TestUser.create(cxt, "shell@self1228.test", userClient = CL.public)) shouldBe client
+        // Carried here, so it is offered to open: no word of its being absent.
+        TestUser.create(cxt, "shell@self1228.test", userClient = CL.public).getData(HEP.homeUiConfig)[UIC.state]
+            .toJsonMapOrEmpty()[HFLD.selfServeClientAbsent] shouldBe null
+        // Retired by the platform, it is still the person's one, and said to be absent rather than offered to open.
+        TestUser.createFullAdmin(cxt, "platform@self1228.test")
+            .postData(ADEP.clientRetirementSet, mapOf(CLD.client to client, CLD.retired to true))
+        val state = TestUser.create(cxt, "shell@self1228.test", userClient = CL.public).getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()
+        state[HFLD.selfServeClient] shouldBe client
+        state[HFLD.selfServeClientAbsent] shouldBe true
         // A visitor who has not signed in acts in public too, and has made nothing.
         TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()[UIC.state]
             .toJsonMapOrEmpty()[HFLD.selfServeClient] shouldBe null
