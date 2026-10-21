@@ -1331,8 +1331,35 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 }
 .user-mark.active { border-color: var(--accent-bright); color: var(--text); }
 .profile-user-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+/* Its text columns keep to one line each, and the actions take whatever width is left, so a row's buttons stay on
+   one line too wherever the card allows. */
+.profile-users th, .profile-users td { white-space: nowrap; }
+.profile-users td:last-child { width: 100%; white-space: normal; }
+/* ...except the marks under a user, which stack rather than widen its column at the actions' expense. */
+.profile-users td:first-child .user-mark { display: block; width: fit-content; margin-top: 3px; }
 /* The profile's card while it holds that table: room for three columns and a row of actions, still a page to read. */
 .card.profile-wide { width: min(780px, 92vw); }
+/* "What is this?" (issue #1330): a small, muted link on a heading's line -- or a line of its own -- that opens an
+   explanation inline beneath it, set apart by the accent's rule down its edge. The heading keeps its section spacing,
+   which the card's rhythm would otherwise flatten now that the heading is not the card's own child. */
+.what-is-this-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.card > .what-is-this-heading { margin-top: 28px; }
+.what-is-this-heading > h2 { margin: 0; }
+.what-is-this-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: .8rem;
+    color: var(--accent-bright);
+    cursor: pointer;
+}
+.what-is-this-link:hover { color: var(--accent-brighter); text-decoration: underline; }
+.what-is-this-text {
+    padding: 4px 14px;
+    border-left: 3px solid var(--accent-bright);
+    color: var(--text-dim);
+}
 
 /* The workflow pages (issue #792): counts right-aligned under their headings, so the columns read as numbers. */
 .wf-aggregate .wf-count { text-align: right; width: 90px; }

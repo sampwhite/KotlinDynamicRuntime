@@ -57,6 +57,14 @@ class ProfileUsersTest {
     }
 
     @Test
+    fun aNameColumnShowsOnlyWhenTheUsersAreNamedDifferently() {
+        assertFalse(showsNameColumn(listOf(member.copy(name = "Pat"), memberB.copy(name = "Pat"))))
+        assertTrue(showsNameColumn(listOf(member.copy(name = "Pat"), memberB.copy(name = "Pat Lee"))))
+        // A user with no name differs from a named one.
+        assertTrue(showsNameColumn(listOf(member, memberB.copy(name = "Pat"))))
+    }
+
+    @Test
     fun theClientIsNamedByItsName() {
         assertEquals("Acme", profileClientName(listOf(member, memberB), "acme"))
         assertEquals("globex", profileClientName(listOf(member), "globex"))

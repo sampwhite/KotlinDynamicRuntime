@@ -204,7 +204,7 @@ val Profile = FC<Props> {
     /** Chooses [target] as the user a sign-in by the address lands on (issue #1330); the bar's list follows the bump. */
     fun makeDefault(target: UserChoice) = run {
         myUsers = AuthApi.setDefaultUser(target.userId)
-        note = t("users", "defaultSet", "Signing in now takes you to that user.")
+        note = t("users", "nextSignInSet", "Your next sign-in now takes you to that user.")
         bump()
     }
 
@@ -222,7 +222,14 @@ val Profile = FC<Props> {
      */
     fun ChildrenBuilder.usersSection() {
         val rows = profileUserRows(myUsers)
-        h2 { +t("users", "title", "Your users") }
+        val nameShown = showsNameColumn(myUsers)
+        // The status stays in view; the concept behind it -- why one sign-in reaches several users -- is a click away.
+        WhatIsThis {
+            heading = t("users", "title", "Your users")
+            text = copy.opt("users", "whatIsThis").orEmpty().evalTemplate(emptyMap(), resolver = copy.fragmentResolver())
+            linkLabel = copy.opt("whatIsThis", "link")
+            hideLabel = copy.opt("whatIsThis", "hide")
+        }
         div {
             className = ClassName("subtitle")
             Markdown {
@@ -236,8 +243,9 @@ val Profile = FC<Props> {
             className = ClassName("op-table profile-users")
             thead {
                 tr {
-                    th { +t("users", "userColumn", "User") }
+                    th { +t("users", "personaColumn", "Persona") }
                     th { +t("users", "clientColumn", "Client") }
+                    if (nameShown) th { +t("users", "nameColumn", "Name") }
                     th { +"" }
                 }
             }
@@ -250,7 +258,7 @@ val Profile = FC<Props> {
                         td {
                             div { +row.label }
                             if (row.isActive) span { className = ClassName("user-mark active"); +t("users", "activeMark", "Active now") }
-                            if (row.signsInAs) span { className = ClassName("user-mark"); +t("users", "signsInAsMark", "Signs in as") }
+                            if (row.signsInAs) span { className = ClassName("user-mark"); +t("users", "nextSignInMark", "Next sign-in") }
                         }
                         td {
                             span {
@@ -258,6 +266,7 @@ val Profile = FC<Props> {
                                 +row.clientLabel
                             }
                         }
+                        if (nameShown) td { +(target.name ?: "") }
                         td {
                             div {
                                 className = ClassName("profile-user-actions")
@@ -289,7 +298,7 @@ val Profile = FC<Props> {
                                             size = "small"
                                             disabled = busy
                                             onClick = { makeDefault(target) }
-                                            +t("users", "makeDefault", "Sign in as this one")
+                                            +t("users", "useForNextSignIn", "Use for next sign-in")
                                         }
                                     }
                                     if (row.canRemove) {
@@ -537,13 +546,12 @@ fun removablePublicUsers(users: List<UserChoice>): List<UserChoice> = users.filt
 fun removalEndsEverything(users: List<UserChoice>): Boolean = users.size == 1
 
 /**
- * The help over the users table when the page's copy has not arrived (issue #1330): what the users are, which one is
- * active, and which one a sign-in lands on. The shipped copy is `users.help` in the `profile` fragment file, which
+ * The help over the users table when the page's copy has not arrived (issue #1330): which user is active, and which
+ * one a sign-in lands on. The shipped copy is `users.help` in the `profile` fragment file, which
  * also pulls the flavor's addition; this fallback pulls nothing, there being no copy to pull from.
  */
 private const val usersHelpDefault =
-    $$"Your sign-in reaches more than one user: each is you in a client, under a persona, with its own forms and " +
-        $$"access. You are acting as **${users.active}**. Signing in again takes you to **${users.signsInAs}**."
+    $$"You are acting as **${users.active}**. Next sign-in takes you to **${users.signsInAs}**."
 
 /** One row of the profile's users table (issue #1330): the user, how it reads, its marks, and what it offers. */
 class ProfileUserRow(
@@ -557,7 +565,7 @@ class ProfileUserRow(
     /** The user a sign-in by the address lands on. */
     val signsInAs: Boolean,
     val canSwitch: Boolean,
-    /** Whether "sign in as this one" is offered: on every row a sign-in does not already reach. */
+    /** Whether "Use for next sign-in" is offered: on every row a sign-in does not already reach. */
     val canMakeDefault: Boolean,
     /** A `public` user, which the person may remove (issue #752). */
     val canRemove: Boolean,
@@ -601,3 +609,10 @@ fun usersHelpData(users: List<UserChoice>): Map<String, Any?> {
  */
 fun profileClientName(users: List<UserChoice>, clientId: String): String =
     users.firstOrNull { it.isCurrent && it.client == clientId }?.clientName?.ifBlank { null } ?: clientId
+
+/**
+ * Whether the users table shows a Name column (issue #1330): only when the person's users are not all named alike --
+ * each user has its own profile, so its own name -- since a column repeating one name on every row tells nothing.
+ * Pure, covered under `jsNodeTest`.
+ */
+fun showsNameColumn(users: List<UserChoice>): Boolean = users.map { it.name?.trim().orEmpty() }.distinct().size > 1
