@@ -1328,6 +1328,19 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     color: var(--text);
     cursor: pointer;
 }
+/* The public home page (issue #1324): under the intro, a section each for the demos, the person's other accounts,
+   and their own client. A demo is a card of its own; the accounts a plain list, each with its switch. */
+.public-home { margin-top: 8px; }
+.public-home-section { margin-top: 22px; }
+.public-home-section h2 { margin-bottom: 6px; }
+.public-demo { margin: 12px 0; }
+.public-demo h3 { margin: 0 0 4px; }
+.public-demo ul { margin: 6px 0 10px; padding-left: 20px; }
+.public-demo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.public-accounts { list-style: none; padding: 0; margin: 8px 0 0; }
+.public-accounts li { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.public-accounts li span { flex: 1; }
+
 /* A person's own client, on the home page (issue #1228): a card of its own under the copy. */
 .home-own-client { margin-top: 20px; }
 .home-own-client ul { margin: 0 0 12px; padding-left: 20px; }

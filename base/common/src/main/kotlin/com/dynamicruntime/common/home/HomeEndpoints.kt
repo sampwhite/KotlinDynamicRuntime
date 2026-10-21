@@ -175,6 +175,11 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 "Beside selfServeClient, true when this node does not carry that client (retired, or run elsewhere); absent " +
                     "otherwise.",
             ) { type = SCT.boolean }
+            property(
+                HFLD.joinOffered,
+                "True for a caller signed in to public on a deployment that offers joining a demo client (issue #1248); " +
+                    "absent otherwise.",
+            ) { type = SCT.boolean }
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
             property(
@@ -243,6 +248,8 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // The self-serve client the caller's person made (issue #1228), read off the identity: in `public`, where
                 // a person creates one, so the home page offers to open it rather than to create a second.
                 if (c.client == CL.public && c.userProfile.isLoggedIn) {
+                    // Joining a demo client (issue #1248), so the public home page (issue #1324) asks which there are.
+                    if (ClientJoin.isOffered(c)) put(HFLD.joinOffered, true)
                     val identityId = c.userProfile.identityId
                     val users = UserService.getOrNull(c)
                     if (identityId != null && users != null) {

@@ -14,6 +14,12 @@ time to time, so anything you add here will not last.
 Open **Documents** from the menu to read how it is put together, starting with the conference demo -- a client
 built from configuration alone, explained piece by piece.
 
+# @publicHome
+# +demosIntro
+This is a teaching site: join a demo client to see one from the inside, as an administrator or as one of its people,
+with a user of your own email. Each demo is shared with everyone who joins it, and cleared with the rest of the site's
+data.
+
 # !auth
 # @login
 # +intro

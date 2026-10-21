@@ -161,6 +161,13 @@ object HFLD {
     const val selfServeClientAbsent = "selfServeClientAbsent"
 
     /**
+     * `state.joinOffered`: true for a caller signed in to `public` on a deployment that offers joining a demo client
+     * (issue #1248), so the public home page (issue #1324) asks which demos there are; absent otherwise, and the page
+     * draws no demos section rather than asking and being refused.
+     */
+    const val joinOffered = "joinOffered"
+
+    /**
      * `state.sandboxStranded`: beside [sandboxOf], true when the caller's sandbox user acts with no roles (issue
      * #1197), so the shell says access has ended instead of offering doors that will not open; absent otherwise.
      * Whatever the reason: the user it was opened from is disabled or no longer stands for the parent (lost the
