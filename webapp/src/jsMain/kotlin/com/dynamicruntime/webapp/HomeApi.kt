@@ -94,6 +94,11 @@ class HomeConfig(
     /** Beside [selfServeClient], whether this site no longer carries that client (retired, or run elsewhere). */
     val selfServeClientAbsent: Boolean = false,
     /**
+     * Whether this deployment offers a caller signed in to `public` to join a demo client (issue #1248), so the public
+     * home page (issue #1324) asks which demos there are.
+     */
+    val joinOffered: Boolean = false,
+    /**
      * The caller's client's own web assets (issue #1130): each slot it has set (`WAS.favicon`, `WAS.brandMark`) to
      * its image by name and content. A slot not in it is the deployment's own image.
      */
@@ -167,6 +172,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         sharedDemo = config.state[HFLD.sharedDemo] == true,
         selfServeClient = (config.state[HFLD.selfServeClient] as? String)?.ifBlank { null },
         selfServeClientAbsent = config.state[HFLD.selfServeClientAbsent] == true,
+        joinOffered = config.state[HFLD.joinOffered] == true,
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },

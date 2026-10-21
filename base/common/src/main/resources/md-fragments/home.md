@@ -18,6 +18,16 @@ Open **Documents** from the menu to read more.
 # +note
 
 
+# @publicHome
+/- The public home page (issue #1324): for a person signed in to `public`, under the intro, what they can do next --
+   try a demo, open one of their other accounts, or make a client of their own. -/
+# +demosTitle Try a demo
+# +demosIntro
+Join a demo client with a user of your own email. Each one is shared with everyone who joins it.
+# +accountsTitle Your other accounts
+# +accountsIntro
+The users you have in other clients. Choose one to switch to it; the account menu does the same.
+
 # @forms
 /- What a forms-listing row with no workflows shows in the workflow column (issue #791). A client overlays it:
    "Coming Soon...", a link to the workflow pages, "No workflows available." -/

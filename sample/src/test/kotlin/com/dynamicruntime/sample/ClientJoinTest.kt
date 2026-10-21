@@ -129,6 +129,13 @@ class ClientJoinTest : StringSpec({
         sharedDemo(TestUser.create(plain, "shell@join1248.test", userClient = SC.acme)) shouldBe null
     }
 
+    "the shell tells a visitor in public that joining is offered, so the public home page asks (issue #1324)" {
+        fun joinOffered(user: TestUser) = user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.joinOffered]
+        joinOffered(TestUser.create(reference, "offered@join1324.test")) shouldBe true
+        joinOffered(TestUser.create(reference, "inacme@join1324.test", userClient = SC.acme)) shouldBe null
+        joinOffered(TestUser.create(plain, "offered@join1324.test")) shouldBe null
+    }
+
     "designdemo, defined in stored configuration, is joined as its designer" {
         val visitor = TestUser.create(reference, "designer@join1248.test")
         join(visitor, DesignDemo.client, PERSONA.admin)

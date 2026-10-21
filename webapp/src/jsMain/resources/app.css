@@ -1328,6 +1328,19 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     color: var(--text);
     cursor: pointer;
 }
+/* The public home page (issue #1324): under the intro, a section each for the demos, the person's other accounts,
+   and their own client. A demo is a card of its own; the accounts a plain list, each with its switch. */
+.public-home { margin-top: 8px; }
+.public-home-section { margin-top: 22px; }
+.public-home-section h2 { margin-bottom: 6px; }
+.public-demo { margin: 12px 0; }
+.public-demo h3 { margin: 0 0 4px; }
+.public-demo ul { margin: 6px 0 10px; padding-left: 20px; }
+.public-demo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.public-accounts { list-style: none; padding: 0; margin: 8px 0 0; }
+.public-accounts li { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.public-accounts li span { flex: 1; }
+
 /* A person's own client, on the home page (issue #1228): a card of its own under the copy. */
 .home-own-client { margin-top: 20px; }
 .home-own-client ul { margin: 0 0 12px; padding-left: 20px; }
@@ -1343,7 +1356,18 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 }
 .join-disclosure h2 { margin-top: 0; font-size: 15px; }
 .join-disclosure p { margin: 0 0 8px; }
-.join-acknowledge { display: block; margin-top: 10px; font-weight: 600; cursor: pointer; }
+/* The acknowledgment itself is what the disclosure leads to, so it stands apart from the paragraphs above it: set off by
+   a rule, larger, bolder, and in the bright accent (well over 4.5:1 on the inset), not just a heavier weight. */
+.join-acknowledge {
+    display: block;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--accent-brighter);
+    cursor: pointer;
+}
 .join-role { margin: 0 0 14px; }
 .join-role p { margin: 0 0 6px; }
 

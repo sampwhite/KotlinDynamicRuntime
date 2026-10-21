@@ -1,6 +1,5 @@
 package com.dynamicruntime.webapp
 
-import com.dynamicruntime.common.context.CL
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -124,13 +123,14 @@ val Home = FC<Props> {
                                 Markdown { source = it }
                             }
                         }
-                        // A person's own client (issue #1228): for someone signed in to `public`, never a visitor who has
-                        // not signed in, though they act in `public` too.
-                        if (current.user.isLoggedIn && current.user.client == CL.public) {
-                            CreateOwnClientCard {
-                                made = current.selfServeClient
-                                madeAbsent = current.selfServeClientAbsent
-                                madeName = current.users.firstOrNull { it.client == current.selfServeClient }?.clientName
+                        // The public home page (issue #1324): for someone signed in to `public` -- never a visitor who
+                        // has not signed in, though they act in `public` too -- what they can do next.
+                        if (isPublicHome(current.user)) {
+                            PublicHome {
+                                // Qualified: Home's own `config` and `copy` are state, and a bare name here would set
+                                // them -- during render, which loops.
+                                this.config = current
+                                this.copy = copy
                             }
                         }
                         if (layout?.inlineLinks == true) {

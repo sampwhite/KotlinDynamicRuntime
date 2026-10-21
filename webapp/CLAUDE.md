@@ -1299,7 +1299,26 @@ moves the page with it (`afterSessionChange`). One that made the client but did 
 could not be made (`userFailure`), or this node does not carry it -- says so (`createOwnClientFailureText`) and
 re-reads the config. A person creates one, so the card asks the shell config which they made (`state.selfServeClient`,
 read off the identity, for `public` callers only) rather than trying the create: once made, the card opens it
-(`AuthApi.switchClient`). The public home page (#1324) is where it moves to.
+(`AuthApi.switchClient`), and a client this node no longer carries is said to be gone
+(`state.selfServeClientAbsent`). It is the last section of the public home page, below.
+
+## The public home page (issue #1324)
+
+For a caller **signed in** to `public` (`isPublicHome`), Home draws `PublicHome` under its hero and intro: what a
+person can do next on a teaching site, in three sections, each worded by `home.md`'s `@publicHome` keys (the
+`reference` flavor rewords `demosIntro` for its teaching site).
+
+1. **Try a demo**, only where the shell config says joining is offered (`state.joinOffered`) -- absent rather than
+   empty elsewhere, and the page never asks: a card per client `GET /user/self/joinable` lists, its roles, an
+   **Open as** switch for each role joined (`joinedRoles`), and **Join…** to the Join page while a role remains
+   (`hasRoleToJoin`; one an administrator disabled is neither).
+2. **Your other accounts**: the shell config's `users` without the current one (`otherAccounts`), each labeled as the
+   bar labels it and a **Switch**.
+3. **Your own client**: `CreateOwnClientCard`.
+
+A component's props set inside its builder must be qualified when the calling component has state of the same name:
+`PublicHome { this.config = current }`. A bare `config = current` resolves to Home's own state, sets it during render,
+and loops (React #301).
 
 ## Errors: never a blank page (issue #223)
 
