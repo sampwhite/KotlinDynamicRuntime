@@ -1,0 +1,173 @@
+package com.dynamicruntime.common.gedra
+
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.context.KdrCxt
+import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.endpoint.SchModule
+import com.dynamicruntime.common.endpoint.schemaModule
+import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.user.AuthIdentityRow
+import com.dynamicruntime.common.user.AuthUserRow
+import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.user.authHandler
+import com.dynamicruntime.common.util.toOptStr
+
+/**
+ * Joining a demo client (issue #1248): a visitor signed in to `public` takes one of the roles a demo client declares
+ * ([ClientDef.joinRoles]) and gets a user of their **own identity** in that one shared client -- `acme` or `designdemo`
+ * as an administrator, `confdemo` as a speaker, organizer or committee member -- and the session moves to it. Their
+ * other users stay theirs, in the switcher.
+ *
+ * - **Offered only where the deployment says so** ([isOffered], `JOIN.offeredKey`, which the `reference` flavor sets),
+ *   to a caller acting in `public`. Anywhere else the endpoints answer as absent (404): a node that merely carries
+ *   `acme` -- every developer's does -- must never make a stranger its administrator.
+ * - **Only what the role says.** The user takes the role's persona and so that persona's default roles -- never
+ *   `allClients` or `operator`, which no persona carries -- and the role's labels. The one provisioning path
+ *   ([UserService.claimUser]) checks the persona, the suffix and the client's plan, and finds a user the person
+ *   already has there rather than making a second.
+ * - **Acknowledged.** A demo client is shared: what a visitor writes, and as an administrator their view of the
+ *   other visitors, are other visitors'. A join must carry the acknowledgment the Join page asks for, or it is refused.
+ */
+object ClientJoin {
+    /** Whether this deployment offers joining a demo client (issue #1248). */
+    fun isOffered(cxt: KdrCxt): Boolean = cxt.instanceConfig.get(JOIN.offeredKey) == true
+
+    /** A client the caller may join, with each of its roles and the caller's user in it, when they hold one. */
+    class Joinable(val def: ClientDef, val roles: List<Pair<ClientJoinRole, Long?>>) {
+        fun toJsonMap(): Map<String, Any?> = buildMap {
+            put(JOIN.client, def.clientId)
+            put(JOIN.clientName, def.name.ifEmpty { def.clientId })
+            def.description?.let { put(JOIN.description, it) }
+            put(JOIN.roles, roles.map { (role, userId) ->
+                buildMap {
+                    put(JOIN.name, role.name)
+                    put(JOIN.label, role.label)
+                    put(JOIN.persona, role.persona)
+                    put(JOIN.summary, role.summary)
+                    userId?.let { put(JOIN.userId, it) }
+                }
+            })
+        }
+    }
+
+    /** What the caller may join: every present client declaring join roles, in the order the deployment holds them. */
+    fun joinable(cxt: KdrCxt): List<Joinable> {
+        val identity = joiner(cxt)
+        val mine = UserService.get(cxt).usersOfIdentity(cxt, identity.identityId)
+            .filter { it.enabled && it.isRegistered && !it.isDeleted }
+        return ClientService.get(cxt).presentClients.filter { it.joinRoles.isNotEmpty() }.map { def ->
+            Joinable(def, def.joinRoles.map { role -> role to mine.firstOrNull { it.holds(def.clientId, role) }?.userId })
+        }
+    }
+
+    /**
+     * Joins [client] as its role [roleName] for the person signed in as [cxt]'s user, who has [acknowledged] the
+     * disclosure: their user there, found or made, carrying the role's labels. The endpoint then moves the session to it.
+     */
+    fun join(cxt: KdrCxt, client: String, roleName: String, acknowledged: Boolean): AuthUserRow {
+        val identity = joiner(cxt)
+        if (!acknowledged) {
+            throw KdrException.mkInput(
+                "Joining '$client' needs the acknowledgment that it is a shared demo space, where other visitors see what you do.",
+            )
+        }
+        val def = ClientService.get(cxt).present(client)?.takeIf { it.joinRoles.isNotEmpty() }
+            ?: throw KdrException.mkInput("'$client' is not a client you may join.")
+        val role = def.joinRoles.firstOrNull { it.name == roleName }
+            ?: throw KdrException.mkInput(
+                "'$roleName' is not a role '$client' may be joined as; its roles are ${def.joinRoles.joinToString(", ") { it.name }}.",
+            )
+        // The load already holds a role to a persona the registry has (`joinRoleFaults`); asked again, as the one place
+        // a role becomes roles.
+        val persona = PERSONA.def(role.persona) ?: throw KdrException("Join role '${role.name}' names no persona.")
+        val users = UserService.get(cxt)
+        val row = users.claimUser(cxt, identity, client, persona.name, role.personaSuffix, persona.defaultRoles)
+        val missing = role.userLabels.filterNot { it in row.labels }
+        if (missing.isNotEmpty()) {
+            row.labels = row.labels + missing
+            users.updateUser(cxt.mkSubContext("clientJoin", client), row)
+        }
+        return row
+    }
+
+    /** The caller's identity, when joining is offered to them; refused as absent when it is not. */
+    private fun joiner(cxt: KdrCxt): AuthIdentityRow {
+        if (!isOffered(cxt) || cxt.userProfile.client != CL.public) {
+            throw KdrException("Joining a demo client is not offered here.", code = EXC.notFound)
+        }
+        return cxt.userProfile.identityId?.let { UserService.get(cxt).queryIdentityFresh(cxt, it) }
+            ?: throw KdrException("This session has no identity to join with; log in again.", code = EXC.authNeeded)
+    }
+
+    private fun AuthUserRow.holds(client: String, role: ClientJoinRole): Boolean =
+        this.client == client && persona == role.persona && personaSuffix == role.personaSuffix
+}
+
+/**
+ * The join endpoints (issue #1248), in the login-gated `user` section beside the person's other self endpoints. An
+ * application node's: joining makes a user.
+ */
+fun clientJoinSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOIN.namespace) {
+    type(JOIN.joinableRoleTypeName) {
+        type = SCT.kObject
+        description = "A role a visitor may join a demo client as."
+        property(JOIN.name, "The role's id, to send when joining.", required = true)
+        property(JOIN.label, "The role as the Join page names it.", required = true)
+        property(JOIN.persona, "The persona joining as the role gives (member or admin).", required = true)
+        property(JOIN.summary, "A sentence on what the role does.", required = true)
+        property(JOIN.userId, "The caller's user holding the role, when they have joined as it.") { type = SCT.integer }
+    }
+    type(JOIN.joinableTypeName) {
+        type = SCT.kObject
+        description = "A demo client the caller may join (issue #1248), with its roles."
+        property(JOIN.client, "The client's id.", required = true)
+        property(JOIN.clientName, "The client's name.", required = true)
+        property(JOIN.description, "What the client is.")
+        property(JOIN.roles, "The roles it may be joined as.", required = true) {
+            type = SCT.array
+            items { ref(JOIN.joinableRoleTypeName) }
+        }
+    }
+    type(JOIN.resultTypeName) {
+        type = SCT.kObject
+        description = "What joining a demo client did (issue #1248)."
+        property(JOIN.client, "The client joined.", required = true)
+        property(JOIN.role, "The role joined as.", required = true)
+        property(JOIN.userId, "The caller's user in the client, which the session now acts as.", required = true) {
+            type = SCT.integer
+        }
+    }
+
+    listEndpoint(
+        JOIN.joinablePath,
+        "The demo clients the caller may join (issue #1248), each with the roles it may be joined as and the caller's " +
+            "user in each role they hold. Offered only to a caller in '${CL.public}' on a deployment that offers joining; " +
+            "absent elsewhere.",
+        outputRef = JOIN.joinableTypeName,
+        // A handful of demo clients: paging would pretend otherwise.
+        noLimit = true,
+    ) { c, _ -> ClientJoin.joinable(c).map { it.toJsonMap() } }
+
+    generalEndpoint(
+        JOIN.joinPath,
+        "Joins a demo client as one of its roles (issue #1248): a user of the caller's own identity there, found or " +
+            "made, with the role's persona and labels; the session moves to it. Refused without the acknowledgment that " +
+            "the client is a shared demo space. Offered only to a caller in '${CL.public}' on a deployment that offers " +
+            "joining; absent elsewhere.",
+        HttpMethod.POST,
+        outputRef = JOIN.resultTypeName,
+        inputFields = {
+            field(JOIN.client, "The client to join.", required = true)
+            field(JOIN.role, "The role to join it as.", required = true)
+            field(JOIN.acknowledged, "That the caller has read that the client is a shared demo space.") { type = SCT.boolean }
+        },
+    ) { c, request ->
+        val role = request[JOIN.role].toOptStr().orEmpty()
+        val row = ClientJoin.join(c, request[JOIN.client].toOptStr().orEmpty(), role, request[JOIN.acknowledged] == true)
+        authHandler(c).switchUser(c, row.userId)
+        mapOf(JOIN.client to row.client, JOIN.role to role, JOIN.userId to row.userId)
+    }
+}

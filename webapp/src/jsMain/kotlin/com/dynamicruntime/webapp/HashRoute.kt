@@ -113,7 +113,10 @@ object HP {
      */
     const val section = "section"
 
-    /** Clients page: the client open in the detail view (issue #906), or absent for the listing. */
+    /**
+     * Clients page: the client open in the detail view (issue #906), or absent for the listing. Join page (issue #1248):
+     * the demo client to join.
+     */
     const val client = "c"
 
     /** Customers page: the customer open (issue #1114), or absent for the list -- or, for a root's administrator, their own. */

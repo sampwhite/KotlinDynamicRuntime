@@ -25,6 +25,8 @@ import com.dynamicruntime.common.schema.SLM
 import com.dynamicruntime.common.schema.SchLayoutBuilder
 import com.dynamicruntime.common.schema.SchLayoutMode
 import com.dynamicruntime.common.schema.layout
+import com.dynamicruntime.common.gedra.ClientJoinRole
+import com.dynamicruntime.common.user.PERSONA
 
 /*
  * The `simulation` package holds what a test sets up that is worth setting up the same way outside one: clients and
@@ -66,6 +68,12 @@ object DesignDemo {
 
     /** The simulation that provisions it (issue #997): `/fixture/simulate/design-demo`. */
     const val simulationName = "design-demo"
+
+    /**
+     * The instance-config key that provisions the demo as the node starts (issue #1248), set by the `reference`
+     * flavor so a visitor there finds it to join; see `DesignDemoBootService`.
+     */
+    const val provisionAtBootKey = "designDemoProvisionAtBoot"
     const val configName = "designDemo"
 
     const val eventRequest = "eventRequest"
@@ -125,6 +133,16 @@ fun designDemoConfig(cxt: KdrCxtBase = LiteCxt(), client: String = DesignDemo.cl
                 includedTraits = listOf(GT.name),
                 // Whoever carries it approves a logistics plan (issue #1071).
                 userLabels = listOf(DesignDemo.reviewerLabel),
+                // A visitor to a reference deployment may join as its designer (issue #1248), to open Design View on
+                // the demo's form and see what each part of it is made of.
+                joinRoles = listOf(
+                    ClientJoinRole(
+                        name = PERSONA.admin,
+                        label = "Designer",
+                        persona = PERSONA.admin,
+                        summary = "Administer the demo: open its event request in Design View, and run its workflows.",
+                    ),
+                ),
             ),
         )
         cfact(DesignDemo.planApproved, "designDemo", "True, in the logistics workflow, once a reviewer has approved the plan.")

@@ -60,6 +60,8 @@ object SandboxConfigs {
         preload = false,
         staticConfig = false,
         sandbox = false,
+        // Nobody joins a sandbox (issue #1248): its users take their authority from the parent's.
+        joinRoles = emptyList(),
     )
 
     /** [config], one of the parent's, as the sandbox's copy of it: see the class note for what is rebound. */

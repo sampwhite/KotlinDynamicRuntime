@@ -1,8 +1,11 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.startup.BootCheckMode
+import com.dynamicruntime.common.user.PERSONA
+import com.dynamicruntime.common.user.PERSONASUFFIX
 import com.dynamicruntime.common.util.TZONE
 import com.dynamicruntime.common.util.isPlaceZoneName
 import kotlinx.datetime.TimeZone
@@ -146,6 +149,15 @@ fun checkClientDefs(
                 kept[def.clientId] = kept.getValue(def.clientId).copy(timeZone = null)
             }
         }
+        // Join roles that cannot be offered cost only themselves (issue #1248): the client stands, and nobody joins it.
+        val joinFaults = joinRoleFaults(def)
+        if (joinFaults.isNotEmpty()) {
+            for (message in joinFaults) {
+                val issue = GedraConfigIssue(message, "Dropping the client's join roles; the client stands, and nobody joins it.")
+                reportConfigProblem(cxt, issue.heldBy(holder, GCEL.client, def.clientId), issues)
+            }
+            kept[def.clientId] = kept.getValue(def.clientId).copy(joinRoles = emptyList())
+        }
         // Its customer (issue #1107): reported, and the client stands -- the link is read through
         // `ClientService.customerOf`, which answers only for a customer that is there.
         for (message in customerLinkFaults(def, !holder.isStored, customers)) {
@@ -243,6 +255,50 @@ internal fun timeZoneFault(zone: String): String? = when {
     zone !in TimeZone.availableZoneIds -> "is not an IANA time zone (America/Chicago, say)"
     !isPlaceZoneName(zone) -> "is an offset or an abbreviation; name the place's zone (America/Chicago, say)"
     else -> null
+}
+
+/**
+ * What is wrong with [def]'s join roles (issue #1248), each a message; empty when nothing is. A client a visitor must
+ * never join as anything -- `public`, `hub`, a sandbox, a production client -- declares none; otherwise each role takes
+ * a persona the registry holds and a valid suffix, carries only labels the client suggests, and gives a user no other
+ * role gives, so a person may hold every role at once.
+ */
+internal fun joinRoleFaults(def: ClientDef): List<String> {
+    if (def.joinRoles.isEmpty()) return emptyList()
+    val client = "Client '${def.clientId}'"
+    val unjoinable = when {
+        def.clientId == CL.public -> "'${CL.public}' is where a visitor joins from"
+        def.clientId == CL.hub -> "'${CL.hub}' is the deployment's own client"
+        isSandboxClient(def.clientId) -> "a sandbox's users take their authority from its parent's"
+        def.usageType == ClientUsageType.production -> "a ${ClientUsageType.production} client is never joined by a visitor"
+        else -> null
+    }
+    if (unjoinable != null) return listOf("$client declares join roles, but $unjoinable.")
+    val faults = mutableListOf<String>()
+    for ((name, roles) in def.joinRoles.groupBy { it.name }) {
+        if (roles.size > 1) faults += "$client declares the join role '$name' ${roles.size} times."
+    }
+    for ((key, roles) in def.joinRoles.groupBy { it.persona to it.personaSuffix }) {
+        if (roles.size > 1) {
+            faults += "$client's join roles ${roles.joinToString(", ") { "'${it.name}'" }} give the same user (persona " +
+                "'${key.first}', suffix '${key.second}'), so a person could hold only one; give each its own suffix."
+        }
+    }
+    for (role in def.joinRoles) {
+        val roleName = "$client's join role '${role.name}'"
+        if (PERSONA.def(role.persona) == null) {
+            faults += "$roleName takes the persona '${role.persona}'; the personas are ${PERSONA.defs.joinToString(", ") { it.name }}."
+        }
+        if (!PERSONASUFFIX.isValid(role.personaSuffix)) {
+            faults += "$roleName has the suffix '${role.personaSuffix}': up to ${PERSONASUFFIX.maxLength} letters, digits or underscores."
+        }
+        val unsuggested = role.userLabels.filterNot { it in def.userLabels }
+        if (unsuggested.isNotEmpty()) {
+            faults += "$roleName carries the user label(s) ${unsuggested.joinToString(", ") { "'$it'" }}, which the client " +
+                "does not suggest; a workflow recognizes a label the client names."
+        }
+    }
+    return faults
 }
 
 /** What is wrong with [ClientDef.enabledEnvironments], or null. */

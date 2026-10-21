@@ -43,6 +43,8 @@ import com.dynamicruntime.common.simulation.Simulations
 import com.dynamicruntime.common.simulation.simulationEndpoint
 import com.dynamicruntime.common.test.SIM
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.gedra.ClientJoinRole
+import com.dynamicruntime.common.user.PERSONA
 
 /*
  * The conference demo (issue #1134): a small conference's call for talks, built from configuration alone, and the
@@ -120,6 +122,14 @@ object ConfDemo {
 
     /** The label an administrator carries to review talks. */
     const val committeeLabel = "committee"
+
+    // The roles a visitor joins the demo as (issue #1248).
+    const val speakerRole = "speaker"
+    const val organizerRole = "organizer"
+    const val committeeRole = "committee"
+
+    /** A committee member's user is an administrator told apart from an organizer by this suffix (at most 8 characters). */
+    const val committeeSuffix = "review"
 
     // The client's own traits, and their fields.
     const val session = "session"
@@ -207,6 +217,30 @@ fun confDemoBase(cxt: KdrCxtBase = LiteCxt(), client: String = ConfDemo.client):
                 includedTraits = listOf(GT.name),
                 // Whoever carries it reviews talks (issue #1139).
                 userLabels = listOf(ConfDemo.committeeLabel),
+                // The demo's three roles, which a visitor to a reference deployment may join as (issue #1248) -- the
+                // speaker, organizer and committee member the walkthrough in docs/demo-client follows.
+                joinRoles = listOf(
+                    ClientJoinRole(
+                        name = ConfDemo.speakerRole,
+                        label = "Speaker",
+                        persona = PERSONA.member,
+                        summary = "Submit a talk, and follow it through the committee's review.",
+                    ),
+                    ClientJoinRole(
+                        name = ConfDemo.organizerRole,
+                        label = "Organizer",
+                        persona = PERSONA.admin,
+                        summary = "See every talk submitted, and run the conference's workflows.",
+                    ),
+                    ClientJoinRole(
+                        name = ConfDemo.committeeRole,
+                        label = "Committee member",
+                        persona = PERSONA.admin,
+                        personaSuffix = ConfDemo.committeeSuffix,
+                        userLabels = listOf(ConfDemo.committeeLabel),
+                        summary = "Review the talks whose survey is complete, and accept them.",
+                    ),
+                ),
             ),
         )
         cfact(ConfDemo.isWorkshop, ConfDemo.cfactGroup, "The talk's track is the workshop track; computed by the survey from the session.")

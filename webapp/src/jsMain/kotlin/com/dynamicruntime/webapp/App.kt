@@ -232,6 +232,7 @@ val App = FC<Props> {
                                 }
                                 pageCacheState -> OperatorCacheStatePage {}
                                 pageFileStore -> OperatorFileStorePage {}
+                                pageJoin -> JoinPage {}
                                 pageCfacts -> CFactReferencePage {}
                                 pageNewForm -> CreationPage {}
                                 pageForms -> FormsPage {}
@@ -303,6 +304,8 @@ private const val pageFragmentsCheck = HMENU.pageFragmentsCheck
 private const val pageCacheState = HMENU.pageCacheState
 // The operator's file-store browser (issue #1297): the same route policy; the endpoints refuse a non-operator.
 private const val pageFileStore = HMENU.pageFileStore
+// Joining a demo client (issue #1248): present unconditionally; the endpoints answer as absent where it is not offered.
+private const val pageJoin = HMENU.pageJoin
 // The Operator index/landing page (issue #540, Part B): mirrors the Debug index; reached from the Operator
 // menu group's "Overview" entry. Present unconditionally; the tools it links to each refuse without the role.
 private const val pageOperator = HMENU.pageOperator
@@ -372,6 +375,7 @@ private fun currentPage(): String {
         params[HP.page] == pageFragmentsCheck -> pageFragmentsCheck
         params[HP.page] == pageCacheState -> pageCacheState
         params[HP.page] == pageFileStore -> pageFileStore
+        params[HP.page] == pageJoin -> pageJoin
         params[HP.page] == pageOperator -> pageOperator
         params[HP.page] == pageCfacts -> pageCfacts
         params[HP.page] == pageNewForm -> pageNewForm

@@ -34,6 +34,10 @@ You can run the demo on any test instance of KDR.
 
 The talk appears in the speaker's forms list.
 
+On a site that offers joining, such as the public reference site, you can [join the demo](#page=join&c=confdemo)
+instead, as a speaker, an organizer or a committee member. Joining gives you a user of your own email in the demo,
+and the demo is shared with everyone else who joins it.
+
 > **Note:** The Simulations page exists only on a test instance. The link above works when you read this page in the
 > application, not on GitHub.
 

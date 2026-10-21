@@ -1300,6 +1300,29 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     color: var(--text);
     cursor: pointer;
 }
+/* A shared demo space (issue #1248): a chip on every page that what the caller does here, other visitors see. Dotted,
+   in the accent colour, so it reads unlike the sandbox and admin cues -- and in words, not colour alone. */
+.shared-demo-chip {
+    background: transparent;
+    border: 1px dotted var(--accent-bright);
+    color: var(--text);
+    cursor: pointer;
+}
+/* The Join page's disclosure (issue #1248): set apart, since it is what a visitor acknowledges before joining. */
+.join-disclosure {
+    margin: 12px 0 18px;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-bright);
+    border-radius: 8px;
+    background: var(--surface-page);
+}
+.join-disclosure h2 { margin-top: 0; font-size: 15px; }
+.join-disclosure p { margin: 0 0 8px; }
+.join-acknowledge { display: block; margin-top: 10px; font-weight: 600; cursor: pointer; }
+.join-role { margin: 0 0 14px; }
+.join-role p { margin: 0 0 6px; }
+
 .sandbox-info {
     min-width: 18rem;
     max-width: 24rem;

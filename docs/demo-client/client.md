@@ -18,7 +18,29 @@ which is the first thing to use them, explains them.
   "preload": false,
   "staticConfig": false,
   "includedTraits": ["kdr:name"],
-  "userLabels": ["committee"]
+  "userLabels": ["committee"],
+  "joinRoles": [
+    {
+      "name": "speaker",
+      "label": "Speaker",
+      "persona": "member",
+      "summary": "Submit a talk, and follow it through the committee's review."
+    },
+    {
+      "name": "organizer",
+      "label": "Organizer",
+      "persona": "admin",
+      "summary": "See every talk submitted, and run the conference's workflows."
+    },
+    {
+      "name": "committee",
+      "label": "Committee member",
+      "persona": "admin",
+      "personaSuffix": "review",
+      "userLabels": ["committee"],
+      "summary": "Review the talks whose survey is complete, and accept them."
+    }
+  ]
 }
 ```
 
@@ -33,6 +55,7 @@ which is the first thing to use them, explains them.
 | `preload`, `staticConfig` | Two switches for production clients, both off here. |
 | `includedTraits` | The shared traits the client uses. Here there is one, `kdr:name`, the trait that gives a form its name. |
 | `userLabels` | Labels an administrator can put on a user. A workflow can ask whether a user has one; [Committee review](committee-review.md) asks for `committee`. |
+| `joinRoles` | The roles a visitor can join the demo as, on a site that offers joining. Joining gives the visitor a user of their own email in the client. Its `persona` decides whether that user is an ordinary user (`member`) or an administrator (`admin`). Its `personaSuffix` tells two administrator roles apart, so that one person can hold both, and its `userLabels` are put on the user. The Join page shows each role's `label` and `summary`. |
 
 ## Traits
 

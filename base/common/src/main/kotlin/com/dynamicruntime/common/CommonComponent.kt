@@ -104,6 +104,10 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.Presence
 import com.dynamicruntime.common.startup.ServiceEntry
 import com.dynamicruntime.common.startup.service
+import com.dynamicruntime.common.gedra.JOIN
+import com.dynamicruntime.common.gedra.clientJoinSchema
+import com.dynamicruntime.common.simulation.DesignDemo
+import com.dynamicruntime.common.simulation.DesignDemoBootService
 
 /**
  * The `common` module's component. It owns the foundational schema and services: the [SchemaService]
@@ -218,6 +222,8 @@ class CommonComponent : ComponentDefinition {
         collector.addModule(clientFileRefSchema(cxt), appOnly)
         // The operator's browser over the file store (issue #1297): app-only, as the store is.
         collector.addModule(fileStoreOperatorSchema(cxt), appOnly)
+        // Joining a demo client from `public` (issue #1248): app-only, as joining makes a user.
+        collector.addModule(clientJoinSchema(cxt), appOnly)
         // The cfacts an expression may name, for whoever is authoring configuration against them. In the
         // `clientAdmin` section rather than `operator`, and everywhere rather than app-only, because an edge
         // has a registry of its own to report -- see `cfactSchema`.
@@ -306,12 +312,15 @@ class CommonComponent : ComponentDefinition {
 
     /**
      * What core changes under a reference deployment (issue #1221): its home page, and a word on its sign-in page;
-     * and the site root opening on the web application rather than the endpoint portal (issue #1268).
+     * the site root opening on the web application rather than the endpoint portal (issue #1268); and visitors
+     * joining its demo clients, with `designdemo` provisioned at boot so there is one to join (issue #1248).
      */
     override fun flavors(cxt: KdrCxt): List<FlavorContribution> = listOf(
         flavor(FLV.reference) {
             omnibusOverlay("kdrReference")
             set(ACFG.landingFocus, ContextFocus.app.name)
+            set(JOIN.offeredKey, true)
+            set(DesignDemo.provisionAtBootKey, true)
         },
     )
 
@@ -396,6 +405,8 @@ class CommonComponent : ComponentDefinition {
             service(::ClientSyncService, roles = setOf(BOOT.app)),
             // Batch jobs (issue #869): the registry, the node's job pool, and the launches in progress.
             service(::JobService, roles = setOf(BOOT.app)),
+            // The Design View demo provisioned at boot, where the deployment says to (issue #1248).
+            service(::DesignDemoBootService, roles = setOf(BOOT.app)),
         )
 
     /** Load just ahead of the standard components (demonstrates relative priority). */
