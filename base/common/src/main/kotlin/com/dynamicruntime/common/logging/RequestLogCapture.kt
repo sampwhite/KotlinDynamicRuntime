@@ -1,12 +1,17 @@
 package com.dynamicruntime.common.logging
 
+import com.dynamicruntime.common.context.DebugTagDef
+
 /**
  * The `_debug=captureLogs` word, and the keys of what it returns (issue #1173). Self-named, per the code guide.
  */
 @Suppress("ConstPropertyName")
 object RLOG {
     /** The `_debug` word that asks for a request's log lines in its response. */
-    const val captureLogs = "captureLogs"
+    val captureLogs = DebugTagDef(
+        "captureLogs",
+        "Returns the request's log lines under _meta.logs, debug and above, whatever the node logs.",
+    )
 
     /** Under `_meta`: the captured lines, oldest first. */
     const val logs = "logs"

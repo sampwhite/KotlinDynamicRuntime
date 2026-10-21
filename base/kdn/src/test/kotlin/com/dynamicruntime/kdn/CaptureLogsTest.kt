@@ -29,7 +29,7 @@ class CaptureLogsTest : StringSpec({
     val cxt = TestInstances.default("captureLogs")
     val admin = TestUser.createFullAdmin(cxt, "capture-admin@example.com")
     val target = TestUser.create(cxt, "capture-target@example.com", userClient = CL.hub)
-    val capture = mapOf(EP.debug to RLOG.captureLogs)
+    val capture = mapOf(EP.debug to RLOG.captureLogs.name)
 
     /** Renames [userId] as [admin], asking for the request's log lines; the whole envelope, a success's or an error's. */
     fun rename(userId: Long): Map<String, Any?> =

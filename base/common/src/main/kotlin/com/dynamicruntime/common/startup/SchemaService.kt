@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.startup
 
+import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.schema.resolveExtensions
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.PublicTestDeployment
@@ -2183,12 +2184,18 @@ object SS {
 
 
     // Debug behavior: the debug tag that triggers echoing input under _meta, and the key it is echoed under.
-    const val explainInput = "explainInput"
+    val explainInput = DebugTagDef(
+        "explainInput",
+        "The sample schema endpoint echoes the input it evaluated, under _meta.",
+    )
     const val paramsEvaluated = "paramsEvaluated"
 
     // The debug tag that reports what the catalog's access filter withheld (issue #215), the "_meta" key it is
     // reported under, and that report's own fields. Test instances only -- see `explainAccess`.
-    const val explainAccess = "explainAccess"
+    val explainAccess = DebugTagDef(
+        "explainAccess",
+        "The endpoint catalog reports the roles it compared and every endpoint it withheld, with why, under _meta.",
+    )
     const val accessExplained = "accessExplained"
     const val actingRoles = "actingRoles"
     const val withheld = "withheld"

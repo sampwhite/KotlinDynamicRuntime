@@ -1,11 +1,13 @@
 package com.dynamicruntime.sample
 
 import com.dynamicruntime.common.context.BOOT
+import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.ENVGRP
 import com.dynamicruntime.common.context.EnvVarDef
 import com.dynamicruntime.common.uiblock.UiBlockSource
 import com.dynamicruntime.common.uiblock.uiBlock
+import com.dynamicruntime.sample.gedra.GFX
 import com.dynamicruntime.sample.gedra.SB
 import com.dynamicruntime.sample.gedra.SC
 import com.dynamicruntime.sample.gedra.SF
@@ -65,6 +67,9 @@ class SampleComponent : ComponentDefinition {
         val env = cxt.instanceConfig.env
         return env == ENV.local || env == ENV.dev
     }
+
+    /** The sample's one `_debug` word (issue #1334), read by its entries fixture. */
+    override fun debugTags(cxt: KdrCxt): List<DebugTagDef> = listOf(GFX.explainEntries)
 
     /**
      * The `samples` deployment flavor (issue #1220): a deployment that names it gets the sample clients wherever it

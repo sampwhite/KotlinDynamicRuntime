@@ -145,6 +145,13 @@ external interface SelectProps : PropsWithChildren {
     var notFoundContent: String?
     /** Fires as the popup opens (`true`) and closes (`false`). antd 6's name; `onDropdownVisibleChange` is deprecated. */
     var onOpenChange: ((open: Boolean) -> Unit)?
+    /** `"small"`, `"middle"` (antd's default) or `"large"`. */
+    var size: String?
+    /**
+     * Whether the popup is as wide as the control (antd's default, `true`); `false` lets it size to its options, or a
+     * number sets its width in pixels. A narrow control whose options carry a sentence each wants a number.
+     */
+    var popupMatchSelectWidth: dynamic
 }
 
 external val Select: ComponentType<SelectProps>

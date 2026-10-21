@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.http.request
 
+import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.util.isPlainName
 import com.dynamicruntime.common.content.MarkdownFragmentService
 import com.dynamicruntime.common.context.ACFG
@@ -485,7 +486,7 @@ class RequestHandler : WebRequest {
             return base
         }
         val merged = LinkedHashMap<String, Any?>(base ?: emptyMap())
-        merged[explainError] = linkedMapOf(
+        merged[explainError.name] = linkedMapOf(
             "fileId" to msg.fileId, "namespace" to msg.namespace, "key" to msg.key, "params" to kdrE.msgParams,
         )
         return merged
@@ -680,7 +681,10 @@ class RequestHandler : WebRequest {
          * [KdrMsg] file/namespace/key and its params -- into the response's `extraData`, so a developer can see
          * the source behind a rendered sentence. Off by default.
          */
-        const val explainError = "explainError"
+        val explainError = DebugTagDef(
+            "explainError",
+            "An error built from copy also returns which fragment and params it was built from, under extraData.",
+        )
 
         /** The `_view` values the backend knows (issue #972); any other is refused, or dropped from the header. */
         val knownViews: Set<String> = setOf(DSV.design)

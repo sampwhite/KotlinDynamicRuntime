@@ -106,6 +106,13 @@ object APP {
     const val envAuthDebug = "envAuthDebug"
 
     /**
+     * State: the `_debug` words this node declares (issue #1334), each a map of [DBGT] fields, for the app bar's
+     * debug box to offer. Served to a caller the words answer -- test access, or a session in ENV DEBUG -- and empty
+     * for anyone else, since naming the diagnostics is part of what the fence keeps.
+     */
+    const val debugTags = "debugTags"
+
+    /**
      * The endpoint a session uses to suppress its own env auth, or restore it ([EnvAuthOp]). Anonymous and
      * **not** test-only: this is live behavior in a deployed environment, because seeing the application as an
      * ordinary user sees it is a real thing to want, not merely a testing affordance.

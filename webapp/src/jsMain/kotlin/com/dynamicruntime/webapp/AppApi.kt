@@ -66,6 +66,11 @@ class AppConfig(
      * only. The shell draws [TestDeploymentBand] on every page while it is true, for every caller.
      */
     val publicTestDeployment: Boolean = false,
+    /**
+     * The `_debug` words the node declares (issue #1334), for the app bar's debug box to offer. Served only to a caller
+     * the words answer, so empty for anyone else, and before the first fetch.
+     */
+    val debugTags: List<DebugTagChoice> = emptyList(),
 ) {
     companion object {
         /** The assumed config before the first fetch (and if a fetch fails): the safe, closed defaults, and the
@@ -116,6 +121,7 @@ fun appConfigFrom(config: UiConfig): AppConfig = AppConfig(
     envAuthDebug = config.features[APP.envAuthDebug] == true,
     dataId = config.settings[APP.dataId] as? String,
     publicTestDeployment = config.features[APP.publicTestDeployment] == true,
+    debugTags = debugTagChoicesFrom(config.state[APP.debugTags]),
 )
 
 object AppApi {

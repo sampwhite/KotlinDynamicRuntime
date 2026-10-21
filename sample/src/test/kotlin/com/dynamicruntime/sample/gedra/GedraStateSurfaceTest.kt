@@ -83,7 +83,7 @@ class GedraStateSurfaceTest : StringSpec({
         // The default read trusts the resident cache; `_debug=stateFromSql` activates the otherwise-dormant SQL
         // path. Both answer the same -- the diagnostic exists to prove exactly that when a stale read is feared.
         val viaCache = admin.getItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid))
-        val viaSql = admin.getItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid, EP.debug to GDBG.stateFromSql))
+        val viaSql = admin.getItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid, EP.debug to GDBG.stateFromSql.name))
         traitIds(viaSql[GDF.states]) shouldContainExactly listOf(ST.externalId)
         traitIds(viaSql[GDF.states]) shouldContainExactly traitIds(viaCache[GDF.states])
     }

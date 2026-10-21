@@ -302,6 +302,29 @@ body {
     border-color: var(--danger);
 }
 
+/* The debug-tag picker's options (issue #1334): the word, what kind of word it is, then what it does on a line of its
+   own. antd's option content is one line with an ellipsis, so the option asks for wrapping back: the description is
+   the point of the list, and cut short it says nothing. A word already in the box is greyed by antd's disabled
+   option, which needs nothing here. */
+.debug-tag-option {
+    white-space: normal;
+    line-height: 1.35;
+    padding: 2px 0;
+}
+.debug-tag-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600;
+}
+.debug-tag-kind {
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.debug-tag-description {
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
 /* Every plain <a> the pages draw -- a breadcrumb, a table's Open or Download, an index's tool links -- would
    otherwise fall to the browser's default blue, measured at 1.56:1 on the dark card (issue #1303). They take
    the palette's link colour the back link and the Markdown links use (4.9:1), brighter and underlined on hover

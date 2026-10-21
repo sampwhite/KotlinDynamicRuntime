@@ -1,5 +1,7 @@
 package com.dynamicruntime.common.gedra
 
+import com.dynamicruntime.common.app.DBGK
+import com.dynamicruntime.common.context.DebugTagDef
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
@@ -34,7 +36,10 @@ import kotlin.time.Instant
 @Suppress("ConstPropertyName")
 object GDBG {
     /** `_debug` tag: report the scope the listing ran with. */
-    const val explainScope = "explainScope"
+    val explainScope = DebugTagDef(
+        "explainScope",
+        "A forms listing reports the read scope it ran with and the statement that scope chose, under _meta.",
+    )
 
     /**
      * `_debug` tag (issue #600): read gedra state from **SQL** rather than the states cache. Outside a
@@ -42,7 +47,11 @@ object GDBG {
      * activates the otherwise-dormant SQL path, for diagnosing a suspected stale cache or confirming the two
      * agree. Fenced to a test / env-debug instance, as every `_debug` tag is.
      */
-    const val stateFromSql = "stateFromSql"
+    val stateFromSql = DebugTagDef(
+        "stateFromSql",
+        "Reads a form's workflow state from the database, past the states cache.",
+        DBGK.alter,
+    )
 
     /**
      * `_debug` tag (issue #640): read gedra **data** from SQL rather than the resident `GedraDataCache` -- the
@@ -52,7 +61,11 @@ object GDBG {
      * diagnosing a suspected stale cache or confirming the two agree. Fenced to a test / env-debug instance, as
      * every `_debug` tag is.
      */
-    const val dataFromSql = "dataFromSql"
+    val dataFromSql = DebugTagDef(
+        "dataFromSql",
+        "Reads forms from the database, past the data cache, by id and in listings.",
+        DBGK.alter,
+    )
 
     /** `_meta` key the tag writes under. */
     const val scopeExplained = "scopeExplained"

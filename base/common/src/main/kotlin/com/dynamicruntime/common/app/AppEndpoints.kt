@@ -2,6 +2,7 @@ package com.dynamicruntime.common.app
 
 import com.dynamicruntime.common.content.UIC
 import com.dynamicruntime.common.context.ACFG
+import com.dynamicruntime.common.context.DebugTags
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.user.EnvAuthRules
 import com.dynamicruntime.common.endpoint.ETAG
@@ -20,6 +21,9 @@ import com.dynamicruntime.common.node.InstanceConfigService
 /** Schema type name for the app UI-config output (backend-only; the frontend keys off the [APP] wire constants). */
 private const val appUiConfigType = "AppUiConfig"
 
+/** Schema type name for one entry of the app config's `_debug` words (issue #1334). */
+private const val appDebugTagType = "AppDebugTag"
+
 /**
  * The app-level UI-config endpoint (issue #118, part of the refresh foundation #113): deployment-global config
  * the whole frontend shares, fetched once at the app root rather than per widget-group. Anonymous -- the policy
@@ -32,9 +36,18 @@ private const val appUiConfigType = "AppUiConfig"
  *
  * Follows the UI-config envelope (issue #70): `features` for the boolean error-display policy, and `settings`
  * for the idle-bump interval (issue #146) -- a tuning value the frontend re-arms its refresh timer from.
- * `fragments`/`state` arrive if the app config later grows "shell" copy or dynamic state.
+ * `state` carries the `_debug` words the debug box offers (issue #1334); `fragments` arrive if the app config later
+ * grows "shell" copy.
  */
 fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
+    type(appDebugTagType) {
+        type = SCT.kObject
+        description = "One _debug word the node declares (issue #1334), as the app bar's debug box offers it."
+        property(DBGT.name, "The word, as a request sends it.", required = true)
+        property(DBGT.description, "What it does, in a sentence.", required = true)
+        property(DBGT.kind, "What kind of word: explain (adds to the response), log (adds log lines), or alter.", required = true)
+    }
+
     type(appUiConfigType) {
         type = SCT.kObject
         property(UIC.features, "Deployment-wide policy flags visible to the whole frontend.", required = true) {
@@ -92,6 +105,17 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 "For a caller with test access, the id of the data this node serves: it changes when the data is reset, and holds across restarts on a persistent database.",
             )
         }
+        property(UIC.state, "Per-caller values the frontend reads, beside the policy flags.", required = true) {
+            type = SCT.kObject
+            property(
+                APP.debugTags,
+                "The _debug words this node declares, for a caller they answer: test access or a session in ENV DEBUG. Empty for anyone else.",
+                required = true,
+            ) {
+                type = SCT.array
+                items { ref(appDebugTagType) }
+            }
+        }
     }
 
     generalEndpoint(APP.uiConfig, "Returns deployment-wide app config visible to the entire frontend.",
@@ -136,6 +160,10 @@ fun appSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.app") {
                 APP.idleBumpIntervalMs to
                     (c.instanceConfig.get(ACFG.idleBumpIntervalMs) as? Int ?: APP.defaultIdleBumpIntervalMs),
             ) + dataIdSetting(c),
+            // The `_debug` words (issue #1334), to whom the words answer: the diagnostic fence, as for error detail.
+            UIC.state to mapOf(
+                APP.debugTags to if (c.hasTestAccess || c.isEnvDebug) DebugTags.get(c.instanceConfig)?.toWire().orEmpty() else emptyList(),
+            ),
         )
     }
 

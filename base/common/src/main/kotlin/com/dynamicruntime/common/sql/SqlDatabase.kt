@@ -443,6 +443,10 @@ class SqlDatabase(
     ): PreparedStatement {
         val sqlStmt = boundStmt.sqlStmt
         val pStmt = boundStmt.stmt
+        // Every statement passes through here on its way to run, which is what lets one word log them all (issue #1334).
+        if (cxt.hasDebugDiagnostic(SQLDBG.logSql)) {
+            LogSql.debug(cxt) { SQLDBG.statementLine(sqlStmt.name, sqlStmt.sql, sqlStmt.bindFields.associateWith { data[it] }) }
+        }
         for ((i, bindParam) in sqlStmt.bindFields.withIndex()) {
             val obj = data[bindParam]
             val fld = SqlStmtUtil.getColumn(sqlStmt, boundStmt.aliases, bindParam)

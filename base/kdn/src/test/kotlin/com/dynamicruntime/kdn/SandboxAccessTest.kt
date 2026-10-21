@@ -87,7 +87,7 @@ class SandboxAccessTest : StringSpec({
 
     /** [user]'s access report. A diagnostic tag, so it answers a caller with test access (issue #1149). */
     fun accessReport(user: TestUser): Map<String, Any?> {
-        val resp = user.withTestAccess { user.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess)) }
+        val resp = user.withTestAccess { user.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess.name)) }
         return resp[EP.meta]!!.toJsonMap()[SS.accessExplained]!!.toJsonMap()
     }
 

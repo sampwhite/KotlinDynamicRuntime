@@ -208,7 +208,7 @@ class SchemaEndpointsTest : StringSpec({
         val cxt = TestInstances.envAuth("schemaExplain")
         val plain = TestUser.create(cxt, "explain@other.com")
 
-        val resp = plain.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess))
+        val resp = plain.client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess.name))
         val explained = resp[EP.meta]!!.toJsonMap()[SS.accessExplained]!!.toJsonMap()
 
         // The roles the filter actually compared -- the value whose staleness was the #211 defect, and the
@@ -239,7 +239,7 @@ class SchemaEndpointsTest : StringSpec({
     "the X-Kdr-Debug header carries the tag the same as the _debug param (issue #517, slice 3)" {
         val cxt = TestInstances.envAuth("schemaExplainHdr")
         val client = TestUser.create(cxt, "explain-hdr@other.com").client
-        client.setHeader(EP.debugHeader, SS.explainAccess)
+        client.setHeader(EP.debugHeader, SS.explainAccess.name)
 
         // No `_debug` param anywhere -- the tag rode in on the header, which is the app-bar box's channel.
         val resp = client.sendJsonGetRequest("/schema/endpoints")
@@ -249,11 +249,11 @@ class SchemaEndpointsTest : StringSpec({
     "an explicit _debug param overrides the header for that request" {
         val cxt = TestInstances.envAuth("schemaExplainOver")
         val client = TestUser.create(cxt, "explain-over@other.com").client
-        client.setHeader(EP.debugHeader, SS.explainAccess)
+        client.setHeader(EP.debugHeader, SS.explainAccess.name)
 
         // The param names a different tag, so the header's explainAccess does not apply: the per-request value
         // wins over the persistent baseline. (`explainInput` is a valid tag name; /schema/endpoints ignores it.)
-        val resp = client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainInput))
+        val resp = client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainInput.name))
         resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
     }
 
@@ -277,7 +277,7 @@ class SchemaEndpointsTest : StringSpec({
         val cxt = TestInstances.envAuthNotTestInstance("schemaHdrProd")
         cxt.instanceConfig.isTestInstance shouldBe false // guard the premise
         val client = TestUser.create(cxt, "hdr-prod@other.com").client
-        client.setHeader(EP.debugHeader, SS.explainAccess)
+        client.setHeader(EP.debugHeader, SS.explainAccess.name)
 
         val resp = client.sendJsonGetRequest("/schema/endpoints")
         resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
@@ -305,7 +305,7 @@ class SchemaEndpointsTest : StringSpec({
         cxt.instanceConfig.isTestInstance shouldBe false
 
         val resp = TestHttpClient(cxt.instanceConfig)
-            .sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess))
+            .sendJsonGetRequest("/schema/endpoints", mapOf(EP.debug to SS.explainAccess.name))
         resp[EP.meta].toJsonMapOrEmpty().containsKey(SS.accessExplained) shouldBe false
         // And the request was otherwise served normally -- the tag is ignored, not rejected, so nothing
         // confirms the tag exists.
@@ -319,7 +319,7 @@ class SchemaEndpointsTest : StringSpec({
             "/demo/schema/sample",
             mapOf(
                 $$"$note" to "mimics standard query semantics", // off-contract annotation, dropped on coercing
-                EP.debug to SS.explainInput, // "_debug" -> echo the evaluated params under _meta
+                EP.debug to SS.explainInput.name, // "_debug" -> echo the evaluated params under _meta
                 SS.filter to mapOf(SS.minCount to 1),
             ),
         )

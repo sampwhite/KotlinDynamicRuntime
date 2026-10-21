@@ -48,7 +48,7 @@ fun catalogDiff(cxt: ProbeContext) {
         val session = cxt.sessionAt(level)
         val response = session.sendGetRequest(
             "/schema/endpoints",
-            mapOf(EP.limit to catalogLimit, EP.debug to SS.explainAccess),
+            mapOf(EP.limit to catalogLimit, EP.debug to SS.explainAccess.name),
         )
         if (!response.isSuccess) {
             println("  ${session.label.padEnd(9)}: HTTP ${response.statusCode} ${response.errorMessage ?: ""}")
