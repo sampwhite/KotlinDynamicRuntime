@@ -1289,6 +1289,18 @@ production client).
   that refusal. The demo clients `designdemo` and `confdemo` are provisioned at boot on a reference deployment
   (test instances only), so there is always one to join. The public home page (#1324) is where visitors meet it.
 
+## Creating your own client from the home page (issue #1228)
+
+For a caller **signed in** to `public` (a visitor who has not signed in acts in `public` too, and sees nothing of
+it), Home draws `CreateOwnClientCard` (`CreateOwnClient.kt`) under its copy: a name, an optional note, and a time
+zone (`TimeZonePicker`, starting on the browser's), with what creating one means (an id made from the name, the free
+plan, the person its administrator). It posts `POST /user/self/createClient`, and a create that moved the session
+moves the page with it (`afterSessionChange`). One that made the client but did not move -- the person's user there
+could not be made (`userFailure`), or this node does not carry it -- says so (`createOwnClientFailureText`) and
+re-reads the config. A person creates one, so the card asks the shell config which they made (`state.selfServeClient`,
+read off the identity, for `public` callers only) rather than trying the create: once made, the card opens it
+(`AuthApi.switchClient`). The public home page (#1324) is where it moves to.
+
 ## Errors: never a blank page (issue #223)
 
 A throw during render used to unmount the whole React tree and leave an empty body — the least informative

@@ -1,5 +1,6 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.context.CL
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import react.ChildrenBuilder
@@ -121,6 +122,14 @@ val Home = FC<Props> {
                             div {
                                 className = ClassName("home-note")
                                 Markdown { source = it }
+                            }
+                        }
+                        // A person's own client (issue #1228): for someone signed in to `public`, never a visitor who has
+                        // not signed in, though they act in `public` too.
+                        if (current.user.isLoggedIn && current.user.client == CL.public) {
+                            CreateOwnClientCard {
+                                made = current.selfServeClient
+                                madeName = current.users.firstOrNull { it.client == current.selfServeClient }?.clientName
                             }
                         }
                         if (layout?.inlineLinks == true) {

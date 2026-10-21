@@ -240,6 +240,14 @@ object AuthApi {
         userFrom(Http.sendApi("POST", AEP.switchUser, mapOf(AFLD.userId to userId)))
 
     /**
+     * Becomes the signed-in person's user in [client] (issue #1110) -- their default there -- completing as
+     * [switchUser] does: for a surface that names a client rather than a user, such as the self-serve client a person
+     * made (issue #1228). Refused unless the person has a registered, enabled user there.
+     */
+    suspend fun switchClient(client: String): UserProfile =
+        userFrom(Http.sendApi("POST", AEP.switchClient, mapOf(AFLD.client to client)))
+
+    /**
      * Leaves the sandbox the caller is in for [userId], another of their users outside every sandbox (issue #1197),
      * completing as [switchUser] does. Not gated by role, so it works for a sandbox user acting with none.
      */

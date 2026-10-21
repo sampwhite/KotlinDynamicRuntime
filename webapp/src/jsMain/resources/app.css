@@ -1308,6 +1308,10 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
     color: var(--text);
     cursor: pointer;
 }
+/* A person's own client, on the home page (issue #1228): a card of its own under the copy. */
+.home-own-client { margin-top: 20px; }
+.home-own-client ul { margin: 0 0 12px; padding-left: 20px; }
+
 /* The Join page's disclosure (issue #1248): set apart, since it is what a visitor acknowledges before joining. */
 .join-disclosure {
     margin: 12px 0 18px;
