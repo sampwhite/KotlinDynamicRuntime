@@ -134,8 +134,15 @@ class ClientSelfServeCreateTest : StringSpec({
         GedraConfigService.get(cxt).readLatest(bound, GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)) shouldBe null
     }
 
+    "a wordmark past its limit is refused, and no client is made" {
+        val person = TestUser.create(cxt, "long@self1336.test")
+        person.expectError(400, AEP.createOwnClient, mapOf(CLD.name to "Long", CLD.homeBrand to "x".repeat(CLD.homeBrandMaxLength + 1)))
+        // Refused before anything was made: the person's one client is still theirs to create.
+        person.postData(AEP.createOwnClient, mapOf(CLD.name to "Long"))[CLD.client].toOptStr().shouldNotBeNull()
+    }
+
     "only the home keys a self-serve create sets are taken, each trimmed, a blank one left out" {
-        ClientSelfServeCreate.homeCopy(mapOf(HFRAG.brand to " B ", HFRAG.note to " ", "intro" to "I", "other" to "x")) shouldBe
+        ClientSelfServeCreate.homeCopy(mapOf(HFRAG.brand to " B ", HFRAG.note to " ", HFRAG.intro to "I", "other" to "x")) shouldBe
             mapOf(HFRAG.home to mapOf(HFRAG.homeNs to mapOf(HFRAG.brand to "B", HFRAG.intro to "I")))
         ClientSelfServeCreate.homeCopy(mapOf(HFRAG.title to "  ")) shouldBe emptyMap()
     }

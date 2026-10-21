@@ -7,6 +7,9 @@ import com.dynamicruntime.common.util.isPlaceZoneName
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import react.FC
 import react.Props
@@ -18,6 +21,7 @@ import react.dom.html.ReactHTML.ul
 import react.useState
 import web.cssom.ClassName
 import com.dynamicruntime.common.util.byteSizeText
+import com.dynamicruntime.common.util.joinAsPhrase
 import com.dynamicruntime.common.webasset.WebAssetKinds
 import react.dom.html.ReactHTML.h3
 import react.dom.html.ReactHTML.span
@@ -54,21 +58,20 @@ class PickedImage(val file: Any, val name: String, val mimeType: String, val siz
 fun imageProblem(slot: String, mimeType: String, size: Long): String? {
     val def = WebAssetKinds.slotDef(slot) ?: return "'$slot' is not an image this client has."
     val what = def.label.lowercase()
-    val kinds = WebAssetKinds.kinds.map { it.label }
     if (WebAssetKinds.declaredKind(mimeType) == null) {
-        return "The $what must be ${kinds.dropLast(1).joinToString(", ")} or ${kinds.last()}."
+        return "The $what must be ${joinAsPhrase(WebAssetKinds.kinds.map { it.label }, last = "or")}."
     }
     if (size <= 0L) return "The $what file is empty."
     if (size > def.maxSize) return "The $what is ${byteSizeText(size)}; it may be at most ${byteSizeText(def.maxSize.toLong())}."
     return null
 }
 
-/** What a slot takes, for the picker beside it: "PNG, SVG, ICO, JPEG or WebP, up to 256 KB". Pure. */
-fun imageLimitText(slot: String): String {
-    val kinds = WebAssetKinds.kinds.map { it.label }
-    val max = WebAssetKinds.slotDef(slot)?.maxSize?.toLong()?.let { ", up to ${byteSizeText(it)}" }.orEmpty()
-    return "${kinds.dropLast(1).joinToString(", ")} or ${kinds.last()}$max"
-}
+/**
+ * What a slot takes, for the picker beside it: "PNG, SVG, ICO, JPEG or WebP, up to 256 KB.", worded as the Clients
+ * page's web assets word it ([imageTakesText]). Pure.
+ */
+fun imageLimitText(slot: String): String =
+    imageTakesText(WebAssetKinds.kinds.map { it.label }, WebAssetKinds.slotDef(slot)?.maxSize?.toLong() ?: 0L)
 
 /** One image the create could not upload (issue #1336): which, as a person calls it, and why. */
 class ImageUploadFailure(val label: String, val reason: String)
@@ -83,6 +86,17 @@ fun imageUploadsNote(failures: List<ImageUploadFailure>): String? {
     // A reason is the server's sentence, period and all; the note ends its own.
     val each = failures.joinToString("; ") { "the ${it.label.lowercase()} couldn't be uploaded: ${it.reason.trim().trimEnd('.')}" }
     return "Your client was created, but $each. Add ${if (failures.size == 1) "it" else "them"} from My client."
+}
+
+/**
+ * What the card adds when the client was made but the session did not move to it (issue #1336): the images picked --
+ * [labels], as a person calls them -- were not uploaded, since only the client's administrator may set them. Null
+ * when none was picked. Pure, and covered under `jsNodeTest`.
+ */
+fun imagesNotUploadedNote(labels: List<String>): String? {
+    if (labels.isEmpty()) return null
+    val what = joinAsPhrase(labels.map { it.lowercase() })
+    return "The $what you chose ${if (labels.size == 1) "wasn't" else "weren't"} uploaded."
 }
 
 /** What creating one's own client did (issue #1228), as the card reads it. */
@@ -235,104 +249,119 @@ val CreateOwnClientCard = FC<CreateOwnClientCardProps> { props ->
                 p { +"You created your own client, $label, but this site no longer carries it. A person creates one, so there is no other to make." }
             }
             OwnClientCardMode.create -> {
-                h2 { +"Create your own client" }
-                p { +"A client of your own, to build forms and workflows in, with you as its administrator." }
-                ul {
-                    li { +"Its id is made from the name you give it." }
-                    li { +"It is on the free plan." }
-                    li { +"You become its administrator, and the page moves there once it is made." }
-                    li { +"A person creates one; once yours is made, this card opens it." }
-                }
-                textField("Name", name, disabled = busy, placeholder = "The name people see", maxLength = 80) { name = it }
-                // "Internal": the home page below has a note of its own, which the client's people do see.
-                textField("Internal note", description, disabled = busy, placeholder = "Optional: who, what or why; only administrators see it") { description = it }
-                choiceRow("Time zone") {
-                    TimeZonePicker {
-                        value = timeZone
-                        disabled = busy
-                        onChange = { v -> timeZone = v }
+                // Made and moved to, but an image did not upload: the client exists, so nothing here is to be created
+                // again -- the note and the way on below are all the card says.
+                if (continueReady) {
+                    h2 { +"Your client" }
+                } else {
+                    h2 { +"Create your own client" }
+                    p { +"A client of your own, to build forms and workflows in, with you as its administrator." }
+                    ul {
+                        li { +"Its id is made from the name you give it." }
+                        li { +"It is on the free plan." }
+                        li { +"You become its administrator, and the page moves there once it is made." }
+                        li { +"A person creates one; once yours is made, this card opens it." }
                     }
-                }
-                // Its home page, set as it is made (issue #1336): the copy is published with the client, so it shows
-                // at once, and the images upload once the client exists. All of it optional, and all of it changeable.
-                h3 { +"Your client's home page (optional)" }
-                p { className = ClassName("subtitle"); +"All of this can be changed later, from My client." }
-                fun homeText(field: String) = home[field].orEmpty()
-                fun setHome(field: String, value: String) { home = home + (field to value) }
-                textField("Wordmark", homeText(CLD.homeBrand), disabled = busy, placeholder = "The name beside your logo", maxLength = 40) {
-                    setHome(CLD.homeBrand, it)
-                }
-                textField("Title", homeText(CLD.homeTitle), disabled = busy, placeholder = "Welcome", maxLength = 120) { setHome(CLD.homeTitle, it) }
-                for ((field, label) in listOf(CLD.homeIntro to "Introduction", CLD.homeNote to "Note")) {
-                    choiceRow(label) {
-                        TextArea {
-                            value = homeText(field)
+                    textField("Name", name, disabled = busy, placeholder = "The name people see", maxLength = 80) { name = it }
+                    // "Internal": the home page below has a note of its own, which the client's people do see.
+                    textField("Internal note", description, disabled = busy, placeholder = "Optional: who, what or why; only administrators see it") { description = it }
+                    choiceRow("Time zone") {
+                        TimeZonePicker {
+                            value = timeZone
                             disabled = busy
-                            placeholder = if (field == CLD.homeIntro) "What your client is for. Markdown." else "Optional, beneath the introduction. Markdown."
-                            asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 8 })")
-                            onChange = { e -> setHome(field, e.target.value as String) }
+                            onChange = { v -> timeZone = v }
                         }
                     }
-                }
-                for (def in WebAssetKinds.slotDefs) {
-                    choiceRow(def.label) {
-                        val picked = images[def.slot]
-                        FilePickButton {
-                            // Qualified: the card's own `label` (the client's) would otherwise be what this names.
-                            this.label = if (picked == null) "Choose\u2026" else "Change\u2026"
-                            accept = WebAssetKinds.acceptedMimeTypes
-                            this.busy = false
-                            disabled = busy
-                            onPicked = { file, size ->
-                                val f = file.asDynamic()
-                                images = images + (def.slot to PickedImage(file, f.name as String, (f.type as? String).orEmpty(), size))
-                            }
-                        }
-                        span { className = ClassName("subtitle"); +" ${picked?.name ?: imageLimitText(def.slot)}" }
-                        if (picked != null) {
-                            Button {
-                                type = "link"
+                    // Its home page, set as it is made (issue #1336): the copy is published with the client, so it shows
+                    // at once, and the images upload once the client exists. All of it optional, and all of it changeable.
+                    h3 { +"Your client's home page (optional)" }
+                    p { className = ClassName("subtitle"); +"All of this can be changed later, from My client." }
+                    fun homeText(field: String) = home[field].orEmpty()
+                    fun setHome(field: String, value: String) { home = home + (field to value) }
+                    textField("Wordmark", homeText(CLD.homeBrand), disabled = busy, placeholder = "The name beside your logo", maxLength = CLD.homeBrandMaxLength) {
+                        setHome(CLD.homeBrand, it)
+                    }
+                    textField("Title", homeText(CLD.homeTitle), disabled = busy, placeholder = "Welcome", maxLength = CLD.homeTitleMaxLength) { setHome(CLD.homeTitle, it) }
+                    for ((field, label) in listOf(CLD.homeIntro to "Introduction", CLD.homeNote to "Note")) {
+                        choiceRow(label) {
+                            TextArea {
+                                value = homeText(field)
                                 disabled = busy
-                                onClick = { images = images - def.slot }
-                                +"Remove"
+                                placeholder = if (field == CLD.homeIntro) "What your client is for. Markdown." else "Optional, beneath the introduction. Markdown."
+                                maxLength = CLD.homeTextMaxLength
+                                asDynamic()["autoSize"] = js("({ minRows: 2, maxRows: 8 })")
+                                onChange = { e -> setHome(field, e.target.value as String) }
                             }
                         }
-                        imageProblems[def.slot]?.let { p { className = ClassName("error-text"); +it } }
                     }
-                }
-                Button {
-                    type = "primary"
-                    loading = busy
-                    disabled = name.isBlank() || imageProblems.isNotEmpty()
-                    onClick = {
-                        act {
-                            val result = CreateOwnClientApi.create(name, description, timeZone, home)
-                            val next = createOwnClientNext(result)
-                            note = next.note
-                            if (!next.moves) {
-                                bump()
-                                return@act
-                            }
-                            // Moved: the session is the new client's administrator, who may set its images.
-                            val client = result.client
-                            val failures = images.mapNotNull { (slot, img) ->
-                                try {
-                                    ClientsApi.uploadWebAsset(client, slot, img.file)
-                                    null
-                                } catch (e: Throwable) {
-                                    ImageUploadFailure(WebAssetKinds.slotDef(slot)?.label ?: slot, userFacingError(e).text)
+                    for (def in WebAssetKinds.slotDefs) {
+                        choiceRow(def.label) {
+                            val picked = images[def.slot]
+                            FilePickButton {
+                                // Qualified: the card's own `label` (the client's) would otherwise be what this names.
+                                this.label = if (picked == null) "Choose\u2026" else "Change\u2026"
+                                accept = WebAssetKinds.acceptedMimeTypes
+                                this.busy = false
+                                disabled = busy
+                                onPicked = { file, size ->
+                                    val f = file.asDynamic()
+                                    images = images + (def.slot to PickedImage(file, f.name as String, (f.type as? String).orEmpty(), size))
                                 }
                             }
-                            val uploadsNote = imageUploadsNote(failures)
-                            if (uploadsNote == null) {
-                                afterSessionChange(bump)
-                            } else {
-                                note = uploadsNote
-                                continueReady = true
+                            span { className = ClassName("subtitle"); +" ${picked?.name ?: imageLimitText(def.slot)}" }
+                            if (picked != null) {
+                                Button {
+                                    type = "link"
+                                    disabled = busy
+                                    onClick = { images = images - def.slot }
+                                    +"Remove"
+                                }
                             }
+                            imageProblems[def.slot]?.let { p { className = ClassName("error-text"); +it } }
                         }
                     }
-                    +"Create the client"
+                    Button {
+                        type = "primary"
+                        loading = busy
+                        disabled = name.isBlank() || imageProblems.isNotEmpty()
+                        onClick = {
+                            act {
+                                val result = CreateOwnClientApi.create(name, description, timeZone, home)
+                                val next = createOwnClientNext(result)
+                                fun labelOf(slot: String) = WebAssetKinds.slotDef(slot)?.label ?: slot
+                                note = next.note
+                                if (!next.moves) {
+                                    // Not the client's administrator here, so the images picked cannot be set: say so.
+                                    note = listOfNotNull(next.note, imagesNotUploadedNote(images.keys.map(::labelOf))).joinToString(" ")
+                                    bump()
+                                    return@act
+                                }
+                                // Moved: the session is the new client's administrator, who may set its images -- each
+                                // slot its own upload, so they go together.
+                                val client = result.client
+                                val failures = coroutineScope {
+                                    images.map { (slot, img) ->
+                                        async {
+                                            try {
+                                                ClientsApi.uploadWebAsset(client, slot, img.file)
+                                                null
+                                            } catch (e: Throwable) {
+                                                ImageUploadFailure(labelOf(slot), userFacingError(e).text)
+                                            }
+                                        }
+                                    }.awaitAll().filterNotNull()
+                                }
+                                val uploadsNote = imageUploadsNote(failures)
+                                if (uploadsNote == null) {
+                                    afterSessionChange(bump)
+                                } else {
+                                    note = uploadsNote
+                                    continueReady = true
+                                }
+                            }
+                        }
+                        +"Create the client"
+                    }
                 }
             }
         }

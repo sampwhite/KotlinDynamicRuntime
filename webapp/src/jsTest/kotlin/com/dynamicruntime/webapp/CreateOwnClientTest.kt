@@ -37,7 +37,7 @@ class CreateOwnClientTest {
         assertNull(imageProblem(WAS.brandMark, "image/png", 300 * 1024))
         assertEquals("The brand mark must be PNG, SVG, ICO, JPEG or WebP.", imageProblem(WAS.brandMark, "image/gif", 10))
         assertEquals("The favicon file is empty.", imageProblem(WAS.favicon, "image/png", 0))
-        assertEquals("PNG, SVG, ICO, JPEG or WebP, up to 256 KB", imageLimitText(WAS.favicon))
+        assertEquals("PNG, SVG, ICO, JPEG or WebP, up to 256 KB.", imageLimitText(WAS.favicon))
     }
 
     @Test
@@ -49,6 +49,13 @@ class CreateOwnClientTest {
         )
         val both = imageUploadsNote(listOf(ImageUploadFailure("Favicon", "A."), ImageUploadFailure("Brand mark", "B.")))!!
         assertTrue(both.contains("the favicon") && both.contains("the brand mark") && both.endsWith("Add them from My client."), both)
+    }
+
+    @Test
+    fun aCreateThatDidNotMoveSaysTheImagesChosenWereNotUploaded() {
+        assertNull(imagesNotUploadedNote(emptyList()))
+        assertEquals("The favicon you chose wasn't uploaded.", imagesNotUploadedNote(listOf("Favicon")))
+        assertEquals("The favicon and brand mark you chose weren't uploaded.", imagesNotUploadedNote(listOf("Favicon", "Brand mark")))
     }
 
     @Test

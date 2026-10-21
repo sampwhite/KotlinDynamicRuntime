@@ -326,10 +326,12 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             field(CLD.name, ClientPresentationFields.descriptions.getValue(CLD.name), required = true)
             field(CLD.description, "An internal note about who, what, or why.")
             field(CLD.timeZone, "The client's IANA time zone (America/Chicago): the creator's browser's; absent, the deployment's.")
-            field(CLD.homeBrand, "The wordmark beside the brand mark in the app bar and on the home page.")
-            field(CLD.homeTitle, "The home page's title.")
-            field(CLD.homeIntro, "The home page's introduction, in Markdown.")
-            field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.")
+            field(CLD.homeBrand, "The wordmark beside the brand mark in the app bar and on the home page.") {
+                maxLength = CLD.homeBrandMaxLength
+            }
+            field(CLD.homeTitle, "The home page's title.") { maxLength = CLD.homeTitleMaxLength }
+            field(CLD.homeIntro, "The home page's introduction, in Markdown.") { maxLength = CLD.homeTextMaxLength }
+            field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.") { maxLength = CLD.homeTextMaxLength }
         },
     ) { c, request ->
         val home = CLD.homeCopyFields.mapNotNull { (field, key) -> request[field].toOptStr()?.let { key to it } }.toMap()

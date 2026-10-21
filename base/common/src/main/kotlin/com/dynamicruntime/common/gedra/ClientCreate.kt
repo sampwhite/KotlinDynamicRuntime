@@ -120,12 +120,20 @@ object ClientCreate {
             throw e
         }
         // Published, so the client loads whatever its tier: one asking for a sandbox runs only what is published.
-        // The write's trial judged this very definition, alone, so the publish has nothing new to refuse; were it
-        // to, the configuration stays written and unpublished, and a second create is told the id has one.
+        // The write's trial judged this very definition, with the copy written beside it, so the publish has nothing
+        // new to refuse; were it to, the configuration stays written and unpublished, and a second create is told the
+        // id has one.
         val published = svc.publish(bound, written.first().configId, trial = true)
         // The copy with it (issue #1336): judged with the definition by the write, so its publish has nothing new to
-        // refuse either.
-        for (row in written.drop(1)) svc.publish(bound, row.configId, trial = true)
+        // refuse either. Were it to fail, the client is made all the same -- its definition is published -- so the
+        // copy is left a draft, for its administrator to publish, rather than failing a create that has happened.
+        for (row in written.drop(1)) {
+            try {
+                svc.publish(bound, row.configId, trial = true)
+            } catch (e: Exception) {
+                LogGedra.error(cxt, "Client '$client' was created, but its copy config '${row.configId}' could not be published.", e)
+            }
+        }
         // From here the client exists, whatever becomes of loading it: a failure is the result's to say.
         var loadFailure: String? = null
         val issues = try {
