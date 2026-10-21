@@ -260,7 +260,7 @@ fun clientUsersHref(clientId: String, acrossClients: Boolean): String =
     hashHref(listOf(HP.page to HMENU.pageUsers) + if (acrossClients) listOf(USF.client to clientId) else emptyList())
 
 /**
- * One client's own page (issue #906): its definition, issues and stored configuration. Any administrator who may
+ * One client's own page (issue #906): its definition, issues, and stored configuration. Any administrator who may
  * see the client may open it -- a client-scoped one their own, which is the only one a link of theirs can name.
  * Pure, and covered under `jsNodeTest`.
  */
@@ -613,7 +613,7 @@ fun copySyntaxHint(audience: String): String = when (audience) {
 
 /**
  * What a one-key set or reset did (issue #918): where it landed, what the client now reads, and how it took effect --
- * an `EDM` value, live or a draft its sandbox runs (issue #930). Design View's shared wording (#1010) saves this way.
+ * an `EDM` value, live, or a draft its sandbox runs (issue #930). Design View's shared wording (#1010) saves this way.
  */
 class CopyEditResult(val configName: String, val value: String?, val stored: Boolean, val issues: List<String>, val mode: String = EDM.live)
 
@@ -834,7 +834,7 @@ class ConfigIssueView(val message: String, val degradedTo: String, val origin: S
 /**
  * One client's definition as the detail view shows it (issue #906): its attributes as `ClientInfo` writes them
  * ([info], read by the `CLD` keys), whether this node carries it, its issues, and what it defines -- supported
- * trait ids, listing-column labels and workflow ids.
+ * trait ids, listing-column labels, and workflow ids.
  */
 class ClientDefinitionView(
     val info: Map<String, Any?>,
@@ -1271,6 +1271,14 @@ object ClientsApi {
      */
     suspend fun setIncludedTraits(request: Map<String, Any?>): TraitsSetResult =
         parseTraitsSetResult(Http.sendApi("POST", UADEP.clientTraitsSet, request)[EP.results].toJsonMapOrEmpty())
+
+    /**
+     * Saves a trait's design (issue #1118) -- [request] from [traitDesignRequest]: a new trait, or an edit of one the
+     * client stores; live, or a draft for a client with a sandbox. An edit that strands stored data is refused with
+     * the impact report ([impactOf]) until acknowledged.
+     */
+    suspend fun saveTraitDesign(request: Map<String, Any?>): TraitDesignResult =
+        parseTraitDesignResult(Http.sendApi("POST", UADEP.clientTraitDesign, request)[EP.results].toJsonMapOrEmpty())
 
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =

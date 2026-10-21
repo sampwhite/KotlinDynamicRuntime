@@ -34,4 +34,49 @@ object CIT {
      * `production` must have its supported set fully determined by its own definition.
      */
     const val groupsRefused = "groupsRefused"
+
+    // --- the client's own traits (issue #1118) ---
+    const val ownTraitTypeName = "ClientOwnTrait"
+    const val designTypeName = "ClientTraitDesign"
+    const val designResultTypeName = "ClientTraitDesignResult"
+    const val quotasTypeName = "ClientTraitQuotas"
+
+    /** On the catalog: the client's own traits, each with its design or why the editor cannot edit it. */
+    const val ownTraits = "ownTraits"
+
+    /** On an own trait, and a design's result: the stored configuration that holds the trait. */
+    const val configName = "configName"
+
+    /** On an own trait: the trait as the editor designs it ([TraitDesign.toInfo]); absent when it cannot. */
+    const val design = "design"
+
+    /** On an own trait: why the editor cannot edit it -- a field not of its kinds; absent when it can. */
+    const val notEditable = "notEditable"
+
+    /**
+     * On the catalog: the plan's limits the editor shows and holds a design to (issue #1109) -- how many schemas the
+     * client declares and may, and how many attributes one may have. Absent for a client on no plan.
+     */
+    const val quotas = "quotas"
+    const val plan = "plan"
+    const val schemasUsed = "schemasUsed"
+    const val schemasLimit = "schemasLimit"
+    const val attributesLimit = "attributesLimit"
+
+    // --- a design ([TraitDesign]), each matching its value ---
+    const val traitId = "traitId"
+    const val label = "label"
+    const val description = "description"
+    const val fields = "fields"
+    const val key = "key"
+    const val kind = "kind"
+    const val required = "required"
+    const val choices = "choices"
+    const val value = "value"
+
+    /**
+     * The prefix of the stored configuration the editor makes for a new trait: one configuration per trait, named for
+     * it (`trait_<traitId>`), so each is published, judged and, later, carried on its own.
+     */
+    const val configPrefix = "trait_"
 }

@@ -374,6 +374,14 @@ client with a sandbox -- and a live one that takes away a trait the client's sto
 impact report until acknowledged. An entry the save adds must name a global trait; one already in the list is kept
 as it is, so a stale entry the load drops does not block a save of something else.
 
+It also designs the client's own traits (issue #1118), from a fixed set of field kinds: text, long text, number, whole
+number, yes/no, date, and single or multiple choice. A trait's id, a field's key and a choice's value are made from
+their first labels and never change; labels change freely, and the labels are written into the trait's layout so
+Design View starts from them. A field may be required in the data, off by default; a form's own requirements stay in
+its layout. A new trait is stored in a configuration of its own; an edit is written where the trait is stored and
+keeps what the editor does not own, such as Design View's hints. The plan's limits on schemas and attributes hold, and
+an edit that would invalidate stored data goes through the impact report.
+
 The client can choose also to alter an existing trait by changing UI options and can
 only narrow, or can create a new trait by extension, or can define a completely new trait. However,
 all schemas not defined in other clients are visible to the client. **Visible and supported are different

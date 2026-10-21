@@ -23,7 +23,8 @@ import com.dynamicruntime.common.util.toOptStr
  * Every global data trait, as the platform declares it -- its description and its fields, read-only -- whatever the
  * client has made of it, since that is what including it chooses. A trait the client has altered or extended is
  * marked [CIT.customized]: it is supported without being named, so including it or not changes nothing. Whether the
- * client may take a group such as [CLD.allGlobal] is said with it ([groupsRefusal]).
+ * client may take a group such as [CLD.allGlobal] is said with it ([groupsRefusal]). For the traits editor (issue
+ * #1118) it carries the client's own traits and its plan's limits too ([ClientTraitDesignEdit]).
  *
  * ### Where a save lands
  *
@@ -67,6 +68,9 @@ object ClientTraitsEdit {
             put(CIT.traits, traits)
             put(SCH.dDefs, collectDefClosure(seeds, served))
             ClientService.get(cxt).known(client)?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
+            // The client's own traits, for the traits editor (issue #1118), and the plan's limits it is held to.
+            put(CIT.ownTraits, ClientTraitDesignEdit.ownTraits(cxt, client))
+            ClientTraitDesignEdit.quotas(cxt, client)?.let { put(CIT.quotas, it) }
         }
     }
 
@@ -153,6 +157,53 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         ) { type = SCT.boolean }
     }
 
+    type(CIT.designTypeName) {
+        type = SCT.kObject
+        description = "A client's own trait as the traits editor designs it (issue #1118): a name, a description, and " +
+            "fields of a fixed set of kinds. A trait, field or choice with no key yet is new, and gets one from its label."
+        property(CIT.traitId, "The trait's id; absent for a new trait, which gets one from its name.")
+        property(CIT.label, "The trait's name, shown as its heading.", required = true)
+        property(CIT.description, "What the trait is for.")
+        property(CIT.fields, "The fields, in the order a form shows them.", required = true) {
+            type = SCT.array
+            items {
+                type = SCT.kObject
+                property(CIT.key, "The field's key; absent for a new field, which gets one from its label. It never changes.")
+                property(CIT.label, "The field's label.", required = true)
+                property(CIT.kind, "What the field holds.", required = true) { TraitFieldKind.entries.forEach { option(it.name) } }
+                property(CIT.description, "What the field asks for.")
+                property(CIT.required, "Whether the data requires it, whoever writes an entry.") { type = SCT.boolean }
+                property(CIT.choices, "A choice field's choices, in order.") {
+                    type = SCT.array
+                    items {
+                        type = SCT.kObject
+                        property(CIT.value, "The choice's stored value; absent for a new one. It never changes.")
+                        property(CIT.label, "The choice's label.", required = true)
+                    }
+                }
+            }
+        }
+    }
+
+    type(CIT.ownTraitTypeName) {
+        type = SCT.kObject
+        description = "One of the client's own traits (issue #1118): where it is stored, and its design or why the " +
+            "editor cannot edit it."
+        property(CIT.traitId, "The trait's id.", required = true)
+        property(CIT.configName, "The stored configuration holding it; absent for one declared in source code.")
+        property(CIT.design, "The trait as the editor designs it; absent when it cannot.") { ref(CIT.designTypeName) }
+        property(CIT.notEditable, "Why the editor cannot edit it; absent when it can.")
+    }
+
+    type(CIT.quotasTypeName) {
+        type = SCT.kObject
+        description = "The plan's limits a trait's design is held to (issue #1109)."
+        property(CIT.plan, "The client's plan.", required = true)
+        property(CIT.schemasUsed, "How many schemas the client declares now.") { type = SCT.integer }
+        property(CIT.schemasLimit, "How many schemas its plan allows.") { type = SCT.integer }
+        property(CIT.attributesLimit, "How many attributes one schema may have.") { type = SCT.integer }
+    }
+
     type(CIT.catalogTypeName) {
         type = SCT.kObject
         description = "The global traits a client may include (issue #1117), with the schema of their fields."
@@ -165,6 +216,13 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             type = SCT.kObject
         }
         property(CIT.groupsRefused, "Why the client may not include a group such as ${CLD.allGlobal}; absent when it may.")
+        property(CIT.ownTraits, "The client's own traits (issue #1118), in the order they are stored.", required = true) {
+            type = SCT.array
+            items { ref(CIT.ownTraitTypeName) }
+        }
+        property(CIT.quotas, "The plan's limits a trait's design is held to (issue #1109); absent for a client on no plan.") {
+            ref(CIT.quotasTypeName)
+        }
     }
 
     itemEndpoint(
@@ -228,6 +286,56 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             CLD.client to client,
             COV.configName to result.configName,
             CLD.includedTraits to result.included,
+            CPY.mode to result.mode,
+            CPY.issues to result.issues.map { it.toWireMap() },
+        )
+    }
+
+    type(CIT.designResultTypeName) {
+        type = SCT.kObject
+        description = "What saving a trait's design did (issue #1118)."
+        property(CLD.client, "The client.", required = true)
+        property(CIT.configName, "The stored configuration the trait is in.", required = true)
+        property(CIT.design, "The trait as designed now, every key given.", required = true) { ref(CIT.designTypeName) }
+        saveOutcomeFields()
+    }
+
+    generalEndpoint(
+        UADEP.clientTraitDesign,
+        "Creates or edits one of a client's own traits from a design (issue #1118). A design naming no trait makes a " +
+            "new one, in a stored configuration of its own; one naming a stored trait edits it where it is stored. Keys " +
+            "are made from first labels and never change after, and a kept field keeps its kind. Written under the " +
+            "config lock, refused when a trial reload finds a new problem -- the plan's limits on schemas and " +
+            "attributes among them -- then published and reloaded; for a client with a Shadow Sandbox saved as a " +
+            "draft instead. An edit that would leave stored forms holding data the trait no longer accepts is refused " +
+            "with the impact report unless the impact is acknowledged. Refused for a sandbox (its traits are its " +
+            "parent's) and for a trait declared in source code.",
+        HttpMethod.POST,
+        outputRef = CIT.designResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(CLD.client)
+            field(CIT.design, "The trait's design.", required = true) { ref(CIT.designTypeName) }
+            field(
+                IMP.acknowledgeImpact,
+                "Save although forms the client stores hold data the edited trait would no longer accept; without it, " +
+                    "such a save is refused with the impact report.",
+            ) { type = SCT.boolean }
+            expectedModeField()
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[CLD.client].toOptStr())
+        val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
+        val design = try {
+            traitDesignFromInfo(request[CIT.design].toJsonMapOrEmpty())
+        } catch (e: IllegalArgumentException) {
+            throw KdrException.mkInput(e.message ?: "The design does not read.")
+        }
+        val result = ClientTraitDesignEdit.save(c, client, design, expectedModeOf(request), gate)
+        mapOf(
+            CLD.client to client,
+            CIT.configName to result.configName,
+            CIT.design to result.design.toInfo(),
             CPY.mode to result.mode,
             CPY.issues to result.issues.map { it.toWireMap() },
         )

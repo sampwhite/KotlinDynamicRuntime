@@ -825,6 +825,29 @@ take away a trait the client's forms hold is refused with the impact report (`im
 backend's words. The read-only "Traits" summary row above still lists what the client supports. Wire names: `CIT`
 and `CCT`, in the kernel.
 
+**Its own traits** (issue #1118, `TraitDesignEditor.kt`, its pure half in `TraitDesigner.kt`, covered by
+`TraitDesignerTest`): under the picker, the client's own traits from the same catalog read (`ownTraits`) -- each
+stored one with its design, or why it cannot be edited here (a field not of the editor's kinds, or declared in source
+code) -- with **Edit**, then **New trait**. The editor designs a trait from a fixed set of field kinds (`TraitFieldKind`:
+text, long text, number, whole number, yes/no, date, choice, several choices): a name and description, then per field
+a label, a kind, **Required** (in the data -- every entry, whoever writes it; a form's own requirement is Design
+View's) and a choice field's choices. The model is the kernel's `TraitDesign`, so the **live preview** is `SchemaForm`
+drawn from exactly what the backend will write (`previewDefs`: `toDataSchema` with its labels in the `g-layout`, long
+text as `multiline`). Keys are made by the backend from first labels (`withKeys`) and never change: a saved field shows
+its key and may change kind only between text and long text (`kindsFor`). What is wrong with the draft is listed in
+the kernel's words (`traitDesignProblems`), and Save waits for it. The catalog's `quotas` -- the plan's schemas and
+attributes per schema (#1109) -- are said beside the fields (`draftQuotaText`), **Add field** stops at the attribute
+limit and **New trait** at the schema limit; the backend's trial holds them anyway. Save posts
+`/clientAdmin/client/traits/design` (`traitDesignRequest`, with `mode`): a new trait lands in a configuration of its
+own, `trait_<id>`; an edit patches the trait where it is stored, carrying everything the design does not own -- a
+field's other keywords, a layout's hints, errors and strings from Design View. An edit that strands stored data (a
+field made required, a choice removed) is refused with the impact report, in the same dialog and **Save anyway** as
+the picker's.
+
+**Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,
+refused on anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) for any form
+whose layout says so.
+
 **The time-zone picker** (issue #1257, `TimeZonePicker.kt`). The time zone is `ClientPresentationFields.Kind.timeZone`,
 drawn as `TimeZonePicker`: an antd `Select` that builds its own options rather than letting antd filter, since before
 anything is typed it shows a short list (`commonTimeZones`, about 40, one per region people pick, plus `UTC`, which

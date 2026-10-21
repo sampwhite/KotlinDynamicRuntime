@@ -1115,6 +1115,28 @@ textarea.copy-edit { font-family: inherit; min-height: 5rem; }
    The value boxes take the card's own surface, lighter than the panel, so they stand off it. A pending change is
    marked down its left edge in the accent, a key a refused save names in the danger red. */
 .copy-view-controls { margin: 8px 0 4px; }
+/* The traits editor (issue #1118): a panel apart from the page, as a copy file is, with each field a block and the
+   preview set off beneath. */
+.trait-designer {
+    margin-top: 14px;
+    padding: 12px 16px;
+    border: 1px solid color-mix(in oklab, var(--accent-bright) 50%, var(--border));
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--surface-raised), var(--surface-page) 75%);
+}
+.trait-designer .row { gap: 8px; flex-wrap: wrap; align-items: center; }
+.trait-field {
+    margin: 10px 0;
+    padding: 8px 0 8px 12px;
+    border-left: 2px solid color-mix(in oklab, var(--accent-bright) 35%, var(--border));
+}
+.trait-choices { margin: 6px 0 0 16px; }
+.trait-preview {
+    padding: 8px 12px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+}
+
 .copy-file {
     --copy-panel: color-mix(in oklab, var(--surface-raised), var(--surface-page) 75%);
     margin-top: 14px;

@@ -2,14 +2,17 @@ package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SFMT
+import com.dynamicruntime.common.schema.SchLayoutField
 import com.dynamicruntime.common.schema.SchOption
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.hideGatedFields
 import com.dynamicruntime.common.schema.isBinaryFormat
 import com.dynamicruntime.common.schema.isDateFormat
+import com.dynamicruntime.common.schema.isPlainText
 import com.dynamicruntime.common.util.toJsonStr
 import com.dynamicruntime.common.util.toOptBool
 import react.ChildrenBuilder
+import react.ComponentType
 import react.FC
 import react.Props
 import react.dom.html.ReactHTML.input
@@ -63,6 +66,9 @@ enum class ControlKind {
 
     /** string / integer / number / unknown — a text `Input`, coerced by the kernel validator on submit. */
     Text,
+
+    /** Plain text a form's layout marks long (issue #1118, `multiline`) — antd's `TextArea`, growing with its text. */
+    LongText,
 }
 
 /**
@@ -71,7 +77,7 @@ enum class ControlKind {
  * `when`: options win over the base type, an open list is its own kind, a two-state boolean is a checkbox and a
  * three-state one a select, then the string formats, a property-less object is a JSON map, everything else text.
  */
-fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind = when {
+fun controlKind(vt: SchType, required: Boolean, editable: Boolean, multiline: Boolean = false): ControlKind = when {
     !editable -> ControlKind.ReadOnly
     // Multi-select: an array of choices. An open element type accepts a value that is not offered, so it takes
     // `tags` mode rather than a separate component (a multi-select is already a list, so one more is a mode).
@@ -85,6 +91,8 @@ fun controlKind(vt: SchType, required: Boolean, editable: Boolean): ControlKind 
         if (vt.format == SFMT.date) ControlKind.Date else ControlKind.DateTime
     vt.jsonType == SCT.string && isBinaryFormat(vt.format) -> ControlKind.File
     vt.jsonType == SCT.kObject -> ControlKind.JsonMap
+    // Long text is the layout's word on plain text (issue #1118); on anything else the boot check refuses it.
+    multiline && isPlainText(vt) -> ControlKind.LongText
     // string / integer / number / unknown. Lists do not arrive here in edit mode -- a list of choices is the
     // multi-select above, and any other list is a growing column of these widgets (renderScalarList).
     else -> ControlKind.Text
@@ -119,10 +127,12 @@ internal fun ChildrenBuilder.widget(
     choices: List<SchOption>? = null,
     /** The id a date-time field's zone note takes, so the picker is described by it (issue #1235). */
     zoneNoteId: String? = null,
+    /** Whether the form's layout marks the field long text (issue #1118, [SchLayoutField.multiline]). */
+    multiline: Boolean = false,
     commit: () -> Unit = {},
     emit: (Any?) -> Unit,
 ) {
-    val kind = controlKind(vt, required, editable)
+    val kind = controlKind(vt, required, editable, multiline)
     when (kind) {
         ControlKind.ReadOnly -> readOnlyValue(vt, value, presentation, opts)
         ControlKind.MultiSelect, ControlKind.MultiSelectOpen -> Select {
@@ -245,8 +255,18 @@ internal fun ChildrenBuilder.widget(
             onBlur = { commit() }
             markInvalid(asDynamic(), describedBy)
         }
+        ControlKind.LongText -> TextArea {
+            this.value = displayValue(value)
+            asDynamic()["autoSize"] = js("({ minRows: 3, maxRows: 12 })")
+            onChange = { e -> emit(e.target.value as String) }
+            onBlur = { commit() }
+            markInvalid(asDynamic(), describedBy)
+        }
     }
 }
+
+/** antd's multi-line text input, `Input.TextArea`: not a named export of its own, so reached through [Input]. */
+private val TextArea: ComponentType<InputProps> = Input.asDynamic().TextArea.unsafeCast<ComponentType<InputProps>>()
 
 /** The two choices a three-state boolean offers. The wire values, verbatim — see the widget's note on labels. */
 private val booleanOptions = listOf(SchOption("true", "true"), SchOption("false", "false"))
