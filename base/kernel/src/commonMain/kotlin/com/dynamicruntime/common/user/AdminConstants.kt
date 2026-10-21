@@ -168,6 +168,18 @@ object UADEP {
     const val clientDefinitionSet = "/${SECT.clientAdmin}/client/definition/set"
 
     /**
+     * The global traits a client may include (issue #1117), each with its description and its fields, and which the
+     * client has customized. Scoped as [clientDefinition] is.
+     */
+    const val clientTraits = "/${SECT.clientAdmin}/client/traits"
+
+    /**
+     * Sets the traits a client includes (issue #1117): the `includedTraits` of its stored definition, made to take
+     * effect as [clientDefinitionSet]'s saves do. Scoped as [clientDefinition] is.
+     */
+    const val clientTraitsSet = "/${SECT.clientAdmin}/client/traits/set"
+
+    /**
      * The copy and interface one client's own configuration changes (issue #916) -- fragment keys and UiBlock
      * items, each with the value it replaces and the config that set it. Scoped as [clientDefinition] is.
      */

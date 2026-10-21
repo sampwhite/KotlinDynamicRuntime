@@ -851,10 +851,14 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
      * (its `includedTraits` drive the computation). The same `supportedTraits` the workflow and variant builds use.
      */
     fun supportedGedraTraitsFor(client: String, def: ClientDef): List<GedraTrait> =
-        collector?.let {
-            val overlaid = it.clientOverlays[client]?.keys ?: emptySet()
-            supportedTraits(it.gedraConfigs, client, def, overlaid, droppedTypesFor(client))
-        } ?: emptyList()
+        collector?.let { supportedTraits(it.gedraConfigs, client, def, overlaidTypesFor(client), droppedTypesFor(client)) }
+            ?: emptyList()
+
+    /**
+     * The qualified names of the types [client] overlays -- alters or extends -- in its configuration. A trait whose
+     * entry type is among them is customized, and supported without being named (`supportedTraits`).
+     */
+    fun overlaidTypesFor(client: String): Set<String> = collector?.clientOverlays?.get(client)?.keys ?: emptySet()
 
     /**
      * The types [client] declared that its variant dropped because they would not compile (issue #841) -- what

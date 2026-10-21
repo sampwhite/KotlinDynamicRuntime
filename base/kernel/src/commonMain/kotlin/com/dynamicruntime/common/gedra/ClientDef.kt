@@ -121,7 +121,7 @@ enum class ClientFieldEdit {
 
     /**
      * The client's own administrator, through a surface of its own rather than the definition editor: the traits it
-     * includes through its configuration, its sandbox through the sandbox's management.
+     * includes through the traits editor (issue #1117), its sandbox through the sandbox's management.
      */
     ownSurface,
 
@@ -838,6 +838,13 @@ data class ClientDef(
 
     /** The [includedTraits] entries that name a trait directly. */
     val includedTraitIds: List<String> get() = includedTraits.filterNot { it.startsWith(CLD.groupSigil) }
+
+    /**
+     * Whether this client may include a functional group ([CLD.allGlobal]): anything but a `customer` client in
+     * `production`, whose supported set must be fully determined by its own definition (see [includedTraits]).
+     */
+    val mayIncludeGroups: Boolean
+        get() = !(audience == ClientAudience.customer && usageType == ClientUsageType.production)
 
     override fun toString(): String = "$clientId ($usageType/$audience)"
 

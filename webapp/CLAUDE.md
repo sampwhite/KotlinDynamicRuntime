@@ -701,7 +701,7 @@ retrieve per listed client, grouped by the pure `overridesAcrossClients` into fi
 overriding it. A scoped administrator has one client and is never shown that view, whatever the hash says.
 
 **How a save takes effect, said before and sent with it** (issues #930, #1176, #1191). Every editor on a client's
-page that saves its configuration -- the copy, the menu, the definition, the files -- is live at once for a client
+page that saves its configuration -- the copy, the menu, the definition, the traits, the files -- is live at once for a client
 that runs its latest configuration, and a draft its sandbox shows for one with a sandbox (or on a sandbox's own
 page). The page decides which **once**, from the overview row it last read (`savesAsDraft`, in `clientDetail`), says
 it beside the save (`saveEffectText`) and sends it as `mode` (`expectedMode`), so the wording and what is sent cannot
@@ -808,6 +808,22 @@ definition the result returned as its baseline until the page re-reads, so a qui
 values back. A success bumps the refresh generation, so the heading, the
 listing row and the shell follow the new name. The editable set is the kernel's `ClientPresentationFields`, which
 the endpoint's input and this editor both read.
+
+**Traits** (issue #1117, `ClientTraitsSection.kt`, its pure half in `ClientTraits.kt`, covered by `ClientTraitsTest`):
+under Issues, offered where the definition editor is (`definitionEditable` and `definitionEditOffer`), since a save
+lands in the same configuration under the same rules. It reads `GET /clientAdmin/client/traits` (`ClientsApi.traitCatalog`):
+every global trait as the platform declares it -- id, description, the kinds it applies to, and its fields, drawn
+read-only by `SchemaOutline` from the catalog's own `$defs` -- each marked when the client customizes it, and the
+reason the client may not take `#allGlobal`, when it may not (a `customer` client in `production`). A box per trait,
+and above them one switch for every global trait, now and to come; a customized trait, and every trait under the
+switch, is drawn ticked and locked, saying why (`traitLockedReason`), and turning the switch off keeps the traits
+ticked one by one. **Save** posts `/clientAdmin/client/traits/set` with the whole list (`includedTraitsAfter`: the
+stored list with the picker's changes made in place -- an entry it does not show, such as a trait a code change
+removed, is kept as it is) and `mode`, and takes effect as the definition editor's save does. A live save that would
+take away a trait the client's forms hold is refused with the impact report (`impactOf`), shown in a dialog whose
+**Save anyway** sends `acknowledgeImpact`; one the trial refuses -- a trait a workflow still collects -- shows the
+backend's words. The read-only "Traits" summary row above still lists what the client supports. Wire names: `CIT`
+and `CCT`, in the kernel.
 
 **The time-zone picker** (issue #1257, `TimeZonePicker.kt`). The time zone is `ClientPresentationFields.Kind.timeZone`,
 drawn as `TimeZonePicker`: an antd `Select` that builds its own options rather than letting antd filter, since before

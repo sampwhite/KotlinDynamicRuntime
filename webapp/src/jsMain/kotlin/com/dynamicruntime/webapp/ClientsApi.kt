@@ -1260,6 +1260,18 @@ object ClientsApi {
     suspend fun setDefinition(request: Map<String, Any?>): DefinitionEditResult =
         parseDefinitionEditResult(Http.sendApi("POST", UADEP.clientDefinitionSet, request)[EP.results].toJsonMapOrEmpty())
 
+    /** The global traits a client may include (issue #1117), as the platform declares them. */
+    suspend fun traitCatalog(clientId: String): TraitCatalogView =
+        parseTraitCatalog(Http.getApi(UADEP.clientTraits + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
+
+    /**
+     * Saves the traits a client includes (issue #1117) -- [request] from [traitsEditRequest] -- live, or a draft for a
+     * client with a sandbox. A live save taking away a trait its forms hold is refused with the impact report
+     * ([impactOf]) until acknowledged.
+     */
+    suspend fun setIncludedTraits(request: Map<String, Any?>): TraitsSetResult =
+        parseTraitsSetResult(Http.sendApi("POST", UADEP.clientTraitsSet, request)[EP.results].toJsonMapOrEmpty())
+
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())

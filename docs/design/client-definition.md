@@ -286,7 +286,7 @@ read from it.
 | `customerId` | copied from the maker | the platform, by a configuration write |
 | `extendsFromClientId` | the creator | the platform, by a configuration write |
 | `sandbox` | the creator | its own surface (the sandbox's management) |
-| `includedTraits` | cleared | its own surface (the client's configuration) |
+| `includedTraits` | cleared | its own surface (the traits editor, #1117) |
 | `retired` | cleared | the platform, in its own surface (#1182) |
 | `staticConfig`, `testFeatures` | cleared | the platform (`staticConfig` only in source) |
 
@@ -366,6 +366,13 @@ As part of the client definition, the client declares the traits it supports. `i
 takes as they stand; a trait the client alters, extends or defines is supported **without a second mention**, so
 that list is a minimum rather than a total. The computed result -- the included list with its groups expanded,
 plus everything the client customized -- is what forms and data entry are driven from.
+
+A client's administrator chooses the global traits it includes on its Clients page (issue #1117): every global
+trait as the platform declares it, with its description and fields, and one switch for `#allGlobal`, which a
+`customer` client in `production` may not take. A save is the definition editor's write -- live, or a draft for a
+client with a sandbox -- and a live one that takes away a trait the client's stored forms hold is refused with the
+impact report until acknowledged. An entry the save adds must name a global trait; one already in the list is kept
+as it is, so a stale entry the load drops does not block a save of something else.
 
 The client can choose also to alter an existing trait by changing UI options and can
 only narrow, or can create a new trait by extension, or can define a completely new trait. However,
