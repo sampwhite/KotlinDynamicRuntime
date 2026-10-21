@@ -217,7 +217,7 @@ private fun ownProblem(
     // global trait, and it becomes editable in a client that never reviewed it -- which is a statement about
     // two parties, not about production. A customer's dev client tracking new global traits is how they
     // preview what is coming; an internal production client has no second party to surprise.
-    if (def.audience == ClientAudience.customer && def.usageType == ClientUsageType.production) {
+    if (!def.mayIncludeGroups) {
         val groups = def.includedGroups
         if (groups.isNotEmpty()) {
             return GedraConfigIssue(

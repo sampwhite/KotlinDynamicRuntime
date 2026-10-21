@@ -8,6 +8,7 @@ import com.dynamicruntime.common.gedra.MNU
 import com.dynamicruntime.common.gedra.clientLabel
 import com.dynamicruntime.common.home.HMENU
 import com.dynamicruntime.common.util.humanizeFieldName
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toOptStr
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.async
@@ -367,6 +368,24 @@ private fun ChildrenBuilder.clientDetail(
                             +text
                         }
                     }
+                }
+            }
+        }
+        // The global traits it includes (issue #1117), a field of its stored definition chosen apart from the definition
+        // editor, and offered where that editor is: a save lands in the same configuration under the same rules. One
+        // element whether or not it is drawn, as Issues is, so the sections after it keep their state.
+        div {
+            val stored = def?.stored
+            if (stored != null && definitionEditable(row) &&
+                definitionEditOffer(def.storedConfig, configs, sandbox = def.info[CLD.sandbox] == true).editor
+            ) {
+                h2 { +"Traits" }
+                ClientTraitsSection {
+                    this.clientId = clientId
+                    this.stored = stored[CLD.includedTraits].toJsonListOfStrings()
+                    this.savesDraft = savesDraft
+                    formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
+                    this.onChanged = onChanged
                 }
             }
         }

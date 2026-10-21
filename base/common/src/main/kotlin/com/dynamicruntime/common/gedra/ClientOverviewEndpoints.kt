@@ -352,9 +352,9 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         "Edits a client's definition (issues #1026, #1116): its name, note, time zone, and suggested user labels -- " +
             "and, for an administrator who sees every client, the platform's fields the editor offers: what it is for, " +
             "whose it is, the environments it is enabled in, its preload, its domain prefix and custom domain, and its " +
-            "web resources (a client's own administrator naming one is refused, 403). Its customer, the template it " +
-            "extends, and the traits it includes are not edited here. An absent field is left as it is; a blank one " +
-            "clears it (the name may not be blank). Written to the client's stored definition under the config lock, " +
+            "web resources (a client's own administrator naming one is refused, 403). Its customer and the template it " +
+            "extends are not edited here, nor the traits it includes (`${UADEP.clientTraitsSet}`). An absent field " +
+            "is left as it is; a blank one clears it (the name may not be blank). Written to the client's stored definition under the config lock, " +
             "refused when a trial reload finds a new problem, then published and reloaded; for a client with a Shadow " +
             "Sandbox (issue #930) saved as a draft instead -- written and reloaded, not published -- so its sandbox " +
             "shows it and it goes live once published. Refused for a client defined in source code (its definition " +
@@ -412,6 +412,9 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
             CPY.issues to result.issues.map { it.toWireMap() },
         )
     }
+
+    // --- the traits it includes (issue #1117), a surface of their own beside the definition editor ---------------
+    clientTraitsEndpoints()
 
     itemEndpoint(
         UADEP.clientDefinition,
