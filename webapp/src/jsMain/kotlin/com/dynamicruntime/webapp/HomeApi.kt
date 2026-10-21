@@ -87,6 +87,13 @@ class HomeConfig(
      */
     val sharedDemo: Boolean = false,
     /**
+     * For a caller signed in to `public`, the self-serve client their person created (issue #1228) -- one per
+     * person -- so the home page offers to open it rather than to create another; null when they have made none.
+     */
+    val selfServeClient: String? = null,
+    /** Beside [selfServeClient], whether this site no longer carries that client (retired, or run elsewhere). */
+    val selfServeClientAbsent: Boolean = false,
+    /**
      * The caller's client's own web assets (issue #1130): each slot it has set (`WAS.favicon`, `WAS.brandMark`) to
      * its image by name and content. A slot not in it is the deployment's own image.
      */
@@ -158,6 +165,8 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
             SandboxOf(it, config.state[HFLD.sandboxOfName] as? String ?: it, stranded = config.state[HFLD.sandboxStranded] == true)
         },
         sharedDemo = config.state[HFLD.sharedDemo] == true,
+        selfServeClient = (config.state[HFLD.selfServeClient] as? String)?.ifBlank { null },
+        selfServeClientAbsent = config.state[HFLD.selfServeClientAbsent] == true,
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },

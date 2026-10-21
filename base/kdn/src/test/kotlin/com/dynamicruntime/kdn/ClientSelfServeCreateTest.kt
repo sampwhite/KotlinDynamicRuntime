@@ -15,6 +15,7 @@ import com.dynamicruntime.common.gedra.PLAN
 import com.dynamicruntime.common.gedra.PlanLimits
 import com.dynamicruntime.common.gedra.sandboxOf
 import com.dynamicruntime.common.http.request.ROLE
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.IDD
 import com.dynamicruntime.common.user.TestUser
@@ -29,6 +30,11 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldMatch
+import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.endpoint.EP
+import com.dynamicruntime.common.http.request.TestHttpClient
 
 /**
  * A person's own self-serve client (issue #1113): created from `public`, one per person, on the free plan, with the
@@ -62,6 +68,28 @@ class ClientSelfServeCreateTest : StringSpec({
         info[UPF.client] shouldBe client
         info[UPF.userId] shouldBe result[CLD.userId]
         info[UPF.roles].toJsonListOfStrings() shouldContain ROLE.admin
+    }
+
+    "the shell config says which client the person made, so the home page offers to open it (issue #1228)" {
+        fun made(user: TestUser) = user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.selfServeClient]
+        val person = TestUser.create(cxt, "shell@self1228.test")
+        made(person) shouldBe null
+        val client = person.postData(AEP.createOwnClient, mapOf(CLD.name to "Shell"))[CLD.client].toOptStr().shouldNotBeNull()
+        // In the new client it is not said: the home page's card is for public.
+        made(person) shouldBe null
+        made(TestUser.create(cxt, "shell@self1228.test", userClient = CL.public)) shouldBe client
+        // Carried here, so it is offered to open: no word of its being absent.
+        TestUser.create(cxt, "shell@self1228.test", userClient = CL.public).getData(HEP.homeUiConfig)[UIC.state]
+            .toJsonMapOrEmpty()[HFLD.selfServeClientAbsent] shouldBe null
+        // Retired by the platform, it is still the person's one, and said to be absent rather than offered to open.
+        TestUser.createFullAdmin(cxt, "platform@self1228.test")
+            .postData(ADEP.clientRetirementSet, mapOf(CLD.client to client, CLD.retired to true))
+        val state = TestUser.create(cxt, "shell@self1228.test", userClient = CL.public).getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()
+        state[HFLD.selfServeClient] shouldBe client
+        state[HFLD.selfServeClientAbsent] shouldBe true
+        // A visitor who has not signed in acts in public too, and has made nothing.
+        TestHttpClient(cxt.instanceConfig).sendJsonGetRequest(HEP.homeUiConfig)[EP.results].toJsonMapOrEmpty()[UIC.state]
+            .toJsonMapOrEmpty()[HFLD.selfServeClient] shouldBe null
     }
 
     "a person creates one, from public only" {

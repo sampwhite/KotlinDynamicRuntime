@@ -148,6 +148,19 @@ object HFLD {
     const val sharedDemo = "sharedDemo"
 
     /**
+     * `state.selfServeClient`: for a caller signed in to `public`, the self-serve client their person has created
+     * (issue #1228) -- a person creates one -- so the home page offers to open it rather than to create another
+     * without trying the create; absent when they have made none.
+     */
+    const val selfServeClient = "selfServeClient"
+
+    /**
+     * `state.selfServeClientAbsent`: beside [selfServeClient], true when this node does not carry that client -- the
+     * platform retired it, or it runs elsewhere -- so the page says so rather than offering to open it; absent otherwise.
+     */
+    const val selfServeClientAbsent = "selfServeClientAbsent"
+
+    /**
      * `state.sandboxStranded`: beside [sandboxOf], true when the caller's sandbox user acts with no roles (issue
      * #1197), so the shell says access has ended instead of offering doors that will not open; absent otherwise.
      * Whatever the reason: the user it was opened from is disabled or no longer stands for the parent (lost the

@@ -36,6 +36,9 @@ import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.webasset.ClientWebAssetService
+import com.dynamicruntime.common.context.CL
+import com.dynamicruntime.common.user.IDD
+import com.dynamicruntime.common.util.toOptStr
 
 /**
  * The home/shell widget-group's endpoints (issue #70's `nav`/`shell` hub). Follows the per-group UI-config
@@ -162,6 +165,16 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 "True when the caller's client is a demo client visitors join (issue #1248), or its sandbox, on a deployment that offers " +
                     "joining, so every page notes it is a shared space; absent otherwise.",
             ) { type = SCT.boolean }
+            property(
+                HFLD.selfServeClient,
+                "For a caller signed in to public, the self-serve client their person created (issue #1228); absent when " +
+                    "they have made none.",
+            )
+            property(
+                HFLD.selfServeClientAbsent,
+                "Beside selfServeClient, true when this node does not carry that client (retired, or run elsewhere); absent " +
+                    "otherwise.",
+            ) { type = SCT.boolean }
             property(HFLD.sandboxOf, "When the caller is in a client's sandbox (issue #931), that client's id; absent otherwise.")
             property(HFLD.sandboxOfName, "Beside sandboxOf, that client's display name.")
             property(
@@ -227,6 +240,19 @@ fun homeSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.home") {
                 // Where the client's people are (issue #1115): the zone the webapp shows moments in -- the client's, else
                 // the deployment's display default. Absent, the webapp shows the deployment's day start.
                 ClientService.getOrNull(c)?.displayZoneOf(c.client)?.let { put(HFLD.timeZone, it) }
+                // The self-serve client the caller's person made (issue #1228), read off the identity: in `public`, where
+                // a person creates one, so the home page offers to open it rather than to create a second.
+                if (c.client == CL.public && c.userProfile.isLoggedIn) {
+                    val identityId = c.userProfile.identityId
+                    val users = UserService.getOrNull(c)
+                    if (identityId != null && users != null) {
+                        users.queryIdentityById(c, identityId)?.identityData?.get(IDD.selfServeClient).toOptStr()?.let {
+                            put(HFLD.selfServeClient, it)
+                            // A person creates one, so a client retired or run elsewhere is said, not offered to open.
+                            if (ClientService.getOrNull(c)?.isPresent(it) != true) put(HFLD.selfServeClientAbsent, true)
+                        }
+                    }
+                }
                 // A shared demo space (issue #1248): what the caller does here, other visitors see -- and in its sandbox
                 // too, which every administrator who joined may open, and whose own definition declares no roles.
                 val demo = sandboxParentOf(c.client) ?: c.client

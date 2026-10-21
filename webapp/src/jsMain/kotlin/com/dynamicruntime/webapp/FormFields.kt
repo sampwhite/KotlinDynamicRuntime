@@ -57,6 +57,8 @@ fun ChildrenBuilder.textField(
     isPassword: Boolean = false,
     disabled: Boolean = false,
     autoComplete: String? = null,
+    placeholder: String? = null,
+    maxLength: Int? = null,
     onChange: (String) -> Unit,
 ) {
     div {
@@ -71,8 +73,22 @@ fun ChildrenBuilder.textField(
             this.value = value
             this.disabled = disabled
             this.autoComplete = autoComplete
+            placeholder?.let { this.placeholder = it }
+            maxLength?.let { this.maxLength = it }
             this.onChange = { event -> onChange(event.target.value as String) }
         }
+    }
+}
+
+/** A labeled row holding any [control] -- a choice, a checkbox, a picker -- laid out as [textField]'s rows are. */
+fun ChildrenBuilder.choiceRow(label: String, control: ChildrenBuilder.() -> Unit) {
+    div {
+        className = ClassName("row")
+        span {
+            className = ClassName("field-label")
+            +label
+        }
+        control()
     }
 }
 
