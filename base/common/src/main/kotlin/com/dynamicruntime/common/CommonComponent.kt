@@ -305,7 +305,7 @@ class CommonComponent : ComponentDefinition {
     override fun fragments(cxt: KdrCxt): List<FragmentSource> =
         fragmentFiles(AFRAG.auth, shownOn = "the sign-in, register and claim pages") +
             fragmentFiles(AFRAG.profile, shownOn = "the profile page") +
-            fragmentFiles(HFRAG.home, shownOn = "the app bar and home page, the forms listing and the Documents page") +
+            fragmentFiles(HFRAG.home, shownOn = "the app bar and home page, the forms listing and the Documents page, and every \"What is this?\" link") +
             fragmentFiles(FRAG.errors, shownOn = "error messages") +
             fragmentFiles(FRAG.sample) +
             // The auth mails (issue #773): private copy, read by `MailCopy` rather than delivered.

@@ -247,7 +247,9 @@ Current UI-config endpoints:
   `profile` file's `users.help`, which pulls `users.helpExtra` -- empty as shipped, and the reference flavor's overlay
   says the bar switches too. The concept behind it is `users.whatIsThis`, opened by the heading's **What is this?**
   (`WhatIsThis`: a disclosure that opens its explanation inline, Markdown from the copy it explains, drawing no link
-  when that copy is empty; its words are the file's `whatIsThis.link` and `whatIsThis.hide`).
+  when that copy is empty). The link's own words ("What is this?", "Hide") are the app's, not a page's: the shell's
+  `home` file's `whatIsThis` namespace, told to every page through `ShellFacts` once the bar has its copy, so a page's
+  file holds only its explanation.
   The shell config (`/home/ui/config`) carries the same list as `state.users`, so the app
   bar needs no fetch of its own: for a person with more than one user the **identity badge** says which one this
   is in brackets (`Demo Person [hub · Member B]`, only what tells it from the others -- `UserChoice.qualifierWithin`)

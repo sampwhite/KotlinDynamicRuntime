@@ -37,3 +37,9 @@ The users you have in other clients. Choose one to switch to it; the account men
 # +title Documents
 # +homeLabel Home
 # +emptyNote No documents are available in this deployment.
+
+/- The words of every "What is this?" link in the app, and of closing what one opened (issue #1330): the app's words,
+   so the shell's copy rather than each page's. A page's own file holds only the explanation itself. -/
+# @whatIsThis
+# +link What is this?
+# +hide Hide

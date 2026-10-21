@@ -227,8 +227,6 @@ val Profile = FC<Props> {
         WhatIsThis {
             heading = t("users", "title", "Your users")
             text = copy.opt("users", "whatIsThis").orEmpty().evalTemplate(emptyMap(), resolver = copy.fragmentResolver())
-            linkLabel = copy.opt("whatIsThis", "link")
-            hideLabel = copy.opt("whatIsThis", "hide")
         }
         div {
             className = ClassName("subtitle")

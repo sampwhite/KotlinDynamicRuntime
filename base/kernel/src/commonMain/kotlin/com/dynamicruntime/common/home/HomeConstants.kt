@@ -425,6 +425,14 @@ object HFRAG {
     const val formsNs = "forms"
 
     /**
+     * The home file's namespace for the words of every "What is this?" link (issue #1330): [whatIsThisLink], and
+     * [whatIsThisHide] for closing what one opened. The app's words rather than a page's, so the shell's copy.
+     */
+    const val whatIsThisNs = "whatIsThis"
+    const val whatIsThisLink = "link"
+    const val whatIsThisHide = "hide"
+
+    /**
      * What a forms-listing row with no workflows shows in the workflow column (issue #791), in [formsNs]: Markdown,
      * so a client may say "Coming Soon…", link to the workflow pages, or say "No workflows available."
      */

@@ -21,12 +21,6 @@ external interface WhatIsThisProps : Props {
      */
     var text: String
 
-    /** The link's words, from the same copy; "What is this?" when the copy has none. */
-    var linkLabel: String?
-
-    /** The words that close it again; "Hide" when the copy has none. */
-    var hideLabel: String?
-
     /** How links in the explanation resolve, as the rest of the page's copy does. */
     var linkResolver: ((String) -> String)?
 }
@@ -41,10 +35,13 @@ private var whatIsThisSeq = 0
  * keyboard and a screen reader already know (`aria-expanded`, `aria-controls`).
  *
  * The status a section shows stays always visible; this holds the concept behind it, for whoever wants it. Nothing is
- * drawn when [WhatIsThisProps.text] is blank, so an explanation is removed by emptying its copy.
+ * drawn when [WhatIsThisProps.text] is blank, so an explanation is removed by emptying its copy. The link's own words
+ * ("What is this?", "Hide") are the shell's copy, the same on every page ([ShellFacts.whatIsThisLink]).
  */
 val WhatIsThis = FC<WhatIsThisProps> { props ->
     var open by useState(false)
+    // The link's words are the app's, not the page's: the shell's copy, told to every page (ShellFacts).
+    val facts = useShellFacts()
     val panelId = useState { "what-is-this-${++whatIsThisSeq}" }.component1()
     val text = props.text.trim()
 
@@ -61,7 +58,7 @@ val WhatIsThis = FC<WhatIsThisProps> { props ->
             asDynamic()["aria-expanded"] = open
             asDynamic()["aria-controls"] = panelId
             onClick = { open = !open }
-            +if (open) props.hideLabel ?: "Hide" else props.linkLabel ?: "What is this?"
+            +if (open) facts.whatIsThisHide ?: "Hide" else facts.whatIsThisLink ?: "What is this?"
         }
     }
     if (open) {

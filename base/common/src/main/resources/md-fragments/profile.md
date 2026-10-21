@@ -46,11 +46,6 @@ Switching moves you from one to another without signing in again.
 # +useForNextSignIn Use for next sign-in
 # +nextSignInSet Your next sign-in now takes you to that user.
 
-/- The words of a "What is this?" link and of closing what it opened (issue #1330), for every one on the page. -/
-# @whatIsThis
-# +link What is this?
-# +hide Hide
-
 /- The public placeholder (issue #752): a person may remove their public users, down to nothing -- they
    registered themselves, so they can register again. `helpOnly` is for their last user. -/
 # @placeholder
