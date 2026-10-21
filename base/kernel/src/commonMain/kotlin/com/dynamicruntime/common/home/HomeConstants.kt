@@ -142,8 +142,8 @@ object HFLD {
     const val timeZone = "timeZone"
 
     /**
-     * `state.sharedDemo`: true when the caller's client is a demo client visitors join (issue #1248), on a deployment
-     * that offers joining -- so every page carries the standing note that this is a shared space; absent otherwise.
+     * `state.sharedDemo`: true when the caller's client is a demo client visitors join (issue #1248), or its sandbox, on
+     * a deployment that offers joining -- so every page carries the standing note that this is a shared space; absent otherwise.
      */
     const val sharedDemo = "sharedDemo"
 

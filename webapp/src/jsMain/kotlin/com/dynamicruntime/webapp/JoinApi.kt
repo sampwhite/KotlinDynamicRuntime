@@ -9,8 +9,13 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 
-/** A role a demo client may be joined as (issue #1248), and the caller's user in it when they have joined as it. */
-class JoinRoleView(val name: String, val label: String, val persona: String, val summary: String, val userId: Long?) {
+/**
+ * A role a demo client may be joined as (issue #1248): the caller's user in it when they have joined as it, and
+ * [removed] when they did and one of the client's administrators has since disabled that user.
+ */
+class JoinRoleView(
+    val name: String, val label: String, val persona: String, val summary: String, val userId: Long?, val removed: Boolean = false,
+) {
     val isAdmin: Boolean get() = persona == PERSONA.admin
 }
 
@@ -34,6 +39,7 @@ fun parseJoinable(envelope: Map<String, Any?>): List<JoinableView> = envelope[EP
                 persona = role[JOIN.persona].toOptStr().orEmpty(),
                 summary = role[JOIN.summary].toOptStr().orEmpty(),
                 userId = role[JOIN.userId].toOptLong(),
+                removed = role[JOIN.removed] == true,
             )
         },
     )

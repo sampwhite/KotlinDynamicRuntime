@@ -37,6 +37,16 @@ class JoinApiTest {
         assertNull(demo.roles[0].userId)
         assertEquals(42L, demo.roles[1].userId)
         assertTrue(demo.roles[1].isAdmin)
+        assertTrue(!demo.roles[1].removed)
+    }
+
+    @Test
+    fun aRoleWhoseUserWasRemovedSaysSo() {
+        val removed = parseJoinable(
+            mapOf(EP.items to listOf(mapOf(JOIN.client to "acme", JOIN.roles to listOf(mapOf(JOIN.name to "admin", JOIN.removed to true))))),
+        ).single().roles.single()
+        assertTrue(removed.removed)
+        assertNull(removed.userId)
     }
 
     @Test

@@ -27,6 +27,11 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import com.dynamicruntime.common.home.HEP
+import com.dynamicruntime.common.home.HFLD
+import com.dynamicruntime.common.content.UIC
+import com.dynamicruntime.common.gedra.sandboxOf
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 
 /**
  * Joining a demo client from `public` (issue #1248): on a reference deployment, a visitor becomes an administrator of
@@ -108,6 +113,47 @@ class ClientJoinTest : StringSpec({
         val speakerRow = users.queryByUserId(reference, speaker[JOIN.userId].toOptLong()!!).shouldNotBeNull()
         speakerRow.persona shouldBe PERSONA.member
         speakerRow.roles shouldNotContain ROLE.admin
+    }
+
+    "the shell says a joined demo client is a shared space, in its sandbox too, and nowhere else" {
+        fun sharedDemo(user: TestUser) = user.getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.sharedDemo]
+        val visitor = TestUser.create(reference, "shell@join1248.test")
+        sharedDemo(visitor) shouldBe null
+        join(visitor, SC.acme, PERSONA.admin)
+        sharedDemo(visitor) shouldBe true
+        // Every administrator who joined may open acme's sandbox, which is as shared, though its definition declares no roles.
+        visitor.postData(AEP.openSandbox, emptyMap())
+        visitor.selfClient() shouldBe sandboxOf(SC.acme)
+        sharedDemo(visitor) shouldBe true
+        // Without the flavor, acme is not a shared space.
+        sharedDemo(TestUser.create(plain, "shell@join1248.test", userClient = SC.acme)) shouldBe null
+    }
+
+    "designdemo, defined in stored configuration, is joined as its designer" {
+        val visitor = TestUser.create(reference, "designer@join1248.test")
+        join(visitor, DesignDemo.client, PERSONA.admin)
+        visitor.selfClient() shouldBe DesignDemo.client
+    }
+
+    "a user an administrator disabled is not joined again; one deleted for good may join afresh" {
+        val users = UserService.get(reference)
+        val disabled = TestUser.create(reference, "disabled@join1248.test")
+        val disabledId = join(disabled, SC.acme, PERSONA.admin)[JOIN.userId].toOptLong().shouldNotBeNull()
+        users.deleteUser(reference.mkSubContext("joinTest", SC.acme), users.queryByUserId(reference, disabledId)!!, permanent = false)
+        val back = TestUser.create(reference, "disabled@join1248.test", userClient = CL.public)
+        roleOf(joinable(back), SC.acme, PERSONA.admin)[JOIN.removed] shouldBe true
+        roleOf(joinable(back), SC.acme, PERSONA.admin)[JOIN.userId] shouldBe null
+        back.expectError(EXC.badInput, JOIN.joinPath, mapOf(JOIN.client to SC.acme, JOIN.role to PERSONA.admin, JOIN.acknowledged to true))
+            .toString() shouldContain "was disabled by one of its administrators"
+        users.queryByUserId(reference, disabledId).shouldNotBeNull().enabled shouldBe false
+
+        // A delete for good gives up the user's key, so the person joins as the role again with a user of their own.
+        val deleted = TestUser.create(reference, "deleted@join1248.test")
+        val deletedId = join(deleted, SC.acme, PERSONA.admin)[JOIN.userId].toOptLong().shouldNotBeNull()
+        users.deleteUser(reference.mkSubContext("joinTest", SC.acme), users.queryByUserId(reference, deletedId)!!, permanent = true)
+        val again = TestUser.create(reference, "deleted@join1248.test", userClient = CL.public)
+        roleOf(joinable(again), SC.acme, PERSONA.admin)[JOIN.removed] shouldBe null
+        join(again, SC.acme, PERSONA.admin)[JOIN.userId] shouldNotBe deletedId
     }
 
     "a join is refused without the acknowledgment, and for what is not offered" {

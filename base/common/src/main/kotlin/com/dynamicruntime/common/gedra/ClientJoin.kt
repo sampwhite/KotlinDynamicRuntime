@@ -35,19 +35,27 @@ object ClientJoin {
     /** Whether this deployment offers joining a demo client (issue #1248). */
     fun isOffered(cxt: KdrCxt): Boolean = cxt.instanceConfig.get(JOIN.offeredKey) == true
 
-    /** A client the caller may join, with each of its roles and the caller's user in it, when they hold one. */
-    class Joinable(val def: ClientDef, val roles: List<Pair<ClientJoinRole, Long?>>) {
+    /**
+     * One role of a [Joinable] client, as the caller stands in it: [userId] when they hold it, and [removed] when they
+     * held it and one of the client's administrators has since disabled that user. (A user deleted for good gives up
+     * its key, so the person may join as the role afresh, as they may hold a user anywhere such a delete freed.)
+     */
+    class JoinableRole(val role: ClientJoinRole, val userId: Long?, val removed: Boolean)
+
+    /** A client the caller may join, with each of its roles and how the caller stands in it. */
+    class Joinable(val def: ClientDef, val roles: List<JoinableRole>) {
         fun toJsonMap(): Map<String, Any?> = buildMap {
             put(JOIN.client, def.clientId)
             put(JOIN.clientName, def.name.ifEmpty { def.clientId })
             def.description?.let { put(JOIN.description, it) }
-            put(JOIN.roles, roles.map { (role, userId) ->
+            put(JOIN.roles, roles.map { held ->
                 buildMap {
-                    put(JOIN.name, role.name)
-                    put(JOIN.label, role.label)
-                    put(JOIN.persona, role.persona)
-                    put(JOIN.summary, role.summary)
-                    userId?.let { put(JOIN.userId, it) }
+                    put(JOIN.name, held.role.name)
+                    put(JOIN.label, held.role.label)
+                    put(JOIN.persona, held.role.persona)
+                    put(JOIN.summary, held.role.summary)
+                    held.userId?.let { put(JOIN.userId, it) }
+                    if (held.removed) put(JOIN.removed, true)
                 }
             })
         }
@@ -57,9 +65,11 @@ object ClientJoin {
     fun joinable(cxt: KdrCxt): List<Joinable> {
         val identity = joiner(cxt)
         val mine = UserService.get(cxt).usersOfIdentity(cxt, identity.identityId)
-            .filter { it.enabled && it.isRegistered && !it.isDeleted }
         return ClientService.get(cxt).presentClients.filter { it.joinRoles.isNotEmpty() }.map { def ->
-            Joinable(def, def.joinRoles.map { role -> role to mine.firstOrNull { it.holds(def.clientId, role) }?.userId })
+            Joinable(def, def.joinRoles.map { role ->
+                val held = mine.firstOrNull { it.holds(def.clientId, role) }
+                JoinableRole(role, held?.takeIf { it.isActive }?.userId, held != null && !held.enabled)
+            })
         }
     }
 
@@ -84,7 +94,22 @@ object ClientJoin {
         // a role becomes roles.
         val persona = PERSONA.def(role.persona) ?: throw KdrException("Join role '${role.name}' names no persona.")
         val users = UserService.get(cxt)
-        val row = users.claimUser(cxt, identity, client, persona.name, role.personaSuffix, persona.defaultRoles)
+        // A user one of the client's administrators disabled stays so: in a shared demo, joining again must not undo
+        // another visitor's decision, which the disclosure tells the visitor an administrator may make. (A user deleted
+        // for good gave up its key, so it is not found here, and the person joins as the role afresh.)
+        if (users.usersOfIdentity(cxt, identity.identityId).any { it.holds(client, role) && !it.enabled }) {
+            throw KdrException.mkInput(
+                "Your ${role.label} user in ${def.name.ifEmpty { client }} was disabled by one of its administrators, so " +
+                    "it is not joined again.",
+            )
+        }
+        val row = try {
+            users.claimUser(cxt, identity, client, persona.name, role.personaSuffix, persona.defaultRoles)
+        } catch (e: Exception) {
+            // Two joins of the role at once both find no user and both make one: the second loses on the user's key,
+            // and finds the first's.
+            users.usersOfIdentity(cxt, identity.identityId).firstOrNull { it.holds(client, role) && it.isActive } ?: throw e
+        }
         val missing = role.userLabels.filterNot { it in row.labels }
         if (missing.isNotEmpty()) {
             row.labels = row.labels + missing
@@ -104,6 +129,9 @@ object ClientJoin {
 
     private fun AuthUserRow.holds(client: String, role: ClientJoinRole): Boolean =
         this.client == client && persona == role.persona && personaSuffix == role.personaSuffix
+
+    /** A user the person may act as: enabled, registered, and not deleted. */
+    private val AuthUserRow.isActive: Boolean get() = enabled && isRegistered && !isDeleted
 }
 
 /**
@@ -119,6 +147,11 @@ fun clientJoinSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, JOIN.namespace)
         property(JOIN.persona, "The persona joining as the role gives (member or admin).", required = true)
         property(JOIN.summary, "A sentence on what the role does.", required = true)
         property(JOIN.userId, "The caller's user holding the role, when they have joined as it.") { type = SCT.integer }
+        property(
+            JOIN.removed,
+            "True when the caller joined as the role and an administrator of the client has since disabled that user, " +
+                "which is not joined again; absent otherwise.",
+        ) { type = SCT.boolean }
     }
     type(JOIN.joinableTypeName) {
         type = SCT.kObject

@@ -36,6 +36,12 @@ val JoinPage = FC<Props> {
     val generation = useRefreshGeneration()
     val bump = useRefreshBump()
 
+    // An acknowledgment is of one client's disclosure: another client's page asks again.
+    useEffect(client) {
+        acknowledged = false
+        joinError = null
+    }
+
     useEffect(generation) {
         error = null
         joinScope.launch {
@@ -107,7 +113,12 @@ val JoinPage = FC<Props> {
                             span { className = ClassName("subtitle"); +" — ${role.summary}" }
                         }
                         val joinedAs = role.userId
-                        if (joinedAs != null) {
+                        if (role.removed) {
+                            p {
+                                className = ClassName("subtitle")
+                                +"One of ${view.name}'s administrators has disabled your ${role.label} user, so it can't be joined again."
+                            }
+                        } else if (joinedAs != null) {
                             p { className = ClassName("subtitle"); +"You have joined as ${role.label}." }
                             Button {
                                 disabled = busy

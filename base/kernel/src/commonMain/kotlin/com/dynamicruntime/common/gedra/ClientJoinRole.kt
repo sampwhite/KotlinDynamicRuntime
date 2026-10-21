@@ -39,7 +39,12 @@ object JOIN {
     const val roles = "roles"
     const val acknowledged = "acknowledged"
     const val userId = "userId"
-    const val switched = "switched"
+
+    /**
+     * On a role the caller joined: true when one of the client's administrators has since disabled their user, which
+     * is not joined again.
+     */
+    const val removed = "removed"
 
     // A role's fields.
     const val name = "name"
