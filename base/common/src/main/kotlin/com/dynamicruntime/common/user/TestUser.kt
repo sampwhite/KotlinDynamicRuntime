@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.UPF
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.HttpMethod
+import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.test.TEP
@@ -36,7 +37,6 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     /** The numeric id of the user this client is acting as. */
     val userId: Long get() = userInfo[UPF.userId].toOptLong() ?: -1L
 
-    /** GETs [path] as this user; returns the response's `results` map. */
     /**
      * Runs [block] with **test access** (issue #1149): its requests -- this user's, through [client] -- carry env
      * auth, so a `forTestingOnly` fixture, or a diagnostic `_debug` tag, answers them. The user's other requests go
@@ -44,39 +44,43 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
      */
     fun <T> withTestAccess(block: () -> T): T = client.withTestAccess(block)
 
+    /**
+     * GETs [path] as this user; returns the response's `results` map. Like every call here that expects a success,
+     * an error fails the test, with what the request logged (issue #1173).
+     */
     fun getData(path: String, args: Map<String, Any?>? = null): Map<String, Any?> =
-        client.sendJsonGetRequest(path, args)[EP.results].toJsonMapOrEmpty()
+        succeeded(path, client.sendGetRequest(path, args))[EP.results].toJsonMapOrEmpty()
 
     /** POSTs [data] to [path] as this user; returns the response's `results` map. */
     fun postData(path: String, data: Map<String, Any?>): Map<String, Any?> =
-        client.sendJsonPostRequest(path, data)[EP.results].toJsonMapOrEmpty()
+        succeeded(path, client.sendEditRequest(path, null, data, HttpMethod.POST))[EP.results].toJsonMapOrEmpty()
 
     /** GETs [path] as this user; returns the response's `items` list (empty when absent). */
     fun getItems(path: String, args: Map<String, Any?>? = null): List<Map<String, Any?>> =
-        client.sendJsonGetRequest(path, args)[EP.items].toJsonListOfMaps()
+        succeeded(path, client.sendGetRequest(path, args))[EP.items].toJsonListOfMaps()
 
     /** GETs [path] as this user; returns the response's `item` -- the third envelope kind, beside the two above. */
     fun getItem(path: String, args: Map<String, Any?>? = null): Map<String, Any?> =
-        client.sendJsonGetRequest(path, args)[EP.item].toJsonMapOrEmpty()
+        succeeded(path, client.sendGetRequest(path, args))[EP.item].toJsonMapOrEmpty()
 
     /** POSTs [data] to [path] as this user; returns the response's `item`. */
     fun postItem(path: String, data: Map<String, Any?>): Map<String, Any?> =
-        client.sendJsonPostRequest(path, data)[EP.item].toJsonMapOrEmpty()
+        succeeded(path, client.sendEditRequest(path, null, data, HttpMethod.POST))[EP.item].toJsonMapOrEmpty()
 
     /** POSTs [data] to [path] as this user; returns the response's `items` list. */
     fun postItems(path: String, data: Map<String, Any?>): List<Map<String, Any?>> =
-        client.sendJsonPostRequest(path, data)[EP.items].toJsonListOfMaps()
+        succeeded(path, client.sendEditRequest(path, null, data, HttpMethod.POST))[EP.items].toJsonListOfMaps()
 
     /**
      * DELETEs [path] as this user; returns the response's `results` map. The input rides in [args] rather
      * than a body, which is how this codebase sends a DELETE -- see [HttpMethod.DELETE].
      */
     fun deleteData(path: String, args: Map<String, Any?>? = null): Map<String, Any?> =
-        client.sendJsonDeleteRequest(path, args)[EP.results].toJsonMapOrEmpty()
+        succeeded(path, client.sendDeleteRequest(path, args))[EP.results].toJsonMapOrEmpty()
 
     /**
      * Uploads [parts] to [path] as this user -- a `multipart/form-data` request, a `ContentData` for the file and
-     * any other value for a field travelling with it -- and returns the **whole envelope**, a success's or an
+     * any other value for a field traveling with it -- and returns the **whole envelope**, a success's or an
      * error's, so one call serves a test of either: read `results` from it, or `status`.
      */
     fun upload(path: String, parts: Map<String, Any?>): Map<String, Any?> =
@@ -127,17 +131,35 @@ class TestUser(val client: TestHttpClient, val cxt: KdrCxt, val userInfo: Map<St
     ): Map<String, Any?> {
         val resolved = method ?: if (data == null) HttpMethod.GET else HttpMethod.POST
         // Exhaustive, so a future verb fails to compile here rather than falling into a wrong branch.
-        val env = when (resolved) {
-            HttpMethod.GET -> client.sendJsonGetRequest(path, args)
-            HttpMethod.DELETE -> client.sendJsonDeleteRequest(path, args)
-            HttpMethod.POST, HttpMethod.PUT ->
-                client.sendEditRequest(path, args, data, resolved).rptResponseData?.jsonMap() ?: emptyMap()
+        val handler = when (resolved) {
+            HttpMethod.GET -> client.sendGetRequest(path, args)
+            HttpMethod.DELETE -> client.sendDeleteRequest(path, args)
+            HttpMethod.POST, HttpMethod.PUT -> client.sendEditRequest(path, args, data, resolved)
         }
+        val env = handler.rptResponseData?.jsonMap() ?: emptyMap()
         val actual = (env[EP.status] as? Number)?.toInt()
         if (actual != status) {
-            throw AssertionError("Expected '$path' to fail with status $status but got ${actual ?: "a success response"}.")
+            val got = actual?.let { "status $it (${env[EP.errorMessage]})" } ?: "a success response"
+            throw AssertionError(withLogs("Expected '$path' to fail with status $status but got $got.", handler))
         }
         return env
+    }
+
+    /**
+     * The envelope [handler] answered with, when it is a success's. An error envelope -- the one kind that carries a
+     * `status` -- fails the test here, with the request's log lines, rather than coming back as an empty result for
+     * an assertion further on to trip over without saying why.
+     */
+    private fun succeeded(path: String, handler: RequestHandler): Map<String, Any?> {
+        val env = handler.rptResponseData?.jsonMap() ?: emptyMap()
+        val status = (env[EP.status] as? Number)?.toInt() ?: return env
+        throw AssertionError(withLogs("Expected '$path' to succeed but it failed with status $status: ${env[EP.errorMessage]}", handler))
+    }
+
+    /** [message], followed by what the request logged (issue #1173), when the client captured it. */
+    private fun withLogs(message: String, handler: RequestHandler): String {
+        val lines = handler.logCapture?.text().orEmpty()
+        return if (lines.isEmpty()) message else "$message\nWhat the request logged:\n$lines"
     }
 
     @Suppress("ConstPropertyName")

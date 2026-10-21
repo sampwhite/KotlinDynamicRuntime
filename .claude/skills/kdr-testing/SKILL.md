@@ -313,6 +313,18 @@ caller who asks would undo the hiding it exists to explain. Every diagnostic `_d
 `explainScope`, `explainInput`, ...) is fenced the same way, through `KdrCxt.hasDebugDiagnostic`. Without it, a
 filtering bug shows up only as a count one lower than expected.
 
+**What did this request log?** `_debug=captureLogs` (issue #1173) returns the request's log lines under
+`_meta.logs`, on a success and on an error alike, and keeps them down to debug whatever the topics are set to, so one
+request's debug output needs no node-wide `KDR_LOG_LEVEL=debug`. Each line is its level, topic, and message, plus an
+exception's class and message (not its stack). The capture is capped, and `_meta.logsOmitted` counts what the cap left
+out. It is fenced like the other diagnostic tags, since log lines carry internals. Lines logged before the session
+is restored are not kept, because the fence cannot be decided earlier.
+
+```bash
+curl -s -b "$JAR" -X POST 'http://localhost:7071/kda/admin/user/setName?_debug=captureLogs' \
+  -H 'Content-Type: application/json' -d '{"userId": 5, "name": "x"}' | jq '._meta.logs'
+```
+
 ## Probing a running instance (`kdr-probe`)
 
 `bin/kdr-probe` drives a **running** server as a chosen caller (issue #215). Its callers sign in through `becomeUser`
@@ -611,7 +623,7 @@ recently acted as, else its first, among the registered users; a fixture user is
 ```kotlin
 val alice = TestUser.create(cxt, "alice@example.com", level = ROLE.admin)
 alice.userId shouldBeGreaterThan 0L
-alice.getData("/profile/ui/config")   // made as alice; getData/postData unwrap `results`
+alice.getData("/profile/ui/config")   // made as alice; getData/postData unwrap `results`, and fail on an error
 
 // A deployment operator: the operator level plus the `allClients` capability. Since #464 the `operator`
 // section requires the capability as well as the level (it is a deployment-wide surface), so the level
@@ -620,6 +632,18 @@ val opal = TestUser.createOperator(cxt, "opal@example.com")
 opal.getData("/operator/system/info")            // the deployment operator section
 opal.expectError(EXC.notAuthorized, ADEP.users)  // ...but not an admin one
 ```
+
+**A call that should succeed fails the test when it does not** (issue #1173). `getData`, `postData`, `getItems`,
+`getItem`, `postItem`, `postItems`, and `deleteData` throw an `AssertionError` on an error envelope, naming the
+status and message, rather than returning an empty result for a later assertion to trip over. A test that asks
+"is there anything?" of an endpoint that answers *nothing* with an error, such as a client with no stored
+configuration (a 404), reads the status itself: `expectError`, or `user.client.sendJsonGetRequest(...)[EP.status]`.
+
+**A failure message says what the request logged.** `TestHttpClient` captures every request's log lines, down to
+debug (`captureLogs`, on by default). Those failures and a mismatched `expectError` append them, so a 500 in a test
+comes back with the lines that led to it. The lines stay out of the response; read them from the returned handler's
+`logCapture`. **Do not assert on log text**: wording changes for reasons unrelated to behavior. What a test needs to
+assert belongs in a structured `explain*` tag.
 
 **An upload as a user is `TestUser.upload(path, parts)`** -- `sendUploadRequest` on the user's client. Unlike
 `getData`/`postData` it returns the **whole envelope**, not `results`, so one call serves a test of a refusal as

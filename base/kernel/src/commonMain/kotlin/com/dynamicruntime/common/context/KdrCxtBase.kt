@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.context
 
+import com.dynamicruntime.common.logging.LogCapture
 import kotlin.time.Instant
 
 /**
@@ -28,4 +29,10 @@ interface KdrCxtBase {
      * that different in-flight requests cannot each shift out from under each other.
      */
     fun instanceNow(): Instant
+
+    /**
+     * Where this context's log records are kept as well as logged (issue #1173), or null -- the default -- when
+     * they are not. The backend's request context carries one when the request asked to capture its log lines.
+     */
+    val logCapture: LogCapture? get() = null
 }

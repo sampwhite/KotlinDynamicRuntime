@@ -456,7 +456,9 @@ class ClientScopedAdminTest : StringSpec({
         val cxt = TestInstances.default("orgAssign")
         val full = TestUser.createFullAdmin(cxt, "assign-full@example.com")
         val confined = TestUser.create(cxt, "assign-confined@example.com", level = ROLE.admin)
-        val target = TestUser.create(cxt, "assign-target@example.com")
+        // In the administrator's own client: an ordinary user at this address is otherwise made in `public`, where the
+        // confined administrator cannot see them, and the allowed assignment below would be a 404 (found by #1173).
+        val target = TestUser.create(cxt, "assign-target@example.com", userClient = CL.hub)
         full.postData(UADEP.userSetOrg, mapOf(ADF.userId to confined.userId, ADF.org to "eng"))
         full.postData(UADEP.userSetOrg, mapOf(ADF.userId to target.userId, ADF.org to "eng"))
 

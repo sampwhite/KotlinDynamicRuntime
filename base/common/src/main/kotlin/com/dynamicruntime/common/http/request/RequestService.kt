@@ -8,6 +8,8 @@ import com.dynamicruntime.common.context.KdrRequest
 import com.dynamicruntime.common.context.KdrSchemaStore
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.logging.RLOG
+import com.dynamicruntime.common.logging.RequestLogCapture
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AUTHC
 import com.dynamicruntime.common.user.UserAuthCookie
@@ -541,6 +543,9 @@ class RequestService : ServiceInitializer {
         // An ephemeral public test deployment's env auth comes from an administrator's login rather than an edge
         // (issue #1150), so it is known only now that the session is restored -- and before the gate below.
         EnvAuthRules.fromAdminLogin(cxt)
+        // Whether the request keeps its log lines (issue #1173) is decided here, the first moment the fence can be:
+        // the caller's env auth, and whether it is in debug, are only known once the session is restored.
+        startLogCapture(cxt, handler)
 
         // Enforce the section's required role against the acting profile (restored by extractAuth). The test
         // goes through RoleLadder rather than plain set membership, so a higher privilege satisfies a lower
@@ -634,6 +639,26 @@ class RequestService : ServiceInitializer {
         }
 
         handler.logSuccess(cxt, EXC.ok)
+    }
+
+    /**
+     * Starts the request keeping its log lines (issue #1173) when the caller asked with `_debug=captureLogs` and may
+     * have them -- fenced like the other diagnostic tags ([KdrCxt.hasDebugDiagnostic]), since log lines carry
+     * internals: SQL, cache decisions, other components' state -- or when the in-process test client asked
+     * ([RequestHandler.testCaptureLogs]). Only the first goes out with the response. Without the fence the word is
+     * ignored, as the other diagnostic tags are.
+     *
+     * The lines from before this point -- the session's restoration -- are not kept: the fence cannot be decided
+     * sooner.
+     */
+    private fun startLogCapture(cxt: KdrCxt, handler: RequestHandler) {
+        val asked = cxt.hasDebugDiagnostic(RLOG.captureLogs)
+        if (!asked && !handler.testCaptureLogs) {
+            return
+        }
+        val capture = RequestLogCapture(inResponse = asked)
+        cxt.logCapture = capture
+        handler.logCapture = capture
     }
 
     /**
@@ -827,9 +852,11 @@ class RequestService : ServiceInitializer {
         // config by whatever serves the bundle (AppUiService); empty when this backend serves no bundle. The
         // frontend compares it to the hash injected into its own bootstrap to notice a new deployment.
         env[EP.webAppHash] = cxt.instanceConfig.get(EP.webAppHash) as? String ?: ""
-        // Any handler-injected response structure travels under the off-contract `_meta` key.
-        val meta = cxt.request?.responseMeta
-        if (!meta.isNullOrEmpty()) {
+        // Any handler-injected response structure travels under the off-contract `_meta` key, and so do the request's
+        // captured log lines when the caller asked for them (issue #1173).
+        val meta = LinkedHashMap(cxt.request?.responseMeta.orEmpty())
+        cxt.logCapture?.takeIf { it.inResponse }?.let { meta.putAll(it.meta()) }
+        if (meta.isNotEmpty()) {
             env[EP.meta] = meta
         }
         return env

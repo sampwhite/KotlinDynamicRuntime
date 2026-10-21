@@ -29,6 +29,13 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
      */
     var peerAddress: String? = null
 
+    /**
+     * Whether each request keeps its log lines (issue #1173), down to debug whatever the topics are set to, so a
+     * failing call can say what the code under it did: [TestUser] puts them into its failure messages. Read them
+     * from the returned handler's `logCapture`. They never reach the response, which is as it would be otherwise.
+     */
+    var captureLogs: Boolean = true
+
     /** The context root prepended to endpoint paths: the configured API root, or [ContextRoot.kda]. */
     val contextRoot: String =
         (instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
@@ -154,6 +161,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
 
     private fun execute(handler: RequestHandler) {
         handler.peerAddress = peerAddress
+        handler.testCaptureLogs = captureLogs
         handler.handleRequest()
         extractCookies(handler)
     }

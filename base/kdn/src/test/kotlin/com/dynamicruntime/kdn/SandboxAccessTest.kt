@@ -58,6 +58,7 @@ import io.kotest.matchers.shouldNotBe
  *
  * One booted instance; a parent client per case.
  */
+@Suppress("BooleanLiteralArgument")
 class SandboxAccessTest : StringSpec({
     val cxt = TestInstances.default("sandboxAccess929")
 
@@ -198,20 +199,23 @@ class SandboxAccessTest : StringSpec({
     // (`SandboxAccess.standingOf`) -- not with what its own row was made with the day the sandbox was opened. Each
     // case changes something outside, or the sandbox row, and asks the sandbox session.
 
-    /** What [user]'s session can do across clients: what its roles say, and what three gates answer for [other]. */
+    /** The answers `reachOf` collects, one per way a session could reach across clients. */
     class Reach(val listed: Boolean, val adminSection: Boolean, val namesOther: Boolean, val overviewShowsOther: Boolean) {
         val any: Boolean get() = listed || adminSection || namesOther || overviewShowsOther
         override fun toString(): String =
             "allClients listed=$listed, admin section admits=$adminSection, names another client=$namesOther, overview lists another=$overviewShowsOther"
     }
 
+    /** What [user]'s session can do across clients: what its roles say, and what three gates answer for [other]. */
     fun reachOf(user: TestUser, other: String): Reach = Reach(
         listed = ROLE.allClients in user.selfRoles(),
         // The `admin` section: `admin` and `allClients` both.
         adminSection = user.client.sendJsonGetRequest(ACEP.bundles, mapOf(CFEP.client to other))[EP.status] == null,
         // The scoped surface, naming a client that is not the caller's own: admitted only to one who sees every client.
         namesOther = user.client.sendJsonGetRequest(UADEP.clientDefinition, mapOf(CLD.client to other))[EP.status] == null,
-        overviewShowsOther = user.getItems(UADEP.clientsOverview).any { it[CLD.clientId] == other },
+        // A caller the scoped surface refuses is shown no overview at all.
+        overviewShowsOther = user.client.sendJsonGetRequest(UADEP.clientsOverview)[EP.items].toJsonListOfMaps()
+            .any { it[CLD.clientId] == other },
     )
 
     "allClients taken away outside the sandbox is no longer held inside it, for an administrator of the parent" {

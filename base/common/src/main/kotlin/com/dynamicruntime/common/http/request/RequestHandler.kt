@@ -14,6 +14,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.exception.KdrMsg
 import com.dynamicruntime.common.gedra.DSV
+import com.dynamicruntime.common.logging.RequestLogCapture
 import com.dynamicruntime.common.startup.InstanceRegistry
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
@@ -126,6 +127,16 @@ class RequestHandler : WebRequest {
      * produces from a real request, so a test exercises the same handler code an upload does.
      */
     var testParts: Map<String, Any?>? = null
+
+    /**
+     * Set by the in-process test client to have the request keep its log lines (issue #1173) whoever the caller is,
+     * for the test's own failure message. Never set from the wire: only code in this process can set it, and that
+     * code could read the lines anyway. They stay out of the response.
+     */
+    var testCaptureLogs: Boolean = false
+
+    /** The request's log capture, once the dispatcher has started one ([KdrCxt.logCapture]); null when there is none. */
+    var logCapture: RequestLogCapture? = null
     private val testHeaders: Map<String, List<String>>
     private var cookies: MutableMap<String, String>?
 
@@ -411,8 +422,11 @@ class RequestHandler : WebRequest {
         val extraData = errorExtraData(cxt, kdrE)
         try {
             if (!sentResponse) {
+                // The lines that led to the error, when the caller asked for them (issue #1173). This is where
+                // capture earns most, and the error itself has been logged into it just above.
+                val meta = logCapture?.takeIf { it.inResponse }?.meta()
                 sendJsonResponse(
-                    errorEnvelope(code, rendered.text, rendered.fromFragment, logRequestUri, extraData), code,
+                    errorEnvelope(code, rendered.text, rendered.fromFragment, logRequestUri, extraData, meta), code,
                 )
             } else {
                 jettyCallback?.succeeded()
@@ -746,6 +760,8 @@ class RequestHandler : WebRequest {
          *  - [EP.extraData]: whatever remains of the exception's bag (e.g., a parser's offset/line/lineCol),
          *    **nested** under its own key so an area's entry can never shadow a protocol field. Absent when
          *    empty.
+         *  - [EP.meta]: off-contract diagnostics, as on a success -- today a request's captured log lines
+         *    (issue #1173). Absent unless [meta] is given.
          *
          * The exception's own [extraData] is not mutated -- the promotion works on a copy, since the exception
          * may still be logged or inspected after this.
@@ -756,6 +772,7 @@ class RequestHandler : WebRequest {
             fromFragment: Boolean,
             requestUri: String,
             extraData: Map<String, Any?>?,
+            meta: Map<String, Any?>? = null,
         ): Map<String, Any?> {
             val remaining = extraData?.toMutableMap() ?: mutableMapOf()
             val logicalCode = remaining.remove(KdrException.errorCodeKey)
@@ -765,6 +782,7 @@ class RequestHandler : WebRequest {
                 put(EP.errorFromFragment, fromFragment)
                 put(EP.requestUri, requestUri)
                 if (remaining.isNotEmpty()) put(EP.extraData, remaining)
+                if (!meta.isNullOrEmpty()) put(EP.meta, meta)
             }
         }
 

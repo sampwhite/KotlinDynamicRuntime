@@ -39,8 +39,8 @@ open class KdrLogger(
     fun error(cxt: KdrCxtBase?, message: String, cause: Throwable? = null) =
         log(cxt, LogLevel.error, message, cause)
 
-    // Lazy overloads: the message is only built when the level is enabled, so expensive construction is
-    // skipped for suppressed levels. A String literal is not a function type, so these never collide with the
+    // Lazy overloads: the message is only built when the level is enabled or the context captures it, so
+    // expensive construction is skipped for suppressed levels. A String literal is not a function type, so these never collide with the
     // eager overloads -- `debug(cxt) { "..." }` selects the lambda form.
     fun trace(cxt: KdrCxtBase?, message: () -> String) = logLazy(cxt, LogLevel.trace, null, message)
     fun debug(cxt: KdrCxtBase?, message: () -> String) = logLazy(cxt, LogLevel.debug, null, message)
@@ -49,10 +49,19 @@ open class KdrLogger(
     fun error(cxt: KdrCxtBase?, cause: Throwable? = null, message: () -> String) =
         logLazy(cxt, LogLevel.error, cause, message)
 
-    /** Whether [level] would actually be emitted by this topic, given current config. */
+    /**
+     * Whether [level] would actually be emitted by this topic, given current config. It says nothing of a
+     * context's capture (issue #1173), so guarding a log call with it keeps that call out of a capture as well.
+     */
     fun isEnabled(level: LogLevel): Boolean = LogConfig.isEnabled(topic, level)
 
-    /** The core log entry point: emits [message] at [level], optionally with a [cause] and structured [data]. */
+    /**
+     * The core log entry point: emits [message] at [level], optionally with a [cause] and structured [data].
+     *
+     * A record goes to the sinks when [level] is enabled for the topic, and to the context's [LogCapture] when it
+     * has one that keeps [level] (issue #1173) -- so with capture on, a line below the topic's threshold is built
+     * for the capture alone.
+     */
     fun log(
         cxt: KdrCxtBase?,
         level: LogLevel,
@@ -60,20 +69,36 @@ open class KdrLogger(
         cause: Throwable? = null,
         data: Map<String, Any?>? = null,
     ) {
-        if (!LogConfig.isEnabled(topic, level)) {
+        val emit = LogConfig.isEnabled(topic, level)
+        val capture = captureFor(cxt, level)
+        if (!emit && capture == null) {
             return
         }
-        dispatch(cxt, level, message, cause, data)
+        dispatch(cxt, level, message, cause, data, emit, capture)
     }
 
     private fun logLazy(cxt: KdrCxtBase?, level: LogLevel, cause: Throwable?, message: () -> String) {
-        if (!LogConfig.isEnabled(topic, level)) {
+        val emit = LogConfig.isEnabled(topic, level)
+        val capture = captureFor(cxt, level)
+        if (!emit && capture == null) {
             return
         }
-        dispatch(cxt, level, message(), cause, null)
+        dispatch(cxt, level, message(), cause, null, emit, capture)
     }
 
-    private fun dispatch(cxt: KdrCxtBase?, level: LogLevel, message: String, cause: Throwable?, data: Map<String, Any?>?) {
+    /** The context's capture, when it keeps [level]; [LogLevel.off] is never a level anything is logged at. */
+    private fun captureFor(cxt: KdrCxtBase?, level: LogLevel): LogCapture? =
+        cxt?.logCapture?.takeIf { level != LogLevel.off && level.ordinal >= it.captureLevel.ordinal }
+
+    private fun dispatch(
+        cxt: KdrCxtBase?,
+        level: LogLevel,
+        message: String,
+        cause: Throwable?,
+        data: Map<String, Any?>?,
+        emit: Boolean,
+        capture: LogCapture?,
+    ) {
         // Snapshot everything mutable/platform-specific here, on the calling thread, so an async sink is safe.
         val record = LogRecord(
             level = level,
@@ -84,8 +109,11 @@ open class KdrLogger(
             cause = cause,
             data = data,
         )
-        for (sink in LogSinks.sinks) {
-            sink.emit(record)
+        if (emit) {
+            for (sink in LogSinks.sinks) {
+                sink.emit(record)
+            }
         }
+        capture?.capture(record)
     }
 }
