@@ -27,7 +27,7 @@ import com.dynamicruntime.common.util.toOptStr
  *
  * A design owns each field's type, choices, description and whether the data requires it, and the trait's heading
  * and each field's label in the layout. Everything else in the stored schema -- a field's other keywords, a layout's
- * hints, errors and form-level strings, which Design View writes -- is carried over by [TraitDesign.toDataSchema],
+ * hints, errors, and form-level strings, which Design View writes -- is carried over by [TraitDesign.toDataSchema],
  * so the two editors do not undo each other. A field removed takes its layout entry with it.
  *
  * A trait whose fields are not all of the editor's kinds -- a nested object, a `$ref`, a date and time, an open
@@ -213,7 +213,7 @@ fun traitDesignFromInfo(raw: Map<String, Any?>): TraitDesign = TraitDesign(
 /**
  * A key made from [label]: its letters and digits as one camel-case word (`Do you smoke?` -> `doYouSmoke`), at most
  * [maxKeyLength] long, [fallback] when the label has none or would start with a digit -- and, when [taken] holds it,
- * the first of `<key>2`, `<key>3`, ... that it does not. A trait id, a field key and a choice value are all made
+ * the first of `<key>2`, `<key>3`, ... that it does not. A trait id, a field key, and a choice value are all made
  * this way, once.
  */
 fun keyFromLabel(label: String, taken: Set<String>, fallback: String): String {
@@ -254,7 +254,7 @@ fun withKeys(design: TraitDesign, takenTraitIds: Set<String>): TraitDesign {
 
 /**
  * What is wrong with [design], in words, or nothing: a name, at least one field, a label on every field and choice,
- * keys well formed and unique, choices for a choice field and none for another. Against [before] -- the design as
+ * keys well formed and unique, choices for a choice field, and none for another. Against [before] -- the design as
  * stored, null for a new trait -- a kept field keeps its kind (text and long text excepted: they hold the same data)
  * and the trait keeps its id. Asked of a design that has its keys ([withKeys]).
  */

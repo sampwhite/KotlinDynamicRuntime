@@ -130,7 +130,7 @@ class TraitDesignTest {
             SCH.properties to mapOf("address" to mapOf(SCH.type to SCT.kObject, SCH.properties to emptyMap<String, Any?>())),
         )
         assertNotNull(traitDesignOf("place", null, nested).notEditable)
-        assertNotNull(traitDesignOf("shared", null, mapOf(SCH.dRef to "#/\$defs/x.Shared")).notEditable)
+        assertNotNull(traitDesignOf("shared", null, mapOf(SCH.dRef to $$"#/$defs/x.Shared")).notEditable)
     }
 
     @Test

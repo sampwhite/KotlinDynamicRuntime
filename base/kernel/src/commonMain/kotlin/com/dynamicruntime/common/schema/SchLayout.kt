@@ -830,7 +830,7 @@ fun layoutFieldProblems(where: String, layout: SchLayout, type: SchType?): List<
 }
 
 /**
- * The fields [layout] marks long text (issue #1118) that are not plain text in [type]: a number, a choice, a date
+ * The fields [layout] marks long text (issue #1118) that are not plain text in [type]: a number, a choice, a date,
  * or a file has no use for a text area, and drawing one would invite text the field refuses.
  */
 fun multilineProblems(where: String, layout: SchLayout, type: SchType): List<Problem> =

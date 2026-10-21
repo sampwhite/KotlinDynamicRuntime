@@ -16,7 +16,7 @@ import com.dynamicruntime.common.util.toOptStr
  * ### Where a trait lands
  *
  * A **new** trait gets a stored configuration of its own, named for it ([CIT.configPrefix]), so each is published,
- * judged and later carried on its own. An **edit** patches the trait's entry where it is stored, whichever
+ * judged, and later carried on its own. An **edit** patches the trait's entry where it is stored, whichever
  * configuration that is -- one the editor made, or one written by hand whose fields are all of the editor's kinds
  * ([traitDesignOf]) -- and leaves the rest of the configuration as it was.
  *
