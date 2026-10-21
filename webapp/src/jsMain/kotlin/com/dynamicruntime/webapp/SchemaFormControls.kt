@@ -266,7 +266,7 @@ internal fun ChildrenBuilder.widget(
 }
 
 /** antd's multi-line text input, `Input.TextArea`: not a named export of its own, so reached through [Input]. */
-private val TextArea: ComponentType<InputProps> = Input.asDynamic().TextArea.unsafeCast<ComponentType<InputProps>>()
+val TextArea: ComponentType<InputProps> = Input.asDynamic().TextArea.unsafeCast<ComponentType<InputProps>>()
 
 /** The two choices a three-state boolean offers. The wire values, verbatim — see the widget's note on labels. */
 private val booleanOptions = listOf(SchOption("true", "true"), SchOption("false", "false"))

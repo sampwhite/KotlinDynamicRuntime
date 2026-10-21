@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.webasset.WAS
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -17,6 +18,37 @@ class CreateOwnClientTest {
         )
         // No note and no zone: neither is sent, so the deployment's zone applies.
         assertEquals(mapOf(CLD.name to "Shop"), createOwnClientRequest("Shop", " ", ""))
+    }
+
+    @Test
+    fun theRequestCarriesTheHomeCopyGivenAndLeavesOutABlankOne() {
+        val request = createOwnClientRequest(
+            "Shop", "", "", mapOf(CLD.homeBrand to " Shop Co ", CLD.homeIntro to "**Hi**", CLD.homeNote to "  ", "other" to "x"),
+        )
+        assertEquals(mapOf(CLD.name to "Shop", CLD.homeBrand to "Shop Co", CLD.homeIntro to "**Hi**"), request)
+    }
+
+    @Test
+    fun anImageIsCheckedAgainstItsSlotBeforeTheClientIsMade() {
+        assertNull(imageProblem(WAS.favicon, "image/png", 10_000))
+        assertNull(imageProblem(WAS.brandMark, "image/svg+xml", 900_000))
+        // Too large for the favicon, though a brand mark that size would do.
+        assertEquals("The favicon is 300 KB; it may be at most 256 KB.", imageProblem(WAS.favicon, "image/png", 300 * 1024))
+        assertNull(imageProblem(WAS.brandMark, "image/png", 300 * 1024))
+        assertEquals("The brand mark must be PNG, SVG, ICO, JPEG or WebP.", imageProblem(WAS.brandMark, "image/gif", 10))
+        assertEquals("The favicon file is empty.", imageProblem(WAS.favicon, "image/png", 0))
+        assertEquals("PNG, SVG, ICO, JPEG or WebP, up to 256 KB", imageLimitText(WAS.favicon))
+    }
+
+    @Test
+    fun anImageThatDidNotUploadIsSaidAndTheCardStays() {
+        assertNull(imageUploadsNote(emptyList()))
+        assertEquals(
+            "Your client was created, but the favicon couldn't be uploaded: Not a PNG. Add it from My client.",
+            imageUploadsNote(listOf(ImageUploadFailure("Favicon", "Not a PNG."))),
+        )
+        val both = imageUploadsNote(listOf(ImageUploadFailure("Favicon", "A."), ImageUploadFailure("Brand mark", "B.")))!!
+        assertTrue(both.contains("the favicon") && both.contains("the brand mark") && both.endsWith("Add them from My client."), both)
     }
 
     @Test

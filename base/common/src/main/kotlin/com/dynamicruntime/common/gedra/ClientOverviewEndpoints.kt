@@ -317,17 +317,25 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
         "Creates the caller's own self-serve client (issue #1113), for a person signed in to '${CL.public}', who " +
             "creates one. Its id is generated from its name ('${CUST.free}${CUST.separator}...'); it has no " +
             "customer, so it is on the free plan, and it has a sandbox. The creator gets their own admin user there, " +
-            "and the session moves to it. Otherwise refused for what the platform's create refuses, in the same words.",
+            "and the session moves to it. Its home page's wordmark, title, intro and note may be given too (issue " +
+            "#1336): written and published with the client, so they show at once. Otherwise refused for what the " +
+            "platform's create refuses, in the same words.",
         HttpMethod.POST,
         outputRef = CLD.selfServeCreateResultTypeName,
         inputFields = {
             field(CLD.name, ClientPresentationFields.descriptions.getValue(CLD.name), required = true)
             field(CLD.description, "An internal note about who, what, or why.")
             field(CLD.timeZone, "The client's IANA time zone (America/Chicago): the creator's browser's; absent, the deployment's.")
+            field(CLD.homeBrand, "The wordmark beside the brand mark in the app bar and on the home page.")
+            field(CLD.homeTitle, "The home page's title.")
+            field(CLD.homeIntro, "The home page's introduction, in Markdown.")
+            field(CLD.homeNote, "A note beneath the home page's introduction, in Markdown.")
         },
     ) { c, request ->
+        val home = CLD.homeCopyFields.mapNotNull { (field, key) -> request[field].toOptStr()?.let { key to it } }.toMap()
         val result = ClientSelfServeCreate.create(
             c, request.getValue(CLD.name).toOptStr().orEmpty(), request[CLD.description].toOptStr(), request[CLD.timeZone].toOptStr(),
+            home,
         )
         val switched = result.userId != null && result.created.present
         if (switched) authHandler(c).switchClient(c, result.created.client)

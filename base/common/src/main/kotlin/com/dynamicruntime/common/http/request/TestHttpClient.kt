@@ -31,7 +31,7 @@ class TestHttpClient(val instanceConfig: KdrInstanceConfig) {
 
     /**
      * Whether each request keeps its log lines (issue #1173), down to debug whatever the topics are set to, so a
-     * failing call can say what the code under it did: [TestUser] puts them into its failure messages. Read them
+     * failing call can say what the code under it did: [com.dynamicruntime.common.user.TestUser] puts them into its failure messages. Read them
      * from the returned handler's `logCapture`. They never reach the response, which is as it would be otherwise.
      */
     var captureLogs: Boolean = true

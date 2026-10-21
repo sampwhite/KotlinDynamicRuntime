@@ -10,6 +10,7 @@ import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.RandomUtil
 import com.dynamicruntime.common.util.toOptStr
+import com.dynamicruntime.common.home.HFRAG
 
 /**
  * A person's own **self-serve** client (issue #1113): created from `public`, by anybody signed in there, one per
@@ -51,7 +52,18 @@ object ClientSelfServeCreate {
      * Creates the self-serve client named [name] for the person signed in as [cxt]'s user, in [timeZone] -- the
      * creator's browser's, as the page sends it (issue #1115) -- or the deployment's when none is given.
      */
-    fun create(cxt: KdrCxt, name: String, description: String?, timeZone: String? = null): Result {
+    fun create(
+        cxt: KdrCxt,
+        name: String,
+        description: String?,
+        timeZone: String? = null,
+        /**
+         * The new client's home copy (issue #1336): keys of the home file's `home` namespace ([CLD.homeCopyFields]'
+         * values) to their text, trimmed, a blank one left out. Written and published with the client, so its home
+         * page reads them at once, though the client has a sandbox.
+         */
+        home: Map<String, String> = emptyMap(),
+    ): Result {
         val profile = cxt.userProfile
         if (profile.client != CL.public) {
             throw KdrException.mkInput(
@@ -77,7 +89,7 @@ object ClientSelfServeCreate {
             throw KdrException("Another create of your client is under way.", e, EXC.conflict)
         }
         val created = try {
-            ClientCreate.create(cxt, definition(cxt, client, name, description, timeZone))
+            ClientCreate.create(cxt, definition(cxt, client, name, description, timeZone), copy = homeCopy(home))
         } catch (e: Exception) {
             // Nothing of the client was stored, so the one is not used.
             try {
@@ -118,6 +130,16 @@ object ClientSelfServeCreate {
             put(CLD.enabledEnvironments, ENV.names.filter { it == env || it == ENV.unit || it == ENV.local })
             put(CLD.sandbox, true)
         }
+    }
+
+    /**
+     * The copy overlay for [home]: the home file's `home` namespace, with only the keys a self-serve create sets, each
+     * trimmed, and none at all when every value is blank. Pure.
+     */
+    fun homeCopy(home: Map<String, String>): Map<String, Map<String, Map<String, String>>> {
+        val allowed = CLD.homeCopyFields.values.toSet()
+        val kept = home.filterKeys { it in allowed }.mapValues { it.value.trim() }.filterValues { it.isNotEmpty() }
+        return if (kept.isEmpty()) emptyMap() else mapOf(HFRAG.home to mapOf(HFRAG.homeNs to kept))
     }
 
     /** A new self-serve client id for a client named [name]: `free_`, the name's letters and digits, and a random part. */

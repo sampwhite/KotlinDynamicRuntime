@@ -1,6 +1,5 @@
 package com.dynamicruntime.common.webasset
 
-import com.dynamicruntime.common.content.HashedFileServing
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
@@ -16,18 +15,6 @@ import javax.xml.XMLConstants
 import javax.xml.parsers.ParserConfigurationException
 import javax.xml.parsers.SAXParser
 import javax.xml.parsers.SAXParserFactory
-
-/**
- * One kind of image a web asset may be (issue #1130): what a person calls it, the content type it is stored and
- * served as, and the other types an upload may honestly declare it under -- browsers do not agree on an ICO's.
- */
-class WebImageKind(
-    val label: String,
-    val mimeType: String,
-    /** What a file of this kind is called after its dot, for a name offered when one is saved. */
-    val extension: String,
-    val alsoDeclaredAs: Set<String> = emptySet(),
-)
 
 /**
  * Whether an uploaded web asset is the image it says it is (issue #1130).
@@ -46,17 +33,19 @@ class WebImageKind(
  */
 @Suppress("ConstPropertyName")
 object WebAssetCheck {
-    val png = WebImageKind("PNG", "image/png", "png")
-    val svg = WebImageKind("SVG", HashedFileServing.svgMimeType, "svg")
-    val ico = WebImageKind("ICO", "image/x-icon", "ico", setOf("image/vnd.microsoft.icon", "image/ico"))
-    val jpeg = WebImageKind("JPEG", "image/jpeg", "jpg", setOf("image/jpg", "image/pjpeg"))
-    val webp = WebImageKind("WebP", "image/webp", "webp")
+    // The kinds themselves are the kernel's ([WebAssetKinds], issue #1336), so the self-serve create's card refuses
+    // what this would; the names stay here, where every check reads them.
+    val png = WebAssetKinds.png
+    val svg = WebAssetKinds.svg
+    val ico = WebAssetKinds.ico
+    val jpeg = WebAssetKinds.jpeg
+    val webp = WebAssetKinds.webp
 
     /** Every kind accepted, in the order a message lists them. */
-    val kinds = listOf(png, svg, ico, jpeg, webp)
+    val kinds = WebAssetKinds.kinds
 
     /** The content types a file picker should offer: each kind's own and the others it is declared under. */
-    val acceptedMimeTypes: List<String> = kinds.flatMap { listOf(it.mimeType) + it.alsoDeclaredAs }
+    val acceptedMimeTypes: List<String> = WebAssetKinds.acceptedMimeTypes
 
     private val pngStart = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A)
     private val jpegStart = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())
@@ -71,10 +60,7 @@ object WebAssetCheck {
         size >= at + mark.size && mark.indices.all { this[at + it] == mark[it] }
 
     /** The kind [mimeType] declares -- its parameters and case aside -- or null when it is none of ours. */
-    fun declaredKind(mimeType: String): WebImageKind? {
-        val bare = mimeType.substringBefore(';').trim().lowercase()
-        return kinds.firstOrNull { it.mimeType == bare || bare in it.alsoDeclaredAs }
-    }
+    fun declaredKind(mimeType: String): WebImageKind? = WebAssetKinds.declaredKind(mimeType)
 
     /** The raster kind [bytes] begin as, or null: not a raster image we take (an SVG has no such beginning). */
     fun rasterKind(bytes: ByteArray): WebImageKind? = when {
