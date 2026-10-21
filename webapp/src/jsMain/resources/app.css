@@ -58,6 +58,15 @@
     /* Annotations that must not compete: type hints. */
     --text-faint: #64748b;
 
+    /* The heading scale (issue #1327): one step down per level, on a 16px body. A level is told from the one
+       above by size and weight, never by colour -- every heading is foreground text, and a muted colour stays
+       with secondary text (subtitles, hints). Scoped rules that set their own size (the Design View inspector,
+       the copy editor's namespaces) are deliberate exceptions and keep their look. */
+    --h1-size: 1.75rem;
+    --h2-size: 1.375rem;
+    --h3-size: 1.125rem;
+    --h4-size: 1rem;
+
     /* The indigo pair: the accent, and the brighter one it moves to on hover (also links). */
     --accent: #6366f1;
     --accent-bright: #818cf8;
@@ -584,15 +593,22 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
    the container, so a table (#547) or a code block still gets the full column while a line of text does not
    run the width of a wide window. */
 .markdown p, .markdown li, .markdown blockquote, .markdown h1, .markdown h2, .markdown h3 { max-width: 80ch; }
-.markdown h1, .markdown h2, .markdown h3 { margin: 20px 0 8px; }
+.markdown h1 { margin: 20px 0 8px; }
 /* Inline-UI Markdown (issue #631, the `inlineUi` prop): Markdown rendered as a piece of UI -- a heading with
    its line directly beneath and no lead-in -- rather than as a document. Only the look differs from
-   `.markdown`; the renderer emits the same semantic HTML. Heading and body both take the muted section-heading
-   colour (`--text-muted`), so the heading matches the form's other section headings and its follow-up line
-   reads as part of the same unit rather than a heading over brighter body text. */
+   `.markdown`; the renderer emits the same semantic HTML. Its lines are muted, as a caption is. */
 .markdown-inline-ui > :first-child { margin-top: 0; }
-.markdown-inline-ui h1, .markdown-inline-ui h2, .markdown-inline-ui h3 { margin: 0 0 1px; color: var(--text-muted); }
+.markdown-inline-ui h1, .markdown-inline-ui h2, .markdown-inline-ui h3 { margin: 0 0 1px; font-size: var(--h3-size); }
 .markdown-inline-ui p { margin: 0; color: var(--text-muted); }
+/* A workflow form's labels head what they sit over (issue #1327), on the heading scale: the form's title is its
+   h1, a task is a section (the h2 step), and a trait is a section of its task (the h3 step). A label's first
+   line is that heading, whether the client wrote it as a Markdown heading or as a plain line; any line after it
+   stays a muted caption. A trait with no label is headed by an h2 (`traitHeading`), drawn at the same step as a
+   label would be, so the traits of one form read alike. Descendant selectors, not child ones, so Design View's
+   frame around a label changes nothing. The trait rule follows the task rule so that it wins, a trait's label
+   being inside its task. */
+.wf-task .markdown-inline-ui > :first-child { font-size: var(--h2-size); font-weight: 600; color: var(--text); }
+.wf-trait .markdown-inline-ui > :first-child, .wf-trait > h2 { font-size: var(--h3-size); font-weight: 600; color: var(--text); }
 .markdown-inline-ui > :last-child { margin-bottom: 2px; }
 /* `markdown-inline` is a phrase rendered inside markup the caller owns (MarkdownInline): it shares these
    inline looks, but never the block spacing above -- it has no line-height or margins of its own. */
@@ -720,8 +736,12 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
    it is fixed here rather than left as the cost of them. `auto`, so the scrollbar exists only when needed. */
 .card .ant-table-wrapper { overflow-x: auto; }
 
-h1 { margin: 0 0 4px; font-size: 1.6rem; }
-h2 { margin: 28px 0 12px; font-size: 1.05rem; color: var(--text-muted); }
+/* The heading scale (see `--h1-size`): more space above a heading than below it, so it belongs to what follows. */
+h1, h2, h3, h4 { line-height: 1.25; color: var(--text); }
+h1 { margin: 0 0 4px; font-size: var(--h1-size); font-weight: 700; }
+h2 { margin: 28px 0 8px; font-size: var(--h2-size); font-weight: 600; }
+h3 { margin: 20px 0 6px; font-size: var(--h3-size); font-weight: 600; }
+h4 { margin: 16px 0 4px; font-size: var(--h4-size); font-weight: 600; color: var(--text-dim); }
 .subtitle { margin: 0; color: var(--text-muted); }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 /* The per-row action buttons in the forms list (issue #417): kept on one line and tightly spaced, since a
