@@ -106,7 +106,7 @@ class SchNarrowingTest : StringSpec({
     // --- what is refused --------------------------------------------------------
 
     "adding a property is refused, with the alternative named" {
-        val found = problems(mapOf(SCH.properties to mapOf("name" to emptyMap<String, Any?>(), "extra" to emptyMap<String, Any?>())))
+        val found = problems(mapOf(SCH.properties to mapOf("name" to emptyMap(), "extra" to emptyMap<String, Any?>())))
         found.size shouldBe 1
         found[0] shouldContain "'extra'"
         found[0] shouldContain "extending the type"

@@ -350,14 +350,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             throw KdrException.mkInput(e.message ?: "The design does not read.")
         }
         val result = ClientTraitDesignEdit.save(c, client, design, expectedModeOf(request), gate)
-        buildMap {
-            put(CLD.client, client)
-            put(CIT.configName, result.configName)
-            put(CIT.design, result.design.toInfo())
-            put(CPY.mode, result.mode)
-            put(CPY.issues, result.issues.map { it.toWireMap() })
-            result.draftImpact?.let { put(CIT.draftImpact, it.toMap()) }
-        }
+        traitSaveResult(client, result.configName, CIT.design to result.design.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 
     // --- narrowing a global trait (issue #1119) -------------------------------------------------------------------
@@ -418,15 +411,28 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         val result = ClientTraitNarrowEdit.save(
             c, client, traitNarrowingFromInfo(request[CIT.narrowing].toJsonMapOrEmpty()), expectedModeOf(request), gate,
         )
-        buildMap {
-            put(CLD.client, client)
-            put(CIT.configName, result.configName)
-            put(CIT.narrowing, result.narrowing.toInfo())
-            put(CPY.mode, result.mode)
-            put(CPY.issues, result.issues.map { it.toWireMap() })
-            result.draftImpact?.let { put(CIT.draftImpact, it.toMap()) }
-        }
+        traitSaveResult(client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact)
     }
+}
+
+/**
+ * A trait editor's save result on the wire (issues #1118, #1119): the client, the configuration saved to, [saved] -- what
+ * the editor saved, under its key -- then how the save took effect, the client's issues, and a draft's impact.
+ */
+private fun traitSaveResult(
+    client: String,
+    configName: String,
+    saved: Pair<String, Any?>,
+    mode: String,
+    issues: List<GedraConfigIssue>,
+    draftImpact: ImpactReport?,
+): Map<String, Any?> = buildMap {
+    put(CLD.client, client)
+    put(CIT.configName, configName)
+    put(saved.first, saved.second)
+    put(CPY.mode, mode)
+    put(CPY.issues, issues.map { it.toWireMap() })
+    draftImpact?.let { put(CIT.draftImpact, it.toMap()) }
 }
 
 /** A draft save's [CIT.draftImpact] (issue #1119): the report of publishing it, against the live client. */

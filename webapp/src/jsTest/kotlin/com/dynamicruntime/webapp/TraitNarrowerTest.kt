@@ -75,7 +75,7 @@ class TraitNarrowerTest {
         val offered = listOf("a", "b")
         assertEquals(mapOf("topic" to listOf("b")), empty.withChoices("topic", listOf("b"), offered).choices)
         // In the trait's order, whatever order they were picked in.
-        assertEquals(emptyMap<String, List<String>>(), empty.withChoices("topic", listOf("b", "a"), offered).choices)
+        assertEquals(emptyMap(), empty.withChoices("topic", listOf("b", "a"), offered).choices)
         assertTrue(narrowProblems(empty.withChoices("topic", emptyList(), offered), base).single().contains("at least one"))
         assertTrue(narrowingChanged(empty.withHidden("notes", true), empty))
     }

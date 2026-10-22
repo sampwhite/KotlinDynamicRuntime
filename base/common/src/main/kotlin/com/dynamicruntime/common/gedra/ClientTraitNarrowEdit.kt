@@ -53,6 +53,7 @@ fun globalTraitBases(cxt: KdrCxt): Map<String, GlobalTraitBase> {
  * A narrowing does not include the trait: it says how the client takes a trait it includes, and has no effect on one
  * it does not (`supportedTraits` counts a trait as customized by an alteration of its entry type, not of its data).
  */
+@Suppress("ConstPropertyName")
 object ClientTraitNarrowEdit {
     /** What a save did: the configuration the alteration is in, the narrowing now, how it took effect, and a draft's impact. */
     class Result(
