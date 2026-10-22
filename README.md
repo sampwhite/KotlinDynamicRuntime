@@ -23,7 +23,7 @@ a `settings.gradle.kts`; it can be set explicitly with the `KDR_WORKSPACE_DIR` e
 
 ## Getting started
 
-Setup is bootstrapped by an idempotent installer, `bin/kdr-install`. It checks that a JDK is present,
+Setup is bootstrapped by an idempotent installer, `bin/kdr-install`. It checks that a JDK 25 or newer is present,
 creates the per-deployment configuration (`settings.gradle.kts` and `gradle.properties`) from the templates
 if they are missing, and offers to add the command-line scripts to your `PATH`.
 
@@ -79,10 +79,19 @@ implementations that agree until they do not. Code moved there keeps its origina
 
 ## Building
 
-This project builds with Gradle (Kotlin DSL) on a JDK 25 toolchain. Shared build configuration — the Kotlin
-plugin/version, repositories, the JVM toolchain, the Kotest test stack, and the Dokka link check — lives in a family
-of three convention plugins under `build-logic/`, so each module's build script only names its plugin plus its own
-dependencies:
+This project builds with Gradle (Kotlin DSL) on a JDK 25 toolchain.
+
+**Any JDK from 25 on is enough to start**, one Gradle 9.6.1 can run on: the `java` on your `PATH` runs Gradle and the
+`kdr-*` commands, and Gradle fetches JDK 25 for the build when the machine has none. The workspace's `settings.gradle.kts` names Gradle's own toolchain resolver
+(`org.gradle.toolchains.foojay-resolver-convention`, issue #1318), which finds a download through foojay.io and
+keeps it in `~/.gradle/jdks`, once. Where JDK 25 is installed already, it changes nothing. To refuse the download --
+on a build machine, say -- set `org.gradle.java.installations.auto-download=false` in `gradle.properties`; a build
+without JDK 25 then stops, saying none matches. A workspace whose settings predate the resolver is offered it by
+`kdr-install`.
+
+Shared build configuration — the Kotlin plugin/version, repositories, the JVM toolchain, the Kotest test stack, and
+the Dokka link check — lives in a family of three convention plugins under `build-logic/`, so each module's build
+script only names its plugin plus its own dependencies:
 
 | plugin | used by |
 | --- | --- |

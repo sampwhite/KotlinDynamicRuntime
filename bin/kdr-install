@@ -28,28 +28,57 @@ repo_dir="$root_dir/$repo_name"                   # the checkout under the (poss
 os="$(uname -s)"
 
 # --- 1. Sniff: tools we cannot install for the user must already be present ----------------------------------
-if ! command -v java >/dev/null 2>&1; then
-    echo "kdr-install: 'java' was not found on your PATH -- a JDK is required to run anything here." >&2
+# The JDK on the PATH runs the kdr-* commands, which are compiled for Java 25 (the build's `jvmToolchain(25)`), so an
+# older one would get as far as the Kotlin installer below and fail there with an UnsupportedClassVersionError
+# (issue #1318). The build itself needs no particular JDK: Gradle fetches JDK 25 for it when the machine has none.
+min_java=25
+
+# How to install a JDK on this OS, written to stderr; then the hint to re-run.
+print_jdk_install_hints() {
     case "$os" in
         Darwin)
-            echo "  Install a JDK, e.g.:" >&2
+            echo "  Install JDK $min_java or newer, e.g.:" >&2
             echo "    - SDKMAN:    curl -s \"https://get.sdkman.io\" | bash   then   sdk install java" >&2
             echo "    - Homebrew:  brew install openjdk" >&2
             ;;
         Linux)
-            echo "  Install a JDK, e.g.:" >&2
+            echo "  Install JDK $min_java or newer, e.g.:" >&2
             echo "    - SDKMAN:          curl -s \"https://get.sdkman.io\" | bash   then   sdk install java" >&2
-            echo "    - Debian/Ubuntu:   sudo apt-get install default-jdk" >&2
+            echo "    - Debian/Ubuntu:   sudo apt-get install openjdk-$min_java-jdk   (where the release packages it;" >&2
+            echo "                       default-jdk may be older)" >&2
             echo "    - Fedora/RHEL:     sudo dnf install java-latest-openjdk-devel" >&2
             ;;
         *)
-            echo "  Install a JDK for your platform ($os), put 'java' on your PATH, and re-run." >&2
+            echo "  Install JDK $min_java or newer for your platform ($os), put 'java' on your PATH, and re-run." >&2
             ;;
     esac
     echo "  Then re-run: $script_dir/kdr-install" >&2
+}
+
+if ! command -v java >/dev/null 2>&1; then
+    echo "kdr-install: 'java' was not found on your PATH -- a JDK is required to run anything here." >&2
+    print_jdk_install_hints
     exit 1
 fi
-# TODO(#29): later, sniff for the tools needed to install Node.js (for the webapp) -- once that install lands.
+
+# The specification version is the plain major ("25"), or "1.8" before Java 9; read it rather than parse the vendor's
+# own `java -version` banner, whose wording varies.
+java_spec="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^[[:space:]]*java\.specification\.version = //p' | head -n 1)"
+java_major="${java_spec#1.}"
+java_major="${java_major%%.*}"
+case "$java_major" in
+    ''|*[!0-9]*)
+        echo "kdr-install: could not tell which Java version 'java' is ($(command -v java)); continuing." >&2
+        ;;
+    *)
+        if [ "$java_major" -lt "$min_java" ]; then
+            echo "kdr-install: 'java' on your PATH is Java $java_spec ($(command -v java)), but the kdr-* commands need" >&2
+            echo "  Java $min_java or newer." >&2
+            print_jdk_install_hints
+            exit 1
+        fi
+        ;;
+esac
 
 # --- 2. Minimal configuration: enough for gradlew/Kotlin to run against the source ---------------------------
 # The parent (the Gradle build root) needs its own copy of the wrapper to run Gradle at all. The repo ships
