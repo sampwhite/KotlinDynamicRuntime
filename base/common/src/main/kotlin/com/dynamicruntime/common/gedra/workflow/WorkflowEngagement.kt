@@ -5,9 +5,11 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.GE
 import com.dynamicruntime.common.gedra.GedraDataRow
 import com.dynamicruntime.common.gedra.GedraDataService
+import com.dynamicruntime.common.sql.SqlTopicUtil
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import kotlin.time.Instant
 
@@ -84,7 +86,7 @@ object WorkflowEngagement {
                     )
                 }
             }
-            withEngagement(current, workflowId, engaged, at, by)
+            withEngagement(current, workflowId, engaged, stampAfter(current, workflowId, at), by)
         }
     }
 
@@ -106,6 +108,27 @@ object WorkflowEngagement {
                 )
             }
         }
+
+    /**
+     * The newest stamp already on [workflowId]'s engagement in [entries] (issue #1267): its `lastEngagedAt`, each of its
+     * events' `at`, and the `approvedAt` of each approval recorded for it -- or null when it has none.
+     */
+    fun newestStamp(entries: List<Map<String, Any?>>, workflowId: String): Instant? {
+        val engagement = engagementDataOf(entries, workflowId).orEmpty()
+        val stamps = listOfNotNull(engagement[WFS.lastEngagedAt].toOptInstant()) +
+            engagement[WFS.events].toJsonListOfMaps().mapNotNull { it[WFS.at].toOptInstant() } +
+            recordedApprovals(entries, workflowId).values.mapNotNull { it[WFS.approvedAt].toOptInstant() }
+        return stamps.maxOrNull()
+    }
+
+    /**
+     * The stamp for a new step on [workflowId]'s engagement, taken under the form's lock (issue #1267): [now], moved a
+     * millisecond past the [newestStamp] already there when it has not passed it. So the steps' stamps increase as
+     * their events do, and a reader of the stamps alone -- a report, the view -- sees the true order, even for steps
+     * taken inside one millisecond.
+     */
+    fun stampAfter(entries: List<Map<String, Any?>>, workflowId: String, now: Instant): Instant =
+        SqlTopicUtil.advancePast(now, newestStamp(entries, workflowId))
 
     /** Whether [entries] hold an engagement entry for [workflowId], engaged or not. */
     fun hasEngagement(entries: List<Map<String, Any?>>, workflowId: String): Boolean =

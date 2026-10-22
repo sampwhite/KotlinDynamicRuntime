@@ -138,16 +138,19 @@ object WorkflowApprovals {
                         "An approval is given once the work before it is complete.",
                 )
             }
+            // After every stamp already on the engagement (issue #1267), so the approval reads as later than the
+            // engagement it belongs to even inside one millisecond.
+            val stamp = WorkflowEngagement.stampAfter(current, workflowId, at)
             val approval = mapOf(
                 GE.traitId to WFS.workflowApproval,
                 GE.data to linkedMapOf(
                     WFD.workflowId to workflowId,
                     WFS.taskId to task.id,
-                    WFS.approvedAt to at,
+                    WFS.approvedAt to stamp,
                     WFS.approvedBy to by,
                 ),
             )
-            val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to at, WFS.by to by, WFS.note to task.id)
+            val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to stamp, WFS.by to by, WFS.note to task.id)
             // A stale record for this task (from an earlier engagement) shares the new one's key; it is replaced.
             val others = current.filterNot {
                 it[GE.traitId].toOptStr() == WFS.workflowApproval &&

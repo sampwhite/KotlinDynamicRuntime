@@ -160,7 +160,7 @@ object TraitLockGuard : GedraWriteGuard {
             byWorkflow.entries.fold(current) { acc, (workflowId, locks) ->
                 val event = linkedMapOf<String, Any?>(
                     WFS.kind to WFS.lockOverriddenEvent,
-                    WFS.at to at,
+                    WFS.at to WorkflowEngagement.stampAfter(acc, workflowId, at), // after the trail's newest (#1267)
                     WFS.by to by,
                     WFS.note to "${locks.joinToString(", ") { it.lock.traitId }}: ${reason.trim()}",
                 )

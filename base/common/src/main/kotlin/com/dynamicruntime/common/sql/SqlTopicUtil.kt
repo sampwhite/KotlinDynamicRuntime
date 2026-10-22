@@ -213,8 +213,12 @@ object SqlTopicUtil {
      */
     fun nextUpdatedAt(cxt: KdrCxt, prior: Instant?): Instant = advancePast(cxt.instanceNow(), prior)
 
-    /** [now], or one millisecond past [prior] when [now] has not reached beyond it. Shared monotonic bump. */
-    private fun advancePast(now: Instant, prior: Instant?): Instant {
+    /**
+     * [now], or one millisecond past [prior] when [now] has not reached beyond it. Shared monotonic bump: a row's
+     * `updatedAt` here, and the workflow stamps recorded under a form's lock (issue #1267), whose order a reader takes
+     * from the stamps. Compared at the millisecond, the precision a stamp is stored at.
+     */
+    fun advancePast(now: Instant, prior: Instant?): Instant {
         // Advance by at least a millisecond whenever the clock has not moved past the prior stamp --
         // **however far behind it is**. This guard used to apply only within a 2-second window, which let
         // a node whose clock lagged by more stamp a row *earlier* than it already was; a date moving
