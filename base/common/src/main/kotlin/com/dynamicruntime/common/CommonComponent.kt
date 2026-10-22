@@ -20,6 +20,7 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowStateDeriver
 import com.dynamicruntime.common.gedra.workflow.addSurveyCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowSingletonCFacts
 import com.dynamicruntime.common.gedra.workflow.addWorkflowCFacts
+import com.dynamicruntime.common.gedra.workflow.coreWorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.surveyStateConfig
 import com.dynamicruntime.common.gedra.workflow.workflowStateConfig
 import com.dynamicruntime.common.cfact.cfactSchema
@@ -289,12 +290,12 @@ class CommonComponent : ComponentDefinition {
 
     /**
      * The Gedra configs this module defines: the traits every deployment has, in the reserved `kdr.core`
-     * namespace (issue #300), and the two clients every deployment has (issue #343). Declared here rather
-     * than in a sample, because these are part of what the runtime is -- and because anything a test needs to
-     * reach has to come from a component that always loads.
+     * namespace (issue #300), the workflow templates (issue #1120), and the two clients every deployment has
+     * (issue #343). Declared here rather than in a sample, because these are part of what the runtime is -- and
+     * because anything a test needs to reach has to come from a component that always loads.
      */
     override fun gedraConfigs(cxt: KdrCxt): List<GedraConfig> =
-        listOf(coreTraits(cxt), surveyStateConfig(cxt), workflowStateConfig(cxt)) + coreClients(cxt)
+        listOf(coreTraits(cxt), surveyStateConfig(cxt), workflowStateConfig(cxt), coreWorkflowTemplates(cxt)) + coreClients(cxt)
 
     /**
      * The fragment files `base/common` ships, each saying where the application shows it (issue #933). `errors`

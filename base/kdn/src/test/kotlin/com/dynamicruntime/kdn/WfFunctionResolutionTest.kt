@@ -153,7 +153,7 @@ private class WfFnFixture : ComponentDefinition {
         // task ids carry the root like every global one (issue #953).
         gedraConfig(cxt, "wfFnGlobal", GCFG.globalNamespace, contributesTo = OWNR.kdrRoot) {
             workflow("kdr:globalReview", WfEntry.normal) {
-                task("kdr:review", "Review") {
+                task("review", "Review") {
                     trait(GT.name)
                     function(userHasLabel { label = "anyLabelAtAll" })
                     save("save", "Save", WfSaveKind.edit)

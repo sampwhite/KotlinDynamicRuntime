@@ -22,9 +22,10 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  *
  * An overlay reaches a resource's own keys and **one level below** -- the entries of a map, or the elements of a
  * keyed list -- and no further. Nothing deeper is addressable, so anything deeper that needs targeting is a resource
- * of its own with an identity, merged by its own spec ([MergeRule.Resource]); a schema type's `g-layout` is the
- * first. The rules make this structural rather than a check: none of them takes a spec for the values it folds, so
- * a spec cannot express a third level.
+ * of its own with an identity, merged by its own spec: a part ([MergeRule.Resource]; a schema type's `g-layout` is
+ * the first), a map's entries ([MergeRule.Resources]; a workflow's `types`), or a keyed list's elements
+ * ([MergeRule.Keyed.elementSpec]; a workflow's tasks, issue #1120). The rules make this structural rather than a
+ * check: only those take a spec for what they fold, and each is a resource with its own two levels.
  *
  * ### Choosing a rule
  *
@@ -32,6 +33,13 @@ import com.dynamicruntime.common.util.toJsonMapOrEmpty
  * overlay's directive): a schema type's `properties` restated by default, or merged when an alteration asks. The
  * default is what a reader can take in at once; the alternative is for an author -- often an AI -- who would rather
  * state a delta. Which works better in practice is one of the things to learn.
+ *
+ * ### The inverse: a diff
+ *
+ * [diffOverlay] writes the overlay that merges a base into an edited resource (issue #1120): what a surface stores
+ * when somebody edited the merged result and only their change should be kept. It is the same rules read the other
+ * way, so a change no rule can state -- an element removed from a keyed list, one inserted where order matters -- is
+ * reported rather than written.
  *
  * ### What is not here yet
  *
@@ -144,6 +152,11 @@ sealed interface MergeRule {
         val onNew: OnNew = OnNew.refuse,
         /** Added to a refusal's message: what the author can do instead, in the resource's own terms. */
         val refusalHint: String? = null,
+        /**
+         * For [KeyedElement.merge]: the spec each element merges by, as a resource of its own (issue #1120) -- so an
+         * element's parts may in turn be restated, merged, or keyed. Without one, an element is folded entry by entry.
+         */
+        val elementSpec: ((base: Map<String, Any?>, overlay: Map<String, Any?>) -> MergeSpec)? = null,
     ) : MergeRule
 
     /**
@@ -166,6 +179,13 @@ sealed interface MergeRule {
      * base has none, the overlay's stands as written; an overlay of `null` removes it.
      */
     class Resource(val spec: (base: Map<String, Any?>, overlay: Map<String, Any?>) -> MergeSpec) : MergeRule
+
+    /**
+     * A map whose every entry is a resource of its own, merged by [spec] (issue #1120): a workflow's `types`, each a
+     * schema type's alteration. An entry the overlay does not mention is the base's; one the base lacks stands as
+     * written; a `null` one removes the base's. [Merge], with each entry merged rather than replaced.
+     */
+    class Resources(val spec: (base: Map<String, Any?>, overlay: Map<String, Any?>) -> MergeSpec) : MergeRule
 }
 
 /** Whether a keyed list's overlay element replaces its match whole, or is folded into it entry by entry. */
@@ -193,6 +213,9 @@ enum class OverlayMergeError : ProblemCode {
 
     /** A directive asking for a way of merging the resource does not offer for that part. */
     unknownChoice,
+
+    /** A change [diffOverlay] found that no rule of the resource can state: an element removed, inserted, or moved. */
+    cannotStateChange,
 }
 
 private fun mergeValue(rule: MergeRule, base: Any?, over: Any?, path: String, problems: MutableList<Problem>): Any? {
@@ -205,15 +228,39 @@ private fun mergeValue(rule: MergeRule, base: Any?, over: Any?, path: String, pr
         is MergeRule.Keyed -> if (base is List<*> && over is List<*>) mergeKeyed(rule, base, over, path, problems) else over
         is MergeRule.RestateKeyed -> if (base is List<*> && over is List<*>) restateKeyed(rule, base, over, path, problems) else over
         is MergeRule.Resource -> if (base is Map<*, *> && over is Map<*, *>) {
+            mergeResource(rule.spec, base.toJsonMapOrEmpty(), over.toJsonMapOrEmpty(), path, problems)
+        } else {
+            over
+        }
+        is MergeRule.Resources -> if (base is Map<*, *> && over is Map<*, *>) {
             val b = base.toJsonMapOrEmpty()
-            val o = over.toJsonMapOrEmpty()
-            val outcome = mergeOverlay(rule.spec(b, o), b, o, path)
-            problems.addAll(outcome.problems)
-            outcome.value
+            val out = LinkedHashMap(b)
+            for ((name, entry) in over.toJsonMapOrEmpty()) {
+                val prior = b[name]
+                out[name] = when {
+                    entry == null -> null
+                    prior is Map<*, *> && entry is Map<*, *> ->
+                        mergeResource(rule.spec, prior.toJsonMapOrEmpty(), entry.toJsonMapOrEmpty(), childPath(path, name), problems)
+                    else -> entry
+                }
+            }
+            out.filterValues { it != null }
         } else {
             over
         }
     }
+}
+
+private fun mergeResource(
+    spec: (Map<String, Any?>, Map<String, Any?>) -> MergeSpec,
+    base: Map<String, Any?>,
+    over: Map<String, Any?>,
+    path: String,
+    problems: MutableList<Problem>,
+): Map<String, Any?> {
+    val outcome = mergeOverlay(spec(base, over), base, over, path)
+    problems.addAll(outcome.problems)
+    return outcome.value
 }
 
 private fun mergeEntries(base: Map<String, Any?>, over: Map<String, Any?>): Map<String, Any?> {
@@ -272,9 +319,11 @@ private fun mergeKeyed(
         }
         val at = out.indexOfFirst { (it as? Map<*, *>)?.get(rule.key) == key }
         if (at >= 0) {
-            out[at] = when (rule.element) {
-                KeyedElement.replace -> element
-                KeyedElement.merge -> (out[at] as Map<*, *>).toJsonMapOrEmpty() + element
+            val prior = (out[at] as Map<*, *>).toJsonMapOrEmpty()
+            out[at] = when {
+                rule.element == KeyedElement.replace -> element
+                rule.elementSpec != null -> mergeResource(rule.elementSpec, prior, element, "$path[$key]", problems)
+                else -> prior + element
             }
             continue
         }
@@ -291,4 +340,144 @@ private fun mergeKeyed(
         }
     }
     return out
+}
+
+/** A diff's result: the overlay, and the changes it could not state (each located at its path in the resource). */
+class DiffOutcome(val overlay: Map<String, Any?>, val problems: List<Problem>)
+
+/**
+ * The overlay that [mergeOverlay] by [spec] turns [base] into [edited] (issue #1120), stating only what differs: a key
+ * whose value is the base's is left out, and one [edited] no longer has is `null`. A part is diffed by the rule that
+ * would merge it -- by default, not by any choice an overlay could make -- so a merged map names only its changed
+ * entries, a keyed list only its changed elements, and a resource is diffed by its own spec.
+ *
+ * A change the rule cannot state is reported, not written: a keyed list's element removed, moved, or (where the list
+ * refuses new ones) added. What the overlay does state merges back to [edited] exactly.
+ */
+fun diffOverlay(spec: MergeSpec, base: Map<String, Any?>, edited: Map<String, Any?>, path: String = ""): DiffOutcome {
+    val problems = mutableListOf<Problem>()
+    val out = LinkedHashMap<String, Any?>()
+    for ((key, value) in edited) {
+        if (key == spec.directiveKey) continue
+        if (key !in base) {
+            out[key] = value
+        } else if (base[key] != value) {
+            diffValue(spec.ruleFor(key), base[key], value, childPath(path, key), problems)?.let { out[key] = it.value }
+        }
+    }
+    for (key in base.keys) {
+        if (key !in edited && key != spec.directiveKey) out[key] = null
+    }
+    return DiffOutcome(out, problems)
+}
+
+/** What a diff states for one part: [value], which may itself be null (a removal). */
+private class Stated(val value: Any?)
+
+/** The overlay value making [base] into the different [edited] under [rule], or null when it cannot be stated. */
+private fun diffValue(rule: MergeRule, base: Any?, edited: Any?, path: String, problems: MutableList<Problem>): Stated? {
+    if (edited == null || base == null) return Stated(edited)
+    return when (rule) {
+        MergeRule.Replace -> Stated(edited)
+        MergeRule.Merge -> if (base is Map<*, *> && edited is Map<*, *>) {
+            Stated(diffEntries(base.toJsonMapOrEmpty(), edited.toJsonMapOrEmpty()) { _, _, e -> Stated(e) })
+        } else {
+            Stated(edited)
+        }
+        MergeRule.Restate -> if (base is Map<*, *> && edited is Map<*, *>) {
+            // Every entry named, in the edited order; one the base already has as it is, by `{}` -- unless it is not a
+            // map, which `{}` could not stand for.
+            val b = base.toJsonMapOrEmpty()
+            Stated(edited.toJsonMapOrEmpty().mapValues { (name, e) -> if (b[name] == e && e is Map<*, *>) emptyMap<String, Any?>() else e })
+        } else {
+            Stated(edited)
+        }
+        is MergeRule.Keyed -> if (base is List<*> && edited is List<*>) diffKeyed(rule, base, edited, path, problems) else Stated(edited)
+        is MergeRule.RestateKeyed -> if (base is List<*> && edited is List<*>) {
+            val byKey = base.mapNotNull { it as? Map<*, *> }.associateBy { it[rule.key] }
+            Stated(edited.map { e -> if (e is Map<*, *> && e.size > 1 && byKey[e[rule.key]] == e) mapOf(rule.key to e[rule.key]) else e })
+        } else {
+            Stated(edited)
+        }
+        is MergeRule.Resource -> if (base is Map<*, *> && edited is Map<*, *>) {
+            Stated(diffResource(rule.spec, base.toJsonMapOrEmpty(), edited.toJsonMapOrEmpty(), path, problems))
+        } else {
+            Stated(edited)
+        }
+        is MergeRule.Resources -> if (base is Map<*, *> && edited is Map<*, *>) {
+            Stated(
+                diffEntries(base.toJsonMapOrEmpty(), edited.toJsonMapOrEmpty()) { name, b, e ->
+                    if (b is Map<*, *> && e is Map<*, *>) {
+                        Stated(diffResource(rule.spec, b.toJsonMapOrEmpty(), e.toJsonMapOrEmpty(), childPath(path, name), problems))
+                    } else {
+                        Stated(e)
+                    }
+                },
+            )
+        } else {
+            Stated(edited)
+        }
+    }
+}
+
+/** A merged map's changed entries, each [entry]'s statement of it, and `null` for one [edited] dropped. */
+private fun diffEntries(
+    base: Map<String, Any?>,
+    edited: Map<String, Any?>,
+    entry: (name: String, base: Any?, edited: Any?) -> Stated?,
+): Map<String, Any?> {
+    val out = LinkedHashMap<String, Any?>()
+    for ((name, e) in edited) {
+        if (name !in base) out[name] = e
+        else if (base[name] != e) entry(name, base[name], e)?.let { out[name] = it.value }
+    }
+    for (name in base.keys) if (name !in edited) out[name] = null
+    return out
+}
+
+private fun diffResource(
+    spec: (Map<String, Any?>, Map<String, Any?>) -> MergeSpec,
+    base: Map<String, Any?>,
+    edited: Map<String, Any?>,
+    path: String,
+    problems: MutableList<Problem>,
+): Map<String, Any?> {
+    // The spec is chosen from the edited resource, as a merge chooses it from the overlay: what it would be merging.
+    val outcome = diffOverlay(spec(base, edited), base, edited, path)
+    problems.addAll(outcome.problems)
+    return outcome.overlay
+}
+
+private fun diffKeyed(rule: MergeRule.Keyed, base: List<*>, edited: List<*>, path: String, problems: MutableList<Problem>): Stated? {
+    val baseElements = base.mapNotNull { (it as? Map<*, *>)?.toJsonMapOrEmpty() }
+    val editedElements = edited.mapNotNull { (it as? Map<*, *>)?.toJsonMapOrEmpty() }
+    val baseKeys = baseElements.map { it[rule.key] }
+    val editedKeys = editedElements.map { it[rule.key] }
+    fun cannot(why: String): Stated? {
+        problems.add(Problem(OverlayMergeError.cannotStateChange, why + (rule.refusalHint?.let { " $it" } ?: ""), ProblemLocation(path)))
+        return null
+    }
+    // The base's elements stay, in their order; only the list's end may take new ones, and only where it appends.
+    (baseKeys - editedKeys.toSet()).firstOrNull()?.let { return cannot("'$it' is gone from this list, which an overlay cannot remove an entry from.") }
+    if (editedKeys.take(baseKeys.size) != baseKeys) return cannot("The entries here are in another order, which an overlay of this list cannot state.")
+    if (editedKeys.size > baseKeys.size && rule.onNew == OnNew.refuse) {
+        return cannot("'${editedKeys[baseKeys.size]}' is new here, and this list does not take new entries: its order matters.")
+    }
+    val out = mutableListOf<Any?>()
+    editedElements.forEachIndexed { i, e ->
+        val b = baseElements.getOrNull(i)
+        when {
+            b == null -> out.add(e)
+            b == e -> Unit
+            rule.element == KeyedElement.replace -> out.add(e)
+            rule.elementSpec != null ->
+                out.add(mapOf(rule.key to e[rule.key]) + diffResource(rule.elementSpec, b, e, "$path[${e[rule.key]}]", problems))
+            else -> {
+                // Folded entry by entry, so an entry dropped cannot be stated: a merged element only gains or changes.
+                b.keys.firstOrNull { it !in e }?.let { return cannot("'${e[rule.key]}' no longer has '$it', which an overlay here cannot remove.") }
+                out.add(mapOf(rule.key to e[rule.key]) + e.filter { (k, v) -> b[k] != v })
+            }
+        }
+    }
+    return Stated(out)
 }

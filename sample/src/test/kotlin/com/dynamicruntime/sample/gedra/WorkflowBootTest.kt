@@ -3,6 +3,7 @@ package com.dynamicruntime.sample.gedra
 import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.workflow.WFC
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WFT
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfEventType
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -36,8 +37,9 @@ class WorkflowBootTest : StringSpec({
 
     "the boot built the registries with no problems" {
         service.issues.shouldBeEmpty()
-        // Nothing global declares a creation workflow; each sample client declares its own.
-        service.forClient(null).creation.shouldBeNull()
+        // The global creation workflow is core's template (issue #1120), which no client runs: each sample client
+        // declares its own.
+        service.forClient(null).creation.shouldNotBeNull().def.workflowId shouldBe WFT.createForm
     }
 
     "acme sees its richer creation workflow, labels pulled from the backend fragment file" {

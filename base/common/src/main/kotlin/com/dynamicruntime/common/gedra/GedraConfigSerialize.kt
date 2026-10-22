@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.qualifyTypeName
@@ -57,7 +58,8 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     out[CCT.traitDef] = config.traits.values.map { traitToEntry(config, it) }
     out[CCT.usageDef] = config.usages.map { usageToEntry(it) }
     out[CCT.workflowDef] = config.workflows.values.map {
-        linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to it.toJsonMap())
+        // One made from a template is stored as its overlay of the template (issue #1120), never as what it expands to.
+        linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to (it.templateOverlay ?: it.toJsonMap()))
     }
     out[CCT.reportDef] = config.reports.values.map {
         linkedMapOf(CCT.reportId to it.reportId, CCT.definition to it.toJsonMap())
@@ -136,6 +138,8 @@ fun reassembleGedraConfig(
     client: String,
     entriesBySlot: Map<String, List<Map<String, Any?>>>,
 ): GedraConfig = gedraConfig(cxt, name, namespace, client, GedraConfigOrigin.stored) {
+    // A workflow made from a template is read over the deployment's template (issue #1120).
+    workflowTemplates = WorkflowTemplates.lookup(cxt)
     entriesBySlot[CCT.clientDef]?.firstOrNull()?.let { defineClient(ClientDef.fromInfo(it)) }
     entriesBySlot[CCT.customerDef]?.forEach { defineCustomer(CustomerDef.fromInfo(it)) }
     // Directly-declared types first, so a trait's shared `$ref` has its target present when the config compiles.

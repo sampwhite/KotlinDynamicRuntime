@@ -14,9 +14,12 @@ import com.dynamicruntime.common.gedra.report.ReportBuilder
 import com.dynamicruntime.common.gedra.report.UnreadReport
 import com.dynamicruntime.common.gedra.report.clientReportResult
 import com.dynamicruntime.common.gedra.report.parseClientReport
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.WfTemplateLookup
+import com.dynamicruntime.common.gedra.workflow.expandWorkflowTemplate
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -570,6 +573,13 @@ class GedraConfigBuilder(
     }
 
     /**
+     * Where a workflow made from a template finds it (issue #1120): the deployment's templates, set by whatever reads
+     * stored configuration. Null where none can be found -- a config built in source -- and a workflow naming a
+     * template is then refused.
+     */
+    var workflowTemplates: WfTemplateLookup? = null
+
+    /**
      * Declares a workflow in source (issue #533). The builder writes the definition's **JSON**, which then
      * takes the same path a definition from data does -- [workflowFromMap] -- so source and data cannot
      * come to be read differently. The id's client scope is this config's, as a cfact's is.
@@ -584,7 +594,14 @@ class GedraConfigBuilder(
      * `"order": "a,b"`). This is the one path into the model; [workflow] is a convenience over it.
      */
     fun workflowFromMap(raw: Map<String, Any?>) {
-        val def = parseWfDef(cxt, raw)
+        val def = raw[WFD.fromTemplate].toOptStr()?.let { templateId ->
+            // Made from a template (issue #1120): what is stored is an overlay, read over the template as it is now.
+            val template = workflowTemplates?.template(templateId) ?: throw KdrException.mkConv(
+                "Workflow '${raw[WFD.workflowId].toOptStr()}' is made from template '$templateId', which this " +
+                    "deployment does not declare.",
+            )
+            expandWorkflowTemplate(cxt, template, raw)
+        } ?: parseWfDef(cxt, raw)
         workflows[def.workflowId]?.let {
             throw KdrException.mkConv(
                 "Workflow '${def.workflowId}' is declared twice in one config. A workflow id identifies one " +

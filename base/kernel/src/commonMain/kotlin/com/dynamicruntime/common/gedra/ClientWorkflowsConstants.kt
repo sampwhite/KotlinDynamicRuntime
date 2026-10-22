@@ -1,0 +1,47 @@
+package com.dynamicruntime.common.gedra
+
+/**
+ * The wire names of a client's workflows on the client page (issue #1120): the templates a workflow can be made from,
+ * the client's workflows, and the save that makes one or changes its slots. A workflow's own keys are `WFD`'s.
+ */
+@Suppress("ConstPropertyName")
+object CWF {
+    const val catalogTypeName = "ClientWorkflowCatalog"
+    const val templateTypeName = "ClientWorkflowTemplate"
+    const val workflowTypeName = "ClientWorkflowInfo"
+    const val traitTypeName = "ClientWorkflowTrait"
+    const val saveResultTypeName = "ClientWorkflowSaveResult"
+
+    /** On the catalog: the deployment's templates, each with why it cannot be used now, if it cannot. */
+    const val templates = "templates"
+
+    /** On the catalog: the client's workflows, each with its template, or why its slots cannot be changed here. */
+    const val workflows = "workflows"
+
+    /** On the catalog: the traits a workflow of the client's may collect. */
+    const val traits = "traits"
+
+    /** On a template or a workflow: its definition, as it runs -- what the page explains the fixed parts from. */
+    const val definition = "definition"
+
+    /** On a template: why a workflow cannot be made from it now (a plan's limit, a kind the client has); absent when it can. */
+    const val refusal = "refusal"
+
+    /** On a workflow: why its slots cannot be changed here; absent when they can. */
+    const val notEditable = "notEditable"
+
+    /** On a workflow, and a save's result: the stored configuration holding it. */
+    const val configName = "configName"
+
+    /** On a save, and its result: the workflow's slots. */
+    const val slots = "slots"
+
+    /** On a trait: its description. */
+    const val description = "description"
+
+    /**
+     * The prefix of the stored configuration the editor makes for a new workflow: one per workflow, named for it
+     * (`workflow_<workflowId>`), so each is published, judged and, later, carried on its own.
+     */
+    const val configPrefix = "workflow_"
+}

@@ -325,17 +325,19 @@ class GedraConfigCollectorTest : StringSpec({
 
     // And its workflows (issue #953): a global workflow id is rooted, and so is every task in it -- a global workflow
     // is a container clients will add tasks to by overlay, where a bare task of core's could meet one of theirs.
-    "a global config's workflow id and its tasks are rooted, under its namespace's root" {
+    // A global workflow is a template (issue #1120): its id rooted, and its task ids bare, since a workflow made from it
+    // has them as its own.
+    "a global config's workflow id is rooted, under its namespace's root, and its tasks are bare" {
         fun flow(workflowId: String, taskId: String) = gedraConfig(devCxt, "flowConfig", GCFG.globalNamespace) {
             trait("NoteEntry", "kdr:note", setOf(GedraDataType.formDoc)) { property("text", "A note.") }
             workflow(workflowId, WfEntry.normal) { task(taskId, "First") { trait("kdr:note"); save("s", "Save", WfSaveKind.edit) } }
         }
-        GedraConfigCollector().add(devCxt, flow("kdr:review", "kdr:first")) shouldBe true
-        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("review", "kdr:first")) }
+        GedraConfigCollector().add(devCxt, flow("kdr:review", "first")) shouldBe true
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("review", "first")) }
             .fullMessage() shouldContain "'review' is not a rooted workflow id"
-        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("kdr:review", "first")) }
-            .fullMessage() shouldContain "'first' is not a rooted task id"
-        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("abc:review", "abc:first")) }
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("kdr:review", "kdr:first")) }
+            .fullMessage() shouldContain "Template 'kdr:review' has a task 'kdr:first'"
+        shouldThrow<KdrException> { GedraConfigCollector().add(devCxt, flow("abc:review", "first")) }
             .fullMessage() shouldContain "'abc:review' is under the root 'abc', not 'kdr'"
     }
 

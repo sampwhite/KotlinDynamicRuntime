@@ -11,6 +11,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
+import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.copyOverrideEntries
 import com.dynamicruntime.common.gedra.workflow.headingBasisKey
 import com.dynamicruntime.common.gedra.workflow.layoutEntryOf
@@ -363,14 +364,15 @@ object DesignView {
             val at = workflows.indexOfFirst { it[CCT.workflowId] == workflowId }
             if (at < 0) throw KdrException("No workflow '$workflowId' in '${declared.bundle.name}'.", code = EXC.notFound)
             val stored = (workflows[at][CCT.definition] as? Map<*, *>)?.toJsonMap().orEmpty()
-            val current = parseWfDef(cxt, stored)
+            // A workflow made from a template is edited as what it expands to, and kept as its overlay (issue #1120).
+            val current = WorkflowTemplates.readStored(cxt, stored)
             if (workflowDefStamp(current) != basedOn) {
                 throw KdrException(
                     "Workflow '$workflowId' has changed since this page was drawn; reload it and make the change again.",
                     code = EXC.conflict,
                 )
             }
-            val rewritten = rewrite(current.toJsonMap())
+            val rewritten = WorkflowTemplates.storedForm(cxt, parseWfDef(cxt, rewrite(current.toJsonMap())))
             slots + (CCT.workflowDef to workflows.mapIndexed { i, e -> if (i == at) e + (CCT.definition to rewritten) else e })
         }
         val reloaded = WorkflowService.get(cxt).forClient(cxt.client).workflow(workflowId)

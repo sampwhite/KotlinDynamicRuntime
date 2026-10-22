@@ -389,6 +389,21 @@ private fun ChildrenBuilder.clientDetail(
                 }
             }
         }
+        // Its workflows made from templates (issue #1120), offered where the traits are, for the same reason: a save
+        // lands in the client's stored configuration under the same rules. One element whether or not it is drawn.
+        div {
+            if (def?.stored != null && definitionEditable(row) &&
+                definitionEditOffer(def.storedConfig, configs, sandbox = def.info[CLD.sandbox] == true).editor
+            ) {
+                h2 { +"Workflows" }
+                ClientWorkflowsSection {
+                    this.clientId = clientId
+                    this.savesDraft = savesDraft
+                    formsOpenable = impactFormsOpenable(acrossClients, onSandboxPage = row?.sandboxOf != null)
+                    this.onChanged = onChanged
+                }
+            }
+        }
         // Its sandbox (issue #932): whose it is, or adding and removing one.
         row?.let { overview ->
             h2 { +"Sandbox" }

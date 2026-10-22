@@ -187,6 +187,15 @@ object UADEP {
     const val clientTraitDesign = "/${SECT.clientAdmin}/client/traits/design"
 
     /**
+     * A client's workflows (issue #1120): the templates a workflow can be made from, and the client's own -- each made
+     * from a template with its slots, or why it cannot be changed here. Scoped as [clientDefinition] is.
+     */
+    const val clientWorkflows = "/${SECT.clientAdmin}/client/workflows"
+
+    /** Makes a workflow from a template for a client, or changes the slots of one made so (issue #1120). */
+    const val clientWorkflowSave = "/${SECT.clientAdmin}/client/workflows/save"
+
+    /**
      * Narrows a global trait for a client (issue #1119): hides fields in its layout, requires fields, and restricts
      * choices, written as the client's alteration of the trait's data type. Scoped as [clientDefinition] is.
      */

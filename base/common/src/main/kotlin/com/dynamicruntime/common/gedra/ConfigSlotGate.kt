@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.LocalFileRoots
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
@@ -15,6 +16,7 @@ import com.dynamicruntime.common.schema.offContractKeyFailures
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.checkTemplateSyntax
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /*
@@ -147,7 +149,7 @@ private fun SchFailure.under(parent: String): SchFailure = copy(path = if (path.
 /** What is wrong with one [entry] of [slot], by path within it. */
 private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: Map<String, Any?>): List<SchFailure> {
     if (slot == CCT.clientDef) return readClientDef(cxt, entry).failures
-    val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, it) }
+    val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, entry, it) }
     val beyond = when (slot) {
         CCT.usageDef -> displayFailures(entry[CCT.display])
         CCT.fileRefDef -> fileRefFailures(entry)
@@ -161,11 +163,16 @@ private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: M
 private val unparsedBodies = SchOpts(schemaDocumentsUnparsed = true)
 
 /**
- * Whether [failure] is what the gate leaves to the trial reload of a report (see [configSlotFailures]): anything
- * *inside* its definition. That the definition is there, and is an object, stays the gate's.
+ * Whether [failure] is what the gate leaves to the trial reload (see [configSlotFailures]): anything *inside* a
+ * report's definition, or inside the definition of a workflow made from a template (issue #1120) -- an overlay, which
+ * says only what it changes, so it is judged by what it makes of the template. That the definition is there, and is an
+ * object, stays the gate's.
  */
-private fun leftToTheTrial(slot: String, failure: SchFailure): Boolean =
-    slot == CCT.reportDef && (failure.path.startsWith("${CCT.definition}.") || failure.path.startsWith("${CCT.definition}["))
+private fun leftToTheTrial(slot: String, entry: Map<String, Any?>, failure: SchFailure): Boolean {
+    val inDefinition = failure.path.startsWith("${CCT.definition}.") || failure.path.startsWith("${CCT.definition}[")
+    val overlay = slot == CCT.workflowDef && entry[CCT.definition].toJsonMapOrEmpty()[WFD.fromTemplate] != null
+    return inDefinition && (slot == CCT.reportDef || overlay)
+}
 
 /** What is wrong with a usage rule's `display` as a template -- one failure per defect, so they are fixed in one pass. */
 private fun displayFailures(display: Any?): List<SchFailure> = (display as? String)?.checkTemplateSyntax().orEmpty().map {

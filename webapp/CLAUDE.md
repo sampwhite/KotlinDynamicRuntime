@@ -741,7 +741,7 @@ retrieve per listed client, grouped by the pure `overridesAcrossClients` into fi
 overriding it. A scoped administrator has one client and is never shown that view, whatever the hash says.
 
 **How a save takes effect, said before and sent with it** (issues #930, #1176, #1191). Every editor on a client's
-page that saves its configuration -- the copy, the menu, the definition, the traits, the files -- is live at once for a client
+page that saves its configuration -- the copy, the menu, the definition, the traits, the workflows, the files -- is live at once for a client
 that runs its latest configuration, and a draft its sandbox shows for one with a sandbox (or on a sandbox's own
 page). The page decides which **once**, from the overview row it last read (`savesAsDraft`, in `clientDetail`), says
 it beside the save (`saveEffectText`) and sends it as `mode` (`expectedMode`), so the wording and what is sent cannot
@@ -898,6 +898,19 @@ client does not. A **new trait** may **Start from** a global trait (`extending`)
 which are listed and kept, and the preview resolves the extension onto the base (`previewDefs` with a
 `TraitBaseView`); what a trait extends is fixed once saved. Every one of these saves, as a sandbox's draft, says what
 publishing it would do to the live client's forms (`draftImpact`, `draftImpactText`) -- for information.
+
+**Workflows** (issue #1120, `ClientWorkflowsSection.kt`, its pure half in `ClientWorkflows.kt`, covered by
+`ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`
+(`ClientsApi.workflowCatalog`): the client's workflows, then the deployment's **templates** -- the global workflows,
+which no client runs as they are. A template is greyed with the backend's reason when a workflow cannot be made from
+it now (a client has one creation and one survey, and a plan limits workflows and their tasks); a workflow not made
+from a template says why its slots cannot be changed here. **Use…** and **Edit…** open `WorkflowSlotEditor` on the
+**slots** -- the kernel's `WfTemplateSlots`: the workflow's name, and per data-entry task its label and the traits it
+collects, each required or not -- and say in words what the template fixes (`workflowFixedParts`), from the workflow
+the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts `/clientAdmin/client/workflows/save`
+(`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is
+patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a
+fix to the template reaches it; Design View edits the same workflow and keeps its changes in the same overlay.
 
 **Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,
 refused on anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) for any form

@@ -160,6 +160,11 @@ later schema rejects" test.
     to the code by `ConfDemoDocsTest`. (`docs/history/gedra-workflow.md` is a superseded design; do not follow it.) An
     optional `label = "…"` in the block titles the page over the form (issue #719); like a task's label it is a
     template, so `%{@t("file.ns.key")}` pulls it from a fragment file and the boot checks the pull resolves.
+  - **A workflow made from a template** (issue #1120): `workflowFromMap(mapOf(WFD.workflowId to "mine",
+    WFD.fromTemplate to "kdr:survey", ...))`, after `workflowTemplates = WorkflowTemplates.lookup(cxt)` in the block
+    -- the map is an overlay, only what differs from the template, and is stored as such. Templates are the global
+    workflows (core ships `WFT.createForm`, `WFT.survey`, `WFT.collect`); no client runs a global workflow unless it
+    makes one of its own from it. `RootedWorkflowTest` (kdn) is the reference.
   - **`cfact(name, group, description, toFrontend)`** — the cfacts the client may name in expressions.
   - **Not `stateTrait(...)`.** State is global, declared by components (issue #873): a client's config declaring
     one is refused at write, and a client-owned source config declaring one refuses the boot outside production.

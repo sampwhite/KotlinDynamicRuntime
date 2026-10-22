@@ -745,19 +745,25 @@ class GedraConfigCollector {
     }
 
     /**
-     * The first of a global [config]'s [traitIds], cfact names, workflow ids, task ids, and report ids that is not rooted under
-     * the config's own root (issues #951-#953), as a reason, or null.
+     * The first of a global [config]'s [traitIds], cfact names, workflow ids, and report ids that is not rooted under the
+     * config's own root (issues #951-#953), or of its workflows' task ids that is not bare, as a reason, or null.
      *
-     * A task id is rooted because a global workflow is a container clients will add tasks to by overlay (#921 rule
-     * 6): a client's bare task added to one must never meet a task a later release adds under the same name. Every
-     * global workflow is held to it, since the overlay is keyed by task id from a workflow's first version.
+     * A global workflow is a template (issue #1120), and a task id is a template's own the way a client's is: a workflow
+     * made from the template has the template's tasks, under their ids, and a client's task ids are bare. Nobody adds a
+     * task to a template, so there is no later release's task for a client's to meet.
      */
     private fun globalNamesProblem(config: GedraConfig, traitIds: Collection<String>): String? {
         val root = namespaceRoot(config.namespace)
+        for (wf in config.workflows.values) {
+            for (task in wf.tasks) {
+                if (clientNameProblem(OwnedNameKind.task, task.id) != null) {
+                    return "Template '${wf.workflowId}' has a task '${task.id}', where a template's task ids are bare " +
+                        "variable names: a workflow made from it has them as its own."
+                }
+            }
+        }
         val names = traitIds.map { OwnedNameKind.trait to it } + config.cfacts.map { OwnedNameKind.cfact to it.name } +
-            config.workflows.values.flatMap { wf ->
-                listOf(OwnedNameKind.workflow to wf.workflowId) + wf.tasks.map { OwnedNameKind.task to it.id }
-            } +
+            config.workflows.values.map { OwnedNameKind.workflow to it.workflowId } +
             config.reports.keys.map { OwnedNameKind.report to it }
         for ((kind, name) in names) {
             rootedNameProblem(kind, name)?.let { return it }
