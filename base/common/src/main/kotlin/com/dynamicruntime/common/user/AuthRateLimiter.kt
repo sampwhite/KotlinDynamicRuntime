@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 @Suppress("ConstPropertyName")
 object RL {
-    /** Failed password-login attempts allowed per username within [pwWindowMs]. */
+    /** Failed password-login attempts allowed per login id, as typed, within [pwWindowMs] (issue #1299). */
     const val pwPerUserMax = 5
 
     /** Failed password-login attempts allowed per source IP within [pwWindowMs] (across all usernames). */

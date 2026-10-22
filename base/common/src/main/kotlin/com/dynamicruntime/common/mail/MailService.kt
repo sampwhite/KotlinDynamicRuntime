@@ -19,6 +19,7 @@ import com.dynamicruntime.common.util.toOptBool
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Topic logger for the mail subsystem (placed beside the code that owns the `"mail"` topic). */
@@ -111,7 +112,8 @@ class SentEmail(
     /** The `text/html` part, when the mail carried one (issue #773); the mails from `MailCopy` always do. */
     val html: String? = null,
     /**
-     * True when the mail went out through the provider. The two are not exclusive since [MAIL.transmitToAdminDomain]:
+     * True when the mail went out through the provider -- or, sent in the background (issue #1299), was handed to it
+     * to go, which a failure afterwards does not undo. The two are not exclusive since [MAIL.transmitToAdminDomain]:
      * a simulating instance may both capture a mail and transmit it.
      */
     val transmitted: Boolean = !simulated,
@@ -269,12 +271,27 @@ class MailService : ServiceInitializer {
      * The two parts are the message as given: the provider takes both and generates neither, so a mail with
      * no [html] is a text-only mail, not one the provider dresses up. The auth mails come through
      * [sendFragmentMail], which supplies both from one piece of copy.
+     *
+     * [inBackground] hands the transmission to a background thread (issue #1299), so the request does not wait on
+     * the provider and the call returns before it is sent: what a sign-in step's mail uses, whose time and whose
+     * failure would otherwise say that the address has an account. A failure then reaches the log alone, never the
+     * caller. Capturing a mail is never deferred, so a test reads a code back at once either way.
      */
-    fun sendEmail(cxt: KdrCxt, to: String, subject: String, text: String, html: String? = null, from: String = fromAddressForApp): SentEmail {
+    fun sendEmail(
+        cxt: KdrCxt,
+        to: String,
+        subject: String,
+        text: String,
+        html: String? = null,
+        from: String = fromAddressForApp,
+        inBackground: Boolean = false,
+    ): SentEmail {
         val delivery = deliveryFor(cxt, to)
         val key = apiKey
         val transmitted = delivery.transmit && key != null
-        if (transmitted) transmit(cxt, to, from, subject, text, html, key)
+        if (transmitted) {
+            deliver(cxt, to, inBackground) { sendCxt -> transmit(sendCxt, to, from, subject, text, html, key) }
+        }
         if (delivery.capture) LogMail.debug(cxt) { "Simulated email to $to: '$subject'" + (if (transmitted) " (also transmitted)." else ".") }
         val sent = SentEmail(
             mailId.getAndIncrement().toString(), to, from, subject, text, simulated = delivery.capture, html = html, transmitted = transmitted,
@@ -295,9 +312,44 @@ class MailService : ServiceInitializer {
      * [client] the mail is about reads it (issue #773): the subject, the text part, and the HTML part all come
      * from that one piece of copy. What the auth flows call instead of composing a body in code.
      */
-    fun sendFragmentMail(cxt: KdrCxt, to: String, client: String?, mail: String, params: Map<String, Any?>): SentEmail {
+    fun sendFragmentMail(
+        cxt: KdrCxt,
+        to: String,
+        client: String?,
+        mail: String,
+        params: Map<String, Any?>,
+        inBackground: Boolean = false,
+    ): SentEmail {
         val rendered = MailCopy.render(cxt, client, mail, params)
-        return sendEmail(cxt, to, rendered.subject, rendered.text, rendered.html)
+        return sendEmail(cxt, to, rendered.subject, rendered.text, rendered.html, inBackground = inBackground)
+    }
+
+    /**
+     * Where a mail sent [inBackground][sendEmail] is transmitted (issue #1299): a thread per send, virtual, so a slow
+     * provider holds no platform thread and nothing here keeps the process alive.
+     */
+    private val background = Executors.newVirtualThreadPerTaskExecutor()
+
+    /**
+     * Runs [send] now, on the caller's [cxt], or -- [inBackground] -- on a background thread, and returns at once
+     * (issue #1299). In the background it runs on a context of its own, made from the instance config and carrying
+     * the request's trace id, not on the request's, which has finished by then; and a failure is logged rather than
+     * thrown, since nobody is left to throw it to. The send is a parameter, so a test exercises this with no
+     * provider and no key.
+     */
+    internal fun deliver(cxt: KdrCxt, to: String, inBackground: Boolean, send: (KdrCxt) -> Unit) {
+        if (!inBackground) {
+            send(cxt)
+            return
+        }
+        val sendCxt = KdrCxt.mkSimpleCxt("mailSend", cxt.instanceConfig).also { it.traceId = cxt.traceId }
+        background.execute {
+            try {
+                send(sendCxt)
+            } catch (e: Exception) {
+                LogMail.error(sendCxt, "Could not send the email to $to in the background.", e)
+            }
+        }
     }
 
     /** Recently sent (or simulated) emails, with the most recent first. For tests and troubleshooting. */

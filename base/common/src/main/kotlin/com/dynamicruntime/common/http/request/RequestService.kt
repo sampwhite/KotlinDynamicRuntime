@@ -12,6 +12,7 @@ import com.dynamicruntime.common.logging.RLOG
 import com.dynamicruntime.common.logging.RequestLogCapture
 import com.dynamicruntime.common.node.NodeService
 import com.dynamicruntime.common.user.AUTHC
+import com.dynamicruntime.common.user.AuthTiming
 import com.dynamicruntime.common.user.UserAuthCookie
 import com.dynamicruntime.common.user.ENVA
 import com.dynamicruntime.common.user.EnvAuthRules
@@ -19,6 +20,7 @@ import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.refreshActingRoles
 import com.dynamicruntime.common.util.crc32Hex
 import com.dynamicruntime.common.util.mkUniqueId
+import java.util.concurrent.Semaphore
 import kotlin.time.Instant
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.EndpointKind
@@ -63,6 +65,20 @@ class RequestService : ServiceInitializer {
 
     /** Where a direct request may come from (issue #1255); from [DirectAccess.directAccessEnvVar]. Bound in [onCreate]. */
     var directAccess: DirectAccessMode = DirectAccessMode.loopback
+
+    /**
+     * Whether a `timingFloor` endpoint is padded (issue #1299), and to what; from [AuthTiming]. Bound in [onCreate].
+     * Off until then, so a node that never started pads nothing.
+     */
+    private var padAuthTiming: Boolean = false
+    private var authFloorMs: Long = AuthTiming.defaultFloorMs
+    private var authJitterMs: Long = AuthTiming.defaultJitterMs
+
+    /** The sign-in steps' concurrency cap (issue #1299): one permit per `timingFloor` call in progress. Bound in [onCreate]. */
+    private var authPermits = Semaphore(AuthTiming.defaultConcurrency)
+
+    /** How many sign-in steps may still start now, under the cap (issue #1299) -- for a test to wait on. */
+    val authPermitsAvailable: Int get() = authPermits.availablePermits()
 
     /** The context root under which content is served; from [ACFG.contentContextRoot]. Bound in [checkInit]. */
     var contentContextRoot: String = ContextRoot.cp
@@ -348,6 +364,10 @@ class RequestService : ServiceInitializer {
 
         // Read once, so a value naming no mode refuses the start rather than the first request.
         directAccess = DirectAccess.mode(cxt.instanceConfig)
+        padAuthTiming = AuthTiming.isOn(cxt.instanceConfig)
+        authFloorMs = AuthTiming.floorMs(cxt.instanceConfig)
+        authJitterMs = AuthTiming.jitterMs(cxt.instanceConfig)
+        authPermits = Semaphore(AuthTiming.concurrency(cxt.instanceConfig))
         apiContextRoot = (cxt.instanceConfig.get(ACFG.apiContextRoot) as? String) ?: ContextRoot.kda
         contentContextRoot = (cxt.instanceConfig.get(ACFG.contentContextRoot) as? String) ?: ContextRoot.cp
         appContextRoot = (cxt.instanceConfig.get(ACFG.appContextRoot) as? String) ?: ContextRoot.wa
@@ -612,7 +632,7 @@ class RequestService : ServiceInitializer {
                 // copy would say which clients exist.
                 endpoint = endpoint?.takeIf { it.existsFor(cxt) && SchemaService.clientEndpointOpenTo(cxt, it) }
                 if (endpoint != null) {
-                    executeEndpoint(cxt, handler, endpoint)
+                    withAuthPermit(endpoint) { executeEndpoint(cxt, handler, endpoint) }
                 }
             } else {
                 // Content servers render config-derived material too -- a client's markdown fragment and UI-block
@@ -639,6 +659,38 @@ class RequestService : ServiceInitializer {
         }
 
         handler.logSuccess(cxt, EXC.ok)
+    }
+
+    /**
+     * Runs [block] holding one of the sign-in steps' permits when [endpoint] is one -- it declares
+     * [KdrEndpoint.timingFloor] -- and refuses it with a 429 when none is free (issue #1299): padding holds each step
+     * for its whole duration and a password hash is CPU-bound, so a node works on at most `KDR_AUTH_CONCURRENCY` of
+     * them at once. The permit is held until the answer has been sent. Every other endpoint runs [block] as it is,
+     * so a burst of sign-ins cannot turn away the cheap reads a page makes, such as the auth UI config.
+     */
+    private inline fun withAuthPermit(endpoint: KdrEndpoint, block: () -> Unit) {
+        if (!endpoint.timingFloor) {
+            block()
+            return
+        }
+        if (!authPermits.tryAcquire()) {
+            throw KdrException("This node is busy with sign-ins. Try again in a moment.", code = EXC.tooManyRequests)
+        }
+        try {
+            block()
+        } finally {
+            authPermits.release()
+        }
+    }
+
+    /**
+     * Waits, for an endpoint declaring [KdrEndpoint.timingFloor] on a deployment that pads (issue #1299), until the
+     * floor plus jitter has passed since [cxt]'s request began.
+     */
+    private fun padToFloor(cxt: KdrCxt, endpoint: KdrEndpoint) {
+        if (!padAuthTiming || !endpoint.timingFloor) return
+        val waitMs = AuthTiming.remainingMs(cxt.durationMs(), authFloorMs, authJitterMs)
+        if (waitMs > 0) Thread.sleep(waitMs)
     }
 
     /**
@@ -715,7 +767,15 @@ class RequestService : ServiceInitializer {
         )
         cxt.request = KdrRequest(cxt, requestData, endpoint, handler, requestInfo)
 
-        val inner = endpoint.handler(cxt, requestData)
+        // A sign-in step answers no sooner than the floor, failing or not (issue #1299): padded here, after the
+        // handler and before anything is sent, since once the answer is written no wait changes when it arrived.
+        val inner = try {
+            endpoint.handler(cxt, requestData)
+        } catch (t: Throwable) {
+            padToFloor(cxt, endpoint)
+            throw t
+        }
+        padToFloor(cxt, endpoint)
 
         if (!handler.hasResponseBeenSent()) {
             // Write any auth cookies BEFORE sending: sending commits the (Jetty) response, and headers added

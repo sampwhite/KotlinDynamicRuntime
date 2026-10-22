@@ -85,13 +85,16 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
         mapOf(AFLD.formAuthToken to authHandler(c).generateFormToken(c))
     }
 
+    // `timingFloor` (issue #1299), on every step below whose time could say whether an account exists -- the code
+    // mails, the logins, registration, the claim and the invitation: each answers no sooner than the auth floor.
+
     // Email a verification code to a new contact (registration).
     generalEndpoint(AEP.newContactSendVerify, "Emails a verification code to a new email contact.",
         HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
             field(AFLD.contactAddress, "The email address to verify.", required = true)
             field(AFLD.contactType, "The contact type (currently only 'email').", required = true)
             field(AFLD.formAuthToken, "The form auth token.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).sendVerifyToContact(c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getReqStr(AFLD.formAuthToken))
         emptyMap<String, Any?>()
     }
@@ -104,7 +107,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             field(AFLD.addPassword, "When true, the emailed code is framed for setting/changing a password.") {
                 type = SCT.boolean
             }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).sendVerifyToUser(
             c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.formAuthToken), req.getOptBool(AFLD.addPassword) == true,
         )
@@ -126,7 +129,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             field(AFLD.personaSuffix, "A further user of the same address, client and persona; only an '${ROLE.allClients}' caller may name one.") {
                 maxLength = PERSONASUFFIX.maxLength
             }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         val userId = authHandler(c).createInitialUser(
             c, req.getReqStr(AFLD.contactAddress).normalizeEmail(), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
             client = req.getOptStr(AFLD.client)?.trim()?.ifEmpty { null },
@@ -143,7 +146,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
         HttpMethod.POST, outputRef = ATYPE.authAck, inputFields = {
             claimKeyInput()
             field(AFLD.formAuthToken, "The form auth token.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).sendClaimCode(c, claimKeyOf(req), req.getReqStr(AFLD.formAuthToken))
         emptyMap<String, Any?>()
     }
@@ -152,7 +155,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             claimKeyInput()
             field(AFLD.formAuthToken, "The form auth token.", required = true) { sensitive = true }
             field(AFLD.verifyCode, "The verification code mailed for this claim.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).claimAccount(c, claimKeyOf(req), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode))
     }
 
@@ -168,13 +171,13 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
     generalEndpoint(AEP.invitationPreview, "Says what an invitation link is for, without accepting it.",
         HttpMethod.POST, outputRef = ATYPE.invitationInfo, inputFields = {
             field(AFLD.invitationToken, "The token from the mailed link.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).previewInvitation(c, req.getReqStr(AFLD.invitationToken))
     }
     generalEndpoint(AEP.invitationAccept, "Accepts an invitation: registers the invited user and logs in as it.",
         HttpMethod.POST, outputRef = UserProfile.infoTypeName, inputFields = {
             field(AFLD.invitationToken, "The token from the mailed link.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).acceptInvitation(c, req.getReqStr(AFLD.invitationToken))
     }
 
@@ -190,7 +193,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             field(AFLD.name, "The account's name: the registrant's full name, or the business's name.")
             field(AFLD.formAuthToken, "The form auth token.", required = true) { sensitive = true }
             field(AFLD.verifyCode, "The verification code.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).setLoginData(
             c, req.getReqLong(AFLD.userId), req.getOptStr(AFLD.username), req.getOptStr(AFLD.password),
             req.getOptBool(AFLD.isEntity), req.getOptStr(AFLD.name),
@@ -204,7 +207,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             field(AFLD.loginId, "The user's username or email address.", required = true)
             field(AFLD.formAuthToken, "The form auth token.", required = true) { sensitive = true }
             field(AFLD.verifyCode, "The verification code.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).loginByCode(c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode))
     }
 
@@ -216,7 +219,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             // Match the value exactly as set (issue #765): trimming here could fail a password whose stored
             // form legitimately carries edge whitespace.
             field(AFLD.password, "The user's password.", required = true) { preserveWhitespace(); sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).loginByPassword(c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.password))
     }
 
@@ -238,7 +241,7 @@ fun authSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, "kdr.user") {
             field(AFLD.password, "The new password.", required = true) { preserveWhitespace(); sensitive = true }
             field(AFLD.formAuthToken, "The form auth token.", required = true) { sensitive = true }
             field(AFLD.verifyCode, "The verification code.", required = true) { sensitive = true }
-        }) { c, req ->
+        }, timingFloor = true) { c, req ->
         authHandler(c).changePassword(
             c, req.getReqStr(AFLD.loginId).normalizeLoginId(), req.getReqStr(AFLD.password),
             req.getReqStr(AFLD.formAuthToken), req.getReqStr(AFLD.verifyCode),
