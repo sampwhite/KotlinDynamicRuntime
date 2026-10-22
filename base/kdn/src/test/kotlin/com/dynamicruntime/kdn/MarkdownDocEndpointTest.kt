@@ -37,7 +37,7 @@ class MarkdownDocEndpointTest : StringSpec({
         val cxt = TestInstances.default("docStale")
         val client = TestHttpClient(cxt.instanceConfig)
 
-        // A browser holding a previous ref (e.g. across a deploy) asks for an old hash. It must get the current
+        // A browser holding a previous ref (e.g., across a deploy) asks for an old hash. It must get the current
         // document -- documents do not 404 on a mismatch -- but never let a shared cache keep it under this URL.
         val handler = client.sendGetRequestRaw("/st/myapp/doc/${HDOC.readme}:staleHash")
 
