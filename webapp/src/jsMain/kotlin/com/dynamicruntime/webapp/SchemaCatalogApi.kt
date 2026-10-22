@@ -20,15 +20,6 @@ private val schemaBase: String get() = apiContextRoot + "/schema"
 private val apiRoot: String get() = apiContextRoot
 
 /**
- * The `limit` [SchemaCatalogApi.fetchCatalog] asks for: the whole catalog, not a page of it. The catalog is a
- * fixed introspection surface (a few tens of endpoints), and the page shows and filters all of it -- deriving
- * the tag-filter options or `findFormCreateEndpoint` from a truncated page would silently drop endpoints past
- * the cut (issue #489). Left generous rather than exact so a growing surface never quietly re-hits the default
- * `defaultListLimit` of 100; the backend simply `take`s this many.
- */
-private const val fullCatalogLimit = 1000
-
-/**
  * Fetches endpoint schema from the runtime's `/schema/endpoints` catalog and parses it into the [Catalog]
  * model. Responses are parsed with the shared kernel's [jsonMap] (the same JSON parser the backend uses), so
  * numbers arrive as the kernel's own `Long`/`Double` — matching what the kernel validator expects — instead
@@ -39,13 +30,14 @@ object SchemaCatalogApi {
      * GET the whole catalog: every registered endpoint's rendering plus the shared `$defs`. An optional
      * [namespace] narrows the results; an optional [client] shows *that* client's surface -- its endpoints and
      * its `$defs` (issues #387, #394), for a caller who holds `allClients`. Null [client] is the caller's own.
+     * No `limit` is sent: the listing's default (`defaultEndpointListLimit`) is the whole catalog, which the page
+     * shows and filters -- deriving the tag-filter options or `findFormCreateEndpoint` from a truncated page would
+     * silently drop endpoints past the cut (issue #489).
      */
     suspend fun fetchCatalog(namespace: String? = null, client: String? = null): Catalog {
         val query = queryString(buildMap {
             namespace?.let { put(EI.namespace, it) }
             client?.let { put(EI.client, it) }
-            // Ask for the whole catalog, not the default first 100 -- the page filters over the full set.
-            put(EP.limit, fullCatalogLimit)
         })
         val results = getJson("$schemaBase/endpoints$query")[EP.results].toJsonMapOrEmpty()
         return toCatalog(results)

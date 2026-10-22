@@ -63,7 +63,7 @@ import com.dynamicruntime.common.schema.LayoutPullHit
 import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.schema.SchLayout
 import com.dynamicruntime.common.schema.SchType
-import com.dynamicruntime.common.endpoint.defaultListLimit
+import com.dynamicruntime.common.endpoint.defaultEndpointListLimit
 import com.dynamicruntime.common.endpoint.renderEndpoint
 import com.dynamicruntime.common.endpoint.resolveEndpointInputType
 import com.dynamicruntime.common.endpoint.schemaModule
@@ -1278,9 +1278,9 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
                 ) {
                     type = SCT.boolean
                 }
-                property(EP.limit, "The maximum number of endpoints to return.") {
+                property(EP.limit, "The maximum number of endpoints to return; by default the whole catalog.") {
                     type = SCT.integer
-                    default = defaultListLimit
+                    default = defaultEndpointListLimit
                 }
             }
             // The EndpointInfo type (one endpoint's rendering) is owned by KdrEndpoint.
@@ -1836,7 +1836,7 @@ class SchemaService : ServiceInitializer, ClientSchemaSource {
             // access decision below is unchanged, so a filter can only ever hide endpoints the caller could
             // already have seen. `tags` is OR: an endpoint matches if it carries any of them.
             val requestedTags = request[EI.tags].toJsonListOfStrings().filter { it.isNotBlank() }.toSet()
-            val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultListLimit
+            val limit = (request[EP.limit] as? Number)?.toInt() ?: defaultEndpointListLimit
             refreshCallerRoles(cxt)
             val surface = catalogSurface(cxt, request)
             // One access decision per endpoint, consumed twice: what survives is rendered, what does not is

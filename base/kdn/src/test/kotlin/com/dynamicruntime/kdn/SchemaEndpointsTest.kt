@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.ACFG
 import com.dynamicruntime.common.endpoint.EI
 import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.endpoint.ETAG
+import com.dynamicruntime.common.endpoint.defaultEndpointListLimit
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.TestHttpClient
 import com.dynamicruntime.common.schema.SCH
@@ -100,6 +101,16 @@ class SchemaEndpointsTest : StringSpec({
         catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 2))).size shouldBe 2
     }
 
+    "/schema/endpoints lists the whole catalog unless asked for fewer" {
+        // A page shows every endpoint at once, so the default is the whole catalog, not a list endpoint's 100.
+        val client = client("schemaWhole")
+        val all = catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 10_000)))
+        catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints")).size shouldBe all.size
+        val limit = all.single { it[EI.path] == "/schema/endpoints" }[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties]
+            .toJsonMapOrEmpty()[EP.limit].toJsonMapOrEmpty()
+        limit[SCH.default].toString() shouldBe defaultEndpointListLimit.toString()
+    }
+
     "/schema/endpoint looks up a single endpoint by exact method and path, in the catalog shape" {
         val client = client("schemaOne")
         val resp = client.sendJsonGetRequest("/schema/endpoint", mapOf(EI.method to "GET", EI.path to "/health"))
@@ -149,10 +160,8 @@ class SchemaEndpointsTest : StringSpec({
         // Env-authed (issue #489): this test is about *access* filtering, so the caller must see the whole
         // catalog and the access gate must be the only thing narrowing it -- not the publicApi restriction.
         val cxt = TestInstances.envAuth("schemaVisibility")
-        // The whole catalog, as the catalog page asks for it -- not the default first 100, which the admin's view
-        // outgrew once the endpoints (and their per-client copies) passed that many.
         fun pathsFor(client: TestHttpClient): List<Any?> =
-            catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints", mapOf(EP.limit to 10_000))).map { it[EI.path] }
+            catalogEndpoints(client.sendJsonGetRequest("/schema/endpoints")).map { it[EI.path] }
 
         // Anonymous and a logged-in user without the role, both see an admin-free catalog -- the second case
         // being the one a login does not fix. Neither loses the ordinary endpoints.
