@@ -72,6 +72,33 @@ object SchStdKeywords {
     )
 
     /**
+     * What each keyword in the table means here, in a sentence (issue #1347): beside its shape in the schema for
+     * schema and on the schema dialect reference. Every keyword the table holds has one, and a test holds the two to
+     * the same keys, so a keyword added without a meaning fails rather than publishing a blank.
+     */
+    val meanings: Map<String, String> = linkedMapOf(
+        SCH.type to "The type of the value. One type only: a list of types is not supported.",
+        SCH.format to "A named format a string must take, such as 'date-time' or 'email'.",
+        SCH.title to "A short name for the type or property, for a reader.",
+        SCH.description to "What the type or property is, for a reader.",
+        SCH.dRef to "A reference to a named type, which this schema then is.",
+        SCH.required to "The properties an object must have.",
+        SCH.properties to "An object's properties, each a schema by name.",
+        SCH.items to "The schema every item of an array takes.",
+        SCH.additionalProperties to "On a record, whether properties it does not declare are allowed; as a schema, " +
+            "the object is a map whose every value takes that schema.",
+        SCH.oneOf to "Branches of which the value takes exactly one, told apart by a discriminator.",
+        SCH.minimum to "The smallest number allowed, inclusive.",
+        SCH.maximum to "The largest number allowed, inclusive.",
+        SCH.minLength to "The fewest characters a string may have.",
+        SCH.maxLength to "The most characters a string may have.",
+        SCH.minItems to "The fewest items an array may have.",
+        SCH.maxItems to "The most items an array may have.",
+        SCH.minProperties to "The fewest properties an object may have.",
+        SCH.maxProperties to "The most properties an object may have.",
+    )
+
+    /**
      * What is wrong with [keyword] set to [value] on [where] (a type or property, for the message), or null when
      * nothing is: a value not of its keyword's shape ([SchemaError.badValue]). Null for a keyword this table does
      * not hold -- not ours to judge.

@@ -713,6 +713,11 @@ a:not([class]):hover { color: var(--accent-brighter); text-decoration: underline
     overflow-wrap: break-word;
 }
 .markdown th { color: var(--text-dim); font-weight: 600; }
+/* A first cell that is only a code span is an identifier -- a key, a keyword -- and is never broken: a hyphen is a
+   break opportunity, so `g-optionalContents` split across two lines (issue #1347). Table auto-layout then sizes the
+   column to its longest identifier and shares out the rest; prose, or a cell mixing code and words, wraps as before.
+   A table too wide for a phone scrolls inside `.md-table-scroll`. */
+.markdown td:first-child > code:only-child { white-space: nowrap; }
 /* A delimiter-driven alignment (`:--`/`--:`/`:-:`) rides an inline `style` on the cell, which already wins over
    the left default above -- no extra rule needed. */
 

@@ -31,6 +31,7 @@ import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModule
 import com.dynamicruntime.common.endpoint.schemaModule
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.UserChoice
 import com.dynamicruntime.common.user.UserService
@@ -480,7 +481,7 @@ private fun KdrCxt.layoutFlag(key: String, default: Boolean): Boolean =
  * not in the deployment) is simply left out, rather than offered as a link that would 404.
  */
 private fun homeLinks(cxt: KdrCxt): List<Map<String, Any?>> = declaredDocs(cxt).mapNotNull { doc ->
-    val buildId = MarkdownDocService.docBuildId(doc.docId) ?: return@mapNotNull null
+    val buildId = MarkdownDocService.docBuildId(doc) ?: return@mapNotNull null
     mapOf(
         HFLD.id to doc.docId,
         HFLD.label to doc.label,
@@ -518,7 +519,7 @@ private fun homeLinksFor(cxt: KdrCxt): List<Map<String, Any?>> {
 /**
  * The documents `base/common` serves (issue #492): the README plus the repo docs it links to, declared by the common
  * component. Other components declare their own (`docs`, issue #1136). The listing offers the README, the extending
- * guide, the code guide, and the license; the design documents are served but unlisted, reached from the README's
+ * guide, the code guide, the schema dialect reference (generated, issue #1347), and the license; the design documents are served but unlisted, reached from the README's
  * links (issue #1238).
  */
 fun coreDocs(): List<MarkdownDocDef> = listOf(
@@ -550,6 +551,9 @@ fun coreDocs(): List<MarkdownDocDef> = listOf(
         "The admin user search, and the server-driven shape its console is built from.", listed = false),
     MarkdownDocDef(HDOC.gedraWorkflow, "Gedra workflow (superseded)", "docs/history/gedra-workflow.md",
         "The first workflow design, retired under #533 and kept for its reasoning.", listed = false),
+    MarkdownDocDef(HDOC.schemaDialect, "Schema dialect", "docs/reference/schema-dialect.md",
+        "Every keyword the runtime reads in a JSON Schema, the ones it refuses, and its own -- made from the parser's tables.",
+        generate = ::schemaDialectMarkdown),
     MarkdownDocDef(HDOC.license, "License", "LICENSE",
         "The MIT license the runtime is released under.", order = lastDocOrder),
 )

@@ -80,6 +80,29 @@ class SchMetaSchemaTest : StringSpec({
         node.additionalValueType shouldBe null
     }
 
+    "every keyword of both tables has a meaning, and every meaning is of a keyword the table holds" {
+        // A keyword added without a meaning would publish a blank on the schema dialect reference (issue #1347).
+        SchStdKeywords.meanings.keys shouldBe SchStdKeywords.entries.keys
+        SchGKeywords.meanings.keys shouldBe SchGKeywords.entries.keys
+        // And each of ours has a place, which the reference lists it under.
+        SchGKeywords.places.keys shouldBe SchGKeywords.entries.keys
+        (SchStdKeywords.meanings + SchGKeywords.meanings).filterValues { it.isBlank() }.keys.shouldBeEmpty()
+        // The document says it too, before the shape.
+        val declared = SchMetaSchema.defs.getValue(MSCH.nodeTypeName).toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
+        declared[SCH.minimum].toJsonMapOrEmpty()[SCH.description] shouldBe
+            "${SchStdKeywords.meanings.getValue(SCH.minimum)} Must be a number."
+    }
+
+    "the reference page lists every keyword, every refused keyword, and what a shape does not decide" {
+        val page = schemaDialectMarkdown()
+        for (keyword in SchStdKeywords.entries.keys + SchGKeywords.entries.keys + refusedKeywords.keys) {
+            withClue(keyword) { page shouldContain "| `$keyword` |" }
+        }
+        for (line in SchMetaSchema.notChecked) page shouldContain line
+        // Made from code alone, so the same every time: its build id is a hash of this text.
+        schemaDialectMarkdown() shouldBe page
+    }
+
     "the document is a schema it describes: it passes the walk and validates against itself" {
         val body = SchMetaSchema.defs.getValue(MSCH.nodeTypeName).toJsonMapOrEmpty()
         SchMetaSchema.structureFailures(body).shouldBeEmpty()
