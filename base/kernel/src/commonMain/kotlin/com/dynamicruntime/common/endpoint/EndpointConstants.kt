@@ -336,3 +336,11 @@ object RID {
 
 /** Default cap on the number of items a list endpoint returns. */
 const val defaultListLimit = 100
+
+/**
+ * Default cap on a listing of endpoints (`/schema/endpoints`, and the simulations drawn from it): high enough for the
+ * whole catalog. A page shows every endpoint at once, so a person can find theirs with the browser's own find, and a
+ * catalog of over a thousand endpoints still renders responsively; a smaller page would silently drop the endpoints
+ * past the cut, which sort by path, so adding one anywhere shifts which.
+ */
+const val defaultEndpointListLimit = 2000

@@ -77,6 +77,8 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
     var impact by useState<ImpactReportView?>(null)
     // The own trait the editor is open on (issue #1118): its id, "" for a new trait, null when closed.
     var designing by useState<String?>(null)
+    // The global trait the narrowing editor is open on (issue #1119), or null when closed.
+    var narrowingOpen by useState<String?>(null)
     var designNote by useState<String?>(null)
     // Which client a save or a read was started for: an answer for a client the page has moved on from lands nowhere.
     val latest = useRef(0)
@@ -86,6 +88,7 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
         catalog = null
         opened = emptySet()
         designing = null
+        narrowingOpen = null
         designNote = null
         busy = false
         saveError = null
@@ -194,6 +197,8 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
                         traitRows(trait, draft, busy, trait.traitId in opened, types,
                             onTick = { on -> draft = draft.copy(chosen = if (on) draft.chosen + trait.traitId else draft.chosen - trait.traitId) },
                             onToggleFields = { opened = if (trait.traitId in opened) opened - trait.traitId else opened + trait.traitId },
+                            narrowOffered = narrowingOpen == null && designing == null && traitBaseOf(shown, trait) != null,
+                            onNarrow = { narrowingOpen = trait.traitId; designNote = null },
                         )
                     }
                 }
@@ -229,13 +234,37 @@ val ClientTraitsSection = FC<ClientTraitsSectionProps> { props ->
             +it
         }
     }
-    ownTraits(shown, designing, busy, onOpen = { designing = it; designNote = null })
+    narrowingOpen?.let { open ->
+        val trait = shown.traits.firstOrNull { it.traitId == open }
+        val base = trait?.let { traitBaseOf(shown, it) }
+        if (trait != null && base != null) {
+            TraitNarrowEditor {
+                // Keyed by the trait, so a draft for one never carries into another.
+                key = "narrow-$open".unsafeCast<Key>()
+                this.clientId = props.clientId
+                this.trait = trait
+                this.base = base
+                included = traitShownIncluded(trait, traitsDraftOf(baseline))
+                this.savesDraft = props.savesDraft
+                formsOpenable = props.formsOpenable
+                onSaved = { said ->
+                    narrowingOpen = null
+                    designNote = said
+                    props.onChanged()
+                }
+                onCancel = { narrowingOpen = null }
+                onChanged = props.onChanged
+            }
+        }
+    }
+    ownTraits(shown, designing ?: narrowingOpen, busy, onOpen = { designing = it; designNote = null })
     designing?.let { open ->
         TraitDesignEditor {
             // Keyed by what it opened on, so a draft for one trait never carries into another.
             key = "design-$open".unsafeCast<Key>()
             this.clientId = props.clientId
             this.baseline = shown.own.firstOrNull { it.traitId == open }?.design
+            this.catalog = shown
             quotas = shown.quotas
             this.savesDraft = props.savesDraft
             formsOpenable = props.formsOpenable
@@ -284,6 +313,8 @@ private fun ChildrenBuilder.traitRows(
     types: Map<String, SchType>,
     onTick: (Boolean) -> Unit,
     onToggleFields: () -> Unit,
+    narrowOffered: Boolean,
+    onNarrow: () -> Unit,
 ) {
     val locked = traitLockedReason(trait, draft)
     tr {
@@ -310,12 +341,33 @@ private fun ChildrenBuilder.traitRows(
         td { +(trait.description ?: "—") }
         td { +traitAppliesToText(trait.appliesTo) }
         td {
-            if (fieldsTypeOf(trait, types) != null) {
-                Button {
-                    type = "link"
-                    size = "small"
-                    onClick = { onToggleFields() }
-                    +(if (open) "Hide fields" else "Fields")
+            span {
+                className = ClassName("row-actions")
+                if (fieldsTypeOf(trait, types) != null) {
+                    Button {
+                        type = "link"
+                        size = "small"
+                        onClick = { onToggleFields() }
+                        +(if (open) "Hide fields" else "Fields")
+                    }
+                }
+                // Narrowing it for this client (issue #1119), or why the editor cannot.
+                if (trait.narrowing != null) {
+                    Button {
+                        type = "link"
+                        size = "small"
+                        disabled = busy || !narrowOffered
+                        onClick = { onNarrow() }
+                        +(if (trait.narrowingConfig != null) "Narrowed…" else "Narrow…")
+                    }
+                } else {
+                    trait.narrowingNotEditable?.let {
+                        span {
+                            className = ClassName("type-hint")
+                            title = it
+                            +"Altered by hand"
+                        }
+                    }
                 }
             }
         }

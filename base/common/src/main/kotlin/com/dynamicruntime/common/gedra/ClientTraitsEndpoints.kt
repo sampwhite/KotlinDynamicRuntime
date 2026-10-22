@@ -6,8 +6,10 @@ import com.dynamicruntime.common.endpoint.SchModuleBuilder
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
+import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.collectDefClosure
 import com.dynamicruntime.common.schema.refName
+import com.dynamicruntime.common.schema.resolveDeliveredLayouts
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -50,6 +52,7 @@ object ClientTraitsEdit {
         val served = schema.schemaStore.servedDefs
         val overlaid = schema.overlaidTypesFor(client)
         val seeds = LinkedHashSet<String>()
+        val narrowings = ClientTraitNarrowEdit.narrowings(cxt, client)
         val traits = schema.gedraTraitsFor(client).filter { schema.isGlobalTrait(it.traitId) }.map { trait ->
             // The data's `$ref`, as the workflow view reads it: always one, the author's own or the generated one.
             val dataRef = trait.dataSchema[SCH.dRef].toOptStr()
@@ -61,12 +64,17 @@ object ClientTraitsEdit {
                 put(CCT.appliesTo, trait.appliesTo.map { it.name })
                 dataRef?.let { put(CIT.dataRef, it) }
                 put(CIT.customized, trait.typeName in overlaid)
+                // The client's narrowing of it (issue #1119), or why it cannot be edited here.
+                narrowings[trait.traitId]?.let { putAll(it) }
             }
         }
+        val defs = collectDefClosure(seeds, served)
         return buildMap {
             put(CLD.client, client)
             put(CIT.traits, traits)
-            put(SCH.dDefs, collectDefClosure(seeds, served))
+            put(SCH.dDefs, defs)
+            // Their copy resolved as every delivered layout's is, so a preview reads words, not fragment pulls.
+            put(CIT.layouts, resolveDeliveredLayouts(cxt.mkSubContext("traitLayouts", client), schema.schemaStore.layoutsFor(defs)))
             ClientService.get(cxt).known(client)?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
             // The client's own traits, for the traits editor (issue #1118), and the plan's limits it is held to.
             put(CIT.ownTraits, ClientTraitDesignEdit.ownTraits(cxt, client))
@@ -155,6 +163,11 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             "Whether the client alters or extends the trait, which makes it supported without being included.",
             required = true,
         ) { type = SCT.boolean }
+        property(CIT.narrowing, "The client's narrowing of the trait (issue #1119); absent when the editor cannot edit it.") {
+            ref(CIT.narrowingTypeName)
+        }
+        property(CIT.narrowingConfig, "The stored configuration holding the client's narrowing of it, when one does.")
+        property(CIT.narrowingNotEditable, "Why the editor cannot edit the client's alteration of it; absent when it can.")
     }
 
     type(CIT.designTypeName) {
@@ -162,6 +175,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         description = "A client's own trait as the traits editor designs it (issue #1118): a name, a description, and " +
             "fields of a fixed set of kinds. A trait, field or choice with no key yet is new, and gets one from its label."
         property(CIT.traitId, "The trait's id; absent for a new trait, which gets one from its name.")
+        property(CIT.extendsTrait, "The global trait it extends (issue #1119), whose fields it adds to; absent for a trait of its own.")
         property(CIT.label, "The trait's name, shown as its heading.", required = true)
         property(CIT.description, "What the trait is for.")
         property(CIT.fields, "The fields, in the order a form shows them.", required = true) {
@@ -216,6 +230,9 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             type = SCT.kObject
         }
         property(CIT.groupsRefused, "Why the client may not include a group such as ${CLD.allGlobal}; absent when it may.")
+        property(CIT.layouts, $$"The global layouts of the types in $defs, by type name, so a preview is labeled.") {
+            type = SCT.kObject
+        }
         property(CIT.ownTraits, "The client's own traits (issue #1118), in the order they are stored.", required = true) {
             type = SCT.array
             items { ref(CIT.ownTraitTypeName) }
@@ -298,6 +315,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         property(CIT.configName, "The stored configuration the trait is in.", required = true)
         property(CIT.design, "The trait as designed now, every key given.", required = true) { ref(CIT.designTypeName) }
         saveOutcomeFields()
+        draftImpactField()
     }
 
     generalEndpoint(
@@ -332,12 +350,96 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             throw KdrException.mkInput(e.message ?: "The design does not read.")
         }
         val result = ClientTraitDesignEdit.save(c, client, design, expectedModeOf(request), gate)
-        mapOf(
-            CLD.client to client,
-            CIT.configName to result.configName,
-            CIT.design to result.design.toInfo(),
-            CPY.mode to result.mode,
-            CPY.issues to result.issues.map { it.toWireMap() },
-        )
+        traitSaveResult(client, result.configName, CIT.design to result.design.toInfo(), result.mode, result.issues, result.draftImpact)
     }
+
+    // --- narrowing a global trait (issue #1119) -------------------------------------------------------------------
+    type(CIT.narrowingTypeName) {
+        type = SCT.kObject
+        description = "A client's narrowing of a global trait (issue #1119): the fields its forms leave out, the fields " +
+            "its data requires beyond the trait's, and per field the global choices it keeps."
+        property(CIT.traitId, "The global trait.", required = true)
+        property(CIT.hidden, "The fields the client's forms leave out; the data still accepts them.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(CIT.required, "The fields the client's data requires beyond what the trait requires.") {
+            type = SCT.array
+            items { type = SCT.string }
+        }
+        property(CIT.choices, "Per field, the trait's choices the client keeps; a field not named keeps them all.") {
+            type = SCT.kObject
+        }
+    }
+
+    type(CIT.narrowResultTypeName) {
+        type = SCT.kObject
+        description = "What saving a narrowing of a global trait did (issue #1119)."
+        property(CLD.client, "The client.", required = true)
+        property(CIT.configName, "The stored configuration the alteration is in.", required = true)
+        property(CIT.narrowing, "The narrowing now.", required = true) { ref(CIT.narrowingTypeName) }
+        saveOutcomeFields()
+        draftImpactField()
+    }
+
+    generalEndpoint(
+        UADEP.clientTraitNarrow,
+        "Narrows a global trait for a client (issue #1119): hides fields from its forms (in the layout, so the data " +
+            "still accepts them), requires fields in its data, and restricts fields' choices -- moves that only narrow. " +
+            "Written as the client's alteration of the trait's data type, in a stored configuration of its own on the " +
+            "first narrowing, or where a stored alteration is; an empty narrowing removes it. Then as every editor's " +
+            "save: published and reloaded, or a draft for a client with a Shadow Sandbox, whose impact on the live " +
+            "client's stored forms is reported for information. A live save leaving stored forms holding data the " +
+            "narrowed trait refuses is refused with the impact report unless the impact is acknowledged. Refused for a " +
+            "sandbox, and for an alteration declared in source code.",
+        HttpMethod.POST,
+        outputRef = CIT.narrowResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(CLD.client)
+            field(CIT.narrowing, "The narrowing.", required = true) { ref(CIT.narrowingTypeName) }
+            field(
+                IMP.acknowledgeImpact,
+                "Save although forms the client stores hold data the narrowed trait would refuse; without it, such a " +
+                    "save is refused with the impact report.",
+            ) { type = SCT.boolean }
+            expectedModeField()
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[CLD.client].toOptStr())
+        val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
+        val result = ClientTraitNarrowEdit.save(
+            c, client, traitNarrowingFromInfo(request[CIT.narrowing].toJsonMapOrEmpty()), expectedModeOf(request), gate,
+        )
+        traitSaveResult(client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact)
+    }
+}
+
+/**
+ * A trait editor's save result on the wire (issues #1118, #1119): the client, the configuration saved to, [saved] -- what
+ * the editor saved, under its key -- then how the save took effect, the client's issues, and a draft's impact.
+ */
+private fun traitSaveResult(
+    client: String,
+    configName: String,
+    saved: Pair<String, Any?>,
+    mode: String,
+    issues: List<GedraConfigIssue>,
+    draftImpact: ImpactReport?,
+): Map<String, Any?> = buildMap {
+    put(CLD.client, client)
+    put(CIT.configName, configName)
+    put(saved.first, saved.second)
+    put(CPY.mode, mode)
+    put(CPY.issues, issues.map { it.toWireMap() })
+    draftImpact?.let { put(CIT.draftImpact, it.toMap()) }
+}
+
+/** A draft save's [CIT.draftImpact] (issue #1119): the report of publishing it, against the live client. */
+private fun SchTypeBuilder.draftImpactField() {
+    property(
+        CIT.draftImpact,
+        "For a draft, what publishing it would do to the live client's stored forms (issue #935), for information; " +
+            "absent for a live save, or when nothing would be affected.",
+    ) { type = SCT.kObject }
 }

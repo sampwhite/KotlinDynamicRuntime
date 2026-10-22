@@ -1280,6 +1280,13 @@ object ClientsApi {
     suspend fun saveTraitDesign(request: Map<String, Any?>): TraitDesignResult =
         parseTraitDesignResult(Http.sendApi("POST", UADEP.clientTraitDesign, request)[EP.results].toJsonMapOrEmpty())
 
+    /**
+     * Saves a client's narrowing of a global trait (issue #1119) -- [request] from [traitNarrowRequest]; live, or a draft
+     * for a client with a sandbox. One that strands stored data is refused with the impact report ([impactOf]).
+     */
+    suspend fun narrowTrait(request: Map<String, Any?>): TraitNarrowResult =
+        parseTraitNarrowResult(Http.sendApi("POST", UADEP.clientTraitNarrow, request)[EP.results].toJsonMapOrEmpty())
+
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())

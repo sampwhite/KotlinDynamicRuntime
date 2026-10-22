@@ -85,16 +85,28 @@ class TraitFieldDesign(
     val choices: List<TraitChoiceDesign> = emptyList(),
 )
 
-/** A client's own trait as the editor designs it; see the file note. [traitId] is null for a trait not yet saved. */
+/**
+ * A client's own trait as the editor designs it; see the file note. [traitId] is null for a trait not yet saved.
+ *
+ * An **extension** (issue #1119) names the global trait it extends in [extendsTrait]: its [fields] are the ones it
+ * adds, and the base's own stay as the base has them -- its data type is the base's plus these, through `g-extends`
+ * ([toExtension]). The base never changes once saved.
+ */
 class TraitDesign(
     val traitId: String?,
     val label: String,
     val description: String?,
     val fields: List<TraitFieldDesign>,
+    val extendsTrait: String? = null,
 ) {
+    /** This design with what is given changed, and everything else -- its id, what it extends -- kept. */
+    fun copy(label: String = this.label, description: String? = this.description, fields: List<TraitFieldDesign> = this.fields) =
+        TraitDesign(traitId, label, description, fields, extendsTrait)
+
     /** The design on the wire, as [traitDesignFromInfo] reads it. */
     fun toInfo(): Map<String, Any?> = buildMap {
         traitId?.let { put(CIT.traitId, it) }
+        extendsTrait?.let { put(CIT.extendsTrait, it) }
         put(CIT.label, label)
         description?.let { put(CIT.description, it) }
         put(CIT.fields, fields.map { f ->
@@ -114,8 +126,9 @@ class TraitDesign(
     /**
      * The trait's data schema: [stored] -- the schema as it stands, null for a new trait -- with what the design owns
      * written over it and everything else carried (see the file note). Every field must have its key ([withKeys]).
+     * [baseRequired] is what an extension's base requires, kept in `required`, which an extension replaces whole.
      */
-    fun toDataSchema(stored: Map<String, Any?>? = null): Map<String, Any?> {
+    fun toDataSchema(stored: Map<String, Any?>? = null, baseRequired: List<String> = emptyList()): Map<String, Any?> {
         val storedProps = stored?.get(SCH.properties).toJsonMapOrEmpty()
         val props = LinkedHashMap<String, Any?>()
         for (f in fields) {
@@ -147,11 +160,19 @@ class TraitDesign(
         val out = LinkedHashMap(stored.orEmpty())
         out[SCH.type] = SCT.kObject
         out[SCH.properties] = props
-        val required = fields.filter { it.required }.mapNotNull { it.key }
+        val required = (baseRequired + fields.filter { it.required }.mapNotNull { it.key }).distinct()
         if (required.isEmpty()) out.remove(SCH.required) else out[SCH.required] = required
         out[SCH.layout] = layoutOver(stored?.get(SCH.layout).toJsonMapOrEmpty())
         return out
     }
+
+    /**
+     * An extension's data type (issue #1119): [baseTypeName] -- the base's data type, whose required fields are
+     * [baseRequired] -- plus this design's fields, over [stored], the extension as it stands. The base's layout is
+     * inherited, by field; this one's heading replaces the base's.
+     */
+    fun toExtension(baseTypeName: String, baseRequired: List<String>, stored: Map<String, Any?>? = null): Map<String, Any?> =
+        LinkedHashMap(toDataSchema(stored, baseRequired)).also { it[SCH.extends] = baseTypeName }
 
     /** The `g-layout` block: [stored] with the heading, and each field's label and long-text mark, written over. */
     private fun layoutOver(stored: Map<String, Any?>): Map<String, Any?> {
@@ -191,6 +212,7 @@ class TraitDesign(
 
 /** A design read off the wire ([TraitDesign.toInfo]); refuses an unknown kind. */
 fun traitDesignFromInfo(raw: Map<String, Any?>): TraitDesign = TraitDesign(
+    extendsTrait = raw[CIT.extendsTrait].toOptStr()?.trim()?.ifEmpty { null },
     traitId = raw[CIT.traitId].toOptStr()?.trim()?.ifEmpty { null },
     label = raw[CIT.label].toOptStr()?.trim().orEmpty(),
     description = raw[CIT.description].toOptStr()?.trim()?.ifEmpty { null },
@@ -235,12 +257,13 @@ const val maxKeyLength = 40
 
 /**
  * [design] with a key for everything that has none yet (see the file note): the trait's id, unique against
- * [takenTraitIds] -- the client's other traits -- each new field's key, unique within the trait, and each new choice's
- * value, unique within its field. What has a key keeps it.
+ * [takenTraitIds] -- the client's other traits -- each new field's key, unique within the trait and against
+ * [takenFieldKeys] (an extension's base's fields), and each new choice's value, unique within its field. What has a key
+ * keeps it.
  */
-fun withKeys(design: TraitDesign, takenTraitIds: Set<String>): TraitDesign {
+fun withKeys(design: TraitDesign, takenTraitIds: Set<String>, takenFieldKeys: Set<String> = emptySet()): TraitDesign {
     val traitId = design.traitId ?: keyFromLabel(design.label, takenTraitIds, "trait")
-    val keys = design.fields.mapNotNull { it.key }.toMutableSet()
+    val keys = (design.fields.mapNotNull { it.key } + takenFieldKeys).toMutableSet()
     val fields = design.fields.map { f ->
         val key = f.key ?: keyFromLabel(f.label, keys, "field").also { keys.add(it) }
         val values = f.choices.mapNotNull { it.value }.toMutableSet()
@@ -249,7 +272,7 @@ fun withKeys(design: TraitDesign, takenTraitIds: Set<String>): TraitDesign {
         }
         TraitFieldDesign(key, f.label, f.kind, f.description, f.required, choices)
     }
-    return TraitDesign(traitId, design.label, design.description, fields)
+    return TraitDesign(traitId, design.label, design.description, fields, design.extendsTrait)
 }
 
 /**
@@ -264,6 +287,9 @@ fun traitDesignProblems(design: TraitDesign, before: TraitDesign? = null): List<
     if (design.fields.isEmpty()) out.add("The trait needs at least one field.")
     design.traitId?.let { if (!it.isVariableName()) out.add("'$it' is not a trait id: letters, digits, and underscores, starting with a letter.") }
     if (before != null && design.traitId != before.traitId) out.add("A trait's id never changes; this one is '${before.traitId}'.")
+    if (before != null && design.extendsTrait != before.extendsTrait) {
+        out.add("What a trait extends never changes; this one extends ${before.extendsTrait ?: "nothing"}.")
+    }
     val seen = HashSet<String>()
     val beforeKinds = before?.fields?.associate { it.key to it.kind }.orEmpty()
     for (f in design.fields) {
@@ -342,6 +368,27 @@ fun traitDesignOf(traitId: String, description: String?, dataSchema: Map<String,
     }
     val label = layout[SL.label].toOptStr() ?: humanizeFieldName(traitId)
     return TraitDesignRead(TraitDesign(traitId, label, description, fields), null)
+}
+
+/**
+ * The stored extension [traitId] (issue #1119) -- its [description] and its data type's body [extension], which
+ * extends the global trait [baseTraitId], whose required fields are [baseRequired] -- as a design of the fields it
+ * adds, or why the editor cannot edit it. Its `required` restates the base's; only the rest are its fields'.
+ */
+fun traitExtensionDesignOf(
+    traitId: String,
+    description: String?,
+    extension: Map<String, Any?>,
+    baseTraitId: String,
+    baseRequired: List<String>,
+): TraitDesignRead {
+    val added = LinkedHashMap(extension)
+    added.remove(SCH.extends)
+    added[SCH.required] = extension[SCH.required].toJsonListOfStrings().filterNot { it in baseRequired }
+    if (!added.containsKey(SCH.type)) added[SCH.type] = SCT.kObject
+    val read = traitDesignOf(traitId, description, added)
+    val design = read.design ?: return read
+    return TraitDesignRead(TraitDesign(design.traitId, design.label, design.description, design.fields, baseTraitId), null)
 }
 
 /** The kind of the stored field [prop], or null when it is none of the editor's. */

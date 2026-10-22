@@ -7,6 +7,10 @@ import com.dynamicruntime.common.gedra.COV
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.IMP
 import com.dynamicruntime.common.gedra.TraitDesign
+import com.dynamicruntime.common.gedra.TraitNarrowing
+import com.dynamicruntime.common.gedra.traitNarrowingFromInfo
+import com.dynamicruntime.common.schema.SchLayout
+import com.dynamicruntime.common.schema.parseDeliveredLayouts
 import com.dynamicruntime.common.gedra.traitDesignFromInfo
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.util.humanizeFieldName
@@ -33,6 +37,12 @@ class TraitChoiceView(
     val dataRef: String?,
     /** Whether the client alters or extends it, which makes it supported without being included. */
     val customized: Boolean,
+    /** The client's narrowing of it (issue #1119); null when the editor cannot edit the client's alteration. */
+    val narrowing: TraitNarrowing? = null,
+    /** The stored configuration holding the client's narrowing of it, when one does. */
+    val narrowingConfig: String? = null,
+    /** Why the editor cannot edit the client's alteration of it; null when it can. */
+    val narrowingNotEditable: String? = null,
 )
 
 /**
@@ -46,6 +56,8 @@ class TraitCatalogView(
     val groupsRefused: String?,
     val own: List<OwnTraitView> = emptyList(),
     val quotas: TraitQuotasView? = null,
+    /** The global layouts of the types in [defs], by type name (issue #1119), so a preview is labeled. */
+    val layouts: Map<String, SchLayout> = emptyMap(),
 )
 
 /** One of the client's own traits: where it is stored, and its design or why the editor cannot edit it. */
@@ -64,10 +76,14 @@ fun parseTraitCatalog(raw: Map<String, Any?>): TraitCatalogView = TraitCatalogVi
             appliesTo = it[CCT.appliesTo].toJsonListOfStrings(),
             dataRef = it[CIT.dataRef].toOptStr(),
             customized = it[CIT.customized] == true,
+            narrowing = it[CIT.narrowing]?.toJsonMapOrEmpty()?.let(::traitNarrowingFromInfo),
+            narrowingConfig = it[CIT.narrowingConfig].toOptStr(),
+            narrowingNotEditable = it[CIT.narrowingNotEditable].toOptStr(),
         )
     },
     defs = raw[SCH.dDefs].toJsonMapOrEmpty(),
     groupsRefused = raw[CIT.groupsRefused].toOptStr(),
+    layouts = parseDeliveredLayouts(raw[CIT.layouts]),
     own = raw[CIT.ownTraits].toJsonListOfMaps().map {
         OwnTraitView(
             traitId = it[CIT.traitId].toOptStr().orEmpty(),

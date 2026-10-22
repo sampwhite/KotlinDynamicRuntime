@@ -382,6 +382,15 @@ its layout. A new trait is stored in a configuration of its own; an edit is writ
 keeps what the editor does not own, such as Design View's hints. The plan's limits on schemas and attributes hold, and
 an edit that would invalidate stored data goes through the impact report.
 
+And it narrows and extends global traits (issue #1119). A narrowing offers only moves that narrow: hiding a field,
+which is the layout's -- the trait's default field list for every workflow, with the data unchanged, so a field the
+data requires cannot be hidden -- and requiring a field or keeping fewer of its choices, which are the data's. It is
+written as the client's alteration of the trait's data type, which the narrowing rules judge as they judge any; those
+rules judge an array's `items` the same way, so a field of several choices narrows as one of a single choice does. A
+narrowing does not include the trait. An extension is a trait of the client's own: a global trait plus the fields it
+adds (`g-extends`), the base's own fields kept as the base has them. Changes that affect stored data go through the
+impact report, and a sandbox's draft reports what publishing it would do to the live client.
+
 The client can choose also to alter an existing trait by changing UI options and can
 only narrow, or can create a new trait by extension, or can define a completely new trait. However,
 all schemas not defined in other clients are visible to the client. **Visible and supported are different
