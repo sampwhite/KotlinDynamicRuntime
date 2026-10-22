@@ -770,6 +770,9 @@ h4 { margin: 16px 0 4px; font-size: var(--h4-size); font-weight: 600; color: var
 /* The per-row action buttons in the forms list (issue #417): kept on one line and tightly spaced, since a
    table cell is narrow and the confirm ("Delete? Yes Cancel") must read as one group. */
 .row-actions { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* Under a growing listing (issue #1315): its count line and the links that show more of it. */
+.show-more { margin: 10px 0 4px; gap: 4px 12px; }
+.show-more .ant-btn-link { padding-inline: 0; }
 
 button {
     cursor: pointer;
@@ -1618,7 +1621,6 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .reports-issues-lead { margin: 16px 0 4px; color: var(--text-dim); font-size: 13px; }
 .reports-run h2 { margin-top: 0; }
 .reports-controls { margin: 10px 0 4px; }
-.reports-paging { margin-top: 10px; }
 .reports-download { margin: 6px 0 2px; }
 .reports-download p { margin: 0; }
 

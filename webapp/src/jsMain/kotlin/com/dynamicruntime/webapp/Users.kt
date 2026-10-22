@@ -92,9 +92,10 @@ val Users = FC<Props> {
             observer.disconnect()
         }
     }
-    // What the last search reported: how many matched in all, and whether the cap hid some.
+    // What the last search reported: how many matched in all.
     var numAvailable by useState(0)
-    var hasMore by useState(false)
+    // How many users the listing asks for (issue #1315): the first batch, grown on request, carried in the hash.
+    var shown by useState(listingBatch)
     var loaded by useState(false)
     var busy by useState(false)
     var error by useState<DisplayError?>(null)
@@ -205,19 +206,22 @@ val Users = FC<Props> {
     /**
      * Runs a search. Deliberately *not* through [run]: that sets `busy`, which disables the controls -- and
      * disabling the very input being typed into blurs it, so every keystroke cost the field its focus.
+     *
+     * [limit] is how many users to show (issue #1315): the first batch unless said otherwise, so a changed filter or
+     * sort starts the listing over, and growing it asks again from the top for more.
      */
-    fun runSearch(q: UserSearchQuery) {
+    fun runSearch(q: UserSearchQuery, limit: Int = listingBatch) {
         queryRef.current = q
+        shown = limit
         searchSeq.current = (searchSeq.current ?: 0) + 1
         val seq = searchSeq.current
         usersScope.launch {
             try {
-                val result = AdminApi.searchUsers(q)
+                val result = AdminApi.searchUsers(q, limit)
                 // A slower earlier request must not overwrite a newer one's results.
                 if (seq == searchSeq.current) {
                     users = result.users
                     numAvailable = result.numAvailable
-                    hasMore = result.hasMore
                     loaded = true
                     error = null
                 }
@@ -270,6 +274,14 @@ val Users = FC<Props> {
         runSearch(q)
     }
 
+    // The menu chose this page again (issue #1315): an explicit navigation, so start over as its bare link says --
+    // no filters, the default sort, the first batch, re-read. Back and Forward restore from the hash instead.
+    val revisits = useRevisitSinceMount()
+    useEffect(revisits) {
+        if (revisits == 0 || config?.canManageUsers != true) return@useEffect
+        clearFilters()
+    }
+
     useEffect(generation) {
         usersScope.launch {
             val c = apiResult { HomeApi.fetchConfig() }.valueOrNull()
@@ -286,7 +298,8 @@ val Users = FC<Props> {
                 // the sender's filters and sort rather than the default view (issue #411).
                 val q = searchQueryFromHash(hashParams())
                 seedFilters(q)
-                runSearch(q)
+                // As many users as the hash asks for (issue #1315), so returning to the list shows the same rows.
+                runSearch(q, shownFromHash(hashParams()[HP.shown]))
                 // Only a full-scope administrator is offered a choice of client, and only they can ask for the
                 // list -- it is a cross-client question. A failure leaves the list empty, which falls back to
                 // the read-only field rather than an error: the client is not the reason they came here.
@@ -441,7 +454,7 @@ val Users = FC<Props> {
     // the open record is in [userIdentity], so a filter change never pushes.
     useEffect(
         editing, creating, restored,
-        textFilters, rangeFilters, sortBy, descending,
+        textFilters, rangeFilters, sortBy, descending, shown,
     ) {
         if (!restored) {
             return@useEffect
@@ -450,6 +463,7 @@ val Users = FC<Props> {
             add(HP.page to HMENU.pageUsers)
             openRecord()?.let { add(HP.user to it) }
             addAll(searchHashParams(query()))
+            addAll(shownHashParams(shown))
         }
         // Reachable means the hash as it stands names something this page could show. A `u=` naming a row we
         // do not hold is a URL to correct in place -- otherwise Back onto it would push again and never move.
@@ -1114,7 +1128,7 @@ val Users = FC<Props> {
                 if (loaded) {
                     p {
                         className = ClassName("subtitle")
-                        +userCountLabel(users.size, numAvailable, hasMore)
+                        +listingCountText(users.size, numAvailable, "matching user", "matching users")
                     }
                 }
                 UserTable {
@@ -1130,6 +1144,12 @@ val Users = FC<Props> {
                         runSearch(query(sort = field, desc = desc))
                     }
                     onSelect = { startEdit(it) }
+                }
+                // More of the same search on request (issue #1315), under the rows it adds to.
+                if (loaded) {
+                    showMoreBar(users.size, shown, numAvailable, "matching user", "matching users", false) { next ->
+                        runSearch(queryRef.current ?: query(), next)
+                    }
                 }
             }
         }
@@ -1248,17 +1268,6 @@ fun userSortChip(sortBy: String, descending: Boolean): String? {
         if (descending) "Z–A" else "A–Z"
     }
     return "Sorted by ${spec?.label ?: sortBy}, $direction"
-}
-
-/**
- * The count line above the results (issue #411): how many are shown against how many matched, so an over-broad
- * search reads as "showing 500 of 4000" rather than looking like the whole population. When the cap hid none,
- * one plain count is clearer than repeating it. Pure, and covered under `jsNodeTest`.
- */
-fun userCountLabel(shown: Int, available: Int, hasMore: Boolean): String = when {
-    hasMore -> "Showing $shown of $available matching users — narrow your search to see the rest."
-    available == 1 -> "1 matching user."
-    else -> "$available matching users."
 }
 
 /** How long to wait after the last keystroke before searching. */

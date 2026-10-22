@@ -470,6 +470,32 @@ only thing that says which of their users that was.
 The bracket is the persona and its suffix (the client first, for an `allClients` administrator) -- always, since
 saying it costs a word where finding out whether the person has other users would cost a lookup.
 
+## Growing listings (issue #1315)
+
+The forms listing, the Users page, and a report's run show **one growing list**, not pages (`ShowMore.kt`): the
+first `listingBatch` (100) rows, then **Show 100 more** and, once everything fits under `listingCap` (500), **Show all
+(N)**. At the cap the count line says "Showing 500 of 812 — narrow the search to see the rest." -- search and sort are
+how a row is found in a long list, so there is no deep paging, no infinite scroll, and no page-size picker.
+
+- **Growing re-queries from the top with the larger limit**; it never splices rows in by offset. One query is one
+  snapshot of the sort, so a row created or deleted between clicks is never doubled or skipped, and a refresh or a
+  delete reloads exactly what is shown.
+- **The count shown rides the hash** as `shown` (`HP.shown`, written only past the first batch, read back through
+  `shownFromHash`, which holds it to the batch and the cap). On the forms listing it is a non-navigation key, so
+  `formsListingReturn` carries it home from a form and the listing asks for the same rows again; the endpoint
+  whitelist (`formsSearchKeys`) keeps it off the wire.
+- **Changing the search, the sort, or the client starts over at the first batch.** A delete keeps the count.
+- **History restores; an explicit navigation starts over.** Back and Forward land on a hash that names the rows, and
+  the listing shows them. Choosing the listing from the menu is an explicit navigation: from another page it mounts
+  fresh, and on the page itself -- where the bare link may change no hash at all -- the menu's revisit count
+  (`useRevisitSinceMount`, on the refresh context) tells the page to start over: no search or sort, the first batch,
+  re-read. A future signal that content changed (a latest-modified date on the config calls) could refine this.
+- **Growing keeps the rows on screen while it loads**, so the reader keeps their place and the new rows arrive
+  beneath it. The forms page's ordinary reload swaps the table for "Loading…", which collapsed the page and threw a
+  reader at row 100 back to the top; a grow sets `growing` instead of `listLoading`. Users and the report table
+  already kept their rows across a reload.
+- **Scroll is not restored** on return yet: the rows come back, the position does not (see `deferred-work.md`).
+
 ## The forms listing is named for whose forms it shows (issue #1091)
 
 "My forms" for a caller who lists only their own; "Forms" for one who administers a client, whose listing is every
@@ -538,7 +564,7 @@ unrestricted scope). The rules that follow from that:
   row with its Client column anyway.
 - **A workflow's listing is its own page** (`page=workflowForms`, issue #792): where a count on the Workflows
   page leads. `FormsPage` draws it in workflow mode -- the workflow as heading, a state switch, `← Workflows` --
-  with the workflow and state riding the hash as search keys (`formsDrillKeys`) so paging, sorting and a client
+  with the workflow and state riding the hash as search keys (`formsDrillKeys`) so showing more, sorting and a client
   switch carry them, but kept by Clear and part of the page's history identity, never a chip. Every way home
   reads the listing off `from` (`formsListingOf`, honouring only the two forms listings), so a form opened
   there returns there; a `page=forms` hash naming a workflow is routed to the workflow's listing, so old links
@@ -928,7 +954,7 @@ text elsewhere.
 
 `#page=reports` lists a client's named reports (`GET /clientAdmin/reports`) down the left and runs the open one
 (`GET /clientAdmin/report/run`) as a table beside them; `docs/design/reporting.md` at the repo root says what a report
-is. The pure half -- parsers, the run's query, the table's columns, a cell's text, the paging line, the links -- is
+is. The pure half -- parsers, the run's query, the table's columns, a cell's text, the counts line, the links -- is
 `ReportsApi.kt` (covered by `ReportsPageTest`); `ReportsPage.kt` holds the components.
 
 - **Where the page is rides the hash**: `c` (the client, for an `allClients` administrator only -- a client's own
@@ -939,12 +965,11 @@ is. The pure half -- parsers, the run's query, the table's columns, a cell's tex
 - **The setup is "the report's own" until touched.** `ReportRunSetup`'s lists are null until the user changes one,
   and a null list is not sent, so the endpoint applies the report's defaults. A list the user **emptied** is sent
   as an empty list -- absent and empty mean different things to the endpoint (`reportRunQuery`).
-- **Paging is the webapp's first cursor paging, and it goes forward only.** A page is fetched with the previous
-  page's `next` as `after`; there is **Next →** and **← First** and no Previous, because a cursor says nothing
-  about the page before it. The cursor is component state, keyed on the client, report and setup
-  (`ReportRunSetup.signature`): anything that changes the query starts the walk again, which is also what the
-  endpoint requires -- another query's cursor is a 400. The "Forms 26–32 of 32" line counts rows as the walk goes
-  (`reportRangeText`), since a cursor carries no offset.
+- **The table grows, as every listing does** (issue #1315, *Growing listings* above): more rows are the same run
+  asked again from the start with a larger limit, not the next cursor page, so a refresh keeps the rows shown and
+  they are one run's answer. How many are shown is component state keyed on the client, report and setup
+  (`reportWalkKey`, `ReportRunSetup.signature`), so anything that changes the query starts at the first batch. It
+  does not ride the hash: a row's "Open" leaves by Back, which re-runs the page anyway. The cursor is the CSV's.
 - **A detail row's "Open" link goes to the forms page**, which owns its hash and its ways home, so its back link
   reads "← Forms" (the listing's name for an administrator, issue #1091); the way back to the report is the
   browser's Back. Do not add a `from=reports`: the forms

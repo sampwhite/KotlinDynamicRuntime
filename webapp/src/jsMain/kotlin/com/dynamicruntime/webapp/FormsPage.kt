@@ -59,9 +59,6 @@ external interface FormsPageProps : Props {
     var listing: String?
 }
 
-/** How many forms a page shows. Small enough to page a long list, large enough that most callers never do. */
-private const val formsPageSize = 25
-
 /** How long the just-saved row keeps its flash before the highlight is cleared (issue #592). */
 private const val formsHighlightMs = 2500
 
@@ -85,8 +82,9 @@ private fun includeUsersArg(on: Boolean): Map<String, Any?> = if (on) mapOf(EI.i
  * can be deleted is exactly what that caller may reach, narrowed by the endpoints' own scope rules rather than
  * by anything decided here.
  *
- * The list pages through `limit`/`offset` and shows the total the scope admits, so a caller with more forms
- * than a page can reach all of them rather than silently seeing only the first (issue #408). It is ordered
+ * The list is a growing listing (issue #1315, `ShowMore.kt`): the first [listingBatch] forms, then more on request up to
+ * [listingCap], against the total the scope admits -- re-queried with the larger limit, so the rows on screen are one
+ * snapshot, and with the count shown riding the hash (`shown`), so the ways home from a form ask for the same rows. It is ordered
  * most recently written first, and a caller who administers other users also gets a scope bar (whose forms)
  * and a User column (issue #562); both key on the shell's `canManageUsers`, the predicate the backend attaches
  * owners on, so the controls appear exactly when the rows carry an owner to show. The open form
@@ -117,14 +115,14 @@ val FormsPage = FC<FormsPageProps> { props ->
     // type-ahead; absent (an older node), the boxes stay plain text.
     var valuesEndpoint by useState<EndpointInfo?>(null)
     var rows by useState<List<Map<String, Any?>>>(emptyList())
-    // How many forms the scope admits in all, for "showing X–Y of N" and to know when a next page exists.
+    // How many forms the scope admits in all, for "showing X of N" and to know whether there are more to show.
     var numAvailable by useState(0)
     // The workflow column's summary (issue #791), delivered with each page: empty means no column.
     var listingWorkflows by useState<List<WorkflowSummaryEntry>>(emptyList())
     // What a row with no workflows shows (issue #791): the client's copy, Markdown; null draws a dash.
     var emptyWorkflowsCopy by useState<String?>(null)
-    // The first index of the page on screen; paging moves it by [formsPageSize].
-    var offset by useState(0)
+    // How many forms the listing asks for (issue #1315): the first batch, grown on request, carried in the hash.
+    var shown by useState(listingBatch)
     // The forms-list search (issue #538): `draft` is what the boxes hold, `applied` is what the list is
     // currently filtered by. They part so typing does not re-query on every keystroke -- Search promotes the
     // draft, and paging/reloads carry the applied set so a filtered list stays filtered across pages.
@@ -168,6 +166,9 @@ val FormsPage = FC<FormsPageProps> { props ->
     // the empty state away: a reload that failed with nothing on screen is not "no forms".
     var searchError by useState<DisplayError?>(null)
     var listLoading by useState(true)
+    // A "Show more" on its way (issue #1315): the rows on screen stay, unlike [listLoading], so the reader keeps
+    // their place and the new rows arrive beneath it.
+    var growing by useState(false)
     var error by useState<DisplayError?>(null)
     // True once the initial hash restore has run; until then the sync effect stays quiet so it cannot overwrite
     // a `g=` we are about to read (the same gate the Users page uses).
@@ -209,7 +210,7 @@ val FormsPage = FC<FormsPageProps> { props ->
      */
     suspend fun fetchListPage(
         ep: EndpointInfo,
-        off: Int,
+        limit: Int,
         search: Map<String, Any?>,
         sortCol: String?,
         sortDesc: Boolean,
@@ -218,11 +219,13 @@ val FormsPage = FC<FormsPageProps> { props ->
     ): FormsListPage {
         val resp = SchemaCatalogApi.invoke(
             ep,
-            mapOf(EP.limit to formsPageSize, EP.offset to off) + search +
+            // Always from the top (issue #1315): growing the listing asks again for more, so what is on screen is one
+            // query's answer.
+            mapOf(EP.limit to limit, EP.offset to 0) + search +
                 sortArgs(sortCol, sortDesc) + includeUsersArg(includeUsers) +
                 mapOf(GDF.withStates to true) +
                 // The workflow column's summary (issue #791) only when the forms may have changed: it spans every
-                // form the caller may see, which a page turn, search or sort does not change.
+                // form the caller may see, which showing more, a search or a sort does not change.
                 (if (withSummary) mapOf(GDF.withWorkflowSummary to true) else emptyMap()),
         )
         val fetched = resp[EP.items].toJsonListOrEmpty().map { it.toJsonMapOrEmpty() }
@@ -242,32 +245,37 @@ val FormsPage = FC<FormsPageProps> { props ->
      * "you saved it but it isn't shown" note has done its job once the user acts -- most often by clearing the
      * filter, which reveals the row itself.
      */
-    fun beginListAction() {
+    fun beginListAction(grow: Boolean = false) {
         rowConfirmDeleteId = null
         rowDeleteError = null
         highlightRowId = null
         savedOffscreenNote = null
-        listLoading = true
+        if (grow) growing = true else listLoading = true
     }
 
     /**
-     * Loads the page at [off] from [ep], replacing the rows and the total. [search] carries the client's filled
-     * search parameters (issue #538), sent beside `limit`/`offset`; it is passed explicitly rather than read
-     * from state so a reload never races a just-applied filter. Flips [listLoading] off when done.
+     * Loads the first [limit] forms from [ep], replacing the rows and the total. [search] carries the client's filled
+     * search parameters (issue #538), sent beside the limit; it is passed explicitly rather than read from state so a
+     * reload never races a just-applied filter. Flips [listLoading] off when done.
      */
     fun loadPage(
         ep: EndpointInfo,
-        off: Int,
+        limit: Int,
         search: Map<String, Any?>,
         sortCol: String? = sortColumn,
         sortDesc: Boolean = sortDescending,
         /** Ask for the workflow column's summary again (issue #791) -- after a delete, which may change it. */
         withSummary: Boolean = false,
+        /**
+         * More of the same listing (issue #1315): the rows stay on screen while it loads instead of giving way to
+         * "Loading…", which collapsed the page and threw the reader back to the top.
+         */
+        grow: Boolean = false,
     ) {
-        beginListAction()
+        beginListAction(grow)
         formsScope.launch {
             try {
-                val page = fetchListPage(ep, off, search, sortCol, sortDesc, canManageUsers, withSummary)
+                val page = fetchListPage(ep, limit, search, sortCol, sortDesc, canManageUsers, withSummary)
                 rows = page.rows
                 numAvailable = page.numAvailable
                 scopeAnswer = ScopeAnswer(search[EI.user] as? String, page.scopeUser)
@@ -277,6 +285,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 searchError = userFacingError(e)
             } finally {
                 listLoading = false
+                growing = false
             }
         }
     }
@@ -289,8 +298,8 @@ val FormsPage = FC<FormsPageProps> { props ->
     fun applySearch(ep: EndpointInfo, draft: Map<String, String>, withSummary: Boolean = false) {
         val applied = draft.filterValues { it.isNotBlank() }
         appliedSearch = applied
-        offset = 0
-        loadPage(ep, 0, applied, withSummary = withSummary)
+        shown = listingBatch
+        loadPage(ep, listingBatch, applied, withSummary = withSummary)
     }
 
     val appliedUser = appliedSearch[EI.user]?.ifBlank { null }
@@ -340,6 +349,8 @@ val FormsPage = FC<FormsPageProps> { props ->
         sortDesc: Boolean,
         includeUsers: Boolean,
         initialLoad: Boolean,
+        /** How many forms to show: the first batch for a client switch, what the hash asks for on arrival. */
+        limit: Int = listingBatch,
     ) {
         beginListAction()
         formsScope.launch {
@@ -347,7 +358,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 val cat = SchemaCatalogApi.fetchCatalog(client = client)
                 val ep = findFormsListEndpoint(cat.endpoints)
                 val applied = if (ep == null) emptyMap() else search.filterKeys { it in formsSearchKeys(ep.inputSchema) }
-                val page = if (ep == null) null else fetchListPage(ep, 0, applied, sortCol, sortDesc, includeUsers, withSummary = true)
+                val page = if (ep == null) null else fetchListPage(ep, limit, applied, sortCol, sortDesc, includeUsers, withSummary = true)
                 // Everything has arrived: publish the surface and its page together.
                 catalog = cat
                 getEndpoint = findFormGetEndpoint(cat.endpoints)
@@ -361,7 +372,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                     appliedSearch = applied
                     sortColumn = sortCol
                     sortDescending = sortDesc
-                    offset = 0
+                    shown = limit
                 }
                 if (page != null) {
                     rows = page.rows
@@ -441,8 +452,22 @@ val FormsPage = FC<FormsPageProps> { props ->
             val initialSearch = formsInitialSearch(hashParams(), seeAllClients)
             val initialSortCol = hashParams()[GSORT.sort]?.ifBlank { null }
             val initialSortDesc = hashParams()[GSORT.sortDir]?.equals(GSORT.desc, ignoreCase = true) == true
-            loadForClient(hashClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage, initialLoad = true)
+            // As many forms as the hash asks for (issue #1315): a way home from a form returns to the same rows.
+            loadForClient(
+                hashClient, initialSearch, initialSortCol, initialSortDesc, includeUsers = canManage, initialLoad = true,
+                limit = shownFromHash(hashParams()[HP.shown]),
+            )
         }
+    }
+
+    // The menu chose this page again (issue #1315): an explicit navigation, so start over as the menu's bare link
+    // says -- the reader's own client, no search or sort, the first batch, re-read -- where Back and Forward
+    // restore what the hash names. Not on the workflow's listing, which the menu does not lead to.
+    val revisits = useRevisitSinceMount()
+    useEffect(revisits) {
+        if (revisits == 0 || workflowMode) return@useEffect
+        viewingId = null
+        loadForClient(null, emptyMap(), null, false, includeUsers = canManageUsers, initialLoad = false)
     }
 
     // Open whatever the hash named once the first load has run -- a reload in the view, or a link from the
@@ -512,7 +537,7 @@ val FormsPage = FC<FormsPageProps> { props ->
     // Keep the hash in step with the open form: opening one is a navigation and earns a history entry, so Back
     // returns to the list. A `g=` naming a form the page does not hold is corrected in place rather than pushed
     // onto -- the fetch still resolves it, but it is not a list row to page back to.
-    useEffect(viewingId, restored, rows, appliedSearch, sortColumn, sortDescending) {
+    useEffect(viewingId, restored, rows, appliedSearch, sortColumn, sortDescending, shown) {
         if (!restored) {
             return@useEffect
         }
@@ -524,6 +549,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             viewingId?.let { add(HP.gedra to it) }
             addAll(formsSearchHashParams(appliedSearch))
             addAll(sortHashParams(sortColumn, sortDescending))
+            addAll(shownHashParams(shown))
         }
         val current = hashParams()[HP.gedra]
         val reachable = current == null || rows.any { it[GDF.gedraId] == current }
@@ -613,7 +639,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                         navigateHash(
                                             listOf(HP.page to pageEditForm, HP.from to listingPage, HP.gedra to id) +
                                                 formsSearchHashParams(appliedSearch) +
-                                                sortHashParams(sortColumn, sortDescending),
+                                                sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
                                         )
                                     }
                                 }
@@ -648,8 +674,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                                     SchemaCatalogApi.invoke(de, mapOf(GDF.gedraId to id))
                                                     confirmingDelete = false
                                                     viewingId = null
-                                                    offset = 0
-                                                    loadPage(ep, 0, appliedSearch, withSummary = true)
+                                                    loadPage(ep, shown, appliedSearch, withSummary = true)
                                                 } catch (e: Throwable) {
                                                     deleteError = userFacingError(e)
                                                 } finally {
@@ -687,7 +712,7 @@ val FormsPage = FC<FormsPageProps> { props ->
             // The list, but truly empty: no forms at all, and no search narrowing it (a search that matches
             // nothing is a different state, handled in the list branch so its box stays on screen to be cleared),
             // and no reload failure -- an empty page after a failed request is unknown, not empty (#562 review).
-            rows.isEmpty() && offset == 0 && narrowing.isEmpty() && searchError == null -> {
+            rows.isEmpty() && narrowing.isEmpty() && searchError == null -> {
                 // A create that returned to an empty page still says it happened (#758 review): without a filter
                 // this branch is where such an arrival lands, and "you haven't created any forms yet" straight
                 // after creating one is the create-reads-as-failed outcome the note exists to prevent.
@@ -721,7 +746,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                 navigateHash(
                                     listOf(HP.page to HMENU.pageNewForm, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending),
+                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
                                 )
                             }
                             +"Create a form"
@@ -739,7 +764,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                 navigateHash(
                                     listOf(HP.page to pageCreateForUser, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending),
+                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
                                 )
                             }
                             +"Create a form for a user…"
@@ -770,7 +795,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                 navigateHash(
                                     listOf(HP.page to HMENU.pageNewForm, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending),
+                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
                                 )
                             }
                             +"New form"
@@ -789,7 +814,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                                 navigateHash(
                                     listOf(HP.page to pageCreateForUser, HP.from to listingPage) +
                                         formsSearchHashParams(appliedSearch) +
-                                        sortHashParams(sortColumn, sortDescending),
+                                        sortHashParams(sortColumn, sortDescending) + shownHashParams(shown),
                                 )
                             }
                             +"Create a form for a user…"
@@ -938,7 +963,7 @@ val FormsPage = FC<FormsPageProps> { props ->
                 }
                 searchError?.let { errorText(formsLoadFailureLead, it) }
                 // A search that matched nothing: the box stays above so it can be changed or cleared, and a
-                // plain message stands in for the paging bar (there is nothing to page). After a failed reload
+                // plain message stands in for the count (there is nothing to show more of). After a failed reload
                 // the rows are whatever was on screen before, so nothing is said about what they match.
                 if (rows.isEmpty()) {
                     if (searchError == null) {
@@ -948,9 +973,9 @@ val FormsPage = FC<FormsPageProps> { props ->
                         }
                     }
                 } else {
-                    pagingBar(offset, rows.size, numAvailable) { newOffset ->
-                        offset = newOffset
-                        loadPage(ep, newOffset, appliedSearch)
+                    p {
+                        className = ClassName("type-hint")
+                        +listingCountText(rows.size, numAvailable, "form", "forms")
                     }
                 }
                 FormsTable {
@@ -967,12 +992,13 @@ val FormsPage = FC<FormsPageProps> { props ->
                     onSort = { col, desc ->
                         sortColumn = col
                         sortDescending = desc
-                        offset = 0
-                        listEndpoint?.let { loadPage(it, 0, appliedSearch, col, desc) }
+                        shown = listingBatch
+                        listEndpoint?.let { loadPage(it, listingBatch, appliedSearch, col, desc) }
                     }
-                    // The listing's context (filter + sort) rides every hop to a child page, so its back link
-                    // returns to the same list.
-                    val listingContext = formsSearchHashParams(appliedSearch) + sortHashParams(sortColumn, sortDescending)
+                    // The listing's context (filter, sort, and how many are shown) rides every hop to a child page, so
+                    // its back link returns to the same list.
+                    val listingContext =
+                        formsSearchHashParams(appliedSearch) + sortHashParams(sortColumn, sortDescending) + shownHashParams(shown)
                     // "View Info" (issue #694): the survey's read-only view, with its Edit toggle.
                     onSurveyView = { id ->
                         navigateHash(listOf(HP.page to pageSurveyEdit, HP.from to listingPage, HP.gedra to id) + listingContext)
@@ -1009,14 +1035,9 @@ val FormsPage = FC<FormsPageProps> { props ->
                                     SchemaCatalogApi.invoke(de, mapOf(GDF.gedraId to id))
                                     rowConfirmDeleteId = null
                                     rowDeletingId = null
-                                    // Reload the current page so the now one-fewer forms show. If it held the
-                                    // last row of a later page, step back one so the caller does not land on a
-                                    // blank page.
-                                    val newOffset =
-                                        if (rows.size == 1 && offset >= formsPageSize) offset - formsPageSize
-                                        else offset
-                                    offset = newOffset
-                                    loadPage(ep, newOffset, appliedSearch, withSummary = true)
+                                    // Reload as many as are shown, so the now one-fewer forms show and the rows
+                                    // around the deleted one stay where they were.
+                                    loadPage(ep, shown, appliedSearch, withSummary = true)
                                 } catch (e: Throwable) {
                                     rowDeleteError = userFacingError(e)
                                     rowDeletingId = null
@@ -1026,6 +1047,13 @@ val FormsPage = FC<FormsPageProps> { props ->
                     }
                 }
                 rowDeleteError?.let { errorText("Couldn't delete the form.", it) }
+                // More of the same listing on request (issue #1315), under the rows it adds to.
+                if (rows.isNotEmpty()) {
+                    showMoreBar(rows.size, shown, numAvailable, "form", "forms", listLoading || growing) { next ->
+                        shown = next
+                        loadPage(ep, next, appliedSearch, grow = true)
+                    }
+                }
             }
         }
     }
@@ -1092,38 +1120,3 @@ private fun ChildrenBuilder.renderForm(
     }
 }
 
-/**
- * The "showing X–Y of N" line and its page controls. Drawn only when there is more than one page, so a short
- * list carries no controls; the count itself is always worth showing once a page is on screen.
- */
-private fun ChildrenBuilder.pagingBar(offset: Int, pageCount: Int, numAvailable: Int, goTo: (Int) -> Unit) {
-    val first = if (pageCount == 0) 0 else offset + 1
-    val last = offset + pageCount
-    val hasPrev = offset > 0
-    val hasNext = last < numAvailable
-    div {
-        className = ClassName("row")
-        span {
-            className = ClassName("type-hint")
-            +(if (numAvailable <= pageCount && offset == 0) {
-                if (numAvailable == 1) "1 form" else "$numAvailable forms"
-            } else {
-                "Showing $first–$last of $numAvailable"
-            })
-        }
-        if (hasPrev || hasNext) {
-            Button {
-                type = "link"
-                disabled = !hasPrev
-                onClick = { goTo((offset - formsPageSize).coerceAtLeast(0)) }
-                +"← Newer"
-            }
-            Button {
-                type = "link"
-                disabled = !hasNext
-                onClick = { goTo(offset + formsPageSize) }
-                +"Older →"
-            }
-        }
-    }
-}
