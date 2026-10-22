@@ -394,7 +394,7 @@ private fun diffValue(rule: MergeRule, base: Any?, edited: Any?, path: String, p
         }
         is MergeRule.Keyed -> if (base is List<*> && edited is List<*>) diffKeyed(rule, base, edited, path, problems) else Stated(edited)
         is MergeRule.RestateKeyed -> if (base is List<*> && edited is List<*>) {
-            val byKey = base.mapNotNull { it as? Map<*, *> }.associateBy { it[rule.key] }
+            val byKey = base.filterIsInstance<Map<*, *>>().associateBy { it[rule.key] }
             Stated(edited.map { e -> if (e is Map<*, *> && e.size > 1 && byKey[e[rule.key]] == e) mapOf(rule.key to e[rule.key]) else e })
         } else {
             Stated(edited)

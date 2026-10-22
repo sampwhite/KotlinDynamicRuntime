@@ -174,6 +174,14 @@ private fun located(p: Problem): String = p.location?.path?.takeIf { it.isNotEmp
 
 private fun problemsText(problems: List<Problem>): String = problems.joinToString(" ") { located(it) }
 
+/**
+ * A workflow made from a template that a **stored** config holds and that does not read (issue #1120): its template is
+ * gone, or has changed so the overlay no longer fits it. Like an unread report, it costs only itself -- left out of the
+ * config's workflows and reported, rather than failing the config with everything else in it -- and is kept verbatim
+ * and written back on every write, so an edit of anything else never deletes it.
+ */
+class UnreadWorkflow(val workflowId: String, val definition: Map<String, Any?>, val why: String)
+
 /** One data-entry task of a workflow made from a template, as a client chooses it (issue #1120): its label and its traits. */
 class WfTaskSlot(val taskId: String, val label: String, val traits: List<WfTraitRef>)
 

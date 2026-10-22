@@ -2,8 +2,11 @@ package com.dynamicruntime.kdn
 
 import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.exception.EXC
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.CCT
+import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
+import com.dynamicruntime.common.gedra.CUST
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.DSV
 import com.dynamicruntime.common.gedra.ClientAudience
@@ -14,6 +17,7 @@ import com.dynamicruntime.common.gedra.GT
 import com.dynamicruntime.common.gedra.GedraConfigReload
 import com.dynamicruntime.common.gedra.GedraConfigService
 import com.dynamicruntime.common.gedra.GedraConfigType
+import com.dynamicruntime.common.gedra.GedraDataType
 import com.dynamicruntime.common.gedra.GedraId
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.gedra.workflow.WFD
@@ -27,11 +31,13 @@ import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.workflowDefStamp
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.naming.clientNamespace
+import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
@@ -160,6 +166,79 @@ class ClientWorkflowTemplateTest : StringSpec({
         // And the slots save keeps what Design View changed.
         save(chief, surveySlots("eventSurvey", taskLabel = "About the event"))
         WorkflowService.get(cxt).forClient(client).workflow("eventSurvey").shouldNotBeNull().def.tasks.single().saves.single().label shouldBe "Keep it"
+    }
+
+    "a new workflow's id passes over the name of a configuration left from another" {
+        val client = "wfleft1120"
+        defineClient(client)
+        val chief = admin(client)
+        // A configuration of that name with no workflow in it, as a workflow taken out by hand would leave.
+        GedraConfigService.get(cxt).writeConfig(
+            cxt.mkSubContext("setup", client).also { it.userId = 11200L },
+            gedraConfig(cxt, "${CWF.configPrefix}eventSurvey", clientNamespace(client), client) { cfact("leftOver", "Test", "Left over.", false) },
+        )
+        GedraConfigReload.reloadClient(cxt, client)
+        save(chief, surveySlots())[CWF.configName] shouldBe "${CWF.configPrefix}eventSurvey2"
+    }
+
+    "a plan's limit on workflows greys every template, saying why" {
+        val operator = TestUser.createFullAdmin(cxt, "operator@wfquota1120.test")
+        val client = "${CUST.free}_wfquota1120"
+        operator.postData(
+            ADEP.clientCreate,
+            mapOf(
+                CLD.clientId to client, CLD.name to "Client $client", CLD.usageType to ClientUsageType.dev.name,
+                CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+            ),
+        )
+        val flows = gedraConfig(cxt, "flows", clientNamespace(client), client) {
+            trait("QEntry", "q", setOf(GedraDataType.formDoc)) { property("a", "A.") }
+            for (w in 1..4) {
+                workflow("w$w", WfEntry.normal) { task("t", "T") { trait("q"); save("s", "S", WfSaveKind.edit) } }
+            }
+        }
+        GedraConfigService.get(cxt).writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 11200L }, flows, trial = true)
+        GedraConfigReload.reloadClient(cxt, client)
+        val templates = operator.getItem(UADEP.clientWorkflows, mapOf(CLD.client to client))[CWF.templates].toJsonListOfMaps()
+        templates.map { it[CWF.refusal].toOptStr() }.forEach { it.shouldNotBeNull() shouldContain "The free plan allows 4 workflows, and this client has 4." }
+    }
+
+    // On an instance that forgives stored configuration, as production does.
+    "a workflow whose template is gone costs only itself: kept unread, reported, written back, and refused if changed" {
+        val warn = TestInstances.storedConfigWarn("clientWorkflowUnread1120")
+        val client = "wfunread1120"
+        val setup = warn.mkSubContext("setup", client).also { it.userId = 11201L }
+        val lost = mapOf(WFD.workflowId to "lost", WFD.fromTemplate to "kdr:gone", WFD.label to "Lost")
+        val config = gedraConfig(warn, "main", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), includedTraits = listOf(GT.name),
+                ),
+            )
+            workflow("start", WfEntry.creation) { task("name", "Name it") { trait(GT.name); save("go", "Go", WfSaveKind.create) } }
+            // Stored beside it, a workflow whose template the deployment no longer declares, as a later release could leave.
+            keepUnreadWorkflow = { true }
+            workflowFromMap(lost)
+        }
+        val svc = GedraConfigService.get(warn)
+        svc.writeConfig(setup, config)
+        val reload = GedraConfigReload.reloadClient(warn, client)
+        reload.issues.any { it.message.contains("holds the workflow 'lost'") } shouldBe true
+        // The rest of the configuration loads.
+        WorkflowService.get(warn).forClient(client).workflows.keys shouldContainExactly setOf("start")
+        // An edit of something else in the configuration keeps it as stored...
+        val id = GedraId.of(GedraConfigType.configDoc, client, "main")
+        fun relabel(workflowId: String, label: String) = svc.patchConfig(setup, id) { slots ->
+            slots + (CCT.workflowDef to slots.getValue(CCT.workflowDef).map {
+                if (it[CCT.workflowId] != workflowId) it else it + (CCT.definition to (it[CCT.definition].toJsonMapOrEmpty() + (WFD.label to label)))
+            })
+        }
+        relabel("start", "Begin")
+        svc.readLatest(setup, id).shouldNotBeNull().entriesBySlot().getValue(CCT.workflowDef)
+            .single { it[CCT.workflowId] == "lost" }[CCT.definition] shouldBe lost
+        // ...and a write changing it is refused: what a write adds or changes has to read.
+        shouldThrow<KdrException> { relabel("lost", "Found") }.fullMessage() shouldContain "kdr:gone"
     }
 
     "slots that are not a workflow's, a template that is not one, and a second survey are refused" {

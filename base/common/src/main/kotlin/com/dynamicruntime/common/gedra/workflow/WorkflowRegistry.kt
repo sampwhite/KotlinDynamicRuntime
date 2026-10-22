@@ -346,7 +346,7 @@ fun buildWorkflowRegistries(
                         cxt,
                         problem(
                             scope, extra,
-                            "is a second $kind workflow beside '${ofKind.first().ref}'. A client has one $kind " +
+                            "is a second $kind workflow beside '${ofKind.first().ref}'. A client can have only one $kind " +
                                 "workflow; keeping the first declared.",
                         ),
                         issues,

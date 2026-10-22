@@ -5,8 +5,10 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
+import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.schema.SL
@@ -20,6 +22,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * The `GedraConfig` <-> stored-entry round trip (issue #613): a config serialized to its slot entries and
@@ -210,5 +213,18 @@ class GedraConfigSerializeTest : StringSpec({
         noteData.contains("properties") shouldBe true
         // acmeTagged named a shared type: the stored dataSchema is a ref to it.
         byId.getValue("acmeTagged")[CCT.dataSchema].toString().contains("AcmeShared") shouldBe true
+    }
+
+    // A workflow made from a template is stored as its overlay (issue #1120); one that carries none cannot be stored, since
+    // read back, the definition it expanded to would be taken for an overlay and refused.
+    "a workflow made from a template with no overlay to store is refused, not written expanded" {
+        val made = parseWfDef(
+            cxt,
+            WfDefBuilder("made", WfEntry.normal).apply {
+                task("t", "T") { trait("kdr:name"); save("s", "S", WfSaveKind.edit) }
+            }.build() + (WFD.fromTemplate to "kdr:collect"),
+        )
+        val config = GedraConfig(GedraId.of(GedraConfigType.configDoc, "acme", "flows"), "client.acme", emptyMap(), defs = emptyMap(), workflows = mapOf("made" to made))
+        shouldThrow<KdrException> { gedraConfigToEntries(config) }.message.orEmpty() shouldContain "carries no overlay"
     }
 })

@@ -41,7 +41,7 @@ import io.kotest.matchers.shouldBe
  * template under a test-only root, `wftest`: the workflow `wftest:review`, its task `draft`, and the trait it collects.
  * No client runs it as it is. The client here makes a workflow of its own from it, `noted`, which is stored as an
  * overlay of the template -- the one label it changes -- and read over the template at load; it is then viewed,
- * engaged, saved and stored under the client's own id. A bare `review` of the client's own sits beside it.
+ * engaged, saved, and stored under the client's own id. A bare `review` of the client's own sits beside it.
  */
 class RootedWorkflowTest : StringSpec({
     // Its own instance (issue #1075): RootedWorkflowComponent, a fixture component no shared entry has.

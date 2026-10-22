@@ -62,10 +62,16 @@ object ConfigSlotShapes {
 
 /**
  * What is wrong with the slots of a configuration about to be **written**, each failure located by its slot, its
- * entry and the path within it (`kdr:clientDef.enabledEnvironments[0]`, `kdr:cfactDef[ready].group`) -- empty when
- * nothing is. An entry is named by its **key** rather than its place, so a failure reads the same wherever the
- * entry sits; one with no key is named by place, counted from 0 as an array's items are (`[#1]` is the second),
- * and its missing key is among its failures.
+ * entry and the path within it -- empty when nothing is:
+ *
+ * ```
+ * kdr:clientDef.enabledEnvironments[0]
+ * kdr:cfactDef[ready].group
+ * ```
+ *
+ * An entry is named by its **key** rather than its place, so a failure reads the same wherever the entry sits; one
+ * with no key is named by place, counted from 0 as an array's items are (`[#1]` is the second), and its missing key
+ * is among its failures.
  *
  * **Only what the write changes is judged.** [stored] is the configuration's revision as it stands, when it has
  * one: an entry the write carries unchanged -- the same key, the same content -- is not judged again, and neither
@@ -89,11 +95,15 @@ object ConfigSlotShapes {
  * by what the client already has:
  * - **A schema body** (`schema`, `dataSchema`) is held to its **shape** and is not parsed here
  *   ([SchOpts.schemaDocumentsUnparsed]): every keyword in it whose value is not of the keyword's shape, every
- *   keyword this layer refuses and every misspelled one of ours is a failure at its own path
- *   (`kdr:schemaDef[Tally].schema.properties.cost.type`), all of them at once (issue #1056,
- *   `SchMetaSchema.structureFailures`). What it means -- its references, what it narrows -- is the trial's:
- *   parsed on its own it would be refused for naming a sibling type of the same client, or for being an
- *   alteration of a global type.
+ *   keyword this layer refuses, and every misspelled one of ours is a failure at its own path, all of them at once
+ *   (issue #1056, `SchMetaSchema.structureFailures`):
+ *
+ *   ```
+ *   kdr:schemaDef[Tally].schema.properties.cost.type
+ *   ```
+ *
+ *   What it means -- its references, what it narrows -- is the trial's: parsed on its own it would be refused for
+ *   naming a sibling type of the same client, or for being an alteration of a global type.
  * - **A report's `definition`** is only required to be an object. One that does not read is kept as stored and
  *   reported (`GedraConfig.unreadReports`), so a configuration may already hold one; the trial refuses a new one.
  */

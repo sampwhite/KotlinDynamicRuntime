@@ -198,7 +198,7 @@ object WVF {
     /**
      * A line of Markdown help the page shows under the workflow's title (issue #1221), absent when there is none. It is
      * copy, not part of the workflow's definition: the backend file [helpFile] under the client's id as the namespace
-     * and the workflow's id as the key -- so a component, a client's configuration or a deployment flavor can explain
+     * and the workflow's id as the key -- so a component, a client's configuration, or a deployment flavor can explain
      * a workflow without changing it.
      */
     const val help = "help"

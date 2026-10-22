@@ -219,7 +219,7 @@ object GedraConfigTrial {
             // through this node can have put it there -- an unknown slot is refused as input, and the model keeps
             // none -- so a row that holds one carried it from a newer release, and refusing the write for that
             // would make every edit on an older node fail until the release reached it.
-            loader.unreadReportIssues(config).forEach { reportConfigProblem(tcxt, it, ignored) }
+            loader.unreadEntryIssues(config).forEach { reportConfigProblem(tcxt, it, ignored) }
             if (scratch.addGedraConfig(tcxt, config)) taken.add(config)
         }
         // The template's copy, remade as the reload remakes it (issue #945): a trial keeping the copy the client runs

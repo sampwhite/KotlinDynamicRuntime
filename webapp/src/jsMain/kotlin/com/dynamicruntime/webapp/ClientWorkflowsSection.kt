@@ -238,6 +238,18 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                 onCancel = { open = null }
                 onChanged = props.onChanged
             }
+        } else {
+            // What it opened on is gone from the catalog -- the workflow, or its template -- so there is nothing to edit.
+            p {
+                className = ClassName("type-hint")
+                +(if (template == null) "Its template, '$templateId', is not offered by this deployment now." else "That workflow is gone.")
+                Button {
+                    type = "link"
+                    size = "small"
+                    onClick = { open = null }
+                    +"Close"
+                }
+            }
         }
     }
 }

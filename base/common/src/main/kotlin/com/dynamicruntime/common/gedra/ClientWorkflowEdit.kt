@@ -56,51 +56,66 @@ object ClientWorkflowEdit {
     fun catalog(cxt: KdrCxt, client: String): Map<String, Any?> {
         val workflows = WorkflowService.get(cxt)
         val own = workflows.forClient(client).workflows.values.toList()
+        val templates = workflows.forClient(null).workflows
+        val limits = PlanRoom.of(cxt, client)
         return buildMap {
             put(CLD.client, client)
-            put(CWF.templates, workflows.forClient(null).workflows.values.map { templateInfo(cxt, client, it.def, own) })
-            put(CWF.workflows, own.map { workflowInfo(client, it) })
+            put(CWF.templates, templates.values.map { templateInfo(it.def, own, limits) })
+            put(CWF.workflows, own.map { workflowInfo(client, it, templates.keys) })
             put(CWF.traits, usableTraits(cxt, client))
         }
     }
 
-    private fun templateInfo(cxt: KdrCxt, client: String, template: WfDef, own: List<WfDeclared>): Map<String, Any?> = buildMap {
+    /** What a client's plan leaves room for, read once for the catalog: its name, its quotas, and the workflows held. */
+    private class PlanRoom(val plan: String, val quotas: PlanQuotas, val workflowsHeld: Int) {
+        companion object {
+            fun of(cxt: KdrCxt, client: String): PlanRoom? {
+                val plan = PlanLimits.planOf(cxt, client) ?: return null
+                val held = SchemaCollector.get(cxt)?.let { PlanLimits.configUsageOf(it, client).workflows } ?: 0
+                return PlanRoom(plan, PLAN.quotasOf(plan), held)
+            }
+        }
+    }
+
+    private fun templateInfo(template: WfDef, own: List<WfDeclared>, limits: PlanRoom?): Map<String, Any?> = buildMap {
         put(CWF.definition, template.toJsonMap())
-        refusalOf(cxt, client, template, own)?.let { put(CWF.refusal, it) }
+        refusalOf(template, own, limits)?.let { put(CWF.refusal, it) }
     }
 
     /**
-     * Why a workflow cannot be made from [template] for [client] now, or null (issue #1120): a client has one creation
-     * and one survey, and a plan limits its workflows and their tasks. The trial would refuse each; this says so first.
+     * Why a workflow cannot be made from [template] now, or null (issue #1120): a client has one creation and one
+     * survey, and a plan ([limits]; null for a client on none) limits its workflows and their tasks. The trial would
+     * refuse each; this says so first.
      */
-    private fun refusalOf(cxt: KdrCxt, client: String, template: WfDef, own: List<WfDeclared>): String? {
+    private fun refusalOf(template: WfDef, own: List<WfDeclared>, limits: PlanRoom?): String? {
         if (template.entry in WfEntry.singletons) {
             own.firstOrNull { it.def.entry == template.entry }?.let {
-                return "This client has a ${template.entry} workflow, '${it.def.workflowId}', and a client has one."
+                return "This client already has a ${template.entry} workflow, '${it.def.workflowId}', and can have only one."
             }
         }
-        val plan = PlanLimits.planOf(cxt, client) ?: return null
-        val quotas = PLAN.quotasOf(plan)
-        quotas.workflows?.let { limit ->
-            val held = SchemaCollector.get(cxt)?.let { PlanLimits.configUsageOf(it, client).workflows } ?: 0
-            if (held >= limit) return "The $plan plan allows $limit workflows, and this client has $held."
+        limits ?: return null
+        limits.quotas.workflows?.let { limit ->
+            if (limits.workflowsHeld >= limit) {
+                return "The ${limits.plan} plan allows $limit workflows, and this client has ${limits.workflowsHeld}."
+            }
         }
-        quotas.tasksPerWorkflow?.let { limit ->
-            if (template.tasks.size > limit) return "It has ${template.tasks.size} tasks, and the $plan plan allows $limit in a workflow."
+        limits.quotas.tasksPerWorkflow?.let { limit ->
+            if (template.tasks.size > limit) return "It has ${template.tasks.size} tasks, and the ${limits.plan} plan allows $limit in a workflow."
         }
         return null
     }
 
-    private fun workflowInfo(client: String, declared: WfDeclared): Map<String, Any?> = buildMap {
+    private fun workflowInfo(client: String, declared: WfDeclared, templateIds: Set<String>): Map<String, Any?> = buildMap {
         val def = declared.def
         put(CWF.definition, def.toJsonMap())
         if (declared.bundle.isStored && declared.bundle.gedraId.client == client) put(CWF.configName, declared.bundle.name)
-        notEditable(client, declared)?.let { put(CWF.notEditable, it) }
+        notEditable(client, declared, templateIds)?.let { put(CWF.notEditable, it) }
     }
 
     /** Why [declared]'s slots cannot be changed here, or null when they can. */
-    private fun notEditable(client: String, declared: WfDeclared): String? = when {
+    private fun notEditable(client: String, declared: WfDeclared, templateIds: Set<String>): String? = when {
         declared.def.fromTemplate == null -> "It is written whole, not made from a template: its layouts and labels are edited in Design View."
+        declared.def.fromTemplate !in templateIds -> "Its template, '${declared.def.fromTemplate}', is not offered by this deployment now."
         !declared.bundle.isStored -> "It is declared in source code, where it is edited."
         declared.bundle.gedraId.client != client || declared.bundle.inheritedFrom != null ->
             "It comes from the client this one is built on, '${declared.bundle.inheritedFrom ?: declared.bundle.gedraId.client}'."
@@ -145,7 +160,10 @@ object ClientWorkflowEdit {
         val made: WfDef
         val workflowId = slots.workflowId
         if (workflowId == null) {
-            val taken = WorkflowService.get(cxt).forClient(client).workflows.keys + storedWorkflowIds(bound)
+            // Nor the name of a configuration left from one, which a new workflow's configuration may not take.
+            val leftover = svc.listConfigs(bound).map { it.configId.baseId }.filter { it.startsWith(CWF.configPrefix) }
+                .map { it.removePrefix(CWF.configPrefix) }
+            val taken = WorkflowService.get(cxt).forClient(client).workflows.keys + storedWorkflowIds(bound) + leftover
             val id = keyFromLabel(slots.label, taken, "workflow")
             made = withTemplateSlots(bound, template, slots, id)
             val entry = mapOf(CCT.workflowId to id, CCT.definition to workflowTemplateOverlay(template, made))

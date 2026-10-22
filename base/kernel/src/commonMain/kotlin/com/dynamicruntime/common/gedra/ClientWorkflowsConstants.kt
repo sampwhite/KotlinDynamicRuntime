@@ -41,7 +41,7 @@ object CWF {
 
     /**
      * The prefix of the stored configuration the editor makes for a new workflow: one per workflow, named for it
-     * (`workflow_<workflowId>`), so each is published, judged and, later, carried on its own.
+     * (`workflow_<workflowId>`), so each is published, judged, and, later, carried on its own.
      */
     const val configPrefix = "workflow_"
 }
