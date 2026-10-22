@@ -54,6 +54,7 @@ fun main(args: Array<String>) {
     ensureGradleProperties(workDir, examples)
     syncSettingsWithExample(workDir, examples)
     ensureInjectionPrologue(workDir, examples)
+    ensureToolchainResolver(workDir, examples)
     syncGradleWrapper(workDir, repoDir)
     ensureYarnLock(workDir)
     ensureBinOnPath(repoDir)

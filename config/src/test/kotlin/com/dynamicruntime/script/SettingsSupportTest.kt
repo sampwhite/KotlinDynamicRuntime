@@ -2,6 +2,7 @@ package com.dynamicruntime.script
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import java.io.File
 import kotlin.io.path.createTempDirectory
 
@@ -28,6 +29,26 @@ class SettingsSupportTest : StringSpec({
         val out = insertInjectionPrologue(settings, "PROLOGUE")!!
         out shouldBe "pluginManagement {}\nrootProject.name = \"x\"\n\nPROLOGUE\ninclude(\"launch\")\n"
         insertInjectionPrologue("include(\"launch\")\n", "PROLOGUE") shouldBe null
+    }
+
+    "insertToolchainResolver puts the block straight after pluginManagement, and nowhere it cannot go (issue #1318)" {
+        val settings = "pluginManagement {\n    includeBuild(\"x\")\n}\n\nrootProject.name = \"x\"\n"
+        insertToolchainResolver(settings, "BLOCK\n") shouldBe
+            "pluginManagement {\n    includeBuild(\"x\")\n}\n\nBLOCK\n\nrootProject.name = \"x\"\n"
+        // A plugins {} nested in pluginManagement is no obstacle; a top-level one is, since Gradle allows one.
+        val nested = "pluginManagement {\n    plugins {\n        id(\"a\")\n    }\n}\nrootProject.name = \"x\""
+        insertToolchainResolver(nested, "BLOCK") shouldBe
+            "pluginManagement {\n    plugins {\n        id(\"a\")\n    }\n}\n\nBLOCK\nrootProject.name = \"x\""
+        insertToolchainResolver("pluginManagement {}\nplugins {\n}\n", "BLOCK") shouldBe null
+        insertToolchainResolver("rootProject.name = \"x\"\n", "BLOCK") shouldBe null
+    }
+
+    "the example's toolchain-resolver block is the plugin at 1.0.0, in a plugins block" {
+        val example = generateSequence(File("").absoluteFile) { it.parentFile }
+            .map { File(it, "examples/settings.gradle.kts.example") }.first { it.isFile }
+        val block = extractMarkedBlock(example.readText(), toolchainResolverMarker)!!
+        block shouldContain "plugins {"
+        block shouldContain "id(\"$toolchainResolverPlugin\") version \"1.0.0\""
     }
 
     "hasInjectComponent counts an active OR commented-out call, and ignores other paths" {

@@ -86,6 +86,82 @@ internal fun ensureInjectionPrologue(workDir: File, examples: File): Boolean {
     return true
 }
 
+/** The sentinel marker that delimits the toolchain-resolver block in `settings.gradle.kts(.example)` (issue #1318). */
+internal const val toolchainResolverMarker = "kdr-toolchain-resolver"
+
+/** The plugin that lets Gradle download a missing toolchain JDK: Gradle's own foojay resolver (issue #1318). */
+internal const val toolchainResolverPlugin = "org.gradle.toolchains.foojay-resolver-convention"
+
+/**
+ * Offers to add the toolchain resolver (issue #1318) to a `settings.gradle.kts` that predates it: the block that lets
+ * Gradle download JDK 25 when the machine has none, lifted verbatim from the example. Silent when the plugin is named
+ * already, active or commented out -- leaving it out was then a choice. It prompts and never edits without a yes.
+ *
+ * Only a machine without JDK 25 needs it, and a workspace that builds today has one, so declining costs nothing until
+ * the workspace moves to such a machine. Returns whether the resolver is present when it returns.
+ */
+internal fun ensureToolchainResolver(workDir: File, examples: File): Boolean {
+    val settings = File(workDir, "settings.gradle.kts")
+    if (!settings.isFile) {
+        return false
+    }
+    val liveText = settings.readText()
+    if (liveText.contains(toolchainResolverPlugin)) {
+        return true
+    }
+    val example = File(examples, "settings.gradle.kts.example")
+    val block = example.takeIf { it.isFile }?.let { extractMarkedBlock(it.readText(), toolchainResolverMarker) } ?: return false
+    println("Your settings.gradle.kts does not name Gradle's toolchain resolver (issue #1318). Without it, a machine")
+    println("with no JDK 25 cannot build; with it, Gradle downloads JDK 25 there, and changes nothing where one is installed.")
+    print("Add it (just after pluginManagement)? [y/N] ")
+    if (!readYes()) {
+        println("Left settings.gradle.kts unchanged. To add it later, copy the marked block from")
+        println("  ${example.path}")
+        return false
+    }
+    val updated = insertToolchainResolver(liveText, block)
+    if (updated == null) {
+        println("WARNING: settings.gradle.kts has a plugins {} block already, or no pluginManagement {} to follow; add")
+        println("         id(\"$toolchainResolverPlugin\") version \"1.0.0\" to its plugins {} block by hand.")
+        return false
+    }
+    settings.writeText(updated)
+    println("Added the toolchain resolver to settings.gradle.kts.")
+    return true
+}
+
+/**
+ * [settingsText] with the toolchain-resolver [block] inserted directly after the `pluginManagement {}` block, where
+ * Gradle requires a settings file's `plugins {}` block to be; null when there is no `pluginManagement {}` to follow,
+ * or a `plugins {}` block already (Gradle allows one, so the plugin then belongs inside it). Non-private for tests.
+ */
+fun insertToolchainResolver(settingsText: String, block: String): String? {
+    val lines = settingsText.split("\n")
+    // A top-level one only: `pluginManagement {}` may hold a `plugins {}` of its own, which is no obstacle.
+    if (lines.any { Regex("""^plugins\s*\{""").containsMatchIn(it) }) {
+        return null
+    }
+    val start = lines.indexOfFirst { it.trimStart().startsWith("pluginManagement") }
+    if (start < 0) {
+        return null
+    }
+    // The closing brace of pluginManagement: the line where the braces opened from `start` balance again.
+    var depth = 0
+    var end = -1
+    for (i in start until lines.size) {
+        depth += lines[i].count { it == '{' } - lines[i].count { it == '}' }
+        if (depth == 0 && lines[i].contains('}')) {
+            end = i
+            break
+        }
+    }
+    if (end < 0) {
+        return null
+    }
+    val result = lines.subList(0, end + 1) + listOf("", block.trimEnd()) + lines.subList(end + 1, lines.size)
+    return result.joinToString("\n")
+}
+
 /** Whether [settingsText] already defines the deployment-injection prologue (by its `injectComponent` helper). */
 fun hasInjectionPrologue(settingsText: String): Boolean = settingsText.contains("fun injectComponent(")
 

@@ -24,6 +24,18 @@ pluginManagement {
     includeBuild("KotlinDynamicRuntime/build-logic")
 }
 
+// >>> kdr-toolchain-resolver — lets Gradle download JDK 25 when it is missing (issue #1318); offered by kdr-install.
+// The build compiles with exactly JDK 25 (`jvmToolchain(25)`). Gradle looks for one on this machine first --
+// JAVA_HOME, SDKMAN, /Library/Java/JavaVirtualMachines, ~/.gradle/jdks -- and only when none matches asks this
+// resolver, Gradle's own, which finds a download through foojay.io's Disco API and keeps it in ~/.gradle/jdks.
+// So a machine with only a newer JDK still builds. 1.0.0 or later: older versions fail on Gradle 9. To refuse
+// the download, set `org.gradle.java.installations.auto-download=false` in gradle.properties. Gradle allows one
+// `plugins {}` block here, directly after `pluginManagement {}`.
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+// <<< kdr-toolchain-resolver
+
 rootProject.name = "KotlinDynamicRuntime"
 
 // >>> kdr-injection-prologue — deployment-injection helper (issue #171); kept in sync by kdr-install.
