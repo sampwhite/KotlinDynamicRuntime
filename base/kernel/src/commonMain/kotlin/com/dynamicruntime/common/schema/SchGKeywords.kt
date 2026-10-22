@@ -49,6 +49,68 @@ object SchGKeywords {
         SCH.appliesTo to textList,
     )
 
+    /**
+     * What each `g-` keyword means, in a sentence (issue #1347): beside its shape in the schema for schema and on the
+     * schema dialect reference. A test holds this to the same keys as the shapes, so a keyword added without a
+     * meaning fails rather than publishing a blank.
+     */
+    val meanings: Map<String, String> = linkedMapOf(
+        SCH.allowCoerce to "Whether a value may be converted to the property's type when it is validated, such as " +
+            "the text '5' to a number.",
+        SCH.emptyIsAbsent to "Whether an empty or null value means the property was not supplied at all.",
+        SCH.visibleOnly to "Whether a string may hold only characters with a visible rendering, and the ordinary space.",
+        SCH.outerWhitespace to "What to do with leading and trailing whitespace on a string: 'trim' it, 'reject' a " +
+            "value that has any, or 'keep' it.",
+        SCH.derived to "Marks a property the caller does not supply, because something else produces it.",
+        SCH.schemaDocument to "Marks a property whose value is itself a schema, checked by parsing it.",
+        SCH.options to "The choices a property offers, each a label and a value.",
+        SCH.openOptions to "Whether the options are suggestions rather than a bound, so another value is allowed.",
+        SCH.primaryKey to "The fields, in order, that identify one element of an array of this type.",
+        SCH.optionalContents to "Marks an object property whose value may be a fragment: each field is checked, " +
+            "but not that the required ones are present.",
+        SCH.optionsSource to "Names a registered source that supplies the property's options when the schema is served.",
+        SCH.visibleWhen to "A cfact expression deciding whether the property is shown to a caller, and whether they " +
+            "may change it.",
+        SCH.sensitive to "Marks a property whose value is a secret, such as a password or a code, so it is never logged.",
+        SCH.errors to "Messages to show for a failure of this field, keyed by the failure.",
+        SCH.presentation to "How a read-only page should display the value: as a status, a table, an identifier, or " +
+            "a nested table beneath its row (detail). On a type, or on a field beside its reference. It does not " +
+            "affect validation.",
+        SCH.layout to "How a form lays out the type's fields. Served apart from the schema, never read as part of it.",
+        SCH.merge to "On a client's alteration of a global type, how a part of it merges with the type it alters.",
+        SCH.extends to "On a named type a configuration declares, the type it extends: that type plus this one's body.",
+        SCH.appliesTo to "The kinds of form a trait's entry type applies to.",
+    )
+
+    /**
+     * Where each `g-` keyword is written (issue #1347), for the schema dialect reference, which lists them by place. The
+     * parser is what holds a keyword to its place; this says it for a reader, and a test holds it to the same keys as
+     * the shapes.
+     */
+    val places: Map<String, SchKeywordPlace> = linkedMapOf(
+        SCH.allowCoerce to SchKeywordPlace.schema,
+        SCH.emptyIsAbsent to SchKeywordPlace.schema,
+        SCH.visibleOnly to SchKeywordPlace.schema,
+        SCH.outerWhitespace to SchKeywordPlace.schema,
+        SCH.derived to SchKeywordPlace.schema,
+        SCH.schemaDocument to SchKeywordPlace.schema,
+        SCH.options to SchKeywordPlace.schema,
+        SCH.openOptions to SchKeywordPlace.schema,
+        SCH.primaryKey to SchKeywordPlace.schema,
+        // Read on the field before its `$ref` is followed, so it is this use's, not the shared type's.
+        SCH.optionalContents to SchKeywordPlace.field,
+        SCH.optionsSource to SchKeywordPlace.field,
+        SCH.visibleWhen to SchKeywordPlace.field,
+        SCH.sensitive to SchKeywordPlace.field,
+        SCH.errors to SchKeywordPlace.schema,
+        // Read on a type and on a field beside its `$ref`; listed with the schema keywords, its meaning saying both.
+        SCH.presentation to SchKeywordPlace.schema,
+        SCH.layout to SchKeywordPlace.namedType,
+        SCH.merge to SchKeywordPlace.namedType,
+        SCH.extends to SchKeywordPlace.namedType,
+        SCH.appliesTo to SchKeywordPlace.namedType,
+    )
+
     /** Every `g-` keyword there is. */
     val keywords: Set<String> get() = shapes.keys
 

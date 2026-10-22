@@ -533,6 +533,9 @@ number, a list of something, a schema node, a map of nodes, either of two. Three
   configuration is held to it, and so is any `schemaDocument()` field, before the body is parsed;
 - **the document**, `SchMetaSchema.defs` / `.nodeType`: the same shapes written in our own dialect as one open type,
   `kdr.meta.SchemaNode`, served at `GET /schema/metaSchema` -- for a reader, a test, or an editor's form.
+- **the reference**, `schemaDialectMarkdown()`: the same tables written for a person -- each keyword's shape and
+  its one-line meaning (`SchStdKeywords.meanings`, `SchGKeywords.meanings`) -- served to anyone as the "Schema
+  dialect" document. A keyword added to a table needs a meaning too; `SchMetaSchemaTest` fails without one.
 
 ```kotlin
 val body = mapOf(

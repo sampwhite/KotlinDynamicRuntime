@@ -80,7 +80,8 @@ object SchMetaSchema {
     val defs: Map<String, Any?> by lazy {
         val properties = LinkedHashMap<String, Any?>()
         for ((keyword, shape) in keywordShapes) {
-            properties[keyword] = stated(shape.form).orEmpty() + (SCH.description to "Must be ${shape.described}.")
+            val meaning = keywordMeanings[keyword]?.let { "$it " }.orEmpty()
+            properties[keyword] = stated(shape.form).orEmpty() + (SCH.description to "${meaning}Must be ${shape.described}.")
         }
         mapOf(
             MSCH.nodeTypeName to linkedMapOf(
@@ -194,6 +195,8 @@ object SchMetaSchema {
     private const val subject = "This schema"
 
     private val keywordShapes: Map<String, SchKeywordShape> get() = SchStdKeywords.entries + SchGKeywords.entries
+
+    private val keywordMeanings: Map<String, String> get() = SchStdKeywords.meanings + SchGKeywords.meanings
 
     /** [form] in our dialect, or null for one it has no keyword for. */
     private fun stated(form: SchShapeForm): Map<String, Any?>? = when (form) {

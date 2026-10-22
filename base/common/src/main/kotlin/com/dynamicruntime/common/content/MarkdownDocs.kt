@@ -31,7 +31,20 @@ class MarkdownDocDef(
      * last whichever components contribute documents after the one declaring it.
      */
     val order: Int = 0,
-)
+    /**
+     * Makes the document's Markdown, for a document generated from the code rather than kept as a file (issue
+     * #1347): the schema dialect reference is made from the keyword tables the parser reads, so it cannot drift from
+     * them. Null for a file, read from `md-docs/<docId>.md`. The text is made once, on first use, and must depend on
+     * nothing but code: its build id is a hash of the text, and a URL carrying it is cached for good.
+     *
+     * Its [sourcePath] still names a file in the repository, so a link to the document resolves in both places: in
+     * the app it opens the generated page, and on GitHub it opens that file, which says where the page is served.
+     */
+    val generate: (() -> String)? = null,
+) {
+    /** The generated text, or null for a document kept as a file. */
+    val generatedText: String? by lazy { generate?.invoke() }
+}
 
 /** The [MarkdownDocDef.order] of a document that reads last: the license. */
 const val lastDocOrder = 100

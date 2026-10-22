@@ -442,7 +442,8 @@ object HFRAG {
 /**
  * Markdown *document* ids the home page links to (served whole, rendered as a page). The README is the entry
  * point; the rest are the repo docs it links to, registered so those interior links resolve to an in-app
- * document rather than the source repository (issue #492). Each id is also the `md-docs/<id>.md` resource name.
+ * document rather than the source repository (issue #492). Each id is also the `md-docs/<id>.md` resource name,
+ * except for a generated document such as [schemaDialect], whose text is made at run time (issue #1347).
  */
 @Suppress("ConstPropertyName")
 object HDOC {
@@ -460,5 +461,6 @@ object HDOC {
     const val reporting = "reporting"
     const val fileRefs = "file-refs"
     const val sandboxes = "sandboxes"
+    const val schemaDialect = "schema-dialect"
     const val license = "license"
 }

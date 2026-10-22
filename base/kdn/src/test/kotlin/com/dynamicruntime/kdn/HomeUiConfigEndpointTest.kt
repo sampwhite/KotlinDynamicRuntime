@@ -92,17 +92,18 @@ class HomeUiConfigEndpointTest : StringSpec({
             HDOC.readme, HDOC.extending, HDOC.codeGuide, HDOC.clientDefinition, HDOC.deferredWork,
             HDOC.gedraConfigAndData, HDOC.gedraEntry, HDOC.gedraStates, HDOC.uiBlock, HDOC.reporting,
             HDOC.fileRefs, HDOC.sandboxes, HDOC.userSearch, HDOC.gedraWorkflow,
-            HDOC.license,
+            HDOC.schemaDialect, HDOC.license,
         )
         ids shouldContainAll core
         // Each carries the source path the resolver needs, so none is served without it.
         links.forEach { (it[HFLD.sourcePath] as String).isNotEmpty() shouldBe true }
         // And the one-line description the Documents listing shows beside each (issue #554).
         links.forEach { (it[HFLD.description] as String).isNotEmpty() shouldBe true }
-        // The listing offers the README, the extending guide, the code guide, and the license (issue #1238); the design
-        // documents are served but unlisted, as a suite's inner pages -- the conference demo's, say -- are (issue #1136).
+        // The listing offers the README, the extending guide, the code guide, the schema dialect reference (issue #1347),
+        // and the license (issue #1238); the design documents are served but unlisted, as a suite's inner pages -- the
+        // conference demo's, say -- are (issue #1136).
         val listed = links.filter { it[HFLD.listed] == true }.map { it[HFLD.id] }
-        val offered = listOf(HDOC.readme, HDOC.extending, HDOC.codeGuide, HDOC.license)
+        val offered = listOf(HDOC.readme, HDOC.extending, HDOC.codeGuide, HDOC.schemaDialect, HDOC.license)
         listed shouldContainAll offered
         // The license reads last, after the documents components loaded after `common` contribute (issue #1238).
         listed.last() shouldBe HDOC.license

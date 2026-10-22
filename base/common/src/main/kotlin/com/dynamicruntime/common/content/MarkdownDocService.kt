@@ -8,6 +8,7 @@ import com.dynamicruntime.common.http.request.ContextFocus
 import com.dynamicruntime.common.http.request.RequestHandler
 import com.dynamicruntime.common.http.request.RequestService
 import com.dynamicruntime.common.startup.ServiceInitializer
+import com.dynamicruntime.common.util.crc32Hex
 
 /**
  * Serves whole Markdown **documents** verbatim, under the static context root (`ContextRoot.st`). The sibling
@@ -52,7 +53,8 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
             handler.sendStringResponse("Bad document id.", EXC.badInput, "text/plain")
             return true
         }
-        val text = ContentResources.readText(resourceDir, docId)
+        val declared = declaredDoc(cxt, docId)
+        val text = declared?.generatedText ?: ContentResources.readText(resourceDir, docId)
         if (text == null) {
             // A cached 404 outlives a rolling deploy, during which one node can 404 a document another still
             // serves; keep the negative answer out of shared caches (see ContentResources.buildId).
@@ -66,7 +68,8 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
         // no-store so the URL cannot lie about its contents for a year. Documents deliberately do NOT 404 on a
         // mismatch (unlike fragments): a user recovers current prose by navigating away and back, so a 404
         // would turn cosmetic staleness into a visible failure (#472).
-        val matched = requestedBuildId.isNotEmpty() && requestedBuildId == docBuildId(docId)
+        val matched = requestedBuildId.isNotEmpty() &&
+            requestedBuildId == (declared?.let { docBuildId(it) } ?: docBuildId(docId))
         handler.setResponseHeader("Cache-Control", ContentResources.cacheHeaderFor(matched))
         handler.sendStringResponse(text, EXC.ok, contentType)
         return true
@@ -98,5 +101,16 @@ class MarkdownDocService : ServiceInitializer, ContentServer {
          * whether the response may carry the permanent cache header (issue #472).
          */
         fun docBuildId(docId: String): String? = ContentResources.buildId(resourceDir, docId)
+
+        /**
+         * The build id for a declared [doc]: a hash of its generated text (issue #1347), or its resource's
+         * ([docBuildId] by id) for a document kept as a file.
+         */
+        fun docBuildId(doc: MarkdownDocDef): String? = doc.generatedText?.crc32Hex() ?: docBuildId(doc.docId)
+
+        /** The document a component declared under [docId], or null when none did. */
+        @Suppress("UNCHECKED_CAST")
+        fun declaredDoc(cxt: KdrCxt, docId: String): MarkdownDocDef? =
+            (cxt.instanceConfig.get(MDOC.registryKey) as? List<MarkdownDocDef>)?.firstOrNull { it.docId == docId }
     }
 }

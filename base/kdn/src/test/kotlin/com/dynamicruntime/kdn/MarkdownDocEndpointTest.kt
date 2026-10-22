@@ -5,6 +5,7 @@ import com.dynamicruntime.common.content.MarkdownDocService
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.home.HDOC
 import com.dynamicruntime.common.http.request.TestHttpClient
+import com.dynamicruntime.common.schema.schemaDialectMarkdown
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -55,6 +56,22 @@ class MarkdownDocEndpointTest : StringSpec({
         handler.rptStatusCode shouldBe EXC.ok
         handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.noStore)
         (handler.rptResponseData ?: "") shouldContain "# KotlinDynamicRuntime"
+    }
+
+    // Issue #1347: a generated document has no resource. Its text is made from code, and its build id is a hash of
+    // that text, so it is cached the same way -- and, like every document, served without signing in.
+    "a generated document is served from its generator, under a build id of its text" {
+        val cxt = TestInstances.default("docGenerated")
+        val client = TestHttpClient(cxt.instanceConfig)
+        val doc = MarkdownDocService.declaredDoc(cxt, HDOC.schemaDialect).shouldNotBeNull()
+        val buildId = MarkdownDocService.docBuildId(doc).shouldNotBeNull()
+        MarkdownDocService.docBuildId(HDOC.schemaDialect) shouldBe null
+
+        val handler = client.sendGetRequestRaw("/st/myapp/doc/${HDOC.schemaDialect}:$buildId")
+
+        handler.rptStatusCode shouldBe EXC.ok
+        handler.rptResponseHeaders["cache-control"] shouldBe listOf(ContentResources.cacheControl)
+        (handler.rptResponseData ?: "") shouldBe schemaDialectMarkdown()
     }
 
     "a missing document 404s and is not cached" {

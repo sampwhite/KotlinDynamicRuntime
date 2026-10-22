@@ -6,8 +6,9 @@ description: Write or edit the developer documentation in `docs/demo-client/` â€
 # Writing the conference demo's documentation
 
 `docs/demo-client/` walks a **human developer** through the `confdemo` client's configuration: the JSON of each
-bundle, piece by piece, example first. It is not reference material (that comes from `/schema/metaSchema`) and
-not a design note (those explain *why*; these explain *what is*). The pages are served in-app and on GitHub alike,
+bundle, piece by piece, example first. It is not reference material (for schema keywords, link the generated
+[schema dialect reference](../../../docs/reference/schema-dialect.md), whose repo file is a stub that a running server
+replaces with the page) and not a design note (those explain *why*; these explain *what is*). The pages are served in-app and on GitHub alike,
 so every link has to work in both.
 
 The tracking issue is #1134; the pages were piloted in #1137 and shaped by Sam's review of #1138. **This skill

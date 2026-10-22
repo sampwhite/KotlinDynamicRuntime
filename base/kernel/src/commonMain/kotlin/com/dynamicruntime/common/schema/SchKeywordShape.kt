@@ -108,3 +108,18 @@ fun describeSchemaValue(value: Any?): String = when (value) {
     is List<*> -> "a list"
     else -> value.toString()
 }
+
+/**
+ * Where a `g-` keyword is written (issue #1347): on any schema, on a field in `properties`, or at the top of a type
+ * declared by name. Said for a reader ([SchGKeywords.places]); the parser holds each keyword to its place.
+ */
+enum class SchKeywordPlace {
+    /** Wherever a schema is written: a named type, a field's own schema, an array's item schema. */
+    schema,
+
+    /** On a field in `properties`: about this use of its type, and so allowed beside a `$ref`. */
+    field,
+
+    /** At the top of a type declared by name in `$defs`, and nowhere else. */
+    namedType,
+}
