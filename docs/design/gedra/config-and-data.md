@@ -218,23 +218,47 @@ concepts, they get different ids, which was the right answer anyway.
 
 ### Workflow and task ids follow the same owner rules
 
-*Built (issue #921, slice #953).* A client's own workflow and its tasks are bare (`loanReview`, `income`). A
-**global** workflow — one a component ships for every client — is `<root>:<name>` (`kdr:loanReview`), and so is
-every task in it (`kdr:income`), because a global workflow is a container clients will add tasks to by overlay, and a
-bare task of core's could one day meet one of theirs. The local part is a variable name either way, and both forms
-are checked as config is collected (see [What is checked today](#what-is-checked-today)).
+*Built (issues #921, #953; templates #1120).* A client's own workflow and its tasks are bare (`loanReview`,
+`income`). A **global** workflow is `<root>:<name>` (`kdr:loanReview`), and it is a **template**: no client runs it as
+it is. Its task ids are bare, since a workflow made from it has them as its own. Both forms are checked as config is
+collected (see [What is checked today](#what-is-checked-today)).
 
-There is **no shadowing by id**: a client's `loanReview` beside a global `kdr:loanReview` is two workflows. A client
-is meant to change a global workflow by *overlaying* it — naming `kdr:loanReview` and merging its task list by task
-id — which is not built; a client wanting its own defines a bare one. Only the single-instance kinds, creation and
-survey, shadow, and they shadow **by kind**: a client's creation workflow replaces the global one whatever its id,
-since a client has one answer to how a form is created. A client built on a template holds the same rule against
-the template's workflows.
+### Workflows made from templates
 
-A rooted id is not a variable name, so every place that uses a workflow id as an identifier carries it as a string:
-the `WfRef` text (`gc.cd.global.loans~1#kdr:loanReview`), stored state keys, query parameters, hash routes, and
-fragment namespaces, which are pulled by string (`%{@t("loanCopy.kdr:loanReview.title")}`), never by a bare `${...}`
-path.
+*Built (issue #1120).* A client takes a workflow from a template by declaring one of its own, under a bare id, that
+names the template in `fromTemplate`. What the client stores is an **overlay** of the template, only what it
+changed, and the overlay is merged over the template's current definition whenever the workflow is read. A fix to a
+template therefore reaches every workflow made from it:
+
+```json
+{"workflowId": "eventSurvey", "fromTemplate": "kdr:survey", "label": "Event survey",
+ "tasks": [{"id": "details", "label": "Your event", "traits": [{"traitId": "eventRequest"}]}]}
+```
+
+The overlay merges by declared rules, the overlay engine of #985:
+
+- **A task is targeted by its id**, never by restating the task list.
+- **A task's traits are restated** by default: the overlay's list is the task's, and an entry naming only its
+  `traitId` keeps the template's entry. An overlay that says `"merge": {"traits": "merge"}` on the task names only
+  the traits it changes or adds instead.
+- **The types the workflow lays out** (`types`) merge by a schema type's own rules, so a layout entry is targeted
+  by its field.
+
+A template fixes its structure: its tasks, their saves and approvals, its rules, and its functions. So an overlay may
+say only the workflow's label, its tasks' labels and traits, their saves' labels, and how it lays out the types its
+pages show (`types`, which for a workflow holds layouts only). Anything else is refused. An editor (the client page's
+slot form, Design View) changes the workflow as it runs, and what is stored is the diff from the template. A change
+the overlay cannot state, such as a task removed, is refused. If a template later changes in a way an overlay no
+longer fits, or is removed, the workflow costs only itself, as an unreadable report does: the load leaves it out and
+reports it, and keeps its overlay as stored, so an edit of anything else does not delete it. A write that adds or
+changes such an overlay is refused.
+
+There is no shadowing. A client's `loanReview` beside the template `kdr:loanReview` is the client's own, and the
+template is nobody's. A client has one creation workflow and one survey; the templates may offer several of each. A
+client built on a template client (#945) runs that client's workflows, under the same rule.
+
+A template's rooted id is not a variable name, so where it is named (`fromTemplate`, the client page's catalog) it is
+carried as a string.
 
 ## A trait's own data lives under `data`
 
@@ -475,7 +499,7 @@ Only the first is worth trading for uptime.
 | Check | Refused |
 |---|---|
 | A `traitId` claimed twice within one owner — a global id twice, or a client's own id twice in that client (#807, #951) | naming both bundles |
-| A global config's trait id, cfact, workflow id, or a task id in one of its workflows, that is not `<root>:<name>` under its namespace's root (#951–#953) — a global name and a client's can then never be the same | naming the rule |
+| A global config's trait id, cfact, or workflow id that is not `<root>:<name>` under its namespace's root (#951–#953) — a global name and a client's can then never be the same — or a task id in one of its workflows that is not bare, since a template's tasks become a client's (#1120) | naming the rule |
 | A component's own cfact (declared in code) that is not `<root>:<name>` under the component's owner root, or under the root its `contributesTo` names; never under `client` (#952) | naming the component and the rule |
 | A namespace claimed by two owners — a backstop since #949/#950, reached only when production forgave a component namespace under `client` | naming the owner it already has |
 | A component namespace off its owner root without `contributesTo`, under `client`, or with no root; a declared type outside its contribution's root; a type name declared twice (#950) | naming the component and the rule |

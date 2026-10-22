@@ -5,6 +5,7 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.ACT
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.schema.SCH
 import com.dynamicruntime.common.schema.qualifyTypeName
@@ -57,7 +58,20 @@ fun gedraConfigToEntries(config: GedraConfig): Map<String, List<Map<String, Any?
     out[CCT.traitDef] = config.traits.values.map { traitToEntry(config, it) }
     out[CCT.usageDef] = config.usages.map { usageToEntry(it) }
     out[CCT.workflowDef] = config.workflows.values.map {
-        linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to it.toJsonMap())
+        // One made from a template is stored as its overlay of the template (issue #1120), never as what it expands to:
+        // read back, an expanded definition naming its template would be taken for an overlay, and refused.
+        val stored = when {
+            it.templateOverlay != null -> it.templateOverlay
+            it.fromTemplate != null -> throw KdrException.mkConv(
+                "Workflow '${it.workflowId}' is made from template '${it.fromTemplate}' and carries no overlay to store; " +
+                    "store what `workflowTemplateOverlay` makes of it.",
+            )
+            else -> it.toJsonMap()
+        }
+        linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to stored)
+    } + config.unreadWorkflows.values.map {
+        // Written back as stored, so an edit of anything else in the config does not delete it (issue #1120).
+        linkedMapOf(CCT.workflowId to it.workflowId, CCT.definition to it.definition)
     }
     out[CCT.reportDef] = config.reports.values.map {
         linkedMapOf(CCT.reportId to it.reportId, CCT.definition to it.toJsonMap())
@@ -108,8 +122,11 @@ fun reassembleForWrite(
     stored: Map<String, List<Map<String, Any?>>>? = null,
 ): GedraConfig {
     requireWritableSlots(cxt, name, entriesBySlot, stored)
+    // A workflow made from a template that no longer reads is kept as stored when the write carries it unchanged, and
+    // refused when the write adds or changes it (issue #1120).
+    val storedWorkflows = stored?.get(CCT.workflowDef).orEmpty().map { it[CCT.definition] }
     return try {
-        reassembleGedraConfig(cxt, name, namespace, client, entriesBySlot)
+        reassembleGedraConfig(cxt, name, namespace, client, entriesBySlot) { raw -> raw in storedWorkflows }
     } catch (e: KdrException) {
         if (e.code != EXC.internalError || e.activity != ACT.conversion) throw e
         // The fault says what is wrong; this says whose it is. A reader of the error takes both from
@@ -135,7 +152,15 @@ fun reassembleGedraConfig(
     namespace: String,
     client: String,
     entriesBySlot: Map<String, List<Map<String, Any?>>>,
+    /**
+     * Whether a workflow made from a template that does not read is kept as unread, given its stored definition (issue
+     * #1120): all of them for a load; for a write, only what it carries unchanged ([reassembleForWrite]).
+     */
+    keepUnreadWorkflow: (Map<String, Any?>) -> Boolean = { true },
 ): GedraConfig = gedraConfig(cxt, name, namespace, client, GedraConfigOrigin.stored) {
+    // A workflow made from a template is read over the deployment's template (issue #1120).
+    workflowTemplates = WorkflowTemplates.lookup(cxt)
+    this.keepUnreadWorkflow = keepUnreadWorkflow
     entriesBySlot[CCT.clientDef]?.firstOrNull()?.let { defineClient(ClientDef.fromInfo(it)) }
     entriesBySlot[CCT.customerDef]?.forEach { defineCustomer(CustomerDef.fromInfo(it)) }
     // Directly-declared types first, so a trait's shared `$ref` has its target present when the config compiles.

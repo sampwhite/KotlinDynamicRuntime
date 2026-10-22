@@ -263,7 +263,7 @@ class GedraConfigLoadService : ServiceInitializer {
                 continue
             }
             unknownSlotsIssue(stored)?.let { reportConfigProblem(cxt, it, issues) }
-            unreadReportIssues(config).forEach { reportConfigProblem(cxt, it, issues) }
+            unreadEntryIssues(config).forEach { reportConfigProblem(cxt, it, issues) }
             // Routes through the same checks and degrade behavior a source config gets; a taken config's
             // fragment/UiBlock overlays are then folded in, gated on the take exactly as the boot loop does.
             if (collector.addGedraConfig(cxt, config)) {
@@ -376,7 +376,7 @@ class GedraConfigLoadService : ServiceInitializer {
                 null
             } else {
                 unknownSlotsIssue(row)?.let { reportConfigProblem(cxt, it, sink) }
-                unreadReportIssues(config).forEach { reportConfigProblem(cxt, it, sink) }
+                unreadEntryIssues(config).forEach { reportConfigProblem(cxt, it, sink) }
                 config
             }
         }
@@ -490,15 +490,21 @@ class GedraConfigLoadService : ServiceInitializer {
     }
 
     /**
-     * The issues for the reports a stored [config] holds that could not be read (issue #979), one each: the report is
-     * left out and the rest of the config loads. Reported where [unknownSlotsIssue] is -- the boot load, a reload, a
-     * trial -- and judged, like it, as stored config.
+     * The issues for the reports (issue #979) and the workflows made from templates (issue #1120) a stored [config] holds
+     * that could not be read, one each: each is left out and the rest of the config loads. Reported where
+     * [unknownSlotsIssue] is -- the boot load, a reload, a trial -- and judged, like it, as stored config.
      */
-    fun unreadReportIssues(config: GedraConfig): List<GedraConfigIssue> = config.unreadReports.values.map { unread ->
+    fun unreadEntryIssues(config: GedraConfig): List<GedraConfigIssue> = config.unreadReports.values.map { unread ->
         config.issue(
             "Stored config '${config.gedraId}' holds the report '${unread.slotKey}', which cannot be read: ${unread.why}.",
             "Leaving the report out, kept as stored; the rest of the config loads.",
             GCEL.report, unread.slotKey,
+        )
+    } + config.unreadWorkflows.values.map { unread ->
+        config.issue(
+            "Stored config '${config.gedraId}' holds the workflow '${unread.workflowId}', which cannot be read: ${unread.why}",
+            "Leaving the workflow out, kept as stored; the rest of the config loads.",
+            GCEL.workflow, unread.workflowId,
         )
     }
 

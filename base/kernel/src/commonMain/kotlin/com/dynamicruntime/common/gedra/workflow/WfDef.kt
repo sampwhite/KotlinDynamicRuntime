@@ -164,6 +164,19 @@ object WFD {
      */
     const val typeBasis = "typeBasis"
 
+    /**
+     * The global workflow a client's workflow is made from (issue #1120): its rooted id. A definition naming one is
+     * stored as an **overlay** of that template -- only what the client changed -- and expanded over the template's
+     * current definition when it is read ([expandWorkflowTemplate]), so the workflow keeps up with its template.
+     */
+    const val fromTemplate = "fromTemplate"
+
+    /**
+     * On a task of a workflow made from a template: how the overlay's parts merge, where it may choose (issue #1120)
+     * -- `{"traits": "merge"}` to name only the traits it changes; by default it restates the task's traits.
+     */
+    const val merge = "merge"
+
     /** Separates a bundle id from a workflow id in a [WfRef]'s text form. */
     const val refSep = '#'
 }
@@ -185,7 +198,7 @@ object WVF {
     /**
      * A line of Markdown help the page shows under the workflow's title (issue #1221), absent when there is none. It is
      * copy, not part of the workflow's definition: the backend file [helpFile] under the client's id as the namespace
-     * and the workflow's id as the key -- so a component, a client's configuration or a deployment flavor can explain
+     * and the workflow's id as the key -- so a component, a client's configuration, or a deployment flavor can explain
      * a workflow without changing it.
      */
     const val help = "help"
@@ -631,6 +644,13 @@ class WfDef(
      * [label] is the reader's; this is for whoever maintains the definition.
      */
     val comment: String? = null,
+    /** The template the workflow was made from (issue #1120), its rooted id; null for one written whole. */
+    val fromTemplate: String? = null,
+    /**
+     * For a workflow made from a template, what is stored of it ([WFD.fromTemplate]): its overlay of the template, as
+     * read. Not part of [toJsonMap], which is the workflow as it runs; a store writes this instead.
+     */
+    val templateOverlay: Map<String, Any?>? = null,
 ) {
     /** The trait locks (issue #857), in declaration order; only a [WfEntry.normal] workflow may declare any. */
     val locks: List<WfLock> = locks.toList()
@@ -1059,6 +1079,7 @@ object WfDefSchema {
             property(WFD.typeBasis, "For each altered layout entry, the inherited entry it replaced when it was made, by type name and then field -- what a page compares to say the shared copy has changed since.") {
                 type = SCT.kObject
             }
+            property(WFD.fromTemplate, "The global workflow this one was made from, by its rooted id. Stored, such a workflow is an overlay of the template's current definition.")
         }
     }
 
@@ -1085,6 +1106,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
     put(WFD.workflowId, workflowId)
     put(WFD.entry, entry.name)
     comment?.let { put(SCH.dComment, it) }
+    fromTemplate?.let { put(WFD.fromTemplate, it) }
     // Emitted when set, as the builder does -- a stored definition that dropped it would lose its page title.
     if (label.isNotEmpty()) put(WFD.label, label)
     put(
@@ -1127,7 +1149,7 @@ fun WfDef.toJsonMap(): Map<String, Any?> = buildMap {
  * it with every failure named, then builds the [WfDef] -- whose own constructor checks the structural rules
  * a schema cannot state (unique ids, the creation shape).
  */
-fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
+fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>, templateOverlay: Map<String, Any?>? = null): WfDef {
     val result = coerceAndValidate(WfDefSchema.defType(cxt), raw)
     if (result.failures.isNotEmpty()) {
         val id = raw[WFD.workflowId].toOptStr() ?: "(no id)"
@@ -1203,6 +1225,8 @@ fun parseWfDef(cxt: KdrCxtBase, raw: Map<String, Any?>): WfDef {
         },
         typeAlterations = m[WFD.types].toJsonMapOrEmpty().mapValues { it.value.toJsonMapOrEmpty() },
         typeBasis = m[WFD.typeBasis].toJsonMapOrEmpty().mapValues { it.value.toJsonMapOrEmpty() },
+        fromTemplate = m[WFD.fromTemplate].toOptStr(),
+        templateOverlay = templateOverlay,
     )
 }
 

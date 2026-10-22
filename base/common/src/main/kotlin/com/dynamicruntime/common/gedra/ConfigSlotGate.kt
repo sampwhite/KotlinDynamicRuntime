@@ -4,6 +4,7 @@ import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.LocalFileRoots
 import com.dynamicruntime.common.gedra.report.ReportDefSchema
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfDefSchema
 import com.dynamicruntime.common.schema.SchFailCode
 import com.dynamicruntime.common.schema.SchFailure
@@ -15,6 +16,7 @@ import com.dynamicruntime.common.schema.offContractKeyFailures
 import com.dynamicruntime.common.schema.parseSchemaTypes
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.util.checkTemplateSyntax
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 
 /*
@@ -60,10 +62,16 @@ object ConfigSlotShapes {
 
 /**
  * What is wrong with the slots of a configuration about to be **written**, each failure located by its slot, its
- * entry and the path within it (`kdr:clientDef.enabledEnvironments[0]`, `kdr:cfactDef[ready].group`) -- empty when
- * nothing is. An entry is named by its **key** rather than its place, so a failure reads the same wherever the
- * entry sits; one with no key is named by place, counted from 0 as an array's items are (`[#1]` is the second),
- * and its missing key is among its failures.
+ * entry and the path within it -- empty when nothing is:
+ *
+ * ```
+ * kdr:clientDef.enabledEnvironments[0]
+ * kdr:cfactDef[ready].group
+ * ```
+ *
+ * An entry is named by its **key** rather than its place, so a failure reads the same wherever the entry sits; one
+ * with no key is named by place, counted from 0 as an array's items are (`[#1]` is the second), and its missing key
+ * is among its failures.
  *
  * **Only what the write changes is judged.** [stored] is the configuration's revision as it stands, when it has
  * one: an entry the write carries unchanged -- the same key, the same content -- is not judged again, and neither
@@ -87,11 +95,15 @@ object ConfigSlotShapes {
  * by what the client already has:
  * - **A schema body** (`schema`, `dataSchema`) is held to its **shape** and is not parsed here
  *   ([SchOpts.schemaDocumentsUnparsed]): every keyword in it whose value is not of the keyword's shape, every
- *   keyword this layer refuses and every misspelled one of ours is a failure at its own path
- *   (`kdr:schemaDef[Tally].schema.properties.cost.type`), all of them at once (issue #1056,
- *   `SchMetaSchema.structureFailures`). What it means -- its references, what it narrows -- is the trial's:
- *   parsed on its own it would be refused for naming a sibling type of the same client, or for being an
- *   alteration of a global type.
+ *   keyword this layer refuses, and every misspelled one of ours is a failure at its own path, all of them at once
+ *   (issue #1056, `SchMetaSchema.structureFailures`):
+ *
+ *   ```
+ *   kdr:schemaDef[Tally].schema.properties.cost.type
+ *   ```
+ *
+ *   What it means -- its references, what it narrows -- is the trial's: parsed on its own it would be refused for
+ *   naming a sibling type of the same client, or for being an alteration of a global type.
  * - **A report's `definition`** is only required to be an object. One that does not read is kept as stored and
  *   reported (`GedraConfig.unreadReports`), so a configuration may already hold one; the trial refuses a new one.
  */
@@ -147,7 +159,7 @@ private fun SchFailure.under(parent: String): SchFailure = copy(path = if (path.
 /** What is wrong with one [entry] of [slot], by path within it. */
 private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: Map<String, Any?>): List<SchFailure> {
     if (slot == CCT.clientDef) return readClientDef(cxt, entry).failures
-    val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, it) }
+    val shape = validate(type, entry, unparsedBodies).filterNot { leftToTheTrial(slot, entry, it) }
     val beyond = when (slot) {
         CCT.usageDef -> displayFailures(entry[CCT.display])
         CCT.fileRefDef -> fileRefFailures(entry)
@@ -161,11 +173,16 @@ private fun entryFailures(cxt: KdrCxtBase, slot: String, type: SchType, entry: M
 private val unparsedBodies = SchOpts(schemaDocumentsUnparsed = true)
 
 /**
- * Whether [failure] is what the gate leaves to the trial reload of a report (see [configSlotFailures]): anything
- * *inside* its definition. That the definition is there, and is an object, stays the gate's.
+ * Whether [failure] is what the gate leaves to the trial reload (see [configSlotFailures]): anything *inside* a
+ * report's definition, or inside the definition of a workflow made from a template (issue #1120) -- an overlay, which
+ * says only what it changes, so it is judged by what it makes of the template. That the definition is there, and is an
+ * object, stays the gate's.
  */
-private fun leftToTheTrial(slot: String, failure: SchFailure): Boolean =
-    slot == CCT.reportDef && (failure.path.startsWith("${CCT.definition}.") || failure.path.startsWith("${CCT.definition}["))
+private fun leftToTheTrial(slot: String, entry: Map<String, Any?>, failure: SchFailure): Boolean {
+    val inDefinition = failure.path.startsWith("${CCT.definition}.") || failure.path.startsWith("${CCT.definition}[")
+    val overlay = slot == CCT.workflowDef && entry[CCT.definition].toJsonMapOrEmpty()[WFD.fromTemplate] != null
+    return inDefinition && (slot == CCT.reportDef || overlay)
+}
 
 /** What is wrong with a usage rule's `display` as a template -- one failure per defect, so they are fixed in one pass. */
 private fun displayFailures(display: Any?): List<SchFailure> = (display as? String)?.checkTemplateSyntax().orEmpty().map {

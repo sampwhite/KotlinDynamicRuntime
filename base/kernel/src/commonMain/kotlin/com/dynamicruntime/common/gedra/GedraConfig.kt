@@ -14,9 +14,13 @@ import com.dynamicruntime.common.gedra.report.ReportBuilder
 import com.dynamicruntime.common.gedra.report.UnreadReport
 import com.dynamicruntime.common.gedra.report.clientReportResult
 import com.dynamicruntime.common.gedra.report.parseClientReport
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfDefBuilder
 import com.dynamicruntime.common.gedra.workflow.WfEntry
+import com.dynamicruntime.common.gedra.workflow.UnreadWorkflow
+import com.dynamicruntime.common.gedra.workflow.WfTemplateLookup
+import com.dynamicruntime.common.gedra.workflow.expandWorkflowTemplate
 import com.dynamicruntime.common.gedra.workflow.parseWfDef
 import com.dynamicruntime.common.schema.SchTypeBuilder
 import com.dynamicruntime.common.schema.SchTypesBuilder
@@ -290,6 +294,12 @@ class GedraConfig(
      * anything else never deletes it. Always empty for a source config, whose mistakes refuse the build.
      */
     val unreadReports: Map<String, UnreadReport> = emptyMap(),
+    /**
+     * The workflows made from templates a **stored** config holds that could not be read, by workflow id (issue
+     * #1120): left out of [workflows], reported by the loader, and written back as stored ([UnreadWorkflow]). Always
+     * empty for a source config.
+     */
+    val unreadWorkflows: Map<String, UnreadWorkflow> = emptyMap(),
     /**
      * The file refs this config declares (issue #1153): its client's named files, each a pointer to bytes kept
      * elsewhere. A list, not a map by id: a row edited by hand to hold one id twice still reassembles, the load says
@@ -570,6 +580,23 @@ class GedraConfigBuilder(
     }
 
     /**
+     * Where a workflow made from a template finds it (issue #1120): the deployment's templates, set by whatever reads
+     * stored configuration. Null where none can be found -- a config built in source -- and a workflow naming a
+     * template is then refused.
+     */
+    var workflowTemplates: WfTemplateLookup? = null
+
+    /**
+     * Whether a workflow made from a template that does not read is kept as unread ([unreadWorkflows]) rather than
+     * refused, given its stored definition (issue #1120): true for what a load reads, and for what a write carries
+     * unchanged; false for anything else, so a write is refused for an overlay it adds or changes.
+     */
+    var keepUnreadWorkflow: (Map<String, Any?>) -> Boolean = { false }
+
+    /** The workflows made from templates this stored config holds that do not read; see [keepUnreadWorkflow]. */
+    val unreadWorkflows: MutableMap<String, UnreadWorkflow> = LinkedHashMap()
+
+    /**
      * Declares a workflow in source (issue #533). The builder writes the definition's **JSON**, which then
      * takes the same path a definition from data does -- [workflowFromMap] -- so source and data cannot
      * come to be read differently. The id's client scope is this config's, as a cfact's is.
@@ -584,7 +611,20 @@ class GedraConfigBuilder(
      * `"order": "a,b"`). This is the one path into the model; [workflow] is a convenience over it.
      */
     fun workflowFromMap(raw: Map<String, Any?>) {
-        val def = parseWfDef(cxt, raw)
+        val def = raw[WFD.fromTemplate].toOptStr()?.let { templateId ->
+            // Made from a template (issue #1120): what is stored is an overlay, read over the template as it is now.
+            val id = raw[WFD.workflowId].toOptStr() ?: "(workflow ${workflows.size + unreadWorkflows.size + 1})"
+            try {
+                val template = workflowTemplates?.template(templateId) ?: throw KdrException.mkConv(
+                    "Workflow '$id' is made from template '$templateId', which this deployment does not declare.",
+                )
+                expandWorkflowTemplate(cxt, template, raw)
+            } catch (e: KdrException) {
+                if (!keepUnreadWorkflow(raw)) throw e
+                unreadWorkflows[id] = UnreadWorkflow(id, raw, e.message ?: "it does not read")
+                return
+            }
+        } ?: parseWfDef(cxt, raw)
         workflows[def.workflowId]?.let {
             throw KdrException.mkConv(
                 "Workflow '${def.workflowId}' is declared twice in one config. A workflow id identifies one " +
@@ -889,6 +929,7 @@ fun gedraConfig(
         usages = builder.usages.toList(),
         reports = builder.reports.toMap(),
         unreadReports = builder.unreadReports.toMap(),
+        unreadWorkflows = builder.unreadWorkflows.toMap(),
         fileRefs = builder.fileRefs.toList(),
         origin = origin,
         contributesTo = contributesTo,

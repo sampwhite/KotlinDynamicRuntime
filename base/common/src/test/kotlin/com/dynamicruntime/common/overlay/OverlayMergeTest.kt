@@ -203,6 +203,80 @@ class OverlayMergeTest : StringSpec({
         refused.problems.single().message.contains("restate the list") shouldBe true
     }
 
+    // --- resources below the second level, and the diff (issue #1120) ---
+
+    val tagged = MergeSpec(mapOf("tags" to MergeRule.RestateKeyed("t")))
+
+    "a keyed list's elements may each merge by a spec of their own" {
+        val rule = MergeRule.Keyed("id", KeyedElement.merge, elementSpec = { _, _ -> tagged })
+        val base = mapOf("l" to listOf(mapOf("id" to "a", "label" to "A", "tags" to listOf(mapOf("t" to "x", "n" to 1), mapOf("t" to "y")))))
+        // The overlay restates the element's tags, keeping x's body by naming it alone, and relabels it.
+        val over = mapOf("l" to listOf(mapOf("id" to "a", "label" to "A2", "tags" to listOf(mapOf("t" to "x"), mapOf("t" to "z")))))
+        val out = mergeOverlay(spec("l" to rule), base, over)
+        out.problems.shouldBeEmpty()
+        out.value["l"] shouldBe listOf(mapOf("id" to "a", "label" to "A2", "tags" to listOf(mapOf("t" to "x", "n" to 1), mapOf("t" to "z"))))
+    }
+
+    "a map of resources merges each entry by its spec; one the base lacks stands, and null removes" {
+        val rule = MergeRule.Resources { _, _ -> MergeSpec(mapOf("m" to MergeRule.Merge)) }
+        val base = mapOf("r" to mapOf("a" to mapOf("m" to mapOf("x" to 1, "y" to 2)), "b" to mapOf("m" to mapOf("x" to 1))))
+        val over = mapOf("r" to mapOf("a" to mapOf("m" to mapOf("y" to 20)), "b" to null, "c" to mapOf("m" to mapOf("z" to 3))))
+        mergeOverlay(spec("r" to rule), base, over).value["r"] shouldBe
+            mapOf("a" to mapOf("m" to mapOf("x" to 1, "y" to 20)), "c" to mapOf("m" to mapOf("z" to 3)))
+    }
+
+    val diffSpec = MergeSpec(
+        mapOf(
+            "m" to MergeRule.Merge,
+            "l" to MergeRule.Keyed("id", KeyedElement.merge, OnNew.refuse, elementSpec = { _, _ -> tagged }),
+            "r" to MergeRule.Resources { _, _ -> MergeSpec(mapOf("m" to MergeRule.Merge)) },
+        ),
+    )
+    val diffBase: Map<String, Any?> = mapOf(
+        "title" to "T",
+        "kind" to "k",
+        "m" to mapOf("x" to 1, "y" to 2),
+        "l" to listOf(
+            mapOf("id" to "a", "label" to "A", "tags" to listOf(mapOf("t" to "x", "n" to 1))),
+            mapOf("id" to "b", "label" to "B", "tags" to listOf(mapOf("t" to "y"))),
+        ),
+        "r" to mapOf("one" to mapOf("m" to mapOf("x" to 1, "y" to 2))),
+    )
+
+    "a diff states only what changed, by each part's rule, and merges back to the edited resource" {
+        val edited = mapOf(
+            "title" to "T2",
+            "kind" to "k",
+            "m" to mapOf("x" to 1, "y" to 3, "z" to 4),
+            "l" to listOf(
+                mapOf("id" to "a", "label" to "A", "tags" to listOf(mapOf("t" to "x", "n" to 1), mapOf("t" to "w"))),
+                mapOf("id" to "b", "label" to "B", "tags" to listOf(mapOf("t" to "y"))),
+            ),
+            "r" to mapOf("one" to mapOf("m" to mapOf("x" to 1, "y" to 5)), "two" to mapOf("m" to mapOf("q" to 1))),
+        )
+        val diff = diffOverlay(diffSpec, diffBase, edited)
+        diff.problems.shouldBeEmpty()
+        diff.overlay shouldBe mapOf(
+            "title" to "T2",
+            "m" to mapOf("y" to 3, "z" to 4),
+            // Only the element that changed, by its id; its tags restated, the unchanged one named alone.
+            "l" to listOf(mapOf("id" to "a", "tags" to listOf(mapOf("t" to "x"), mapOf("t" to "w")))),
+            "r" to mapOf("one" to mapOf("m" to mapOf("y" to 5)), "two" to mapOf("m" to mapOf("q" to 1))),
+        )
+        mergeOverlay(diffSpec, diffBase, diff.overlay).value shouldBe edited
+        // Nothing changed is nothing to say.
+        diffOverlay(diffSpec, diffBase, diffBase).overlay shouldBe emptyMap()
+    }
+
+    "a diff refuses what no rule can state: an element removed, moved, or new where the list takes none" {
+        val l = diffBase.getValue("l") as List<*>
+        fun problemOf(list: List<Any?>) = diffOverlay(diffSpec, diffBase, diffBase + ("l" to list)).problems.single()
+        problemOf(l.take(1)).message.contains("'b' is gone") shouldBe true
+        problemOf(l.reversed()).message.contains("another order") shouldBe true
+        problemOf(l + mapOf("id" to "c", "label" to "C")).message.contains("'c' is new") shouldBe true
+        problemOf(l.take(1)).code shouldBe OverlayMergeError.cannotStateChange
+    }
+
     // --- where g-merge may stand ---
 
     val repairContext = DefRepairContext(emptySet()) { null }

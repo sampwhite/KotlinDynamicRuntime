@@ -1287,6 +1287,18 @@ object ClientsApi {
     suspend fun narrowTrait(request: Map<String, Any?>): TraitNarrowResult =
         parseTraitNarrowResult(Http.sendApi("POST", UADEP.clientTraitNarrow, request)[EP.results].toJsonMapOrEmpty())
 
+    /** A client's workflows and the templates a workflow can be made from (issue #1120). */
+    suspend fun workflowCatalog(clientId: String): WorkflowCatalogView =
+        parseWorkflowCatalog(Http.getApi(UADEP.clientWorkflows + queryString(mapOf(CLD.client to clientId)))[EP.item].toJsonMapOrEmpty())
+
+    /**
+     * Makes a workflow from a template, or changes the slots of one (issue #1120) -- [request] from
+     * [workflowSaveRequest]; live, or a draft for a client with a sandbox. One that affects stored forms is refused with
+     * the impact report ([impactOf]).
+     */
+    suspend fun saveWorkflow(request: Map<String, Any?>): WorkflowSaveResult =
+        parseWorkflowSaveResult(Http.sendApi("POST", UADEP.clientWorkflowSave, request)[EP.results].toJsonMapOrEmpty())
+
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())

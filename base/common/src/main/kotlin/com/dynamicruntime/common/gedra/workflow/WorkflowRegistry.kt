@@ -11,11 +11,9 @@ import com.dynamicruntime.common.gedra.GedraConfig
 import com.dynamicruntime.common.gedra.GedraConfigCollector
 import com.dynamicruntime.common.gedra.GedraConfigIssue
 import com.dynamicruntime.common.gedra.checkMode
-import com.dynamicruntime.common.gedra.gedraConfigCheckMode
 import com.dynamicruntime.common.gedra.issue
 import com.dynamicruntime.common.gedra.reportConfigProblem
 import com.dynamicruntime.common.gedra.supportedTraits
-import com.dynamicruntime.common.logging.LogStartup
 import com.dynamicruntime.common.startup.BootCheckMode
 import com.dynamicruntime.common.uiblock.UIB
 import com.dynamicruntime.common.uiblock.collectExpressions
@@ -30,8 +28,7 @@ class WfDeclared(val bundle: GedraConfig, val def: WfDef) {
 
     /**
      * The schema store this workflow's pages were last drawn from, with the client store it was built over -- the
-     * cache `workflowSchemaStore` keeps (issue #984). One slot: a global workflow inherited by several clients
-     * rebuilds when another client's page asks, which is correct, just not cached across clients.
+     * cache `workflowSchemaStore` keeps (issue #984). One slot, since a workflow is one client's.
      */
     @Volatile
     internal var storeCache: Pair<KdrSchemaStore, KdrSchemaStore>? = null
@@ -40,11 +37,11 @@ class WfDeclared(val bundle: GedraConfig, val def: WfDef) {
 }
 
 /**
- * The workflows one scope sees, keyed by workflow id, after shadowing by kind (issues #533, #953).
+ * The workflows one scope sees, keyed by workflow id (issues #533, #953, #1120).
  *
- * There is one per client, plus the global one every client's is built from -- the shape `CFactRegistries`
- * and `SchemaService.storeFor` share, and for the same reason: a client's own bundles may add to or replace
- * what the deployment ships, and a request needs one answer for "which workflows apply here".
+ * There is one per client: the workflows its own configuration declares, and nothing else. The global one holds the
+ * deployment's **templates** (`WorkflowTemplates`), which no client runs as they are -- a client takes a workflow from
+ * one by naming it in a workflow of its own (`WFD.fromTemplate`).
  */
 class WorkflowRegistry(
     /** The client this is for, or null for the global registry. */
@@ -64,11 +61,11 @@ class WorkflowRegistry(
     override fun toString(): String = "${client ?: GID.globalClient}: ${workflows.keys}"
 }
 
-/** The global registry and each client's; a client absent from [byClient] sees [global]. */
+/** The global registry -- the templates -- and each client's; a client absent from [byClient] has no workflows. */
 class WorkflowRegistries(val global: WorkflowRegistry, val byClient: Map<String, WorkflowRegistry>) {
-    /** The registry [client] sees: their own when they have one, otherwise [global]. */
+    /** The registry [client] sees: their own, empty when they declare none; the templates' for no client. */
     fun forClient(client: String?): WorkflowRegistry =
-        if (client == null) global else byClient[client] ?: global
+        if (client == null) global else byClient[client] ?: WorkflowRegistry(client, emptyMap())
 
     companion object {
         val empty: WorkflowRegistries = WorkflowRegistries(WorkflowRegistry(null, emptyMap()), emptyMap())
@@ -93,17 +90,12 @@ fun interface WfFragmentLookup {
  * Builds the global workflow registry and each present client's from the collected bundles, refusing or
  * dropping what does not hold up (issue #533).
  *
- * **Shadowing, by kind only.** A client sees the global workflows plus its own. A client declaring a
- * **singleton-kind** workflow (a creation or a survey, of which a scope has at most one) replaces the global one of
- * that kind for that client, so a deployment can ship a default a client customizes. The at-most-one-per-singleton-
- * kind check runs *after* shadowing, on what the client actually sees.
- *
- * **Not by id** (issue #953). A global workflow id is rooted (`kdr:review`) and a client's bare, so the two can never
- * be equal: a client's `review` beside a global `kdr:review` is two workflows. Replacement by id was replacement by
- * accident of naming -- a release adding a global workflow would have been shadowed by any client that happened to
- * use its id. A client meaning to change a global workflow will **overlay** it by naming it (`kdr:review`, #921 rule
- * 5), which is not built: there is nothing to overlay until core ships a workflow. Wanting a replacement, it defines
- * its own bare one.
+ * **A client runs only its own workflows** (issue #1120). A global workflow is a **template**: checked here, against
+ * the global scope, so a broken one fails as any source configuration does, and inherited by no client. A client
+ * takes a workflow from a template by declaring one of its own that names it (`WFD.fromTemplate`), which is read as
+ * the template with the client's changes ([expandWorkflowTemplate]) before it reaches this build -- so here it is a
+ * client's workflow like any other, held to the client's traits and cfacts. A global id is rooted (`kdr:survey`, issue
+ * #953) and a client's bare, so the two never meet.
  *
  * **What is checked**, per scope and per workflow -- each a thing that would otherwise fail silently or late:
  *
@@ -116,7 +108,7 @@ fun interface WfFragmentLookup {
  *   **backend** file, a present key -- unless the pull guards its own absence. The same static check the
  *   fragment service runs over files, applied to the labels a definition carries; a frontend pull (`${...}`)
  *   binds at request time and is the author's assertion, as it is everywhere.
- * - At most one workflow of each single-instance kind (creation, survey) per scope, after shadowing.
+ * - At most one workflow of each single-instance kind (creation, survey) per client. The templates may offer several.
  * - Every cfact expression the definition carries -- eligibility tests, singleton-cfact rules, trait locks, a
  *   task's display, and its who-may-save rule -- parses against the scope's cfact names, as UiBlocks' do, so a
  *   misspelled cfact refuses the workflow here rather than being a test that silently never passes.
@@ -326,87 +318,59 @@ fun buildWorkflowRegistries(
         return true
     }
 
-    // One scope: the inherited workflows (already admitted where they came from), then the scope's own on top,
-    // then the creation rule over the result.
-    fun assemble(scope: String?, inherited: Map<String, WfDeclared>, own: List<WfDeclared>, usable: Set<String>): WorkflowRegistry {
-        val out = LinkedHashMap(inherited)
-        val admitted = own.filter { admits(scope, it, usable) }
-        // A client declaring a singleton-kind workflow takes that kind over for itself: the inherited one is
-        // shadowed whatever its id, since "how a form is created / surveyed here" has exactly one answer.
-        for (kind in singletonEntries) {
-            if (admitted.any { it.def.entry == kind }) {
-                out.entries.removeAll { it.value.def.entry == kind }
-            }
-        }
-        // Own bundles beside the inherited ones -- never over one, since an inherited id is rooted and an own one bare
-        // (issue #953). Own-then-own -- two bundles of one scope naming one workflow -- is a collision, refused the
-        // way two configs declaring one trait are: first kept, second dropped, and said so, since a silent last-wins
-        // is the shape nobody reports.
-        val ownIds = LinkedHashSet<String>()
-        for (w in admitted) {
-            if (!ownIds.add(w.def.workflowId)) {
+    // One scope: its own workflows, then the singleton rule over the result.
+    fun assemble(scope: String?, own: List<WfDeclared>, usable: Set<String>): WorkflowRegistry {
+        val out = LinkedHashMap<String, WfDeclared>()
+        // Two bundles of one scope naming one workflow is a collision, refused the way two configs declaring one trait
+        // are: first kept, second dropped, and said so, since a silent last-wins is the shape nobody reports.
+        for (w in own.filter { admits(scope, it, usable) }) {
+            out[w.def.workflowId]?.let { first ->
                 reportConfigProblem(
                     cxt,
                     problem(
                         scope, w,
-                        "is declared a second time in this scope, beside '${out.getValue(w.def.workflowId).ref}'. A " +
-                            "workflow id identifies one definition within its client; keeping the first.",
+                        "is declared a second time in this scope, beside '${first.ref}'. A workflow id identifies " +
+                            "one definition within its client; keeping the first.",
                     ),
                     issues,
                 )
-                continue
-            }
-            out[w.def.workflowId] = w
+            } ?: run { out[w.def.workflowId] = w }
         }
-        // After shadowing by kind: what this scope actually sees may still hold two of a singleton kind, from two of
-        // its own bundles.
-        for (kind in singletonEntries) {
-            val ofKind = out.values.filter { it.def.entry == kind }
-            for (extra in ofKind.drop(1).filterNot { unchecked(it) }) {
-                reportConfigProblem(
-                    cxt,
-                    problem(
-                        scope, extra,
-                        "is a second $kind workflow beside '${ofKind.first().ref}'. A scope has one $kind " +
-                            "workflow; keeping the first declared.",
-                    ),
-                    issues,
-                )
-                out.remove(extra.def.workflowId)
+        // A client has one workflow of each singleton kind. The templates may offer several -- a deployment may ship
+        // more than one way to create a form -- since no client runs them.
+        if (scope != null) {
+            for (kind in singletonEntries) {
+                val ofKind = out.values.filter { it.def.entry == kind }
+                for (extra in ofKind.drop(1).filterNot { unchecked(it) }) {
+                    reportConfigProblem(
+                        cxt,
+                        problem(
+                            scope, extra,
+                            "is a second $kind workflow beside '${ofKind.first().ref}'. A client can have only one $kind " +
+                                "workflow; keeping the first declared.",
+                        ),
+                        issues,
+                    )
+                    out.remove(extra.def.workflowId)
+                }
             }
         }
         return WorkflowRegistry(scope, out)
     }
 
     val globalUsable = configs.traitsFor(GID.globalClient).map { it.traitId }.toSet()
+    // The templates: checked as a scope of their own, inherited by nobody.
     val global = runningGlobal.takeIf { onlyClient != null }
-        ?: assemble(null, emptyMap(), declaredIn(GID.globalClient), globalUsable)
+        ?: assemble(null, declaredIn(GID.globalClient), globalUsable)
     val byClient = LinkedHashMap<String, WorkflowRegistry>()
     for ((client, def) in clients) {
         if (onlyClient != null && client != onlyClient) continue
         val own = declaredIn(client)
+        if (own.isEmpty()) continue
         // A client sees global's traits through `supportedTraits`, which also admits what it customized.
         val usable = supportedTraits(configs, client, def, overlaidTypes(client), droppedTypes(client))
             .map { it.traitId }.toSet()
-        // The inherited global workflows are re-checked against *this* client's usable set: a global creation
-        // workflow collecting `name` is fine for a client that includes `name` and not for one that omits it.
-        // Global workflows are source-declared, so the source mode says whether they are checked at all.
-        val inheritable = if (gedraConfigCheckMode(cxt) == BootCheckMode.off) {
-            global.workflows
-        } else {
-            global.workflows.filterValues { w -> w.def.tasks.all { t -> t.traits.all { it.traitId in usable } } }
-        }
-        // Not a problem -- a client that omits a trait should not get the workflow collecting it -- but it is
-        // the answer to "why does this client have no creation workflow?", so it is said where it happens.
-        for (id in global.workflows.keys - inheritable.keys) {
-            LogStartup.debug(cxt) {
-                "Client '$client' does not inherit the global workflow '$id': it collects a trait the client does not support."
-            }
-        }
-        val registry = assemble(client, inheritable, own, usable)
-        if (own.isNotEmpty() || inheritable.size != global.workflows.size) {
-            byClient[client] = registry
-        }
+        byClient[client] = assemble(client, own, usable)
     }
     return WorkflowRegistries(global, byClient)
 }

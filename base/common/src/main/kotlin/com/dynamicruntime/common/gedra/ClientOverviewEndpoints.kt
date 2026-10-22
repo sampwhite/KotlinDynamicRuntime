@@ -426,6 +426,9 @@ fun clientOverviewSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, CLD.overvie
     // --- the traits it includes (issue #1117), a surface of their own beside the definition editor ---------------
     clientTraitsEndpoints()
 
+    // --- its workflows made from templates (issue #1120) ---
+    clientWorkflowsEndpoints()
+
     itemEndpoint(
         UADEP.clientDefinition,
         "One client's definition, as `/admin/client/definition` answers it: the caller's own client, or the one " +

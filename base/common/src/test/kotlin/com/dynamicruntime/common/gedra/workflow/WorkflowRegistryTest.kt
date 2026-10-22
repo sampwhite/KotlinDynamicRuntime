@@ -55,13 +55,9 @@ class WorkflowRegistryTest : StringSpec({
             workflows(this)
         }
 
-    /** The one task's id: bare in a client's workflow, under the workflow's root in a global one (issue #953). */
-    fun onlyTask(workflowId: String): String =
-        if (':' in workflowId) "${workflowId.substringBefore(':')}:only" else "only"
-
     fun creation(id: String, vararg traits: String, label: String = "Create"): GedraConfigBuilderBlock = {
         workflow(id, WfEntry.creation) {
-            task(onlyTask(id), label) {
+            task("only", label) {
                 traits.forEach { trait(it) }
                 save("go", label)
             }
@@ -70,7 +66,7 @@ class WorkflowRegistryTest : StringSpec({
 
     fun normal(id: String, vararg traits: String, label: String = "Audit"): GedraConfigBuilderBlock = {
         workflow(id, WfEntry.normal) {
-            task(onlyTask(id), label) {
+            task("only", label) {
                 traits.forEach { trait(it) }
                 save("go", label, WfSaveKind.edit)
             }
@@ -79,7 +75,7 @@ class WorkflowRegistryTest : StringSpec({
 
     fun survey(id: String, vararg traits: String, label: String = "Review"): GedraConfigBuilderBlock = {
         workflow(id, WfEntry.survey) {
-            task(onlyTask(id), label) {
+            task("only", label) {
                 traits.forEach { trait(it) }
                 save("go", label, WfSaveKind.edit)
             }
@@ -122,39 +118,29 @@ class WorkflowRegistryTest : StringSpec({
         return regs to issues
     }
 
-    "a global creation workflow is inherited by a client that supports its traits" {
+    // A global workflow is a template (issue #1120): checked as a scope of its own, and run by no client as it is.
+    "a global workflow is a template: checked, and inherited by no client" {
         val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt, creation("kdr:createForm", "kdr:name")), client(devCxt, "acme", listOf("kdr:name"))))
         issues.shouldBeEmpty()
         regs.global.creation.shouldNotBeNull().def.workflowId shouldBe "kdr:createForm"
-        // Inherits everything, so no registry of its own: absent-means-global.
+        // A client declaring no workflow has none: there is nothing for it to fall back on.
         regs.byClient["acme"].shouldBeNull()
-        regs.forClient("acme").creation.shouldNotBeNull().ref.text shouldContain "gc.cd.global.wfCore#kdr:createForm"
-    }
-
-    "a client that does not support the global creation's trait does not inherit it" {
-        val (regs, issues) = build(devCxt, listOf(globalTraits(devCxt, creation("kdr:createForm", "kdr:name")), client(devCxt, "acme", listOf("kdr:report"))))
-        issues.shouldBeEmpty()
-        regs.forClient("acme").creation.shouldBeNull()
         regs.forClient("acme").workflows.shouldBeEmpty()
+        regs.forClient("acme").creation.shouldBeNull()
     }
 
-    "a client's creation workflow shadows the global one, whatever its id" {
-        val configs = listOf(
-            globalTraits(devCxt, creation("kdr:createForm", "kdr:name")),
-            client(devCxt, "acme", listOf("kdr:name", "kdr:report"), creation("acmeCreate", "kdr:report")),
+    "the templates may offer several of one singleton kind, which a client may not" {
+        val (regs, issues) = build(
+            devCxt,
+            listOf(globalTraits(devCxt) { creation("kdr:createForm", "kdr:name")(this); creation("kdr:createReport", "kdr:report")(this) }),
         )
-        val (regs, issues) = build(devCxt, configs)
         issues.shouldBeEmpty()
-        val acme = regs.forClient("acme")
-        acme.creation.shouldNotBeNull().def.workflowId shouldBe "acmeCreate"
-        acme.workflow("kdr:createForm").shouldBeNull()
-        // Global is untouched by what a client does.
-        regs.global.creation.shouldNotBeNull().def.workflowId shouldBe "kdr:createForm"
+        regs.global.workflows.keys shouldBe setOf("kdr:createForm", "kdr:createReport")
     }
 
-    // Shadowing by id is retired (issue #953): a global id is rooted and a client's bare, so a client's `audit` beside
-    // a global `kdr:audit` is two workflows, not a replacement -- one the client can no longer make by accident.
-    "a client's bare workflow and a global rooted one of the same local name are two workflows" {
+    // A global id is rooted and a client's bare (issue #953), so a client's `audit` beside a template `kdr:audit` is the
+    // client's own, and the template is not the client's at all.
+    "a client's bare workflow and a template of the same local name do not meet" {
         val configs = listOf(
             globalTraits(devCxt, normal("kdr:audit", "kdr:name")),
             client(devCxt, "acme", listOf("kdr:name", "kdr:report"), normal("audit", "kdr:report")),
@@ -162,8 +148,7 @@ class WorkflowRegistryTest : StringSpec({
         val (regs, issues) = build(devCxt, configs)
         issues.shouldBeEmpty()
         val acme = regs.forClient("acme")
-        acme.workflows.keys shouldBe setOf("kdr:audit", "audit")
-        acme.workflow("kdr:audit").shouldNotBeNull().ref.text shouldBe "gc.cd.global.wfCore#kdr:audit"
+        acme.workflows.keys shouldBe setOf("audit")
         acme.workflow("audit").shouldNotBeNull().def.tasks.single().id shouldBe "only"
         regs.global.workflows.keys shouldBe setOf("kdr:audit")
     }
@@ -386,8 +371,8 @@ class WorkflowRegistryTest : StringSpec({
         val (regs, issues) = build(prodCxt, configs, BootCheckMode.warn)
         issues.size shouldBe 1
         issues.single().message shouldContain "does not support"
-        // Acme's own was dropped, and since it never shadowed anything, acme inherits the global creation.
-        regs.forClient("acme").creation.shouldNotBeNull().def.workflowId shouldBe "kdr:createForm"
+        // Acme's own was dropped, and a template is nobody's to fall back on.
+        regs.forClient("acme").creation.shouldBeNull()
     }
 
     "with the check off, everything is taken as declared -- nothing checked, nothing dropped" {

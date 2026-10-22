@@ -226,7 +226,7 @@ object GedraConfigReload {
                 null
             } else {
                 loader.unknownSlotsIssue(row)?.let { reportConfigProblem(cxt, it, reloadIssues) }
-                loader.unreadReportIssues(config).forEach { reportConfigProblem(cxt, it, reloadIssues) }
+                loader.unreadEntryIssues(config).forEach { reportConfigProblem(cxt, it, reloadIssues) }
                 config
             }
         }

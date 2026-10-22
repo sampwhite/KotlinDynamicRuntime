@@ -350,7 +350,7 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
             throw KdrException.mkInput(e.message ?: "The design does not read.")
         }
         val result = ClientTraitDesignEdit.save(c, client, design, expectedModeOf(request), gate)
-        traitSaveResult(client, result.configName, CIT.design to result.design.toInfo(), result.mode, result.issues, result.draftImpact)
+        editorSaveResult(client, result.configName, CIT.design to result.design.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 
     // --- narrowing a global trait (issue #1119) -------------------------------------------------------------------
@@ -411,15 +411,16 @@ internal fun SchModuleBuilder.clientTraitsEndpoints() {
         val result = ClientTraitNarrowEdit.save(
             c, client, traitNarrowingFromInfo(request[CIT.narrowing].toJsonMapOrEmpty()), expectedModeOf(request), gate,
         )
-        traitSaveResult(client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact)
+        editorSaveResult(client, result.configName, CIT.narrowing to result.narrowing.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 }
 
 /**
- * A trait editor's save result on the wire (issues #1118, #1119): the client, the configuration saved to, [saved] -- what
- * the editor saved, under its key -- then how the save took effect, the client's issues, and a draft's impact.
+ * A client-page editor's save result on the wire (issues #1118, #1119, #1120): the client, the configuration saved to,
+ * [saved] -- what the editor saved, under its key -- then how the save took effect, the client's issues, and a draft's
+ * impact.
  */
-private fun traitSaveResult(
+internal fun editorSaveResult(
     client: String,
     configName: String,
     saved: Pair<String, Any?>,
@@ -436,7 +437,7 @@ private fun traitSaveResult(
 }
 
 /** A draft save's [CIT.draftImpact] (issue #1119): the report of publishing it, against the live client. */
-private fun SchTypeBuilder.draftImpactField() {
+internal fun SchTypeBuilder.draftImpactField() {
     property(
         CIT.draftImpact,
         "For a draft, what publishing it would do to the live client's stored forms (issue #935), for information; " +

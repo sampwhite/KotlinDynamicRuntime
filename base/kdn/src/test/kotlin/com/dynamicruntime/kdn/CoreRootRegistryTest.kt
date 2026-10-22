@@ -42,10 +42,12 @@ class CoreRootRegistryTest : StringSpec({
         names.filter { it.substringAfter(OWNR.rootSep).startsWith("wf") }.shouldBeEmpty()
     }
 
-    // Issue #953: and its workflows and their tasks. Vacuous today -- core ships no workflow -- and here for the first.
-    "no global workflow or task id in core lacks the kdr root" {
+    // Issue #953: and its workflows -- the templates (issue #1120) -- whose task ids are bare, since a workflow made
+    // from a template has them as its own.
+    "every workflow template in core has the kdr root, and its tasks bare ids" {
         val workflows = WorkflowService.get(cxt).forClient(null).workflows.values.map { it.def }
-        val ids = workflows.map { it.workflowId } + workflows.flatMap { wf -> wf.tasks.map { it.id } }
-        ids.filterNot { it.startsWith("${OWNR.kdrRoot}${OWNR.rootSep}") }.shouldBeEmpty()
+        workflows.shouldNotBeEmpty()
+        workflows.map { it.workflowId }.filterNot { it.startsWith("${OWNR.kdrRoot}${OWNR.rootSep}") }.shouldBeEmpty()
+        workflows.flatMap { wf -> wf.tasks.map { it.id } }.filter { OWNR.rootSep in it }.shouldBeEmpty()
     }
 })
