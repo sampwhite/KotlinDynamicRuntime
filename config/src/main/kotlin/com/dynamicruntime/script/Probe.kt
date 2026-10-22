@@ -69,6 +69,7 @@ object Probe {
         reportDemoName to ::reportDemo,
         reportHistoryDemoName to ::reportHistoryDemo,
         impactDemoName to ::impactDemo,
+        listingDemoName to ::listingDemo,
     )
 }
 
