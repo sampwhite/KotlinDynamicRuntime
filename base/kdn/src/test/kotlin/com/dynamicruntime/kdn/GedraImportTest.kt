@@ -149,7 +149,9 @@ class GedraImportTest : StringSpec({
 
     "the preserveEntryIds toggle carries g-visibleWhen for every caller; the delivered cfacts decide it (#564)" {
         fun importInputProps(tu: TestUser): Map<String, Any?> {
-            val eps = tu.getData("/schema/endpoints")[EI.endpoints].toJsonListOfMaps()
+            // The whole listing: it is sorted by path and capped (100 by default), so an endpoint added anywhere
+            // before the import's path would otherwise push it off the end.
+            val eps = tu.getData("/schema/endpoints", mapOf(EP.limit to 1000))[EI.endpoints].toJsonListOfMaps()
             val ep = eps.first { it[EI.path].toOptStr()?.endsWith("/formDoc/import") == true && it[EI.method] == "POST" }
             return ep[EI.inputSchema].toJsonMapOrEmpty()[SCH.properties].toJsonMapOrEmpty()
         }
