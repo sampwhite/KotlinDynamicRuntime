@@ -39,7 +39,7 @@ object WorkflowApprovals {
     /**
      * The approvals that **count** for [workflowId] in [entries] -- task id to the approval entry's data: none when
      * the form is not engaged with the workflow, and otherwise those given during the current engagement (see the
-     * class doc). What the recompute, the view and the approve endpoint all read, so they agree. The rule itself is
+     * class doc). What the recompute, the view, and the approve endpoint all read, so they agree. The rule itself is
      * the kernel's `currentApprovals`, which a report's evaluator reads too (issue #978).
      */
     fun of(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> =
