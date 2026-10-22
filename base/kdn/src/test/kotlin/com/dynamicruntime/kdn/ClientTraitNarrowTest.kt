@@ -125,6 +125,12 @@ class ClientTraitNarrowTest : StringSpec({
         narrow(chief, TraitNarrowing(survey))
         SchemaService.get(cxt).overlaidTypesFor(client) shouldNotContain TraitBaseComponent.dataType
         form(user, mapOf("name" to "x", "topic" to "a")).shouldNotBeNull()
+        // Narrowing again writes into the configuration the first made, which taking it back left empty.
+        narrow(chief, TraitNarrowing(survey, required = setOf("topic")))[CIT.configName] shouldBe "narrow_fixture_survey"
+        SchemaService.get(cxt).overlaidTypesFor(client) shouldContain TraitBaseComponent.dataType
+        refusalOf(user, mapOf("name" to "x")).toString() shouldContain "topic"
+        chief.getItem(UADEP.clientTraits)[CIT.traits].toJsonListOfMaps().single { it[CCT.traitId] == survey }[CIT.narrowingConfig] shouldBe
+            "narrow_fixture_survey"
     }
 
     "a narrowing that strands stored data is refused with the impact report until acknowledged" {

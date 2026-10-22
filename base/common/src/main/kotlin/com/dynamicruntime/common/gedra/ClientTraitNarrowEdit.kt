@@ -133,31 +133,42 @@ object ClientTraitNarrowEdit {
         val body = narrowing.toAlteration(base.body, existing?.body)
         val written: GedraConfigRow
         val reload: ConfigReloadResult
-        if (existing == null) {
+        val name = CIT.narrowPrefix + narrowing.traitId.replace(':', '_')
+        // The editor's own configuration for the trait outlives a narrowing taken back to nothing, which leaves it empty;
+        // narrowing again writes into it, since a configuration once written is never made anew.
+        val holder = existing?.row ?: GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.configId.baseId == name }
+        if (holder == null) {
             body ?: throw KdrException.mkInput("Client '$client' takes trait '${narrowing.traitId}' as it is; nothing to save.")
-            val name = CIT.narrowPrefix + narrowing.traitId.replace(':', '_')
             val entry = mapOf(CCT.typeName to base.typeName, CCT.schema to body)
             val config = reassembleForWrite(bound, name, clientNamespace(client), client, mapOf(CCT.schemaDef to listOf(entry)))
             written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true)
             reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = {}, impact = impact)
         } else {
-            val ours = existing.row.configId.baseId.startsWith(CIT.narrowPrefix)
-            if (!ours) ClientStoredEdit.requireNoForeignDraft(target, existing.row, "a narrowing of its traits")
-            if (body == existing.body) throw KdrException.mkInput("Trait '${narrowing.traitId}' is already narrowed so; nothing to save.")
+            if (existing == null) {
+                body ?: throw KdrException.mkInput("Client '$client' takes trait '${narrowing.traitId}' as it is; nothing to save.")
+            } else {
+                val ours = existing.row.configId.baseId.startsWith(CIT.narrowPrefix)
+                if (!ours) ClientStoredEdit.requireNoForeignDraft(target, existing.row, "a narrowing of its traits")
+                if (body == existing.body) throw KdrException.mkInput("Trait '${narrowing.traitId}' is already narrowed so; nothing to save.")
+            }
+            // The type's entry rewritten, removed (`to` null), or added where the configuration has none.
             fun patch(row: GedraConfigRow, to: Map<String, Any?>?) =
                 GedraConfigService.get(bound).patchConfig(bound, row.configId, trial = true) { slots ->
                     val out = LinkedHashMap(slots)
-                    val entries = slots[CCT.schemaDef].orEmpty().mapNotNull {
+                    val listed = slots[CCT.schemaDef].orEmpty()
+                    val entries = listed.mapNotNull {
                         if (it[CCT.typeName] != base.typeName) it else to?.let { b -> LinkedHashMap(it).also { e -> e[CCT.schema] = b } }
                     }
-                    if (entries.isEmpty()) out.remove(CCT.schemaDef) else out[CCT.schemaDef] = entries
+                    val added = if (to == null || listed.any { it[CCT.typeName] == base.typeName }) emptyList()
+                    else listOf(mapOf(CCT.typeName to base.typeName, CCT.schema to to))
+                    if (entries.isEmpty() && added.isEmpty()) out.remove(CCT.schemaDef) else out[CCT.schemaDef] = entries + added
                     out
                 }
-            written = patch(existing.row, body)
+            written = patch(holder, body)
             reload = ClientStoredEdit.takeEffect(
                 cxt, target, written,
-                undo = { patch(written, existing.body) },
-                restorePublished = existing.row.isPublished,
+                undo = { patch(written, existing?.body) },
+                restorePublished = holder.isPublished,
                 impact = impact,
             )
         }
