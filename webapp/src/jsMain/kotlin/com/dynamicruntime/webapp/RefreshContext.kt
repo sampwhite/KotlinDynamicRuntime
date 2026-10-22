@@ -2,6 +2,7 @@ package com.dynamicruntime.webapp
 
 import react.createContext
 import react.use
+import react.useRef
 
 /**
  * The app-wide **refresh generation** (issue #115): a counter [App] bumps whenever the user does something that
@@ -18,7 +19,7 @@ import react.use
  * The calls are inexpensive by design, so bumping liberally is the point (issue #113): a bump that changed nothing
  * costs a re-fetch, not a visible change.
  */
-class RefreshBus(val generation: Int, val bump: () -> Unit)
+class RefreshBus(val generation: Int, val revisit: Int = 0, val bump: () -> Unit)
 
 /**
  * The generation [App] is rendering, for a fetch helper that is not a component and so cannot read the context
@@ -35,6 +36,22 @@ val RefreshContext = createContext(RefreshBus(0) {})
 
 /** The current refresh generation. Use it as a `useEffect` dependency on a config fetch so a bump re-runs it. */
 fun useRefreshGeneration(): Int = use(RefreshContext).generation
+
+/**
+ * How many times the page on screen has been chosen again from the menu (issues #565, #1315): an **explicit**
+ * navigation to where the reader already is, which history never produces. A listing reads it as a `useEffect`
+ * dependency and starts over on a change -- the first batch, no search, fresh rows -- since the menu's link names
+ * the bare page; Back and Forward restore instead, because they never change it. Compare against the value seen at
+ * mount ([useRevisitSinceMount]), not against zero.
+ */
+fun useRevisit(): Int = use(RefreshContext).revisit
+
+/** How many times the menu has re-chosen this page since it mounted: [useRevisit] past its value at mount. */
+fun useRevisitSinceMount(): Int {
+    val now = useRevisit()
+    val atMount = useRef(now)
+    return now - (atMount.current ?: now)
+}
 
 /** Triggers an app-wide refresh: bumps the generation so every mounted config consumer re-fetches. */
 fun useRefreshBump(): () -> Unit = use(RefreshContext).bump

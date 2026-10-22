@@ -35,8 +35,8 @@ import web.cssom.ClassName
 
 private val reportsScope = MainScope()
 
-/** Where a run's walk stands: the cursor the page on screen started after, and how many rows came before it. */
-private class ReportPaging(val key: String, val after: String?, val before: Int)
+/** How many rows of a run the table asks for (issue #1315), for the run it was grown on. */
+private class ReportGrowth(val key: String, val shown: Int)
 
 /** The lists the user set on a report -- what to group by, what a form must have -- for the report they were set on. */
 private class ReportListsChoice(val key: String, val groupBy: List<String>?, val excludeEmpty: List<String>?)
@@ -58,10 +58,10 @@ private class ReportShown(val key: String, val page: ReportRunPage)
  * form must have are the page's own state for that report. `view=history` shows the report's stored snapshots as a
  * chart instead of running it (`ReportHistoryPanel`, issue #1037).
  *
- * **Paging goes forward only.** A page is fetched after the cursor the previous one handed back (`next`, sent as
- * `after`), and there is no Previous: a cursor says where the next page starts and nothing about the one before, so
- * the way back is **First**. The cursor lives in this component alone -- it belongs to one query, and anything that
- * changes the query (the report, the client, any control) starts the walk again.
+ * **The table grows rather than pages** (issue #1315), as the forms listing does: the first [listingBatch] rows, then
+ * more on request up to [listingCap], each time asked again from the start with the larger limit -- so a refresh keeps
+ * the rows shown, and they are one run's answer. Anything that changes the query (the report, the client, any
+ * control) starts over at the first batch. The run's cursor is left to the CSV download, which walks the whole run.
  *
  * Denied honestly in two layers, as Clients is: the shell's `canManageUsers` shows a not-available panel without
  * calling the endpoint, and the endpoint's own refusal is shown in its words.
@@ -79,7 +79,7 @@ val ReportsPage = FC<Props> {
     var runError by useState<DisplayError?>(null)
     var running by useState(false)
     var choice by useState<ReportListsChoice?>(null)
-    var paging by useState<ReportPaging?>(null)
+    var growth by useState<ReportGrowth?>(null)
     // Monotonic tokens, so a slow answer for a client, report or page the user has moved on from is dropped.
     val latestList = useRef(0)
     val latestRun = useRef(0)
@@ -100,7 +100,7 @@ val ReportsPage = FC<Props> {
     val lists = choice?.takeIf { it.key == reportKey }
     val setup = reportSetupInForce(hash[HP.reportView], report?.defaultMode, lists?.groupBy, lists?.excludeEmpty)
     val pagingKey = reportWalkKey(client, reportId, setup)
-    val page = paging?.takeIf { it.key == pagingKey } ?: ReportPaging(pagingKey, null, 0)
+    val shownCount = growth?.takeIf { it.key == pagingKey }?.shown ?: listingBatch
     // The rows on screen, only while they are this walk's: another report's, or another setup's, are never drawn
     // under this one's heading while its own are on their way.
     val runPage = shownRun?.takeIf { it.key == pagingKey }?.page
@@ -150,13 +150,18 @@ val ReportsPage = FC<Props> {
         }
     }
 
-    // One page of the open report. Keyed on everything that makes the query, and on the cursor: a new cursor is the
-    // next page of the same walk, and anything else is a new walk -- whose paging key no longer matches, so it
-    // starts from the top. Within a walk the rows on screen stay until the next page arrives.
+    // The menu chose this page again (issue #1315): the next report opened starts at the first batch, as one opened
+    // from anywhere else would.
+    val revisits = useRevisitSinceMount()
+    useEffect(revisits) { if (revisits > 0) growth = null }
+
+    // The open report's rows. Keyed on everything that makes the query, and on how many rows are shown: more rows is
+    // the same run asked again for more, and anything else is a new run -- whose key no longer matches, so it starts
+    // at the first batch. Within a run the rows on screen stay until the larger answer arrives.
     // Not while the History view is up: it shows the stored snapshots, and a run behind it would be read for nothing.
     val historyView = reportViewIsHistory(hash[HP.reportView])
     val runnable = report != null && !historyView
-    useEffect(runnable, pagingKey, page.after, generation) {
+    useEffect(runnable, pagingKey, shownCount, generation) {
         val token = (latestRun.current ?: 0) + 1
         latestRun.current = token
         if (!runnable || reportId == null) {
@@ -168,7 +173,7 @@ val ReportsPage = FC<Props> {
         running = true
         reportsScope.launch {
             try {
-                val loaded = ReportsApi.run(reportId, client, setup, page.after)
+                val loaded = ReportsApi.run(reportId, client, setup, after = null, limit = shownCount)
                 if (latestRun.current == token) {
                     shownRun = ReportShown(pagingKey, loaded)
                     runError = null
@@ -299,18 +304,7 @@ val ReportsPage = FC<Props> {
                                 }
                             } else {
                                 reportDownload(download?.takeIf { it.key == pagingKey }, ::startDownload)
-                                runError?.let {
-                                    errorText("Couldn't run the report.", it)
-                                    // A cursor outlives neither a changed report nor a reloaded configuration: the way
-                                    // out of either is the same -- the first page of the run as it now is.
-                                    if (page.after != null) {
-                                        Button {
-                                            type = "link"
-                                            onClick = { paging = null }
-                                            +"Start again from the first page"
-                                        }
-                                    }
-                                }
+                                runError?.let { errorText("Couldn't run the report.", it) }
                                 val shown = runPage
                                 if (shown == null) {
                                     if (runError == null) p {
@@ -319,11 +313,7 @@ val ReportsPage = FC<Props> {
                                     }
                                 } else {
                                     reportTable(shown, client)
-                                    reportPagingBar(
-                                        shown, page.before, running,
-                                        onFirst = { paging = null },
-                                        onNext = { shown.next?.let { paging = ReportPaging(pagingKey, it, page.before + shown.rows.size) } },
-                                    )
+                                    reportGrowBar(shown, shownCount, running) { growth = ReportGrowth(pagingKey, it) }
                                 }
                             }
                         }
@@ -606,29 +596,14 @@ private fun ChildrenBuilder.reportTable(run: ReportRunPage, client: String?) {
 }
 
 /**
- * Under the table: which rows these are, what the run read and left out, and the walk's two moves -- **First**,
- * offered once the walk has left the first page, and **Next**, until a page hands back no cursor.
+ * Under the table: how many rows these are of how many, what the run read and left out, and the ways to show more
+ * ([showMoreBar], issue #1315). [grow] is called with the new count to show.
  */
-private fun ChildrenBuilder.reportPagingBar(run: ReportRunPage, before: Int, busy: Boolean, onFirst: () -> Unit, onNext: () -> Unit) {
-    div {
-        className = ClassName("row reports-paging")
-        span {
-            className = ClassName("type-hint")
-            +"${reportRangeText(before, run.rows.size, run.numAvailable, run.summary.mode)} · ${reportCountsText(run.summary)}"
-        }
-        if (before > 0 || run.next != null) {
-            Button {
-                type = "link"
-                disabled = before == 0 || busy
-                onClick = onFirst
-                +"← First"
-            }
-            Button {
-                type = "link"
-                disabled = run.next == null || busy
-                onClick = onNext
-                +"Next →"
-            }
-        }
+private fun ChildrenBuilder.reportGrowBar(run: ReportRunPage, shown: Int, busy: Boolean, grow: (Int) -> Unit) {
+    val (one, many) = if (run.summary.mode == ReportMode.aggregate) "group" to "groups" else "form" to "forms"
+    showMoreBar(run.rows.size, shown, run.numAvailable, one, many, busy, grow)
+    p {
+        className = ClassName("type-hint")
+        +reportCountsText(run.summary)
     }
 }

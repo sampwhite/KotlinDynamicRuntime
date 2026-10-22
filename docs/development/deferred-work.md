@@ -219,11 +219,26 @@ rows in place. The trigger fires when somebody works down a long list a form at 
 forms listing, then going back to carry on from where they were -- and has to find their place again on every
 return.
 
-- **Restore a listing's scroll position on return.** Keep the position per history entry (`history.state`, or a
-  map keyed by the hash), and restore it once the page's rows have rendered, not on navigation. The forms listing
-  is the first case; the Users page, the Clients listing, and a report's run are the others. Deferred because it
-  touches every listing page, and because "once the rows have rendered" is per page: each page has to say when
-  its content is in, which a shared hook can ask for but not decide.
+- **Restore a listing's scroll position once its rows render.** The rows a listing showed already come back: the
+  count shown rides the hash (`shown`, issue #1315), so the listing asks for the same rows again. What is missing
+  is the position within them. Keep it per history entry (`history.state`, or a map keyed by the hash) and restore
+  it once the page's rows have rendered, not on navigation -- which is per page: each has to say when its content
+  is in, which a shared hook can ask for but not decide.
+
+## When many people edit the same forms or users at once
+
+Today a page learns that forms or users changed only by reading them again. A listing re-reads when it is reached
+by an explicit navigation, such as a menu choice or a link, and restores from its hash on Back and Forward without
+asking whether anything changed (#1315). That is enough while a client's forms and users are edited by a few people
+who rarely overlap. The trigger is a client whose people edit the same set of forms or users concurrently, so a
+restored or long-open listing is stale often enough to mislead.
+
+- **Tell the frontend when content changed.** The config UI calls the shell already makes on every refresh
+  generation would carry a latest-modified date for each kind of content (form documents, users), so a page knows
+  its rows are out of date without fetching them.
+- **Offer the reload; do not force it.** When a page is reached through history, or when the reader is sitting on a
+  page and the date moves, show a bar at the top, like the one offered when the web app itself changes, asking
+  whether to reload the page's content. An explicit navigation reloads without asking, as it does now.
 
 ## When an edge fronts a backend that allows anonymous access
 

@@ -183,7 +183,6 @@ object AdminApi {
         return UserSearchResult(
             users = env[EP.items].toJsonListOfMaps().map { it.toAdminUser() },
             numAvailable = (env[EP.numAvailable] as? Number)?.toInt() ?: 0,
-            hasMore = env[EP.hasMore] == true,
         )
     }
 
@@ -408,8 +407,8 @@ fun userSearchArgs(query: UserSearchQuery): Map<String, Any?> = buildMap {
 }
 
 /**
- * One page of a user search: the [users] returned, [numAvailable] (how many matched before the cap), and
- * [hasMore] (whether the cap hid some). The console shows the two counts, so an over-broad search reads as
- * "showing 500 of 4000" rather than looking like the whole population.
+ * One page of a user search: the [users] returned and [numAvailable] (how many matched before the limit). The
+ * console shows the two counts, so an over-broad search reads as "Showing 500 of 4000" rather than looking like the
+ * whole population, and grows the list against them (issue #1315).
  */
-class UserSearchResult(val users: List<AdminUser>, val numAvailable: Int, val hasMore: Boolean)
+class UserSearchResult(val users: List<AdminUser>, val numAvailable: Int)

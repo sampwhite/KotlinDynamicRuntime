@@ -18,7 +18,7 @@ import kotlin.math.roundToLong
 
 /*
  * The Reports page's data (issue #1007): what the report endpoints (#981) answer with, parsed, and everything the
- * page derives from it that needs no React -- the run's query, the table's columns, a cell's text, the paging line.
+ * page derives from it that needs no React -- the run's query, the table's columns, a cell's text, the count line.
  * Pure, and covered under `jsNodeTest` (`ReportsPageTest`); the components are in `ReportsPage.kt`.
  */
 
@@ -167,8 +167,6 @@ fun reportSetupInForce(hashView: String?, defaultMode: ReportMode?, groupBy: Lis
 fun reportWalkKey(client: String?, reportId: String?, setup: ReportRunSetup): String =
     "${client.orEmpty()}|${reportId.orEmpty()}|${setup.signature}"
 
-/** The page size a run is shown at: the forms listing's. */
-const val reportPageSize = 25
 
 /**
  * The run endpoint's query for [reportId] under [setup]. [client] is sent only when given -- an `allClients`
@@ -176,7 +174,7 @@ const val reportPageSize = 25
  * the only kind that takes one. A list the user **emptied** is sent as an empty list, not left out: absent means
  * "the report's own", and empty means none.
  */
-fun reportRunQuery(reportId: String, client: String?, setup: ReportRunSetup, after: String?, limit: Int = reportPageSize): Map<String, Any?> =
+fun reportRunQuery(reportId: String, client: String?, setup: ReportRunSetup, after: String?, limit: Int = listingBatch): Map<String, Any?> =
     buildMap {
         put(RRUN.reportId, reportId)
         client?.let { put(RRUN.client, it) }
@@ -274,20 +272,6 @@ fun reportNumberText(value: Double): String {
     val sign = if (cents < 0) "-" else ""
     val abs = if (cents < 0) -cents else cents
     return "$sign${abs / 100}.${(abs % 100).toString().padStart(2, '0')}"
-}
-
-/**
- * The paging line's count: which rows are on screen, of how many. [before] is how many rows the pages already walked
- * held -- a cursor says where the next page starts, not how far in it is, so the page counts as it goes.
- */
-fun reportRangeText(before: Int, onPage: Int, numAvailable: Int, mode: ReportMode): String {
-    val noun = if (mode == ReportMode.aggregate) "group" else "form"
-    return when {
-        numAvailable == 0 -> "No ${noun}s"
-        onPage == 0 -> "No more ${noun}s"
-        before == 0 && onPage >= numAvailable -> if (numAvailable == 1) "1 $noun" else "$numAvailable ${noun}s"
-        else -> "${noun.replaceFirstChar { it.uppercase() }}s ${before + 1}–${before + onPage} of $numAvailable"
-    }
 }
 
 /** How many forms the run read, and how many it left out for lacking a required value. */
@@ -463,7 +447,7 @@ object ReportsApi {
     )
 
     /** One page of a run, starting after the cursor [after] -- the previous page's `next` -- or at the start. */
-    suspend fun run(reportId: String, client: String?, setup: ReportRunSetup, after: String?, limit: Int = reportPageSize): ReportRunPage =
+    suspend fun run(reportId: String, client: String?, setup: ReportRunSetup, after: String?, limit: Int = listingBatch): ReportRunPage =
         parseRunPage(Http.getApi(UADEP.reportRun + queryString(reportRunQuery(reportId, client, setup, after, limit))))
 
     /** The whole of a run, walked from its first page in large pages (issue #1008); null when no longer wanted. */

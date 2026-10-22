@@ -112,7 +112,7 @@ class ReportsPageTest {
     fun theQuerySaysOnlyWhatTheUserSet() {
         // Untouched: nothing but the report, so the endpoint applies the report's own lists.
         val plain = reportRunQuery("audits", null, ReportRunSetup(ReportMode.detail), after = null)
-        assertEquals(mapOf<String, Any?>(RRUN.reportId to "audits", EP.limit to reportPageSize), plain)
+        assertEquals(mapOf<String, Any?>(RRUN.reportId to "audits", EP.limit to listingBatch), plain)
 
         // Grouped, for a chosen client, on a later page.
         val grouped = reportRunQuery("audits", "acme", ReportRunSetup(ReportMode.aggregate, listOf("auditor")), after = "cur")
@@ -233,15 +233,7 @@ class ReportsPageTest {
     }
 
     @Test
-    fun thePagingLineCountsAsTheWalkGoes() {
-        assertEquals("Forms 1–25 of 32", reportRangeText(0, 25, 32, ReportMode.detail))
-        assertEquals("Forms 26–32 of 32", reportRangeText(25, 7, 32, ReportMode.detail))
-        assertEquals("5 groups", reportRangeText(0, 5, 5, ReportMode.aggregate))
-        assertEquals("1 form", reportRangeText(0, 1, 1, ReportMode.detail))
-        assertEquals("No forms", reportRangeText(0, 0, 0, ReportMode.detail))
-        // Every remaining form was deleted while the walk stood on the page before.
-        assertEquals("No more forms", reportRangeText(25, 0, 25, ReportMode.detail))
-
+    fun theCountsLineSaysWhatTheRunReadAndLeftOut() {
         val read = parseRunPage(mapOf(EP.summary to summary(ReportMode.detail))).summary
         assertEquals("40 forms read", reportCountsText(read))
         val left = parseRunPage(mapOf(EP.summary to summary(ReportMode.detail, excluded = 7))).summary

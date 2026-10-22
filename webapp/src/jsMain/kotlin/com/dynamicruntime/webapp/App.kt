@@ -127,7 +127,7 @@ val App = FC<Props> {
     // Before any consumer's effect runs, so a fetch that consumer makes knows which generation it is for (issue #1313).
     refreshGenerationNow = refresh
     RefreshContext.Provider {
-        value = RefreshBus(refresh) { setRefresh { it + 1 } }
+        value = RefreshBus(refresh, revisit) { setRefresh { it + 1 } }
         // What the shell knows of the caller, for the pages to name themselves by (issue #1091).
         ShellFactsContext.Provider {
             value = shellFacts

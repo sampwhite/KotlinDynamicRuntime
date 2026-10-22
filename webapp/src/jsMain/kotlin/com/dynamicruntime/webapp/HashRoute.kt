@@ -132,6 +132,12 @@ object HP {
      * (`HMENU`), since a simulation's start page is built with them on the server (issue #1036).
      */
     const val report = HMENU.reportParam
+
+    /**
+     * How many rows a growing listing shows (issue #1315): the forms listing, the Users page and a report's run. Absent
+     * means the first batch; written only past it, so an untouched listing's address stays bare.
+     */
+    const val shown = "shown"
     const val reportView = HMENU.reportViewParam
 
     /**
