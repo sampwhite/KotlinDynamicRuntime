@@ -24,6 +24,7 @@ import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonListOrEmpty
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
 import com.dynamicruntime.kdn.Startup
 import com.dynamicruntime.sample.SampleComponent
@@ -148,6 +149,27 @@ class WorkflowApprovalTest : StringSpec({
         val states = reviewer.postData(approve, approveBody(gid))[GDF.states].toJsonListOfMaps()
         entriesOf(states, WFS.workflowApproval).size shouldBe 1
         auditState(states)[WFS.tasksDone] shouldBe true
+    }
+
+    "re-engaging inside the same millisecond as the approval still starts over, and the stamps increase (issue #1267)" {
+        // The clock held still: approve, disengage and re-engage all read the same instant, as a batch job's quick
+        // succession might. The order is the trail's, and the stamps are moved apart to match it.
+        val gid = engagedForm()
+        val clock = cxt.instanceConfig.clock
+        clock.freeze()
+        val reEngaged = try {
+            reviewer.postData(approve, approveBody(gid))
+            owner.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview, WFS.engaged to false))
+            owner.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to SW.auditReview))[GDF.states].toJsonListOfMaps()
+        } finally {
+            clock.unfreeze()
+        }
+        auditState(reEngaged)[WFS.ctaTask] shouldBe SW.approveAudit
+        val engagement = entriesOf(reEngaged, WFS.workflowEngagement).single()
+        val stamps = engagement[WFS.events].toJsonListOfMaps().map { it[WFS.at].toOptInstant()!! }
+        stamps shouldBe stamps.sorted().distinct()
+        val approvedAt = entriesOf(reEngaged, WFS.workflowApproval).single()[WFS.approvedAt].toOptInstant()!!
+        (approvedAt < engagement[WFS.lastEngagedAt].toOptInstant()!!) shouldBe true
     }
 
     "on a test instance, another persona of the owner may review -- one tester plays both parts" {

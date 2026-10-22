@@ -3,6 +3,7 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.gedra.GE
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 /**
@@ -48,5 +49,29 @@ class WorkflowApprovalsTest : StringSpec({
         // Put back in later: the old approval belongs to the earlier engagement, so it no longer counts.
         val reEngaged = engagement(true, Instant.parse("2026-09-02T09:00:00Z"))
         WorkflowApprovals.of(listOf(reEngaged, during), "wf").keys shouldBe emptySet()
+    }
+
+    "a new step is stamped after the newest stamp on its engagement, which a step in the same millisecond would equal (issue #1267)" {
+        val t = Instant.parse("2026-10-22T12:00:00.123Z")
+        val entries = listOf(
+            mapOf(
+                GE.traitId to WFS.workflowEngagement,
+                GE.data to mapOf(
+                    WFD.workflowId to "wf", WFS.engaged to true, WFS.lastEngagedAt to t,
+                    WFS.events to listOf(mapOf(WFS.kind to WFS.engagedEvent, WFS.at to t)),
+                ),
+            ),
+            mapOf(
+                GE.traitId to WFS.workflowApproval,
+                GE.data to mapOf(WFD.workflowId to "wf", WFS.taskId to "approve", WFS.approvedAt to t + 2.milliseconds),
+            ),
+        )
+        // The newest is the approval's, two milliseconds on; a clock that has not passed it is moved one past it.
+        WorkflowEngagement.newestStamp(entries, "wf") shouldBe t + 2.milliseconds
+        WorkflowEngagement.stampAfter(entries, "wf", t) shouldBe t + 3.milliseconds
+        // A clock already past it is taken as it is.
+        WorkflowEngagement.stampAfter(entries, "wf", t + 10.milliseconds) shouldBe t + 10.milliseconds
+        // Nothing on the engagement yet: the clock as it is.
+        WorkflowEngagement.stampAfter(emptyList(), "wf", t) shouldBe t
     }
 })

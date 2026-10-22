@@ -39,7 +39,7 @@ object WorkflowApprovals {
     /**
      * The approvals that **count** for [workflowId] in [entries] -- task id to the approval entry's data: none when
      * the form is not engaged with the workflow, and otherwise those given during the current engagement (see the
-     * class doc). What the recompute, the view and the approve endpoint all read, so they agree. The rule itself is
+     * class doc). What the recompute, the view, and the approve endpoint all read, so they agree. The rule itself is
      * the kernel's `currentApprovals`, which a report's evaluator reads too (issue #978).
      */
     fun of(entries: List<Map<String, Any?>>, workflowId: String): Map<String, Map<String, Any?>> =
@@ -138,16 +138,19 @@ object WorkflowApprovals {
                         "An approval is given once the work before it is complete.",
                 )
             }
+            // After every stamp already on the engagement (issue #1267), so the approval reads as later than the
+            // engagement it belongs to even inside one millisecond.
+            val stamp = WorkflowEngagement.stampAfter(current, workflowId, at)
             val approval = mapOf(
                 GE.traitId to WFS.workflowApproval,
                 GE.data to linkedMapOf(
                     WFD.workflowId to workflowId,
                     WFS.taskId to task.id,
-                    WFS.approvedAt to at,
+                    WFS.approvedAt to stamp,
                     WFS.approvedBy to by,
                 ),
             )
-            val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to at, WFS.by to by, WFS.note to task.id)
+            val event = linkedMapOf<String, Any?>(WFS.kind to WFS.approvedEvent, WFS.at to stamp, WFS.by to by, WFS.note to task.id)
             // A stale record for this task (from an earlier engagement) shares the new one's key; it is replaced.
             val others = current.filterNot {
                 it[GE.traitId].toOptStr() == WFS.workflowApproval &&

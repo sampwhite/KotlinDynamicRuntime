@@ -1,6 +1,7 @@
 package com.dynamicruntime.common.gedra.workflow
 
 import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
 import com.dynamicruntime.common.util.toOptStr
@@ -34,9 +35,15 @@ fun recordedApprovals(entries: List<Map<String, Any?>>, workflowId: String): Map
 
 /**
  * The approvals that **count** for [workflowId] in [entries] -- task id to the approval entry's data (issue #787):
- * none when the form is not engaged with the workflow, and otherwise those given during the **current** engagement,
- * `approvedAt` not before the engagement's `lastEngagedAt`. So a form taken out of a workflow and put back in starts
- * over: the old approval stays in the state as history and no longer counts. The reasons are `WorkflowApprovals`'.
+ * none when the form is not engaged with the workflow, and otherwise those given during the **current** engagement.
+ * So a form taken out of a workflow and put back in starts over: the old approval stays in the state as history and
+ * no longer counts. The reasons are `WorkflowApprovals`'.
+ *
+ * **Order is the trail's** (issue #1267): an approval is of the current engagement when its `approved` event comes
+ * after the trail's last `engaged` event. The trail is append-only, so it holds the true order even of steps taken
+ * inside one millisecond, where the stored stamps (milliseconds) can be equal. Only where the trail lacks either
+ * event -- an engagement or approval written by hand through the admin state endpoint -- is it decided by time:
+ * `approvedAt` not before `lastEngagedAt`, and an engagement with no start invalidating nothing.
  *
  * What the recompute, the view, the approve endpoint and a report all read, so they agree on when an approval is one.
  */
@@ -45,10 +52,16 @@ fun currentApprovals(entries: List<Map<String, Any?>>, workflowId: String): Map<
     if (engagement[WFS.engaged] != true) {
         return emptyMap()
     }
-    // An engagement written without a start (by hand, through the admin state endpoint) invalidates nothing.
+    val events = engagement[WFS.events].toJsonListOfMaps()
+    val lastEngaged = events.indexOfLast { it[WFS.kind].toOptStr() == WFS.engagedEvent }
     val since = engagement[WFS.lastEngagedAt].toOptInstant()
-    return recordedApprovals(entries, workflowId).filterValues { data ->
-        val at = data[WFS.approvedAt].toOptInstant()
-        since == null || (at != null && at >= since)
+    return recordedApprovals(entries, workflowId).filter { (taskId, data) ->
+        val approved = events.indexOfLast { it[WFS.kind].toOptStr() == WFS.approvedEvent && it[WFS.note].toOptStr() == taskId }
+        if (lastEngaged >= 0 && approved >= 0) {
+            approved > lastEngaged
+        } else {
+            val at = data[WFS.approvedAt].toOptInstant()
+            since == null || (at != null && at >= since)
+        }
     }
 }
