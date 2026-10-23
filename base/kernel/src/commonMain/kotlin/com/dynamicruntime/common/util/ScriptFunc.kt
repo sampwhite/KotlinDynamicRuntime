@@ -14,6 +14,8 @@ object SFN {
     const val abs = "abs"
     const val formatDate = "formatDate"
     const val formatDay = "formatDay"
+    const val formatNumber = "formatNumber"
+    const val currency = "currency"
 }
 
 /**
@@ -111,7 +113,50 @@ val scriptFunctions: Map<String, ScriptFunction> = listOf(
     ScriptFunction(SFN.formatDay, 1, 1) { state, args ->
         zonedDayText(instantArg(state, SFN.formatDay, args[0]), state.envOrDefault.zone)
     },
+    // Numbers as a person reads them (issue #1322): grouped, and to a fixed number of decimals when asked. A unit is
+    // ordinary text after the call.
+    ScriptFunction(SFN.formatNumber, 1, 2, checkArgs = ::checkDecimalsLiteral) { state, args ->
+        val n = numberArg(state, SFN.formatNumber, args[0])
+        val decimals = args.getOrNull(1)?.let { decimalsOrNull(it) ?: throw mkDecimalsError(state, it) }
+        numberText(n, decimals)
+    },
+    ScriptFunction(SFN.currency, 2, 2, checkArgs = ::checkCurrencyLiteral) { state, args ->
+        val n = numberArg(state, SFN.currency, args[0])
+        val code = args[1] as? String
+        if (code == null || !isCurrencyCode(code)) throw mkCurrencyError(state, args[1])
+        currencyText(n, code)
+    },
 ).associateBy { it.name }
+
+private fun numberArg(state: ScriptState, fn: String, v: Any?): Number =
+    numOf(v) as? Number ?: throw mkFuncTypeError(state, fn, v, "a number")
+
+/** [v] as a count of decimals `formatNumber` writes, 0 to [maxNumberDecimals]; null when it is not one. */
+private fun decimalsOrNull(v: Any?): Int? = (numOf(v) as? Long)?.takeIf { it in 0..maxNumberDecimals.toLong() }?.toInt()
+
+/** Refuses a literal count of decimals that is not one when the template is parsed (issue #1322). */
+private fun checkDecimalsLiteral(state: ScriptState, args: List<ScriptNode>) {
+    val decimals = (args.getOrNull(1) as? LiteralNode ?: return).value
+    if (decimalsOrNull(decimals) == null) throw mkDecimalsError(state, decimals, ScriptError.syntaxError)
+}
+
+private fun mkDecimalsError(state: ScriptState, v: Any?, code: ScriptError = ScriptError.typeMismatch) = mkScriptException(
+    state, code,
+    "Template function '${SFN.formatNumber}' takes a count of decimals from 0 to $maxNumberDecimals but was given " +
+        "${describeValue(v)}.",
+)
+
+/** Refuses a literal currency code that is not shaped like one when the template is parsed (issue #1322). */
+private fun checkCurrencyLiteral(state: ScriptState, args: List<ScriptNode>) {
+    val code = (args.getOrNull(1) as? LiteralNode ?: return).value
+    if (code !is String || !isCurrencyCode(code)) throw mkCurrencyError(state, code, ScriptError.syntaxError)
+}
+
+private fun mkCurrencyError(state: ScriptState, v: Any?, code: ScriptError = ScriptError.typeMismatch) = mkScriptException(
+    state, code,
+    "Template function '${SFN.currency}' takes a three-letter ISO 4217 currency code, such as \"USD\", but was given " +
+        "${describeValue(v)}.",
+)
 
 /** Refuses a literal `formatDate` style that is not one of [SDSTY.all] when the template is parsed (issue #1321). */
 private fun checkDateStyleLiteral(state: ScriptState, args: List<ScriptNode>) {
