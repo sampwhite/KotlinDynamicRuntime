@@ -78,7 +78,7 @@ val scriptFunctions: Map<String, ScriptFunction> = listOf(
     ScriptFunction(SFN.lower, 1, 1) { state, args -> textArg(state, SFN.lower, args[0]).lowercase() },
     ScriptFunction(SFN.trim, 1, 1) { state, args -> textArg(state, SFN.trim, args[0]).trim() },
     // Counts what has a size: the characters of a string, the entries of a list or an object. Returns a Long
-    // so it lands in the same numeric world as a literal and can be compared and pluralised against.
+    // so it lands in the same numeric world as a literal and can be compared and pluralized against.
     ScriptFunction(SFN.count, 1, 1) { state, args ->
         when (val v = args[0]) {
             is String -> v.length.toLong()

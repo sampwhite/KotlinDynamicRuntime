@@ -68,7 +68,7 @@ fun interface FragmentResolver {
 
 /**
  * Renders [text] -- the fragment [key] pulled by `@t` -- as its own template, one include level deeper than
- * [parent] (issue #505). Carries [parent]'s prefix, resolver and environment, so a pulled fragment can pull further
+ * [parent] (issue #505). Carries [parent]'s prefix, resolver, and environment, so a pulled fragment can pull further
  * and reads dates as its puller does. A problem
  * *inside* the fragment comes back in the render, for the caller to judge (a guarded pull absorbs an absent
  * value; see `ScriptEval.evalFragment`) and re-report with [mkFragmentContext]. A cycle or an include chain too
