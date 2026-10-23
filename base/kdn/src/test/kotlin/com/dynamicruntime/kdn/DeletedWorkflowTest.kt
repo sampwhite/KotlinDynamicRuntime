@@ -120,9 +120,9 @@ class DeletedWorkflowTest : StringSpec({
         .filter { it[GE.traitId] in setOf(WFS.workflowEngagement, WFS.workflowState, WFS.workflowApproval) }
         .map { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() }
 
-    /** What each surface says of `review`, for a form [gid], as [admin] and the form's [user] see it. */
     class Seen(val inStates: Boolean, val inSummary: Boolean, val inAggregate: Boolean, val viewable: Boolean, val ctaTask: String?)
 
+    /** What each surface says of `review`, for a form gid, as [admin] and the form's [user] see it. */
     fun seen(admin: TestUser, user: TestUser, gid: String): Seen {
         val listing = admin.client.sendJsonGetRequest(GEP.formDocs, mapOf(GDF.withStates to true, GDF.withWorkflowSummary to true))
         val states = listing[EP.items].toJsonListOfMaps().single()[GDF.states].toJsonListOfMaps()
