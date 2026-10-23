@@ -1110,7 +1110,7 @@ fun definitionEditOffer(storedConfig: String?, configs: List<ConfigSummaryView>?
     )
 }
 
-/** Whether a configuration row wants attention in the table (issue #1026): it is offered Publish. */
+/** Whether a configuration row wants attention in the table (issue #1026): it could be published from this page (#1353). */
 fun configRowNeedsPublish(row: ClientOverview?, bundle: ConfigSummaryView): Boolean = bundleAction(row, bundle).publish
 
 /** What a definition edit did (issue #1026), and how it took effect -- live, or a draft its sandbox runs (issue #930). */
@@ -1440,11 +1440,8 @@ fun impactOf(e: Throwable): ImpactReportView? {
     return parseImpactReport(api.extraData[IMP.report].toJsonMapOrEmpty())
 }
 
-/** The configurations a report judged, as a sentence names them: `main`, or `main and extra`. Pure. */
-fun impactConfigsText(report: ImpactReportView): String {
-    val names = report.configs.map { it.first }
-    return if (names.size <= 1) names.joinToString() else "${names.dropLast(1).joinToString(", ")} and ${names.last()}"
-}
+/** The configurations a report judged, as a sentence names them ([bundleNamesText]). Pure. */
+fun impactConfigsText(report: ImpactReportView): String = bundleNamesText(report.configs.map { it.first })
 
 /** One finding as a sentence for the dialog (issue #935): how many forms, and what would happen to them. Pure. */
 fun impactFindingText(f: ImpactFindingView): String {
@@ -1542,6 +1539,40 @@ fun bundleAction(row: ClientOverview?, bundle: ConfigSummaryView): BundleAction 
     !row.publishedOnly -> BundleAction(true, "It runs its latest revision either way; publishing marks this one, and the next edit starts another.")
     else -> BundleAction(true, null, checkImpact = true)
 }
+
+/**
+ * What the Stored configuration table offers for a **group** of bundles (issue #1353): rows select, and the bar above
+ * acts on the selection. [BundleAction.publish] when this page publishes, [BundleAction.checkImpact] when a
+ * selection's impact can be checked here (on a client with a sandbox, check only: it publishes from the sandbox), and
+ * the [BundleAction.note] -- with [BundleAction.sandboxClient] to link to -- that once sat on every row. Read off any one draft's [bundleAction], since every
+ * draft of one client is offered the same; null when nothing is unpublished. Pure, and covered under `jsNodeTest`.
+ */
+fun publishGroup(row: ClientOverview?, configs: List<ConfigSummaryView>): BundleAction? =
+    configs.firstOrNull { !it.published }?.let { bundleAction(row, it) }
+
+/**
+ * The bundles a row may be ticked for (issue #1353): those whose latest revision is unpublished, where the page may
+ * publish them or check their impact. A published one has nothing to publish, so it has no box. Pure.
+ */
+fun selectableBundles(row: ClientOverview?, configs: List<ConfigSummaryView>): List<String> =
+    configs.filter { !it.published }.filter { bundleAction(row, it).let { a -> a.publish || a.checkImpact } }.map { it.name }
+
+/**
+ * What "Select all unpublished" leaves selected (issue #1353): every selectable bundle, or none when every one already
+ * is -- so the one control both selects and clears. Pure.
+ */
+fun toggleAllUnpublished(selected: Set<String>, selectable: List<String>): Set<String> =
+    if (selectable.isNotEmpty() && selected.containsAll(selectable)) emptySet() else selectable.toSet()
+
+/**
+ * The bundles a group action acts on (issue #1353): those selected that are still selectable, in the table's order --
+ * so a bundle somebody published meanwhile, or one no longer listed, drops out of the selection by itself. Pure.
+ */
+fun selectedBundles(selected: Set<String>, selectable: List<String>): List<String> = selectable.filter { it in selected }
+
+/** The names of a group as a sentence names them: `main`, or `main and extra`, or `a, b and c`. Pure. */
+fun bundleNamesText(names: List<String>): String =
+    if (names.size <= 1) names.joinToString() else "${names.dropLast(1).joinToString(", ")} and ${names.last()}"
 
 /**
  * Whether the impact dialog may link its forms (issue #935): the forms are the report's client's -- a sandbox's

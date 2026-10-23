@@ -17,8 +17,8 @@ import kotlin.test.assertTrue
  * editor's syntax hint.
  */
 class BundleRowsTest {
-    private fun bundle(version: Int, published: Boolean, publishedVersion: Int? = null) =
-        ConfigSummaryView("main", version, published, null, null, 0, publishedVersion)
+    private fun bundle(version: Int, published: Boolean, publishedVersion: Int? = null, name: String = "main") =
+        ConfigSummaryView(name, version, published, null, null, 0, publishedVersion)
 
     private fun client(
         id: String = "acme",
@@ -84,6 +84,41 @@ class BundleRowsTest {
         assertFalse(bundleAction(client(), draft).checkImpact)
         assertFalse(bundleAction(client(publishedOnly = true), bundle(2, published = true)).checkImpact)
         assertFalse(bundleAction(client(staticHere = true, publishedOnly = true), draft).checkImpact)
+    }
+
+    // Rows select and a bar publishes the group (issue #1353): what is selectable, and what the bar offers.
+    @Test
+    fun aGroupIsSelectedFromTheDraftsAndActedOnFromTheBar() {
+        val configs = listOf(bundle(2, published = true, name = "main"), bundle(3, published = false, name = "flows"), bundle(1, published = false, name = "moved"))
+        // Only drafts have a box: a published bundle has nothing to publish.
+        assertEquals(listOf("flows", "moved"), selectableBundles(client(publishedOnly = true), configs))
+        val here = publishGroup(client(publishedOnly = true), configs)!!
+        assertTrue(here.publish)
+        assertTrue(here.checkImpact)
+        // A client with a sandbox publishes there: its drafts are ticked to check their impact, and the bar points there.
+        val parent = publishGroup(client(hasSandbox = true, publishedOnly = true), configs)!!
+        assertFalse(parent.publish)
+        assertTrue(parent.checkImpact)
+        assertEquals("acme:sandbox", parent.sandboxClient)
+        assertEquals(listOf("flows", "moved"), selectableBundles(client(hasSandbox = true, publishedOnly = true), configs))
+        // A client static here takes nothing stored: nothing to select, and the bar says why.
+        assertEquals(emptyList(), selectableBundles(client(staticHere = true), configs))
+        assertTrue(publishGroup(client(staticHere = true), configs)!!.note!!.contains("nothing stored"))
+        // Everything published: no group at all.
+        assertNull(publishGroup(client(), listOf(bundle(2, published = true))))
+    }
+
+    @Test
+    fun selectAllUnpublishedSelectsThenClears() {
+        val selectable = listOf("flows", "moved")
+        assertEquals(setOf("flows", "moved"), toggleAllUnpublished(emptySet(), selectable))
+        assertEquals(setOf("flows", "moved"), toggleAllUnpublished(setOf("flows"), selectable))
+        assertEquals(emptySet(), toggleAllUnpublished(setOf("flows", "moved"), selectable))
+        assertEquals(emptySet(), toggleAllUnpublished(emptySet(), emptyList()))
+        // What is acted on is the selection still selectable, in the table's order.
+        assertEquals(listOf("flows", "moved"), selectedBundles(setOf("moved", "gone", "flows"), selectable))
+        assertEquals("flows and moved", bundleNamesText(listOf("flows", "moved")))
+        assertEquals("main", bundleNamesText(listOf("main")))
     }
 
     // The copy editor says which template syntax a value takes, by who its file is for (issue #1001).

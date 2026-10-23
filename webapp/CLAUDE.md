@@ -618,19 +618,26 @@ holds for it -- the full-scope bundles listing naming the client for an `allClie
 one otherwise. Each configuration row (`StoredConfigTable`, issue #1001) says whether its latest revision is
 **live** by the client's tier (`bundleLiveText`: "Live", "v3 draft; v2 live" for a published-only client --
 every client with a sandbox is one -- or "Live, unpublished" for one on its latest revision; the summary carries
-`publishedVersion`, the overview row `publishedOnly` and `staticHere`), and an actions column whose first action
-is **Publish** (`bundleAction`): offered on a client without a sandbox and on a sandbox's page -- which lists its
-parent's bundles, the configuration it runs, and publishes them there -- and replaced by a note elsewhere: a
-client with a sandbox publishes from it, after previewing -- the word "sandbox" leads to the sandbox's page,
-directly for an `allClients` administrator, and for a client-scoped one by opening the sandbox first (a fresh
-session as their user there) and landing on that page -- and a client static in production takes nothing stored. A publish reloads the client (`ClientsApi.publishBundles`, which takes a list: the backend publishes several of a client's bundles together, issue #1352).
+`publishedVersion`, the overview row `publishedOnly` and `staticHere`). **Publishing is of a group** (issue #1353):
+a row whose latest revision is unpublished has a box and nothing else (`selectableBundles`), and a bar above the
+table selects -- **Select all unpublished** (`toggleAllUnpublished`), which also clears -- and acts on the selection
+(`selectedBundles`, which drops a bundle published meanwhile): **Publish selected (N)** publishes it in one request,
+judged together (`ClientsApi.publishBundles`, issue #1352), so bundles sound only as a set -- a workflow moved from
+one to another -- go live together, and **Check impact** reports on exactly that selection. What the bar offers is
+`publishGroup` (read off `bundleAction`): publishing on a client without a sandbox and on a sandbox's page -- which
+lists its parent's bundles, the configuration it runs, and publishes them there -- and check-only elsewhere, with
+the note once in the bar rather than on every row: a client with a sandbox publishes from it, after previewing --
+the word "sandbox" leads to the sandbox's page, directly for an `allClients` administrator, and for a client-scoped
+one by opening the sandbox first (a fresh session as their user there) and landing on that page -- and a client
+static in production takes nothing stored, so nothing is selectable. A publish reloads the client.
 A publish is judged against the client's **stored data** (issue #935): one that would affect it is refused with an
-impact report (the envelope's `errorCode` `IMP.refusedCode`, the report in its `extraData`, which `ApiError` carries
-for this), and the table opens it in a dialog (`ImpactReportDialog`: `impactSummary`, a line per finding from
-`impactFindingText`, at most five form ids per finding beside the full count) whose **Publish anyway** sends
-`acknowledgeImpact` (`publishBundleRequest`). **Check impact** (`BundleAction.checkImpact`) fetches the same report
-before any publish (`ClientsApi.bundleImpact`): beside Publish where publishing changes what the client runs, and on a
-client with a sandbox beside the "publish from its sandbox" note too, with no publish button in the dialog there. Each
+impact report on the whole selection (the envelope's `errorCode` `IMP.refusedCode`, the report in its `extraData`,
+which `ApiError` carries for this), and the table opens it in a dialog (`ImpactReportDialog`, titled by the
+selection's names, `bundleNamesText`: `impactSummary`, a line per finding from `impactFindingText`, at most five form
+ids per finding beside the full count) whose **Publish anyway** resends the same selection with `acknowledgeImpact`
+(`publishBundleRequest`). **Check impact** (`BundleAction.checkImpact`) fetches the same report before any publish
+(`ClientsApi.bundleImpact`): beside Publish selected where publishing changes what the client runs, and on a client
+with a sandbox beside the "publish from its sandbox" note too, with no publish button in the dialog there. Each
 form id opens the raw trait editor in a new tab (`impactFormHref`) where the session can read it
 (`impactFormsOpenable`); a session in the sandbox is a user of the sandbox and cannot read its parent's forms, so there
 the ids stay plain and a note says to open them from the parent's own page. The `impact-demo` simulation leaves a harmful draft to look at -- run it from the
@@ -842,8 +849,8 @@ refused by the stored write itself (`GedraConfigService`), whatever write carrie
 holding the definition (the retrieve's `storedDefinitionConfig`) has unpublished changes and the definition does not
 ask for a sandbox (its saves would be drafts), the backend's draft rule would refuse every save, so the page says so
 instead of offering the editor (`definitionEditOffer`; nothing is offered until the configurations have loaded, so
-an open editor is never replaced by the note), linking down to the Stored configuration table, where the row
-offered Publish is tinted (`configRowNeedsPublish`, `.op-row-attention`). After a save the editor keeps the stored
+an open editor is never replaced by the note), linking down to the Stored configuration table, where a row
+that could be published there is tinted (`configRowNeedsPublish`, `.op-row-attention`). After a save the editor keeps the stored
 definition the result returned as its baseline until the page re-reads, so a quick reopen does not send the old
 values back. A success bumps the refresh generation, so the heading, the
 listing row and the shell follow the new name. The editable set is the kernel's `ClientPresentationFields`, which
