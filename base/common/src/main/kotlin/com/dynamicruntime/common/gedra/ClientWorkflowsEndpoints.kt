@@ -2,7 +2,9 @@ package com.dynamicruntime.common.gedra
 
 import com.dynamicruntime.common.endpoint.HttpMethod
 import com.dynamicruntime.common.endpoint.SchModuleBuilder
+import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.gedra.workflow.templateSlotsFromInfo
 import com.dynamicruntime.common.schema.SCT
 import com.dynamicruntime.common.user.UADEP
@@ -28,6 +30,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         }
         property(CWF.configName, "The stored configuration holding it; absent for one declared in source code.")
         property(CWF.notEditable, "Why its slots cannot be changed here; absent when they can.")
+        property(CWF.windowsNotEditable, "For a normal workflow, why its time windows cannot be changed here; absent when they can, and for any other kind.")
     }
 
     type(CWF.traitTypeName) {
@@ -53,6 +56,7 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
             type = SCT.array
             items { ref(CWF.traitTypeName) }
         }
+        property(CWF.timeZone, "The client's time zone, which a workflow's time windows are entered and shown in.")
     }
 
     itemEndpoint(
@@ -110,5 +114,50 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
         val result = ClientWorkflowEdit.save(c, client, templateSlotsFromInfo(request[CWF.slots].toJsonMapOrEmpty()), expectedModeOf(request), gate)
         editorSaveResult(client, result.configName, CWF.slots to result.slots.toInfo(), result.mode, result.issues, result.draftImpact)
+    }
+
+    // --- a normal workflow's time windows (issue #1121) ---
+    type(CWF.windowsResultTypeName) {
+        type = SCT.kObject
+        description = "What setting a workflow's time windows did (issue #1121)."
+        property(CLD.client, "The client.", required = true)
+        property(CWF.configName, "The stored configuration the workflow is in.", required = true)
+        property(CWF.windows, "The workflow's time windows now.", required = true) { type = SCT.kObject }
+        saveOutcomeFields()
+        draftImpactField()
+    }
+
+    generalEndpoint(
+        UADEP.clientWorkflowWindows,
+        "Sets the time windows of one of a client's normal workflows (issue #1121) -- `${WFD.lifetime}`, " +
+            "`${WFD.relevancy}` and `${WFD.engagement}`, each a half-open `{start, end}` of moments, either bound " +
+            "optional -- where the workflow is stored: into its overlay for one made from a template, into its " +
+            "definition otherwise. Then as every editor's save. A live change that would, now, freeze or hide forms " +
+            "engaged with the workflow is refused with the impact report unless the impact is acknowledged. Refused for " +
+            "a sandbox, and for a workflow the client does not store.",
+        HttpMethod.POST,
+        outputRef = CWF.windowsResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(CLD.client)
+            field(WFD.workflowId, "The workflow.", required = true)
+            field(CWF.windows, "Its time windows: absent or empty, always open.") { type = SCT.kObject }
+            field(
+                IMP.acknowledgeImpact,
+                "Save although forms engaged with the workflow would be frozen or hidden; without it, such a save is " +
+                    "refused with the impact report.",
+            ) { type = SCT.boolean }
+            expectedModeField()
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[CLD.client].toOptStr())
+        val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
+        val windows = try {
+            WfWindows.fromInfo(request[CWF.windows].toJsonMapOrEmpty())
+        } catch (e: KdrException) {
+            throw KdrException.mkInput("The windows do not read: ${e.message}")
+        }
+        val result = ClientWorkflowEdit.saveWindows(c, client, request[WFD.workflowId].toOptStr().orEmpty(), windows, expectedModeOf(request), gate)
+        editorSaveResult(client, result.configName, CWF.windows to result.windows.toInfo(), result.mode, result.issues, result.draftImpact)
     }
 }

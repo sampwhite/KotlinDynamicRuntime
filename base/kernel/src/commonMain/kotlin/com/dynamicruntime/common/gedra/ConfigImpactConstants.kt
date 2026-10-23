@@ -91,4 +91,16 @@ enum class ImpactKind {
 
     /** A form whose recorded state names a task its workflow would no longer define. */
     stateStranded,
+
+    /**
+     * A form engaged with a workflow whose time windows (issue #1121) would, now, stop it being calculated: out of its
+     * relevancy, the form's state is kept as last calculated -- frozen, and read-only -- until relevancy reopens.
+     */
+    workflowFrozen,
+
+    /**
+     * A form engaged with a workflow whose time windows (issue #1121) would, now, put it outside its lifetime: the
+     * workflow is as good as not configured, and nothing shows the form's part in it, though its data is kept.
+     */
+    workflowHidden,
 }

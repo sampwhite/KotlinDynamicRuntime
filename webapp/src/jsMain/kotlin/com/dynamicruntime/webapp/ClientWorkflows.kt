@@ -38,7 +38,16 @@ private val readCxt = LiteCxt()
 class WorkflowTemplateView(val def: WfDef, val refusal: String?)
 
 /** One of the client's workflows as it runs, the configuration holding it, and why its slots cannot be changed here. */
-class ClientWorkflowView(val def: WfDef, val configName: String?, val notEditable: String?)
+class ClientWorkflowView(
+    val def: WfDef,
+    val configName: String?,
+    val notEditable: String?,
+    /** For a normal workflow, why its time windows cannot be changed here (issue #1121); null when they can. */
+    val windowsNotEditable: String? = null,
+) {
+    /** Whether the page offers its time windows: a normal workflow's, where the client may change them. */
+    val windowsOffered: Boolean get() = def.entry == WfEntry.normal && windowsNotEditable == null
+}
 
 /** A trait the client's workflows may collect. */
 class WorkflowTraitView(val traitId: String, val description: String?)
@@ -49,6 +58,8 @@ class WorkflowCatalogView(
     val templates: List<WorkflowTemplateView>,
     val workflows: List<ClientWorkflowView>,
     val traits: List<WorkflowTraitView>,
+    /** The client's time zone, which a workflow's time windows are entered and shown in; null for the deployment's. */
+    val timeZone: String? = null,
 ) {
     fun template(templateId: String): WorkflowTemplateView? = templates.firstOrNull { it.def.workflowId == templateId }
 }
@@ -59,9 +70,15 @@ fun parseWorkflowCatalog(raw: Map<String, Any?>): WorkflowCatalogView = Workflow
         WorkflowTemplateView(parseWfDef(readCxt, it[CWF.definition].toJsonMapOrEmpty()), it[CWF.refusal].toOptStr())
     },
     workflows = raw[CWF.workflows].toJsonListOfMaps().map {
-        ClientWorkflowView(parseWfDef(readCxt, it[CWF.definition].toJsonMapOrEmpty()), it[CWF.configName].toOptStr(), it[CWF.notEditable].toOptStr())
+        ClientWorkflowView(
+            parseWfDef(readCxt, it[CWF.definition].toJsonMapOrEmpty()),
+            it[CWF.configName].toOptStr(),
+            it[CWF.notEditable].toOptStr(),
+            it[CWF.windowsNotEditable].toOptStr(),
+        )
     },
     traits = raw[CWF.traits].toJsonListOfMaps().map { WorkflowTraitView(it[CCT.traitId].toOptStr().orEmpty(), it[CWF.description].toOptStr()) },
+    timeZone = raw[CWF.timeZone].toOptStr(),
 )
 
 /** What a kind of workflow is, in a word. */

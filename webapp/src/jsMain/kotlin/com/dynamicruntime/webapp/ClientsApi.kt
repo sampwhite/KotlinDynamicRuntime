@@ -1299,6 +1299,14 @@ object ClientsApi {
     suspend fun saveWorkflow(request: Map<String, Any?>): WorkflowSaveResult =
         parseWorkflowSaveResult(Http.sendApi("POST", UADEP.clientWorkflowSave, request)[EP.results].toJsonMapOrEmpty())
 
+    /**
+     * Sets one of a client's normal workflows' time windows (issue #1121) -- [request] from [windowsSaveRequest]; live,
+     * or a draft for a client with a sandbox. One that would freeze or hide engaged forms now is refused with the impact
+     * report ([impactOf]).
+     */
+    suspend fun saveWorkflowWindows(request: Map<String, Any?>): WindowsSaveResult =
+        parseWindowsSaveResult(Http.sendApi("POST", UADEP.clientWorkflowWindows, request)[EP.results].toJsonMapOrEmpty())
+
     /** Every key an administrator may override for a client, with the client's value (issue #918). */
     suspend fun copyKeys(clientId: String): List<CopyKeyView> =
         parseCopyKeys(Http.getApi(CPY.keysPath + queryString(mapOf(COV.client to clientId)))[EP.items].toJsonListOfMaps())
@@ -1448,6 +1456,12 @@ fun impactFindingText(f: ImpactFindingView): String {
         ImpactKind.stateStranded.name ->
             "$forms ${verb("is", "are")} at task ${f.taskId} of workflow ${f.workflowId}, which the workflow would " +
                 "no longer define."
+        ImpactKind.workflowFrozen.name ->
+            "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which would stop being tracked now: " +
+                "${verb("its state", "their state")} would be kept as last calculated, read-only."
+        ImpactKind.workflowHidden.name ->
+            "$forms ${verb("takes", "take")} part in workflow ${f.workflowId}, which would no longer be available now: " +
+                "nothing would show ${verb("its", "their")} part in it, though the data is kept."
         else -> "$forms would be affected (${f.kind})."
     }
 }

@@ -16,6 +16,7 @@ import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * A **publish impact report** (issue #935): what publishing one of a client's stored configurations would do to the
@@ -91,6 +92,8 @@ object ConfigImpact {
         val now = Judged(SchemaService.get(cxt).storeFor(client).types, WorkflowService.get(cxt).forClient(client))
         val next = Judged(candidate.schema.types, candidate.workflows)
         val scope = ReadScope.ofClient(client)
+        // The moment a workflow's time windows are judged at (issue #1121): now, by the instance clock they run on.
+        val at = cxt.instanceNow()
         for ((kind, ids) in idsByKind) {
             for (batch in ids.chunked(readBatch)) {
                 val rows = data.readGedras(cxt, kind, batch, scope)
@@ -99,7 +102,7 @@ object ConfigImpact {
                     val row = rows[id] ?: continue
                     report.scanned++
                     judgeEntries(report, row, now.union(kind), next.union(kind))
-                    judgeStates(report, row, states[id].orEmpty(), now.workflows, next.workflows)
+                    judgeStates(report, row, states[id].orEmpty(), now.workflows, next.workflows, at)
                 }
             }
         }
@@ -153,17 +156,32 @@ object ConfigImpact {
         }
     }
 
-    /** A workflow the candidate drops that the form takes part in, and a recorded task it no longer defines. */
+    /**
+     * A workflow the candidate drops that the form takes part in, a recorded task it no longer defines, and -- for a
+     * workflow the form is engaged with -- time windows that would, [at] this moment, freeze or hide it (issue #1121):
+     * the workflow's phase now under each configuration, so an end brought forward and a start pushed back are judged
+     * alike, by what they do now.
+     */
     private fun judgeStates(
         report: ImpactReport,
         row: GedraDataRow,
         states: List<Map<String, Any?>>,
         now: WorkflowRegistry,
         next: WorkflowRegistry,
+        at: Instant,
     ) {
         val involved = LinkedHashSet<String>()
         row.creationWorkflowId?.workflowId?.let { involved.add(it) }
-        involved.addAll(engagedWorkflowIds(states))
+        val engaged = engagedWorkflowIds(states)
+        involved.addAll(engaged)
+        for (workflowId in engaged) {
+            val before = now.workflow(workflowId)?.def?.phaseAt(at) ?: continue
+            val after = next.workflow(workflowId)?.def?.phaseAt(at) ?: continue
+            when {
+                before.exists && !after.exists -> report.add(ImpactKind.workflowHidden, row, workflowId = workflowId)
+                before.calculates && !after.calculates -> report.add(ImpactKind.workflowFrozen, row, workflowId = workflowId)
+            }
+        }
         states.filter { it[GE.traitId].toOptStr() == WFS.workflowState }
             .mapNotNullTo(involved) { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() }
         for (workflowId in involved) {
@@ -234,6 +252,8 @@ class ImpactFinding(val kind: ImpactKind, val traitId: String?, val workflowId: 
             ImpactKind.dataInvalid -> "entries of trait '$traitId' would no longer validate"
             ImpactKind.workflowGone -> "workflow '$workflowId' would no longer exist"
             ImpactKind.stateStranded -> "workflow '$workflowId' would no longer define task '$taskId'"
+            ImpactKind.workflowFrozen -> "workflow '$workflowId' would stop being tracked now, freezing what it shows"
+            ImpactKind.workflowHidden -> "workflow '$workflowId' would be outside its lifetime now, and not shown"
         }
         return "${rows.size} row(s), $what"
     }

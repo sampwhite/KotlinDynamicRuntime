@@ -1,5 +1,6 @@
 package com.dynamicruntime.common.gedra.workflow
 
+import com.dynamicruntime.common.context.KdrCxtBase
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptInstant
@@ -140,7 +141,45 @@ class WfWindows(
         nested(WFD.engagement, engagement, WFD.relevancy, effectiveRelevancy)
     }
 
+    /** What is wrong with these windows for workflow [workflowId], in words, or null when they nest and can open. */
+    fun problem(workflowId: String): String? =
+        try {
+            check(workflowId)
+            null
+        } catch (e: KdrException) {
+            e.message
+        }
+
+    /** The windows on the wire (issue #1121): each named by its key, with only the bounds it sets; none for the unset. */
+    fun toInfo(): Map<String, Any?> = buildMap {
+        if (!lifetime.isEmpty) put(WFD.lifetime, lifetime.toJsonMap())
+        if (!relevancy.isEmpty) put(WFD.relevancy, relevancy.toJsonMap())
+        if (!engagement.isEmpty) put(WFD.engagement, engagement.toJsonMap())
+    }
+
+    override fun equals(other: Any?): Boolean = other is WfWindows && toInfo() == other.toInfo()
+
+    override fun hashCode(): Int = toInfo().hashCode()
+
+    override fun toString(): String = "lifetime $lifetime, relevancy $relevancy, engagement $engagement"
+
     companion object {
         val none = WfWindows()
+
+        /** Windows read off the wire ([toInfo]); a bound that is no moment is refused, as a definition's is. */
+        fun fromInfo(raw: Map<String, Any?>): WfWindows =
+            WfWindows(WfWindow.fromJson(raw[WFD.lifetime]), WfWindow.fromJson(raw[WFD.relevancy]), WfWindow.fromJson(raw[WFD.engagement]))
     }
+}
+
+/**
+ * [def] with [windows] in place of its own (issue #1121), read as any definition is -- so windows that do not nest, or
+ * on a workflow that is not a normal one, are refused by the definition's own check. Everything else is [def]'s.
+ */
+fun withWindows(cxt: KdrCxtBase, def: WfDef, windows: WfWindows): WfDef {
+    val json = LinkedHashMap(def.toJsonMap())
+    json.keys.removeAll(setOf(WFD.lifetime, WFD.relevancy, WFD.engagement))
+    json.putAll(windows.toInfo())
+    // No overlay carried over: one made from a template is stored as the diff its editor makes of it.
+    return parseWfDef(cxt, json)
 }

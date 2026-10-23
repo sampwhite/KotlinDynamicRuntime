@@ -1,0 +1,254 @@
+package com.dynamicruntime.webapp
+
+import com.dynamicruntime.common.gedra.workflow.WfDef
+import com.dynamicruntime.common.gedra.workflow.WfWindows
+import com.dynamicruntime.common.util.formatDate
+import com.dynamicruntime.common.util.parseDateOrNull
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import react.ChildrenBuilder
+import react.FC
+import react.Fragment
+import react.Key
+import react.Props
+import react.create
+import react.dom.html.ReactHTML.code
+import react.dom.html.ReactHTML.div
+import react.dom.html.ReactHTML.h4
+import react.dom.html.ReactHTML.li
+import react.dom.html.ReactHTML.p
+import react.dom.html.ReactHTML.span
+import react.dom.html.ReactHTML.ul
+import react.useState
+import web.cssom.ClassName
+import kotlin.time.Clock
+import kotlin.time.Instant
+
+private val windowsScope = MainScope()
+
+external interface WorkflowWindowsEditorProps : Props {
+    var clientId: String
+    /** The normal workflow whose windows are set, as it runs. */
+    var workflow: WfDef
+    /** The client's time zone, which every bound is entered and shown in. */
+    var zone: String
+    var savesDraft: Boolean
+    var formsOpenable: Boolean
+    var onSaved: (String) -> Unit
+    var onCancel: () -> Unit
+    var onChanged: () -> Unit
+}
+
+/**
+ * A normal workflow's time windows (issue #1121): **Available** (its lifetime), **Tracked** (relevancy) and **New
+ * forms may join** (engagement), each a start and an end entered as a date and a time in the client's zone. A missing
+ * bound says what it falls back to ([boundFallbackText]). Beneath them, a timeline of the three bands
+ * ([timelineLayout]), where the workflow stands now ([windowPhaseText]), and where it would stand at a moment picked
+ * "as of" -- the kernel's `phaseAt`, in the browser, with no clock moved.
+ *
+ * A save takes effect as the page's other editors' do. One that would, now, freeze or hide forms engaged with the
+ * workflow is refused with the impact report, whose **Save anyway** acknowledges it.
+ */
+val WorkflowWindowsEditor = FC<WorkflowWindowsEditorProps> { props ->
+    val baseline = props.workflow.windows
+    var draft by useState(baseline)
+    var asOf by useState<Instant?>(null)
+    var busy by useState(false)
+    var saveError by useState<DisplayError?>(null)
+    var impact by useState<ImpactReportView?>(null)
+    // What a save refused over its impact was sending, so Save anyway resends that and not the draft.
+    var pending by useState<WfWindows?>(null)
+    val zone = entryZone(props.zone)
+    val now = Clock.System.now()
+    val problem = draft.problem(props.workflow.workflowId)
+    val changed = draft != baseline
+
+    fun save(windows: WfWindows, acknowledge: Boolean) {
+        pending = windows
+        busy = true
+        saveError = null
+        windowsScope.launch {
+            try {
+                val request = windowsSaveRequest(props.clientId, props.workflow.workflowId, windows, expectedMode(props.savesDraft), acknowledge)
+                val result = ClientsApi.saveWorkflowWindows(request)
+                impact = null
+                val said = savedNote("Saved the time windows of ${props.workflow.workflowId} to ${result.configName}.", result.mode)
+                props.onSaved(listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" "))
+            } catch (e: Throwable) {
+                val report = impactOf(e)
+                if (report != null) impact = report else saveError = saveFailure(e, props.onChanged)
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    div {
+        className = ClassName("trait-designer")
+        h4 {
+            +"Time windows of "
+            code { +props.workflow.workflowId }
+        }
+        p {
+            className = ClassName("subtitle")
+            +("When the workflow is open, each a start and an end in ${entryZoneNote(zone)}. A window with no start has " +
+                "been open all along, one with no end stays open; a narrower window left empty follows the one around it.")
+        }
+        WindowBand.entries.forEach { band ->
+            div {
+                key = band.name.unsafeCast<Key>()
+                className = ClassName("wf-window")
+                choiceRow(band.label) {
+                    boundPicker(draft, band, isStart = true, zone, busy) { draft = it }
+                    span {
+                        className = ClassName("type-hint")
+                        +" until "
+                    }
+                    boundPicker(draft, band, isStart = false, zone, busy) { draft = it }
+                }
+                div {
+                    className = ClassName("type-hint")
+                    +band.explained
+                }
+            }
+        }
+        problem?.let {
+            ul {
+                className = ClassName("wf-reasons")
+                li { +it }
+            }
+        }
+        if (problem == null) {
+            timeline(draft, now, asOf)
+            p {
+                +"Now: "
+                span {
+                    className = ClassName("wf-phase")
+                    +windowPhaseText(draft, now, zone)
+                }
+            }
+            choiceRow("As of") {
+                DatePicker {
+                    value = zonedPickerValue(asOf?.formatDate(), zone)
+                    showTime = true
+                    showNow = false
+                    asDynamic()["placeholder"] = "Pick a moment to preview"
+                    onChange = { date, _ -> asOf = zonedPickerIso(date, zone)?.parseDateOrNull() }
+                }
+            }
+            asOf?.let { at ->
+                p {
+                    +"As of ${formatTimestamp(at.formatDate(), zone)}: "
+                    span {
+                        className = ClassName("wf-phase")
+                        +windowPhaseText(draft, at, zone, now)
+                    }
+                }
+            }
+        }
+        p {
+            className = ClassName("subtitle")
+            +saveEffectText(props.savesDraft)
+        }
+        p {
+            Button {
+                type = "primary"
+                this.loading = busy
+                disabled = !changed || problem != null
+                onClick = { save(draft, acknowledge = false) }
+                +"Save"
+            }
+            Button {
+                type = "link"
+                disabled = busy
+                onClick = { props.onCancel() }
+                +"Cancel"
+            }
+        }
+        saveError?.let { errorText("Couldn't save the time windows.", it) }
+    }
+    Modal {
+        open = impact != null
+        title = "Some stored forms would be affected now"
+        onCancel = { impact = null }
+        footer = Fragment.create {
+            Button {
+                onClick = { impact = null }
+                +"Cancel"
+            }
+            Button {
+                type = "primary"
+                danger = true
+                this.loading = busy
+                onClick = { save(pending ?: draft, acknowledge = true) }
+                +"Save anyway"
+            }
+        }
+        impact?.let { impactReportBody(it, props.formsOpenable, doing = "Changing these windows") }
+    }
+}
+
+/**
+ * One bound's picker: a date and a time in [zone], cleared to unset -- a day alone is not a moment, so the picker takes
+ * a time with it. Empty, it says what the bound falls back to.
+ */
+private fun ChildrenBuilder.boundPicker(
+    windows: WfWindows,
+    band: WindowBand,
+    isStart: Boolean,
+    zone: String,
+    busy: Boolean,
+    onChange: (WfWindows) -> Unit,
+) {
+    val declared = band.declared(windows).let { if (isStart) it.start else it.end }
+    DatePicker {
+        value = zonedPickerValue(declared?.formatDate(), zone)
+        showTime = true
+        showNow = false
+        asDynamic()["disabled"] = busy
+        asDynamic()["placeholder"] = boundFallbackText(windows, band, isStart, zone)
+        style = js("({ minWidth: 260 })")
+        this.onChange = { date, _ -> onChange(windows.withBound(band, isStart, zonedPickerIso(date, zone)?.parseDateOrNull())) }
+    }
+}
+
+/** The three bands on one track, with now and the "as of" moment marked ([timelineLayout]). */
+private fun ChildrenBuilder.timeline(windows: WfWindows, now: Instant, asOf: Instant?) {
+    val layout = timelineLayout(windows, now, asOf)
+    div {
+        className = ClassName("wf-timeline")
+        layout.bands.forEach { b ->
+            div {
+                key = b.band.name.unsafeCast<Key>()
+                className = ClassName("wf-timeline-row")
+                span {
+                    className = ClassName("wf-timeline-label")
+                    +b.band.label
+                }
+                div {
+                    className = ClassName("wf-timeline-track")
+                    div {
+                        val ends = listOfNotNull("open-start".takeIf { b.openStart }, "open-end".takeIf { b.openEnd })
+                        className = ClassName((listOf("wf-timeline-band", "wf-band-${b.band.name}") + ends).joinToString(" "))
+                        val place: dynamic = js("({})")
+                        place.left = "${b.left}%"
+                        place.width = "${maxOf(b.right - b.left, 0.5)}%"
+                        style = place
+                    }
+                    marker("wf-timeline-now", layout.nowAt, "Now")
+                    layout.asOfAt?.let { marker("wf-timeline-asof", it, "As of") }
+                }
+            }
+        }
+    }
+}
+
+private fun ChildrenBuilder.marker(cls: String, at: Double, label: String) {
+    div {
+        className = ClassName("wf-timeline-marker $cls")
+        title = label
+        val place: dynamic = js("({})")
+        place.left = "$at%"
+        style = place
+    }
+}

@@ -8,12 +8,14 @@ import com.dynamicruntime.common.gedra.workflow.WfDeclared
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
+import com.dynamicruntime.common.gedra.workflow.WfWindows
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.WorkflowTemplates
 import com.dynamicruntime.common.gedra.workflow.templateSlotProblems
 import com.dynamicruntime.common.gedra.workflow.templateSlotsOf
 import com.dynamicruntime.common.gedra.workflow.toJsonMap
 import com.dynamicruntime.common.gedra.workflow.withTemplateSlots
+import com.dynamicruntime.common.gedra.workflow.withWindows
 import com.dynamicruntime.common.gedra.workflow.workflowTemplateOverlay
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.schema.SCH
@@ -63,6 +65,7 @@ object ClientWorkflowEdit {
             put(CWF.templates, templates.values.map { templateInfo(it.def, own, limits) })
             put(CWF.workflows, own.map { workflowInfo(client, it, templates.keys) })
             put(CWF.traits, usableTraits(cxt, client))
+            ClientService.get(cxt).displayZoneOf(client)?.let { put(CWF.timeZone, it) }
         }
     }
 
@@ -110,6 +113,18 @@ object ClientWorkflowEdit {
         put(CWF.definition, def.toJsonMap())
         if (declared.bundle.isStored && declared.bundle.gedraId.client == client) put(CWF.configName, declared.bundle.name)
         notEditable(client, declared, templateIds)?.let { put(CWF.notEditable, it) }
+        if (def.entry == WfEntry.normal) windowsNotEditable(client, declared)?.let { put(CWF.windowsNotEditable, it) }
+    }
+
+    /**
+     * Why a normal workflow's time windows cannot be changed here (issue #1121), or null: they are the client's to set
+     * on any workflow it stores as its own, made from a template or written whole.
+     */
+    private fun windowsNotEditable(client: String, declared: WfDeclared): String? = when {
+        !declared.bundle.isStored -> "It is declared in source code, where its windows are set."
+        declared.bundle.gedraId.client != client || declared.bundle.inheritedFrom != null ->
+            "It comes from the client this one is built on, '${declared.bundle.inheritedFrom ?: declared.bundle.gedraId.client}'."
+        else -> null
     }
 
     /** Why [declared]'s slots cannot be changed here, or null when they can. */
@@ -193,6 +208,53 @@ object ClientWorkflowEdit {
             )
         }
         return Result(written.configId.baseId, templateSlotsOf(made), reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
+    }
+
+    /** What a windows save did: the configuration the workflow is in, its windows now, how it took effect, and a draft's impact. */
+    class WindowsResult(
+        val configName: String,
+        val windows: WfWindows,
+        val issues: List<GedraConfigIssue>,
+        val mode: String,
+        val draftImpact: ImpactReport?,
+    )
+
+    /**
+     * Sets the time windows of [client]'s normal workflow [workflowId] to [windows] (issue #1121), where the workflow is
+     * stored: into its overlay for one made from a template, into its definition otherwise. Takes effect as [save]
+     * does. A live change that would, now, freeze or hide forms engaged with the workflow -- an end brought forward, a
+     * start pushed back -- is refused with the impact report until acknowledged.
+     */
+    fun saveWindows(
+        cxt: KdrCxt,
+        client: String,
+        workflowId: String,
+        windows: WfWindows,
+        expected: String? = null,
+        impact: ImpactGate = ImpactGate.refuse,
+    ): WindowsResult {
+        sandboxParentOf(client)?.let { parent ->
+            throw KdrException.mkInput("'$client' is a sandbox: its workflows are its parent's, which are changed on '$parent'.")
+        }
+        val target = ClientStoredEdit.target(cxt, client, "workflowWindows", expected)
+        val bound = target.bound
+        val svc = GedraConfigService.get(bound)
+        val (row, stored) = storedWorkflow(bound, workflowId)
+            ?: throw KdrException("Client '$client' stores no workflow '$workflowId'; its windows are set where it is declared.", code = EXC.notFound)
+        val current = WorkflowTemplates.readStored(bound, stored)
+        if (current.entry != WfEntry.normal) {
+            throw KdrException.mkInput("Workflow '$workflowId' is a ${current.entry} workflow, which has no time windows; only a normal workflow does.")
+        }
+        windows.problem(workflowId)?.let { throw KdrException.mkInput(it) }
+        if (current.windows == windows) throw KdrException.mkInput("Workflow '$workflowId' already has these windows; nothing to save.")
+        val definition = WorkflowTemplates.storedForm(bound, withWindows(bound, current, windows))
+        if (!row.configId.baseId.startsWith(CWF.configPrefix)) ClientStoredEdit.requireNoForeignDraft(target, row, "a change to its workflows")
+        fun patch(on: GedraConfigRow, to: Map<String, Any?>) = svc.patchConfig(bound, on.configId, trial = true) { slots ->
+            slots + (CCT.workflowDef to slots[CCT.workflowDef].orEmpty().map { if (it[CCT.workflowId] == workflowId) it + (CCT.definition to to) else it })
+        }
+        val written = patch(row, definition)
+        val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = { patch(written, stored) }, restorePublished = row.isPublished, impact = impact)
+        return WindowsResult(written.configId.baseId, windows, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
     }
 
     /** Every workflow id [bound]'s client stores, latest revisions, drafts included: none a new one may take. */

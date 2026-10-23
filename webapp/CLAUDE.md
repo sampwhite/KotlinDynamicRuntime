@@ -912,6 +912,21 @@ the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts
 patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a
 fix to the template reaches it; Design View edits the same workflow and keeps its changes in the same overlay.
 
+**Time windows** (issue #1121, `WorkflowWindowsEditor.kt`, its pure half in `WorkflowWindows.kt`, covered by
+`WorkflowWindowsTest`): a normal workflow's row in Workflows says where it stands now (`windowPhaseText`) and offers
+**Time windows…** wherever the client stores it as its own, made from a template or written whole (the catalog's
+`windowsNotEditable` says why not). The editor sets **Available** (lifetime), **Tracked** (relevancy) and **New forms
+may join** (engagement), each a start and an end entered as a **date and a time** in the client's zone -- the
+catalog's `timeZone`, not the caller's, since the page may show another client -- through the zoned picker
+(`zonedPickerValue` / `zonedPickerIso`). An empty bound shows what it falls back to (`boundFallbackText`: "Same as
+Available (Oct 20, 2026, 9:30 AM CT)"). Beneath them a timeline of the three bands with now marked
+(`timelineLayout`, plain `div`s on a track coloured `--chart-1..3`), where the workflow stands now, and an **As of**
+picker that says where it would stand then -- the kernel's `phaseAt` in the browser, no clock moved. Save posts
+`/clientAdmin/client/workflows/windows` (`windowsSaveRequest`, with `mode`), which writes into the overlay of a
+template-made workflow and into the definition otherwise. A live change that would, now, freeze or hide forms engaged
+with the workflow is refused with the impact report (`ImpactKind.workflowFrozen` / `workflowHidden`, worded by
+`impactFindingText`), whose **Save anyway** acknowledges it.
+
 **Long text** is a layout mark, not a schema keyword: a `g-layout` field entry's `multiline: true` (`SL.multiline`,
 refused on anything but plain text) makes `SchemaForm` draw antd's `TextArea` (`ControlKind.LongText`) for any form
 whose layout says so.
