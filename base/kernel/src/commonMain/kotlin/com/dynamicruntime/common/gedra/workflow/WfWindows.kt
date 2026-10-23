@@ -57,7 +57,7 @@ enum class WfPhase {
     /** In the engagement window: calculated, and a form may engage with it. */
     engageable;
 
-    /** Whether the workflow exists at all for searches, pages and endpoints. */
+    /** Whether the workflow exists at all for searches, pages, and endpoints. */
     val exists: Boolean get() = this != outsideLifetime
 
     /** Whether the workflow's state is calculated -- and so whether its tasks may be saved and approved. */

@@ -44,7 +44,7 @@ object CWF {
      */
     const val windowsNotEditable = "windowsNotEditable"
 
-    /** On a windows save, and its result: the workflow's time windows, `WFD.lifetime` and its neighbours. */
+    /** On a windows save, and its result: the workflow's time windows, `WFD.lifetime` and its neighbors. */
     const val windows = "windows"
 
     /** On the catalog: the client's time zone, which a window's bounds are entered and shown in. */
