@@ -177,10 +177,10 @@ class KdrEndpoint(
     val needsClientConfig: Boolean = false,
     /**
      * Whether the endpoint answers no sooner than the auth timing floor (issue #1299): a sign-in or registration step
-     * whose time would otherwise say whether an account exists -- a lookup, a password hash, a mail on one path, and
-     * not another. The executor waits, after the handler and before the answer, until the floor plus some jitter has
-     * passed since the request began, on a success and an error alike. Only where the deployment obfuscates its
-     * errors (`AuthTiming.isOn`); elsewhere, development and the tests included, it costs nothing.
+     * whose time would otherwise say whether an account exists -- a lookup, a password hash, or a mail that runs on
+     * one path and not another. The executor waits, after the handler and before the answer, until the floor plus
+     * some jitter has passed since the request began, on a success and an error alike. Only where the deployment
+     * obfuscates its errors (`AuthTiming.isOn`); elsewhere, development and the tests included, it costs nothing.
      */
     val timingFloor: Boolean = false,
     /**
