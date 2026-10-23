@@ -142,6 +142,12 @@ object HFLD {
     const val timeZone = "timeZone"
 
     /**
+     * `state.timeZoneLabel`: beside [timeZone], the zone's generic short name ("CT"), what a moment shown in it is labeled
+     * with (issue #1321); absent for a zone named only by its offset, whose moments are labeled by that ("GMT-3").
+     */
+    const val timeZoneLabel = "timeZoneLabel"
+
+    /**
      * `state.sharedDemo`: true when the caller's client is a demo client visitors join (issue #1248), or its sandbox, on
      * a deployment that offers joining -- so every page carries the standing note that this is a shared space; absent otherwise.
      */

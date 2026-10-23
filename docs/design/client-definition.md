@@ -344,9 +344,12 @@ deployment's zone (`serverTimeZone`, a fixed UTC-8), as every client was before.
   zone; the definition editor says so.
 - **Chosen when the client is made.** The platform's create and a person's own self-serve create take it (the
   webapp sends the creator's browser's zone); a client a customer's root makes starts in the root's.
+- **Templates read it** (#1321). A template's date functions read the evaluation's environment, its zone and now,
+  which the caller hands in: a listing column and a mail the client's zone, named as the webapp names it, and the
+  webapp the zone it shows moments in. `formatDay` is the day there, and `formatDate(x, style)` takes `"relative"`,
+  `"moment"` (`Oct 17, 2026, 5:00 PM CT`) or `"day"`. An evaluation handed none reads the deployment's zone.
 - **Not yet in its zone:** a workflow's time window written as a day is read when the definition is, in the
-  deployment's zone (the window editor, #1121, writes moments); the template function `formatDay` formats in the
-  deployment's zone; and a date-time picker enters a moment in the browser's zone.
+  deployment's zone (the window editor, #1121, writes moments).
 
 **The definition has a schema, and a written one is held to it** (issue #1051). The attributes above are declared
 once (`ClientDef.defineInfoType`) and make two types. `ClientInfo` is what the client endpoints answer with.

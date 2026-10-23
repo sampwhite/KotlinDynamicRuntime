@@ -113,6 +113,8 @@ class HomeConfig(
      * deployment's display default; null when neither is set, for the deployment's day start.
      */
     val timeZone: String? = null,
+    /** Beside [timeZone], the backend's generic short name for it ("CT"), its moments' label (issue #1321). */
+    val timeZoneLabel: String? = null,
 )
 
 /**
@@ -176,6 +178,7 @@ fun homeConfigFrom(config: UiConfig): HomeConfig {
         webAssets = webAssetNamesFrom(config.state[HFLD.webAssets]),
         fileRefs = fileRefNamesFrom(config.state[HFLD.fileRefs]),
         timeZone = (config.state[HFLD.timeZone] as? String)?.ifBlank { null },
+        timeZoneLabel = (config.state[HFLD.timeZoneLabel] as? String)?.ifBlank { null },
     )
 }
 

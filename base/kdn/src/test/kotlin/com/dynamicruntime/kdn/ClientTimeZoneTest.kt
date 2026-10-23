@@ -11,7 +11,12 @@ import com.dynamicruntime.common.gedra.ClientDef
 import com.dynamicruntime.common.gedra.ClientService
 import com.dynamicruntime.common.gedra.ClientUsageType
 import com.dynamicruntime.common.gedra.GedraConfigReload
+import com.dynamicruntime.common.gedra.GDF
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.gedra.GEP
 import com.dynamicruntime.common.gedra.GedraConfigService
+import com.dynamicruntime.common.gedra.GedraDataType
+import com.dynamicruntime.common.gedra.UF
 import com.dynamicruntime.common.gedra.clientTimeZone
 import com.dynamicruntime.common.gedra.gedraConfig
 import com.dynamicruntime.common.home.HEP
@@ -21,7 +26,9 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.genericZoneLabel
 import com.dynamicruntime.common.util.serverTimeZone
+import com.dynamicruntime.common.util.toJsonListOfMaps
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -57,9 +64,42 @@ class ClientTimeZoneTest : StringSpec({
         ClientService.get(cxt).timeZoneOf(client) shouldBe TimeZone.of("America/Chicago")
         // Where the crossings read it (`ClientZoneCrossingTest` asks each with a zone): a request in the client.
         cxt.mkSubContext("tz", client).clientTimeZone shouldBe TimeZone.of("America/Chicago")
-        // And the shell says where the client is, so the webapp shows its moments there.
-        TestUser.create(cxt, "u@$client.test", userClient = client)
-            .getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()[HFLD.timeZone] shouldBe "America/Chicago"
+        // And the shell says where the client is, so the webapp shows its moments there, named as the backend names it.
+        val state = TestUser.create(cxt, "u@$client.test", userClient = client).getData(HEP.homeUiConfig)[UIC.state].toJsonMapOrEmpty()
+        state[HFLD.timeZone] shouldBe "America/Chicago"
+        state[HFLD.timeZoneLabel] shouldBe "CT"
+    }
+
+    "a zone's label is its generic name, or none where that would read as an offset (issue #1321)" {
+        genericZoneLabel("America/Chicago") shouldBe "CT"
+        genericZoneLabel("Asia/Kolkata") shouldBe "IST"
+        // Named only by an offset; and London, which Java calls GMT all year, though summer is an hour ahead of it.
+        genericZoneLabel("America/Sao_Paulo") shouldBe null
+        genericZoneLabel("Europe/London") shouldBe null
+        genericZoneLabel("UTC") shouldBe null
+        genericZoneLabel("Mars/Olympus") shouldBe null
+    }
+
+    "a listing column's dates read in the client's zone and are labeled with it (issue #1321)" {
+        val client = "chicago1321"
+        val config = gedraConfig(cxt, "${client}cfg", clientNamespace(client), client) {
+            defineClient(
+                ClientDef(
+                    clientId = client, name = client, usageType = ClientUsageType.dev, audience = ClientAudience.internal,
+                    enabledEnvironments = setOf(ENV.unit, ENV.local), timeZone = "America/Chicago",
+                ),
+            )
+            trait("DueEntry", "due", setOf(GedraDataType.formDoc), "When it is due.") { property("at", "The moment.") }
+            traitUsage("due", "Due", $$"""${formatDate(at, "moment")} / ${formatDay(at)}""")
+        }
+        GedraConfigService.get(cxt).writeConfig(asClient(client), config)
+        GedraConfigReload.reloadClient(cxt, client)
+        val user = TestUser.create(cxt, "u@$client.test", userClient = client)
+        // 2:30 AM on the 18th in Chicago, and still the 17th in the deployment's UTC-8.
+        val entry = mapOf(GE.traitId to "due", GE.data to mapOf("at" to "2026-10-18T07:30:00.000Z"))
+        user.postItem(GEP.formDocCreate, mapOf(GDF.entries to listOf(entry)))
+        val shown = user.getItems(GEP.formDocs).single()[GDF.displayValues].toJsonListOfMaps().single()[UF.value]
+        shown shouldBe "Oct 18, 2026, 2:30 AM CT / 2026-10-18"
     }
 
     "a zone is a place's IANA zone, or the client stays the deployment's" {

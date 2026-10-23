@@ -1,8 +1,13 @@
 package com.dynamicruntime.webapp
 
+import com.dynamicruntime.common.util.ScriptEnv
+import com.dynamicruntime.common.util.ScriptZone
 import com.dynamicruntime.common.util.TZONE
+import com.dynamicruntime.common.util.momentText
 import com.dynamicruntime.common.util.parseDateOrNull
 import com.dynamicruntime.common.util.serverTimeZone
+import com.dynamicruntime.common.util.zonedDayText
+import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.offsetAt
 import kotlin.math.abs
 import kotlin.time.Clock
@@ -30,51 +35,64 @@ object DisplayZone {
     var current: String = deploymentZone
         private set
 
-    /** Shows moments in [timeZone] from now on, or in the [deploymentZone] when it is null. */
-    fun set(timeZone: String?) {
+    /**
+     * What a moment shown in [current] is labeled with (issue #1321): the backend's generic name for it
+     * ([HomeConfig.timeZoneLabel]), so the browser words a moment as a mail the backend renders does; null when the
+     * backend gave none.
+     */
+    var label: String? = null
+        private set
+
+    /** Shows moments in [timeZone], labeled [label], from now on, or in the [deploymentZone] when it is null. */
+    fun set(timeZone: String?, label: String? = null) {
         current = timeZone ?: deploymentZone
+        this.label = label.takeIf { timeZone != null }
     }
+
+    /** What a template evaluated for the reader reads its dates in (issue #1321): [current], and [now]. */
+    fun scriptEnv(now: Instant = Clock.System.now()): ScriptEnv = ScriptEnv(scriptZone(current), now)
+}
+
+/**
+ * [zone] as the kernel's date wording reads it (issue #1321): its offsets from `Intl`, since the kernel's date library
+ * has no zone database in the browser, and labeled with the backend's name for [DisplayZone.current], else `Intl`'s
+ * generic one. A zone `Intl` does not know is the [deploymentZone], as [formatTimestamp] has always shown it.
+ */
+fun scriptZone(zone: String): ScriptZone {
+    val known = entryZone(zone)
+    val label = DisplayZone.label.takeIf { zone == DisplayZone.current && known == zone } ?: intlGenericLabel(known)
+    return object : ScriptZone {
+        override val label = label
+        override fun offsetAt(at: Instant): UtcOffset = UtcOffset(seconds = zoneOffset(at, known).inWholeSeconds.toInt())
+    }
+}
+
+/**
+ * `Intl`'s generic short name for [zone] ("CT"), or null where that is only an offset ("GMT-3"), which the kernel
+ * then writes per moment -- the rule the backend's names follow, so either source labels a zone alike.
+ */
+private fun intlGenericLabel(zone: String): String? {
+    val options: dynamic = js("({ timeZoneName: 'shortGeneric' })")
+    val name = intlZonedParts(Clock.System.now().toEpochMilliseconds().toDouble(), zone, options)["timeZoneName"]
+    return name?.takeUnless { it.startsWith("GMT") || it.startsWith("UTC") }
 }
 
 /**
  * A wire timestamp shown to a person (issue #1115): `2026-10-17T22:00:00Z` in `America/Chicago` is
  * `Oct 17, 2026, 5:00 PM CT` -- minute precision, in [zone], labeled with the zone so it is never mistaken for the
  * reader's own. A day-only value (`2026-10-17`) never shifts, so it is returned as it is, as is anything not shaped
- * like a timestamp. A [zone] `Intl` does not know is shown in the [deploymentZone] rather than not at all. Pure over
- * its arguments, and covered under `jsNodeTest`.
+ * like a timestamp. A [zone] `Intl` does not know is shown in the [deploymentZone] rather than not at all. Worded by
+ * the kernel ([momentText], issue #1321), as a template's `formatDate(x, "moment")` is. Covered under `jsNodeTest`.
  */
 fun formatTimestamp(iso: String, zone: String = DisplayZone.current): String {
     if (iso.length < 16 || iso[10] != 'T') return iso
     val at = iso.parseDateOrNull() ?: return iso
-    return zonedParts(at, zone, withTime = true).let { p ->
-        "${p.getValue("month")} ${p.getValue("day")}, ${p.getValue("year")}, " +
-            "${p.getValue("hour")}:${p.getValue("minute")} ${p.getValue("dayPeriod")} ${p.getValue("timeZoneName")}"
-    }
+    return momentText(at, scriptZone(zone))
 }
 
 /** The day [at] falls on in [zone], as `yyyy-MM-dd` (issue #1115): what a time shown as its day alone reads. */
-fun zonedDay(at: Instant, zone: String = DisplayZone.current): String =
-    zonedParts(at, zone, withTime = false).let { p -> "${p.getValue("year")}-${p.getValue("month")}-${p.getValue("day")}" }
+fun zonedDay(at: Instant, zone: String = DisplayZone.current): String = zonedDayText(at, scriptZone(zone))
 
-/**
- * [at]'s parts in [zone] as `Intl.DateTimeFormat` gives them, by part type: the short month, day, year, hour, minute,
- * day period, and the zone's generic short name with [withTime]; the numeric year, month, and day without.
- */
-private fun zonedParts(at: Instant, zone: String, withTime: Boolean): Map<String, String> = try {
-    intlParts(at.toEpochMilliseconds().toDouble(), zone, withTime)
-} catch (_: Throwable) {
-    // An unknown zone is a RangeError from Intl: show the moment in the deployment's zone rather than not at all.
-    intlParts(at.toEpochMilliseconds().toDouble(), deploymentZone, withTime)
-}
-
-private fun intlParts(epochMs: Double, zone: String, withTime: Boolean): Map<String, String> {
-    val options: dynamic = if (withTime) {
-        js("({ year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'shortGeneric' })")
-    } else {
-        js("({ year: 'numeric', month: '2-digit', day: '2-digit' })")
-    }
-    return intlZonedParts(epochMs, zone, options)
-}
 
 /**
  * The moment [epochMs] in [zone], formatted with [options] -- `Intl`'s own, without the zone, which this sets -- as its

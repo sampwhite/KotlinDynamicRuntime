@@ -121,7 +121,7 @@ class TemplateAnalysis(
  * `@t` references -- and, given [evaluateWith], renders it as well (issue #909), so one parse serves the check and
  * the evaluation. Structure only by default; with data, [TemplateAnalysis.value] is the rendered text, and every
  * block is attempted, so a problem in one block does not hide another's. [resolver] supplies `@t` fragments to an
- * evaluation, as it does to [evalTemplate]. Never throws for a fault in the template or its data: each comes back
+ * evaluation, and [env] what its date functions read (issue #1321), as they do to [evalTemplate]. Never throws for a fault in the template or its data: each comes back
  * as an issue at its block.
  *
  * Without evaluation it is parse-only, and that bounds what it can find: everything wrong about the *template*
@@ -133,8 +133,9 @@ fun String.analyzeTemplate(
     prefix: Char = '$',
     evaluateWith: Map<String, Any?>? = null,
     resolver: FragmentResolver? = null,
+    env: ScriptEnv? = null,
 ): TemplateAnalysis {
-    val state = ScriptState(this, prefix, resolver)
+    val state = ScriptState(this, prefix, resolver, env = env)
     val parsed = parseTemplate(state)
     val required = mutableSetOf<String>()
     val optional = mutableSetOf<String>()

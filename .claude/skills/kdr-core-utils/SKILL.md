@@ -124,7 +124,11 @@ code guide's "When not to throw".
   against a nested map. The interior is a small expression language: dotted paths, string/number literals,
   `+ - * / %`, `~` (text join), `== != < > <= >=`, `&& || !`, `cond ? a : b`, `a ?: b` for a default, and calls
   to the built-ins `upper lower trim count abs formatDate formatDay` (a fixed table; unknown names and wrong
-  arity are refused while parsing, so the fragment check catches them without data). `+` concatenates when either side
+  arity are refused while parsing, so the fragment check catches them without data). The date functions read a
+  `ScriptEnv` -- a zone and now -- passed as `evalTemplate(data, env = …)` (issue #1321): `formatDay(x)` is the day
+  in its zone, and `formatDate(x, style)` takes `"relative"` (`12m ago`), `"moment"` (`Oct 17, 2026, 5:00 PM CT`)
+  or `"day"`, a literal style that is not one refused while parsing. The backend's env for a client is
+  `ClientService.scriptEnvOf(cxt, client)`, the webapp's `DisplayZone.scriptEnv()`; none reads the deployment's zone. `+` concatenates when either side
   is a string and adds when neither is; `- * / %` read a numeric string; a bare missing/null value still
   throws (`?:` and a ternary condition are the only places absence is tolerated). Errors carry a `ScriptError`
   code plus the block's offset/line/column.

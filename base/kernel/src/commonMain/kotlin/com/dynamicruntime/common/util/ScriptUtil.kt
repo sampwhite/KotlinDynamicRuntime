@@ -36,9 +36,17 @@ import com.dynamicruntime.common.exception.SRC
  * The `$` prefix is a parameter (default `'$'`). Passing a different character (e.g. `'#'`) makes `#{...}` the
  * substitution block and leaves any `${...}` untouched -- which enables multi-pass evaluation, where the
  * backend resolves one prefix and forwards the rest for the frontend to resolve later.
+ *
+ * [env] is what the date functions read beside their arguments -- the zone and now (issue #1321); none reads the
+ * deployment's zone and the clock.
  */
-fun String.evalTemplate(data: Map<String, Any?>, prefix: Char = '$', resolver: FragmentResolver? = null): String {
-    val state = ScriptState(this, prefix, resolver)
+fun String.evalTemplate(
+    data: Map<String, Any?>,
+    prefix: Char = '$',
+    resolver: FragmentResolver? = null,
+    env: ScriptEnv? = null,
+): String {
+    val state = ScriptState(this, prefix, resolver, env = env)
     val render = renderTemplate(state, parseTemplate(state), data, collectAll = false)
     return render.value ?: throw render.errors.first()
 }
@@ -60,7 +68,8 @@ fun interface FragmentResolver {
 
 /**
  * Renders [text] -- the fragment [key] pulled by `@t` -- as its own template, one include level deeper than
- * [parent] (issue #505). Carries [parent]'s prefix and resolver so a pulled fragment can pull further. A problem
+ * [parent] (issue #505). Carries [parent]'s prefix, resolver and environment, so a pulled fragment can pull further
+ * and reads dates as its puller does. A problem
  * *inside* the fragment comes back in the render, for the caller to judge (a guarded pull absorbs an absent
  * value; see `ScriptEval.evalFragment`) and re-report with [mkFragmentContext]. A cycle or an include chain too
  * deep is the pull's own fault, and throws.
@@ -86,7 +95,7 @@ fun renderFragmentText(parent: ScriptState, key: String, text: String, data: Map
                 "'${parent.includeChain.first()}'. No fragment repeats, so this is depth rather than a cycle.",
         )
     }
-    val sub = ScriptState(text, parent.prefix, parent.resolver, parent.includeChain + key)
+    val sub = ScriptState(text, parent.prefix, parent.resolver, parent.includeChain + key, parent.env)
     return renderTemplate(sub, parseTemplate(sub), data, collectAll = false)
 }
 
@@ -177,7 +186,12 @@ class ScriptState(
      * legal.
      */
     val includeChain: List<String> = emptyList(),
+    /** What the date functions read beside their arguments (issue #1321); null reads [ScriptEnv.deployment]. */
+    val env: ScriptEnv? = null,
 ) {
+    /** [env], or the deployment's when this evaluation was handed none -- asked for only by a function that reads it. */
+    val envOrDefault: ScriptEnv by lazy { env ?: ScriptEnv.deployment() }
+
     val end: Int = str.length
     var offset: Int = 0
     var line: Int = 0
