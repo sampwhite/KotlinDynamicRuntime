@@ -26,7 +26,7 @@ class UserDeleteTest : StringSpec({
     "a recoverable delete disables the user and is undone by re-enabling" {
         val cxt = TestInstances.default("userDelete")
         val admin = TestUser.createFullAdmin(cxt, "chief@del.com")
-        val created = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "recover@del.com", ADF.username to "recover"))
+        val created = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "recover@del.com"))
         val userId = created[ADF.userId] as Long
 
         // Delete recoverably (permanent defaults to false): disabled, identifiers untouched.
@@ -49,7 +49,7 @@ class UserDeleteTest : StringSpec({
         val admin = TestUser.createFullAdmin(cxt, "chief@perm.com")
         val created = admin.postData(
             ADEP.userCreate,
-            mapOf(ADF.primaryId to "gone@perm.com", ADF.username to "gone", ADF.name to "Gordon Gone"),
+            mapOf(ADF.primaryId to "gone@perm.com", ADF.name to "Gordon Gone"),
         )
         val userId = created[ADF.userId] as Long
 
@@ -82,7 +82,7 @@ class UserDeleteTest : StringSpec({
         admin.getItems(ADEP.users, mapOf(ADF.search to "gone@perm.com")) shouldHaveSize 0
         // ...and it is free to be registered afresh -- a duplicate email would be refused, so success proves
         // the obfuscation released the unique identifier. The new account is a distinct, live user.
-        val reused = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "gone@perm.com", ADF.username to "gone2"))
+        val reused = admin.postData(ADEP.userCreate, mapOf(ADF.primaryId to "gone@perm.com"))
         reused[ADF.primaryId] shouldBe "gone@perm.com"
         reused[ADF.enabled] shouldBe true
         (reused[ADF.userId] as Long) shouldNotBe userId

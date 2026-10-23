@@ -16,6 +16,7 @@ import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.AFLD
 import com.dynamicruntime.common.user.AdminRules
+import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
@@ -191,7 +192,7 @@ class AdminUserTest : StringSpec({
 
         // Create a user directly, bypassing email verification.
         val created = admin.postData(
-            ADEP.userCreate, mapOf(ADF.primaryId to "newbie@other.com", ADF.username to "newbie"),
+            ADEP.userCreate, mapOf(ADF.primaryId to "newbie@other.com"),
         )
         val newbieId = created[ADF.userId] as Long
         TestUser.rolesOf(created) shouldBe listOf(ROLE.user)
@@ -204,7 +205,8 @@ class AdminUserTest : StringSpec({
         admin.getItems(ADEP.users).map { it[ADF.primaryId] } shouldContain "newbie@other.com"
         val searched = admin.getItems(ADEP.users, mapOf(ADF.search to "newbie"))
         searched.size shouldBe 1
-        searched[0][ADF.username] shouldBe "newbie"
+        // The person chooses a username when they sign in (issue #1298); until then it is the placeholder.
+        searched[0][ADF.username] shouldBe AuthUserRow.placeholderUsername("newbie@other.com", CL.hub, PERSONA.member, "")
 
         // Promote the new user to admin -- the point of the whole feature.
         TestUser.rolesOf(

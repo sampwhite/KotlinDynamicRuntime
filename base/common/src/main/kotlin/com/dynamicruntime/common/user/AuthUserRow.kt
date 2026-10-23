@@ -151,7 +151,7 @@ class AuthUserRow(
     /** The raw stored row, for callers that mutate and write it back. */
     var data: Map<String, Any?> = emptyMap()
 
-    /** A placeholder username (`@<primaryId>`) means the user has not chosen a real username yet. */
+    /** A placeholder username ([placeholderUsername]) means the user has not chosen a real username yet. */
     val needsRealUsername: Boolean get() = username.startsWith(usernameTmpPrefix)
 
     /** The name to show others: the chosen username, or the primaryId while still a placeholder. */
@@ -159,13 +159,15 @@ class AuthUserRow(
 
     /**
      * Whether this row matches an admin-console [lowerTerm] (already lower-cased by the caller): a
-     * case-insensitive substring of the email, the username, or the account's [name] (a person's full name or
-     * a business's). Lives here so the searchable fields stay listed beside the fields themselves;
-     * `UserService.listUsers` applies it after extraction, since [name] is not an SQL column.
+     * case-insensitive substring of the email, the public name (a chosen username, else the email), or the
+     * account's [name] (a person's full name or a business's). Lives here so the searchable fields stay listed
+     * beside the fields themselves; `UserService.listUsers` applies it after extraction, since [name] is not an SQL
+     * column. A placeholder username is never matched: it holds the client and persona, so a term such as the
+     * client's id would match every user who has not chosen one (issue #1298).
      */
     fun matchesSearch(lowerTerm: String): Boolean =
         primaryId.lowercase().contains(lowerTerm) ||
-            username.lowercase().contains(lowerTerm) ||
+            publicName().lowercase().contains(lowerTerm) ||
             (name?.lowercase()?.contains(lowerTerm) == true)
 
     /**
@@ -178,13 +180,8 @@ class AuthUserRow(
         isEntity = isEntity, name = name, identityId = identityId, persona = persona,
     )
 
-    /**
-     * The admin console's view of this user ([ADTY.adminUser], defined by [defineAdminType]): identity, roles,
-     * and account state. Deliberately *not* [toUserProfile] -- that is the acting identity of the caller, while
-     * this describes some other user being administered, and the two must be free to diverge. Only whether
-     * the identity has a password is reported, never the password.
-     */
-    fun toAdminInfo(): Map<String, Any?> = mapOf(
+    /** [toAdminInfo] without what depends on who is asking. */
+    private fun ownAdminInfo(): Map<String, Any?> = mapOf(
         ADF.userId to userId,
         ADF.primaryId to primaryId,
         ADF.username to username,
@@ -197,7 +194,6 @@ class AuthUserRow(
         ADF.roles to roles,
         ADF.labels to labels,
         ADF.enabled to enabled,
-        ADF.hasPassword to hasPassword,
         ADF.deleted to isDeleted,
         ADF.deletedAt to deletedAt,
         ADF.updatedAt to updatedAt,
@@ -210,15 +206,24 @@ class AuthUserRow(
     )
 
     /**
-     * [toAdminInfo], and in a sandbox what the console must say beside the row's own roles (issue #1198): the roles
-     * it acts with ([ADF.actingRoles] -- none while it is disabled), and for a user somebody opened, that it was
+     * The admin console's view of this user ([ADTY.adminUser], defined by [defineAdminType]): identity, roles,
+     * and account state. Deliberately *not* [toUserProfile] -- that is the acting identity of the caller, while
+     * this describes some other user being administered, and the two must be free to diverge.
+     *
+     * Whether the identity has a password ([ADF.hasPassword]; never the password) is the person's, not this user's,
+     * so it describes their users in other clients too: it is said only where [AdminRules.seesIdentityFacts] (issue
+     * #1298).
+     *
+     * In a sandbox it adds what the console must say beside the row's own roles (issue #1198): the roles it acts
+     * with ([ADF.actingRoles] -- none while it is disabled), and for a user somebody opened, that it was
      * ([ADF.opened]) and, where the caller may know of that user, which user it acts as ([ADF.openedBy],
      * [ADF.actsAsClient]). Read through `SandboxAccess`, so the console says what the gate does.
      */
     fun toAdminInfo(cxt: KdrCxt): Map<String, Any?> {
-        if (!isSandboxClient(client)) return toAdminInfo()
+        val info = ownAdminInfo() + if (AdminRules.seesIdentityFacts(cxt, identityId)) mapOf(ADF.hasPassword to hasPassword) else emptyMap()
+        if (!isSandboxClient(client)) return info
         val standing = SandboxAccess.standingOf(cxt, this)
-        return toAdminInfo() + buildMap {
+        return info + buildMap {
             put(ADF.actingRoles, if (enabled) standing.roles.sorted() else emptyList())
             if (!isOpenedSandboxUser) return@buildMap
             put(ADF.opened, true)
@@ -277,6 +282,16 @@ class AuthUserRow(
     companion object {
         /** Prefix marking a not-yet-chosen (placeholder) username. */
         const val usernameTmpPrefix = "@"
+
+        /**
+         * The username a user has until the person chooses one: `@<address>|<client>|<persona>|<personaSuffix>`, unique
+         * because the key is. It is the same whatever else the address has (issue #1298): a form that changed with the
+         * address's other users -- a bare `@<address>` for its first -- told whoever created a user, and read its
+         * username back, whether the address had users in other clients. No chosen username can take one: the prefix
+         * fails `checkValidUsername`.
+         */
+        fun placeholderUsername(primaryId: String, client: String, persona: String, personaSuffix: String): String =
+            "$usernameTmpPrefix$primaryId|$client|$persona|$personaSuffix"
 
         /**
          * The domain a permanently deleted user's obfuscated email is moved to. `.invalid` is reserved by
@@ -382,9 +397,10 @@ class AuthUserRow(
                 property(ADF.isEntity, "Whether this account belongs to a business rather than a person.") { type = SCT.boolean }
                 property(ADF.name, "The account's real-world name: a person's full name, or a business's name.")
                 property(ADF.enabled, "Whether the account is active.", required = true) { type = SCT.boolean }
-                property(ADF.hasPassword, "Whether the user has opted into a password.", required = true) {
-                    type = SCT.boolean
-                }
+                property(
+                    ADF.hasPassword,
+                    "Whether the person has a password set; only for a caller who sees every client, or about their own identity.",
+                ) { type = SCT.boolean }
                 property(ADF.deleted, "Whether the account was permanently deleted (an obfuscated tombstone).", required = true) {
                     type = SCT.boolean
                 }
@@ -433,7 +449,7 @@ class AuthUserRow(
             row.persona = data[AU.persona].toOptStr() ?: PERSONA.member
             row.personaSuffix = data[AU.personaSuffix].toOptStr() ?: ""
             row.enabled = data[PF.enabled] == true
-            row.username = data[AU.username].toOptStr() ?: (usernameTmpPrefix + primaryId)
+            row.username = data[AU.username].toOptStr() ?: placeholderUsername(primaryId, client, row.persona, row.personaSuffix)
             val userData = (data[AU.authUserData]?.toJsonMap() ?: emptyMap()).toMutableMap()
             row.roles = (userData[AD.roles] as? List<*>)?.mapNotNull { it?.toString() } ?: listOf(ROLE.user)
             row.labels = (userData[AD.labels] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
@@ -484,7 +500,7 @@ class AuthUserRow(
             AU.identityId to identityId,
             AU.persona to persona,
             AU.personaSuffix to personaSuffix,
-            AU.username to (usernameTmpPrefix + primaryId),
+            AU.username to placeholderUsername(primaryId, client, persona, personaSuffix),
             PF.client to client,
             AU.authUserData to mutableMapOf<String, Any?>(AD.roles to roles).also {
                 if (org != null) it[AD.org] = org

@@ -253,7 +253,7 @@ fun sortAfterHeaderClick(field: String?, order: String?): Pair<String, Boolean>?
 fun statusWords(user: AdminUser): List<String> = buildList {
     add(if (user.deleted) "deleted" else if (user.enabled) "enabled" else "disabled")
     if (!user.registered && !user.deleted) add("unclaimed")
-    if (user.hasPassword) add("password set")
+    if (user.hasPassword == true) add("password set")
 }
 
 /** The Persona column's value: `Member`, `Admin`, `Member B`. Pure, covered under `jsNodeTest`. */

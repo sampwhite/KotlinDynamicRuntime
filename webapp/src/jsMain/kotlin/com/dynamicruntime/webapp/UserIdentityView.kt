@@ -11,13 +11,21 @@ import web.cssom.ClassName
  * The person behind a user (issue #770), as the admin read returns it: the identity's own facts, and those of
  * its users the caller administers, lowest id first. [signsInAsUserId] is present only when the user an
  * unnamed login lands on is one of [users].
+ *
+ * The identity's facts -- [verifiedAt], [hasPassword], [signsInAsUserId] -- describe the person's users in every
+ * client, so the backend gives them only to a caller who sees every client, or about their own identity (issue
+ * #1298). [hasPassword] is null when it gave none, which is how [identityFactsGiven] tells "not proven" from "not
+ * told".
  */
 class AdminIdentity(
     val verifiedAt: String?,
-    val hasPassword: Boolean,
+    val hasPassword: Boolean?,
     val signsInAsUserId: Long?,
     val users: List<AdminUser>,
-)
+) {
+    /** Whether the backend told this caller the identity's facts. */
+    val identityFactsGiven: Boolean get() = hasPassword != null
+}
 
 /** One row of the editor's list of a person's users: the user, what tells it apart, its status, and whether it is open. */
 class IdentitySibling(val user: AdminUser, val label: String, val status: String, val selected: Boolean)
@@ -44,8 +52,8 @@ fun identitySiblings(users: List<AdminUser>, editingUserId: Long): List<Identity
 
 /**
  * The editor's read-only summary (issue #770), as label/value pairs: the identity's facts -- whether the
- * address is proven, whether a password is set, which user an unnamed login lands on -- then the open user's
- * dates. Pure, covered under `jsNodeTest`.
+ * address is proven, whether a password is set, which user an unnamed login lands on -- when the caller is told
+ * them ([AdminIdentity.identityFactsGiven]), then the open user's dates. Pure, covered under `jsNodeTest`.
  */
 fun identitySummary(identity: AdminIdentity, editing: AdminUser): List<Pair<String, String>> {
     val signsInAs = when (val id = identity.signsInAsUserId) {
@@ -54,10 +62,12 @@ fun identitySummary(identity: AdminIdentity, editing: AdminUser): List<Pair<Stri
         else -> identity.users.firstOrNull { it.userId == id }?.let { qualifierOf(it, identity.users) } ?: "—"
     }
     fun date(iso: String?) = iso?.let { formatTimestamp(it) } ?: "—"
-    return listOf(
+    val facts = if (!identity.identityFactsGiven) emptyList() else listOf(
         "Address" to (identity.verifiedAt?.let { "Proven ${formatTimestamp(it)}" } ?: "Not yet proven"),
-        "Password" to (if (identity.hasPassword) "Set" else "Not set"),
+        "Password" to (if (identity.hasPassword == true) "Set" else "Not set"),
         "Signs in as" to signsInAs,
+    )
+    return facts + listOf(
         "Registered" to date(editing.registeredAt),
         "Activated" to date(editing.activatedAt),
         "Last login" to date(editing.lastLoggedInAt),

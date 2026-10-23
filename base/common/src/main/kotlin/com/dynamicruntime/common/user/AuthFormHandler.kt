@@ -264,7 +264,7 @@ class AuthFormHandler(
             // A recoverably deleted row coming back counts against its client's plan as a new user does (issue #1109).
             if (!existing.enabled) PlanLimits.requireRoomForUser(cxt, existing.client)
             userService.getOrCreateIdentity(cxt, address, verifiedAt = now)
-            existing.username = AuthUserRow.usernameTmpPrefix + address
+            existing.username = AuthUserRow.placeholderUsername(address, existing.client, existing.persona, existing.personaSuffix)
             existing.roles = AdminRules.rolesInClient(existing.client, initialRoles)
             existing.authUserData = mutableMapOf()
             existing.enabled = true
@@ -297,6 +297,9 @@ class AuthFormHandler(
             ?: refuseUnknownLogin(cxt, userId.toString(), formAuthToken, verifyCode)
         verifyCodeOrThrow(cxt, row.primaryId, formAuthToken, verifyCode, attemptKey = userId.toString())
         if (username != null) {
+            // Whether it is a username at all, before whether it is taken (issue #1298): a placeholder holds an address
+            // and a client, and asked first, "taken" would tell anybody signed in whether that address has a user there.
+            checkValidUsername(username)
             val other = userService.queryByUsername(cxt, username)
             if (other != null && other.userId != userId) {
                 throw KdrException("Username '$username' has already been taken.", code = EXC.badInput)
