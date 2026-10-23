@@ -235,9 +235,15 @@ class AppUiService : ServiceInitializer, ContentServer {
     }
 
     /**
-     * Serves the webapp shell and its bundle; passes on anything it does not own. Only engages with
-     * app-focused requests, matching on the context-root-stripped [RequestHandler.appPath] (so the configured
-     * app root, e.g. `wa`, is transparent here).
+     * Serves the webapp shell and its bundle. Only engages with app-focused requests, matching on the
+     * context-root-stripped [RequestHandler.appPath] (so the configured app root, e.g. `wa`, is transparent here).
+     *
+     * **The frontend decides what a path means** (issue #1370, stage 1 of #1125's path routing), so the server holds
+     * no list of routes: anything under the app root that is not asset-shaped is answered with the shell, which then
+     * routes it -- `/wa/docs/x` as well as `/wa`. Asset-shaped is [isAssetShaped]: a single segment carrying a dot
+     * (`webapp.js`, `app.css`, the branding files) or a colon (the `:hash` an asset URL carries). A known asset is
+     * served; any other asset-shaped name passes on, to the 404. No route name has either character, so the two
+     * cannot collide, and `/wa/:bogus` still 404s rather than answering as the app root (issue #529).
      */
     override fun serve(cxt: KdrCxt, handler: RequestHandler): Boolean {
         if (handler.focus != ContextFocus.app) {
@@ -254,20 +260,37 @@ class AppUiService : ServiceInitializer, ContentServer {
         val colon = path.indexOf(':', startIndex = path.lastIndexOf('/') + 2)
         val bareAppPath = if (colon < 0) path else path.substring(0, colon)
         val suppliedHash = if (colon < 0) "" else path.substring(colon + 1)
-        return when (bareAppPath) {
-            "/" -> {
-                // The shell is not content-addressed: it always revalidates so a reload picks up the current
-                // hashed asset URLs after a deploy (never no-store -- it may be stored, just not used stale).
-                handler.setResponseHeader("Cache-Control", AUI.shellCacheControl)
-                val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot, ::versionedName)
-                handler.sendStringResponse(html, EXC.ok, AUI.htmlMimeType)
-                true
+        if (!isAssetShaped(path)) {
+            // A page is fetched, so only a GET or HEAD is answered with the shell; any other method on a route path
+            // passes on, to the 404, as it did before route paths were served -- else every URL under the root would
+            // answer a POST with a 200 page.
+            if (!handler.method.equals("GET", ignoreCase = true) && !handler.method.equals("HEAD", ignoreCase = true)) {
+                return false
             }
+            // The shell is not content-addressed: it always revalidates so a reload picks up the current
+            // hashed asset URLs after a deploy (never no-store -- it may be stored, just not used stale). Its asset
+            // URLs are absolute (`/<appRoot>/...`), so it renders the same at any depth.
+            handler.setResponseHeader("Cache-Control", AUI.shellCacheControl)
+            val html = AppUiPage.render(bootstrapJson(cxt), handler.contextRoot, ::versionedName)
+            handler.sendStringResponse(html, EXC.ok, AUI.htmlMimeType)
+            return true
+        }
+        return when (bareAppPath) {
             AUI.bundlePath -> serveTextResource(cxt, handler, AUI.bundleResource, AUI.jsMimeType, suppliedHash)
             AUI.bundleMapPath -> serveTextResource(cxt, handler, AUI.bundleMapResource, AUI.jsonMimeType, suppliedHash)
             AUI.stylesheetPath -> serveTextResource(cxt, handler, AUI.stylesheetResource, AUI.cssMimeType, suppliedHash)
             else -> serveBranding(cxt, handler, bareAppPath, suppliedHash)
         }
+    }
+
+    /**
+     * Whether [appPath] names an asset rather than a route (issue #1370): one segment directly under the app root,
+     * carrying a dot or a colon. A route is `/`, a bare name (`/docs`), or deeper (`/docs/x`) -- and a deeper segment
+     * may hold either character (an id), which is why only a single segment is judged.
+     */
+    private fun isAssetShaped(appPath: String): Boolean {
+        val segment = appPath.removePrefix("/")
+        return segment.isNotEmpty() && '/' !in segment && ('.' in segment || ':' in segment)
     }
 
     /** The cache header for an asset response: the shared content-addressed decision ([ContentResources.cacheHeaderFor]),

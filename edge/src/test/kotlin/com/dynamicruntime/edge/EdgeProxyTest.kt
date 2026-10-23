@@ -6,6 +6,7 @@ import com.dynamicruntime.common.context.ENV
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.KdrInstanceConfig
 import com.dynamicruntime.common.http.request.ContextRoot
+import com.dynamicruntime.common.http.request.RequestHandler
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -82,6 +83,14 @@ class EdgeProxyTest : StringSpec({
 
     "what an edge forwards is the application's roots" {
         EDGEUP.proxiedRoots shouldBe setOf(ContextRoot.kda, ContextRoot.cp, ContextRoot.wa, ContextRoot.st)
+    }
+
+    // The edge decides by the first segment alone, so a page's deep path is forwarded as `/wa` is (issue #1370): path
+    // routing needs `/wa/docs/x` to reach the application, which answers it with the shell.
+    "a deep path under an application root is forwarded like the root itself" {
+        for (path in listOf("/wa", "/wa/docs", "/wa/docs/getting-started", "/wa/users/12")) {
+            (RequestHandler.parsePath(path).first in EDGEUP.proxiedRoots) shouldBe true
+        }
     }
 
     // The default exists so a bare local edge finds the ordinary development application; an explicit
