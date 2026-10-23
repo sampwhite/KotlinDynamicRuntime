@@ -1708,3 +1708,20 @@ body.dv-open .app-content { padding-right: calc(var(--dv-panel-width) + 16px); }
 .sim-recent .sim-card > h3 { margin: 0 0 4px; font-size: 1rem; }
 .sim-recent-stale { margin-top: 10px; opacity: .7; }
 .sim-recent-stale > p { margin: 2px 0; }
+
+/* A workflow's time windows (issue #1121): the three bands on one track, now and an "as of" moment marked. */
+.wf-window { margin-bottom: 8px; }
+.wf-phase { font-weight: 600; }
+.wf-timeline { margin: 12px 0; max-width: 720px; }
+.wf-timeline-row { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
+.wf-timeline-label { flex: 0 0 150px; color: var(--text-dim); font-size: 13px; }
+.wf-timeline-track { position: relative; flex: 1; height: 14px; background: var(--surface-page); border: 1px solid var(--border); border-radius: 7px; }
+.wf-timeline-band { position: absolute; top: 2px; bottom: 2px; border-radius: 5px; }
+.wf-timeline-band.open-start { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.wf-timeline-band.open-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.wf-band-lifetime { background: var(--chart-1); }
+.wf-band-relevancy { background: var(--chart-2); }
+.wf-band-engagement { background: var(--chart-3); }
+.wf-timeline-marker { position: absolute; top: -4px; bottom: -4px; width: 2px; transform: translateX(-1px); }
+.wf-timeline-now { background: var(--text); }
+.wf-timeline-asof { background: var(--accent-bright); }

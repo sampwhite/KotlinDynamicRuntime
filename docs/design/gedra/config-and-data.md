@@ -245,13 +245,14 @@ The overlay merges by declared rules, the overlay engine of #985:
   by its field.
 
 A template fixes its structure: its tasks, their saves and approvals, its rules, and its functions. So an overlay may
-say only the workflow's label, its tasks' labels and traits, their saves' labels, and how it lays out the types its
-pages show (`types`, which for a workflow holds layouts only). Anything else is refused. An editor (the client page's
-slot form, Design View) changes the workflow as it runs, and what is stored is the diff from the template. A change
-the overlay cannot state, such as a task removed, is refused. If a template later changes in a way an overlay no
-longer fits, or is removed, the workflow costs only itself, as an unreadable report does: the load leaves it out and
-reports it, and keeps its overlay as stored, so an edit of anything else does not delete it. A write that adds or
-changes such an overlay is refused.
+say only the workflow's label, its tasks' labels and traits, their saves' labels, how it lays out the types its pages
+show (`types`, which for a workflow holds layouts only), and a normal workflow's time windows (`lifetime`,
+`relevancy`, `engagement`, issue #1121). Anything else is refused. An editor (the client page's slot form, Design
+View) changes the workflow as it runs, and what is stored is the diff from the template. A change the overlay cannot
+state, such as a task removed, is refused. If a template later changes in a way an overlay no longer fits, or is
+removed, the workflow costs only itself, as an unreadable report does: the load leaves it out and reports it, and
+keeps its overlay as stored, so an edit of anything else does not delete it. A write that adds or changes such an
+overlay is refused.
 
 There is no shadowing. A client's `loanReview` beside the template `kdr:loanReview` is the client's own, and the
 template is nobody's. A client has one creation workflow and one survey; the templates may offer several of each. A

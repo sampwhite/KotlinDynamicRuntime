@@ -1,6 +1,7 @@
 package com.dynamicruntime.webapp
 
 import com.dynamicruntime.common.gedra.workflow.WfDef
+import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
@@ -28,6 +29,7 @@ import react.useEffect
 import react.useRef
 import react.useState
 import web.cssom.ClassName
+import kotlin.time.Clock
 
 private val workflowsScope = MainScope()
 
@@ -40,6 +42,11 @@ external interface ClientWorkflowsSectionProps : Props {
     /** What a save calls once it has taken effect: the page re-reads. */
     var onChanged: () -> Unit
 }
+
+/** What the windows editor is open on: the workflow, after this prefix (issue #1121). */
+private const val windowsPrefix = "windows:"
+
+private fun windowsKey(workflowId: String) = windowsPrefix + workflowId
 
 /** What the slot editor is open on: a new workflow from a template, or a workflow made from one. */
 private fun openKey(templateId: String?, workflowId: String?) = workflowId?.let { "edit:$it" } ?: "new:$templateId"
@@ -101,6 +108,9 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         return@FC
     }
     loadError?.let { errorText("Couldn't refresh the workflows; showing what was loaded.", it) }
+    // The client's zone, which its workflows' windows are shown and entered in; and the moment they are judged at.
+    val zone = entryZone(shown.timeZone ?: DisplayZone.current)
+    val now = Clock.System.now()
     note?.let {
         p {
             className = ClassName("type-hint")
@@ -124,6 +134,7 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                         th { +"Kind" }
                         th { +"Made from" }
                         th { +"Steps" }
+                        th { +"Now" }
                         th { +"" }
                     }
                 }
@@ -141,20 +152,34 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                             td { +workflowEntryText(w.def.entry) }
                             td { +(w.def.fromTemplate?.let { shown.template(it)?.let { t -> workflowName(t.def) } ?: it } ?: "—") }
                             td { +w.def.tasks.joinToString(", ") { it.label } }
+                            // Where a normal workflow stands in its time windows now (issue #1121); the others have none.
+                            td { +(if (w.def.entry == WfEntry.normal) windowPhaseText(w.def.windows, now, zone) else "—") }
                             td {
-                                if (w.notEditable == null) {
-                                    Button {
-                                        type = "link"
-                                        size = "small"
-                                        disabled = open != null
-                                        onClick = { open = openKey(w.def.fromTemplate, w.def.workflowId); note = null }
-                                        +"Edit…"
+                                span {
+                                    className = ClassName("row-actions")
+                                    if (w.notEditable == null) {
+                                        Button {
+                                            type = "link"
+                                            size = "small"
+                                            disabled = open != null
+                                            onClick = { open = openKey(w.def.fromTemplate, w.def.workflowId); note = null }
+                                            +"Edit…"
+                                        }
+                                    } else {
+                                        span {
+                                            className = ClassName("type-hint")
+                                            title = w.notEditable
+                                            +"Not from a template"
+                                        }
                                     }
-                                } else {
-                                    span {
-                                        className = ClassName("type-hint")
-                                        title = w.notEditable
-                                        +"Not from a template"
+                                    if (w.windowsOffered) {
+                                        Button {
+                                            type = "link"
+                                            size = "small"
+                                            disabled = open != null
+                                            onClick = { open = windowsKey(w.def.workflowId); note = null }
+                                            +"Time windows…"
+                                        }
                                     }
                                 }
                             }
@@ -215,7 +240,39 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         }
     }
 
-    open?.let { key ->
+    val windowsOf = open?.takeIf { it.startsWith(windowsPrefix) }?.removePrefix(windowsPrefix)
+    if (windowsOf != null) {
+        val workflow = shown.workflows.firstOrNull { it.def.workflowId == windowsOf && it.windowsOffered }?.def
+        if (workflow != null) {
+            WorkflowWindowsEditor {
+                this.key = "windows-$windowsOf".unsafeCast<Key>()
+                this.clientId = props.clientId
+                this.workflow = workflow
+                this.zone = zone
+                this.savesDraft = props.savesDraft
+                formsOpenable = props.formsOpenable
+                onSaved = { said ->
+                    open = null
+                    note = said
+                    props.onChanged()
+                }
+                onCancel = { open = null }
+                onChanged = props.onChanged
+            }
+        } else {
+            p {
+                className = ClassName("type-hint")
+                +"That workflow is gone, or its windows are no longer set here."
+                Button {
+                    type = "link"
+                    size = "small"
+                    onClick = { open = null }
+                    +"Close"
+                }
+            }
+        }
+    }
+    open?.takeIf { windowsOf == null }?.let { key ->
         val editing = key.removePrefix("edit:").takeIf { key.startsWith("edit:") }
         val workflow = editing?.let { id -> shown.workflows.firstOrNull { it.def.workflowId == id }?.def }
         val templateId = workflow?.fromTemplate ?: key.removePrefix("new:")
