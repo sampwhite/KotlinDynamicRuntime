@@ -676,7 +676,7 @@ private fun cfgSlotEntriesBody(c: KdrCxt, request: Map<String, Any?>): List<Map<
     // carries is not echoed off a test instance here either. The slot is named as a patch names it, not by the
     // stored envelope's `traitId` (issue #1352).
     return row.entriesForEmission(c.instanceConfig.isTestInstance).map { entry ->
-        linkedMapOf<String, Any?>(CFEP.slot to entry[GE.traitId]) + (entry - GE.traitId)
+        linkedMapOf(CFEP.slot to entry[GE.traitId]) + (entry - GE.traitId)
     }
 }
 
