@@ -361,7 +361,12 @@ A fourth is **belonging**, and behaves unlike the other three:
   is set, which user an unnamed login lands on, and the open user's dates. The read runs through the same
   user-admin scope as the rest, so a client administrator sees only the person's users in their own client,
   and "Signs in as" is a dash rather than a hint when the login lands outside it (`identitySiblings`,
-  `identitySummary`).
+  `identitySummary`). The identity's own facts -- the address proven, a password set, where a login lands, and
+  each row's `hasPassword` -- describe the person's users in every client, so the backend gives them only to a
+  caller who sees every client, or about their own identity (issue #1298, `AdminRules.seesIdentityFacts`); for
+  anyone else the Summary leaves those three rows out (`AdminIdentity.identityFactsGiven`) and the Status column
+  says nothing of a password. The rule is by who asks, never by what the identity holds, so their absence says
+  nothing about the person.
   **In `public`** (issue #805) every self-registered user is an administrator of themselves only: the Users page
   lists their own identity's users, "Create user" is not offered (`mayCreateForOthers`; the backend refuses any
   other address and any other client), and "Create a user for me" is how they make variants. Their data reads

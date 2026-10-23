@@ -72,6 +72,10 @@ class AdminUser(
     /** The account's real-world name -- a person's full name, or a business's -- or null when unnamed. */
     val name: String?,
     val enabled: Boolean,
+    /**
+     * Whether the person has a password set -- false, too, when the backend does not say: it tells only a caller who
+     * sees every client, or about their own identity (issue #1298).
+     */
     val hasPassword: Boolean,
     /**
      * Whether the person has claimed this user (issue #749): a code used for it, the fixture, or a user they
@@ -186,15 +190,17 @@ object AdminApi {
         )
     }
 
-    /** Creates a user directly (no email verification); [username], [roles], [org], and name data are optional. */
+    /**
+     * Creates a user directly (no email verification); [roles], [org], and name data are optional. No username: the
+     * person chooses one when they sign in (issue #1298).
+     */
     suspend fun createUser(
-        primaryId: String, username: String?, roles: List<String>?, org: String?,
+        primaryId: String, roles: List<String>?, org: String?,
         isEntity: Boolean = false, name: String? = null, client: String? = null, enabled: Boolean = true,
         persona: String? = null, personaSuffix: String? = null,
     ): AdminUser {
         val body = buildMap<String, Any?> {
             put(ADF.primaryId, primaryId.trim())
-            username?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.username, it) }
             // The persona and personaSuffix (issue #750), sent only when chosen; the backend defaults to `member`
             // and the ordinary (empty) personaSuffix.
             persona?.trim()?.takeIf { it.isNotEmpty() }?.let { put(ADF.persona, it) }
@@ -287,7 +293,7 @@ object AdminApi {
         val results = Http.getApi(UADEP.userIdentity + queryString(mapOf(ADF.userId to userId.toString()))).results()
         return AdminIdentity(
             verifiedAt = results[ADF.verifiedAt] as? String,
-            hasPassword = results[ADF.hasPassword] == true,
+            hasPassword = results[ADF.hasPassword] as? Boolean,
             signsInAsUserId = results[ADF.signsInAsUserId].toOptLong(),
             users = results[ADF.users].toJsonListOfMaps().map { it.toAdminUser() },
         )

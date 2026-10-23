@@ -442,8 +442,6 @@ class UserService : ServiceInitializer {
         persona: String? = null,
         personaSuffix: String = "",
         verifiedAt: Instant? = null,
-        /** A chosen username; absent leaves the `@<address>` placeholder for the person to replace. */
-        username: String? = null,
         registered: Boolean = false,
         mayRecover: (AuthUserRow) -> Boolean = { true },
         customize: (MutableMap<String, Any?>) -> Unit = {},
@@ -461,10 +459,9 @@ class UserService : ServiceInitializer {
         PlanLimits.requireRoomForUser(cxt, client)
         val identity = getOrCreateIdentity(cxt, primaryId, verifiedAt)
         val siblings = usersOfIdentity(cxt, identity.identityId)
-        // The placeholder username is `@<address>` for an identity's first user, as it always was; `username`
-        // is globally unique, so a further user of the same address (issue #747) gets the key appended --
-        // `@<address>|<client>|<persona>|<personaSuffix>` -- until the person chooses a real one.
-        val placeholder = AuthUserRow.usernameTmpPrefix + if (siblings.isEmpty()) primaryId else "$primaryId|$client|$persona|$personaSuffix"
+        // The person chooses a username when they sign in; until then it is a placeholder of one form for every user
+        // (issue #1298), never one that says whether the address has users elsewhere.
+        val placeholder = AuthUserRow.placeholderUsername(primaryId, client, persona, personaSuffix)
         siblings.firstOrNull { it.client == client && it.persona == persona && it.personaSuffix == personaSuffix }?.let { existing ->
             if (existing.enabled || existing.isDeleted || !mayRecover(existing)) {
                 // A keyed message with the key's parts as params, and the key as the envelope's logical error
@@ -478,7 +475,7 @@ class UserService : ServiceInitializer {
                     ),
                 ).also { it.extraData[KdrException.errorCodeKey] = AERR.userKeyTaken }
             }
-            existing.username = username ?: placeholder
+            existing.username = placeholder
             existing.roles = roles
             if (org != null) existing.org = org
             existing.activatedAt = createdAt
@@ -489,7 +486,6 @@ class UserService : ServiceInitializer {
             return existing.userId
         }
         val data = AuthUserRow.mkInitialUser(identity.identityId, primaryId, client, roles, org, persona, personaSuffix, createdAt, registered).toMutableMap()
-        data[AU.username] = username ?: placeholder
         val authUserData: MutableMap<String, Any?> = data[AU.authUserData].toT()
         customize(authUserData)
         return insertUser(cxt, data)

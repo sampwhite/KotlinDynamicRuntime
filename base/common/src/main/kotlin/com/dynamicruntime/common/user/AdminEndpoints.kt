@@ -184,7 +184,6 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         outputRef = ADTY.adminUser,
         inputFields = {
             field(ADF.primaryId, "The new user's primary email address.", required = true)
-            field(ADF.username, "The new user's username; defaults to a placeholder they can change.")
             field(
                 ADF.persona,
                 "The new user's persona, frozen at creation: ${PERSONA.defs.joinToString(", ") { "'${it.name}'" }}. " +
@@ -221,7 +220,6 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         if (!primaryId.isEmailAddress()) {
             throw KdrException.mkInput("'$primaryId' is not a valid email address.")
         }
-        val username = request[ADF.username].toOptStr()
         // The persona is frozen at creation and names the roles a user of it starts with (issue #750), and the
         // other way round: roles given without a persona imply one (`PERSONA.defaultFor`). An explicit role
         // list still wins over the persona's defaults, and is checked against what the caller may grant.
@@ -250,9 +248,6 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
                     "registered at once. Nothing is sent to any other address.",
             )
         }
-        if (username != null && service.queryByUsername(c, username) != null) {
-            throw KdrException.mkInput("Username '$username' has already been taken.")
-        }
 
         // The new user belongs to the administrator's own client. It was hardcoded to `public`, which a
         // client-scoped administrator would have found absurd: they would create a user they could not then
@@ -272,7 +267,7 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
         val confinedTo = orgName(c.userProfile.org).takeIf { AdminRules.adminScope(c) != AdminScope.allClients }
         val userId = service.provisionUser(
             c, primaryId, client, roles, org, c.now(),
-            persona = persona, personaSuffix = personaSuffix, username = username, registered = ownAddress,
+            persona = persona, personaSuffix = personaSuffix, registered = ownAddress,
             mayRecover = {
                 scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) && (confinedTo == null || orgName(it.org) == confinedTo)
             },
@@ -329,14 +324,15 @@ private fun userAdminModule(cxt: KdrCxt, namespace: String, paths: UserAdminPath
     }
 
     // The person behind a user (issue #770): what the editor shows above the editable data. Read through the
-    // same user-admin scope as everything else here, so the users listed, and the one a login lands on, are
-    // only ever ones the caller may administer -- a client administrator does not learn from this that the
-    // person also has a user in another client.
+    // same user-admin scope as everything else here, so the users listed are only ever ones the caller may
+    // administer. The person's own facts -- a proven address, a password, where a login lands -- describe their
+    // users in every client, so they are said only where `AdminRules.seesIdentityFacts` (issue #1298): a client
+    // administrator learns nothing from this about the person's users in another client.
     type(ADTY.adminIdentity) {
         type = SCT.kObject
-        property(ADF.verifiedAt, "When the address was proven (a code or an invitation link); absent while unproven.") { dateTime() }
-        property(ADF.hasPassword, "Whether the identity has a password set.", required = true) { type = SCT.boolean }
-        property(ADF.signsInAsUserId, "The user an unnamed login at this address lands on, when it is one you administer.") { type = SCT.integer }
+        property(ADF.verifiedAt, "When the address was proven (a code or an invitation link); absent while unproven, and $identityFactsNote") { dateTime() }
+        property(ADF.hasPassword, "Whether the identity has a password set; $identityFactsNote") { type = SCT.boolean }
+        property(ADF.signsInAsUserId, "The user an unnamed login at this address lands on; $identityFactsNote") { type = SCT.integer }
         property(ADF.users, "The identity's users you administer, this one included, lowest id first.", required = true) {
             type = SCT.array
             items { ref(ADTY.adminUser) }
@@ -666,11 +662,16 @@ private fun userService(cxt: KdrCxt): UserService = UserService.get(cxt)
 /** An organization as compared (issue #1300): an empty or blank one is no organization, the same as an absent one. */
 private fun orgName(org: String?): String? = org?.trim()?.ifEmpty { null }
 
+/** What the identity view's facts say of when they are given ([AdminRules.seesIdentityFacts]). */
+private const val identityFactsNote = "only for a caller who sees every client, or about their own identity."
+
 /**
  * The person behind [user] as the caller may see them (issue #770): the identity's own facts, and those of its
  * users the caller's user-admin scope admits. Tombstones are left out -- a permanently deleted user is nobody's
- * any more. [ADF.signsInAsUserId] is given only when it names an admitted user: the alternative would tell a
- * client administrator that the person has a user somewhere they cannot see.
+ * any more. The identity's facts are given only where [AdminRules.seesIdentityFacts] (issue #1298): to a caller
+ * who sees every client, or about their own identity -- decided by who asks, so their absence says nothing about
+ * the person. [ADF.signsInAsUserId] is given, besides, only when it names an admitted user, which the editor can
+ * show: one of the caller's own outside their reach is theirs to know already.
  */
 private fun adminIdentityInfo(cxt: KdrCxt, user: AuthUserRow): Map<String, Any?> {
     val service = userService(cxt)
@@ -678,11 +679,13 @@ private fun adminIdentityInfo(cxt: KdrCxt, user: AuthUserRow): Map<String, Any?>
     val identity = service.identityOfUser(cxt, user)
     val admitted = service.usersOfIdentity(cxt, identity.identityId)
         .filter { !it.isDeleted && scope.admitsUserRow(it.client, it.org, it.userId, it.identityId) }
-    val signsInAs = service.registeredDefaultOf(cxt, identity)?.userId?.takeIf { id -> admitted.any { it.userId == id } }
     return buildMap {
-        identity.verifiedAt?.let { put(ADF.verifiedAt, it) }
-        put(ADF.hasPassword, identity.hasPassword)
-        signsInAs?.let { put(ADF.signsInAsUserId, it) }
+        if (AdminRules.seesIdentityFacts(cxt, identity.identityId)) {
+            identity.verifiedAt?.let { put(ADF.verifiedAt, it) }
+            put(ADF.hasPassword, identity.hasPassword)
+            service.registeredDefaultOf(cxt, identity)?.userId?.takeIf { id -> admitted.any { it.userId == id } }
+                ?.let { put(ADF.signsInAsUserId, it) }
+        }
         put(ADF.users, admitted.map { it.toAdminInfo(cxt) })
     }
 }

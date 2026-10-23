@@ -7,6 +7,7 @@ import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.user.ADF
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.user.USF
 import com.dynamicruntime.common.util.toJsonListOfMaps
 import io.kotest.core.spec.style.StringSpec
@@ -30,9 +31,16 @@ class UserSearchEndpointTest : StringSpec({
     val admin = TestUser.createFullAdmin(cxt, "chief@admin.test")
 
     // Three users under the unique `usrch.test` domain (so a search isolates them from the admin and from the
-    // odd-one-out), plus one that must never match it.
-    fun create(email: String, username: String) {
-        admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to email, ADF.username to username))
+    // odd-one-out), plus one that must never match it. The create takes no username (issue #1298) -- the person
+    // chooses one when they sign in -- so it is given here as that would, straight on the row.
+    fun create(email: String, username: String, name: String? = null): Long {
+        val userId = admin.postData(UADEP.userCreate, buildMap {
+            put(ADF.primaryId, email)
+            name?.let { put(ADF.name, it) }
+        })[ADF.userId] as Long
+        val service = UserService.get(cxt)
+        service.updateUser(cxt, service.queryByUserId(cxt, userId)!!.also { it.username = username })
+        return userId
     }
     create("alice@usrch.test", "usrch_alice")
     create("bob@usrch.test", "usrch_bob")
@@ -58,8 +66,8 @@ class UserSearchEndpointTest : StringSpec({
     // The single "any text" q term (issue #581): one box matching email, username, or real name at once, OR
     // across the fields. Its own `qsrch.test` marker, so its rows never drift into the counts above.
     "the q term matches across email, username, and name at once" {
-        admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "egg@qsrch.test", ADF.username to "qsrch_egg", ADF.name to "Zelda Fitzwilliam"))
-        admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "bee@qsrch.test", ADF.username to "qsrch_bee"))
+        create("egg@qsrch.test", "qsrch_egg", "Zelda Fitzwilliam")
+        create("bee@qsrch.test", "qsrch_bee")
         // A real name carried by no email or username.
         emails(search(mapOf(EI.q to "fitzwilliam"))) shouldContainExactly listOf("egg@qsrch.test")
         // A username fragment.
@@ -120,8 +128,7 @@ class UserSearchEndpointTest : StringSpec({
 
     "a mutation response reports the post-write update time, not the stale one" {
         // A separate `ustamp.test` domain so this extra account never drifts into the `usrch.test` counts above.
-        val created = admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "stamp@ustamp.test", ADF.username to "ustamp_1"))
-        val id = created[ADF.userId] as Long
+        val id = admin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "stamp@ustamp.test"))[ADF.userId] as Long
         // Set the name -- a real write -- and confirm the returned row's updatedAt matches what a fresh search
         // reports, rather than the (older) value the row was read at before the write.
         val afterWrite = admin.postData(UADEP.userSetName, mapOf(ADF.userId to id, ADF.name to "Stamped"))[ADF.updatedAt]

@@ -119,6 +119,16 @@ object AdminRules {
     }
 
     /**
+     * Whether the caller is told facts about the person (identity) [identityId] rather than about one of its users --
+     * whether a password is set, when the address was proven, which user a login lands on (issue #1298). Those
+     * describe the person's users in every client, so they are told only to a caller who sees every client, or
+     * about the caller's own identity. Decided by who is asking and never by what the identity holds: "leave them
+     * out when it has users you cannot see" would say, by leaving them out, that it has.
+     */
+    fun seesIdentityFacts(cxt: KdrCxt, identityId: String): Boolean =
+        adminScope(cxt) == AdminScope.allClients || cxt.userProfile.identityId == identityId
+
+    /**
      * How far the caller's user administration reaches (issue #225) -- the scope this seam's KDoc always said
      * it would grow.
      *

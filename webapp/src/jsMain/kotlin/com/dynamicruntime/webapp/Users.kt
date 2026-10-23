@@ -503,7 +503,7 @@ val Users = FC<Props> {
             }
             val created = try {
                 AdminApi.createUser(
-                    email, username = null, roles = draftRoles(emptyList()),
+                    email, roles = draftRoles(emptyList()),
                     org = draftOrg.trim().ifEmpty { null },
                     isEntity = draftIsEntity, name = draftName.trim().ifEmpty { null },
                     client = draftClient.trim().ifEmpty { null }, enabled = draftEnabled,

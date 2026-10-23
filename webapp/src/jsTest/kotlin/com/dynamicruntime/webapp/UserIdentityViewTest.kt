@@ -62,4 +62,12 @@ class UserIdentityViewTest {
         assertTrue(proven.getValue("Address").startsWith("Proven "))
         assertEquals("Set", proven.getValue("Password"))
     }
+
+    @Test
+    fun aCallerNotToldTheIdentitysFactsIsShownNoneOfThem() {
+        // The backend leaves them out for a client administrator (issue #1298); "Not yet proven" would be a guess.
+        val me = user(1, CL.hub)
+        val summary = identitySummary(AdminIdentity(null, null, null, listOf(me)), me).toMap()
+        assertEquals(listOf("Registered", "Activated", "Last login", "Last edited", "Updated"), summary.keys.toList())
+    }
 }
