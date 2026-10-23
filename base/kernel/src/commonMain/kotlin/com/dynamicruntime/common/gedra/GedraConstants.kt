@@ -371,4 +371,16 @@ object GPF {
 
     /** In an outcome: whether the edit changed anything. */
     const val applied = "applied"
+
+    // On a refusal partway through a patch of several targets (issue #1307), under the error's `extraData`: the
+    // targets apply one transaction each, in order, so some may already have landed when one is refused.
+
+    /** The targets that committed before the refusal, each as the answer would have given it: its id and outcomes. */
+    const val committed = "committed"
+
+    /** The id of the target the refusal is for. */
+    const val refused = "refused"
+
+    /** The ids of the targets after it, never attempted. */
+    const val notAttempted = "notAttempted"
 }

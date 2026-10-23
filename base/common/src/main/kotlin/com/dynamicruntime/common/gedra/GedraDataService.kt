@@ -1126,6 +1126,9 @@ class GedraDataService : ServiceInitializer {
      *
      * The row is read again inside the transaction. The admit-phase read cannot be reused: it happened outside
      * the lock, and a merge has to work from what is stored now rather than from what was stored a moment ago.
+     *
+     * A refusal while applying, with more than one target, carries under its extra data the targets that committed
+     * ([GPF.committed]), the one refused ([GPF.refused]), and those not attempted ([GPF.notAttempted]) (issue #1307).
      */
     fun patchGedras(
         cxt: KdrCxt,
@@ -1152,7 +1155,26 @@ class GedraDataService : ServiceInitializer {
                 prepTargetForSave(patchCxt, kind, target)
             }
         }
-        return prepared.flatMap { (kind, targets) -> targets.map { applyToOne(patchCxt, kind, it, scope) } }
+        // Applied in order, one transaction per target: a refusal partway through leaves the earlier targets
+        // committed. With more than one target, the refusal says so (issue #1307) -- which landed, with their outcomes,
+        // which target it is for, and which were never attempted -- since its own message (a trait lock's names the
+        // trait and the workflow) does not name the gedra. A patch of one target is refused exactly as before.
+        val queue = prepared.flatMap { (kind, targets) -> targets.map { kind to it } }
+        val committed = ArrayList<GedraPatchResult>(queue.size)
+        for ((i, step) in queue.withIndex()) {
+            val (kind, target) = step
+            try {
+                committed += applyToOne(patchCxt, kind, target, scope)
+            } catch (e: KdrException) {
+                if (queue.size > 1) {
+                    e.extraData[GPF.committed] = committed.map { it.toJsonMap() }
+                    e.extraData[GPF.refused] = target.gedraId.fullId
+                    e.extraData[GPF.notAttempted] = queue.drop(i + 1).map { it.second.gedraId.fullId }
+                }
+                throw e
+            }
+        }
+        return committed
     }
 
     /**

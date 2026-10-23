@@ -667,7 +667,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
     // `docs/design/gedra/entry.md`.
     listEndpoint(
         GEP.patch,
-        "Changes entries on one or more gedras, and answers with what became of each edit.",
+        "Changes entries on one or more gedras, and answers with what became of each edit. Each gedra is changed in " +
+            "a transaction of its own, in order; a refusal for one of several says, under its extraData, which were " +
+            "'${GPF.committed}' before it, which it is for ('${GPF.refused}'), and which were '${GPF.notAttempted}'.",
         outputRef = GEP.patchedGedra,
         method = HttpMethod.POST,
         // Nothing to truncate: the answer is one result per target supplied.
