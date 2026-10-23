@@ -33,6 +33,7 @@ import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.util.toJsonListOfMaps
+import com.dynamicruntime.common.util.toJsonListOfStrings
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
@@ -149,6 +150,16 @@ class DeletedWorkflowTest : StringSpec({
     fun storedKinds(stored: List<Map<String, Any?>>): Set<String?> =
         stored.filter { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == "review" }.map { it[GE.traitId].toOptStr() }.toSet()
 
+    /** The form's state entries by the plain read (issue #1366), which recomputes nothing. */
+    fun statesRead(user: TestUser, gid: String): List<Map<String, Any?>> =
+        user.getData(GEP.formDocStates, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps()
+
+    /** The read asking for retired workflows too: `review`'s entries' trait ids, and the workflows named retired. */
+    fun retiredRead(user: TestUser, gid: String): Pair<Set<String?>, List<String>> {
+        val answer = user.getData(GEP.formDocStates, mapOf(GDF.gedraId to gid, GDF.includeRetired to true))
+        return storedKinds(answer[GDF.states].toJsonListOfMaps()) to answer[GDF.retiredWorkflows].toJsonListOfStrings()
+    }
+
     "a deleted workflow disappears from every surface, keeps what the form stored, and comes back when put back" {
         val client = "wfdel1354"
         val admin = defineClient(client)
@@ -163,11 +174,16 @@ class DeletedWorkflowTest : StringSpec({
             it.inAggregate shouldBe false
             it.viewable shouldBe false
         }
+        // The plain read leaves it out too; asked for retired workflows, it answers both entries still stored --
+        // the calculated state as well, since the read recomputes nothing -- and names the workflow retired.
+        workflowIdsIn(statesRead(user, gid)) shouldNotContain "review"
+        retiredRead(user, gid) shouldBe (setOf(WFS.workflowEngagement, WFS.workflowState) to listOf("review"))
         // The deriver no longer calculates it, and its engagement -- asserted -- is still stored.
         storedKinds(storedAfterRecompute(user, gid)).let {
             it shouldNotContain WFS.workflowState
             it shouldContain WFS.workflowEngagement
         }
+        retiredRead(user, gid) shouldBe (setOf(WFS.workflowEngagement) to listOf("review"))
         // Withdrawing the form from it answers with the withdrawal: the workflow acted on is shown whatever it is.
         val withdrawn = user.postData(GEP.workflowEngage, mapOf(GDF.gedraId to gid, WFD.workflowId to "review", WFS.engaged to false))
         withdrawn[GDF.states].toJsonListOfMaps().single { it[GE.traitId] == WFS.workflowEngagement }[GE.data]
@@ -185,6 +201,9 @@ class DeletedWorkflowTest : StringSpec({
             // Where the form had got to: its draft is saved, so `check` is next.
             it.ctaTask shouldBe "check"
         }
+        // Back, its entries are answered by the plain read, and the read asking for retired workflows names none.
+        storedKinds(statesRead(user, gid)) shouldBe setOf(WFS.workflowEngagement, WFS.workflowState)
+        retiredRead(user, gid) shouldBe (setOf(WFS.workflowEngagement, WFS.workflowState) to emptyList())
     }
 
     "a workflow past its lifetime's end answers exactly as a deleted one, and comes back when the end moves out" {
@@ -203,6 +222,8 @@ class DeletedWorkflowTest : StringSpec({
             it.inAggregate shouldBe false
             it.viewable shouldBe false
         }
+        workflowIdsIn(statesRead(user, gid)) shouldNotContain "review"
+        retiredRead(user, gid) shouldBe (setOf(WFS.workflowEngagement, WFS.workflowState) to listOf("review"))
         storedKinds(storedAfterRecompute(user, gid)).let {
             it shouldNotContain WFS.workflowState
             it shouldContain WFS.workflowEngagement
@@ -217,6 +238,25 @@ class DeletedWorkflowTest : StringSpec({
             it.viewable shouldBe true
             it.ctaTask shouldBe "check"
         }
+        retiredRead(user, gid) shouldBe (setOf(WFS.workflowEngagement, WFS.workflowState) to emptyList())
+    }
+
+    "the plain read of a form's states answers what the listing shows of it, and only to a caller who may read the form" {
+        val client = "wfread1366"
+        val admin = defineClient(client)
+        val (user, gid) = engagedForm(client)
+        val listed = admin.client.sendJsonGetRequest(GEP.formDocs, mapOf(GDF.withStates to true))[EP.items]
+            .toJsonListOfMaps().single()[GDF.states].toJsonListOfMaps()
+        statesRead(admin, gid) shouldBe listed
+        statesRead(user, gid) shouldBe listed
+        // Nothing is retired, so asking for retired workflows changes nothing.
+        user.getData(GEP.formDocStates, mapOf(GDF.gedraId to gid, GDF.includeRetired to true)).let {
+            it[GDF.states] shouldBe listed
+            it[GDF.retiredWorkflows] shouldBe emptyList<Any?>()
+        }
+
+        val other = TestUser.create(cxt, "other@$client.test", userClient = client)
+        other.client.sendJsonGetRequest(GEP.formDocStates, mapOf(GDF.gedraId to gid))["status"] shouldBe 404
     }
 
     "deleting a workflow past its lifetime is safe: the impact report finds nothing, where deleting a live one does" {

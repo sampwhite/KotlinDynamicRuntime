@@ -362,8 +362,9 @@ class GedraDataService : ServiceInitializer {
      * [readStates] as a caller is shown them (issue #1354): each gedra's state with the per-workflow entries of any
      * workflow that is not live left out ([WorkflowPhases.shownStates]) -- one deleted from its client's configuration,
      * or past its lifetime. The read every caller-facing answer of stored state goes through, so the rule holds by
-     * construction rather than by each endpoint remembering it; [includeRetired] reads them as stored. Each gedra is
-     * judged against its own client's workflows, so a listing across clients is shown each row's own.
+     * construction rather than by each endpoint remembering it; [includeRetired] reads them as stored (issue #1366,
+     * which names the workflows left out with [WorkflowPhases.retiredWorkflows]). Each gedra is judged against its
+     * own client's workflows, so a listing across clients is shown each row's own.
      */
     fun readShownStates(
         cxt: KdrCxt,

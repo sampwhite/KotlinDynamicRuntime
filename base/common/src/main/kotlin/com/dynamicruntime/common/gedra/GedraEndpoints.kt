@@ -827,6 +827,14 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             type = SCT.array
             items { ref("${GCFG.globalNamespace}.${GU.stateUnionName}") }
         }
+        property(
+            GDF.retiredWorkflows,
+            "Only from a read asking for retired workflows: those, sorted, whose entries are answered although they " +
+                "are not live -- deleted from the configuration, or past their lifetime.",
+        ) {
+            type = SCT.array
+            items { type = SCT.string }
+        }
     }
 
     // Puts a form into a normal workflow, or takes it back out. Engagement is an *asserted* fact -- a person
@@ -1038,6 +1046,34 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val svc = GedraDataService.get(c)
         svc.recomputeDerivedState(c, row)
         mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to svc.readShownState(c, row.gedraId, scope))
+    }
+
+    // Reads one form's state as it stands, with no recompute (issue #1366) -- the read the listing's `withStates`
+    // does, for one form. Read with the scope that admits the form, so asking for retired workflows' entries reveals
+    // nothing beyond the form's own stored state, and needs no access beyond reading it.
+    generalEndpoint(
+        GEP.formDocStates,
+        "Answers one form's state entries as stored, with no recompute. The entries of a workflow that is not live " +
+            "-- deleted from the configuration, or past its lifetime -- are left out unless includeRetired asks for " +
+            "them, when retiredWorkflows names those workflows.",
+        HttpMethod.GET,
+        outputRef = GEP.workflowStatesType,
+        inputFields = {
+            field(GDF.gedraId, "The form whose state to read.", required = true)
+            field(GDF.includeRetired, "Also answer the entries of workflows that are not live, and name them. Defaults to false.") {
+                type = SCT.boolean
+                emptyIsAbsent = true
+                allowCoerce = true
+            }
+        },
+        publicApi = true,
+        needsClientConfig = true,
+    ) { c, request ->
+        val row = stateTargetRow(c, request)
+        val includeRetired = request.getOptBool(GDF.includeRetired) == true
+        val states = GedraDataService.get(c).readShownState(c, row.gedraId, ReadScopeRules.forCaller(c), includeRetired)
+        val answer = mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
+        if (includeRetired) answer + (GDF.retiredWorkflows to WorkflowPhases.retiredWorkflows(c, row.client, states)) else answer
     }
 
     // --- the workflow save (issue #535) -------------------------------------------------------------------
