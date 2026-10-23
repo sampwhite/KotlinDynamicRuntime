@@ -249,9 +249,9 @@ object ClientWorkflowEdit {
         if (current.windows == windows) throw KdrException.mkInput("Workflow '$workflowId' already has these windows; nothing to save.")
         val definition = WorkflowTemplates.storedForm(bound, withWindows(bound, current, windows))
         if (!row.configId.baseId.startsWith(CWF.configPrefix)) ClientStoredEdit.requireNoForeignDraft(target, row, "a change to its workflows")
-        fun patch(on: GedraConfigRow, to: Map<String, Any?>) = svc.patchConfig(bound, on.configId, trial = true) { slots ->
+        fun patch(on: GedraConfigRow, to: Map<String, Any?>) = svc.patchConfigs(bound, trial = true) { edit(on.configId) { slots ->
             slots + (CCT.workflowDef to slots[CCT.workflowDef].orEmpty().map { if (it[CCT.workflowId] == workflowId) it + (CCT.definition to to) else it })
-        }
+        } }.single()
         val written = patch(row, definition)
         val reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = { patch(written, stored) }, restorePublished = row.isPublished, impact = impact)
         return WindowsResult(written.configId.baseId, windows, reload.issues, target.mode, ClientStoredEdit.draftImpact(target, written))
