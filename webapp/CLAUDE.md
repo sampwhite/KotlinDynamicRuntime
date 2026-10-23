@@ -828,8 +828,8 @@ the table says so. Blocks other than the home menu (the sample's nav) stay read-
 changes". Wire names: `MNU` in the kernel.
 
 **Editing the definition** (issue #1026, `DefinitionEditor` in `ClientsPage.kt`): under the summary rows of a client
-defined in **stored** configuration (`definitionEditable`: present, origin stored, not a sandbox, not static here --
-the backend refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
+defined in **stored** configuration (`definitionEditable`: present, origin stored, not static here -- the backend
+refuses each in its own words; the page only spares showing an editor that cannot save), **Edit
 definition** opens the fields the caller's policy lets them edit (issue #1116, `ClientPresentationFields.namesFor`):
 for a client's administrator its name, description, time zone (issue #1115; the editor says a change moves no stored
 moment; picked, not typed -- see "The time-zone picker" below), and user labels as one comma line (`labelsOfText`); for an administrator who sees every client also its
@@ -855,6 +855,13 @@ definition the result returned as its baseline until the page re-reads, so a qui
 values back. A success bumps the refresh generation, so the heading, the
 listing row and the shell follow the new name. The editable set is the kernel's `ClientPresentationFields`, which
 the endpoint's input and this editor both read.
+
+**On a sandbox's page too** (issue #1358). A sandbox holds no configuration, so the definition editor, Traits and
+Workflows -- like copy, menu and files -- edit its **parent's**, as drafts the sandbox runs and publishes from here:
+`definitionEditable` admits a sandbox, the definition retrieve hands it its parent's stored definition, and the
+catalogs read what the sandbox runs (its parent's latest, drafts included) beside the parent's stored configuration.
+The backend binds each save to the parent as the person's user there (`ClientStoredEdit.target`). Whether there is a
+sandbox stays the parent's to say: its Sandbox section offers nothing on a sandbox's page.
 
 **Traits** (issue #1117, `ClientTraitsSection.kt`, its pure half in `ClientTraits.kt`, covered by `ClientTraitsTest`):
 under Issues, offered where the definition editor is (`definitionEditable` and `definitionEditOffer`), since a save

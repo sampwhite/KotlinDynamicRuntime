@@ -48,11 +48,14 @@ object ClientTraitsEdit {
 
     /** The catalog of global traits for [client]'s picker -- see the class note -- as the catalog endpoint answers it. */
     fun catalog(cxt: KdrCxt, client: String): Map<String, Any?> {
+        // Named for a sandbox (issue #1358): the traits it runs -- its parent's latest, drafts included -- and the
+        // parent's stored configuration, which holds them and which its editors change.
+        val owner = sandboxParentOf(client) ?: client
         val schema = SchemaService.get(cxt)
         val served = schema.schemaStore.servedDefs
         val overlaid = schema.overlaidTypesFor(client)
         val seeds = LinkedHashSet<String>()
-        val narrowings = ClientTraitNarrowEdit.narrowings(cxt, client)
+        val narrowings = ClientTraitNarrowEdit.narrowings(cxt, owner)
         val traits = schema.gedraTraitsFor(client).filter { schema.isGlobalTrait(it.traitId) }.map { trait ->
             // The data's `$ref`, as the workflow view reads it: always one, the author's own or the generated one.
             val dataRef = trait.dataSchema[SCH.dRef].toOptStr()
@@ -74,11 +77,11 @@ object ClientTraitsEdit {
             put(CIT.traits, traits)
             put(SCH.dDefs, defs)
             // Their copy resolved as every delivered layout's is, so a preview reads words, not fragment pulls.
-            put(CIT.layouts, resolveDeliveredLayouts(cxt.mkSubContext("traitLayouts", client), schema.schemaStore.layoutsFor(defs)))
-            ClientService.get(cxt).known(client)?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
+            put(CIT.layouts, resolveDeliveredLayouts(cxt.mkSubContext("traitLayouts", owner), schema.schemaStore.layoutsFor(defs)))
+            ClientService.get(cxt).known(owner)?.let(::groupsRefusal)?.let { put(CIT.groupsRefused, it) }
             // The client's own traits, for the traits editor (issue #1118), and the plan's limits it is held to.
-            put(CIT.ownTraits, ClientTraitDesignEdit.ownTraits(cxt, client))
-            ClientTraitDesignEdit.quotas(cxt, client)?.let { put(CIT.quotas, it) }
+            put(CIT.ownTraits, ClientTraitDesignEdit.ownTraits(cxt, owner))
+            ClientTraitDesignEdit.quotas(cxt, owner)?.let { put(CIT.quotas, it) }
         }
     }
 
@@ -95,28 +98,25 @@ object ClientTraitsEdit {
      * would take effect ([ClientStoredEdit.target]); [impact] whether a live save that affects stored data goes ahead.
      */
     fun set(cxt: KdrCxt, client: String, included: List<String>, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): Result {
-        sandboxParentOf(client)?.let { parent ->
+        // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
+        val owner = sandboxParentOf(client) ?: client
+        if (ClientService.get(cxt).originOf(owner) == GedraConfigOrigin.source) {
             throw KdrException.mkInput(
-                "'$client' is a sandbox: the traits it includes are its parent's, which are chosen on '$parent'.",
-            )
-        }
-        if (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source) {
-            throw KdrException.mkInput(
-                "Client '$client' is defined in source code (its ClientDef), so the traits it includes are chosen " +
+                "Client '$owner' is defined in source code (its ClientDef), so the traits it includes are chosen " +
                     "there; a stored definition cannot override it.",
             )
         }
         val target = ClientStoredEdit.target(cxt, client, "traitsEdit", expected)
         val bound = target.bound
         val holder = ClientStoredEdit.definitionHolder(bound)
-            ?: throw KdrException.mkInput("Client '$client' has no stored definition to include traits in.")
+            ?: throw KdrException.mkInput("Client '$owner' has no stored definition to include traits in.")
         ClientStoredEdit.requireNoForeignDraft(target, holder, "a change of its traits")
         val before = holder.entriesBySlot()[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty()
         val current = before[CLD.includedTraits].toJsonListOfStrings()
         val wanted = included.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (wanted == current) throw KdrException.mkInput("Client '$client' already includes exactly these traits; nothing to save.")
+        if (wanted == current) throw KdrException.mkInput("Client '$owner' already includes exactly these traits; nothing to save.")
         for (entry in wanted.filterNot { it in current }) {
-            addedEntryFault(cxt, client, entry)?.let { throw KdrException.mkInput(it) }
+            addedEntryFault(cxt, owner, entry)?.let { throw KdrException.mkInput(it) }
         }
         val written = ClientStoredEdit.patchDefinition(bound, holder) { def ->
             if (wanted.isEmpty()) def.remove(CLD.includedTraits) else def[CLD.includedTraits] = wanted

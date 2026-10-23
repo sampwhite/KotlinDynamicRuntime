@@ -1078,15 +1078,17 @@ fun definitionEditRequest(
 fun definitionEditChanges(request: Map<String, Any?>): Boolean = ClientPresentationFields.namesFor(platform = true).any { it in request }
 
 /**
- * Whether the detail offers the definition editor for the client [row] describes (issue #1026): one this node
- * carries, defined in **stored** configuration (a source definition is edited in source), not a sandbox (its
- * definition is its parent's), and not static here (a static client takes nothing stored). The backend refuses
- * each of these in its own words; this only spares showing an editor that cannot save. Pure, and covered under
- * `jsNodeTest`.
+ * Whether the detail offers the definition editor -- and the Traits and Workflows sections beside it -- for the client
+ * [row] describes (issue #1026): one this node carries, defined in **stored** configuration (a source definition is
+ * edited in source), and not static here (a static client takes nothing stored). A **sandbox** is offered them too
+ * (issue #1358): it holds no configuration, so a save from its page is a draft of its parent's, which it runs -- and
+ * whether that is stored is said by the parent's stored definition, which the page is handed for it. The backend
+ * refuses each of these in its own words; this only spares showing an editor that cannot save. Pure, and covered
+ * under `jsNodeTest`.
  */
 fun definitionEditable(row: ClientOverview?): Boolean =
-    row != null && row.status == ClientStatus.present.name && row.origin == GedraConfigOrigin.stored.name &&
-        row.sandboxOf == null && !row.staticHere
+    row != null && row.status == ClientStatus.present.name && !row.staticHere &&
+        (row.origin == GedraConfigOrigin.stored.name || row.sandboxOf != null)
 
 /** What the detail offers for editing the definition (issue #1026): the [editor], a [note] in its place, or neither yet. */
 class DefinitionEditOffer(val editor: Boolean, val note: String?)
@@ -1095,8 +1097,9 @@ class DefinitionEditOffer(val editor: Boolean, val note: String?)
  * Whether the detail offers the definition editor (issue #1026), or a note in its place, or neither yet: the
  * stored configuration [storedConfig] holding the definition may have unpublished changes, which a save would publish
  * unseen -- the backend's draft rule -- so it must be published first, and the page says so before the attempt.
- * Not for a client whose definition asks for a sandbox ([sandbox], the running definition's flag, which is what
- * the backend reads to make a save a draft); and nothing is offered until the [configs] have loaded, so an editor is
+ * Not where a save is a draft ([sandbox]: the page's [pageSavesDraft] -- a client whose definition asks for a sandbox,
+ * or a sandbox's own page, issue #1358 -- which is what the backend reads to make a save a draft, and a draft publishes
+ * nothing unseen); and nothing is offered until the [configs] have loaded, so an editor is
  * never opened and then replaced by the note. Pure, and covered under `jsNodeTest`.
  */
 fun definitionEditOffer(storedConfig: String?, configs: List<ConfigSummaryView>?, sandbox: Boolean): DefinitionEditOffer {

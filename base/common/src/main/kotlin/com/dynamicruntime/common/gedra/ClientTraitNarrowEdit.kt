@@ -84,9 +84,11 @@ object ClientTraitNarrowEdit {
      * the client's alteration, and the configuration holding a stored one.
      */
     fun narrowings(cxt: KdrCxt, client: String): Map<String, Map<String, Any?>> {
+        // Named for a sandbox, its parent's, which the sandbox runs and its editors change (issue #1358).
+        val owner = sandboxParentOf(client) ?: client
         val bases = globalTraitBases(cxt)
-        val stored = storedAlterations(cxt.mkSubContext("traitNarrowings", client), bases.values.map { it.typeName }.toSet())
-        val inSource = SchemaService.get(cxt).overlaidTypesFor(client)
+        val stored = storedAlterations(cxt.mkSubContext("traitNarrowings", owner), bases.values.map { it.typeName }.toSet())
+        val inSource = SchemaService.get(cxt).overlaidTypesFor(owner)
         return bases.mapValues { (traitId, base) ->
             val alteration = stored[base.typeName]
             buildMap {
@@ -113,9 +115,8 @@ object ClientTraitNarrowEdit {
      * user the save would take effect; [impact] whether a save that affects stored forms goes ahead.
      */
     fun save(cxt: KdrCxt, client: String, narrowing: TraitNarrowing, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): Result {
-        sandboxParentOf(client)?.let { parent ->
-            throw KdrException.mkInput("'$client' is a sandbox: its traits are its parent's, which are narrowed on '$parent'.")
-        }
+        // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
+        val owner = sandboxParentOf(client) ?: client
         val base = globalTraitBases(cxt)[narrowing.traitId]
             ?: throw KdrException("There is no global trait '${narrowing.traitId}' to narrow.", code = EXC.notFound)
         val problems = traitNarrowingProblems(narrowing, base.body)
@@ -123,7 +124,7 @@ object ClientTraitNarrowEdit {
         val target = ClientStoredEdit.target(cxt, client, "traitNarrow", expected)
         val bound = target.bound
         val existing = storedAlterations(bound, setOf(base.typeName))[base.typeName]
-        if (existing == null && base.typeName in SchemaService.get(cxt).overlaidTypesFor(client)) {
+        if (existing == null && base.typeName in SchemaService.get(cxt).overlaidTypesFor(owner)) {
             throw KdrException.mkInput("Trait '${narrowing.traitId}' cannot be narrowed here. $sourceAlteration")
         }
         existing?.let { e ->
@@ -139,14 +140,14 @@ object ClientTraitNarrowEdit {
         // narrowing again writes into it, since a configuration once written is never made anew.
         val holder = existing?.row ?: GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.configId.baseId == name }
         if (holder == null) {
-            body ?: throw KdrException.mkInput("Client '$client' takes trait '${narrowing.traitId}' as it is; nothing to save.")
+            body ?: throw KdrException.mkInput("Client '$owner' takes trait '${narrowing.traitId}' as it is; nothing to save.")
             val entry = mapOf(CCT.typeName to base.typeName, CCT.schema to body)
-            val config = reassembleForWrite(bound, name, clientNamespace(client), client, mapOf(CCT.schemaDef to listOf(entry)))
+            val config = reassembleForWrite(bound, name, clientNamespace(owner), owner, mapOf(CCT.schemaDef to listOf(entry)))
             written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true)
             reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = {}, impact = impact)
         } else {
             if (existing == null) {
-                body ?: throw KdrException.mkInput("Client '$client' takes trait '${narrowing.traitId}' as it is; nothing to save.")
+                body ?: throw KdrException.mkInput("Client '$owner' takes trait '${narrowing.traitId}' as it is; nothing to save.")
             } else {
                 val ours = existing.row.configId.baseId.startsWith(CIT.narrowPrefix)
                 if (!ours) ClientStoredEdit.requireNoForeignDraft(target, existing.row, "a narrowing of its traits")

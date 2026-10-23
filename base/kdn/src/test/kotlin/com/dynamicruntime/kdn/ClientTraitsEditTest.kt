@@ -205,7 +205,7 @@ class ClientTraitsEditTest : StringSpec({
         supported(client) shouldNotContain GT.name
     }
 
-    "for a client with a sandbox a change is a draft its sandbox runs, and the sandbox is not edited itself" {
+    "for a client with a sandbox a change is a draft its sandbox runs, from the client's page or the sandbox's" {
         val client = "traitsbx1117"
         defineClient(client, sandbox = true)
         val chief = admin(client)
@@ -214,10 +214,12 @@ class ClientTraitsEditTest : StringSpec({
         // The client runs what it published; its sandbox runs the draft.
         present(client).includedTraits shouldBe emptyList()
         present(sandboxOf(client)).includedTraits shouldBe listOf(GT.name)
+        // Named for the sandbox, it is the parent's draft that is read and changed (issue #1358): the draft already
+        // includes the trait, so including it again is nothing to save, said of the parent.
         val full = TestUser.createFullAdmin(cxt, "full@$client.test")
         full.expectError(
             EXC.badInput, UADEP.clientTraitsSet, mapOf(CLD.client to sandboxOf(client), CLD.includedTraits to listOf(GT.name)),
-        ).toString() shouldContain "is a sandbox"
+        ).toString() shouldContain "Client '$client' already includes exactly these traits"
     }
 
     "another client's administrator may neither read the catalog nor save for it" {

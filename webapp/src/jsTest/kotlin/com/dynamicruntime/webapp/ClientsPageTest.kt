@@ -650,10 +650,12 @@ class ClientsPageTest {
         fun row(status: String = ClientStatus.present.name, origin: String = GedraConfigOrigin.stored.name, sandboxOf: String? = null, staticHere: Boolean = false) =
             ClientOverview("globex", "Globex", status, origin, 1, 0, 0, 0, 0, false, emptyList(), 0, 0, sandboxOf = sandboxOf, staticHere = staticHere)
         assertEquals(true, definitionEditable(row()))
-        // A source definition is edited in source; a sandbox's is its parent's; a static client takes nothing stored;
+        // A source definition is edited in source; a static client takes nothing stored;
         // a client this node does not carry has nothing to reload; and before the listing answers there is no row.
         assertEquals(false, definitionEditable(row(origin = GedraConfigOrigin.source.name)))
-        assertEquals(false, definitionEditable(row(sandboxOf = "globex")))
+        // A sandbox's page edits its parent's, as drafts (issue #1358).
+        assertEquals(true, definitionEditable(row(sandboxOf = "globex", origin = GedraConfigOrigin.source.name)))
+        assertEquals(false, definitionEditable(row(sandboxOf = "globex", staticHere = true)))
         assertEquals(false, definitionEditable(row(staticHere = true)))
         assertEquals(false, definitionEditable(row(status = ClientStatus.dropped.name)))
         assertEquals(false, definitionEditable(null))
