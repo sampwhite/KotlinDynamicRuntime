@@ -9,6 +9,7 @@ import react.FC
 import react.Props
 import react.dom.html.ReactHTML.div
 import react.dom.html.ReactHTML.span
+import react.useMemo
 import web.cssom.ClassName
 
 /**
@@ -57,7 +58,7 @@ val Markdown = FC<MarkdownProps> { props ->
         // left to the browser.
         // A click on a block's copy button copies the block (issue #1233); any other click may be an anchor's.
         onClick = { e -> if (!copyCodeBlock(e)) scrollSameDocAnchorIntoView(e) }
-        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdown(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
+        dangerouslySetInnerHTML = useInnerHtml(props.source.renderMarkdown(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
     }
 }
 
@@ -167,13 +168,21 @@ private fun scrollSameDocAnchorIntoView(e: dynamic) {
 val MarkdownInline = FC<MarkdownProps> { props ->
     span {
         className = ClassName("markdown-inline")
-        dangerouslySetInnerHTML = innerHtml(props.source.renderMarkdownInline(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
+        dangerouslySetInnerHTML = useInnerHtml(props.source.renderMarkdownInline(markdownHooksFor(props.linkResolver, props.refAddress, useShellFacts())))
     }
 }
 
-/** React's `{ __html }` wrapper for already-rendered HTML. */
-private fun innerHtml(html: String): dynamic {
+/**
+ * React's `{ __html }` wrapper for already-rendered HTML, the same object for as long as [html] is the same.
+ *
+ * React compares this prop by the wrapper, not by the HTML in it: a new wrapper with the same HTML rewrites the
+ * element's whole content. Every render made one, so any re-render replaced every node of a document -- measured on
+ * the refresh a window's `focus` sets off. A click pressed on a link and released on its replacement goes to their
+ * common parent, which follows nothing: the first click on a document's link after returning to the browser from
+ * another application, which is what brings the focus, did nothing, and the second worked.
+ */
+private fun useInnerHtml(html: String): dynamic = useMemo(html) {
     val wrapper: dynamic = js("({})")
     wrapper.__html = html
-    return wrapper
+    wrapper
 }
