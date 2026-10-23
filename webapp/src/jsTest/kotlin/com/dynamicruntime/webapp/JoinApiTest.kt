@@ -68,6 +68,6 @@ class JoinApiTest {
 
     @Test
     fun theJoinPageIsLinkedByItsClient() {
-        assertEquals("#page=join&c=confdemo", joinHref("confdemo"))
+        assertEquals("/join/confdemo", joinHref("confdemo"))
     }
 }

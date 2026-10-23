@@ -101,26 +101,26 @@ class ClientsPageTest {
     @Test
     fun theCountsLeadToTheListingsBehindThem() {
         // Across clients the link chooses the client; a scoped administrator's listing is their own already.
-        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.client}=acme", clientFormsHref("acme", acrossClients = true))
-        assertEquals("#${HP.page}=${HMENU.pageForms}", clientFormsHref("acme", acrossClients = false))
-        assertEquals("#${HP.page}=${HMENU.pageUsers}&${USF.client}=acme", clientUsersHref("acme", acrossClients = true))
-        assertEquals("#${HP.page}=${HMENU.pageUsers}", clientUsersHref("acme", acrossClients = false))
+        assertEquals("/forms?${EI.client}=acme", clientFormsHref("acme", acrossClients = true))
+        assertEquals("/forms", clientFormsHref("acme", acrossClients = false))
+        assertEquals("/users?${USF.client}=acme", clientUsersHref("acme", acrossClients = true))
+        assertEquals("/users", clientUsersHref("acme", acrossClients = false))
     }
 
     @Test
     fun aClientsOwnPageIsOneAddress() {
-        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.client}=acme", clientDetailHref("acme"))
+        assertEquals("/clients/acme", clientDetailHref("acme"))
         // A sandbox's id holds a colon, which a hash value must carry encoded.
-        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.client}=acme%3Asandbox", clientDetailHref("acme:sandbox"))
+        assertEquals("/clients/acme:sandbox", clientDetailHref("acme:sandbox"))
         assertEquals(clientDetailHref("acme"), clientOverridesHref("acme"))
     }
 
     @Test
     fun aUsersFormsLinkNamesTheUserByIdAndAClientOnlyWhenOneIsChosen() {
         // By id: an address names a person, whose default user need not be the row the link is on.
-        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42", userFormsHref(42L, surfaceClient = null))
+        assertEquals("/forms?${EI.user}=42", userFormsHref(42L, surfaceClient = null))
         // With a client chosen the listing is drawn on that client's surface.
-        assertEquals("#${HP.page}=${HMENU.pageForms}&${EI.user}=42&${EI.client}=globex", userFormsHref(42L, "globex"))
+        assertEquals("/forms?${EI.user}=42&${EI.client}=globex", userFormsHref(42L, "globex"))
         // The page keeps both keys when it loads: the client chosen, the user within it.
         val search = formsInitialSearch(mapOf(HP.page to HMENU.pageForms, EI.user to "42", EI.client to "globex"), seeAllClients = true)
         assertEquals(mapOf(EI.user to "42", EI.client to "globex"), search)
@@ -442,8 +442,8 @@ class ClientsPageTest {
         assertEquals("3 copy", customizedText(3, 0))
         assertEquals("2 menu", customizedText(0, 2))
         assertEquals("\u2014", customizedText(0, 0))
-        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.client}=acme", clientOverridesHref("acme"))
-        assertEquals("#${HP.page}=${HMENU.pageClients}&${HP.overrides}=1", overridesAcrossHref())
+        assertEquals("/clients/acme", clientOverridesHref("acme"))
+        assertEquals("/clients?${HP.overrides}=1", overridesAcrossHref())
     }
 
     @Test

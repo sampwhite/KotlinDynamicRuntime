@@ -29,7 +29,7 @@ class DocLinkResolverTest {
     @Test
     fun resolverLinksRegisteredDocsInAppViaTheSharedHashFormat() {
         val resolve = docLinkResolver("README.md", links, base)
-        assertEquals("#page=docs&doc=code-guide", resolve("code-guide.md"))
+        assertEquals("/docs/code-guide", resolve("code-guide.md"))
     }
 
     @Test
@@ -42,7 +42,7 @@ class DocLinkResolverTest {
     fun resolverCarriesASectionIntoTheInAppLink() {
         // Issue #1136: the heading a link names reaches the documents page, which scrolls to it.
         val resolve = docLinkResolver("README.md", links, base)
-        assertEquals("#page=docs&doc=code-guide&section=naming", resolve("code-guide.md#naming"))
+        assertEquals("/docs/code-guide?section=naming", resolve("code-guide.md#naming"))
     }
 
     @Test
@@ -51,8 +51,8 @@ class DocLinkResolverTest {
         // leading slash or without one -- and an unlisted document resolves like any other.
         val suite = links + HomeLink("demo-client-review", "Review", "demo-client-review", "b", "docs/demo-client/review.md", listed = false)
         val resolve = ShellFacts(docs = suite, sourceRepoBase = base).copyLinkResolver()
-        assertEquals("#page=docs&doc=demo-client-review", resolve("/docs/demo-client/review.md"))
-        assertEquals("#page=docs&doc=demo-client-review&section=tasks", resolve("docs/demo-client/review.md#tasks"))
+        assertEquals("/docs/demo-client-review", resolve("/docs/demo-client/review.md"))
+        assertEquals("/docs/demo-client-review?section=tasks", resolve("docs/demo-client/review.md#tasks"))
         assertEquals("https://example.com/x", resolve("https://example.com/x"))
         // Before the shell has been told, a document link is a repo link, or left as written with no repo configured.
         assertEquals("/docs/demo-client/review.md", ShellFacts().copyLinkResolver()("/docs/demo-client/review.md"))
@@ -62,6 +62,6 @@ class DocLinkResolverTest {
     fun resolverWithoutABaseLeavesRepoFilesAsWrittenButStillLinksDocs() {
         val resolve = docLinkResolver("README.md", links, null)
         assertEquals("LICENSE", resolve("LICENSE"))
-        assertEquals("#page=docs&doc=code-guide", resolve("code-guide.md"))
+        assertEquals("/docs/code-guide", resolve("code-guide.md"))
     }
 }

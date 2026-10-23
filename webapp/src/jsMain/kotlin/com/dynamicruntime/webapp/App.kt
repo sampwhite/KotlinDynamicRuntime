@@ -24,10 +24,10 @@ private val appScope = MainScope()
 
 /**
  * The application root and top-level router. The persistent [AppBar] sits above every page; the page itself is
- * derived from the URL hash: `page=catalog` (or a deep endpoint link carrying `m=…`) shows the
- * [EndpointCatalog], anything else shows [Home]. It listens for `hashchange` so the app-bar menu and the
- * browser back/forward buttons switch pages. The catalog's in-page navigation (table ⇄ endpoint) uses
- * replaceState and does not fire `hashchange`, so it doesn't disturb this.
+ * derived from the URL, through [hashParams]: `/wa/catalog` (or a deep endpoint link carrying `m=…`) shows the
+ * [EndpointCatalog], the app root shows [Home], and a path no route matches the not-found page (issue #1125). It is
+ * told of every move -- a link followed, a menu item, the browser's back/forward buttons -- so those switch pages.
+ * The catalog's in-page navigation (table ⇄ endpoint) uses replaceState and tells nobody, so it doesn't disturb this.
  *
  * The whole tree sits inside a [ConfigProvider] on antd's dark algorithm, so antd's controls are themed to
  * match the shell's dark palette rather than rendering their light default inside it (issue #96).
@@ -260,6 +260,9 @@ val App = FC<Props> {
                                 pageSimulations -> if (testAccess) SimulationsPage {} else Home {}
                                 // Becoming someone (issue #1183), for a caller with test access, as Simulations is.
                                 pageBecomeUser -> if (testAccess) BecomeUserPage {} else Home {}
+                                // A path the app has no route for (issue #1125): the server answers every path with
+                                // the app, so this is the one place that can say there is no such page.
+                                pageNotFound -> NotFoundPage {}
                                 else -> Home {}
                             }
                         }
@@ -359,8 +362,9 @@ private const val pageSimulations = HMENU.pageSimulations
 private const val pageBecomeUser = HMENU.pageBecomeUser
 
 /**
- * Resolves the page from the hash: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the catalog,
- * `page=login`/`page=register` the auth flow, `page=profile` the profile page, anything else home.
+ * Resolves the page from the address's params: `page=catalog` (or an endpoint deep-link carrying `m=`) shows the
+ * catalog, `page=login`/`page=register` the auth flow, `page=profile` the profile page, a path no route matches the
+ * not-found page, anything else home.
  */
 private fun currentPage(): String {
     val params = hashParams()
@@ -398,6 +402,7 @@ private fun currentPage(): String {
         params[HP.page] == pageDebug -> pageDebug
         params[HP.page] == pageSimulations -> pageSimulations
         params[HP.page] == pageBecomeUser -> pageBecomeUser
+        params[HP.page] == pageNotFound -> pageNotFound
         else -> "home"
     }
 }

@@ -17,5 +17,9 @@ fun main() {
     installGlobalErrorHandlers()
     val container = document.getElementById(ElementId("root"))
         ?: error("Couldn't find the #root container in index.html")
-    createRoot(container).render(App.create())
+    val root = createRoot(container)
+    // After createRoot, whose listeners its own must follow; before the first render, so an address from before paths
+    // (`#page=…`) is read as the path it is rewritten to.
+    installRouting(container)
+    root.render(App.create())
 }

@@ -76,7 +76,7 @@ val TestAccessCard = FC<Props> {
                 +"Become deployment admin"
             }
             a {
-                href = "#page=${HMENU.pageBecomeUser}"
+                href = hashHref(listOf(HP.page to HMENU.pageBecomeUser))
                 className = ClassName("back-link")
                 +"Become a user…"
             }

@@ -86,7 +86,7 @@ class ImpactReportTest {
 
     @Test
     fun theFormsLinkToTheRawEditorWhereThisSessionCanReadThem() {
-        assertEquals("#page=$pageEditForm&${HP.gedra}=gd.fd.acme.a", impactFormHref("gd.fd.acme.a"))
+        assertEquals("/forms/gd.fd.acme.a/raw", impactFormHref("gd.fd.acme.a"))
         // A sandbox's session is a user of the sandbox, and cannot read its parent's forms; across clients, it can.
         assertFalse(impactFormsOpenable(acrossClients = false, onSandboxPage = true))
         assertTrue(impactFormsOpenable(acrossClients = true, onSandboxPage = true))
