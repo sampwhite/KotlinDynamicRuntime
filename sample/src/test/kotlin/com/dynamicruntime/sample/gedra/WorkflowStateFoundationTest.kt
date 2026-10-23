@@ -145,7 +145,7 @@ class WorkflowStateFoundationTest : StringSpec({
         seen.single()[WFS.lastEngagedBy].toString() shouldBe acmeAdmin.userId.toString()
     }
 
-    "a workflow retired from configuration keeps its engaged form's entry, and can still be disengaged" {
+    "a workflow retired from configuration shows nothing, keeps the form's engagement, and can still be disengaged" {
         val user = TestUser.create(cxt, "wfs-retired@acme.test", userClient = SC.acme)
         val admin = TestUser.createFullAdmin(cxt, "wfs-retired-admin@example.com")
         val gid = newForm(user)
@@ -161,21 +161,22 @@ class WorkflowStateFoundationTest : StringSpec({
                 ),
             ),
         )
-        // The deriver keeps a bare entry for it -- no revision, since there is no definition left to compute
-        // against -- beside the declared workflow's.
-        val before = entriesOf(statesOf(user.postData(recompute, mapOf(GDF.gedraId to gid))), WFS.workflowState)
-        before.map { it[WFD.workflowId].toOptStr() } shouldContainExactly listOf(SW.auditReview, SW.siteFollowUp, retired)
-        before.single { it[WFD.workflowId].toOptStr() == retired }[WFS.computedAgainstRef].shouldBeNull()
+        // Deleted is past its lifetime (issue #1354): the deriver calculates nothing for it, and nothing about it is
+        // shown -- the recompute's answer has neither a state nor the engagement for it.
+        val before = statesOf(user.postData(recompute, mapOf(GDF.gedraId to gid)))
+        entriesOf(before, WFS.workflowState).map { it[WFD.workflowId].toOptStr() } shouldContainExactly listOf(SW.auditReview, SW.siteFollowUp)
+        entriesOf(before, WFS.workflowEngagement).filter { it[WFD.workflowId] == retired }.shouldBeEmpty()
+        // The engagement is still stored, for when the workflow comes back.
+        fun stored() = statesOf(admin.getItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid)))
+        entriesOf(stored(), WFS.workflowEngagement).single { it[WFD.workflowId] == retired }[WFS.engaged] shouldBe true
 
         // Re-engaging it is still refused -- the form cannot be put *into* a workflow that no longer exists...
         user.expectError(EXC.badInput, engage, data = mapOf(GDF.gedraId to gid, GDF.workflowId to retired))
-        // ...but it can be taken out, and its derived entry then goes, while the engagement keeps its trail.
-        val after = statesOf(
-            user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to retired, WFS.engaged to false)),
-        )
-        entriesOf(after, WFS.workflowState).map { it[WFD.workflowId].toOptStr() } shouldContainExactly
+        // ...but it can be taken out, and the engagement keeps its trail.
+        user.postData(engage, mapOf(GDF.gedraId to gid, GDF.workflowId to retired, WFS.engaged to false))
+        entriesOf(stored(), WFS.workflowState).map { it[WFD.workflowId].toOptStr() } shouldContainExactly
             listOf(SW.auditReview, SW.siteFollowUp)
-        entriesOf(after, WFS.workflowEngagement).single()[WFS.engaged] shouldBe false
+        entriesOf(stored(), WFS.workflowEngagement).single { it[WFD.workflowId] == retired }[WFS.engaged] shouldBe false
     }
 
     // --- eligibility (issue #783) -------------------------------------------------------------------------

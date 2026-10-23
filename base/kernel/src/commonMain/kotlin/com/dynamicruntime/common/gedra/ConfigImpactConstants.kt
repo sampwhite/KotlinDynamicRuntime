@@ -93,10 +93,13 @@ enum class ImpactKind {
      */
     dataInvalid,
 
-    /** A form created by, or taking part in, a workflow the client would no longer have. */
+    /**
+     * A form created by, or taking part in, a workflow the client would no longer have -- one live now: deleting a
+     * workflow already past its lifetime is a safe delete, and is not reported (issue #1354).
+     */
     workflowGone,
 
-    /** A form whose recorded state names a task its workflow would no longer define. */
+    /** A form whose recorded state names a task its workflow -- live now -- would no longer define. */
     stateStranded,
 
     /**

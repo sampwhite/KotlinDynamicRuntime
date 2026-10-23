@@ -411,7 +411,8 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         // one session -- read with the same `scope` that admitted the rows, so the state a caller sees is
         // exactly the state of the forms they can already see.
         val withStates = request.getOptBool(GDF.withStates) == true
-        val statesByGedra = if (withStates) svc.readStates(c, page.rows.map { it.gedraId }, scope) else emptyMap()
+        // As a caller is shown them (issue #1354): no deleted or past-lifetime workflow's entries.
+        val statesByGedra = if (withStates) svc.readShownStates(c, page.rows.map { it.gedraId }, scope) else emptyMap()
         // Who owns each row, for a caller who asked for it and may see other users' documents (issues #562,
         // #591): the name and email the User column shows. Attached only when `includeUsers` is set AND the
         // caller may see past their own rows -- an ordinary caller's rows are all their own, so there is nobody
@@ -872,7 +873,9 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         if (engaged && declared != null) WorkflowPhases.requireEngageable(c, declared.def)
         // Engaging a declared workflow is gated on its eligibility tests (issue #783); disengaging is not.
         val states = WorkflowEngagement.setEngaged(c, row, workflowId, engaged, declared?.def?.takeIf { isNormal })
-        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
+        // Shown as every answer is (issue #1354) -- but the workflow acted on always, so withdrawing a form from one since
+        // deleted answers with the withdrawal it made.
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states, alsoShow = workflowId))
     }
 
     // A reviewer approves an approval task (issue #787). Who may is settled here -- a reviewer of the task, and not
@@ -929,7 +932,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
             )
         }
         val states = WorkflowApprovals.approve(c, row, declared, task)
-        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to states)
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to WorkflowPhases.shownStates(c, row.client, states))
     }
 
     // What stands behind a form's Needs Review / Finished chip (issue #789): the engaged workflows emitting that
@@ -1034,7 +1037,7 @@ fun gedraSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, GEP.gedraNamespace) 
         val scope = ReadScopeRules.forCaller(c)
         val svc = GedraDataService.get(c)
         svc.recomputeDerivedState(c, row)
-        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to svc.readState(c, row.gedraId, scope))
+        mapOf(GDF.gedraId to row.gedraId.fullId, GDF.states to svc.readShownState(c, row.gedraId, scope))
     }
 
     // --- the workflow save (issue #535) -------------------------------------------------------------------

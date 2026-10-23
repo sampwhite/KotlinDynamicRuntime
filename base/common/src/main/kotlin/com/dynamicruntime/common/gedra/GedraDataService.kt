@@ -6,21 +6,24 @@ import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
+import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.schema.SchFailure
 import com.dynamicruntime.common.schema.SchType
 import com.dynamicruntime.common.schema.holdsGatedValue
 import com.dynamicruntime.common.schema.keepGatedFields
 import com.dynamicruntime.common.schema.validate
 import com.dynamicruntime.common.sql.KdrTable
-import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.PF
+import com.dynamicruntime.common.sql.SqlCxt
 import com.dynamicruntime.common.sql.SqlScopeUtil
 import com.dynamicruntime.common.sql.SqlStatement
 import com.dynamicruntime.common.sql.SqlStmtUtil
 import com.dynamicruntime.common.sql.SqlTopicService
-import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.sql.SqlTopicTranProvider
 import com.dynamicruntime.common.sql.SqlTopicUtil
+import com.dynamicruntime.common.sql.cache.SqlTableCache
 import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.startup.ServiceInitializer
 import com.dynamicruntime.common.util.mkUniqueId
@@ -354,6 +357,32 @@ class GedraDataService : ServiceInitializer {
      */
     fun readState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope): List<Map<String, Any?>> =
         readStates(cxt, listOf(gedraId), scope)[gedraId.fullId] ?: emptyList()
+
+    /**
+     * [readStates] as a caller is shown them (issue #1354): each gedra's state with the per-workflow entries of any
+     * workflow that is not live left out ([WorkflowPhases.shownStates]) -- one deleted from its client's configuration,
+     * or past its lifetime. The read every caller-facing answer of stored state goes through, so the rule holds by
+     * construction rather than by each endpoint remembering it; [includeRetired] reads them as stored. Each gedra is
+     * judged against its own client's workflows, so a listing across clients is shown each row's own.
+     */
+    fun readShownStates(
+        cxt: KdrCxt,
+        gedraIds: List<GedraId>,
+        scope: ReadScope,
+        includeRetired: Boolean = false,
+    ): Map<String, List<Map<String, Any?>>> {
+        val raw = readStates(cxt, gedraIds, scope)
+        if (includeRetired) return raw
+        val registries = HashMap<String, WorkflowRegistry>()
+        return gedraIds.associate { id ->
+            val registry = registries.getOrPut(id.client) { WorkflowService.get(cxt).forClient(id.client) }
+            id.fullId to WorkflowPhases.shownStates(cxt, registry, raw[id.fullId].orEmpty())
+        }
+    }
+
+    /** [readShownStates] for one gedra. */
+    fun readShownState(cxt: KdrCxt, gedraId: GedraId, scope: ReadScope, includeRetired: Boolean = false): List<Map<String, Any?>> =
+        readShownStates(cxt, listOf(gedraId), scope, includeRetired)[gedraId.fullId] ?: emptyList()
 
     /**
      * The state entries of several gedras at once (issue #600), keyed by `gedraId.fullId` -- what the forms

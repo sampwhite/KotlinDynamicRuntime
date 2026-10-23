@@ -254,7 +254,10 @@ class WorkflowWindowsTest : StringSpec({
         entry(states).shouldBeNull()
         formFacts(states) shouldNotContain WSC.finished
         entry(states, "followUp").shouldNotBeNull()[WFS.eligible] shouldBe true
-        states.any { it[GE.traitId].toOptStr() == WFS.workflowEngagement } shouldBe true
+        // Nothing about it is shown (issue #1354), its engagement included -- but the engagement is still stored.
+        states.any { it[GE.traitId].toOptStr() == WFS.workflowEngagement } shouldBe false
+        TestUser.createFullAdmin(cxt, "full@windows790.test").getItem(GEP.adminGedraState, mapOf(GDF.gedraId to engagedForm))[GDF.states]
+            .toJsonListOfMaps().any { it[GE.traitId].toOptStr() == WFS.workflowEngagement } shouldBe true
         viewFails(engagedForm)
         aggregate().shouldBeNull()
         engage(engagedForm, engaged = false)

@@ -3,6 +3,10 @@ package com.dynamicruntime.common.gedra.workflow
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.GE
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import com.dynamicruntime.common.util.toOptStr
+import kotlin.time.Instant
 
 /**
  * The endpoints' side of a normal workflow's time windows (issue #790): the one place that says what each
@@ -21,8 +25,48 @@ object WorkflowPhases {
      * workflow outside its lifetime, which is as good as not configured. The lookup every endpoint uses, so a
      * later consumer (the listing's summary, the workflow pages) inherits the rule rather than remembering it.
      */
-    fun live(cxt: KdrCxt, registry: WorkflowRegistry, id: String): WfDeclared? =
-        registry.workflow(id)?.takeIf { it.def.entry != WfEntry.normal || of(cxt, it.def).exists }
+    fun live(cxt: KdrCxt, registry: WorkflowRegistry, id: String): WfDeclared? = liveAt(registry, id, cxt.instanceNow())
+
+    /**
+     * [live] at the moment [at]: the one statement of what "live" is, so a caller judging another moment -- the
+     * publish impact report, at the moment it reads the client's data -- holds the same rule every endpoint does.
+     */
+    fun liveAt(registry: WorkflowRegistry, id: String, at: Instant): WfDeclared? =
+        registry.workflow(id)?.takeIf { it.def.entry != WfEntry.normal || it.def.phaseAt(at).exists }
+
+    /**
+     * [states] -- a form's state entries -- as a caller is shown them (issue #1354): without the per-workflow entries
+     * (its engagement, its calculated state, its approvals) of any workflow that is not [live] in [registry]. A
+     * workflow past its lifetime is "kept, but nothing shows it" ([WfPhase.outsideLifetime]), and one deleted from the
+     * configuration is the same, so neither appears. Nothing stored changes: the entries are only left out, and
+     * putting the workflow back, or extending its lifetime, shows them again. The admin raw-state read keeps them all.
+     *
+     * [alsoShow] is a workflow whose entries are shown whatever it is: the one a call just acted on -- withdrawing a
+     * form from a workflow since deleted -- whose caller is owed the result of what they did.
+     *
+     * A read of stored states goes through `GedraDataService.readShownStates`, which applies this; a write that answers
+     * with the states it left calls it directly.
+     */
+    fun shownStates(
+        cxt: KdrCxt,
+        registry: WorkflowRegistry,
+        states: List<Map<String, Any?>>,
+        alsoShow: String? = null,
+    ): List<Map<String, Any?>> {
+        val liveIds = HashMap<String, Boolean>()
+        return states.filter { entry ->
+            if (entry[GE.traitId].toOptStr() !in perWorkflowTraits) return@filter true
+            val id = entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() ?: return@filter true
+            id == alsoShow || liveIds.getOrPut(id) { live(cxt, registry, id) != null }
+        }
+    }
+
+    /** [shownStates] against [client]'s workflows. */
+    fun shownStates(cxt: KdrCxt, client: String, states: List<Map<String, Any?>>, alsoShow: String? = null): List<Map<String, Any?>> =
+        shownStates(cxt, WorkflowService.get(cxt).forClient(client), states, alsoShow)
+
+    /** The state traits whose entries belong to one workflow, each naming it under [WFD.workflowId]. */
+    private val perWorkflowTraits = setOf(WFS.workflowEngagement, WFS.workflowState, WFS.workflowApproval)
 
     /**
      * Refuses [doing] -- "saved", "approved" -- in a workflow that is not being calculated: past its relevancy
