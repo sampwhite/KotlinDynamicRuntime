@@ -210,14 +210,14 @@ fun addWorkflowSingletonCFacts(collector: SchemaCollector) {
  * CTA is where an engaged workflow's link points, and a workflow the form has not entered has no work under way
  * (its view computes the same answer live, from the same [WorkflowTaskStatus]).
  *
- * See [WorkflowEligibility] for why only the form's own cfacts, never the caller's. A retired-but-engaged
- * workflow's bare entry has none of these, having no definition left to compute against.
+ * See [WorkflowEligibility] for why only the form's own cfacts, never the caller's.
  *
  * ### Time windows (issue #790)
  *
  * Each workflow's [WfPhase] is taken once, on the instance clock (see [WorkflowPhases]). Outside its **lifetime** a workflow is not emitted at
  * all, engaged or not: it is as good as not configured, and it contributes no singletons -- though the form's
- * engagement and approvals, being asserted, are kept for when it returns. Past its **relevancy** nothing is
+ * engagement and approvals, being asserted, are kept for when it returns. A workflow **deleted** from the
+ * configuration is the same (issue #1354): deleting one is how it passes its lifetime without an end date. Past its **relevancy** nothing is
  * calculated: a form not engaged with it loses its entry (the design's implicit delete), and an engaged form's
  * entry is **frozen** -- carried forward from [GedraStateContext.currentState] exactly as last calculated, singletons
  * and all, so the form still reads Finished or Needs Review while the workflow lives. That carry-forward is the
@@ -243,9 +243,10 @@ object WorkflowStateDeriver : GedraStateDeriver {
         val declared = normal.filterKeys { phases.getValue(it).calculates }
         val frozen = normal.keys.filter { phases.getValue(it) == WfPhase.lifetimeOnly && it in engaged }
             .associateWith { previousEntry(state.currentState, it) }
-        // Declared first, in registry order, then any engaged workflow the registry no longer offers -- so the
-        // ordering is stable and a vanished-but-engaged workflow lands at the end rather than reordering the rest.
-        val ids = normal.keys.filter { it in declared || it in frozen } + engaged.filterNot { it in normal.keys }
+        // In registry order. A workflow the registry no longer offers -- deleted from the configuration -- is not emitted
+        // either, even for a form engaged with it: deleted is past its lifetime, the way a workflow disappears (issue
+        // #1354). Its engagement and approvals, being asserted, are kept, so putting it back brings the form's state back.
+        val ids = normal.keys.filter { it in declared || it in frozen }
         val registry = SchemaService.get(cxt).cfactsFor(state.row.client)
         val formFacts = WorkflowEligibility.formFacts(state.derivedThisPass)
 

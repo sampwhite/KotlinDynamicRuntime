@@ -456,7 +456,8 @@ configuration the client runs now and under the candidate. Only what the candida
 
 - a trait in use the client would no longer support;
 - an entry that would no longer validate, so every later edit of its form is refused;
-- a workflow a form takes part in that would no longer exist;
+- a workflow a form takes part in that would no longer exist -- one live now: a workflow already past its lifetime is
+  as if it were not configured, so deleting it is safe and is not reported (issue #1354);
 - a task a form's recorded state names that its workflow would no longer define.
 
 A non-empty report refuses the publish, carrying the report, unless the caller acknowledges it. The report covers

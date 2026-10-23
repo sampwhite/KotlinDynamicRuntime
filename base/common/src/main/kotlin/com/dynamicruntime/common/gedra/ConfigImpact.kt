@@ -8,6 +8,7 @@ import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WFS
+import com.dynamicruntime.common.gedra.workflow.WorkflowPhases
 import com.dynamicruntime.common.gedra.workflow.WorkflowRegistry
 import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.gedra.workflow.engagedWorkflowIds
@@ -173,6 +174,9 @@ object ConfigImpact {
         next: WorkflowRegistry,
         at: Instant,
     ) {
+        // Live now, as every endpoint finds a workflow ([WorkflowPhases.liveAt]). Deleting one already past its lifetime is
+        // a safe delete -- deleted is how it passes it -- so only a workflow live now can be lost (issue #1354).
+        fun liveNow(id: String): Boolean = WorkflowPhases.liveAt(now, id, at) != null
         val involved = LinkedHashSet<String>()
         row.creationWorkflowId?.workflowId?.let { involved.add(it) }
         val engaged = engagedWorkflowIds(states)
@@ -188,7 +192,7 @@ object ConfigImpact {
         states.filter { it[GE.traitId].toOptStr() == WFS.workflowState }
             .mapNotNullTo(involved) { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() }
         for (workflowId in involved) {
-            if (now.workflow(workflowId) != null && next.workflow(workflowId) == null) {
+            if (liveNow(workflowId) && next.workflow(workflowId) == null) {
                 report.add(ImpactKind.workflowGone, row, workflowId = workflowId)
             }
         }
@@ -200,6 +204,7 @@ object ConfigImpact {
                 else -> null
             } ?: continue
             val workflowId = data[WFD.workflowId].toOptStr() ?: continue
+            if (!liveNow(workflowId)) continue
             val before = now.workflow(workflowId)?.def ?: continue
             val after = next.workflow(workflowId)?.def ?: continue
             if (taskId in before.tasksById && taskId !in after.tasksById) {

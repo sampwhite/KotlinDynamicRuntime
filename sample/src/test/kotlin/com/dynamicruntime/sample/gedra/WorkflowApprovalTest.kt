@@ -135,6 +135,36 @@ class WorkflowApprovalTest : StringSpec({
         reviewer.expectError(EXC.conflict, approve, data = approveBody(gid))
     }
 
+    "an approval's answer leaves out a retired workflow's entries, which stay stored (issue #1354)" {
+        val gid = engagedForm()
+        // Stands in for a workflow the client has since removed, as its engagement and approval would be left: no call
+        // could make these for an undeclared workflow, so they are written the way an operator would.
+        val admin = TestUser.createFullAdmin(cxt, "approve-retired-admin@example.com")
+        fun stored() = admin.getItem(GEP.adminGedraState, mapOf(GDF.gedraId to gid))[GDF.states].toJsonListOfMaps()
+        val retired = "retiredAudit"
+        admin.postItem(
+            GEP.adminGedraState,
+            mapOf(
+                GDF.gedraId to gid,
+                GDF.states to stored() + listOf(
+                    mapOf(GE.traitId to WFS.workflowEngagement, GE.data to mapOf(WFD.workflowId to retired, WFS.engaged to true)),
+                    mapOf(GE.traitId to WFS.workflowApproval, GE.data to mapOf(
+                        WFD.workflowId to retired, WFS.taskId to "approve", WFS.approvedBy to reviewer.userId,
+                        WFS.approvedAt to "2026-01-01T00:00:00Z",
+                    )),
+                ),
+            ),
+        )
+
+        val states = reviewer.postData(approve, approveBody(gid))[GDF.states].toJsonListOfMaps()
+        // The approval made is there; nothing of the retired workflow is.
+        entriesOf(states, WFS.workflowApproval).map { it[WFD.workflowId] } shouldBe listOf(SW.auditReview)
+        states.none { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == retired } shouldBe true
+        // Still stored, for when it comes back.
+        stored().filter { it[GE.data].toJsonMapOrEmpty()[WFD.workflowId] == retired }.map { it[GE.traitId] }.toSet() shouldBe
+            setOf(WFS.workflowEngagement, WFS.workflowApproval)
+    }
+
     "an approval belongs to its engagement: re-engaging starts over, and the task may be approved again" {
         val gid = engagedForm()
         reviewer.postData(approve, approveBody(gid))
