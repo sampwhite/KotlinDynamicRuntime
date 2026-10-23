@@ -68,6 +68,12 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
     var loadError by useState<DisplayError?>(null)
     var open by useState<String?>(null)
     var note by useState<String?>(null)
+    // A removal (issue #1346): the workflow whose confirmation is open, the one being removed, and a refusal's report.
+    var confirming by useState<String?>(null)
+    var removing by useState<String?>(null)
+    // What a refused removal was of, with its report, so Remove anyway removes that workflow.
+    var removeImpact by useState<Pair<String, ImpactReportView>?>(null)
+    var removeError by useState<DisplayError?>(null)
     // Which client a read was started for: an answer for a client the page has moved on from lands nowhere.
     val latest = useRef(0)
 
@@ -108,6 +114,51 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
         return@FC
     }
     loadError?.let { errorText("Couldn't refresh the workflows; showing what was loaded.", it) }
+
+    fun remove(workflowId: String, acknowledge: Boolean) {
+        val token = latest.current
+        removing = workflowId
+        removeError = null
+        note = null
+        workflowsScope.launch {
+            try {
+                val result = ClientsApi.removeWorkflow(workflowRemoveRequest(props.clientId, workflowId, expectedMode(props.savesDraft), acknowledge))
+                if (latest.current != token) return@launch
+                removeImpact = null
+                val said = savedNote("Removed workflow ${result.workflowId} from ${result.configName}.", result.mode)
+                note = listOfNotNull(said, draftImpactText(result.draftImpact)).joinToString(" ")
+                props.onChanged()
+            } catch (e: Throwable) {
+                if (latest.current != token) return@launch
+                val report = impactOf(e)
+                if (report != null) removeImpact = workflowId to report else removeError = saveFailure(e, props.onChanged)
+            } finally {
+                if (latest.current == token) removing = null
+            }
+        }
+    }
+    removeError?.let { errorText("Couldn't remove the workflow.", it) }
+    removeImpact?.let { (workflowId, report) ->
+        Modal {
+            this.open = true
+            title = "Some stored forms take part in this workflow"
+            onCancel = { removeImpact = null }
+            footer = Fragment.create {
+                Button {
+                    onClick = { removeImpact = null }
+                    +"Cancel"
+                }
+                Button {
+                    type = "primary"
+                    danger = true
+                    this.loading = removing != null
+                    onClick = { remove(workflowId, acknowledge = true) }
+                    +"Remove anyway"
+                }
+            }
+            impactReportBody(report, props.formsOpenable, doing = "Removing this workflow")
+        }
+    }
     // The client's zone, which its workflows' windows are shown and entered in; and the moment they are judged at.
     val zone = entryZone(shown.timeZone ?: DisplayZone.current)
     val now = Clock.System.now()
@@ -170,6 +221,29 @@ val ClientWorkflowsSection = FC<ClientWorkflowsSectionProps> { props ->
                                             className = ClassName("type-hint")
                                             title = w.notEditable
                                             +"Not from a template"
+                                        }
+                                    }
+                                    if (workflowRemovable(w)) {
+                                        Popconfirm {
+                                            title = workflowRemoveQuestion(w.def, props.clientId, props.savesDraft)
+                                            description = workflowRemoveConsequence(props.savesDraft)
+                                            okText = "Remove"
+                                            cancelText = "Cancel"
+                                            placement = "bottomLeft"
+                                            this.open = confirming == w.def.workflowId
+                                            onOpenChange = { opened -> confirming = if (opened) w.def.workflowId else null }
+                                            onConfirm = {
+                                                confirming = null
+                                                remove(w.def.workflowId, acknowledge = false)
+                                            }
+                                            Button {
+                                                type = "link"
+                                                size = "small"
+                                                danger = true
+                                                this.loading = removing == w.def.workflowId
+                                                disabled = open != null || removing != null
+                                                +"Remove"
+                                            }
                                         }
                                     }
                                     if (w.windowsOffered) {

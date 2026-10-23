@@ -3,6 +3,10 @@ package com.dynamicruntime.common.gedra
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.exception.KdrException
+import com.dynamicruntime.common.gedra.workflow.WFD
+import com.dynamicruntime.common.gedra.workflow.WFT
+import com.dynamicruntime.common.gedra.workflow.WfDef
+import com.dynamicruntime.common.gedra.workflow.WorkflowService
 import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.user.normalizeUserLabels
 import com.dynamicruntime.common.util.toJsonListOfStrings
@@ -76,6 +80,13 @@ object ClientCreate {
          * edits from the copy editor land in that same config, as they would have. None by default.
          */
         copy: Map<String, Map<String, Map<String, String>>> = emptyMap(),
+        /**
+         * Whether the client starts with workflows made from the starter templates (issue #1346): each in a
+         * configuration of its own, written and published with the definition, and the trait they collect -- the
+         * form's name -- added to what the definition includes. Read from the request ([CLD.starterWorkflows]) unless
+         * a caller says.
+         */
+        starterWorkflows: Boolean = request[CLD.starterWorkflows] != false,
     ): Result {
         val client = request[CLD.clientId].toOptStr().orEmpty()
         // First, since a live sandbox's id is one this node knows: it would otherwise read as a client that exists.
@@ -91,13 +102,16 @@ object ClientCreate {
         caseVariant(cxt, client)?.let { throw takenByCase(cxt, client, it) }
         val newCustomer = newCustomerOf(cxt, client, request)
         val customer = newCustomer?.let { CustomerStore.put(cxt, it) }
-        val definition = definitionOf(request) + (newCustomer?.let { mapOf(CLD.customerId to client) } ?: emptyMap())
+        val starters = if (starterWorkflows) starterTemplates(cxt) else emptyList()
+        val definition = withStarterTraits(definitionOf(request), starters) +
+            (newCustomer?.let { mapOf(CLD.customerId to client) } ?: emptyMap())
         val name = CLD.definitionConfigName
         val written = try {
             val config = reassembleForWrite(bound, name, clientNamespace(client), client, mapOf(CCT.clientDef to listOf(definition)))
             val writes = buildList {
                 add(ConfigWrite(config, mustBeNew = true))
                 if (copy.isNotEmpty()) add(ConfigWrite(copyConfig(bound, client, copy), mustBeNew = true))
+                starterConfigs(bound, client, starters).forEach { add(ConfigWrite(it, mustBeNew = true)) }
             }
             try {
                 svc.writeConfigs(bound, client, writes, trial = true)
@@ -237,6 +251,39 @@ object ClientCreate {
             "Client '$client' cannot be created: '$holder' $where, and two client ids may not differ only by case.",
             code = EXC.conflict,
         )
+    }
+
+    /** The starter templates ([WFT.starters]) this deployment declares, as its checks admitted them (issue #1346). */
+    private fun starterTemplates(cxt: KdrCxt): List<WfDef> =
+        WFT.starters.mapNotNull { WorkflowService.get(cxt).forClient(null).workflow(it)?.def }
+
+    /**
+     * [definition] including every trait the [starters] collect (issue #1346) -- the form's name -- unless it takes them
+     * already, by name or as every global trait, so the workflows it starts with are ones it may run.
+     */
+    private fun withStarterTraits(definition: Map<String, Any?>, starters: List<WfDef>): Map<String, Any?> {
+        val included = definition[CLD.includedTraits].toJsonListOfStrings()
+        if (CLD.allGlobal in included) return definition
+        val needed = starters.flatMap { w -> w.tasks.flatMap { t -> t.traits.map { it.traitId } } }.distinct()
+        val added = needed.filterNot { it in included }
+        return if (added.isEmpty()) definition else definition + (CLD.includedTraits to included + added)
+    }
+
+    /**
+     * A configuration per starter workflow (issue #1346), named for it as the client page names one it makes
+     * (`workflow_<id>`): each a workflow made from its template with the template's own slots, so all it stores is the
+     * reference, and the administrator renames or re-fills it from the client page.
+     */
+    private fun starterConfigs(bound: KdrCxt, client: String, starters: List<WfDef>): List<GedraConfig> {
+        val taken = LinkedHashSet<String>()
+        return starters.map { template ->
+            val id = keyFromLabel(template.label, taken, "workflow").also { taken.add(it) }
+            val overlay = mapOf(WFD.workflowId to id, WFD.fromTemplate to template.workflowId)
+            reassembleForWrite(
+                bound, CWF.configPrefix + id, clientNamespace(client), client,
+                mapOf(CCT.workflowDef to listOf(mapOf(CCT.workflowId to id, CCT.definition to overlay))),
+            )
+        }
     }
 
     /** The editors' own config ([CPY.copyConfigName]) of [client]'s, holding [copy]'s overlays (issue #1336). */

@@ -49,6 +49,12 @@ object WFT {
 
     /** A normal workflow with one data-entry task. */
     const val collect = "kdr:collect"
+
+    /**
+     * The templates a new client starts with a workflow from (issue #1346), unless its create asks otherwise: a
+     * creation workflow and a survey, built around the form's name, so a new client can make a form at once.
+     */
+    val starters: List<String> = listOf(createForm, survey)
 }
 
 /** The deployment's workflow templates, by rooted id (issue #1120): what a workflow made from one is read over. */

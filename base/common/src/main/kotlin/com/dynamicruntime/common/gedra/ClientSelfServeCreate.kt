@@ -63,6 +63,8 @@ object ClientSelfServeCreate {
          * page reads them at once, though the client has a sandbox.
          */
         home: Map<String, String> = emptyMap(),
+        /** Whether the client starts with workflows made from the starter templates (issue #1346). */
+        starterWorkflows: Boolean = true,
     ): Result {
         val profile = cxt.userProfile
         if (profile.client != CL.public) {
@@ -89,7 +91,7 @@ object ClientSelfServeCreate {
             throw KdrException("Another create of your client is under way.", e, EXC.conflict)
         }
         val created = try {
-            ClientCreate.create(cxt, definition(cxt, client, name, description, timeZone), copy = homeCopy(home))
+            ClientCreate.create(cxt, definition(cxt, client, name, description, timeZone), copy = homeCopy(home), starterWorkflows = starterWorkflows)
         } catch (e: Exception) {
             // Nothing of the client was stored, so the one is not used.
             try {

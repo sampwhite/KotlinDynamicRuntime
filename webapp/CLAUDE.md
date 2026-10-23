@@ -908,7 +908,9 @@ publishing it would do to the live client's forms (`draftImpact`, `draftImpactTe
 
 **Workflows** (issue #1120, `ClientWorkflowsSection.kt`, its pure half in `ClientWorkflows.kt`, covered by
 `ClientWorkflowsTest`): under Traits, offered where they are, from `GET /clientAdmin/client/workflows`
-(`ClientsApi.workflowCatalog`): the client's workflows, then the deployment's **templates** -- the global workflows,
+(`ClientsApi.workflowCatalog`): the client's workflows -- for a client with a sandbox, as the sandbox runs them, its
+latest configuration with drafts in, so the list shows what a draft made or removed, as Files does -- then the
+deployment's **templates** -- the global workflows,
 which no client runs as they are. A template is greyed with the backend's reason when a workflow cannot be made from
 it now (a client has one creation and one survey, and a plan limits workflows and their tasks); a workflow not made
 from a template says why its slots cannot be changed here. **Use…** and **Edit…** open `WorkflowSlotEditor` on the
@@ -918,6 +920,14 @@ the slots make (`workflowPreview`, the kernel's `withTemplateSlots`). Save posts
 (`workflowSaveRequest`, with `mode`): a new workflow lands in a configuration of its own, `workflow_<id>`; a change is
 patched where it is. What is stored is the workflow's overlay of the template, read over the template at load, so a
 fix to the template reaches it; Design View edits the same workflow and keeps its changes in the same overlay.
+**Remove** (issue #1346; `workflowRemovable`, a `danger` link behind a confirmation that names where it acts,
+`workflowRemoveQuestion`) takes a template-made workflow out, through `/clientAdmin/client/workflows/remove`: the
+workflow's entry leaves its configuration, the template can make it again, and a live removal of a workflow forms take
+part in is refused with the impact report until acknowledged. **A new client starts with two**: every create makes a
+creation workflow and a survey from `WFT.starters` (`newForm`, `formDetails`), each in its own `workflow_<id>`
+configuration published with the definition, and includes the trait they collect (`kdr:name`) -- unless the create's
+`starterWorkflows` is false. The self-serve card asks with a ticked checkbox; the platform's and a customer's creates
+draw it from their input schema. They count toward a plan's workflows, which is what Remove is for.
 
 **Time windows** (issue #1121, `WorkflowWindowsEditor.kt`, its pure half in `WorkflowWindows.kt`, covered by
 `WorkflowWindowsTest`): a normal workflow's row in Workflows says where it stands now (`windowPhaseText`) and offers

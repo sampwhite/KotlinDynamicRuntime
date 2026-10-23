@@ -1185,8 +1185,10 @@ fun adminGedraConfigSchema(cxt: KdrCxt): SchModule = schemaModule(cxt, ACEP.name
             "is -- its schema, a domain no other client holds, a trial load that judges its id, its environments " +
             "and the template it extends -- and refused for the same reasons, in the same words. Refused with a 409 " +
             "for an id that is taken, by a client in source code or in stored configuration. With '" + CLD.newCustomer +
-            "' it makes a customer too, whose id is the client's and whose root the client is (issue #1107). What a definition does " +
-            "not hold at creation -- its traits, its workflows, its test features -- is added through its " +
+            "' it makes a customer too, whose id is the client's and whose root the client is (issue #1107). Unless '" +
+            CLD.starterWorkflows + "' is false, it starts with a creation workflow and a survey made from the " +
+            "deployment's templates, and includes the trait they collect (issue #1346). What else a definition does not " +
+            "hold at creation -- its other traits and workflows, its test features -- is added through its " +
             "configuration afterwards.",
         HttpMethod.POST,
         outputRef = CLD.createResultTypeName,

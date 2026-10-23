@@ -160,4 +160,41 @@ internal fun SchModuleBuilder.clientWorkflowsEndpoints() {
         val result = ClientWorkflowEdit.saveWindows(c, client, request[WFD.workflowId].toOptStr().orEmpty(), windows, expectedModeOf(request), gate)
         editorSaveResult(client, result.configName, CWF.windows to result.windows.toInfo(), result.mode, result.issues, result.draftImpact)
     }
+
+    // --- removing a workflow made from a template (issue #1346) ---
+    type(CWF.removeResultTypeName) {
+        type = SCT.kObject
+        description = "What removing a workflow made from a template did (issue #1346)."
+        property(CLD.client, "The client.", required = true)
+        property(CWF.configName, "The stored configuration the workflow was in.", required = true)
+        property(WFD.workflowId, "The workflow removed.", required = true)
+        saveOutcomeFields()
+        draftImpactField()
+    }
+
+    generalEndpoint(
+        UADEP.clientWorkflowRemove,
+        "Removes one of a client's workflows made from a template (issue #1346), from the stored configuration holding " +
+            "it. Then as every editor's save. A live removal of a workflow forms take part in is refused with the impact " +
+            "report unless the impact is acknowledged. Refused for a sandbox, and for a workflow written whole or not " +
+            "stored by the client.",
+        HttpMethod.POST,
+        outputRef = CWF.removeResultTypeName,
+        needsClientConfig = true,
+        inputFields = {
+            overseenClientField(CLD.client)
+            field(WFD.workflowId, "The workflow to remove.", required = true)
+            field(
+                IMP.acknowledgeImpact,
+                "Remove it although forms take part in it; without it, such a removal is refused with the impact report.",
+            ) { type = SCT.boolean }
+            expectedModeField()
+        },
+    ) { c, request ->
+        val client = overseenClient(c, request[CLD.client].toOptStr())
+        val gate = if (request[IMP.acknowledgeImpact] == true) ImpactGate.acknowledged else ImpactGate.refuse
+        val workflowId = request[WFD.workflowId].toOptStr().orEmpty()
+        val result = ClientWorkflowEdit.remove(c, client, workflowId, expectedModeOf(request), gate)
+        editorSaveResult(client, result.configName, WFD.workflowId to workflowId, result.mode, result.issues, result.draftImpact)
+    }
 }

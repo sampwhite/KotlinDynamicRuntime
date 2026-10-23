@@ -7,6 +7,8 @@ import com.dynamicruntime.common.gedra.CLD
 import com.dynamicruntime.common.gedra.CPY
 import com.dynamicruntime.common.gedra.CWF
 import com.dynamicruntime.common.gedra.IMP
+import com.dynamicruntime.common.gedra.sandboxParentOf
+import com.dynamicruntime.common.gedra.workflow.WFD
 import com.dynamicruntime.common.gedra.workflow.WfDef
 import com.dynamicruntime.common.gedra.workflow.WfEntry
 import com.dynamicruntime.common.gedra.workflow.WfSaveKind
@@ -195,3 +197,37 @@ fun parseWorkflowSaveResult(raw: Map<String, Any?>): WorkflowSaveResult = Workfl
 
 /** A workflow's data-entry tasks, the ones whose slots the form edits. */
 fun dataEntryTaskIds(def: WfDef): List<String> = def.tasks.filter { it.isDataEntry }.map { it.id }
+
+/**
+ * Whether the page offers to remove [workflow] (issue #1346): one made from a template that the client stores as its
+ * own -- what the slot editor may change -- the starters a new client is given among them.
+ */
+fun workflowRemovable(workflow: ClientWorkflowView): Boolean = workflow.notEditable == null && workflow.def.fromTemplate != null
+
+/** The question a removal asks first, naming where it acts (issue #1049's rule): the live client, or the draft of it. */
+fun workflowRemoveQuestion(def: WfDef, clientId: String, draft: Boolean): String =
+    if (draft) "Remove the workflow '${workflowName(def)}' from the draft of ${sandboxParentOf(clientId) ?: clientId}?"
+    else "Remove the workflow '${workflowName(def)}' of ${deleteTargetText(clientId)}?"
+
+/** What removing a workflow does, under [workflowRemoveQuestion]. */
+fun workflowRemoveConsequence(draft: Boolean): String =
+    if (draft) "Its people keep it until the draft is published; the template can make it again."
+    else "Its people no longer see it, at once. The template can make it again."
+
+/** The removal's request: the workflow, how the page expects it to take effect, and whether an impact is acknowledged. */
+fun workflowRemoveRequest(clientId: String, workflowId: String, expected: String, acknowledge: Boolean): Map<String, Any?> = buildMap {
+    put(CLD.client, clientId)
+    put(WFD.workflowId, workflowId)
+    put(CPY.mode, expected)
+    if (acknowledge) put(IMP.acknowledgeImpact, true)
+}
+
+/** What a removal did: the configuration the workflow was in, how it took effect, and a draft's impact. */
+class WorkflowRemoveResult(val configName: String, val workflowId: String, val mode: String, val draftImpact: ImpactReportView?)
+
+fun parseWorkflowRemoveResult(raw: Map<String, Any?>): WorkflowRemoveResult = WorkflowRemoveResult(
+    configName = raw[CWF.configName].toOptStr().orEmpty(),
+    workflowId = raw[WFD.workflowId].toOptStr().orEmpty(),
+    mode = raw[CPY.mode].toOptStr().orEmpty(),
+    draftImpact = raw[CIT.draftImpact]?.toJsonMapOrEmpty()?.let(::parseImpactReport),
+)

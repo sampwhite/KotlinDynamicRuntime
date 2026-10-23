@@ -49,6 +49,8 @@ class PlanLimitsTest : StringSpec({
         mapOf(
             CLD.clientId to clientId, CLD.name to "Client $clientId", CLD.usageType to ClientUsageType.dev.name,
             CLD.audience to ClientAudience.customer.name, CLD.enabledEnvironments to listOf(ENV.unit, ENV.local),
+            // Without the starter workflows (issue #1346): these cases count the workflows they write themselves.
+            CLD.starterWorkflows to false,
         ) + more,
     )
     fun asClient(client: String): KdrCxt = cxt.mkSubContext("plans", client).also { it.userId = 11090L }

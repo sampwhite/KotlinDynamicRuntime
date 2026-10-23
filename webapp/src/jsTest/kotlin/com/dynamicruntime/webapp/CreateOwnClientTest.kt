@@ -18,6 +18,8 @@ class CreateOwnClientTest {
         )
         // No note and no zone: neither is sent, so the deployment's zone applies.
         assertEquals(mapOf(CLD.name to "Shop"), createOwnClientRequest("Shop", " ", ""))
+        // The starter workflows (issue #1346) are the server's default; only asking for none is sent.
+        assertEquals(mapOf(CLD.name to "Shop", CLD.starterWorkflows to false), createOwnClientRequest("Shop", "", "", starterWorkflows = false))
     }
 
     @Test

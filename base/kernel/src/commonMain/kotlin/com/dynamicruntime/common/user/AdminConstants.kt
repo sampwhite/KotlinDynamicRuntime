@@ -195,6 +195,12 @@ object UADEP {
     /** Makes a workflow from a template for a client, or changes the slots of one made so (issue #1120). */
     const val clientWorkflowSave = "/${SECT.clientAdmin}/client/workflows/save"
 
+    /**
+     * Removes one of a client's workflows made from a template (issue #1346), where it is stored. Scoped as
+     * [clientDefinition] is.
+     */
+    const val clientWorkflowRemove = "/${SECT.clientAdmin}/client/workflows/remove"
+
     /** Sets the time windows of one of a client's normal workflows (issue #1121), made from a template or not. */
     const val clientWorkflowWindows = "/${SECT.clientAdmin}/client/workflows/windows"
 

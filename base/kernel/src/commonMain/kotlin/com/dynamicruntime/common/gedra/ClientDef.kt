@@ -360,6 +360,12 @@ object ClientCreateFields {
 @Suppress("ConstPropertyName")
 object CLD {
     /**
+     * On a create (issue #1346): whether the new client starts with workflows made from the starter templates
+     * (`WFT.starters`), a creation workflow and a survey -- on unless set false.
+     */
+    const val starterWorkflows = "starterWorkflows"
+
+    /**
      * What marks an entry in [ClientDef.includedTraits] as a **group** rather than a trait id.
      *
      * A sigil no trait id can hold -- `GedraId`'s parts are `[A-Za-z0-9_]` -- so the two never have to be
@@ -999,6 +1005,7 @@ data class ClientDef(
                 type = SCT.kObject
                 description = "A client to create: what its definition is to hold."
                 infoProperties(written = true, only = ClientCreateFields.names.toSet(), offerChoices = true)
+                starterWorkflowsProperty()
                 // Not a field of the definition: a customer made with the client (issue #1107).
                 property(
                     CLD.newCustomer,
@@ -1022,6 +1029,22 @@ data class ClientDef(
                 type = SCT.kObject
                 description = "A client to create under the caller's customer: what its creator chooses."
                 infoProperties(written = true, only = ClientFieldPolicies.creatorFields.toSet(), offerChoices = true)
+                starterWorkflowsProperty()
+            }
+        }
+
+        /**
+         * Not a field of the definition: whether a new client starts with workflows made from the starter templates
+         * (issue #1346), on unless the create says otherwise.
+         */
+        private fun SchTypeBuilder.starterWorkflowsProperty() {
+            property(
+                CLD.starterWorkflows,
+                "Start the client with a creation workflow and a survey, made from the deployment's templates around the " +
+                    "form's name (which the client then includes). On unless set false.",
+            ) {
+                type = SCT.boolean
+                default = true
             }
         }
 
