@@ -4,17 +4,20 @@ import com.dynamicruntime.common.context.CL
 import com.dynamicruntime.common.context.KdrCxt
 import com.dynamicruntime.common.context.ReadScope
 import com.dynamicruntime.common.context.UserProfile
+import com.dynamicruntime.common.endpoint.EP
 import com.dynamicruntime.common.exception.EXC
 import com.dynamicruntime.common.http.request.ROLE
 import com.dynamicruntime.common.http.request.RoleLadder
 import com.dynamicruntime.common.user.ADEP
 import com.dynamicruntime.common.user.ADF
+import com.dynamicruntime.common.user.AERR
 import com.dynamicruntime.common.user.AdminRules
 import com.dynamicruntime.common.user.AdminScope
 import com.dynamicruntime.common.user.ReadScopeRules
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
 import com.dynamicruntime.common.user.UserService
+import com.dynamicruntime.common.util.toOptLong
 import com.dynamicruntime.common.util.toOptStr
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
@@ -470,6 +473,90 @@ class ClientScopedAdminTest : StringSpec({
         // A different one, and clearing it: both refused.
         engAdmin.expectError(EXC.badInput, UADEP.userSetOrg, mapOf(ADF.userId to target.userId, ADF.org to "sales"))
         engAdmin.expectError(EXC.badInput, UADEP.userSetOrg, mapOf(ADF.userId to target.userId))
+    }
+
+    /**
+     * A create at an address whose user, under the same key, is in another organization of the client (issue #1300):
+     * refused alike whether that user is enabled, disabled, or deleted recoverably, and the user is neither re-enabled
+     * nor moved into the caller's organization. Recovering a disabled user of the caller's own organization is
+     * unchanged.
+     */
+    "an administrator confined to an org cannot take over another org's user by creating at its address" {
+        val cxt = TestInstances.default("orgTakeover")
+        val full = TestUser.createFullAdmin(cxt, "takeover-full@example.com")
+        val confined = TestUser.create(cxt, "takeover-eng@example.com", level = ROLE.admin)
+        full.postData(UADEP.userSetOrg, mapOf(ADF.userId to confined.userId, ADF.org to "eng"))
+        val engAdmin = TestUser.create(cxt, "takeover-eng@example.com")
+        engAdmin.selfOrg() shouldBe "eng"
+        val users = UserService.get(cxt)
+
+        // A user under the key the confined administrator asks for: the creator's client, a member, no suffix.
+        fun userIn(org: String, address: String, enabled: Boolean = true): Long =
+            full.postData(UADEP.userCreate, mapOf(ADF.primaryId to address, ADF.org to org, ADF.enabled to enabled))[ADF.userId]
+                .toOptLong()!!
+        fun refusedCreate(address: String) {
+            engAdmin.expectError(EXC.badInput, UADEP.userCreate, mapOf(ADF.primaryId to address))[EP.errorCode] shouldBe
+                AERR.userKeyTaken
+        }
+
+        val disabled = userIn("sales", "takeover-disabled@example.com", enabled = false)
+        refusedCreate("takeover-disabled@example.com")
+        users.queryByUserId(cxt, disabled)!!.let {
+            it.enabled shouldBe false
+            it.org shouldBe "sales"
+        }
+
+        val enabled = userIn("sales", "takeover-enabled@example.com")
+        refusedCreate("takeover-enabled@example.com")
+        users.queryByUserId(cxt, enabled)!!.org shouldBe "sales"
+
+        val deleted = userIn("sales", "takeover-deleted@example.com")
+        full.deleteData(UADEP.userDelete, mapOf(ADF.userId to deleted))
+        refusedCreate("takeover-deleted@example.com")
+        users.queryByUserId(cxt, deleted)!!.let {
+            it.enabled shouldBe false
+            it.org shouldBe "sales"
+        }
+
+        // No organization, absent or empty -- the same thing: it belongs to the whole client, and recovering it would
+        // move it into the caller's. Refused like another organization's, and left as it was.
+        for ((address, org) in listOf("takeover-noorg@example.com" to null, "takeover-emptyorg@example.com" to "")) {
+            val userId = full.postData(
+                UADEP.userCreate, mapOf(ADF.primaryId to address, ADF.org to org, ADF.enabled to false),
+            )[ADF.userId].toOptLong()!!
+            users.queryByUserId(cxt, userId)!!.org?.trim()?.ifEmpty { null } shouldBe null
+            refusedCreate(address)
+            users.queryByUserId(cxt, userId)!!.let {
+                it.enabled shouldBe false
+                it.org?.trim()?.ifEmpty { null } shouldBe null
+            }
+        }
+
+        // The caller's own organization: a disabled user there is recovered, as before -- the same user, still in it.
+        val ownDisabled = userIn("eng", "takeover-own@example.com", enabled = false)
+        engAdmin.postData(UADEP.userCreate, mapOf(ADF.primaryId to "takeover-own@example.com"))[ADF.userId].toOptLong() shouldBe
+            ownDisabled
+        users.queryByUserId(cxt, ownDisabled)!!.let {
+            it.userId shouldBe ownDisabled
+            it.enabled shouldBe true
+            it.org shouldBe "eng"
+            it.primaryId shouldBe "takeover-own@example.com"
+        }
+
+        // An administrator with no organization is not confined: they see every organization, so they recover a
+        // disabled user in any of them, or in none, and it keeps the organization it had.
+        val clientWide = TestUser.create(cxt, "takeover-wide@example.com", level = ROLE.admin)
+        clientWide.selfOrg() shouldBe null
+        for ((address, org) in listOf("takeover-wide-sales@example.com" to "sales", "takeover-wide-none@example.com" to null)) {
+            val userId = full.postData(
+                UADEP.userCreate, mapOf(ADF.primaryId to address, ADF.org to org, ADF.enabled to false),
+            )[ADF.userId].toOptLong()!!
+            clientWide.postData(UADEP.userCreate, mapOf(ADF.primaryId to address))[ADF.userId].toOptLong() shouldBe userId
+            users.queryByUserId(cxt, userId)!!.let {
+                it.enabled shouldBe true
+                it.org shouldBe org
+            }
+        }
     }
 
     // --- the read filter, at the service level ---------------------------------
