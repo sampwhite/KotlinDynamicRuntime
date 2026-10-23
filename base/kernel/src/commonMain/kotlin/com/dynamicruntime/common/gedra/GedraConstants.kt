@@ -110,7 +110,13 @@ object GEP {
      */
     const val formDocRecomputeState = "/gedra/formDoc/recomputeState"
 
-    /** Response type of [workflowEngage] and [formDocRecomputeState]: a form id and its state entries. */
+    /**
+     * Reads one form's state entries as stored, with no recompute (issue #1366), shown as every read shows them:
+     * without a workflow's that is not live, unless [GDF.includeRetired] asks for those too.
+     */
+    const val formDocStates = "/gedra/formDoc/states"
+
+    /** Response type of [workflowEngage], [formDocRecomputeState] and [formDocStates]: a form id and its state entries. */
     const val workflowStatesType = "WorkflowStates"
 
     /** The type naming a resolved workflow view -- open by design, like a UiBlock. */
@@ -256,6 +262,19 @@ object GDF {
      * on a GET, so it needs `allowCoerce` where declared -- the query string carries it as text.
      */
     const val withStates = "withStates"
+
+    /**
+     * Param of `GET /gedra/formDoc/states` (issue #1366): when true, the entries of workflows that are not live --
+     * deleted from the configuration, or past their lifetime -- are answered too, and [retiredWorkflows] names them.
+     */
+    const val includeRetired = "includeRetired"
+
+    /**
+     * In the answer of `GET /gedra/formDoc/states` with [includeRetired] (issue #1366): the workflows, sorted, whose
+     * entries an ordinary read would leave out. Said once for the answer rather than on each entry, whose envelope
+     * every trait shares; a caller tells the entries apart by their `workflowId`.
+     */
+    const val retiredWorkflows = "retiredWorkflows"
 
     /**
      * List param (issue #791): with [withStates], also answer the workflow column's `summary` -- a pass over every

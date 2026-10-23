@@ -221,11 +221,18 @@ read than a data read. Inside a write's transaction, state is read from SQL unde
 | `GET /gedra/formDocs` filters | the survey-status filter (#695) and the workflow drill-down (#792) test each row's state before paging |
 | `withWorkflowSummary` (#791) | the workflow column's summary, computed over the state of every form the caller can see |
 | `POST /gedra/workflow/engage`, `POST /gedra/workflow/approve`, `POST /gedra/formDoc/recomputeState` | the form's state as it stands after the act (`WorkflowStates`) |
+| `GET /gedra/formDoc/states` (#1366) | one form's state as stored, with no recompute (`WorkflowStates`); with `includeRetired`, the entries of workflows that are not live too, named in `retiredWorkflows` |
 | `GET /gedra/formDoc/locks` (#857) | the traits locked for the caller, worked out from the form's state |
 | `GET /gedra/formDoc/singletonWorkflows` (#789) | the engaged workflows behind a Needs Review or Finished chip |
 | `GET /admin/gedraState` (#600) | one gedra's state entries, for an administrator of every client |
 
 The `states` arrays are typed by the `StateEntry` union, so a reader sees which trait each entry carries.
+
+**A workflow that is not live is not shown** (#1354). Every read above but the admin one leaves out the per-workflow
+entries (engagement, calculated state, approvals) of a workflow deleted from the configuration or past its lifetime
+(`WorkflowPhases.shownStates`, applied by `GedraDataService.readShownStates`). Nothing stored changes, so restoring the
+workflow, or extending its lifetime, shows them again. `GET /gedra/formDoc/states` with `includeRetired` reads them as
+stored, for seeing what a form still holds for such a workflow.
 
 ## Who uses state
 

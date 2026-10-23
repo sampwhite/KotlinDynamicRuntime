@@ -53,17 +53,36 @@ object WorkflowPhases {
         states: List<Map<String, Any?>>,
         alsoShow: String? = null,
     ): List<Map<String, Any?>> {
-        val liveIds = HashMap<String, Boolean>()
-        return states.filter { entry ->
-            if (entry[GE.traitId].toOptStr() !in perWorkflowTraits) return@filter true
-            val id = entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() ?: return@filter true
-            id == alsoShow || liveIds.getOrPut(id) { live(cxt, registry, id) != null }
-        }
+        val retiredOf = retiredJudge(cxt, registry)
+        return states.filter { entry -> retiredOf(entry).let { it == null || it == alsoShow } }
     }
 
     /** [shownStates] against [client]'s workflows. */
     fun shownStates(cxt: KdrCxt, client: String, states: List<Map<String, Any?>>, alsoShow: String? = null): List<Map<String, Any?>> =
         shownStates(cxt, WorkflowService.get(cxt).forClient(client), states, alsoShow)
+
+    /**
+     * The workflows, sorted, whose entries in [states] [shownStates] would leave out (issue #1366): what a caller
+     * reading a form's retired workflows too is told, so they can tell an entry that would come back if its workflow
+     * were restored from one that is live, without knowing the configuration.
+     */
+    fun retiredWorkflows(cxt: KdrCxt, client: String, states: List<Map<String, Any?>>): List<String> {
+        val retiredOf = retiredJudge(cxt, WorkflowService.get(cxt).forClient(client))
+        return states.mapNotNull(retiredOf).distinct().sorted()
+    }
+
+    /**
+     * Answers, for one state entry, the workflow it belongs to when that workflow is not [live] in [registry], else
+     * null -- null too for an entry that belongs to no workflow. Each workflow is looked up once per judge.
+     */
+    private fun retiredJudge(cxt: KdrCxt, registry: WorkflowRegistry): (Map<String, Any?>) -> String? {
+        val liveIds = HashMap<String, Boolean>()
+        return judge@{ entry ->
+            if (entry[GE.traitId].toOptStr() !in perWorkflowTraits) return@judge null
+            val id = entry[GE.data].toJsonMapOrEmpty()[WFD.workflowId].toOptStr() ?: return@judge null
+            id.takeUnless { liveIds.getOrPut(id) { live(cxt, registry, id) != null } }
+        }
+    }
 
     /** The state traits whose entries belong to one workflow, each naming it under [WFD.workflowId]. */
     private val perWorkflowTraits = setOf(WFS.workflowEngagement, WFS.workflowState, WFS.workflowApproval)
