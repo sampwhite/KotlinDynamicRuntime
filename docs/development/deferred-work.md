@@ -716,3 +716,28 @@ each send one.
   another's not was common, and failing the whole edit was cleaner than a partial one. The guarantee is best-effort,
   since data can change between the pre-check and the transaction, which is acceptable because a batch edit is a
   convenience and the user can retry.
+
+## When a client wants a status message reworded that Design View cannot reach
+
+From #1122, closed for now. A task's display is often a selector that picks one of several branches: an approval step
+shows "approved by …", "waiting on earlier work", the approve button, or "a reviewer approves". Design View edits only
+the branch showing on the form in front of it, so a message such as "approved by …" can be reached only once a reviewer
+has approved a real form.
+
+What covers it today:
+
+- **Wording pulled from a fragment key** (`%{@t("file.ns.key")}`) is reworded on the Clients page's copy editor, every
+  branch, whether or not it is showing. So the convention for what we ship -- templates, demos, the sample -- is to
+  write display text as pulls.
+- **Literal text in a stored workflow** is changed in its bundle, or by an AI assistant, which is where a branch's
+  condition and the selector's structure belong anyway.
+
+The trigger is a client needing one workflow's wording to differ from another's, or administrators asking how to
+reword a message they cannot get to show. Then:
+
+- **List every branch in the inspector**, with its condition in plain words, and make its text editable as #1070's
+  labels are: as the workflow's own, or at its fragment key when it pulls one. Conditions and structure are shown, not
+  edited.
+- **Expect these costs**: plain words for a cfact expression (`~kdr:isCta`); branches have no ids, so an edit
+  addresses one by position; and for a workflow made from a template, `display` would have to join what an overlay may
+  change, with a merge rule for a list whose entries have no ids.
