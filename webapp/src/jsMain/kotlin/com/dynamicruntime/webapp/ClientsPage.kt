@@ -294,7 +294,7 @@ private fun ChildrenBuilder.clientDetail(
         // Editing the definition (issue #1026): the presentation fields of a client defined in stored configuration.
         def?.stored?.let { stored ->
             if (definitionEditable(row)) {
-                val offer = definitionEditOffer(def.storedConfig, configs, sandbox = def.info[CLD.sandbox] == true)
+                val offer = definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft)
                 if (offer.editor) {
                     DefinitionEditor {
                         this.clientId = clientId
@@ -377,7 +377,7 @@ private fun ChildrenBuilder.clientDetail(
         div {
             val stored = def?.stored
             if (stored != null && definitionEditable(row) &&
-                definitionEditOffer(def.storedConfig, configs, sandbox = def.info[CLD.sandbox] == true).editor
+                definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft).editor
             ) {
                 h2 { +"Traits" }
                 ClientTraitsSection {
@@ -393,7 +393,7 @@ private fun ChildrenBuilder.clientDetail(
         // lands in the client's stored configuration under the same rules. One element whether or not it is drawn.
         div {
             if (def?.stored != null && definitionEditable(row) &&
-                definitionEditOffer(def.storedConfig, configs, sandbox = def.info[CLD.sandbox] == true).editor
+                definitionEditOffer(def.storedConfig, configs, sandbox = savesDraft).editor
             ) {
                 h2 { +"Workflows" }
                 ClientWorkflowsSection {

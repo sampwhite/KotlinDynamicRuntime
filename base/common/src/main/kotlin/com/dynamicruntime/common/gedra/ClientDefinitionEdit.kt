@@ -51,23 +51,20 @@ object ClientDefinitionEdit {
      * clears an optional one. At least one field must be given. [expected] is how the caller told its user the save would take effect, held to by [ClientStoredEdit.target].
      */
     fun set(cxt: KdrCxt, client: String, fields: Map<String, Any?>, expected: String? = null): Result {
-        val changes = cleaned(client, fields)
+        // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
+        val owner = sandboxParentOf(client) ?: client
+        val changes = cleaned(owner, fields)
         if (changes.isEmpty()) throw KdrException.mkInput("A definition edit changes at least one field; this one names none.")
-        sandboxParentOf(client)?.let { parent ->
+        if (ClientService.get(cxt).originOf(owner) == GedraConfigOrigin.source) {
             throw KdrException.mkInput(
-                "'$client' is a sandbox: its definition is derived from '$parent''s, which is edited on that client.",
-            )
-        }
-        if (ClientService.get(cxt).originOf(client) == GedraConfigOrigin.source) {
-            throw KdrException.mkInput(
-                "Client '$client' is defined in source code (its ClientDef), so its definition is edited there; a " +
+                "Client '$owner' is defined in source code (its ClientDef), so its definition is edited there; a " +
                     "stored definition cannot override it.",
             )
         }
         val target = ClientStoredEdit.target(cxt, client, "definitionEdit", expected)
         val bound = target.bound
         val holder = ClientStoredEdit.definitionHolder(bound)
-            ?: throw KdrException.mkInput("Client '$client' has no stored definition to edit.")
+            ?: throw KdrException.mkInput("Client '$owner' has no stored definition to edit.")
         ClientStoredEdit.requireNoForeignDraft(target, holder, "a definition edit")
         val before = holder.entriesBySlot()[CCT.clientDef]?.firstOrNull().toJsonMapOrEmpty()
         val written = ClientStoredEdit.patchDefinition(bound, holder) { def ->

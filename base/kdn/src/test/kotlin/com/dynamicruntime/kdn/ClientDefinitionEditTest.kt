@@ -199,16 +199,17 @@ class ClientDefinitionEditTest : StringSpec({
             .toString() shouldContain "must never be one that local development and the unit tests are locked out of"
     }
 
-    "a source-defined client, a sandbox, a foreign draft, and another administrator's client are refused" {
+    "a source-defined client, a foreign draft, and another administrator's client are refused; a sandbox edits its parent's" {
         val client = "defeditref"
         defineClient(client, sandbox = true)
         val full = TestUser.createFullAdmin(cxt, "full@$client.test")
         // The full administrator's own client is declared in source code: edited there.
         full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to full.selfClient(), CLD.name to "X"))
             .toString() shouldContain "source code"
-        // A sandbox's definition is its parent's.
-        full.expectError(EXC.badInput, UADEP.clientDefinitionSet, mapOf(CLD.client to sandboxOf(client), CLD.name to "X"))
-            .toString() shouldContain "sandbox"
+        // A sandbox's definition is its parent's, so a save named for it is a draft of the parent's (issue #1358).
+        full.postData(UADEP.clientDefinitionSet, mapOf(CLD.client to sandboxOf(client), CLD.name to "X"))[CPY.mode] shouldBe EDM.draft
+        present(sandboxOf(client)).name shouldBe "X (sandbox)"
+        present(client).name shouldBe "Client $client"
         // A client administrator names only their own client.
         val other = "defeditother"
         defineClient(other)

@@ -29,6 +29,21 @@ import com.dynamicruntime.common.startup.SchemaService
 import com.dynamicruntime.common.user.AEP
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.util.toOptLong
+import com.dynamicruntime.common.gedra.CIT
+import com.dynamicruntime.common.gedra.CLD
+import com.dynamicruntime.common.gedra.ClientService
+import com.dynamicruntime.common.gedra.GT
+import com.dynamicruntime.common.gedra.TraitDesign
+import com.dynamicruntime.common.gedra.TraitFieldDesign
+import com.dynamicruntime.common.gedra.TraitFieldKind
+import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.util.toJsonMapOrEmpty
+import io.kotest.matchers.collections.shouldContain
+import com.dynamicruntime.common.gedra.CWF
+import com.dynamicruntime.common.gedra.workflow.WFT
+import com.dynamicruntime.common.gedra.workflow.WfTaskSlot
+import com.dynamicruntime.common.gedra.workflow.WfTemplateSlots
+import com.dynamicruntime.common.gedra.workflow.WfTraitRef
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -208,6 +223,55 @@ class SandboxEditsTest : StringSpec({
         val granted = TestUser.create(cxt, member, level = ROLE.admin, userClient = sandboxOf(parent))
         granted.expectError(EXC.notAuthorized, CPY.setPath, mapOf(COV.fileId to HFRAG.home, COV.namespaceField to "home", COV.key to "brand", COV.value to "x"))
         granted.expectError(EXC.notAuthorized, CFEP.bundles)
+    }
+
+    "from inside the sandbox, the definition, its traits, a trait of its own and a workflow are drafts of the parent's (issue #1358)" {
+        val parent = "sbxeditors"
+        defineParent(parent, publishedOnly = true)
+        val admin = TestUser.create(cxt, "chief@$parent.test", level = ROLE.admin, userClient = parent)
+        // From here on the session is in the sandbox, and names no client: each call is the sandbox's own.
+        admin.postData(AEP.openSandbox, emptyMap())
+        val sandbox = sandboxOf(parent)
+        fun present(client: String) = ClientService.get(cxt).present(client)!!
+        fun latest(name: String) = svc.readLatest(cxt.mkSubContext("check", parent), GedraId.of(GedraConfigType.configDoc, parent, name))
+
+        // The definition: the parent's stored one is what the sandbox's page reads and edits.
+        admin.getItem(UADEP.clientDefinition)[CLD.storedDefinition].toJsonMapOrEmpty()[CLD.name] shouldBe "Client $parent"
+        admin.postData(UADEP.clientDefinitionSet, mapOf(CLD.name to "Renamed"))[CPY.mode] shouldBe EDM.draft
+        present(sandbox).name shouldBe "Renamed (sandbox)"
+        present(parent).name shouldBe "Client $parent"
+
+        // The global traits it includes.
+        admin.postData(UADEP.clientTraitsSet, mapOf(CLD.includedTraits to listOf(GT.name)))[CPY.mode] shouldBe EDM.draft
+        present(sandbox).includedTraits shouldBe listOf(GT.name)
+        present(parent).includedTraits shouldBe emptyList()
+
+        // A trait of its own lands in a configuration of the parent's, never one filed under the sandbox.
+        val design = TraitDesign(null, "Site safety", "How a site is kept safe.", listOf(TraitFieldDesign(null, "Notes", TraitFieldKind.text)))
+        val made = admin.postData(UADEP.clientTraitDesign, mapOf(CIT.design to design.toInfo()))
+        made[CPY.mode] shouldBe EDM.draft
+        val configName = made[CIT.configName].toString()
+        latest(configName)?.isPublished shouldBe false
+        svc.readLatest(cxt.mkSubContext("check", sandbox), GedraId.of(GedraConfigType.configDoc, sandbox, configName)) shouldBe null
+        // ...and the sandbox's catalog, which reads the parent's stored configuration, lists it.
+        admin.getItem(UADEP.clientTraits)[CIT.ownTraits].toJsonListOfMaps().map { it[CIT.configName] } shouldContain configName
+
+        // A workflow made from a template, collecting the trait the draft now includes.
+        val slots = WfTemplateSlots(null, WFT.survey, "Site survey", listOf(WfTaskSlot("details", "The site", listOf(WfTraitRef(GT.name)))))
+        val workflow = admin.postData(UADEP.clientWorkflowSave, mapOf(CWF.slots to slots.toInfo()))
+        workflow[CPY.mode] shouldBe EDM.draft
+        val workflowConfig = workflow[CWF.configName].toString()
+        latest(workflowConfig)?.isPublished shouldBe false
+        admin.getItem(UADEP.clientWorkflows)[CWF.workflows].toJsonListOfMaps().size shouldBe 1
+
+        // Whether there is a sandbox stays the parent's to say.
+        admin.expectError(EXC.badInput, UADEP.clientSandbox, mapOf(CLD.sandbox to false))
+
+        // Published together from the sandbox, the parent runs all of it.
+        admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("main", configName, workflowConfig)))
+        GedraConfigReload.reloadClient(cxt, parent)
+        present(parent).name shouldBe "Renamed"
+        present(parent).includedTraits shouldBe listOf(GT.name)
     }
 })
 

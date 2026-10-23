@@ -261,12 +261,13 @@ private fun clientDefinitionOf(cxt: KdrCxt, def: ClientDef, withStored: Boolean)
 
 /**
  * The client's stored definition as its latest revision holds it (issue #1026), redacted for emission as every
- * stored read is (`testFeatures` off a test instance, #696) -- or null for a client with none stored: one defined in
- * source code, or a sandbox, which holds no configuration of its own.
+ * stored read is (`testFeatures` off a test instance, #696) -- or null for a client with none stored, one defined in
+ * source code. A sandbox holds no configuration of its own, so for one it is its parent's (issue #1358): what the
+ * sandbox runs, and what its page's editors change, as drafts of the parent's.
  */
 private fun storedDefinitionOf(cxt: KdrCxt, clientId: String): Pair<String, Map<String, Any?>>? {
-    if (isSandboxClient(clientId)) return null
-    val holder = ClientStoredEdit.definitionHolder(cxt.mkSubContext("storedDefinition", clientId)) ?: return null
+    val owner = sandboxParentOf(clientId) ?: clientId
+    val holder = ClientStoredEdit.definitionHolder(cxt.mkSubContext("storedDefinition", owner)) ?: return null
     val stored = holder.slotsForEmission(cxt.instanceConfig.isTestInstance)[CCT.clientDef]?.firstOrNull() ?: return null
     return holder.configId.baseId to stored
 }

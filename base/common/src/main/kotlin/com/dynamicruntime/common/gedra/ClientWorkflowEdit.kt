@@ -56,19 +56,25 @@ object ClientWorkflowEdit {
 
     /** The catalog for [client]'s page -- see the class note -- as the catalog endpoint answers it. */
     fun catalog(cxt: KdrCxt, client: String): Map<String, Any?> {
+        // Named for a sandbox (issue #1358), the parent's stored configuration is what its editors change; the workflows
+        // listed are what the sandbox runs, as [view] reads for a parent with one.
+        val owner = sandboxParentOf(client) ?: client
         val workflows = WorkflowService.get(cxt)
         // What the editors change: for a client with a sandbox, its latest configuration, drafts included -- which is
         // what the sandbox runs -- so a workflow a draft removed or made is listed as the next edit will find it.
-        val view = sandboxOf(client).takeIf { sandboxParentOf(client) == null && ClientService.get(cxt).present(it) != null } ?: client
+        // Named for a sandbox, that is the sandbox itself (issue #1358) -- asked before forming a sandbox's sandbox's id,
+        // which is no id.
+        val view = if (sandboxParentOf(client) != null) client
+        else sandboxOf(client).takeIf { ClientService.get(cxt).present(it) != null } ?: client
         val own = workflows.forClient(view).workflows.values.toList()
         val templates = workflows.forClient(null).workflows
-        val limits = PlanRoom.of(cxt, client)
+        val limits = PlanRoom.of(cxt, owner)
         return buildMap {
             put(CLD.client, client)
             put(CWF.templates, templates.values.map { templateInfo(it.def, own, limits) })
             put(CWF.workflows, own.map { workflowInfo(view, it, templates.keys) })
-            put(CWF.traits, usableTraits(cxt, client))
-            ClientService.get(cxt).displayZoneOf(client)?.let { put(CWF.timeZone, it) }
+            put(CWF.traits, usableTraits(cxt, owner))
+            ClientService.get(cxt).displayZoneOf(owner)?.let { put(CWF.timeZone, it) }
         }
     }
 
@@ -163,9 +169,8 @@ object ClientWorkflowEdit {
      * take effect; [impact] whether a save that affects stored forms goes ahead.
      */
     fun save(cxt: KdrCxt, client: String, slots: WfTemplateSlots, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): Result {
-        sandboxParentOf(client)?.let { parent ->
-            throw KdrException.mkInput("'$client' is a sandbox: its workflows are its parent's, which are made on '$parent'.")
-        }
+        // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
+        val owner = sandboxParentOf(client) ?: client
         // Only a template the deployment's checks admitted.
         val template = WorkflowService.get(cxt).forClient(null).workflow(slots.templateId)?.def
             ?: throw KdrException("There is no workflow template '${slots.templateId}'.", code = EXC.notFound)
@@ -181,17 +186,17 @@ object ClientWorkflowEdit {
             // Nor the name of a configuration left from one, which a new workflow's configuration may not take.
             val leftover = svc.listConfigs(bound).map { it.configId.baseId }.filter { it.startsWith(CWF.configPrefix) }
                 .map { it.removePrefix(CWF.configPrefix) }
-            val taken = WorkflowService.get(cxt).forClient(client).workflows.keys + storedWorkflowIds(bound) + leftover
+            val taken = WorkflowService.get(cxt).forClient(owner).workflows.keys + storedWorkflowIds(bound) + leftover
             val id = keyFromLabel(slots.label, taken, "workflow")
             made = withTemplateSlots(bound, template, slots, id)
             val entry = mapOf(CCT.workflowId to id, CCT.definition to workflowTemplateOverlay(template, made))
-            val config = reassembleForWrite(bound, CWF.configPrefix + id, clientNamespace(client), client, mapOf(CCT.workflowDef to listOf(entry)))
+            val config = reassembleForWrite(bound, CWF.configPrefix + id, clientNamespace(owner), owner, mapOf(CCT.workflowDef to listOf(entry)))
             written = svc.writeConfig(bound, config, trial = true, mustBeNew = true)
             // Nothing stored can be engaged with a workflow that did not exist, so there is no impact to judge.
             reload = ClientStoredEdit.takeEffect(cxt, target, written, undo = {}, impact = impact)
         } else {
             val (row, stored) = storedWorkflow(bound, workflowId)
-                ?: throw KdrException("Client '$client' stores no workflow '$workflowId'.", code = EXC.notFound)
+                ?: throw KdrException("Client '$owner' stores no workflow '$workflowId'.", code = EXC.notFound)
             if (stored[WFD.fromTemplate] != slots.templateId) {
                 throw KdrException.mkInput("Workflow '$workflowId' is not made from template '${slots.templateId}', so its slots are not these.")
             }
@@ -236,14 +241,13 @@ object ClientWorkflowEdit {
         expected: String? = null,
         impact: ImpactGate = ImpactGate.refuse,
     ): WindowsResult {
-        sandboxParentOf(client)?.let { parent ->
-            throw KdrException.mkInput("'$client' is a sandbox: its workflows are its parent's, which are changed on '$parent'.")
-        }
+        // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
+        val owner = sandboxParentOf(client) ?: client
         val target = ClientStoredEdit.target(cxt, client, "workflowWindows", expected)
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
         val (row, stored) = storedWorkflow(bound, workflowId)
-            ?: throw KdrException("Client '$client' stores no workflow '$workflowId'; its windows are set where it is declared.", code = EXC.notFound)
+            ?: throw KdrException("Client '$owner' stores no workflow '$workflowId'; its windows are set where it is declared.", code = EXC.notFound)
         val current = WorkflowTemplates.readStored(bound, stored)
         if (current.entry != WfEntry.normal) {
             throw KdrException.mkInput("Workflow '$workflowId' is a ${current.entry} workflow, which has no time windows; only a normal workflow does.")
@@ -270,14 +274,13 @@ object ClientWorkflowEdit {
      * part in is refused with the impact report until acknowledged; a draft's says what publishing it would do.
      */
     fun remove(cxt: KdrCxt, client: String, workflowId: String, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): RemoveResult {
-        sandboxParentOf(client)?.let { parent ->
-            throw KdrException.mkInput("'$client' is a sandbox: its workflows are its parent's, which are removed on '$parent'.")
-        }
+        // From a sandbox, its parent's: the sandbox holds no configuration, and a removal is a draft of the parent's (#1358).
+        val owner = sandboxParentOf(client) ?: client
         val target = ClientStoredEdit.target(cxt, client, "workflowRemove", expected)
         val bound = target.bound
         val svc = GedraConfigService.get(bound)
         val (row, stored) = storedWorkflow(bound, workflowId)
-            ?: throw KdrException("Client '$client' stores no workflow '$workflowId'.", code = EXC.notFound)
+            ?: throw KdrException("Client '$owner' stores no workflow '$workflowId'.", code = EXC.notFound)
         if (stored[WFD.fromTemplate] == null) {
             throw KdrException.mkInput("Workflow '$workflowId' is written whole, not made from a template, so it is removed where it is written.")
         }

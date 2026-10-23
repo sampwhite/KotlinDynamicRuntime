@@ -85,7 +85,9 @@ object ClientTraitDesignEdit {
      * any declared in source code, which are edited there. In the order they are stored.
      */
     fun ownTraits(cxt: KdrCxt, client: String): List<Map<String, Any?>> {
-        val stored = storedTraits(cxt.mkSubContext("traitDesigns", client), globalTraitBases(cxt))
+        // Named for a sandbox, its parent's, which the sandbox runs and its editors change (issue #1358).
+        val owner = sandboxParentOf(client) ?: client
+        val stored = storedTraits(cxt.mkSubContext("traitDesigns", owner), globalTraitBases(cxt))
         val listed = stored.values.map { t ->
             buildMap {
                 put(CIT.traitId, t.traitId)
@@ -94,7 +96,7 @@ object ClientTraitDesignEdit {
                 t.read.notEditable?.let { put(CIT.notEditable, it) }
             }
         }
-        val inSource = runningOwnTraitIds(cxt, client).filterNot { it in stored }.map {
+        val inSource = runningOwnTraitIds(cxt, owner).filterNot { it in stored }.map {
             mapOf(CIT.traitId to it, CIT.notEditable to "It is declared in source code, where it is edited.")
         }
         return listed + inSource
@@ -126,18 +128,17 @@ object ClientTraitDesignEdit {
      * that affects stored forms goes ahead.
      */
     fun save(cxt: KdrCxt, client: String, design: TraitDesign, expected: String? = null, impact: ImpactGate = ImpactGate.refuse): Result {
-        sandboxParentOf(client)?.let { parent ->
-            throw KdrException.mkInput("'$client' is a sandbox: its traits are its parent's, which are designed on '$parent'.")
-        }
+        // From a sandbox, its parent's: the sandbox holds no configuration, and a save is a draft of the parent's (#1358).
+        val owner = sandboxParentOf(client) ?: client
         val target = ClientStoredEdit.target(cxt, client, "traitDesign", expected)
         val bound = target.bound
         val bases = globalTraitBases(cxt)
         val stored = storedTraits(bound, bases)
-        val taken = stored.keys + runningOwnTraitIds(cxt, client)
+        val taken = stored.keys + runningOwnTraitIds(cxt, owner)
         val existing = design.traitId?.let { id ->
             stored[id] ?: throw KdrException(
                 if (id in taken) "Trait '$id' is declared in source code, where it is edited."
-                else "Client '$client' has no trait '$id' to edit.",
+                else "Client '$owner' has no trait '$id' to edit.",
                 code = if (id in taken) EXC.badInput else EXC.notFound,
             )
         }
@@ -159,7 +160,7 @@ object ClientTraitDesignEdit {
         val reload: ConfigReloadResult
         if (existing == null) {
             val name = CIT.configPrefix + traitId
-            val namespace = clientNamespace(client)
+            val namespace = clientNamespace(owner)
             val entry = buildMap {
                 put(CCT.traitId, traitId)
                 put(CCT.typeName, "$namespace.${pascal}Entry")
@@ -168,7 +169,7 @@ object ClientTraitDesignEdit {
                 // An extension's data is its base's plus its own fields (`g-extends`); any other trait's is its own.
                 put(CCT.dataSchema, base?.let { keyed.toExtension(it.typeName, it.required) } ?: keyed.toDataSchema())
             }
-            val config = reassembleForWrite(bound, name, namespace, client, mapOf(CCT.traitDef to listOf(entry)))
+            val config = reassembleForWrite(bound, name, namespace, owner, mapOf(CCT.traitDef to listOf(entry)))
             written = GedraConfigService.get(bound).writeConfig(bound, config, trial = true, mustBeNew = true)
             // Nothing stored can hold a trait that did not exist, so there is no impact to judge. A publish refused
             // after the write's own trial passed leaves the configuration as a draft, which the refusal says.
