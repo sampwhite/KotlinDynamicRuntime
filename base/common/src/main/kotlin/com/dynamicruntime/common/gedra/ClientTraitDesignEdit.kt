@@ -182,11 +182,11 @@ object ClientTraitDesignEdit {
             val stored = existing.entry[CCT.dataSchema].toJsonMapOrEmpty()
             entry[CCT.dataSchema] = base?.let { keyed.toExtension(it.typeName, it.required, stored) } ?: keyed.toDataSchema(stored)
             if (entry == existing.entry) throw KdrException.mkInput("Trait '$traitId' is already designed so; nothing to save.")
-            fun patch(row: GedraConfigRow, to: Map<String, Any?>) = GedraConfigService.get(bound).patchConfig(bound, row.configId, trial = true) { slots ->
+            fun patch(row: GedraConfigRow, to: Map<String, Any?>) = GedraConfigService.get(bound).patchConfigs(bound, trial = true) { edit(row.configId) { slots ->
                 val out = LinkedHashMap(slots)
                 out[CCT.traitDef] = slots[CCT.traitDef].orEmpty().map { if (it[CCT.traitId] == traitId) to else it }
                 out
-            }
+            } }.single()
             written = patch(existing.row, entry)
             reload = ClientStoredEdit.takeEffect(
                 cxt, target, written,

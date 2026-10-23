@@ -126,8 +126,8 @@ class StaticConfigTest : StringSpec({
         }
         val main = GedraId.of(GedraConfigType.configDoc, client, "edits")
         refused { svc.writeConfig(bound(prod), edit(prod)) }
-        refused { svc.patchConfig(bound(prod), main) { it } }
-        refused { svc.publish(bound(prod), main) }
+        refused { svc.patchConfigs(bound(prod)) { edit(main) { it } }.single() }
+        refused { svc.publish(bound(prod), listOf(main)) }
         refused { svc.revertToEditable(bound(prod), main) }
         refused { svc.setPublishedOnly(bound(prod), client, true) }
         svc.isStaticHere(bound(prod), client) shouldBe true

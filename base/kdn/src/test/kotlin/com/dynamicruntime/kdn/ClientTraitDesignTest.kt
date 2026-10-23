@@ -70,7 +70,7 @@ class ClientTraitDesignTest : StringSpec({
                 trait("NoteEntry", "note", setOf(GedraDataType.formDoc), "A note.") { property("text", "The note.") }
             },
         )
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
     }
 

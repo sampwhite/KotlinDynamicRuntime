@@ -56,7 +56,7 @@ class SandboxBootAndSyncTest : StringSpec({
     }
 
     fun publish(node: KdrCxt, client: String) =
-        GedraConfigService.get(node).publish(asClient(node, client), GedraId.of(GedraConfigType.configDoc, client, "stored"))
+        GedraConfigService.get(node).publish(asClient(node, client), listOf(GedraId.of(GedraConfigType.configDoc, client, "stored")))
 
     // --- a source-defined parent ---------------------------------------------------------------------------
 

@@ -181,10 +181,7 @@ class ClientDefGateTest : StringSpec({
         // `postData` returns a call's results and does not assert it succeeded, so each one here is checked.
         admin.postData(ACEP.bundleWrite, writeBody(client, info(client)))[CFEP.version] shouldBe 1
 
-        fun patch(data: Map<String, Any?>): Map<String, Any?> = mapOf(
-            CFEP.client to client, CFEP.name to "main",
-            CFEP.edits to listOf(mapOf(CFEP.slot to CCT.clientDef, GED.action to GedraEditAction.addOrMerge.name, GE.data to data)),
-        )
+        fun patch(data: Map<String, Any?>): Map<String, Any?> = mapOf(CFEP.client to client, CFEP.configs to listOf(mapOf(CFEP.name to "main", CFEP.edits to listOf(mapOf(CFEP.slot to CCT.clientDef, GED.action to GedraEditAction.addOrMerge.name, GE.data to data)))))
         failuresOf(admin.expectError(EXC.badInput, ACEP.bundlePatch, patch(mapOf(CLD.sandbox to "yes", "nickname" to "G")))) shouldBe mapOf(
             "${CCT.clientDef}.${CLD.sandbox}" to SchFailCode.wrongType.name,
             "${CCT.clientDef}.nickname" to SchFailCode.additionalProperty.name,
@@ -193,12 +190,9 @@ class ClientDefGateTest : StringSpec({
         failuresOf(
             admin.expectError(
                 EXC.badInput, ACEP.bundlePatch,
-                mapOf(
-                    CFEP.client to client, CFEP.name to "main",
-                    CFEP.edits to listOf(
+                mapOf(CFEP.client to client, CFEP.configs to listOf(mapOf(CFEP.name to "main", CFEP.edits to listOf(
                         mapOf(CFEP.slot to CCT.clientDef, GED.action to GedraEditAction.addOrReplace.name, GE.data to (info(client) - CLD.name)),
-                    ),
-                ),
+                    )))),
             ),
         ).keys shouldBe setOf("${CCT.clientDef}.${CLD.name}")
         // The stored definition is as it was.
@@ -208,20 +202,17 @@ class ClientDefGateTest : StringSpec({
         stored[CLD.name] shouldBe "Gate $client"
 
         // A sound patch of the same slot goes through, and of another slot too: the whole config is gated, and passes.
-        admin.postData(ACEP.bundlePatch, patch(mapOf(CLD.description to "Patched")))[CFEP.slots]
+        onlyConfig(admin.postData(ACEP.bundlePatch, patch(mapOf(CLD.description to "Patched"))))[CFEP.slots]
             .toJsonMapOrEmpty()[CCT.clientDef].toJsonListOfMaps().single()[CLD.description] shouldBe "Patched"
-        admin.postData(
+        onlyConfig(admin.postData(
             ACEP.bundlePatch,
-            mapOf(
-                CFEP.client to client, CFEP.name to "main",
-                CFEP.edits to listOf(
+            mapOf(CFEP.client to client, CFEP.configs to listOf(mapOf(CFEP.name to "main", CFEP.edits to listOf(
                     mapOf(
                         CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrReplace.name,
                         GE.data to mapOf(CCT.name to "ready", CCT.group to "grp", CCT.description to "Ready"),
                     ),
-                ),
-            ),
-        )[CFEP.slots].toJsonMapOrEmpty().keys shouldBe setOf(CCT.clientDef, CCT.cfactDef)
+                )))),
+        ))[CFEP.slots].toJsonMapOrEmpty().keys shouldBe setOf(CCT.clientDef, CCT.cfactDef)
     }
 
     "an import reports a malformed definition by path and writes none of that client, while another client's goes in" {
@@ -249,3 +240,6 @@ class ClientDefGateTest : StringSpec({
         result[ACEP.reloaded].toJsonListOfStrings() shouldBe listOf(good)
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

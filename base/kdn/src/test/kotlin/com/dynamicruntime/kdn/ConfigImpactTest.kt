@@ -80,7 +80,7 @@ class ConfigImpactTest : StringSpec({
         svc.writeConfig(cxt.mkSubContext("setup", client).also { it.userId = 9350L }, gedraConfig(cxt, name, clientNamespace(client), client, build = build))
 
     fun publish(client: String, name: String) =
-        svc.publish(cxt.mkSubContext("setup", client).also { it.userId = 9350L }, GedraId.of(GedraConfigType.configDoc, client, name))
+        svc.publish(cxt.mkSubContext("setup", client).also { it.userId = 9350L }, listOf(GedraId.of(GedraConfigType.configDoc, client, name)))
 
     /** Defines [client] -- with a sandbox, so published-only -- publishes its three bundles, and returns an admin of it. */
     fun defineClient(client: String): TestUser {
@@ -105,7 +105,7 @@ class ConfigImpactTest : StringSpec({
     fun form(user: TestUser, vararg entries: Map<String, Any?>): String =
         user.postItem(GEP.formDocCreate, mapOf(GDF.entries to entries.toList()))[GDF.gedraId].toOptStr()!!
 
-    fun report(user: TestUser, name: String): Map<String, Any?> = user.getItem(CFEP.bundleImpact, mapOf(CFEP.name to name))
+    fun report(user: TestUser, name: String): Map<String, Any?> = user.getItem(CFEP.bundleImpact, mapOf(CFEP.names to name))
 
     fun findings(report: Map<String, Any?>): List<Map<String, Any?>> = report[IMP.findings].toJsonListOfMaps()
 
@@ -182,7 +182,7 @@ class ConfigImpactTest : StringSpec({
         result[IMP.scanned] shouldBe 1
         result[IMP.tooLarge] shouldBe false
         findings(result).shouldBeEmpty()
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to "traits"))[CFEP.published] shouldBe true
+        onlyConfig(admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("traits"))))[CFEP.published] shouldBe true
     }
 
     "a publish with something to report is refused with the report, and goes through acknowledged" {
@@ -192,7 +192,7 @@ class ConfigImpactTest : StringSpec({
         form(user, entry("extra", "note" to "n"))
         write(client, "traits") { traits(withExtra = false) }
 
-        val refused = admin.expectError(EXC.badInput, CFEP.bundlePublish, data = mapOf(CFEP.name to "traits"))
+        val refused = admin.expectError(EXC.badInput, CFEP.bundlePublish, data = mapOf(CFEP.names to listOf("traits")))
         refused[EP.errorCode] shouldBe IMP.refusedCode
         refused[EP.errorMessage].toOptStr().orEmpty() shouldContain "trait 'extra' would no longer be supported"
         val carried = refused[EP.extraData].toJsonMapOrEmpty()[IMP.report].toJsonMapOrEmpty()
@@ -200,7 +200,7 @@ class ConfigImpactTest : StringSpec({
         // Nothing was published: the draft is still a draft.
         admin.getItems(CFEP.bundles).single { it[CFEP.name] == "traits" }[CFEP.published] shouldBe false
 
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to "traits", IMP.acknowledgeImpact to true))[CFEP.published] shouldBe true
+        onlyConfig(admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("traits"), IMP.acknowledgeImpact to true)))[CFEP.published] shouldBe true
     }
 
     "from a sandbox, the report is about the parent's data, not the sandbox's" {
@@ -260,7 +260,7 @@ class ConfigImpactTest : StringSpec({
     }
     "the impact-demo simulation leaves a draft whose report finds its forms, and a rerun is safe" {
         val client = "${ImpactDemo.client}t"
-        fun demoReport() = ConfigImpact.report(cxt.mkSubContext("check", client), client, ImpactDemo.traits)
+        fun demoReport() = ConfigImpact.report(cxt.mkSubContext("check", client), client, listOf(ImpactDemo.traits))
         provisionImpactDemo(cxt, "t").clients shouldContainExactly listOf(client, sandboxOf(client))
         val byKind = demoReport().findings.associateBy { it.kind }
         byKind.getValue(ImpactKind.traitGone).let { it.traitId shouldBe ImpactDemo.visit; it.rows.size shouldBe 2 }
@@ -271,3 +271,6 @@ class ConfigImpactTest : StringSpec({
         demoReport().findings.associateBy { it.kind }.getValue(ImpactKind.traitGone).rows.size shouldBe 4
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

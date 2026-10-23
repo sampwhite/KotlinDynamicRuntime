@@ -293,10 +293,7 @@ class ConfigSlotGateTest : StringSpec({
         envelope[EP.extraData].toJsonMapOrEmpty()[EP.failures].toJsonListOfMaps()
             .associate { it[EP.failurePath].toString() to it[EP.failureCode].toString() }
 
-    fun patch(name: String, slot: String, action: GedraEditAction, data: Map<String, Any?>): Map<String, Any?> = mapOf(
-        CFEP.client to client, CFEP.name to name,
-        CFEP.edits to listOf(mapOf(CFEP.slot to slot, GED.action to action.name, GE.data to data)),
-    )
+    fun patch(name: String, slot: String, action: GedraEditAction, data: Map<String, Any?>): Map<String, Any?> = mapOf(CFEP.client to client, CFEP.configs to listOf(mapOf(CFEP.name to name, CFEP.edits to listOf(mapOf(CFEP.slot to slot, GED.action to action.name, GE.data to data)))))
 
     "a bundle write, a patch and an import each refuse a malformed entry by path, and store nothing of it" {
         val admin = fullAdmin()
@@ -419,7 +416,7 @@ class ConfigSlotGateTest : StringSpec({
         GedraConfigReload.reloadClient(cxt, client)
 
         // A patch of another slot goes through: the rule is carried unchanged, so it is not judged again.
-        admin.postData(ACEP.bundlePatch, patch("legacy", CCT.cfactDef, GedraEditAction.addOrReplace, cfact("legacyReady")))[CFEP.slots]
+        onlyConfig(admin.postData(ACEP.bundlePatch, patch("legacy", CCT.cfactDef, GedraEditAction.addOrReplace, cfact("legacyReady"))))[CFEP.slots]
             .toJsonMapOrEmpty().keys shouldBe setOf(CCT.usageDef, CCT.cfactDef)
         // So does the bundle read and written back as it is.
         val read = admin.getItem(ACEP.bundle, mapOf(CFEP.client to client, CFEP.name to "legacy"))
@@ -437,9 +434,12 @@ class ConfigSlotGateTest : StringSpec({
             ),
         ).keys shouldBe setOf("${CCT.usageDef}[${GT.name}].${CCT.display}")
         // And mending it is how it stops being one.
-        admin.postData(
+        onlyConfig(admin.postData(
             ACEP.bundlePatch,
             patch("legacy", CCT.usageDef, GedraEditAction.addOrMerge, mapOf(CCT.traitId to GT.name, CCT.display to "\${name}")),
-        )[CFEP.slots].toJsonMapOrEmpty()[CCT.usageDef].toJsonListOfMaps().single()[CCT.display] shouldBe "\${name}"
+        ))[CFEP.slots].toJsonMapOrEmpty()[CCT.usageDef].toJsonListOfMaps().single()[CCT.display] shouldBe "\${name}"
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

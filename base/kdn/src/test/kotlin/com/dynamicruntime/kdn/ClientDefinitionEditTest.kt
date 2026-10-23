@@ -58,7 +58,7 @@ class ClientDefinitionEditTest : StringSpec({
                 )
             },
         )
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
     }
 
@@ -247,7 +247,7 @@ class ClientDefinitionEditTest : StringSpec({
         read[CLD.client].toJsonMapOrEmpty()[CLD.name] shouldBe "Client $client"
         read[CLD.storedDefinition].toJsonMapOrEmpty()[CLD.name] shouldBe "Draft Name"
 
-        admin.postData(CFEP.bundlePublish, mapOf(CFEP.name to "main"))
+        admin.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf("main")))
         admin.postData(CFEP.reload, emptyMap())
         present(client).name shouldBe "Draft Name"
     }

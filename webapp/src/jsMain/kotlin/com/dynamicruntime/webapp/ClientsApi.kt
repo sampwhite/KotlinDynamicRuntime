@@ -1337,13 +1337,13 @@ object ClientsApi {
     }
 
     /**
-     * Publishes [clientId]'s configuration [name] and reloads the client (issue #1001), so a published-only client
-     * runs what was just published. For a sandbox, its parent's: the full-scope surface names the parent; the scoped
+     * Publishes [clientId]'s configurations [names] together and reloads the client (issues #1001, #1352), so a
+     * published-only client runs what was just published. For a sandbox, its parent's: the full-scope surface names the parent; the scoped
      * one, called in the sandbox, acts on the parent already (#930). A publish that would affect the client's stored
      * data is refused unless [acknowledgeImpact] (issue #935); [impactOf] reads the report off that refusal.
      */
-    suspend fun publishBundle(clientId: String, name: String, acrossClients: Boolean, acknowledgeImpact: Boolean = false) {
-        val request = publishBundleRequest(clientId, name, acrossClients, acknowledgeImpact)
+    suspend fun publishBundles(clientId: String, names: List<String>, acrossClients: Boolean, acknowledgeImpact: Boolean = false) {
+        val request = publishBundleRequest(clientId, names, acrossClients, acknowledgeImpact)
         Http.sendApi("POST", request.path, request.body)
         if (acrossClients) {
             Http.sendApi("POST", ACEP.reload, mapOf(CFEP.client to (sandboxParentOf(clientId) ?: clientId)))
@@ -1352,12 +1352,12 @@ object ClientsApi {
         }
     }
 
-    /** What publishing [clientId]'s configuration [name] would do to the client's stored data (issue #935). */
-    suspend fun bundleImpact(clientId: String, name: String, acrossClients: Boolean): ImpactReportView {
+    /** What publishing [clientId]'s configurations [names] together would do to the client's stored data (issues #935, #1352). */
+    suspend fun bundleImpact(clientId: String, names: List<String>, acrossClients: Boolean): ImpactReportView {
         val path = if (acrossClients) {
-            ACEP.bundleImpact + queryString(mapOf(CFEP.client to (sandboxParentOf(clientId) ?: clientId), CFEP.name to name))
+            ACEP.bundleImpact + queryString(mapOf(CFEP.client to (sandboxParentOf(clientId) ?: clientId), CFEP.names to names))
         } else {
-            CFEP.bundleImpact + queryString(mapOf(CFEP.name to name))
+            CFEP.bundleImpact + queryString(mapOf(CFEP.names to names))
         }
         return parseImpactReport(Http.getApi(path)[EP.item].toJsonMapOrEmpty())
     }
@@ -1367,14 +1367,14 @@ object ClientsApi {
 class ApiRequest(val path: String, val body: Map<String, Any?>)
 
 /**
- * The publish of [clientId]'s configuration [name] (issues #1001, #935): the full-scope surface naming the owner --
+ * The publish of [clientId]'s configurations [names], together (issues #1001, #935, #1352): the full-scope surface naming the owner --
  * a sandbox's parent, since a sandbox holds none of its own -- or the scoped one; with [acknowledgeImpact] when the
  * caller has seen the impact report and goes ahead. Pure, and covered under `jsNodeTest`.
  */
-fun publishBundleRequest(clientId: String, name: String, acrossClients: Boolean, acknowledgeImpact: Boolean): ApiRequest {
+fun publishBundleRequest(clientId: String, names: List<String>, acrossClients: Boolean, acknowledgeImpact: Boolean): ApiRequest {
     val body = buildMap {
         if (acrossClients) put(CFEP.client, sandboxParentOf(clientId) ?: clientId)
-        put(CFEP.name, name)
+        put(CFEP.names, names)
         if (acknowledgeImpact) put(IMP.acknowledgeImpact, true)
     }
     return ApiRequest(if (acrossClients) ACEP.bundlePublish else CFEP.bundlePublish, body)
@@ -1391,13 +1391,14 @@ class ImpactFindingView(
 )
 
 /**
- * What publishing one configuration would do to its client's stored data (issue #935): the rows [scanned], whether the
- * client stores [tooLarge] a number to examine, and the [findings] -- only what the publish would break.
+ * What publishing configurations together would do to their client's stored data (issues #935, #1352): the [configs]
+ * judged, the rows [scanned], whether the client stores [tooLarge] a number to examine, and the [findings] -- only
+ * what the publish would break.
  */
 class ImpactReportView(
     val client: String,
-    val name: String,
-    val version: Int,
+    /** Each configuration judged: its name and the version of the revision judged. */
+    val configs: List<Pair<String, Int>>,
     val scanned: Int,
     val tooLarge: Boolean,
     val findings: List<ImpactFindingView>,
@@ -1409,8 +1410,7 @@ class ImpactReportView(
 /** A report as the wire carries it -- from the report endpoint, or a refused publish's `extraData`. Pure. */
 fun parseImpactReport(raw: Map<String, Any?>): ImpactReportView = ImpactReportView(
     client = raw[IMP.client].toOptStr().orEmpty(),
-    name = raw[IMP.name].toOptStr().orEmpty(),
-    version = (raw[IMP.version] as? Number)?.toInt() ?: 0,
+    configs = raw[IMP.configs].toJsonListOfMaps().map { it[IMP.name].toOptStr().orEmpty() to ((it[IMP.version] as? Number)?.toInt() ?: 0) },
     scanned = (raw[IMP.scanned] as? Number)?.toInt() ?: 0,
     tooLarge = raw[IMP.tooLarge] == true,
     findings = raw[IMP.findings].toJsonListOfMaps().map {
@@ -1430,6 +1430,12 @@ fun impactOf(e: Throwable): ImpactReportView? {
     val api = e as? ApiError ?: return null
     if (api.errorCode != IMP.refusedCode) return null
     return parseImpactReport(api.extraData[IMP.report].toJsonMapOrEmpty())
+}
+
+/** The configurations a report judged, as a sentence names them: `main`, or `main and extra`. Pure. */
+fun impactConfigsText(report: ImpactReportView): String {
+    val names = report.configs.map { it.first }
+    return if (names.size <= 1) names.joinToString() else "${names.dropLast(1).joinToString(", ")} and ${names.last()}"
 }
 
 /** One finding as a sentence for the dialog (issue #935): how many forms, and what would happen to them. Pure. */
@@ -1457,7 +1463,7 @@ fun impactFindingText(f: ImpactFindingView): String {
  * harm were. [doing] names the change -- "Publishing <name>" unless a caller says otherwise, as Design View's save of
  * a removed choice does (issue #1040). Pure.
  */
-fun impactSummary(report: ImpactReportView, doing: String = "Publishing ${report.name}"): String = when {
+fun impactSummary(report: ImpactReportView, doing: String = "Publishing ${impactConfigsText(report)}"): String = when {
     report.tooLarge -> "This client stores more forms than an impact check examines, so what " +
         "${doing.replaceFirstChar { it.lowercase() }} would do to them is unknown."
     // Exact about what was checked: the report looks for what would break, not for state a form would derive

@@ -154,7 +154,7 @@ object ClientTraitNarrowEdit {
             }
             // The type's entry rewritten, removed (`to` null), or added where the configuration has none.
             fun patch(row: GedraConfigRow, to: Map<String, Any?>?) =
-                GedraConfigService.get(bound).patchConfig(bound, row.configId, trial = true) { slots ->
+                GedraConfigService.get(bound).patchConfigs(bound, trial = true) { edit(row.configId) { slots ->
                     val out = LinkedHashMap(slots)
                     val listed = slots[CCT.schemaDef].orEmpty()
                     val entries = listed.mapNotNull {
@@ -164,7 +164,7 @@ object ClientTraitNarrowEdit {
                     else listOf(mapOf(CCT.typeName to base.typeName, CCT.schema to to))
                     if (entries.isEmpty() && added.isEmpty()) out.remove(CCT.schemaDef) else out[CCT.schemaDef] = entries + added
                     out
-                }
+                } }.single()
             written = patch(holder, body)
             reload = ClientStoredEdit.takeEffect(
                 cxt, target, written,

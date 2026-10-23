@@ -106,31 +106,31 @@ object ClientStoredEdit {
      * at the save, for information -- publishing still asks. Null for a live save, or when nothing would be affected.
      */
     fun draftImpact(target: EditTarget, written: GedraConfigRow): ImpactReport? =
-        if (!target.draft) null else ConfigImpact.reportFor(target.bound, target.client, written, anyTier = true).takeIf { it.blocks }
+        if (!target.draft) null else ConfigImpact.reportFor(target.bound, target.client, listOf(written), anyTier = true).takeIf { it.blocks }
 
     /** The stored config of the bound client's that holds its definition (`clientDef`), or null when none does. */
     fun definitionHolder(bound: KdrCxt): GedraConfigRow? =
         GedraConfigService.get(bound).listConfigs(bound).firstOrNull { it.entriesBySlot()[CCT.clientDef]?.isNotEmpty() == true }
 
     /**
-     * Patches [row]'s client definition entry as [edit] leaves it -- inside `patchConfig`, over the revision as it
+     * Patches [row]'s client definition entry as [edit] leaves it -- inside `patchConfigs`, over the revision as it
      * stands under the lock, so a field another administrator changed a moment ago is kept. The definition editors'
      * shared patch (the sandbox flag, #932; the presentation fields, #1026).
      */
     fun patchDefinition(bound: KdrCxt, row: GedraConfigRow, edit: (LinkedHashMap<String, Any?>) -> Unit): GedraConfigRow =
-        GedraConfigService.get(bound).patchConfig(bound, row.configId, trial = true) { current ->
+        GedraConfigService.get(bound).patchConfigs(bound, trial = true) { edit(row.configId) { current ->
             val out = LinkedHashMap(current)
             val defs = current[CCT.clientDef].orEmpty()
             val def = LinkedHashMap(defs.firstOrNull().toJsonMapOrEmpty())
             edit(def)
             out[CCT.clientDef] = listOf(def) + defs.drop(1)
             out
-        }
+        } }.single()
 
     /**
      * Puts an editor's patched [entry] back into [slot] of [out]: in place of the one at [at], or appended when there
      * was none -- or, when the patch left it [emptied], removed, so a config does not carry an empty overlay. A slot
-     * left with no [entries] is dropped too. The shared tail of both editors' patches, run inside `patchConfig`.
+     * left with no [entries] is dropped too. The shared tail of both editors' patches, run inside `patchConfigs`.
      */
     fun storeEntry(
         out: MutableMap<String, List<Map<String, Any?>>>,
@@ -214,9 +214,9 @@ object ClientStoredEdit {
         impact: ImpactGate = ImpactGate.unchecked,
     ): ConfigReloadResult {
         try {
-            if (impact == ImpactGate.refuse) ConfigImpact.requireNone(bound, client, written, asSave = true)
+            if (impact == ImpactGate.refuse) ConfigImpact.requireNone(bound, client, listOf(written), asSave = true)
             (bound.instanceConfig.get(publishCheckConfigKey) as? PublishCheck)?.check(bound, client, written)
-            GedraConfigService.get(bound).publish(bound, written.configId, trial = true)
+            GedraConfigService.get(bound).publish(bound, listOf(written.configId), trial = true)
         } catch (e: KdrException) {
             undo()
             // Best effort: the undone content is what the client already runs, so its publish should pass; if it does
@@ -224,7 +224,7 @@ object ClientStoredEdit {
             // next edit will be refused for it.
             if (restorePublished) {
                 try {
-                    GedraConfigService.get(bound).publish(bound, written.configId, trial = true)
+                    GedraConfigService.get(bound).publish(bound, listOf(written.configId), trial = true)
                 } catch (restore: KdrException) {
                     LogGedra.warn(cxt) {
                         "Could not republish '${written.configId.baseId}' of client '$client' after undoing a refused " +

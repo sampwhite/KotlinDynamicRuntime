@@ -123,13 +123,13 @@ object ClientCreate {
         // The write's trial judged this very definition, with the copy written beside it, so the publish has nothing
         // new to refuse; were it to, the configuration stays written and unpublished, and a second create is told the
         // id has one.
-        val published = svc.publish(bound, written.first().configId, trial = true)
+        val published = svc.publish(bound, listOf(written.first().configId), trial = true).single()
         // The copy with it (issue #1336): judged with the definition by the write, so its publish has nothing new to
         // refuse either. Were it to fail, the client is made all the same -- its definition is published -- so the
         // copy is left a draft, for its administrator to publish, rather than failing a create that has happened.
         for (row in written.drop(1)) {
             try {
-                svc.publish(bound, row.configId, trial = true)
+                svc.publish(bound, listOf(row.configId), trial = true)
             } catch (e: Exception) {
                 LogGedra.error(cxt, "Client '$client' was created, but its copy config '${row.configId}' could not be published.", e)
             }

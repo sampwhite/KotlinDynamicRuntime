@@ -7,6 +7,7 @@ import com.dynamicruntime.common.exception.KdrException
 import com.dynamicruntime.common.fileref.FREF
 import com.dynamicruntime.common.fileref.FileRefDef
 import com.dynamicruntime.common.fileref.FileRefService
+import com.dynamicruntime.common.naming.clientNamespace
 import com.dynamicruntime.common.naming.clientNamespaceProblem
 import com.dynamicruntime.common.sql.KdrTable
 import com.dynamicruntime.common.sql.PF
@@ -242,42 +243,51 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
-     * Edits a config's interior slots individually (issue #732), atomically: the [applyEdits] transform runs on
-     * the latest revision read **under the write lock**, so a patch cannot be computed from a stale/cached read
-     * and then overwrite a concurrent write (the read-modify-write race the endpoint layer could not close). The
-     * edited slot set is reassembled -- which validates it as source would -- and written as the whole revision
-     * (authoritative), so `buildFinalEntries` re-stamps only the entries the edits changed and the rest keep
-     * their accounting. Follows the same version/publish rule as [writeConfig]: it edits the latest editable
-     * revision in place, or starts a new one when the latest is published. Throws 404 when the class has none.
+     * Edits the interior slots of one or more of a client's configs (issues #732, #1352), atomically and together:
+     * every edit [block] declares ([ConfigPatches.edit]) runs on its config's latest revision read **under the write
+     * lock**, in one transaction, so a patch cannot be computed from a stale read and overwrite a concurrent write,
+     * and a change spanning configs -- a workflow moved from one to another -- is never half made. Each edited slot
+     * set is reassembled -- which validates it as source would -- and written as the whole revision (authoritative),
+     * so `buildFinalEntries` re-stamps only the entries the edits changed and the rest keep their accounting. Each
+     * follows [writeConfig]'s version/publish rule: it edits the latest editable revision in place, or starts a new
+     * one when the latest is published.
+     *
+     * A config with no revision yet is **created** (version 1, in the client's own namespace), so an edit can move
+     * entries into a config of their own. With [trial], one trial judges every written revision together, as
+     * [writeConfigs] does, and a refusal takes them all back. Every config must be one client's, each named once.
+     * Returns the written revisions in the order the edits were declared.
      */
-    fun patchConfig(
+    fun patchConfigs(
         cxt: KdrCxt,
-        configClassId: GedraId,
         /** As [writeConfig]'s: refuse an edit whose trial reload finds a new problem (issue #843). */
         trial: Boolean = false,
-        /**
-         * File-ref entries this patch **puts back** (issue #1154): what the revision held when the call making it
-         * began, restored by that call's own undo. A local ref among them may be written by a caller who could not
-         * name one ([localFileRefProblem]) -- they are not naming a file, the call is taking back its own change.
-         * Only ever what was read from the stored revision; never anything a request carried.
-         */
-        restoring: List<Map<String, Any?>> = emptyList(),
-        applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
-    ): GedraConfigRow {
-        val configId = configClassId.revisionClass()
-        requireNotStaticHere(cxt, configId.client, "patching its stored configuration")
-        val wcxt = boundToClient(cxt, configId.client)
+        block: ConfigPatches.() -> Unit,
+    ): List<GedraConfigRow> {
+        val patches = ConfigPatches().apply(block).patches
+        if (patches.isEmpty()) throw KdrException.mkInput("A config patch must edit at least one configuration.")
+        val ids = patches.map { it.configId.revisionClass() }
+        val client = ids.map { it.client }.distinct().singleOrNull()
+            ?: throw KdrException.mkInput("A config patch edits one client's configurations; it names ${ids.map { it.client }.distinct().sorted()}.")
+        val twice = ids.groupBy { it.fullId }.filterValues { it.size > 1 }.keys
+        if (twice.isNotEmpty()) throw KdrException.mkInput("Configs ${twice.sorted()} are each edited more than once in one patch.")
+        requireNotStaticHere(cxt, client, "patching its stored configuration")
+        val wcxt = boundToClient(cxt, client)
         return underClientLock(wcxt, tranWrite) { sqlCxt, table ->
-            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
-                ?: throw KdrException("No configuration '${configId.baseId}' for client '${configId.client}'.", code = EXC.notFound)
-            val stored = latest.entriesBySlot()
-            val edited = applyEdits(stored)
-            // Gate and reassemble, exactly as the bundle write does (issue #1051); then write the whole edited set.
-            // The gate judges what the edits changed: the revision as it stood is handed to it (issue #1052).
-            val config = reassembleForWrite(wcxt, configId.baseId, latest.resolvedNamespace(), configId.client, edited, stored)
-            checkWritableConfig(wcxt, config)
-            val written = writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true, restoring)
-            if (trial) trialWritten(wcxt, listOf(written), mapOf(configId.fullId to latest))
+            val before = LinkedHashMap<String, GedraConfigRow?>()
+            val written = patches.mapIndexed { i, patch ->
+                val configId = ids[i]
+                val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                before[configId.fullId] = latest
+                val stored = latest?.entriesBySlot()
+                val edited = patch.applyEdits(stored ?: emptyMap())
+                // Gate and reassemble, exactly as the bundle write does (issue #1051); then write the whole edited
+                // set. The gate judges what the edits changed: the revision as it stood is handed to it (#1052).
+                val namespace = latest?.resolvedNamespace() ?: clientNamespace(client)
+                val config = reassembleForWrite(wcxt, configId.baseId, namespace, client, edited, stored)
+                checkWritableConfig(wcxt, config)
+                writeRevisionUnderLock(wcxt, sqlCxt, table, configId, config, latest, impliedDelete = true, patch.restoring)
+            }
+            if (trial) trialWritten(wcxt, written, before)
             written
         }
     }
@@ -364,7 +374,7 @@ class GedraConfigService : ServiceInitializer {
      * their edit of the same configuration is not refused for something they did not write; it may reword that
      * ref's description; and it may leave the ref out, which removes it. What it may not do is name a file.
      * [vouched] are the entries the server's own code answers for: a code-authored write's own, and the ones a
-     * call puts back as its undo (`patchConfig`'s `restoring`). They are carried as though the revision held them.
+     * call puts back as its undo (`ConfigPatch.restoring`). They are carried as though the revision held them.
      *
      * Of two stored entries with one id the **first** is the one the revision holds, as a load keeps the first.
      *
@@ -405,7 +415,7 @@ class GedraConfigService : ServiceInitializer {
     /**
      * Writes [config] as the current revision of [configId] under an open write transaction, per the version/
      * publish rule (#611): version 1 when the class has no revision, an in-place update while the latest is still
-     * editable, or a new version once it is published. The shared tail of [writeConfig] and [patchConfig].
+     * editable, or a new version once it is published. The shared tail of [writeConfigs] and [patchConfigs].
      */
     private fun writeRevisionUnderLock(
         wcxt: KdrCxt,
@@ -433,55 +443,64 @@ class GedraConfigService : ServiceInitializer {
     }
 
     /**
-     * Publishes the latest revision of the config class [configClassId] names (issue #633): stamps its
-     * [GC.publishedAt], after which the next [writeConfig] mints a new revision rather than editing this one.
-     * Idempotent -- if the latest revision is already published there is nothing editable to publish, so it is
-     * returned unchanged. Throws when the class has no revision at all.
+     * Publishes the latest revision of each config [configClassIds] names (issues #633, #1352), together: one
+     * transaction under the client's lock, judged as one change. Stamps each one's [GC.publishedAt], after which the
+     * next write mints a new revision rather than editing it. A config whose latest revision is already published
+     * has nothing editable to publish and is returned unchanged -- skipped, not refused, so a group naming one that
+     * somebody else published meanwhile still goes ahead. Throws when a config has no revision at all. Every config
+     * must be one client's, each named once. Returns the revisions in the order named.
      *
      * For a published-only client, publishing is what changes what the client runs, so with [trial] it is judged
-     * the way a write is (issue #843): refused if a trial reload with this revision live would find a problem the
-     * client does not already have. For any other client the revision is already what it runs, and was judged
-     * when written.
+     * the way a write is (issue #843): refused if a trial reload with the newly published revisions live would find
+     * a problem the client does not already have. Judged together, so configs that are sound only as a set -- a
+     * workflow moved from one to another -- publish as the set, where either alone would be refused. For any other
+     * client the revisions are already what it runs, and were judged when written.
      *
-     * With [impact] set to [ImpactGate.refuse], it is refused too when making the revision live would affect the data
-     * the client already stores (issue #935, [ConfigImpact]), unless the caller has [ImpactGate.acknowledged] it. As
-     * with the trial, only a published-only client's publish can: for any other, the report is empty.
+     * With [impact] set to [ImpactGate.refuse], it is refused too when making them live would affect the data the
+     * client already stores (issue #935, [ConfigImpact]), unless the caller has [ImpactGate.acknowledged] it. As with
+     * the trial, only a published-only client's publish can: for any other, the report is empty.
      */
     fun publish(
         cxt: KdrCxt,
-        configClassId: GedraId,
+        configClassIds: List<GedraId>,
         trial: Boolean = false,
         impact: ImpactGate = ImpactGate.unchecked,
-    ): GedraConfigRow {
-        val configId = configClassId.revisionClass()
-        requireNotStaticHere(cxt, configId.client, "publishing its stored configuration")
-        val wcxt = boundToClient(cxt, configId.client)
+    ): List<GedraConfigRow> {
+        if (configClassIds.isEmpty()) throw KdrException.mkInput("A publish must name at least one configuration.")
+        val ids = configClassIds.map { it.revisionClass() }
+        val client = ids.map { it.client }.distinct().singleOrNull()
+            ?: throw KdrException.mkInput("A publish names one client's configurations; it names ${ids.map { it.client }.distinct().sorted()}.")
+        val twice = ids.groupBy { it.fullId }.filterValues { it.size > 1 }.keys
+        if (twice.isNotEmpty()) throw KdrException.mkInput("Configs ${twice.sorted()} are each named more than once in one publish.")
+        requireNotStaticHere(cxt, client, "publishing its stored configuration")
+        val wcxt = boundToClient(cxt, client)
         val now = wcxt.instanceNow()
         return underClientLock(wcxt, tranPublish) { sqlCxt, table ->
-            val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
-                ?: throw KdrException.mkInput("There is no config '$configId' to publish.")
-            if (latest.isPublished) {
-                return@underClientLock latest
-            }
-            val stmt = SqlTopicUtil.mkPartialUpdateStmt(
-                sqlCxt, table, "uGedraConfigPublish",
-                "c:${GC.publishedAt} = :${GC.publishedAt}", "c:${GC.gedraId} = :${GC.gedraId}",
-            )
-            val bind = mutableMapOf<String, Any?>(GC.gedraId to latest.gedraId.fullId, GC.publishedAt to now)
-            SqlTopicUtil.prepForStdUpdate(wcxt, table, bind, latest.updatedAt)
-            sqlCxt.sqlDb.executeStatement(wcxt, stmt, bind)
-            // The published head this supersedes becomes history (issue #875).
-            ConfigCurrentRevisions.refresh(wcxt, sqlCxt, table, configId.fullId)
-            val stamped = readRowUnderLock(wcxt, sqlCxt, table, latest.gedraId)
-            if (trial && publishedOnly(wcxt, configId.client)) {
-                GedraConfigTrial.requireClean(
-                    wcxt, configId.client, listOf(stamped), published = true,
-                    "Configuration '${configId.baseId}' was not published",
+            val newlyPublished = mutableListOf<GedraConfigRow>()
+            val rows = ids.map { configId ->
+                val latest = readLatestUnderLock(wcxt, sqlCxt, table, configId)
+                    ?: throw KdrException.mkInput("There is no config '$configId' to publish.")
+                if (latest.isPublished) return@map latest
+                val stmt = SqlTopicUtil.mkPartialUpdateStmt(
+                    sqlCxt, table, "uGedraConfigPublish",
+                    "c:${GC.publishedAt} = :${GC.publishedAt}", "c:${GC.gedraId} = :${GC.gedraId}",
                 )
+                val bind = mutableMapOf<String, Any?>(GC.gedraId to latest.gedraId.fullId, GC.publishedAt to now)
+                SqlTopicUtil.prepForStdUpdate(wcxt, table, bind, latest.updatedAt)
+                sqlCxt.sqlDb.executeStatement(wcxt, stmt, bind)
+                // The published head this supersedes becomes history (issue #875).
+                ConfigCurrentRevisions.refresh(wcxt, sqlCxt, table, configId.fullId)
+                readRowUnderLock(wcxt, sqlCxt, table, latest.gedraId).also { newlyPublished.add(it) }
             }
-            // Judged under the lock, on the revision just stamped, so no write can land between the report and the publish.
-            if (impact == ImpactGate.refuse) ConfigImpact.requireNone(wcxt, configId.client, stamped)
-            stamped
+            if (newlyPublished.isNotEmpty()) {
+                if (trial && publishedOnly(wcxt, client)) {
+                    val names = newlyPublished.joinToString(", ") { "'${it.configId.baseId}'" }
+                    GedraConfigTrial.requireClean(wcxt, client, newlyPublished, published = true, "Configuration $names was not published")
+                }
+                // Judged under the lock, on the revisions just stamped, so no write can land between the report and the publish.
+                if (impact == ImpactGate.refuse) ConfigImpact.requireNone(wcxt, client, newlyPublished)
+            }
+            rows
         }
     }
 
@@ -995,3 +1014,36 @@ class GedraConfigService : ServiceInitializer {
             ?: throw KdrException("The $serviceName is not available on this node.")
     }
 }
+
+/**
+ * What one [GedraConfigService.patchConfigs] call edits (issue #1352): a config each [edit] names, with the function
+ * that turns its stored slots into the slots to write. Declared up front and run later, under the write lock.
+ */
+class ConfigPatches {
+    internal val patches = mutableListOf<ConfigPatch>()
+
+    /**
+     * Edits the config [configId] names -- creating it when it has no revision, when [applyEdits] is handed no
+     * slots. [restoring] is as [ConfigPatch.restoring] says.
+     */
+    fun edit(
+        configId: GedraId,
+        restoring: List<Map<String, Any?>> = emptyList(),
+        applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
+    ) {
+        patches.add(ConfigPatch(configId, restoring, applyEdits))
+    }
+}
+
+/** One config's edit in a [ConfigPatches]. */
+class ConfigPatch(
+    val configId: GedraId,
+    /**
+     * File-ref entries this edit **puts back** (issue #1154): what the revision held when the call making it began,
+     * restored by that call's own undo. A local ref among them may be written by a caller who could not name one
+     * (`localFileRefProblem`) -- they are not naming a file, the call is taking back its own change. Only ever what
+     * was read from the stored revision; never anything a request carried.
+     */
+    val restoring: List<Map<String, Any?>>,
+    val applyEdits: (Map<String, List<Map<String, Any?>>>) -> Map<String, List<Map<String, Any?>>>,
+)

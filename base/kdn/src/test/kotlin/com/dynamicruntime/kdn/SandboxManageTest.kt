@@ -44,7 +44,7 @@ class SandboxManageTest : StringSpec({
                 )
             },
         )
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
     }
 

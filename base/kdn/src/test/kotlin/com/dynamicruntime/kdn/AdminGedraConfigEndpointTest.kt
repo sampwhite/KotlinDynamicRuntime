@@ -70,7 +70,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
         bundle[CFEP.slots].toJsonMapOrEmpty().keys shouldBe setOf(CCT.schemaDef)
 
         // Publish the named client's revision, cross-client.
-        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to target, CFEP.name to name))[CFEP.published] shouldBe true
+        onlyConfig(admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to target, CFEP.names to listOf(name))))[CFEP.published] shouldBe true
     }
 
     "an allClients admin patches a named client's config cross-client (issue #732)" {
@@ -89,18 +89,15 @@ class AdminGedraConfigEndpointTest : StringSpec({
             ),
         )
         // Patch: add a cfactDef entry without touching the schemaDef.
-        val patched = admin.postData(
+        val patched = onlyConfig(admin.postData(
             ACEP.bundlePatch,
-            mapOf(
-                CFEP.client to target, CFEP.name to name,
-                CFEP.edits to listOf(
+            mapOf(CFEP.client to target, CFEP.configs to listOf(mapOf(CFEP.name to name, CFEP.edits to listOf(
                     mapOf(
                         CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrReplace.name,
                         GE.data to mapOf(CCT.name to "ready", CCT.group to "grp", CCT.description to "Ready"),
                     ),
-                ),
-            ),
-        )
+                )))),
+        ))
         patched[CFEP.client] shouldBe target
         patched[CFEP.slots].toJsonMapOrEmpty().keys shouldBe setOf(CCT.schemaDef, CCT.cfactDef)
     }
@@ -193,7 +190,7 @@ class AdminGedraConfigEndpointTest : StringSpec({
                 ),
             ),
         )
-        admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to target, CFEP.name to name))[CFEP.published] shouldBe true
+        onlyConfig(admin.postData(ACEP.bundlePublish, mapOf(CFEP.client to target, CFEP.names to listOf(name))))[CFEP.published] shouldBe true
 
         // Cross-client revert mints a new editable revision copied from the published head.
         val reverted = admin.postData(ACEP.bundleRevert, mapOf(CFEP.client to target, CFEP.name to name))
@@ -227,3 +224,6 @@ class AdminGedraConfigEndpointTest : StringSpec({
             .expectError(EXC.notAuthorized, ACEP.bundles, args = mapOf(CFEP.client to CL.hub))
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

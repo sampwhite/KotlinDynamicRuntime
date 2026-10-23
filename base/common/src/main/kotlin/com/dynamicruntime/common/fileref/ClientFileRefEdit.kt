@@ -416,7 +416,7 @@ object ClientFileRefEdit {
         row.entriesBySlot()[CCT.fileRefDef]?.firstOrNull { it[CCT.refId].toOptStr() == refId }
 
     /**
-     * Patches [row] so its entry for [refId] is [entry] -- or, with null, so it holds none. Run inside `patchConfig`,
+     * Patches [row] so its entry for [refId] is [entry] -- or, with null, so it holds none. Run inside `patchConfigs`,
      * over the revision as it stands under the lock, so a ref another administrator added a moment ago is kept.
      *
      * [restoring] says [entry] is what the configuration held before this call changed it, put back as the call's
@@ -430,13 +430,13 @@ object ClientFileRefEdit {
         refId: String,
         entry: Map<String, Any?>?,
         restoring: Boolean = false,
-    ): GedraConfigRow = svc.patchConfig(bound, row.configId, trial = true, restoring = if (restoring) listOfNotNull(entry) else emptyList()) { current ->
+    ): GedraConfigRow = svc.patchConfigs(bound, trial = true) { edit(row.configId, restoring = if (restoring) listOfNotNull(entry) else emptyList()) { current ->
         val out = LinkedHashMap<String, List<Map<String, Any?>>>(current)
         val entries = current[CCT.fileRefDef].orEmpty().toMutableList()
         val at = entries.indexOfFirst { it[CCT.refId].toOptStr() == refId }
         ClientStoredEdit.storeEntry(out, CCT.fileRefDef, entries, at, entry.orEmpty(), emptied = entry == null)
         out
-    }
+    } }.single()
 
     /** Makes [written] take effect ([ClientStoredEdit.takeEffect]: live, or a draft) and says where it landed. */
     private fun goLive(cxt: KdrCxt, target: ClientStoredEdit.EditTarget, written: GedraConfigRow, refId: String, undo: () -> Unit): Result {

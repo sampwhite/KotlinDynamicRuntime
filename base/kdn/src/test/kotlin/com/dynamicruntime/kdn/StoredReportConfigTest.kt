@@ -76,12 +76,12 @@ class StoredReportConfigTest : StringSpec({
         }
         val svc = GedraConfigService.get(warn)
         val row = svc.writeConfig(writer, config)
-        svc.patchConfig(writer, row.configId) { slots ->
+        svc.patchConfigs(writer) { edit(row.configId) { slots ->
             slots + (CCT.reportDef to slots.getValue(CCT.reportDef).map { entry ->
                 if (entry[CCT.reportId] != "spoilt") entry
                 else entry + (CCT.definition to (entry[CCT.definition] as Map<*, *>).entries.associate { (k, v) -> k.toString() to v } + (RDEF.reportId to "spoilt id"))
             })
-        }
+        } }.single()
         val result = GedraConfigReload.reloadClient(warn, unreadable)
         // The client and its readable report load; the unreadable one is an issue naming it, on the client's list.
         ClientService.get(warn).present(unreadable).shouldNotBeNull()
@@ -91,7 +91,7 @@ class StoredReportConfigTest : StringSpec({
         issue.elementId shouldBe "spoilt"
         ClientConfigIssues.get(warn).issuesFor(unreadable).any { it.elementKind == GCEL.report } shouldBe true
         // An edit of something else in the config keeps the unreadable report as stored, rather than deleting it.
-        svc.patchConfig(writer, row.configId) { slots -> slots }
+        svc.patchConfigs(writer) { edit(row.configId) { slots -> slots } }.single()
         svc.listConfigs(writer).single().entriesBySlot().getValue(CCT.reportDef).map { it[CCT.reportId] } shouldContainExactly
             listOf("kept", "spoilt")
     }

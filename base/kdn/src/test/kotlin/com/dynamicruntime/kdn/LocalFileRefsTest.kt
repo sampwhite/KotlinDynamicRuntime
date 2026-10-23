@@ -206,7 +206,7 @@ class LocalFileRefsTest : StringSpec({
                 )
             },
         )
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
     }
 
@@ -234,8 +234,7 @@ class LocalFileRefsTest : StringSpec({
     /** One edit of the file-ref slot of [config]: what an administrator types by hand; [client] for one who names it. */
     fun slotEdit(action: GedraEditAction, entry: Map<String, Any?>, config: String = "main", client: String? = null): Map<String, Any?> = buildMap {
         client?.let { put(CFEP.client, it) }
-        put(CFEP.name, config)
-        put(CFEP.edits, listOf(mapOf(CFEP.slot to CCT.fileRefDef, GED.action to action.name, GE.data to entry)))
+        put(CFEP.configs, listOf(mapOf(CFEP.name to config, CFEP.edits to listOf(mapOf(CFEP.slot to CCT.fileRefDef, GED.action to action.name, GE.data to entry)))))
     }
 
     fun storedRefs(client: String, config: String = "main"): List<Map<String, Any?>> =
@@ -466,8 +465,8 @@ class LocalFileRefsTest : StringSpec({
         posted(full, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, localEntry("logo", "logo.png") + (CCT.description to "Ours."), client = client))
         // In-process, with no signed-in caller: a script provisioning a client.
         svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRef("mark") { local(LocalFileRefComponent.root, "marks/mark.svg") } }, trial = true)
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "main"))
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "art"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "art")))
         GedraConfigReload.reloadClient(cxt, client)
         static(member, nameOf("logo", png)).rptResponseBytes!!.toList() shouldBe png.toList()
         static(member, nameOf("mark", svg)).rptResponseBytes!!.toList() shouldBe svg.toList()
@@ -492,7 +491,7 @@ class LocalFileRefsTest : StringSpec({
         // They may remove one, and replace one with a file of their own.
         posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "mark"))[FREF.configName] shouldBe "art"
         // (Their typed edits are published first: an upload does not publish changes it did not make.)
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
         refs.forClient(client).refs.keys shouldBe setOf("logo", "banner")
         admin.upload(UADEP.clientFilesUpload, mapOf(CCT.refId to "logo", FREF.file to ContentData(otherPng, "image/png", inLine = false)))
@@ -535,7 +534,7 @@ class LocalFileRefsTest : StringSpec({
         val admin = adminOf(client)
         val file = File(brand, "breakable.png").also { it.writeBytes(png) }
         posted(full, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, localEntry("pic", "breakable.png"), client = client))
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
         ClientConfigIssues.get(cxt).issuesFor(client).shouldBeEmpty()
 
@@ -556,7 +555,7 @@ class LocalFileRefsTest : StringSpec({
         full.expectError(EXC.badInput, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, localEntry("other", "absent.png"), client = client))[EP.errorMessage] as String shouldContain
             "File ref 'other' of client '$client'"
         // Its administrator takes the broken ref away.
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         posted(admin, UADEP.clientFilesRemove, mapOf(CCT.refId to "pic"))[CCT.refId] shouldBe "pic"
         ClientConfigIssues.get(cxt).issuesFor(client).shouldBeEmpty()
     }
@@ -613,13 +612,13 @@ class LocalFileRefsTest : StringSpec({
         // Publishing is the change that would hand the broken ref to the client's people, and is refused for it --
         // whether or not the sandbox has been reloaded to say so.
         val mainId = GedraId.of(GedraConfigType.configDoc, client, "main")
-        shouldThrow<KdrException> { svc.publish(writerOf(client), mainId, trial = true) }.message.orEmpty() shouldContain "File ref 'pic' of client '$client'"
+        shouldThrow<KdrException> { svc.publish(writerOf(client), listOf(mainId), trial = true) }.message.orEmpty() shouldContain "File ref 'pic' of client '$client'"
         GedraConfigReload.reloadClient(cxt, client)
         ClientConfigIssues.get(cxt).issuesFor(sandboxOf(client)).single().message shouldContain "File ref 'pic' of client '$client'"
-        shouldThrow<KdrException> { svc.publish(writerOf(client), mainId, trial = true) }.message.orEmpty() shouldContain "File ref 'pic' of client '$client'"
+        shouldThrow<KdrException> { svc.publish(writerOf(client), listOf(mainId), trial = true) }.message.orEmpty() shouldContain "File ref 'pic' of client '$client'"
         // With its file back, it publishes.
         file.writeBytes(png)
-        svc.publish(writerOf(client), mainId, trial = true).isPublished shouldBe true
+        svc.publish(writerOf(client), listOf(mainId), trial = true).single().isPublished shouldBe true
     }
 
     // The slot gate holds what an endpoint writes; source configuration and an in-process write never pass it. What
@@ -638,7 +637,7 @@ class LocalFileRefsTest : StringSpec({
                 fileRef("good") { local(LocalFileRefComponent.root, "logo.png") }
             },
         )
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "odd"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "odd")))
         GedraConfigReload.reloadClient(cxt, client)
 
         refs.forClient(client).refs.keys shouldBe setOf("good")
@@ -672,8 +671,8 @@ class LocalFileRefsTest : StringSpec({
         // The client's administrator takes the ref out. Putting it back is naming a file, and refused...
         val before = artRefs().single()
         fun put(entry: Map<String, Any?>, restoring: List<Map<String, Any?>> = emptyList()) =
-            svc.patchConfig(asAdmin, artId, restoring = restoring) { it + (CCT.fileRefDef to listOf(entry)) }
-        svc.patchConfig(asAdmin, artId) { it - CCT.fileRefDef }
+            svc.patchConfigs(asAdmin) { edit(artId, restoring = restoring) { it + (CCT.fileRefDef to listOf(entry)) } }.single()
+        svc.patchConfigs(asAdmin) { edit(artId) { it - CCT.fileRefDef } }.single()
         artRefs().shouldBeEmpty()
         shouldThrow<KdrException> { put(before) }.code shouldBe EXC.notAuthorized
         // ...unless it is the call's own undo, putting back exactly what was there. Nothing else rides on it.
@@ -690,7 +689,7 @@ class LocalFileRefsTest : StringSpec({
         defineClient(client)
         val local = localEntry("pic", "logo.png")
         val art = svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(local) })
-        svc.publish(writerOf(client), art.configId)
+        svc.publish(writerOf(client), listOf(art.configId))
         GedraConfigReload.reloadClient(cxt, client)
         val admin = adminOf(client)
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
@@ -710,7 +709,7 @@ class LocalFileRefsTest : StringSpec({
         val client = "lfrheld"
         defineClient(client)
         val art = svc.writeConfig(writerOf(client), gedraConfig(cxt, "art", clientNamespace(client), client) { fileRefFromMap(localEntry("pic", "logo.png")) })
-        svc.publish(writerOf(client), art.configId)
+        svc.publish(writerOf(client), listOf(art.configId))
         GedraConfigReload.reloadClient(cxt, client)
         val admin = adminOf(client)
         posted(admin, UADEP.clientSandbox, mapOf(CLD.sandbox to true))
@@ -732,7 +731,7 @@ class LocalFileRefsTest : StringSpec({
         val client = LocalFileRefComponent.shadowed
         val odd = localEntry("logo", "logo.png", root = "../brand")
         svc.writeConfig(writerOf(client), gedraConfig(cxt, CPY.copyConfigName, clientNamespace(client), client) { fileRefFromMap(odd) })
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, CPY.copyConfigName)))
         GedraConfigReload.reloadClient(cxt, client)
         val admin = adminOf(client)
         listed(admin).getValue("logo").let {
@@ -753,7 +752,7 @@ class LocalFileRefsTest : StringSpec({
         File(brand, "twice-z.png").writeBytes(otherPng)
         for ((name, path) in listOf("aaa" to "twice-a.png", "zzz" to "twice-z.png")) {
             val row = svc.writeConfig(writerOf(client), gedraConfig(cxt, name, clientNamespace(client), client) { fileRefFromMap(localEntry("pic", path)) })
-            svc.publish(writerOf(client), row.configId)
+            svc.publish(writerOf(client), listOf(row.configId))
         }
         GedraConfigReload.reloadClient(cxt, client)
         val admin = adminOf(client)
@@ -972,7 +971,7 @@ class LocalFileRefsTest : StringSpec({
             "which is not there to be served as an image"
         // Their ordinary local ref names the root whole, as it did before the root was opened.
         posted(full, ACEP.bundlePatch, slotEdit(GedraEditAction.addOrReplace, localEntry("top", "top.png", root = openRoot), config = "art", client = client))
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "art"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "art")))
         GedraConfigReload.reloadClient(cxt, client)
         static(memberOf(client), "pic").rptResponseBytes!!.toList() shouldBe png.toList()
         static(memberOf(client), "top").rptResponseBytes!!.toList() shouldBe otherPng.toList()
@@ -1053,7 +1052,7 @@ class LocalFileRefsTest : StringSpec({
                 fileRef("hero") { clientLocal(root, "globex/hero.png") }
             },
         )
-        shutSvc.publish(writer, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        shutSvc.publish(writer, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(shut, client)
 
         ClientConfigIssues.get(shut).issuesFor(client).single().message shouldBe
@@ -1189,7 +1188,7 @@ class LocalFileRefsTest : StringSpec({
             gedraConfig(cxt, "over", clientNamespace(client), client, GedraConfigOrigin.stored) { fileRef("crest", "abc") },
             trial = false,
         )
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "over"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "over")))
         GedraConfigReload.reloadClient(cxt, client)
 
         ClientConfigIssues.get(cxt).issuesFor(client).single { it.message.contains("'crest'") }.message shouldContain "the hash 'abc', which is not one"

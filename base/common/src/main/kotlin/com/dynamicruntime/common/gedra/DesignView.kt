@@ -282,13 +282,13 @@ object DesignView {
         val holder = svc.readLatest(target.bound, configId)
             ?: throw KdrException("No configuration '$configName' for client '${target.client}'.", code = EXC.notFound)
         var before: Map<String, List<Map<String, Any?>>> = emptyMap()
-        val written = svc.patchConfig(target.bound, configId, trial = true) { slots ->
+        val written = svc.patchConfigs(target.bound, trial = true) { edit(configId) { slots ->
             before = slots
             patch(slots)
-        }
+        } }.single()
         ClientStoredEdit.takeEffect(
             cxt, target, written,
-            undo = { svc.patchConfig(target.bound, configId) { before } },
+            undo = { svc.patchConfigs(target.bound) { edit(configId) { before } }.single() },
             restorePublished = holder.isPublished,
             impact = impact,
         )

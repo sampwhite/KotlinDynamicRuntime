@@ -11,12 +11,19 @@ object IMP {
     // --- type names (in the config endpoints' namespaces) ---
     const val reportType = "ConfigImpactReport"
     const val findingType = "ConfigImpactFinding"
+    const val configType = "ConfigImpactConfig"
 
     // --- the report's fields (each matches its value) ---
     /** The client whose data the report is about: always the configuration's owner, never a sandbox. */
     const val client = "client"
 
-    /** The stored configuration whose publishing is judged. */
+    /**
+     * The stored configurations whose publishing is judged together (issue #1352), each a [name] and a [version]: a
+     * group publish is judged as one change, so its report is one report.
+     */
+    const val configs = "configs"
+
+    /** A configuration's name, in one of [configs]. */
     const val name = "name"
 
     /** The version of that configuration's latest revision, the one a publish would make live. */

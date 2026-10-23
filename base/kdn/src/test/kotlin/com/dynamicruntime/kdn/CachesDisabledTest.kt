@@ -60,7 +60,7 @@ class CachesDisabledTest : StringSpec({
                 )
             },
         )
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
     }
 
@@ -105,12 +105,12 @@ class CachesDisabledTest : StringSpec({
 
         // An unrelated draft write goes through, a whole write and a patch: the missing file is the draft's already.
         svc.writeConfig(writer, gedraConfig(cxt, "words", clientNamespace(client), client) { cfact("unrelated", "carry", "Unrelated.") }, trial = true)
-        svc.patchConfig(writer, GedraId.of(GedraConfigType.configDoc, client, "words"), trial = true) { it }
+        svc.patchConfigs(writer, trial = true) { edit(GedraId.of(GedraConfigType.configDoc, client, "words")) { it } }.single()
         // A patch bringing a missing file of its own is refused: the set as it was is the patched config before.
         shouldThrow<KdrException> {
-            svc.patchConfig(writer, GedraId.of(GedraConfigType.configDoc, client, "words"), trial = true) {
+            svc.patchConfigs(writer, trial = true) { edit(GedraId.of(GedraConfigType.configDoc, client, "words")) {
                 it + (CCT.fileRefDef to listOf(mapOf(CCT.refId to "lost", CCT.source to FREF.sourceStore, CCT.hash to "cd".repeat(32))))
-            }
+            } }.single()
         }.message.orEmpty() shouldContain "'lost'"
         // One creating a config with a missing file of its own is refused.
         shouldThrow<KdrException> {

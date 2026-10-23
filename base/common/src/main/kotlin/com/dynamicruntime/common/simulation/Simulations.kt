@@ -87,7 +87,7 @@ object Simulations {
         val service = GedraConfigService.get(cxt)
         // The simulation's own content, whoever started it: so one may ship a client pictures by local refs (#1154).
         val written = service.writeConfig(bound, config, trial = true, authoredInCode = true)
-        if (publish && !written.isPublished) service.publish(bound, written.configId, trial = true)
+        if (publish && !written.isPublished) service.publish(bound, listOf(written.configId), trial = true)
         val result = GedraConfigReload.reloadClient(cxt, client)
         ClientSyncService.get(cxt).announceReload(cxt, result)
         result.issues.firstOrNull()?.let {
@@ -101,9 +101,7 @@ object Simulations {
      * runs. The publish is the simulation's own setup, so its impact on stored data is not checked.
      */
     fun publishConfig(cxt: KdrCxt, client: String, name: String) {
-        GedraConfigService.get(cxt).publish(
-            cxt.mkSubContext("simulation", client), GedraId.of(GedraConfigType.configDoc, client, name), trial = true,
-        )
+        GedraConfigService.get(cxt).publish(cxt.mkSubContext("simulation", client), listOf(GedraId.of(GedraConfigType.configDoc, client, name)), trial = true)
         ClientSyncService.get(cxt).announceReload(cxt, GedraConfigReload.reloadClient(cxt, client))
     }
 

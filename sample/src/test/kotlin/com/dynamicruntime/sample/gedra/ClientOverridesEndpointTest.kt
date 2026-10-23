@@ -126,7 +126,7 @@ class ClientOverridesEndpointTest : StringSpec({
         val svc = GedraConfigService.get(cxt)
         svc.writeConfig(writer, edits)
         // Published: acme has a sandbox (issue #994), so it runs only what is published.
-        svc.publish(writer, GedraId.of(GedraConfigType.configDoc, SC.acme, "edits916"))
+        svc.publish(writer, listOf(GedraId.of(GedraConfigType.configDoc, SC.acme, "edits916")))
         GedraConfigReload.reloadClient(cxt, SC.acme)
 
         val result = overrides(admin, SC.acme)

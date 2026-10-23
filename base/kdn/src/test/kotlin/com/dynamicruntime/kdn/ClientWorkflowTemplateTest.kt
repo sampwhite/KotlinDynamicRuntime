@@ -72,7 +72,7 @@ class ClientWorkflowTemplateTest : StringSpec({
                 }
             },
         )
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
     }
 
@@ -229,11 +229,11 @@ class ClientWorkflowTemplateTest : StringSpec({
         WorkflowService.get(warn).forClient(client).workflows.keys shouldContainExactly setOf("start")
         // An edit of something else in the configuration keeps it as stored...
         val id = GedraId.of(GedraConfigType.configDoc, client, "main")
-        fun relabel(workflowId: String, label: String) = svc.patchConfig(setup, id) { slots ->
+        fun relabel(workflowId: String, label: String) = svc.patchConfigs(setup) { edit(id) { slots ->
             slots + (CCT.workflowDef to slots.getValue(CCT.workflowDef).map {
                 if (it[CCT.workflowId] != workflowId) it else it + (CCT.definition to (it[CCT.definition].toJsonMapOrEmpty() + (WFD.label to label)))
             })
-        }
+        } }.single()
         relabel("start", "Begin")
         svc.readLatest(setup, id).shouldNotBeNull().entriesBySlot().getValue(CCT.workflowDef)
             .single { it[CCT.workflowId] == "lost" }[CCT.definition] shouldBe lost

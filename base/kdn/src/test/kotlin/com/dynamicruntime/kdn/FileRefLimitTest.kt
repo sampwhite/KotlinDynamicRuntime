@@ -110,7 +110,7 @@ class FileRefLimitTest : StringSpec({
     fun overLimit(client: String) = ClientConfigIssues.get(cxt).issuesFor(client).filter { it.message.contains("as many as a client is served") }
 
     fun publish(client: String, name: String) {
-        svc.publish(writerOf(client), GedraId.of(GedraConfigType.configDoc, client, name))
+        svc.publish(writerOf(client), listOf(GedraId.of(GedraConfigType.configDoc, client, name)))
     }
 
     "emptying the first stored configuration that holds refs, while over the limit, is not refused" {

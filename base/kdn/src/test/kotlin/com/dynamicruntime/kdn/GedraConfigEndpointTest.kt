@@ -101,15 +101,16 @@ class GedraConfigEndpointTest : StringSpec({
         // It appears in the listing.
         u.getItems(CFEP.bundles).map { it[CFEP.name].toOptStr() } shouldContain name
 
-        // The trait-level view exposes the per-slot accounting.
-        val traits = u.getItems(CFEP.traits, mapOf(CFEP.name to name))
-        traits.map { it[GE.traitId].toOptStr() } shouldContainExactlyInAnyOrder listOf(CCT.cfactDef, CCT.schemaDef)
-        val cfactEntry = traits.single { it[GE.traitId].toOptStr() == CCT.cfactDef }
+        // The entry-level view exposes each entry's accounting, its slot named as a patch names it (issue #1352).
+        val entries = u.getItems(CFEP.slotEntries, mapOf(CFEP.name to name))
+        entries.map { it[CFEP.slot].toOptStr() } shouldContainExactlyInAnyOrder listOf(CCT.cfactDef, CCT.schemaDef)
+        entries.none { it.containsKey(GE.traitId) } shouldBe true
+        val cfactEntry = entries.single { it[CFEP.slot].toOptStr() == CCT.cfactDef }
         cfactEntry[GE.entryId].toOptStr() shouldNotBe null
         cfactEntry[GE.createdAt].toOptStr() shouldNotBe null
 
         // Publish -> the latest revision is now published.
-        val published = u.postData(CFEP.bundlePublish, mapOf(CFEP.name to name))
+        val published = onlyConfig(u.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(name))))
         published[CFEP.published] shouldBe true
         published[CFEP.publishedAt].toOptStr() shouldNotBe null
 
@@ -161,25 +162,22 @@ class GedraConfigEndpointTest : StringSpec({
         val u = admin()
         val name = "reloadedtoo"
         writeBundle(u, name, "Ready")
+        // The reload is the answer's, once for every configuration changed (issue #1352), not each configuration's.
         val patched = u.postData(
             CFEP.bundlePatch,
-            mapOf(
-                CFEP.name to name,
-                CFEP.edits to listOf(
+            mapOf(CFEP.reloadField to true, CFEP.configs to listOf(mapOf(CFEP.name to name, CFEP.edits to listOf(
                     mapOf(
                         CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrMerge.name,
                         GE.data to mapOf(CCT.name to ready(name), CCT.description to "Ready, patched"),
                     ),
-                ),
-                CFEP.reloadField to true,
-            ),
+                )))),
         )
         patched[CFEP.reloadField].toJsonMapOrEmpty()[CFEP.client] shouldBe u.selfClient()
-        val published = u.postData(CFEP.bundlePublish, mapOf(CFEP.name to name, CFEP.reloadField to true))
-        published[CFEP.published] shouldBe true
+        val published = u.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(name), CFEP.reloadField to true))
+        onlyConfig(published)[CFEP.published] shouldBe true
         published[CFEP.reloadField].toJsonMapOrEmpty()[CFEP.client] shouldBe u.selfClient()
         // Not asked, the answer carries no reload.
-        u.postData(CFEP.bundlePublish, mapOf(CFEP.name to name)).containsKey(CFEP.reloadField) shouldBe false
+        u.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(name))).containsKey(CFEP.reloadField) shouldBe false
     }
 
     "a patch edits one slot entry and leaves the rest (issue #732)" {
@@ -188,18 +186,15 @@ class GedraConfigEndpointTest : StringSpec({
         writeBundle(u, name, "Ready v1") // its cfactDef (desc "Ready v1", group "grp") + schemaDef namespace.Shared
 
         // Merge a new description into the 'ready' cfact; touch nothing else.
-        val patched = u.postData(
+        val patched = onlyConfig(u.postData(
             CFEP.bundlePatch,
-            mapOf(
-                CFEP.name to name,
-                CFEP.edits to listOf(
+            mapOf(CFEP.configs to listOf(mapOf(CFEP.name to name, CFEP.edits to listOf(
                     mapOf(
                         CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.addOrMerge.name,
                         GE.data to mapOf(CCT.name to ready(name), CCT.description to "Ready patched"),
                     ),
-                ),
-            ),
-        )
+                )))),
+        ))
         // Still the same editable revision, edited in place.
         patched[CFEP.version] shouldBe 1
         val slots = patched[CFEP.slots].toJsonMapOrEmpty()
@@ -210,16 +205,13 @@ class GedraConfigEndpointTest : StringSpec({
         slots[CCT.schemaDef].toJsonListOfMaps().single()[CCT.typeName] shouldBe "$namespace.Shared"
 
         // A delete removes an entry; a delete of an absent one is a no-op (both in one patch).
-        val afterDelete = u.postData(
+        val afterDelete = onlyConfig(u.postData(
             CFEP.bundlePatch,
-            mapOf(
-                CFEP.name to name,
-                CFEP.edits to listOf(
+            mapOf(CFEP.configs to listOf(mapOf(CFEP.name to name, CFEP.edits to listOf(
                     mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.deleteOrNoOp.name, GE.data to mapOf(CCT.name to ready(name))),
                     mapOf(CFEP.slot to CCT.cfactDef, GED.action to GedraEditAction.deleteOrNoOp.name, GE.data to mapOf(CCT.name to "gone")),
-                ),
-            ),
-        )
+                )))),
+        ))
         afterDelete[CFEP.slots].toJsonMapOrEmpty().keys shouldContainExactlyInAnyOrder listOf(CCT.schemaDef)
     }
 
@@ -228,7 +220,7 @@ class GedraConfigEndpointTest : StringSpec({
         val name = "reverttarget"
         val client = u.selfClient()!!
         writeBundle(u, name, "Ready v1")
-        u.postData(CFEP.bundlePublish, mapOf(CFEP.name to name))[CFEP.published] shouldBe true
+        onlyConfig(u.postData(CFEP.bundlePublish, mapOf(CFEP.names to listOf(name))))[CFEP.published] shouldBe true
 
         // Revert: a NEW editable revision copied from the published head. The published v1 stays immutable.
         val reverted = u.postData(CFEP.bundleRevert, mapOf(CFEP.name to name))
@@ -272,10 +264,7 @@ class GedraConfigEndpointTest : StringSpec({
         u.expectError(
             EXC.badInput,
             CFEP.bundlePatch,
-            mapOf(
-                CFEP.name to "patchbadslot",
-                CFEP.edits to listOf(mapOf(CFEP.slot to "cfactDefs", GED.action to GedraEditAction.addOrReplace.name, GE.data to emptyMap<String, Any?>())),
-            ),
+            mapOf(CFEP.configs to listOf(mapOf(CFEP.name to "patchbadslot", CFEP.edits to listOf(mapOf(CFEP.slot to "cfactDefs", GED.action to GedraEditAction.addOrReplace.name, GE.data to emptyMap<String, Any?>()))))),
         )
     }
 
@@ -399,3 +388,6 @@ class GedraConfigEndpointTest : StringSpec({
         cxt.instanceConfig.clock.unfreeze()
     }
 })
+
+/** The one configuration a single-config patch or publish answered with (issue #1352). */
+private fun onlyConfig(result: Map<String, Any?>): Map<String, Any?> = result[CFEP.configs].toJsonListOfMaps().single()

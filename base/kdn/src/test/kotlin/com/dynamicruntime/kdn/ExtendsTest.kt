@@ -170,7 +170,7 @@ class ExtendsTest : StringSpec({
 
     "Design View's shared editor refuses an extension, whose stored entry is only its delta" {
         // Published, so the refusal read is the extension's rather than the draft's a Design View save would take live.
-        GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", altering), GedraId.of(GedraConfigType.configDoc, altering, "ext"))
+        GedraConfigService.get(cxt).publish(cxt.mkSubContext("setup", altering), listOf(GedraId.of(GedraConfigType.configDoc, altering, "ext")))
         val designer = TestUser.create(cxt, "designer@$altering.test", level = ROLE.admin, userClient = altering)
         val read = designer.getItem(DSV.definition, mapOf(DSV.slot to CCT.schemaDef, DSV.key to named))
         read[DSV.canEditShared] shouldBe false

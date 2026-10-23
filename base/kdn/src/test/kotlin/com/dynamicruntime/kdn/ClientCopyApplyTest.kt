@@ -58,7 +58,7 @@ class ClientCopyApplyTest : StringSpec({
                 )
             },
         )
-        svc.publish(setup, GedraId.of(GedraConfigType.configDoc, client, "main"))
+        svc.publish(setup, listOf(GedraId.of(GedraConfigType.configDoc, client, "main")))
         GedraConfigReload.reloadClient(cxt, client)
         return TestUser.create(cxt, "chief@$client.test", level = ROLE.admin, userClient = client)
     }
@@ -67,7 +67,7 @@ class ClientCopyApplyTest : StringSpec({
     fun overlayHome(client: String, name: String, keys: Map<String, String>) {
         val setup = cxt.mkSubContext("setup", client).also { it.userId = 10620L }
         val row = svc.writeConfig(setup, gedraConfig(cxt, name, clientNamespace(client), client) { fragmentOverlay(HFRAG.home, mapOf("home" to keys)) })
-        svc.publish(setup, row.configId)
+        svc.publish(setup, listOf(row.configId))
         GedraConfigReload.reloadClient(cxt, client)
     }
 

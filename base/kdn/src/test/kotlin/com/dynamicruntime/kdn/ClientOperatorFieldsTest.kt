@@ -83,14 +83,11 @@ class ClientOperatorFieldsTest : StringSpec({
         val patched = def().toInfo() + (CLD.usageType to ClientUsageType.demo.name)
         clientAdmin.expectError(
             EXC.notAuthorized, CFEP.bundlePatch,
-            mapOf(
-                CFEP.name to "main",
-                CFEP.edits to listOf(
+            mapOf(CFEP.configs to listOf(mapOf(CFEP.name to "main", CFEP.edits to listOf(
                     mapOf(
                         CFEP.slot to CCT.clientDef, GED.action to GedraEditAction.addOrReplace.name, GE.data to patched,
                     ),
-                ),
-            ),
+                )))),
         )[EP.errorMessage].toString() shouldContain CLD.usageType
     }
 
