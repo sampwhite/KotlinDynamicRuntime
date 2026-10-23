@@ -1322,6 +1322,10 @@ textarea.json-edit.json-field { min-height: 4.5rem; }
 /* A configuration row that wants attention (issue #1026): one offered Publish, which a note above the table sends
    people to. The warning chip's tint, so it reads as "look here", not as an error. */
 .op-table tr.op-row-attention > td { background: rgba(217, 119, 6, .16); }
+/* The Stored configuration table publishes a group (issue #1353): a box per unpublished row, and a bar above the
+   table that selects and acts on the selection. The box column is only as wide as the box. */
+.op-table th.op-select, .op-table td.op-select { width: 1%; padding-right: 0; }
+.publish-bar { margin: 6px 0 8px; gap: 8px 12px; }
 /* The profile's table of the person's users (issue #1330): the one the session is acting as is tinted with the
    accent and marked; the one a sign-in lands on is marked too. A mark is the file refs' small pill, the active one
    in the accent so the two read apart. */

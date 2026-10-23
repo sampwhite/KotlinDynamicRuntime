@@ -692,60 +692,144 @@ external interface StoredConfigTableProps : Props {
 }
 
 /**
- * The impact dialog's subject (issue #935): a [report] on publishing [name], from a [refused] publish or a check; with
- * [canPublish] where this page publishes the configuration (not a client's page whose sandbox does).
+ * The impact dialog's subject (issues #935, #1353): a [report] on publishing [names] together, from a [refused]
+ * publish or a check; with [canPublish] where this page publishes them (not a client's page whose sandbox does).
  */
-private class ImpactDialog(val name: String, val report: ImpactReportView, val refused: Boolean, val canPublish: Boolean)
+private class ImpactDialog(val names: List<String>, val report: ImpactReportView, val refused: Boolean, val canPublish: Boolean)
 
 /**
  * A client's configuration bundles (issues #906, #1001): one row per bundle -- its latest revision's version, when it
- * was published and last written, whether it is live ([bundleLiveText], by the client's tier), its issues -- and an
- * **actions** column. Publish is the first action ([bundleAction] decides where it is offered, and why not where it
- * is not); View and Edit are to join it. A publish reloads the client, and [StoredConfigTableProps.onChanged]
- * re-reads the page.
+ * was published and last written, whether it is live ([bundleLiveText], by the client's tier), its issues.
  *
- * Publishing is judged against the client's stored data (issue #935). A publish that would affect it is refused with
- * a report, which opens a dialog listing what would happen, with **Publish anyway**; **Check impact**, beside Publish
- * where the client runs only what is published, opens the same dialog before any publish -- most useful from the
- * sandbox, just before going live.
+ * **Publishing is of a group** (issue #1353): a row whose latest revision is unpublished has a box, and nothing else
+ * -- no Publish on a row. A bar above the table selects ("Select all unpublished", [toggleAllUnpublished]) and acts on
+ * the selection: **Publish selected** publishes it in one request, judged together, so bundles sound only as a set --
+ * a workflow moved from one to another -- go live together; **Check impact** shows what publishing exactly that
+ * selection would do to the client's stored data. What the page may do is [publishGroup]'s: a client with a sandbox
+ * publishes from the sandbox, so its own page checks impact only and the bar points there. A publish reloads the
+ * client, and [StoredConfigTableProps.onChanged] re-reads the page.
+ *
+ * Publishing is judged against the client's stored data (issue #935). A publish that would affect it is refused with a
+ * report, which opens a dialog listing what would happen, with **Publish anyway** for the same selection.
  */
 private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
     val bump = useRefreshBump()
-    var busy by useState<String?>(null)
+    var busy by useState(false)
     var error by useState<DisplayError?>(null)
     var impact by useState<ImpactDialog?>(null)
+    var selected by useState<Set<String>>(emptySet())
     // What the Published and Updated columns read their relative times against (issue #1141).
     val now = useRelativeClock()
-    useEffect(props.clientId) { error = null; impact = null }
+    useEffect(props.clientId) { error = null; impact = null; selected = emptySet() }
     val publishedOnly = props.row?.let { it.publishedOnly || it.sandboxOf != null } ?: true
+    val group = publishGroup(props.row, props.configs)
+    val selectable = selectableBundles(props.row, props.configs)
+    // A bundle published meanwhile, or no longer listed, drops out of the selection by itself.
+    val chosen = selectedBundles(selected, selectable)
 
-    fun publish(name: String, acknowledge: Boolean) {
-        busy = name
+    fun publish(names: List<String>, acknowledge: Boolean) {
+        busy = true
         error = null
         clientsScope.launch {
             try {
-                ClientsApi.publishBundles(props.clientId, listOf(name), props.acrossClients, acknowledgeImpact = acknowledge)
+                ClientsApi.publishBundles(props.clientId, names, props.acrossClients, acknowledgeImpact = acknowledge)
                 impact = null
+                selected = emptySet()
                 props.onChanged()
             } catch (e: Throwable) {
                 val refusedOver = impactOf(e)
-                if (refusedOver != null) impact = ImpactDialog(name, refusedOver, refused = true, canPublish = true) else error = userFacingError(e)
+                if (refusedOver != null) impact = ImpactDialog(names, refusedOver, refused = true, canPublish = true) else error = userFacingError(e)
             } finally {
-                busy = null
+                busy = false
             }
         }
     }
 
-    fun checkImpact(name: String, canPublish: Boolean) {
-        busy = name
+    fun checkImpact(names: List<String>, canPublish: Boolean) {
+        busy = true
         error = null
         clientsScope.launch {
             try {
-                impact = ImpactDialog(name, ClientsApi.bundleImpact(props.clientId, listOf(name), props.acrossClients), refused = false, canPublish = canPublish)
+                impact = ImpactDialog(names, ClientsApi.bundleImpact(props.clientId, names, props.acrossClients), refused = false, canPublish = canPublish)
             } catch (e: Throwable) {
                 error = userFacingError(e)
             } finally {
-                busy = null
+                busy = false
+            }
+        }
+    }
+
+    // The bar: what the group may do here, and where publishing happens when not here.
+    if (group != null) {
+        div {
+            className = ClassName("row publish-bar")
+            if (selectable.isNotEmpty()) {
+                Checkbox {
+                    checked = chosen.size == selectable.size
+                    indeterminate = chosen.isNotEmpty() && chosen.size < selectable.size
+                    disabled = busy
+                    onChange = { selected = toggleAllUnpublished(chosen.toSet(), selectable) }
+                    +"Select all unpublished"
+                }
+                if (group.publish) {
+                    Button {
+                        type = "primary"
+                        size = "small"
+                        this.loading = busy && impact == null
+                        disabled = busy || chosen.isEmpty()
+                        group.note?.let { asDynamic()["title"] = it }
+                        onClick = { publish(chosen, acknowledge = false) }
+                        +"Publish selected (${chosen.size})"
+                    }
+                }
+                if (group.checkImpact) {
+                    Button {
+                        size = "small"
+                        disabled = busy || chosen.isEmpty()
+                        asDynamic()["title"] = "What publishing the selected configurations together would do to the forms the client already stores."
+                        onClick = { checkImpact(chosen, canPublish = group.publish) }
+                        +"Check impact"
+                    }
+                }
+            }
+            val sandbox = group.sandboxClient
+            if (sandbox == null) {
+                // Publishing here: what it does, said once for the group (on a client's latest revision, it changes
+                // nothing it runs). Not publishing at all: why.
+                group.note?.let { note ->
+                    span {
+                        className = ClassName("type-hint")
+                        +note
+                    }
+                }
+            } else {
+                // "Publish from its sandbox": the word leads to the sandbox's own page, where this table publishes. An
+                // administrator who may open another client's detail goes straight there; a client-scoped one first
+                // opens the sandbox (#929) -- a fresh session as their user in it -- and lands on that page (#1001).
+                span {
+                    className = ClassName("type-hint")
+                    +"Publish from its "
+                    a {
+                        className = ClassName("wf-cell-link")
+                        href = clientDetailHref(sandbox)
+                        if (!props.acrossClients) {
+                            title = "Open the sandbox and show this configuration there."
+                            onClick = { e ->
+                                e.preventDefault()
+                                clientsScope.launch {
+                                    try {
+                                        AuthApi.openSandbox()
+                                        afterSessionChange(bump, listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
+                                    } catch (e: Throwable) {
+                                        error = userFacingError(e)
+                                    }
+                                }
+                            }
+                        }
+                        +"sandbox"
+                    }
+                    +", after previewing it there."
+                }
             }
         }
     }
@@ -755,22 +839,33 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
             className = ClassName("op-table")
             thead {
                 tr {
+                    th { className = ClassName("op-select"); +"" }
                     th { +"Name" }
                     th { className = ClassName("op-num"); +"Version" }
                     th { +"Published" }
                     th { +"Updated" }
                     th { +"Live" }
                     th { className = ClassName("op-num"); +"Issues" }
-                    th { +"" }
                 }
             }
             tbody {
                 props.configs.forEach { c ->
-                    val action = bundleAction(props.row, c)
                     tr {
                         key = c.name.unsafeCast<Key>()
-                        // A row offered Publish is marked, so the button a note above sends people to is found at a glance.
+                        // A row that could be published here is marked, so what a note above sends people to is found
+                        // at a glance.
                         if (configRowNeedsPublish(props.row, c)) className = ClassName("op-row-attention")
+                        td {
+                            className = ClassName("op-select")
+                            if (c.name in selectable) {
+                                Checkbox {
+                                    checked = c.name in chosen
+                                    disabled = busy
+                                    asDynamic()["aria-label"] = "Select ${c.name}"
+                                    onChange = { e -> selected = if (e.target.checked == true) chosen.toSet() + c.name else chosen.toSet() - c.name }
+                                }
+                            }
+                        }
                         td { +c.name }
                         td { className = ClassName("op-num"); +c.version.toString() }
                         td {
@@ -788,92 +883,18 @@ private val StoredConfigTable = FC<StoredConfigTableProps> { props ->
                         // A sandbox runs its parent's latest, so for it every row is what it runs (issue #1001).
                         td { +(if (props.row?.sandboxOf != null) "Runs here" else bundleLiveText(c, publishedOnly)) }
                         td { className = ClassName("op-num"); +c.issueCount.toString() }
-                        td {
-                            if (action.publish) {
-                                span {
-                                    className = ClassName("row-actions")
-                                    Button {
-                                        size = "small"
-                                        loading = busy == c.name
-                                        disabled = busy != null
-                                        action.note?.let { asDynamic()["title"] = it }
-                                        onClick = { publish(c.name, acknowledge = false) }
-                                        +"Publish"
-                                    }
-                                    if (action.checkImpact) checkImpactButton(c.name, busy, canPublish = true, ::checkImpact)
-                                }
-                            } else {
-                                // A client with a sandbox publishes there, but its impact is checked here too, where
-                                // the report's forms can be opened (issue #935).
-                                if (action.checkImpact) {
-                                    span {
-                                        className = ClassName("row-actions")
-                                        checkImpactButton(c.name, busy, canPublish = false, ::checkImpact)
-                                    }
-                                }
-                                val sandbox = action.sandboxClient
-                                if (sandbox == null) {
-                                    action.note?.let { note ->
-                                        span {
-                                            className = ClassName("type-hint")
-                                            +note
-                                        }
-                                    }
-                                } else {
-                                    // "Publish from its sandbox": the word leads to the sandbox's own page, where this
-                                    // row offers Publish. An administrator who may open another client's detail goes
-                                    // straight there; a client-scoped one first opens the sandbox (#929) -- a fresh
-                                    // session as their user in it -- and lands on that page (issue #1001).
-                                    span {
-                                        className = ClassName("type-hint")
-                                        +"Publish from its "
-                                        a {
-                                            className = ClassName("wf-cell-link")
-                                            href = clientDetailHref(sandbox)
-                                            if (!props.acrossClients) {
-                                                title = "Open the sandbox and show this configuration there."
-                                                onClick = { e ->
-                                                    e.preventDefault()
-                                                    clientsScope.launch {
-                                                        try {
-                                                            AuthApi.openSandbox()
-                                                            afterSessionChange(bump, listOf(HP.page to HMENU.pageClients, HP.client to sandbox))
-                                                        } catch (e: Throwable) {
-                                                            error = userFacingError(e)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            +"sandbox"
-                                        }
-                                        +", after previewing it there."
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
         }
     }
-    error?.let { errorText("Couldn't publish the configuration, check its impact, or open its sandbox.", it) }
+    error?.let { errorText("Couldn't publish the configurations, check their impact, or open the sandbox.", it) }
     ImpactReportDialog {
         dialog = impact
         formsOpenable = impactFormsOpenable(props.acrossClients, onSandboxPage = props.row?.sandboxOf != null)
-        publishing = busy != null
+        publishing = busy
         onClose = { impact = null }
-        onPublish = { name, acknowledge -> publish(name, acknowledge) }
-    }
-}
-
-/** A bundle row's Check impact button (issue #935). */
-private fun ChildrenBuilder.checkImpactButton(name: String, busy: String?, canPublish: Boolean, check: (String, Boolean) -> Unit) {
-    Button {
-        size = "small"
-        disabled = busy != null
-        asDynamic()["title"] = "What publishing it would do to the forms the client already stores."
-        onClick = { check(name, canPublish) }
-        +"Check impact"
+        onPublish = { names, acknowledge -> publish(names, acknowledge) }
     }
 }
 
@@ -882,7 +903,7 @@ private external interface ImpactReportDialogProps : Props {
     var formsOpenable: Boolean
     var publishing: Boolean
     var onClose: () -> Unit
-    var onPublish: (name: String, acknowledge: Boolean) -> Unit
+    var onPublish: (names: List<String>, acknowledge: Boolean) -> Unit
 }
 
 /**
@@ -895,7 +916,10 @@ private val ImpactReportDialog = FC<ImpactReportDialogProps> { props ->
     val report = dialog?.report
     Modal {
         open = dialog != null
-        title = dialog?.let { if (it.refused) "Publishing ${it.name} was stopped" else "Impact of publishing ${it.name}" }
+        title = dialog?.let {
+            val names = bundleNamesText(it.names)
+            if (it.refused) "Publishing $names was stopped" else "Impact of publishing $names"
+        }
         onCancel = props.onClose
         footer = if (dialog == null) null else Fragment.create {
             Button {
@@ -907,7 +931,7 @@ private val ImpactReportDialog = FC<ImpactReportDialogProps> { props ->
                     type = "primary"
                     danger = report?.blocks == true
                     loading = props.publishing
-                    onClick = { props.onPublish(dialog.name, report?.blocks == true) }
+                    onClick = { props.onPublish(dialog.names, report?.blocks == true) }
                     +(if (report?.blocks == true) "Publish anyway" else "Publish")
                 }
             }
