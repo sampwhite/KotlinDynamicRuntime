@@ -537,9 +537,12 @@ class UserService : ServiceInitializer {
 
     /**
      * Resolves a login identifier that is *either* a username *or* a primary contact (email): looks up by
-     * username first, then by primaryId. The two spaces are disjoint -- a valid username cannot contain '@'
-     * and an email must -- so the fallback is unambiguous. This lets a username-less frontend log a returning
-     * user in by email while the backend keeps full username support (issue #70).
+     * username first, then by primaryId. A chosen username cannot contain '@' and an email must, so the two never
+     * meet; a placeholder ([AuthUserRow.placeholderUsername]) starts with '@' and is no address either. This lets a
+     * username-less frontend log a returning user in by email while the backend keeps full username support (issue
+     * #70), and a code login name one user of the person by its placeholder -- how a user nobody has claimed is
+     * claimed. A login answers an id with no user exactly as one with a user (issues #275, #1293), so a placeholder
+     * asks nothing that its address does not.
      *
      * Like the other [queryByPrimaryId]/[queryByUsername]/[queryByUserId] lookups, this is **identity
      * resolution and is deliberately not client-scoped** (issue #225). It runs before anyone is
@@ -893,7 +896,7 @@ class UserService : ServiceInitializer {
         // Success: advance the version the row object carries, so a flow that updates the same row twice
         // (login does: the update, then completeLogin's auto-admin sync) guards its second write against the
         // row it just wrote rather than the original read. The typed `updatedAt` is advanced alongside the raw
-        // map, or a handler that returns `row.toAdminInfo()` after the write would report the pre-write time
+        // map, or a handler that returns `row.toAdminInfo(cxt)` after the write would report the pre-write time
         // (the search surfaces updatedAt -- issue #411).
         val newUpdatedAt = data[PF.updatedAt]
         row.data = row.data.toMutableMap().also { it[PF.updatedAt] = newUpdatedAt }

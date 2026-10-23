@@ -21,6 +21,7 @@ import com.dynamicruntime.common.user.AuthUserRow
 import com.dynamicruntime.common.user.PERSONA
 import com.dynamicruntime.common.user.TestUser
 import com.dynamicruntime.common.user.UADEP
+import com.dynamicruntime.common.user.UserService
 import com.dynamicruntime.common.util.jsonMap
 import com.dynamicruntime.common.util.toJsonMapOrEmpty
 import com.dynamicruntime.common.util.toOptLong
@@ -30,6 +31,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 
 /**
  * Creating a user, and reading the person behind one, tells a caller nothing about the address's users in clients
@@ -100,22 +102,38 @@ class AdminCreateIdentityLeakTest : StringSpec({
         attempt(probes[1]) shouldBe taken
     }
 
-    "a public user's create at their own address says nothing about a username" {
-        // Every `public` registrant administers their own users, so reaches the create: a username checked there
-        // before the key would answer "taken" for one somebody holds and "that user exists" for a free one.
+    "a public user's create takes no username, so whether one is held cannot be asked of it" {
+        // Every `public` registrant administers their own users, so reaches the create. A username field checked
+        // there before the key answered "taken" for one somebody holds and "that user exists" for a free one; the
+        // field is gone, so either is refused as a field the create does not take, alike.
         val self = TestUser.register(cxt, "self@leak1298.test", "selfleak1298")
         TestUser.register(cxt, "other@leak1298.test", "otherleak1298")
-        fun attempt(username: String) = masked(
+        fun attempt(username: String?) = masked(
             self.client.sendEditRequest(
                 UADEP.userCreate, null,
-                mapOf(ADF.primaryId to "self@leak1298.test", ADF.persona to PERSONA.member, ADF.username to username),
+                buildMap {
+                    put(ADF.primaryId, "self@leak1298.test")
+                    put(ADF.persona, PERSONA.member)
+                    username?.let { put(ADF.username, it) }
+                },
                 HttpMethod.POST,
             ).rptResponseData?.jsonMap() ?: emptyMap(),
             listOf("otherleak1298", "freeleak1298"),
         )
         val held = attempt("otherleak1298")
         held.first shouldNotBe 200
+        held.second shouldContain ADF.username
         attempt("freeleak1298") shouldBe held
+        // Without one, the key is what refuses: the caller's own existing user.
+        attempt(null).second shouldNotBe held.second
+    }
+
+    "a placeholder username is no search term" {
+        val user = TestUser.create(cxt, "placeheld@leak1298.test", userClient = mine)
+        UserService.get(cxt).queryByUserId(cxt, user.userId)!!.username shouldBe
+            AuthUserRow.placeholderUsername("placeheld@leak1298.test", mine, PERSONA.member, "")
+        // The client's id and the persona are in every placeholder; a search for them must not match by it.
+        admin.getItems(UADEP.users, mapOf(ADF.search to "|member|")) shouldBe emptyList()
     }
 
     "a user created at an address is named and described alike, whatever the address has elsewhere" {

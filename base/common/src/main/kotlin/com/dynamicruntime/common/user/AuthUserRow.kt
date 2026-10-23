@@ -159,13 +159,15 @@ class AuthUserRow(
 
     /**
      * Whether this row matches an admin-console [lowerTerm] (already lower-cased by the caller): a
-     * case-insensitive substring of the email, the username, or the account's [name] (a person's full name or
-     * a business's). Lives here so the searchable fields stay listed beside the fields themselves;
-     * `UserService.listUsers` applies it after extraction, since [name] is not an SQL column.
+     * case-insensitive substring of the email, the public name (a chosen username, else the email), or the
+     * account's [name] (a person's full name or a business's). Lives here so the searchable fields stay listed
+     * beside the fields themselves; `UserService.listUsers` applies it after extraction, since [name] is not an SQL
+     * column. A placeholder username is never matched: it holds the client and persona, so a term such as the
+     * client's id would match every user who has not chosen one (issue #1298).
      */
     fun matchesSearch(lowerTerm: String): Boolean =
         primaryId.lowercase().contains(lowerTerm) ||
-            username.lowercase().contains(lowerTerm) ||
+            publicName().lowercase().contains(lowerTerm) ||
             (name?.lowercase()?.contains(lowerTerm) == true)
 
     /**

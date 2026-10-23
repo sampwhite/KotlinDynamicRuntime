@@ -73,10 +73,10 @@ class AdminUser(
     val name: String?,
     val enabled: Boolean,
     /**
-     * Whether the person has a password set -- false, too, when the backend does not say: it tells only a caller who
-     * sees every client, or about their own identity (issue #1298).
+     * Whether the person has a password set, or null when the backend does not say: it tells only a caller who sees
+     * every client, or about their own identity (issue #1298).
      */
-    val hasPassword: Boolean,
+    val hasPassword: Boolean?,
     /**
      * Whether the person has claimed this user (issue #749): a code used for it, the fixture, or a user they
      * made for themself. False for one an administrator provisioned that nobody has logged into yet. Read off
@@ -345,7 +345,7 @@ object AdminApi {
         isEntity = this[ADF.isEntity] == true,
         name = this[ADF.name] as? String,
         enabled = this[ADF.enabled] == true,
-        hasPassword = this[ADF.hasPassword] == true,
+        hasPassword = this[ADF.hasPassword] as? Boolean,
         registered = this[USF.registered.at] != null,
         registeredAt = this[USF.registered.at] as? String,
         deleted = this[ADF.deleted] == true,
